@@ -1094,11 +1094,11 @@ void testMaximumActionAndInvalidatedCacheFormatting() {
 
 void testMoveRoutesExactParsingAndRetainedReports() {
     namespace Core = MotorControlRS;
-    for (const char* route : {"move relative", "move relative"}) {
+    {
         Fake fake; auto host = fake.host(false, true); host.startMove = Fake::startMove; host.axis = Fake::axis;
         fake.axisConfig.generation = 17;
         Probe::Console console(host, Probe::Format::JSON);
-        send(console, std::string("@42 ") + route + " -12.50 deg load 60 configured 2\n");
+        send(console, "@42 move relative -12.50 deg load 60 configured 2\n");
         assert(fake.moves == 1 && fake.address == 2 && fake.id == 42);
         assert(fake.moveRequest.position.value.numerator == -25 && fake.moveRequest.position.value.denominator == 2);
         assert(fake.moveRequest.position.unit == Core::PositionUnit::DEGREES && fake.moveRequest.position.frame == Core::CoordinateFrame::LOAD);
@@ -1226,18 +1226,14 @@ void testAbsoluteAngleAndClearRoutesUsePublicRequests() {
     fake.axisReference.source = Core::ScaleSource::ASSUMED;
     fake.axisReference.observedUs = fake.axisReference.nowUs = 100; fake.axisReference.maximumAgeUs = 1000;
     Probe::Console console(host, Probe::Format::JSON);
-    for (const char* route : {"move absolute", "move absolute"}) {
-        send(console, std::string(route) + " 720 deg motor 60 configured\n");
-        assert(!fake.moveRequest.position.relative && !fake.moveRequest.position.wrapped);
-        assert(fake.moveRequest.position.value.numerator == 720 && fake.moveRequest.position.unit == Core::PositionUnit::DEGREES);
-        fake.contains("\"command\":\"move-absolute\"");
-    }
-    for (const char* route : {"move angle", "move angle"}) {
-        send(console, std::string(route) + " 1/2 turn motor shortest negative 60 configured\n");
-        assert(!fake.moveRequest.position.relative && fake.moveRequest.position.wrapped);
-        assert(fake.moveRequest.position.path == Core::AnglePath::SHORTEST && fake.moveRequest.position.tie == Core::HalfTurnTie::NEGATIVE);
-        fake.contains("\"command\":\"move-angle\"");
-    }
+    send(console, "move absolute 720 deg motor 60 configured\n");
+    assert(!fake.moveRequest.position.relative && !fake.moveRequest.position.wrapped);
+    assert(fake.moveRequest.position.value.numerator == 720 && fake.moveRequest.position.unit == Core::PositionUnit::DEGREES);
+    fake.contains("\"command\":\"move-absolute\"");
+    send(console, "move angle 1/2 turn motor shortest negative 60 configured\n");
+    assert(!fake.moveRequest.position.relative && fake.moveRequest.position.wrapped);
+    assert(fake.moveRequest.position.path == Core::AnglePath::SHORTEST && fake.moveRequest.position.tie == Core::HalfTurnTie::NEGATIVE);
+    fake.contains("\"command\":\"move-angle\"");
     send(console, "move relative 1 rad motor 60 configured round nearest 1 approx 0.001\n");
     assert(fake.moveRequest.position.approximate && fake.moveRequest.position.rationalRadians);
     assert(fake.moveRequest.position.maximumApproximationError > 0);
@@ -1270,12 +1266,10 @@ void testAbsoluteAngleAndClearRoutesUsePublicRequests() {
     assert(units.moves == 6);
     Fake clear; auto clearHost = clear.host(); clearHost.startAction = Fake::startAction;
     Probe::Console clearConsole(clearHost, Probe::Format::JSON);
-    for (const char* route : {"position-clear", "position-clear"}) {
-        send(clearConsole, std::string(route) + " 2\n");
-        assert(clear.actionRequest.kind == Core::ActionKind::CLEAR_POSITION && clear.actionRequest.devicePosition == 0);
-        assert(!clear.actionRequest.positionClearQualified && clear.address == 2);
-        clear.contains("\"command\":\"position-clear\"");
-    }
+    send(clearConsole, "position-clear 2\n");
+    assert(clear.actionRequest.kind == Core::ActionKind::CLEAR_POSITION && clear.actionRequest.devicePosition == 0);
+    assert(!clear.actionRequest.positionClearQualified && clear.address == 2);
+    clear.contains("\"command\":\"position-clear\"");
     const unsigned actions = clear.actions;
     send(clearConsole, "position-clear 1 12\n"); clear.contains("\"ok\":false"); assert(clear.actions == actions);
     send(clearConsole, "help position-clear\n"); clear.contains("explicit_device_position_zero_only");
@@ -2039,7 +2033,7 @@ void testSegmentGrammarAndCorrelation() {
     assert(f.drivers == 2 && f.driverRequest.segmentSpeed == -1 && f.driverRequest.segmentAcceleration == 2000);
     send(c, "@82 segment start 16 set value 180\n");
     assert(f.drivers == 3 && f.driverRequest.segmentStartSpeed == 180);
-    for (const char* bad : {"segment position 0 read", "segment position 0 read", "segment position 17 read", "segment speed 1 set target 0", "segment start 1 set value 1/1", "segment position 1 set speed 1 speed 2", "segment position 1 set acceleration -1", "segment start 1 set value 2147483648"}) send(c, std::string(bad)+"\n");
+    for (const char* bad : {"segment position 0 read", "segment position 17 read", "segment speed 1 set target 0", "segment start 1 set value 1/1", "segment position 1 set speed 1 speed 2", "segment position 1 set acceleration -1", "segment start 1 set value 2147483648"}) send(c, std::string(bad)+"\n");
     assert(f.drivers == 3);
 }
 void testIndependentLocalHooksAndRemovedAliases() {

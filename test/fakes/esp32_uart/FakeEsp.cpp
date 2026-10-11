@@ -90,7 +90,7 @@ esp_err_t uart_param_config(uart_port_t port, const uart_config_t* config) {
     return hardware.configResult;
 }
 esp_err_t uart_get_baudrate(uart_port_t port, uint32_t* result) {
-    assert(port == UART_NUM_2 && result); ++hardware.baudCalls;
+    assert(port == UART_NUM_2 && result);
     // ESP32-S3 pinned uart_ll divider arithmetic, 40 MHz XTAL.
     const uint32_t baud = static_cast<uint32_t>(hardware.config.baud_rate);
     const uint32_t scale = (40000000U + 4095U * baud - 1) / (4095U * baud);
@@ -207,9 +207,5 @@ esp_err_t gptimer_del_timer(gptimer_handle_t timer) {
     if (!hardware.timerCreated || hardware.timerEnabled) return -2;
     if (!timerCall()) return -1;
     hardware.timerCreated = false; hardware.timerCallback = nullptr; hardware.timerContext = nullptr;
-    ++hardware.timerDeletes; return ESP_OK;
-}
-esp_err_t gptimer_set_raw_count(gptimer_handle_t timer, uint64_t value) {
-    assert(timer == &fakeTimer && value == 0);
-    return timerCall() ? ESP_OK : -1;
+    return ESP_OK;
 }

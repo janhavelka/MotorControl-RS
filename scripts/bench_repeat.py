@@ -78,7 +78,8 @@ def main():
     parser.add_argument('--plan-only', action='store_true')
     args = parser.parse_args()
     plan = dict(repeats_per_policy=args.count, total_moves=3 * args.count + 3,
-                maximum_increments=101, maximum_rpm=60, operation_deadline_s=3,
+                maximum_increments=101, maximum_rpm=60, command_timeout_s=5,
+                firmware_operation_deadline='Configured independently; retained in each move result as deadline_us',
                 thresholds='Every terminal accounted, observed completion, expected write shape, no replay, exact restoration',
                 cleanup='One explicit fast stop, checked zero speed, restore saved profile once, ten probes',
                 timing='Firmware admission to start acknowledgement; initial/state refresh outside timed interval')

@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Verification now requires the shared native-IDF simple-motion fixture to
+  remain registered with its actual executable; missing or misdirected fixtures
+  fail before a passing test run can hide the omission.
 - Reference-owner admission accepts a typed step deadline within its immutable
   operation budget, including earlier readiness expiry. It still rejects work
   outside that budget and never replays an uncertain write.
@@ -12,11 +15,22 @@
 
 ### Maintenance
 
+- Reused private RTU frame/word/CRC helpers and removed a redundant register
+  decode buffer while preserving checked-parser output and validation contracts.
+- Simplified cached-health help and callback checks, removed an unused example
+  include and duplicated console-test setup, and corrected nearby API comments.
+- Removed unused SDK-test stubs and write-only counters; consolidated the
+  stack-watermark fake without removing active fault injection or assertions.
+- Reused host-tool motion-phase and field-map definitions and corrected the
+  repeat plan's obsolete deadline label without changing command timing.
 - Removed unreachable console-rendering code, corrected the obsolete `?` help
   hint, and resolved C++11/volatile build warnings without changing motor semantics.
 - Corrected current API/console bounds, settings and motion evidence, repository
   identity and FieldCore integration guidance. Historical reports and vendor
   references remain unchanged; larger refactors have a separate promptset.
+- Separated the maintained bench fixture and latest recorded settings from its
+  historical running ledger. Removed obsolete owner/units implementation plans
+  and distinguished fixed conversion defaults from later motor readbacks.
 
 ## 1.0.0 - First release
 

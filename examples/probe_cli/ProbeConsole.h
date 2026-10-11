@@ -383,9 +383,10 @@ public:
                      const HostTuple* tuple = nullptr, uint32_t serialGeneration = 0) noexcept;
     bool reportRecovery(uint32_t id, uint32_t operationId, const Rtu::RecoveryResult& result,
                         const HostTuple* tuple = nullptr, uint32_t serialGeneration = 0) noexcept;
+    /// Whether a retained command correlation selected human terminal output.
+    bool humanResult(uint32_t operationId) const noexcept;
     /** Same transfer contract as reportProbe. Context is borrowed during this
      * call only; operation identity and terminal state are checked before use. */
-    bool humanResult(uint32_t operationId) const noexcept;
     bool reportRead(uint32_t id, uint32_t operationId, const MotorControlRS::ESS_RS::ReadContext&,
                     const HostTuple* tuple = nullptr, uint32_t serialGeneration = 0) noexcept;
     bool reportAction(uint32_t id, uint32_t operationId, const MotorControlRS::ESS_RS::ActionContext&,

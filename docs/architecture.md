@@ -236,7 +236,8 @@ Parsers accept immutable frame bytes and length, expected request information,
 and caller-owned output/capacity. All payload outputs, including scalar values,
 remain unchanged on error. An explicit output-count parameter resets to zero
 on entry and is published only on success; diagnostic-reason outputs may be
-updated on failure. Decode into bounded temporary storage before publishing.
+updated on failure. Complete all fallible checks before publishing decoded
+values; use bounded temporary storage when decoding can still fail.
 Document byte capacities versus register counts. Reject unsupported overlap
 between input and output buffers rather than relying on accidental aliasing.
 

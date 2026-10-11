@@ -24,8 +24,4 @@ inline void vTaskDelay(TickType_t ticks) {
     advanceHardware(hardware.time + static_cast<uint64_t>(ticks) * 1000);
     if (hardware.stopOnIdle) throw FakeTaskStopped();
 }
-inline void vTaskDelete(TaskHandle_t) {}
-#ifndef MOTORCONTROLRS_FAKE_STACK_WATERMARK
-#define MOTORCONTROLRS_FAKE_STACK_WATERMARK
 inline unsigned uxTaskGetStackHighWaterMark(void*) { return 4096; }
-#endif

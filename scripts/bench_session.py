@@ -76,7 +76,7 @@ def run_recorded(*, port, out, scenario, inputs, run, address=1, timeout_s=5,
     """Reserve exclusive artifacts before opening one port; write summary on error.
 
     ``run(console, record)`` performs a finite named scenario and its preplanned
-    cleanup. Summaries retain at most16 campaign records, never raw line history.
+    cleanup. Summaries retain at most 16 campaign records, never raw line history.
     Before/after snapshots have fixed command counts. Exact lines stream to JSONL.
     Returns the summary; any scenario/cleanup/framing failure raises after it is
     written. A failed debug-mode restoration also remains a failure.

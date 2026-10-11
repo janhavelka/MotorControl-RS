@@ -11,8 +11,9 @@ Build/upload `bench_s3_load_timer` for the existing COM13 setup; the probe and
 polling builds expose the same library and console operations. Startup sends no
 motor commands. The short test procedure uses finite positioning, enable/release
 and normal/direct stop; it does not start continuous velocity, home the motor,
-change inputs, save settings or restart the drive. The several-hour soak remains
-omitted by user request.
+change inputs, save settings or restart the drive. This short procedure contains
+no several-hour soak. Separately authorized longer campaigns and their remaining
+qualification gaps are linked from the [bench guide](hardware_bench.md).
 
 `motion-profile read` saves the six native words at `0x0020..0x0025` and refreshes
 current endpoint/configuration binding. `motion-profile inspect` reads retained

@@ -89,7 +89,7 @@ Probe::Action simpleMotion(void* context, uint32_t commandId,
         s.desired.setup = command->setup; break;
     case Kind::SCALE:
         if (command->position.value.numerator <= 0 || command->position.value.numerator > UINT32_MAX ||
-            command->position.value.denominator <= 0 || command->position.value.denominator > UINT32_MAX)
+            command->position.value.denominator == 0 || command->position.value.denominator > UINT32_MAX)
             return Probe::Action::INVALID;
         s.desired.stepsPerTurn = command->position.value; s.desired.scaleKnown = true; break;
     case Kind::SETTINGS: case Kind::MOVE_BY: case Kind::MOVE_TO: case Kind::SUBDIVISION: {

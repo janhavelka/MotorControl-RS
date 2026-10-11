@@ -5,6 +5,12 @@ statements, standard requirements, calculated wire times and application policy.
 No measurements were taken on COM13. Page numbers are physical PDF pages,
 starting at 1.
 
+This is the pre-implementation timing-source review. References below to a
+future adapter describe requirements now implemented by the [runner](../runner.md)
+and [ESP32-S3 adapter](../esp32_probe.md). Later software timing and motor
+observations are linked from the [bench guide](../hardware_bench.md); independent
+electrical timing and the vendor timing guarantees identified here remain open.
+
 ## Sources and limits
 
 - [ESS function manual V1.0](../vendor/Modbus-Series-Bus-Product-Function-Manual-V1.0_1_.pdf),

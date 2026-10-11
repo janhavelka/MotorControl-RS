@@ -1447,11 +1447,11 @@ class Console:
             require(integer(item.get("segment_index"), 16) and item["segment_index"] >= 1, "record index differs")
             require(item.get("execution_path") == "external_input" and item.get("storage_capacity") == 16 and item.get("maximum_input_selections") == 8, "invented segment execution")
             if arguments is not None:
-                requested_group, requested_index, unused = segment_arguments(arguments)
+                requested_group, requested_index, _ = segment_arguments(arguments)
                 require(group == requested_group and item["segment_index"] == requested_index, "record correlation differs")
                 arguments = arguments[2:]
         if tuning and arguments is not None:
-            requested_group, unused = tuning_arguments(arguments)
+            requested_group, _ = tuning_arguments(arguments)
             require(group == requested_group, "tuning group correlation differs")
             arguments = arguments[1:]
         io = group == "io"
@@ -1460,7 +1460,6 @@ class Console:
         names = TUNING_FIELDS[group] if tuning else CONTROL_FIELDS if control else IO_FIELDS if io else DRIVER_FIELDS[:7]
         registers = TUNING_REGISTERS[group] if tuning else CONTROL_REGISTERS if control else IO_REGISTERS if io else DRIVER_REGISTERS
         masks = tuple(1 << (index + (23 if control else 9 if io else 0)) for index in range(len(names)))
-        by_field = dict(zip(masks, zip(names, registers)))
         windows = TUNING_WINDOWS[group] if tuning else CONTROL_WINDOWS if control else IO_WINDOWS if io else ((0x10, 2), (0x17, 3), (0x37, 4), (0x50, 2))
         if segment:
             record_index = item["segment_index"]
@@ -1475,7 +1474,7 @@ class Console:
             else:
                 base = 0x130 + record_index - 1
                 names, registers, windows, masks = ("value",), (base,), ((base, 1),), (1 << 21,)
-            by_field = dict(zip(masks, zip(names, registers)))
+        by_field = dict(zip(masks, zip(names, registers)))
         read_steps, update_steps, raw_limit = len(windows), 2 * len(names), 15 if stored else 13
         echo_policy = item.get("echo_readback_policy", False)
         require(type(echo_policy) is bool and (stored or not echo_policy), "echo readback policy differs")

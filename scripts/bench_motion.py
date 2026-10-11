@@ -81,8 +81,8 @@ def phase_plan(phase):
                     'motion-profile inspect until settled (at most 100 reads)', 'probe 1'],
         'status': ['motion-profile inspect', 'probe 1'],
     }
-    cleanup = ['on failed accepted finite move: one fast stop only if no stop was attempted and framing remains synchronized; then read-state 1'] if phase in ('forward', 'absolute', 'return', 'stop-normal', 'stop-fast') else []
-    settling = ['after motion/stop: read-state 1 up to ten times, 50ms apart, until not running and raw speed zero'] if phase in ('forward', 'absolute', 'return', 'stop-normal', 'stop-fast') else []
+    cleanup = ['on failed accepted finite move: one fast stop only if no stop was attempted and framing remains synchronized; then read-state 1'] if phase in MOTION_PHASES else []
+    settling = ['after motion/stop: read-state 1 up to ten times, 50ms apart, until not running and raw speed zero'] if phase in MOTION_PHASES else []
     restoration = ['before closing this same connection: restore the saved original motion profile once, only after successful stop and fresh non-running/zero-speed evidence; verify exact readback',
                    'on failed/unknown stop or broken framing: no restore write; retain backup and unknown cleanup'] if phase in MOTION_PHASES else []
     return common + steps[phase] + settling + cleanup + restoration + ['stats', 'load', 'drv', 'memory', 'host']
@@ -184,7 +184,7 @@ def _run_phase(console, phase, record):
             if state()[0]['released']:
                 raise BenchError('enable transition was not reported')
             stop('fast'); state()
-        elif phase in ('forward', 'absolute', 'return', 'stop-normal', 'stop-fast'):
+        elif phase in MOTION_PHASES:
             # Reading the fixture refreshes current profile/provenance but keeps
             # the original saved words. It sends no setting write.
             record['profile'] = fixture('read')

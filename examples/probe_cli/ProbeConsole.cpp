@@ -1852,7 +1852,7 @@ void Console::dispatch() noexcept {
         default: return true;
         }
     };
-    if (!callable(entry->command) || (entry->command == Command::HEALTH && !host_.snapshot) ||
+    if (!callable(entry->command) ||
         (entry->command == Command::STATS && (arg ? !host_.resetStats : !host_.snapshot)) ||
         (described && !callable(described->command))) {
         error(id, entry->name, "unavailable"); return;
@@ -1897,7 +1897,6 @@ void Console::dispatch() noexcept {
                 "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"help\",\"ok\":true,\"syntax\":\"%s\",\"effect\":\"%s\",\"bus_traffic\":%s}",
                 static_cast<unsigned long>(id), helpSyntax,
                 described->effect, boolean(described->bus &&
-                    (described->command != Command::HEALTH || host_.startTypedRead) &&
                     (described->command != Command::HOME || (host_.startHome && host_.snapshot && host_.axis))));
         } else {
             const int prefix = std::snprintf(output_, sizeof(output_),

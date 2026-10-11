@@ -24,7 +24,7 @@ struct Hardware {
     int levelResult = ESP_OK, directionResult = ESP_OK, configResult = ESP_OK;
     int baudResult = ESP_OK;
     uint32_t actualBaud = 0; ///< Zero derives the real SDK XTAL divider result.
-    unsigned configCalls = 0, baudCalls = 0;
+    unsigned configCalls = 0;
     uint32_t configDelayUs = 0; ///< SDK setup interval outside capture's next epoch.
     std::vector<unsigned> configFailCalls;
     int pinResult = ESP_OK, de = -1, dePin = -1, txPin = -1, rxPin = -1;
@@ -40,7 +40,7 @@ struct Hardware {
     void* timerContext = nullptr;
     uint64_t timerPeriod = 0, timerNext = 0;
     bool timerCreated = false, timerEnabled = false, timerRunning = false, inTimer = false;
-    unsigned timerCalls = 0, timerCallbacks = 0, timerDeletes = 0;
+    unsigned timerCalls = 0, timerCallbacks = 0;
     std::vector<unsigned> timerFailCalls;
     // Startup fault injection shared by the real Arduino/IDF example paths.
     bool allocationFails = false, taskCreationFails = false;

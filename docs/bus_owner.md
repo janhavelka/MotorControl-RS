@@ -13,7 +13,8 @@ explicit successful repair. See [host serial support](host_serial.md).
 the installed library. It owns bounded admission, one active Runner transaction
 and retained completions in one cooperative context. Construction initializes
 caller-supplied slots without I/O. Logical producers use that context; calls
-are not thread-safe. Prompts 01–03 implement and connect this owner to the console.
+are not thread-safe. Arduino and native ESP-IDF use this same owner through the
+shared application; see the [source map](architecture_report.md).
 
 ## Admission and lifetime
 
@@ -195,14 +196,18 @@ The bus-wait budget includes establishing the required t3.5 idle gap; continuing
 foreign traffic instead produces a fault/expiry and invalidates the delivery bound.
 K is at most urgent pending capacity minus one. This assumes finite S/B/C/X,
 valid evidence, adequate deadlines and no parser/transport fault. Queue capacity
-alone cannot bound elapsed time. Prompt 03 must measure application budgets.
+alone cannot bound elapsed time. Measure service, capture and cleanup budgets
+on the actual consumer and workload; the [bench reports](hardware_bench.md)
+record finite observations, not universal upper bounds.
 
 A fault requires explicit bounded recovery and fresh urgent submission; recovery
 cancels queued urgent work, so the old request has no delivery bound. Full urgent
 reservations, expiry, stalled TX/DE, unbounded service/capture gaps or an unresolved
-uncertain operation can prevent delivery. No ESS stop command is implemented
-here. Fake requests prove scheduling only; physical stop delivery/completion
-needs later profile, drive and timing qualification.
+uncertain operation can prevent delivery. The owner schedules typed
+[ESS stop operations](ess_actions.md) supplied by the application; it does not
+interpret their motor semantics. Fake requests prove scheduling only. Recorded
+finite moving-stop tests provide separate functional evidence, while independent
+physical stop timing remains unmeasured.
 
 ## Absolute deadline and closure evidence
 
@@ -241,44 +246,35 @@ transport failure, not evidence of a response closure.
 `endedUs` is closure for FRAME and task observation for most faults; it is not
 a uniform physical timestamp.
 
-## Memory and next dependency
+<a id="memory-and-next-dependency"></a>
 
-Measured `sizeof` with native 64-bit MinGW and ESP32-S3 Xtensa:
-
-| Type | Native bytes | ESP32-S3 bytes |
-| --- | ---: | ---: |
-| BusOwner / BusRequest | 216 / 128 | 144 / 96 |
-| PendingSlot (256 frame bytes included) | 392 | 360 |
-| Completion (256 raw bytes included) | 496 | 464 |
-| ResultSlot (Completion included) | 512 | 480 |
-| ProducerSlot / SequenceId | 24 / 24 | 24 / 16 |
-| RecoveryResult (included in owner) | 64 | 56 |
-| Runner / Result | 384 / 80 | 320 / 80 |
+## Memory and verification
 
 Owner/slots consume `sizeof(BusOwner) + Q*sizeof(PendingSlot) +
 R*sizeof(ResultSlot) + P*sizeof(ProducerSlot)`, separately from Runner and TX/RX/trace.
-Four pending, six retained and three producer slots use 4928 native or 4536
-ESP32-S3 bytes. These are static sizes, not runtime peaks. Xtensa `-Os -fstack-usage`
-reports 544-byte constructor, 512-byte admission, 64-byte service/group cancellation,
-128-byte recovery, 32-byte collect and 96-byte ESS
-reply-validator frames; callee stack use is additional.
+Use the current toolchain's `sizeof` values for allocation. The original size
+and stack measurements in the [scheduling report](reports/ess_release_02_2026-10-03.md)
+describe that historical source; retained timing, traffic and commissioning
+state have since expanded. Static object sizes are separate from stack peaks,
+callee usage and measured runtime headroom. Current firmware emits resource
+observations through `memory`, `load` and `drv`.
 
 [bus_owner_test.cpp](../test/bus_owner_test.cpp) uses real Runner, independent
 fake wire times and no trace ring. The
-[prompt 01 report](reports/ess_release_01_2026-10-03.md) records exact evidence.
-The [fresh prompt 01 audit](reports/ess_release_01_audit_2026-10-03.md) corrects
-timeout precedence and relative byte-expiry closure evidence.
-The [prompt 02 report](reports/ess_release_02_2026-10-03.md) and
-[scheduling tests](../test/bus_scheduling_test.cpp) hand these actual APIs and
-lifetime/deadline/parser contracts to prompt 03. The console now exposes `drv`,
-`result`, `release`, `cancel` and asynchronous `recover`; see [the probe guide](esp32_probe.md).
+[owner report](reports/ess_release_01_2026-10-03.md) and
+[owner audit](reports/ess_release_01_audit_2026-10-03.md) retain the original
+deadline/closure evidence. Current [scheduling tests](../test/bus_scheduling_test.cpp)
+exercise fairness, urgent capacity, immutable sequence budgets with earlier
+step deadlines, cancellation, physical settlement, recovery and ambiguous
+late replies. The shared console exposes `drv`, `result`, `release`, `cancel`
+and asynchronous `recover`; see [the probe guide](esp32_probe.md).
 
-Prompt 03 retains TX end/uncertainty and first RX start/maximum uncertainty in
+The runner retains TX end/uncertainty and first RX start/maximum uncertainty in
 `Result`, so later dispatch cannot overwrite diagnostic evidence. WAIT_BUS
 discards are excluded. These diagnostics do not require optional trace storage.
 `service(nowUs, recoveryReady=false)` still settles/collects active TX and
 enforces the recovery deadline, while postponing drain/reinitialization until
 the application completes safe adapter cleanup. The standalone application
 uses this gate for explicit 500-ms recovery settlement; no automatic recovery.
-The [fresh prompt 02 audit](reports/ess_release_02_audit_2026-10-03.md) corrects
-delayed cancellation cutoff precedence and recovery evidence across drain passes.
+The [scheduling audit](reports/ess_release_02_audit_2026-10-03.md) records the
+delayed-cancellation and recovery-evidence fixes represented in those tests.

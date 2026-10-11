@@ -25,4 +25,3 @@ esp_err_t gptimer_start(gptimer_handle_t);
 esp_err_t gptimer_stop(gptimer_handle_t);
 esp_err_t gptimer_disable(gptimer_handle_t);
 esp_err_t gptimer_del_timer(gptimer_handle_t);
-esp_err_t gptimer_set_raw_count(gptimer_handle_t, uint64_t);

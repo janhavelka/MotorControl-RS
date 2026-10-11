@@ -69,6 +69,8 @@ rating or a guarantee of absolute reliability.
 - [11 October maintenance audit](reports/2026-10-11_fieldcore_audit.md) and
   [optional refactor prompts](prompts/maintenance/README.md): applied cleanup and
   larger source-backed follow-up work.
+- [Follow-up cleanup audit](reports/2026-10-11_cleanup_audit.md): core, examples,
+  host tooling, test fixtures and documentation reviewed after that maintenance.
 
 Arduino and native-IDF S3 have recorded functional evidence. S2 consumption is
 compile-only. Electrical timing, calibrated shaft measurements, loaded mechanics
@@ -82,6 +84,9 @@ and external switch/load behavior remain separate qualification work.
 - [Searchable extracts](pdf-extracted-md/README.md): search aids; original PDF tables and diagrams remain authoritative.
 - [Reference software](vendor/software/README.md): vendor files retain their own licensing.
 - [Development prompt sequence](prompts/ess_release/README.md), [historical candidate](release_candidate.md), [candidate evidence](reports/ess_release_30_2026-10-05.md) and [reports](reports/).
+- [Historical bench ledger](reports/hardware_bench_history_2026-10-11.md): preserved
+  session snapshots; use the [bench guide](hardware_bench.md) for the fixture and
+  latest recorded ending state.
 
 The numbered development prompts describe the original implementation sequence;
 use the current guides and backlog for present behavior and remaining work.

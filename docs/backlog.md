@@ -14,6 +14,10 @@ unrelated commands or fixtures.
   See the [audit](reports/2026-10-11_fieldcore_audit.md).
 - [x] Replace obsolete implementation plans in current guides with source-backed
   behavior; retain original manuals, historical reports and failed bench evidence.
+- [x] Complete the [follow-up cleanup audit](reports/2026-10-11_cleanup_audit.md):
+  remove redundant private helpers and unused test scaffolding, require the
+  native-IDF simple-motion fixture in verification, and separate the current
+  bench guide from its historical ledger. Hardware qualification is unchanged.
 - [ ] Execute the optional [maintenance promptset](prompts/maintenance/README.md)
   in small reviewed blocks: explicit application operation kinds, ordinary
   translation-unit boundaries and host evidence-parser separation.

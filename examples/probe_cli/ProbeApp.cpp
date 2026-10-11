@@ -26,7 +26,6 @@
 #include <MotorControlRS/profiles/ess_rs/Homing.h>
 #include "../common/EssRtuValidator.h"
 #include "../common/Esp32S3Uart.h"
-#include "../common/BuildConfig.h"
 #if MOTORCONTROLRS_LOAD_FIXTURE
 #include "Esp32Load.h"
 #endif

@@ -1,10 +1,12 @@
-# ESS encoder evidence and the first unit-conversion block
+# ESS encoder evidence and unit conversion
 
 The library can use explicit, labelled bench assumptions now. It does not need
 an encoder chip identification before converting user-defined steps, angles
-and rates. This first implementation supplies pure conversion and exact native
-integer range checks; it does not send commands, establish absolute position,
-set motor parameters, or implement drive acceleration registers.
+and rates. The unit helpers supply pure conversion and exact native integer
+range checks; they do not send commands, establish absolute position or set
+motor parameters. The separate [axis preparation](../axis_preparation.md) and
+[position API](../ess_position.md) build on them. Native drive ramp times remain
+distinct from physical acceleration units.
 
 ## Evidence checked in the original documents
 
@@ -32,12 +34,13 @@ count multiplier; it is not a reason to guess an encoder IC or exposed A/B/Z
 connector. The hardware manual's external X/Y terminals are programmable drive
 I/O, not evidence of a raw encoder port.
 
-The nominal increments implied by the working configuration are 1.8 degrees
+The nominal increments implied by the defaults helper are 1.8 degrees
 per full motor step, 0.36 degrees per command increment and 0.09 degrees per
 decoded encoder count. These describe scale/resolution, not measured shaft
 accuracy. The 4,000-count encoder scale does not replace the 1,000-increment
 command/position scale, and raw encoder feedback availability is a separate
-profile question.
+profile question. These values describe the helper's fixed assumptions, not
+the bench's latest subdivision or fresh readback.
 
 ## Explicit free-shaft bench configuration
 
@@ -59,8 +62,9 @@ The returned configuration is a value owned by the caller. Constructing,
 editing or validating it does not write subdivision, direction, encoder
 resolution or electronic gearing to a drive. Readback can replace assumptions
 and their source labels later; changing a label alone does not prove that a
-scale is correct. The existing [bench record](../hardware_bench.md) reports
-the motor was left at defaults but is not configuration-readback evidence.
+scale is correct. The [bench record](../hardware_bench.md) links the later
+configuration readbacks and settings changes. This helper deliberately does
+not track those changes or inspect the connected drive.
 
 ## Implemented API and dimensional rules
 
@@ -128,7 +132,7 @@ result = convertAcceleration(6.283185307179586, config.settings.acceleration,
 // If successful, approximately 1000 steps/s^2, with an arithmetic error bound.
 ```
 
-## Numeric scope of this block
+## Numeric scope of the conversion helpers
 
 Engineering conversions accept `double` values and return `UnitConversion`
 with the value and a conservative absolute arithmetic-error bound in the
@@ -158,10 +162,10 @@ compiler mode where `long double` has binary64 precision.
 
 Keep raw native signed 64-bit positions as integers. Do not pass them through
 the engineering `double` API to narrow them; use `validateNativePosition` and
-`narrowNativePosition`. Prompt 07 adds [exact rational/native target preparation](../axis_preparation.md),
-origins, frames, quantization and native limits using the same factor planner.
-Prompt10 adds wrapped-angle path selection and shared finite position software;
-physical motion/reference qualification remains open. The displacement
+`narrowNativePosition`. [Exact rational/native target preparation](../axis_preparation.md)
+adds origins, frames, quantization and native limits using the same factor
+planner. The [position API](../ess_position.md) adds wrapped-angle path selection
+and finite moves with operation-specific evidence requirements. The displacement
 conversion functions themselves still have no origin or motion side effects.
 
 Every fallible conversion/narrowing preserves its output on error. Validation
@@ -169,10 +173,24 @@ returns the shared `Status` with a structured `UnitError` in `detail`. All
 messages are static; the module uses no heap, UART, platform framework, clock,
 logging or persistent storage. Native tests exercise dimensions, gear/encoder
 bases, signs, configuration failures, precision limits and exact integer
-boundaries. Software tests are separate from unperformed motor qualification.
+boundaries. Software tests and the recorded finite motor tests do not establish
+calibrated shaft/encoder accuracy or every physical reference mapping.
 
-## Current configuration readback (2026-10-04)
+## Recorded configuration readbacks
 
 [Prompt 05](../reports/ess_release_05_2026-10-04.md) read the configuration through the typed public API on COM13. The raw subdivision is 1000 and configured encoder resolution is 4000. These supersede the earlier statement that the active raw subdivision had not been read; its physical command-unit interpretation remains SCALE_UNRESOLVED. The defaults helper deliberately remains labelled ASSUMED. `getConfig` supplies only the nonzero configured encoder scale as READBACK metadata, with remaining unit fields unknown. The nominal hardware encoder resolution is now documented as 1000 PPR for the user-confirmed ESS23-RS20, consistent with the manual and configured 4000 decoded counts. Incremental/differential/three-channel specifications are documented; shaft accuracy has not been measured and an externally accessible encoder port is not established. Encoder IC/manufacturer identification is unnecessary for these conversions.
 
-The observed algorithm code is 3, outside the reviewed documented 1/2 enum. It is retained raw with `algorithmKnown=false`; neither a guessed third algorithm nor motion readiness is inferred. The physical bench model is user-confirmed ESS23-RS20, associated with recorded raw model0x4EEA and firmware0x0029. A universal wire model-code mapping and firmware version interpretation remain undocumented; no further label identification is required for independent preparation. Prompt06 observes logical input levels separately; physical wiring and operation-specific input effects remain unresolved. No motor setting changed.
+The observed algorithm code is 3, outside the reviewed documented 1/2 enum. It
+is retained raw with `algorithmKnown=false`; neither a guessed third algorithm
+nor motion readiness is inferred. The physical bench model is user-confirmed
+ESS23-RS20, associated with recorded raw model `0x4EEA` and firmware `0x0029`.
+A universal wire model-code mapping and firmware version interpretation remain
+undocumented. Logical input levels, actual wiring and operation-specific input
+effects are separate evidence. That initial read-only campaign changed no
+motor setting.
+
+Later tests explicitly changed subdivision and restored their recorded
+settings. The [7 October boundary report](../reports/2026-10-07_position_limits.md)
+ended at subdivision 51,200 and configured encoder 4000; those historical
+values do not change `makeBenchUnitConfig()` or authorize a new move. Read the
+actual configuration and supply the corresponding labelled scale/reference.

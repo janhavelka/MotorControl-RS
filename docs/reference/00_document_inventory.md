@@ -47,7 +47,9 @@ manuals and locate unresolved inconsistencies. Raw text is in
 
 The tuning archive is linked from the official product pages; it contains a
 Windows executable, not reusable library source. STEP files are optional
-mechanical references. No motor or tuning software has been run.
+mechanical references. The archived commissioning software was not executed
+as part of reference preparation. Later motor tests are recorded in the
+[bench guide](../hardware_bench.md).
 
 Manufacturer PDFs, software, CAD files, and Modbus standards retain their
 original owners' rights; they are not relicensed as library code.
@@ -60,4 +62,5 @@ Applied Motion SCL. See the [protocol review](08_serial_protocol_review.md),
 [download inventory](../vendor/contrasts/README.md) and separate
 [hash/source manifest](serial_contrasts_sources.json). The nine original
 snapshots above remain unchanged. Downloading a manual does not add profile
-support; only the ESS codec is implemented in this block.
+support. ESS-RS is the implemented profile; its current typed operations and
+remaining gaps are listed in the [API inventory](../ess_api_cli_coverage.md).

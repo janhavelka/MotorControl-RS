@@ -192,11 +192,8 @@ Status parseRegisters(const uint8_t* frame, std::size_t length, uint8_t address,
         if (error) *error = FrameError::OVERLAP;
         return invalid(0, "reply and output overlap");
     }
-    // All checks have completed. Decode before publication; no caller data is
-    // touched by a failure and the temporary has a fixed small stack footprint.
-    uint16_t decoded[MAX_READ_REGISTERS];
-    for (uint16_t i = 0; i < expectedCount; ++i) decoded[i] = Rtu::readWord(frame + 3 + 2 * i);
-    for (uint16_t i = 0; i < expectedCount; ++i) output[i] = decoded[i];
+    // Validation and overlap checks are complete; decoding cannot fail.
+    for (uint16_t i = 0; i < expectedCount; ++i) output[i] = Rtu::readWord(frame + 3 + 2 * i);
     outCount = expectedCount;
     return Ok();
 }

@@ -22,7 +22,8 @@ class VerificationFailures(unittest.TestCase):
         suffix = ".exe" if verify.os.name == "nt" else ""
         tests = [{"name": name, "command": [str(build / (binary + suffix))]} for name, binary in
                  [("foo", "foo_test"), ("units_preview", "units_preview"),
-                  *[(n, n + "_test") for n in ("codec_independent", "probe_app_load", "idf_move_app", "idf_control_app")]]]
+                  *[(n, n + "_test") for n in ("codec_independent", "probe_app_load", "idf_move_app",
+                                              "idf_simple_motion_app", "idf_control_app")]]]
         tests.append({"name": "foo_python", "command": [sys.executable, str(root / "test/foo_test.py")]})
         for name, script, args in (("version_generated", "generate_version.py", ["check"]),
                 ("registers_generated", "generate_ess_registers.py", ["--check"]),
@@ -51,9 +52,25 @@ class VerificationFailures(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             listing, build = self.inventory(root)
-            listing["tests"][6]["command"][1] = str(root / "test/prefix_foo_test.py")
+            next(t for t in listing["tests"] if t["name"] == "foo_python")["command"][1] = str(root / "test/prefix_foo_test.py")
             with self.assertRaisesRegex(RuntimeError, "unregistered Python"):
                 verify.check_inventory(root, listing, build)
+
+    def test_shared_native_fixtures_are_required(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            listing, build = self.inventory(root)
+            for name in ("codec_independent", "probe_app_load", "idf_move_app",
+                         "idf_simple_motion_app", "idf_control_app"):
+                with self.subTest(name=name):
+                    missing = copy.deepcopy(listing)
+                    missing["tests"] = [t for t in missing["tests"] if t["name"] != name]
+                    with self.assertRaisesRegex(RuntimeError, "missing or wrong native test"):
+                        verify.check_inventory(root, missing, build)
+                    wrong = copy.deepcopy(listing)
+                    next(t for t in wrong["tests"] if t["name"] == name)["command"] = ["echo"]
+                    with self.assertRaisesRegex(RuntimeError, "missing or wrong native test"):
+                        verify.check_inventory(root, wrong, build)
 
     def test_required_command_identity_and_modes(self):
         with tempfile.TemporaryDirectory() as directory:
