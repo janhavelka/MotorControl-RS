@@ -5,6 +5,9 @@ current layers; [architecture](architecture.md) defines their contracts and
 [API/CLI coverage](ess_api_cli_coverage.md) records remaining gaps. The core
 contains no framework I/O, heap allocation, clocks, scheduler or hidden retry.
 The standalone firmware supplies those application responsibilities.
+The [complexity audit](reports/2026-10-11_complexity_audit.md) identifies
+refactoring seams and [planned stages](prompts/maintainability/README.md).
+Those larger module changes are unexecuted; this map describes current code.
 
 ## Installed core
 
@@ -61,7 +64,7 @@ other core consumers.
 ## FieldCore boundary
 
 The relevant FieldCore owner/backend/binding sources were inspected read-only
-at commit `479d9ff308d3852d92b1f7552f803b6c990a59f0`. Its existing owner remains
+at commit `c591ecddcd28ad3965c89a60b37279aa7f9e9940`. Its existing owner remains
 appropriate, but its eight-byte TX capacity, unconditional matching-prefix echo
 stripping, fixed/suffix completion, untimed RX batches and measurement-only
 command/results contract require explicit adaptation before motor integration.

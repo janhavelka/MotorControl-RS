@@ -17,11 +17,15 @@ work; dated [reports](reports/) retain successful and failed experiments.
 
 The [11 October audit](reports/2026-10-11_fieldcore_audit.md) fixes admission of
 earlier per-step deadlines and removes stale code/documentation claims. Larger
-maintainability work is isolated in the [maintenance promptset](prompts/maintenance/README.md).
+maintainability work is isolated in the [current refactor sequence](prompts/maintainability/README.md).
 The [follow-up cleanup](reports/2026-10-11_cleanup_audit.md) removes additional
 redundancy and unused test scaffolding, closes a verification-inventory gap,
 and separates maintained bench guidance from historical snapshots. It adds
 software verification, not new hardware qualification.
+The later [complexity audit](reports/2026-10-11_complexity_audit.md) applies
+small settings/console/build simplifications and replaces the old refactor
+draft with seven staged, still-unexecuted prompts. Necessary timing, exact
+arithmetic and operation-specific uncertainty rules remain explicit.
 
 ## Current bench evidence
 

@@ -83,24 +83,26 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             target_compile_options(codec_independent_test PRIVATE -UNDEBUG -Wall -Wextra -Wpedantic)
         endif()
         add_test(NAME codec_independent COMMAND codec_independent_test)
-        target_sources(human_console_test PRIVATE examples/probe_cli/ProbeConsole.cpp
-            examples/probe_cli/ConsoleText.cpp examples/common/RtuRunner.cpp)
+        # Keep source membership explicit while grouping identical fixture
+        # dependencies so console/owner edits stay consistent within each group.
+        foreach(suite human_console probe_console host_console communication_console
+                      discovery_console persistence_console)
+            target_sources(${suite}_test PRIVATE examples/probe_cli/ProbeConsole.cpp
+                examples/probe_cli/ConsoleText.cpp examples/common/RtuRunner.cpp)
+        endforeach()
         target_sources(console_text_test PRIVATE examples/probe_cli/ConsoleText.cpp)
-        target_sources(traffic_test PRIVATE examples/common/RtuRunner.cpp)
-        target_sources(runner_test PRIVATE examples/common/RtuRunner.cpp)
-        target_sources(bus_owner_test PRIVATE examples/common/RtuRunner.cpp
-            examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(bus_scheduling_test PRIVATE examples/common/RtuRunner.cpp
-            examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(probe_console_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp examples/common/RtuRunner.cpp)
-        target_sources(host_console_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp examples/common/RtuRunner.cpp)
-        target_sources(communication_console_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp examples/common/RtuRunner.cpp)
-        target_sources(discovery_console_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp examples/common/RtuRunner.cpp)
-        target_sources(discovery_app_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(persistence_console_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp examples/common/RtuRunner.cpp)
-        target_sources(persistence_app_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(communication_app_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(commissioning_owner_test PRIVATE examples/common/RtuRunner.cpp examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
+        foreach(suite traffic runner)
+            target_sources(${suite}_test PRIVATE examples/common/RtuRunner.cpp)
+        endforeach()
+        foreach(suite bus_owner bus_scheduling commissioning_owner)
+            target_sources(${suite}_test PRIVATE examples/common/RtuRunner.cpp
+                examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
+        endforeach()
+        foreach(suite discovery_app persistence_app communication_app)
+            target_sources(${suite}_test PRIVATE examples/probe_cli/ProbeConsole.cpp
+                examples/probe_cli/ConsoleText.cpp examples/common/RtuBusOwner.cpp
+                examples/common/EssRtuValidator.cpp)
+        endforeach()
         foreach(suite discovery_app persistence_app motion_profile_app communication_app esp32_uart probe_app probe_app_monitor_control move_app simple_motion_app velocity_app driver_app home_app io_app control_app tuning_app host_app capture_service)
             target_sources(${suite}_test PRIVATE examples/common/Esp32S3Uart.cpp examples/common/RtuRunner.cpp
                 test/fakes/esp32_uart/FakeEsp.cpp)
@@ -110,30 +112,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         foreach(suite discovery_app persistence_app motion_profile_app communication_app probe_app probe_app_monitor_control move_app simple_motion_app velocity_app driver_app home_app io_app control_app tuning_app host_app)
             target_sources(${suite}_test PRIVATE test/fakes/esp32_uart/FakeUsb.cpp)
         endforeach()
-        target_sources(probe_app_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
-            examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(probe_app_monitor_control_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
-            examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(move_app_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
-            examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(simple_motion_app_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
-            examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(motion_profile_app_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
-            examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(velocity_app_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
-            examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(driver_app_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
-            examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(control_app_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
-            examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(host_app_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
-            examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(tuning_app_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
-            examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(io_app_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
-            examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
-        target_sources(home_app_test PRIVATE examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
-            examples/common/RtuBusOwner.cpp examples/common/EssRtuValidator.cpp)
+        foreach(suite probe_app probe_app_monitor_control move_app simple_motion_app
+                      motion_profile_app velocity_app driver_app control_app
+                      host_app tuning_app io_app home_app)
+            target_sources(${suite}_test PRIVATE examples/probe_cli/ProbeConsole.cpp
+                examples/probe_cli/ConsoleText.cpp examples/common/RtuBusOwner.cpp
+                examples/common/EssRtuValidator.cpp)
+        endforeach()
         add_executable(probe_app_load_test test/probe_app_test.cpp
             examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp examples/probe_cli/Esp32Load.cpp
             examples/common/RtuRunner.cpp examples/common/RtuBusOwner.cpp

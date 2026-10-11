@@ -18,9 +18,13 @@ unrelated commands or fixtures.
   remove redundant private helpers and unused test scaffolding, require the
   native-IDF simple-motion fixture in verification, and separate the current
   bench guide from its historical ledger. Hardware qualification is unchanged.
-- [ ] Execute the optional [maintenance promptset](prompts/maintenance/README.md)
-  in small reviewed blocks: explicit application operation kinds, ordinary
-  translation-unit boundaries and host evidence-parser separation.
+- [x] Complete the [complexity audit](reports/2026-10-11_complexity_audit.md) and
+  bounded refactors of settings policy selection, reserved console capacity and
+  repeated test build declarations. Public behavior and hardware scope are unchanged.
+- [ ] Execute the [maintainability sequence](prompts/maintainability/README.md)
+  in small reviewed blocks: explicit operation kinds, settings validation,
+  pure host evidence and routing, console/application boundaries and evidence
+  copying. These seven prompts supersede the earlier unexecuted draft.
 - [ ] Implement the [FieldCore handoff](fieldcore_handoff.md) in a separately
   authorized FieldCore step: typed motor results, adequate frame storage,
   qualified RTU/echo handling, immutable deadlines, stop priority and retained

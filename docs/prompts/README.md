@@ -6,9 +6,12 @@ These are executable work instructions, not implemented features. The
 behavior; [reports](../reports/) retain evidence. Root [AGENTS.md](../../AGENTS.md)
 remains the engineering entry point.
 
-- [Maintenance refactors](maintenance/README.md): optional, not-yet-executed
-  steps for application operation selection, module boundaries, host evidence
-  validation and console structure, based on the 11 October source audit.
+- [Maintainability sequence](maintainability/README.md): current, unexecuted
+  refactors for operation selection, settings validation, host evidence/routing,
+  console/application boundaries and shared evidence copying. The complexity
+  audit records the small changes already applied separately from these plans.
+- [Earlier maintenance draft](maintenance/README.md): superseded and retained
+  for provenance. Do not execute it alongside the current sequence.
 - [ESS release sequence](ess_release/README.md): historical numbered delivery
   steps with implementation/evidence dispositions; remaining gaps are in the
   current backlog rather than an instruction to rerun completed work.

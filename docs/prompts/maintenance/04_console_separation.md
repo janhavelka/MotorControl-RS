@@ -1,5 +1,8 @@
 # 04: separate console parsing, dispatch and reporting
 
+Superseded by [current prompt 05](../maintainability/05_console_boundaries.md).
+The original instructions below are retained as an unexecuted historical draft.
+
 Read [the execution rules](README.md). Inspect `ProbeConsole.cpp/.h`,
 `ConsoleText.cpp`, the shared command table, operation callbacks and protocol-3
 tests. Recheck `scripts/check_ess_operations.py` assumptions and actual FieldCore

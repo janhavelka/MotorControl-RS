@@ -702,13 +702,19 @@ bool Console::humanResult(uint32_t operationId) const noexcept {
         if (item.operationId == operationId) return item.format == Format::HUMAN;
     return false;
 }
-bool Console::track(uint32_t id, uint32_t operationId, bool stop) noexcept {
+std::size_t Console::availableSlot(bool stop) const noexcept {
     const std::size_t begin = stop ? OUTSTANDING_CAPACITY - 1 : 0;
     const std::size_t end = stop ? OUTSTANDING_CAPACITY : OUTSTANDING_CAPACITY - 1;
-    for (std::size_t i = begin; i < end; ++i) { auto& item = outstanding_[i]; if (!item.commandId) {
-        item.commandId = id; item.operationId = operationId; item.format = outputFormat_; return true;
-    } }
-    return false;
+    for (std::size_t i = begin; i < end; ++i)
+        if (!outstanding_[i].commandId) return i;
+    return OUTSTANDING_CAPACITY;
+}
+bool Console::track(uint32_t id, uint32_t operationId, bool stop) noexcept {
+    const std::size_t slot = availableSlot(stop);
+    if (slot == OUTSTANDING_CAPACITY) return false;
+    auto& item = outstanding_[slot];
+    item.commandId = id; item.operationId = operationId; item.format = outputFormat_;
+    return true;
 }
 void Console::untrack(uint32_t operationId) noexcept {
     for (auto& item : outstanding_) if (item.operationId == operationId) item = Outstanding();
@@ -1281,8 +1287,7 @@ void Console::dispatch() noexcept {
         request.method = static_cast<Ess::HomingMethod>(method.numerator);
         request.searchSpeed = static_cast<uint16_t>(search); request.returnSpeed = static_cast<uint16_t>(returning);
         request.rampTime = static_cast<uint16_t>(ramp); request.configurationGeneration = axis.configuration.generation;
-        bool available = false;
-        for (std::size_t i = 0; i < OUTSTANDING_CAPACITY - 1; ++i) available = available || !outstanding_[i].commandId;
+        const bool available = availableSlot() != OUTSTANDING_CAPACITY;
         uint32_t operationId = 0;
         if (available) beginWork();
         const Action result = available ? host_.startHome(host_.context, id, static_cast<uint8_t>(address), request, operationId) : Action::BUSY;
@@ -1432,8 +1437,7 @@ void Console::dispatch() noexcept {
         }
         if (!hasAddress) { Snapshot snapshot; host_.snapshot(host_.context, snapshot); address = snapshot.address; }
         if (address < 1 || address > 247) { error(id, command, "invalid_address"); return; }
-        bool available = false;
-        for (std::size_t i = 0; i < OUTSTANDING_CAPACITY - 1; ++i) available = available || !outstanding_[i].commandId;
+        const bool available = availableSlot() != OUTSTANDING_CAPACITY;
         uint32_t operationId = 0;
         if (available) beginWork();
         const Action result = available ? host_.startDriver(host_.context, id, static_cast<uint8_t>(address),
@@ -1476,8 +1480,7 @@ void Console::dispatch() noexcept {
         AxisCommand query; AxisView axis;
         if (!host_.axis(host_.context, query, axis)) { error(id, "velocity", "invalid_axis_configuration"); return; }
         request.configurationGeneration = axis.configuration.generation;
-        bool available = false;
-        for (std::size_t i = 0; i < OUTSTANDING_CAPACITY - 1; ++i) available = available || !outstanding_[i].commandId;
+        const bool available = availableSlot() != OUTSTANDING_CAPACITY;
         uint32_t operationId = 0;
         if (available) beginWork();
         const Action result = available ? host_.startVelocity(host_.context, id, static_cast<uint8_t>(address), request, operationId) : Action::BUSY;
@@ -1550,8 +1553,7 @@ void Console::dispatch() noexcept {
                 request.nativeValue = static_cast<uint16_t>(value.numerator);
             }
         }
-        bool available = false;
-        for (std::size_t i = 0; i < OUTSTANDING_CAPACITY - 1; ++i) available = available || !outstanding_[i].commandId;
+        const bool available = availableSlot() != OUTSTANDING_CAPACITY;
         SimpleMotionView view;
         if (session && available) beginWork();
         const auto result = session && !available ? Action::BUSY : host_.simpleMotion(host_.context, id, &request, view);
@@ -1642,8 +1644,7 @@ void Console::dispatch() noexcept {
         AxisCommand query; AxisView axis;
         if (!host_.axis(host_.context, query, axis)) { error(id, command, "invalid_axis_configuration"); return; }
         move.position.configurationGeneration = axis.configuration.generation;
-        bool available = false;
-        for (std::size_t i = 0; i < OUTSTANDING_CAPACITY - 1; ++i) available = available || !outstanding_[i].commandId;
+        const bool available = availableSlot() != OUTSTANDING_CAPACITY;
         uint32_t operationId = 0;
         if (available) beginWork();
         const Action result = available ? host_.startMove(host_.context, id, static_cast<uint8_t>(address), move, operationId) : Action::BUSY;
@@ -1680,10 +1681,7 @@ void Console::dispatch() noexcept {
             error(id, actionCommand, "invalid_arguments"); return;
         }
         if (address < 1 || address > 247) { error(id, actionCommand, "invalid_address"); return; }
-        bool available = false;
-        const std::size_t begin = stop ? OUTSTANDING_CAPACITY - 1 : 0;
-        const std::size_t end = stop ? OUTSTANDING_CAPACITY : OUTSTANDING_CAPACITY - 1;
-        for (std::size_t i = begin; i < end; ++i) available = available || !outstanding_[i].commandId;
+        const bool available = availableSlot(stop) != OUTSTANDING_CAPACITY;
         uint32_t operationId = 0;
         if (available) beginWork();
         const Action result = available ? host_.startAction(host_.context, id, static_cast<uint8_t>(address), request, operationId) : Action::BUSY;
@@ -1942,8 +1940,7 @@ void Console::dispatch() noexcept {
         host_.resetStats(host_.context); action(id, entry->name, Action::OK); return;
     }
     if (entry->command == Command::RECOVER) {
-        std::size_t occupied = 0; for (std::size_t i = 0; i < OUTSTANDING_CAPACITY - 1; ++i) occupied += outstanding_[i].commandId != 0;
-        if (occupied == OUTSTANDING_CAPACITY - 1) { action(id, entry->name, Action::BUSY); return; }
+        if (availableSlot() == OUTSTANDING_CAPACITY) { action(id, entry->name, Action::BUSY); return; }
         const Action result = host_.recover(host_.context, id, operationId);
         if (result == Action::OK) track(id, operationId);
         action(id, entry->name, result, 0, result == Action::OK ? operationId : 0); return;
@@ -2024,8 +2021,7 @@ void Console::dispatch() noexcept {
     if (readCommand) {
         if (!arg) address = data.address;
         if (address < 1 || address > 247) { error(id, entry->name, "invalid_address"); return; }
-        std::size_t occupied = 0; for (std::size_t i = 0; i < OUTSTANDING_CAPACITY - 1; ++i) occupied += outstanding_[i].commandId != 0;
-        if (occupied == OUTSTANDING_CAPACITY - 1) { action(id, entry->name, Action::BUSY); return; }
+        if (availableSlot() == OUTSTANDING_CAPACITY) { action(id, entry->name, Action::BUSY); return; }
         const auto start = entry->command == Command::CAPTURE_READ ? host_.startCaptureRead : host_.startProbe;
         beginWork();
         const Action result = typedCommand ? host_.startTypedRead(host_.context, id, static_cast<uint8_t>(address),

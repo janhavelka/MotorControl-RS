@@ -411,6 +411,7 @@ private:
     void action(uint32_t id, const char* command, Action result, uint8_t address = 0, uint32_t operationId = 0) noexcept;
     void emit(uint32_t terminalOperation = 0, bool humanText = false) noexcept;
     bool outstanding(uint32_t id) const noexcept;
+    std::size_t availableSlot(bool stop = false) const noexcept;
     bool track(uint32_t id, uint32_t operationId, bool stop = false) noexcept;
     void untrack(uint32_t operationId) noexcept;
     bool formatProbe(uint32_t id, uint32_t commandId, uint8_t address, uint32_t operationId,

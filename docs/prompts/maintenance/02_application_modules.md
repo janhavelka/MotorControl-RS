@@ -1,5 +1,8 @@
 # 02: give application sessions ordinary compilation boundaries
 
+Superseded by [current prompt 06](../maintainability/06_application_modules.md).
+The original instructions below are retained as an unexecuted historical draft.
+
 Read [the execution rules](README.md) and complete prompt 01 first. Inspect the
 textual `*App.h` includes within `ProbeApp.cpp`'s anonymous namespace and both
 Arduino/native-IDF build source lists. They currently use private types/functions

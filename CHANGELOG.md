@@ -15,6 +15,14 @@
 
 ### Maintenance
 
+- Made settings read-count/field policy explicit and shared the exact echo-readback
+  eligibility rule between event handling and uncertainty tracking.
+- Shared the console's ordinary/reserved-stop slot selection across admission
+  and tracking, preserving callback and delivery order.
+- Grouped identical native-fixture source declarations; compiler invocations and
+  test registrations remain unchanged.
+- Audited complexity and prepared seven staged maintainability prompts for larger
+  changes. The older maintenance draft is superseded; neither set has been executed.
 - Reused private RTU frame/word/CRC helpers and removed a redundant register
   decode buffer while preserving checked-parser output and validation contracts.
 - Simplified cached-health help and callback checks, removed an unused example

@@ -1,5 +1,8 @@
 # 01: make application operation selection explicit
 
+Superseded by [current prompt 01](../maintainability/01_operation_kind.md).
+The original instructions below are retained as an unexecuted historical draft.
+
 Read [the execution rules](README.md). Inspect `App::Record` in
 `examples/probe_cli/ProbeApp.cpp`, all admission sites and all callers of
 `terminal`, `actionEvent`, `advanceOperation`, `cancel`, `lookup`, `deliver`

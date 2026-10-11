@@ -36,7 +36,28 @@ bool aliasesContext(const DriverContext& context, const void* input, std::size_t
     return other >= begin ? other - begin < sizeof(context) : begin - other < size;
 }
 bool segmentGroup(DriverGroup group) { return group >= DriverGroup::POSITION_SEGMENT && group <= DriverGroup::SEGMENT_START_SPEED; }
-uint8_t readSteps(DriverGroup group) { return isTuningGroup(group) ? (tuningFieldCount(group) > 4 ? 2 : 1) : segmentGroup(group) ? 1 : group == DriverGroup::CONTROL_SETTINGS ? 2 : group == DriverGroup::IO ? 3 : DRIVER_READ_STEPS; }
+uint8_t readSteps(DriverGroup group) {
+    if (isTuningGroup(group)) return tuningFieldCount(group) > 4 ? 2 : 1;
+    if (segmentGroup(group)) return 1;
+    if (group == DriverGroup::CONTROL_SETTINGS) return 2;
+    if (group == DriverGroup::IO) return 3;
+    return DRIVER_READ_STEPS;
+}
+uint32_t allowedFields(DriverGroup group) {
+    if (isTuningGroup(group)) return (1u << tuningFieldCount(group)) - 1;
+    if (group == DriverGroup::CONTROL_SETTINGS) return CONTROL_MASK;
+    if (segmentGroup(group)) {
+        if (group == DriverGroup::SEGMENT_START_SPEED) return 1u << 21;
+        return (7u << 18) | (group == DriverGroup::POSITION_SEGMENT ? 1u << 22 : 0);
+    }
+    if (group == DriverGroup::IO) return IO_MASK;
+    return FIELD_MASK | PAIR_MASK;
+}
+bool allowsEchoReadback(const DriverContext& c) {
+    return (c.group == DriverGroup::IO || segmentGroup(c.group) ||
+            c.group == DriverGroup::CONTROL_SETTINGS || isTuningGroup(c.group)) &&
+        c.prerequisites.allowEchoReadback;
+}
 uint32_t bit(uint8_t index, DriverGroup group = DriverGroup::DRIVE) {
     if (isTuningGroup(group)) return index < tuningFieldCount(group) ? 1u << index : 0;
     if (group == DriverGroup::CONTROL_SETTINGS) return index < 8 ? 1u << (23 + index) : 0;
@@ -264,8 +285,7 @@ Status decode(const DriverEvidence* evidence, const ReadTarget& target, DriverGr
 bool unresolvedWrite(const DriverContext& c) {
     for (uint8_t i = 0; i < DRIVER_FIELD_COUNT; ++i) {
         const DriverProgress& p = c.progress[i];
-        const bool storedSettled = (c.group == DriverGroup::IO || segmentGroup(c.group) || c.group == DriverGroup::CONTROL_SETTINGS || isTuningGroup(c.group)) && c.prerequisites.allowEchoReadback &&
-            p.readbackKnown && p.readback == p.requested;
+        const bool storedSettled = allowsEchoReadback(c) && p.readbackKnown && p.readback == p.requested;
         if (p.selected && ((p.execution == ActionExecution::UNKNOWN && !storedSettled) ||
             (p.execution == ActionExecution::ACKNOWLEDGED &&
              (!p.readbackKnown || p.readback != p.requested)))) return true;
@@ -299,8 +319,7 @@ Status prepareDriverSettings(DriverContext& output, const ReadTarget& target, ui
     const bool segment = segmentGroup(request.group);
     const bool control = request.group == DriverGroup::CONTROL_SETTINGS;
     const bool tuning = isTuningGroup(request.group);
-    const uint32_t allowed = tuning ? (1u << tuningFieldCount(request.group)) - 1 : control ? CONTROL_MASK : segment ? (request.group == DriverGroup::SEGMENT_START_SPEED ? 1u << 21 : (7u << 18) | (request.group == DriverGroup::POSITION_SEGMENT ? 1u << 22 : 0)) :
-        request.group == DriverGroup::IO ? IO_MASK : FIELD_MASK | PAIR_MASK;
+    const uint32_t allowed = allowedFields(request.group);
     if (request.group > DriverGroup::COLLISION || !request.fields || (request.fields & ~allowed))
         return invalid(DriverError::INVALID_CANDIDATE, "invalid or empty driver-settings selection");
     if (request.group == DriverGroup::DRIVE && prerequisites.allowEchoReadback)
@@ -621,7 +640,7 @@ Status advanceDriver(DriverContext& c, const ActionEvent& supplied, uint64_t now
     else if (event.latestUs > transactionDeadline) finish(c, DriverOutcome::DEADLINE,
         failure(DriverError::DEADLINE_EXPIRED, "driver frame closure exceeds transaction budget"));
     else if (!evidence.status) finish(c, DriverOutcome::REPLY_ERROR, evidence.status);
-    else if (!supplied.responseConfirmed && !(evidence.write && (c.group == DriverGroup::IO || segmentGroup(c.group) || c.group == DriverGroup::CONTROL_SETTINGS || isTuningGroup(c.group)) && c.prerequisites.allowEchoReadback)) finish(c, DriverOutcome::UNCONFIRMED_RESPONSE,
+    else if (!supplied.responseConfirmed && !(evidence.write && allowsEchoReadback(c))) finish(c, DriverOutcome::UNCONFIRMED_RESPONSE,
         failure(DriverError::UNCONFIRMED_RESPONSE, "driver response source is not confirmed"));
     else {
         if (progress && !evidence.write) {

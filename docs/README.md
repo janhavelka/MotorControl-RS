@@ -66,11 +66,13 @@ rating or a guarantee of absolute reliability.
 - [High-subdivision source review](reference/12_ess_rs_motion_web_review.md): manuals, vendor information and unresolved drive behavior.
 - [Hardware bench](hardware_bench.md): actual wiring, image and fixture limits.
 - [Roadmap](roadmap.md) and [backlog](backlog.md): implementation and qualification gaps.
-- [11 October maintenance audit](reports/2026-10-11_fieldcore_audit.md) and
-  [optional refactor prompts](prompts/maintenance/README.md): applied cleanup and
-  larger source-backed follow-up work.
+- [11 October maintenance audit](reports/2026-10-11_fieldcore_audit.md): applied
+  cleanup and source-backed integration findings.
 - [Follow-up cleanup audit](reports/2026-10-11_cleanup_audit.md): core, examples,
   host tooling, test fixtures and documentation reviewed after that maintenance.
+- [Code complexity audit](reports/2026-10-11_complexity_audit.md) and
+  [current refactor prompts](prompts/maintainability/README.md): small applied
+  simplifications and staged larger changes with behavior-preservation checks.
 
 Arduino and native-IDF S3 have recorded functional evidence. S2 consumption is
 compile-only. Electrical timing, calibrated shaft measurements, loaded mechanics
