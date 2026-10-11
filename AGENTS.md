@@ -1,6 +1,19 @@
 # MotorControl-RS engineering guidance
 
-Always synchronize Git with the intended upstream branch before starting work by fetching and fast-forwarding safely, preserving existing local changes and reporting any divergence, conflict, or synchronization failure.
+## Git workflow
+
+- Before editing, fetch and inspect the current branch and upstream; fast-forward
+  only when safe.
+- Keep the whole promptset on its existing branch. Do not create a branch or
+  worktree per prompt or agent unless the user asks.
+- Assume concurrent agents. Preserve unrelated changes; never stash, discard,
+  overwrite, or commit them. A dirty worktree alone is not a blocker.
+- After relevant checks pass, stage only your own files or hunks, then commit
+  and push each meaningful completed chunk, including multiple times within
+  one prompt and before finishing. No further permission is needed.
+- When using subagents, the lead owns Git mutations for their shared work.
+- Confirm upstream synchronization and check applicable CI for the pushed commit.
+  Report conflicts or sync failures; never force-push to resolve them.
 
 ## Current scope
 
@@ -35,15 +48,6 @@ Session boundary, confirmed by the user on 2026-10-03: treat the FieldCore-node
 repository as read-only reference. Do not edit it during this session. Develop
 and test the transport reference in this repository; eventual FieldCore changes
 belong to a separately authorized integration step.
-
-The user requests a commit and sync after each prompt or completed logical
-block. Validate the block, commit the task-owned changes, and push to the
-configured upstream before declaring it finished. Fetch/check the remote
-state, preserve unrelated work, and resolve ordinary synchronization issues
-without rewriting published history. Report a real push/authentication
-failure rather than claiming the work is synced. Do not make empty commits
-for read-only replies or unfinished intermediate edits. The root agent owns
-staging/committing shared work when subagents are used.
 
 For every implementation or audit prompt, inspect the actual source and affected
 callers/tests in this repository and the relevant current FieldCore source
