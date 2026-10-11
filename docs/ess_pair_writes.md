@@ -125,7 +125,7 @@ motor-compatibility claim accompanies this review.
 
 ## Qualification and further experiments
 
-The [repeat-motion comparison](reports/2026-10-05_repeat_motion_timing.md)
+The [repeat-motion comparison](archive/reports/2026-10-05_repeat_motion_timing.md)
 records a successful `0x0024/2` selective-update case. That does not qualify the
 unexpanded paired-write families, negative encoding or atomicity.
 The unexpanded families remain **NOT RUN** where admissible wire forms or

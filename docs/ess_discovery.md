@@ -91,7 +91,7 @@ Python validates the same grammar, correlation, immutable evidence and deadlines
 `discovery-check` performs one finite scan and reports an interlock without
 automatically repairing it. Serial provenance is re-queried after scans.
 
-[Discovery evidence](reports/ess_release_22_2026-10-05.md) records native failure
+[Discovery evidence](archive/reports/ess_release_22_2026-10-05.md) records native failure
 coverage, actual COM13 scans/restoration and the remaining qualification limits.
-The [fresh audit](reports/ess_release_22_audit_2026-10-05.md) adds recovery-before-
+The [fresh audit](archive/reports/ess_release_22_audit_2026-10-05.md) adds recovery-before-
 delivery, refinement failure/cancellation and strict retained-evidence checks.

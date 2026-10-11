@@ -37,7 +37,7 @@ all possible motor settings or a universal operating envelope.
 1. **Normal-stop observation budget:** the old 500ms/20poll budget could expire
    before a documented 500ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“2000ms deceleration finished. Shared application
    normal stop now uses 3s/64polls/50ms; fast-stop and wire timeouts are unchanged.
-   [Cause, original failure, corrected hardware/native tests and CI](2026-10-06_normal_stop_budget.md).
+   [Cause, original failure, corrected hardware/native tests and CI](../archive/reports/2026-10-06_normal_stop_budget.md).
 2. **Windows heartbeat publication:** a monitor could hold the JSON heartbeat
    open while the writer replaced it, causing WinError 5. A disposable reader
    reproduced it. The experiment now retries only publication of already-written

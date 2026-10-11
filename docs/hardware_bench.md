@@ -76,8 +76,8 @@ feedback field.
 | [Rate-boundary experiment](reports/2026-10-07_rate_boundary.md) | 4 h 08 s / 4,580 cases passed within its stated envelope; broader tests reproduced four reset-like failures whose cause remains unresolved |
 | [USB and overnight investigation](reports/2026-10-07_overnight_hil.md) | Captured HWCDC stall reproduced and replaced by the shared IDF USB driver; finite query/motion/stop regressions passed, replacement-driver overnight qualification remains open |
 | [Completion investigation](reports/2026-10-07_position_completion.md) | High-subdivision speed/ramp cases retained persistent RUNNING and stop failures; conservative defaults do not repair the drive firmware |
-| [Arduino/native-IDF parity](reports/ess_release_26_2026-10-05.md) | Matched finite S3 motion/stop/load/settings evidence on those images; later Arduino results do not qualify every native-IDF image |
-| [Stored-record checks](reports/ess_release_16_2026-10-04.md) | Selected settings restored; shared-start 1 write/readback mismatch remains FAIL/uncertain, without replay |
+| [Arduino/native-IDF parity](archive/reports/ess_release_26_2026-10-05.md) | Matched finite S3 motion/stop/load/settings evidence on those images; later Arduino results do not qualify every native-IDF image |
+| [Stored-record checks](archive/reports/ess_release_16_2026-10-04.md) | Selected settings restored; shared-start 1 write/readback mismatch remains FAIL/uncertain, without replay |
 
 Current default positioning combines at most 2,000 rpm, 200,000 command
 increments/s and native ramp times 100..2,000 ms. At subdivision 51,200 the
@@ -113,10 +113,11 @@ The [board reference](reference/04_esp32_bench.md),
 [Arduino guide](esp32_probe.md) and [native-IDF guide](esp_idf_probe.md) describe
 configuration and flashing. Original CO2Control-node 1.3.0 firmware was backed
 up before the first standalone image; its backup/restore evidence remains in
-the [initial bench report](reports/2026-10-03_e2_probe.md). Build-cache cleanup
+the [initial bench report](archive/reports/2026-10-03_e2_probe.md). Build-cache cleanup
 must not delete firmware backups or bench evidence.
 
 The former running ledger is preserved in
-[historical bench notes](reports/hardware_bench_history_2026-10-11.md).
+[historical bench notes](archive/reports/hardware_bench_history_2026-10-11.md).
 Its repeated "current" snapshots and early NOT RUN statements describe their
-own dates. Original reports, failed attempts and raw evidence remain unchanged.
+own dates. Report navigation follows the archive locations; recorded outcomes,
+failed attempts and raw evidence remain unchanged.

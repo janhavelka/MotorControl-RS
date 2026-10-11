@@ -19,7 +19,7 @@ are in the [overnight report](reports/2026-10-07_overnight_hil.md) and
 
 Current position preparation applies the [shared speed/rate/ramp policy](ess_position.md#default-position-operating-limits).
 [Boundary evidence](reports/2026-10-07_position_limits.md) records the latest
-image and memory/timing measurements. Earlier [platform parity evidence](reports/ess_release_26_2026-10-05.md)
+image and memory/timing measurements. Earlier [platform parity evidence](archive/reports/ess_release_26_2026-10-05.md)
 qualifies its recorded Arduino/native-IDF images, not every later image.
 Electrical timing, calibrated shaft measurements and loaded mechanics remain
 unmeasured. See [API/CLI coverage](ess_api_cli_coverage.md) for native-family gaps.
@@ -92,7 +92,7 @@ can be charged to the interrupted task, including idle. `capture_us` measures
 the capture section separately, excluding driver dispatch/return overhead;
 these measurements must not be added as if they were disjoint CPU categories.
 
-The [initial capture review](reports/ess_release_04_2026-10-04.md) retains the
+The [initial capture review](archive/reports/ess_release_04_2026-10-04.md) retains the
 20-us sampler at about 20-21% of one core inside capture. `timer_callbacks`
 counts timer alarms separately from aggregate `capture_samples`; neither
 measures SDK interrupt dispatch cost. `capture_high_water` reports ring occupancy.
@@ -401,7 +401,7 @@ stop commands under their named image/load conditions. Independent electrical
 timing, mixed physical buses, restart-dependent persistence and FieldCore
 integration remain open; those cases are not established by a green build.
 
-The [2026-10-03 bench report](reports/2026-10-03_e2_probe.md) records actual
+The [2026-10-03 bench report](archive/reports/2026-10-03_e2_probe.md) records actual
 probes, raw model, timing exception, fault checks, memory and firmware backup.
 DE assertion also applies a bounded 20 us adapter guard from the actual GPIO
 write before returning; the runner's separate setup wait cannot shorten it.
@@ -423,10 +423,10 @@ python scripts/bench_probe.py --port COM13 --log build/bench/my_typed_reads.json
 ```
 
 This finite scenario checks capabilities, each read once, immutable result inspection, release and local diagnostics. It never retries or recovers automatically. Historical raw configuration, image and resource measurements are in
-[the typed-read report](reports/ess_release_05_2026-10-04.md). Configured encoder
+[the typed-read report](archive/reports/ess_release_05_2026-10-04.md). Configured encoder
 4000 and undocumented algorithm 3 do not themselves establish motion readiness.
 
-See [typed state/cache contracts](ess_reads.md#state-observations-and-application-health) and [06 stationary evidence](reports/ess_release_06_2026-10-04.md). `python scripts/bench_probe.py --port COM13 --log build/bench/new-state.jsonl state-health --count 5 --interval 0.1` performs non-changing checks with strict correlation and no retries.
+See [typed state/cache contracts](ess_reads.md#state-observations-and-application-health) and [06 stationary evidence](archive/reports/ess_release_06_2026-10-04.md). `python scripts/bench_probe.py --port COM13 --log build/bench/new-state.jsonl state-health --count 5 --interval 0.1` performs non-changing checks with strict correlation and no retries.
 
 
 ## Typed optional I/O

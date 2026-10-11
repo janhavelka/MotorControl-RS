@@ -5,7 +5,7 @@ against `9dc3c1c` and the accompanying small refactors on 11 October 2026.
 **None of the numbered prompts has been executed.** These are structural
 improvements to working code, not new motor features or hardware qualification.
 
-This set supersedes the earlier [maintenance draft](../maintenance/README.md).
+This set supersedes the earlier [maintenance draft](../../archive/prompts/maintenance/README.md).
 That draft remains historical; do not execute both versions of the same work.
 Read root [AGENTS.md](../../../AGENTS.md), current source and affected tests
 before each prompt. Symbols below are navigation aids; line numbers and file

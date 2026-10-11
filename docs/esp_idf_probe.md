@@ -9,11 +9,11 @@ an API or component requirement.
 
 The native CMake/Ninja firmware build passed on 2026-10-05 with ESP-IDF 5.5.5.
 Source sharing establishes the command/operation path. The
-[platform qualification](reports/ess_release_26_2026-10-05.md) records matched
+[platform qualification](archive/reports/ess_release_26_2026-10-05.md) records matched
 Arduino/native capture, loaded owner/console, finite motion, both stops and
 reversible native settings checks. Electrical timing and independent physical
 measurements remain unqualified. The
-[native bring-up report](reports/ess_release_25_2026-10-05.md) records the native image,
+[native bring-up report](archive/reports/ess_release_25_2026-10-05.md) records the native image,
 SDK configuration and corrected startup framing. See the
 [current Arduino guide](esp32_probe.md) for retained historical evidence and the
 [CLI coverage inventory](ess_api_cli_coverage.md) for supported operations.
@@ -174,7 +174,7 @@ The original full-flash CO2control snapshot remains
 `85c089bc3956b22037af7e6f0d7945f6ed778bb1a0526fb5b2ba3e8fea02d0c1`.
 It is a historical product image, distinct from restoring the ordinary Arduino
 motor example. Its whole-flash restoration has not been tested. The
-[original backup record](reports/2026-10-03_e2_probe.md) provides the recorded
+[original backup record](archive/reports/2026-10-03_e2_probe.md) provides the recorded
 esptool restoration command and partition verification limits; check the file
 hash and intended board before using it. Device configuration in flash backups
 stays outside Git.

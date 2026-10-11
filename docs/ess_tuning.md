@@ -172,7 +172,7 @@ not an additional console wire record.
 
 ## Available physical qualification
 
-The [implementation-image COM13 evidence](reports/ess_release_18_2026-10-04.json)
+The [implementation-image COM13 evidence](archive/reports/ess_release_18_2026-10-04.json)
 records checked reads of all twenty fields before and after a finite
 `INPUT_FILTER` stored-code experiment. Native groups returned:
 
@@ -205,7 +205,7 @@ are outside this feature. Current-loop/LA gain, collision and arrival/deviation
 physical effects remain unqualified unless separately measured on a suitable
 fixture. The free-shaft bench supplies no collision mechanism, switches or loads.
 
-The [implementation report](reports/ess_release_18_2026-10-04.md) retains the
+The [implementation report](archive/reports/ess_release_18_2026-10-04.md) retains the
 test/build counts for that image. Use the [verification guide](verification.md)
 for current checks; historical counts are not the present test inventory.
 
@@ -216,7 +216,7 @@ are not replacements for this profile's retained checked frame evidence, honest
 partial settings progress and physical TX settlement. No FieldCore, UART, MCU,
 console or scheduler type enters the installed profile API.
 
-The [fresh 17/18 audit](reports/ess_release_17_18_audit_2026-10-04.md) repeats
+The [fresh 17/18 audit](archive/reports/ess_release_17_18_audit_2026-10-04.md) repeats
 all twenty native reads and input-filter stored restoration on the final image.
 Sixty-six actual core/formatter fixtures exercise Python classification, including
 previous-settings expiry, delayed echoes and forged codec/transport evidence.

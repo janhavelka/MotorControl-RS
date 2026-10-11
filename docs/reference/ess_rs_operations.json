@@ -238,9 +238,9 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_04_audit_2026-10-04.md",
-          "docs/reports/ess_release_22_2026-10-05.md",
-          "docs/reports/ess_release_22_audit_2026-10-05.md"
+          "docs/archive/reports/ess_release_04_audit_2026-10-04.md",
+          "docs/archive/reports/ess_release_22_2026-10-05.md",
+          "docs/archive/reports/ess_release_22_audit_2026-10-05.md"
         ]
       },
       "reason": "Common minimal checked probe; explicit unresolved model/manufacturer confidence, bounded application discovery and independent no-collision claims."
@@ -276,14 +276,14 @@
           "test/probe_console_test.cpp",
           "test/bench_probe_test.py",
           "test/installed_consumer/main.cpp",
-          "docs/reports/ess_release_05_2026-10-04.md"
+          "docs/archive/reports/ess_release_05_2026-10-04.md"
         ]
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_05_2026-10-04.md",
-          "docs/reports/ess_release_05_2026-10-04.json"
+          "docs/archive/reports/ess_release_05_2026-10-04.md",
+          "docs/archive/reports/ess_release_05_2026-10-04.json"
         ]
       },
       "reason": "Keep raw model/version and DIP mapping conflict; no exact-model inference."
@@ -330,14 +330,14 @@
           "test/probe_console_test.cpp",
           "test/bench_probe_test.py",
           "test/installed_consumer/main.cpp",
-          "docs/reports/ess_release_05_2026-10-04.md"
+          "docs/archive/reports/ess_release_05_2026-10-04.md"
         ]
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_05_2026-10-04.md",
-          "docs/reports/ess_release_05_2026-10-04.json"
+          "docs/archive/reports/ess_release_05_2026-10-04.md",
+          "docs/archive/reports/ess_release_05_2026-10-04.json"
         ]
       },
       "reason": "Reads only. Stored serial settings, raw unresolved units, input assignments, application wiring and observed levels remain distinct. Observed algorithm raw3 is unknown under the documented1/2 enum; read response evidence does not qualify its meaning or motion."
@@ -376,16 +376,16 @@
           "test/probe_console_test.cpp",
           "test/bench_probe_test.py",
           "test/installed_consumer/main.cpp",
-          "docs/reports/ess_release_06_2026-10-04.md",
-          "docs/reports/ess_release_06_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_06_2026-10-04.md",
+          "docs/archive/reports/ess_release_06_audit_2026-10-04.md"
         ]
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_06_2026-10-04.md",
-          "docs/reports/ess_release_06_audit_2026-10-04.md",
-          "docs/reports/ess_release_06_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_06_2026-10-04.md",
+          "docs/archive/reports/ess_release_06_audit_2026-10-04.md",
+          "docs/archive/reports/ess_release_06_audit_2026-10-04.json"
         ]
       },
       "reason": "Three independent non-consuming blocks; configured algorithm raw3 cannot establish actual/commanded position. Unsigned paired bits are decoded only with matching known word order; speed/position signed encoding and physical units remain unresolved. Communication, alarm, readiness and operation outcomes are separate.",
@@ -435,8 +435,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_25_26_audit_2026-10-05.md",
-          "docs/reports/ess_release_25_26_audit_2026-10-05.json"
+          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
+          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json"
         ],
         "reason": "Reviewed five-word staging for positive finite relative commands and exact original-profile restoration PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified."
       },
@@ -474,8 +474,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_25_26_audit_2026-10-05.md",
-          "docs/reports/ess_release_25_26_audit_2026-10-05.json"
+          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
+          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json"
         ],
         "reason": "Positive finite relative commands of 100 native increments at 60 RPM, configured native ramps and fresh running/completion reports PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified."
       },
@@ -523,8 +523,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_23_2026-10-05.md",
-          "docs/reports/ess_release_23_2026-10-05.json"
+          "docs/archive/reports/ess_release_23_2026-10-05.md",
+          "docs/archive/reports/ess_release_23_2026-10-05.json"
         ],
         "reason": "Explicit enable command and fresh drive-state observation PASS in the recorded prompt23 preceding-image (994d20...) finite action campaign; final image 041232... repeated read-only checks only, with the same production motor path. Archived software outcomes report acknowledged execution and observed completion under the declared receiver topology; independent electrical response-source, winding-current, shaft and external-input precedence measurements remain absent."
       },
@@ -564,8 +564,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_23_2026-10-05.md",
-          "docs/reports/ess_release_23_2026-10-05.json"
+          "docs/archive/reports/ess_release_23_2026-10-05.md",
+          "docs/archive/reports/ess_release_23_2026-10-05.json"
         ],
         "reason": "Explicit release command and fresh drive-state observation PASS in the recorded prompt23 preceding-image (994d20...) finite action campaign; final image 041232... repeated read-only checks only, with the same production motor path. Archived software outcomes report acknowledged execution and observed completion under the declared receiver topology; independent electrical response-source, winding-current, shaft and external-input precedence measurements remain absent."
       },
@@ -643,8 +643,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_25_26_audit_2026-10-05.md",
-          "docs/reports/ess_release_25_26_audit_2026-10-05.json"
+          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
+          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json"
         ],
         "reason": "Normal stop during a finite 250-increment move PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified."
       },
@@ -684,8 +684,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_25_26_audit_2026-10-05.md",
-          "docs/reports/ess_release_25_26_audit_2026-10-05.json"
+          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
+          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json"
         ],
         "reason": "Direct stop during a finite 250-increment move PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified."
       },
@@ -728,7 +728,7 @@
       "hardware": {
         "state": "NOT_RUN",
         "evidence": [
-          "docs/reports/ess_release_23_2026-10-05.md"
+          "docs/archive/reports/ess_release_23_2026-10-05.md"
         ],
         "reason": "The retained final-image absolute-return attempt refused before writes outside the bounded raw0..250 fixture. Earlier historical return evidence lacks an exact retained binary and is not qualification of the current image. Independent shaft/origin/path measurements remain open."
       },
@@ -889,7 +889,7 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_13_2026-10-04.md"
+          "docs/archive/reports/ess_release_13_2026-10-04.md"
         ],
         "reason": "Read-only four-window COM13 evidence."
       },
@@ -932,7 +932,7 @@
       "hardware": {
         "state": "NOT_RUN",
         "evidence": [
-          "docs/reports/ess_release_13_2026-10-04.md"
+          "docs/archive/reports/ess_release_13_2026-10-04.md"
         ],
         "reason": "Physical settings writes/restore and soft-limit movement remain gated by source/timing/reference evidence."
       },
@@ -980,7 +980,7 @@
       "hardware": {
         "state": "NOT_RUN",
         "evidence": [
-          "docs/reports/ess_release_13_2026-10-04.md"
+          "docs/archive/reports/ess_release_13_2026-10-04.md"
         ],
         "reason": "Physical settings writes/restore and soft-limit movement remain gated by source/timing/reference evidence."
       },
@@ -1022,7 +1022,7 @@
       "hardware": {
         "state": "NOT_RUN",
         "evidence": [
-          "docs/reports/ess_release_14_2026-10-04.md"
+          "docs/archive/reports/ess_release_14_2026-10-04.md"
         ],
         "reason": "Physical homing/reference/return need independent electrical/source timing, active auxiliary7, native rate/ramp/zero semantics and method/index/mechanics qualification. No switch fixture or I/O reassignment is provided."
       },
@@ -1064,7 +1064,7 @@
       "hardware": {
         "state": "NOT_RUN",
         "evidence": [
-          "docs/reports/ess_release_14_2026-10-04.md"
+          "docs/archive/reports/ess_release_14_2026-10-04.md"
         ],
         "reason": "Physical homing/reference/return need independent electrical/source timing, active auxiliary7, native rate/ramp/zero semantics and method/index/mechanics qualification. No switch fixture or I/O reassignment is provided."
       },
@@ -1103,7 +1103,7 @@
       "hardware": {
         "state": "NOT_RUN",
         "evidence": [
-          "docs/reports/ess_release_14_2026-10-04.md"
+          "docs/archive/reports/ess_release_14_2026-10-04.md"
         ],
         "reason": "Physical homing/reference/return need independent electrical/source timing, active auxiliary7, native rate/ramp/zero semantics and method/index/mechanics qualification. No switch fixture or I/O reassignment is provided."
       },
@@ -1151,7 +1151,7 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_15_2026-10-04.json"
+          "docs/archive/reports/ess_release_15_2026-10-04.json"
         ],
         "reason": "All nine stored fields read via three checked current-image FC03 windows; no physical electrical-state claim."
       },
@@ -1197,7 +1197,7 @@
       "hardware": {
         "state": "NOT_RUN",
         "evidence": [
-          "docs/reports/ess_release_15_2026-10-04.json"
+          "docs/archive/reports/ess_release_15_2026-10-04.json"
         ],
         "reason": "Thirteen explicit passive/unloaded settings updates and exact restoration PASS as stored-register evidence. Full assignment/physical-function qualification NOT_RUN; checked FC06 source/ACK remains unconfirmed, matching FC03 readback settles only stored values."
       },
@@ -1363,8 +1363,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_16_2026-10-04.json",
-          "docs/reports/ess_release_16_17_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_16_2026-10-04.json",
+          "docs/archive/reports/ess_release_16_17_audit_2026-10-04.json"
         ],
         "reason": "Fresh corrected497776-byte timer image on COM13 reads all16 indexes in this layout through checked typed core/CLI paths; rawmodel4EEA/version0029. Record storage access is qualified separately from external execution, signed physical meaning, activation or persistence."
       },
@@ -1446,8 +1446,8 @@
       "hardware": {
         "state": "NOT_RUN",
         "evidence": [
-          "docs/reports/ess_release_16_attempt1_2026-10-04.json",
-          "docs/reports/ess_release_16_2026-10-04.json"
+          "docs/archive/reports/ess_release_16_attempt1_2026-10-04.json",
+          "docs/archive/reports/ess_release_16_2026-10-04.json"
         ],
         "reason": "All16/range/physical-engine qualification NOT_RUN. Narrow stored subset PTindex1 speed120-to121 and ramp100-to101, matching readbacks and exact original restoration PASS. ACK source stays unconfirmed/executionUNKNOWN; no motion or persistence claim."
       },
@@ -1576,8 +1576,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_16_2026-10-04.json",
-          "docs/reports/ess_release_16_17_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_16_2026-10-04.json",
+          "docs/archive/reports/ess_release_16_17_audit_2026-10-04.json"
         ],
         "reason": "Fresh corrected497776-byte timer image on COM13 reads all16 indexes in this layout through checked typed core/CLI paths; rawmodel4EEA/version0029. Record storage access is qualified separately from external execution, signed physical meaning, activation or persistence."
       },
@@ -1659,8 +1659,8 @@
       "hardware": {
         "state": "NOT_RUN",
         "evidence": [
-          "docs/reports/ess_release_16_attempt1_2026-10-04.json",
-          "docs/reports/ess_release_16_2026-10-04.json"
+          "docs/archive/reports/ess_release_16_attempt1_2026-10-04.json",
+          "docs/archive/reports/ess_release_16_2026-10-04.json"
         ],
         "reason": "All16/range/physical-engine qualification NOT_RUN. Narrow stored subset PVindex16 speed/ramp100-to101, matching readbacks and exact original restoration PASS. ACK source stays unconfirmed/executionUNKNOWN; no motion or persistence claim."
       },
@@ -1711,8 +1711,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_16_2026-10-04.json",
-          "docs/reports/ess_release_16_17_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_16_2026-10-04.json",
+          "docs/archive/reports/ess_release_16_17_audit_2026-10-04.json"
         ],
         "reason": "Fresh corrected497776-byte timer image on COM13 reads all16 indexes in this layout through checked typed core/CLI paths; rawmodel4EEA/version0029. Record storage access is qualified separately from external execution, signed physical meaning, activation or persistence."
       },
@@ -1762,8 +1762,8 @@
       "hardware": {
         "state": "FAIL",
         "evidence": [
-          "docs/reports/ess_release_16_attempt1_2026-10-04.json",
-          "docs/reports/ess_release_16_2026-10-04.json"
+          "docs/archive/reports/ess_release_16_attempt1_2026-10-04.json",
+          "docs/archive/reports/ess_release_16_2026-10-04.json"
         ],
         "reason": "Only sharedstart index1 was attempted once: requested0-to1, checked source-unconfirmed FC06-shaped frame, confirmed FC03readback0; retained READBACK_MISMATCH/UNKNOWN. Delayed nonchanging reads minutes later still0. No replay/restore write. Cause unresolved pending independent response-source/device acceptance or exact firmware semantics; other15 indexes NOT_RUN."
       },
@@ -1800,17 +1800,17 @@
           "test/control_settings_test.cpp",
           "test/control_app_test.cpp",
           "test/control_console_parity_test.py",
-          "docs/reports/ess_release_16_17_audit_2026-10-04.md",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_16_17_audit_2026-10-04.md",
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
         ],
         "reason": "Real core and SDK application tests, exact CLI grammar and23 actual core/formatter Python fixtures; full8field/16step capacity, cancel boundaries, current/model dependencies and immutable partial/uncertain results. Fresh audit adds closure-budget ACK/exception classification, full-result-pressure CLI recovery and strict Python evidence regressions. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_17_2026-10-04.json",
-          "docs/reports/ess_release_16_17_audit_2026-10-04.json",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_17_2026-10-04.json",
+          "docs/archive/reports/ess_release_16_17_audit_2026-10-04.json",
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json"
         ],
         "reason": "Fresh497776-byte audit timer image on COM13 reads all8 native fields and repeats exact raw baseline after explicit lock-delay restoration; original497760-byte prompt17 evidence remains historical. Algorithm3 remains unknown; counts4000 and effective-current code5600 are retained. Readback is not active mode/current/encoder accuracy qualification. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified."
       },
@@ -1845,15 +1845,15 @@
           "test/control_settings_test.cpp",
           "test/control_app_test.cpp",
           "test/control_console_parity_test.py",
-          "docs/reports/ess_release_16_17_audit_2026-10-04.md",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_16_17_audit_2026-10-04.md",
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
         ],
         "reason": "Real core and SDK application tests, exact CLI grammar and23 actual core/formatter Python fixtures; full8field/16step capacity, cancel boundaries, current/model dependencies and immutable partial/uncertain results. Fresh audit adds closure-budget ACK/exception classification, full-result-pressure CLI recovery and strict Python evidence regressions. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
       "hardware": {
         "state": "NOT_RUN",
         "evidence": [
-          "docs/reports/ess_release_17_2026-10-04.json"
+          "docs/archive/reports/ess_release_17_2026-10-04.json"
         ],
         "reason": "All algorithm/encoder/current updates rejected before TX through9 app gates; effective model ceiling and percent denominator unresolved. No feedback disable, mode switch or current increase performed. Physical effects remain NOT_RUN."
       },
@@ -1886,17 +1886,17 @@
           "test/control_settings_test.cpp",
           "test/control_app_test.cpp",
           "test/control_console_parity_test.py",
-          "docs/reports/ess_release_16_17_audit_2026-10-04.md",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_16_17_audit_2026-10-04.md",
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
         ],
         "reason": "Real core and SDK application tests, exact CLI grammar and23 actual core/formatter Python fixtures; full8field/16step capacity, cancel boundaries, current/model dependencies and immutable partial/uncertain results. Fresh audit adds closure-budget ACK/exception classification, full-result-pressure CLI recovery and strict Python evidence regressions. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_17_2026-10-04.json",
-          "docs/reports/ess_release_16_17_audit_2026-10-04.json",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_17_2026-10-04.json",
+          "docs/archive/reports/ess_release_16_17_audit_2026-10-04.json",
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json"
         ],
         "reason": "Only stopped-state stored-value path: native200ms-to201ms then explicit restoration200ms, confirmed separate FC03 readbacks. Every FC06 source/ACK remains unconfirmed/executionUNKNOWN; no active lock timing, torque or persistence effect qualification. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified."
       },
@@ -1933,15 +1933,15 @@
           "test/probe_console_test.cpp",
           "test/tuning_console_parity_test.py",
           "test/installed_consumer/main.cpp",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
         ],
         "reason": "Current integrated verification passes: exact native ranges/group masks/selectors, complete bounded reads/updates, partial uncertainty/cancellation, actual application cross-group cache invalidation and failed-refresh preservation, all20 CLI fields and66 actual Console/Python terminal fixtures; installed header consumer compiles. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_18_2026-10-04.json",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_18_2026-10-04.json",
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json"
         ],
         "reason": "COM13 current-image typed reads before and after finite stored-filter restoration retain all20 raw fields. Read-path evidence only; unknown physical scaling, active behavior and model applicability are not qualified. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified."
       },
@@ -1977,7 +1977,7 @@
           "test/probe_console_test.cpp",
           "test/tuning_console_parity_test.py",
           "test/installed_consumer/main.cpp",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
         ],
         "reason": "Current integrated verification passes: exact native ranges/group masks/selectors, complete bounded reads/updates, partial uncertainty/cancellation, actual application cross-group cache invalidation and failed-refresh preservation, all20 CLI fields and66 actual Console/Python terminal fixtures; installed header consumer compiles. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
@@ -2017,15 +2017,15 @@
           "test/probe_console_test.cpp",
           "test/tuning_console_parity_test.py",
           "test/installed_consumer/main.cpp",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
         ],
         "reason": "Current integrated verification passes: exact native ranges/group masks/selectors, complete bounded reads/updates, partial uncertainty/cancellation, actual application cross-group cache invalidation and failed-refresh preservation, all20 CLI fields and66 actual Console/Python terminal fixtures; installed header consumer compiles. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_18_2026-10-04.json",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_18_2026-10-04.json",
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json"
         ],
         "reason": "COM13 current-image typed reads before and after finite stored-filter restoration retain all20 raw fields. Read-path evidence only; unknown physical scaling, active behavior and model applicability are not qualified. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified."
       },
@@ -2060,7 +2060,7 @@
           "test/probe_console_test.cpp",
           "test/tuning_console_parity_test.py",
           "test/installed_consumer/main.cpp",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
         ],
         "reason": "Current integrated verification passes: exact native ranges/group masks/selectors, complete bounded reads/updates, partial uncertainty/cancellation, actual application cross-group cache invalidation and failed-refresh preservation, all20 CLI fields and66 actual Console/Python terminal fixtures; installed header consumer compiles. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
@@ -2104,15 +2104,15 @@
           "test/probe_console_test.cpp",
           "test/tuning_console_parity_test.py",
           "test/installed_consumer/main.cpp",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
         ],
         "reason": "Current integrated verification passes: exact native ranges/group masks/selectors, complete bounded reads/updates, partial uncertainty/cancellation, actual application cross-group cache invalidation and failed-refresh preservation, all20 CLI fields and66 actual Console/Python terminal fixtures; installed header consumer compiles. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_18_2026-10-04.json",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_18_2026-10-04.json",
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json"
         ],
         "reason": "COM13 current-image typed reads before and after finite stored-filter restoration retain all20 raw fields. Read-path evidence only; unknown physical scaling, active behavior and model applicability are not qualified. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified."
       },
@@ -2151,7 +2151,7 @@
           "test/probe_console_test.cpp",
           "test/tuning_console_parity_test.py",
           "test/installed_consumer/main.cpp",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
         ],
         "reason": "Current integrated verification passes: exact native ranges/group masks/selectors, complete bounded reads/updates, partial uncertainty/cancellation, actual application cross-group cache invalidation and failed-refresh preservation, all20 CLI fields and66 actual Console/Python terminal fixtures; installed header consumer compiles. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
@@ -2189,15 +2189,15 @@
           "test/probe_console_test.cpp",
           "test/tuning_console_parity_test.py",
           "test/installed_consumer/main.cpp",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
         ],
         "reason": "Current integrated verification passes: exact native ranges/group masks/selectors, complete bounded reads/updates, partial uncertainty/cancellation, actual application cross-group cache invalidation and failed-refresh preservation, all20 CLI fields and66 actual Console/Python terminal fixtures; installed header consumer compiles. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_18_2026-10-04.json",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_18_2026-10-04.json",
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json"
         ],
         "reason": "COM13 current-image typed reads before and after finite stored-filter restoration retain all20 raw fields. Read-path evidence only; unknown physical scaling, active behavior and model applicability are not qualified. Later collision words repeatedly return0/0, outside documented ranges, with known_fields0; raw evidence stays explicit and does not qualify collision operation. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified."
       },
@@ -2230,7 +2230,7 @@
           "test/probe_console_test.cpp",
           "test/tuning_console_parity_test.py",
           "test/installed_consumer/main.cpp",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
         ],
         "reason": "Current integrated verification passes: exact native ranges/group masks/selectors, complete bounded reads/updates, partial uncertainty/cancellation, actual application cross-group cache invalidation and failed-refresh preservation, all20 CLI fields and66 actual Console/Python terminal fixtures; installed header consumer compiles. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
@@ -2267,15 +2267,15 @@
           "test/probe_console_test.cpp",
           "test/tuning_console_parity_test.py",
           "test/installed_consumer/main.cpp",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
         ],
         "reason": "Current integrated verification passes: exact native ranges/group masks/selectors, complete bounded reads/updates, partial uncertainty/cancellation, actual application cross-group cache invalidation and failed-refresh preservation, all20 CLI fields and66 actual Console/Python terminal fixtures; installed header consumer compiles. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_18_2026-10-04.json",
-          "docs/reports/ess_release_17_18_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_18_2026-10-04.json",
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json"
         ],
         "reason": "Finite stopped/passive known-unconnected ESS23-RS20 experiment2?3?2 passes exact stored readback and restoration. Source-unconfirmed FC06 keeps acknowledgedfalse/executionunknown; separate confirmed FC03 settles stored codes. Physical filter delay, external-input operation and persistence remain NOT_RUN. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified."
       },
@@ -2370,7 +2370,7 @@
         "state": "NOT_RUN",
         "evidence": [
           "docs/ess_persistence.md",
-          "docs/reports/ess_release_21_2026-10-04.md"
+          "docs/archive/reports/ess_release_21_2026-10-04.md"
         ],
         "reason": "No actual motor restart and backup/recommissioning procedure. Final-image plans, snapshot and zero-TX gates pass; no nonvolatile command transmitted."
       },
@@ -2412,7 +2412,7 @@
         "state": "NOT_RUN",
         "evidence": [
           "docs/ess_persistence.md",
-          "docs/reports/ess_release_21_2026-10-04.md"
+          "docs/archive/reports/ess_release_21_2026-10-04.md"
         ],
         "reason": "No actual motor restart and backup/recommissioning procedure. Final-image plans, snapshot and zero-TX gates pass; no nonvolatile command transmitted."
       },
@@ -2450,8 +2450,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/ess_release_22_2026-10-05.md",
-          "docs/reports/ess_release_22_audit_2026-10-05.md"
+          "docs/archive/reports/ess_release_22_2026-10-05.md",
+          "docs/archive/reports/ess_release_22_audit_2026-10-05.md"
         ]
       },
       "reason": "Finite ESS-only address/host tuple scanning with typed identity refinement; partial faults, explicit restoration and no automatic rebind/retry or collision exclusion. Alternate motor tuples remain unqualified."
@@ -2489,8 +2489,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/debug_refactor_2026-10-04.md",
-          "docs/reports/regular_api_sniff_2026-10-04.md"
+          "docs/archive/reports/debug_refactor_2026-10-04.md",
+          "docs/archive/reports/regular_api_sniff_2026-10-04.md"
         ],
         "reason": "Historical ordinary-firmware checked snapshot and exact restoration; no new-image or independent electrical/motion credit."
       },
@@ -2527,8 +2527,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/debug_refactor_2026-10-04.md",
-          "docs/reports/regular_api_sniff_2026-10-04.md"
+          "docs/archive/reports/debug_refactor_2026-10-04.md",
+          "docs/archive/reports/regular_api_sniff_2026-10-04.md"
         ],
         "reason": "Historical ordinary-firmware checked snapshot and exact restoration; no new-image or independent electrical/motion credit."
       },
@@ -2541,7 +2541,7 @@
     "Every named enum/bit choice remains accounted for separately; read decoding never establishes typed setting/action support.",
     "Source certainty is derived from source-access and issue metadata. No recorded issue is not hardware qualification.",
     "Native and hardware states are independent. Hardware evidence does not resolve unknown model availability or undocumented firmware interpretation.",
-    "Prompt09 re-audit enforces readiness through both write budgets and current-time consumed reference validation; docs/reports/ess_release_09_audit_2026-10-04.md records fresh software and read-only evidence. Relative motion/staging hardware dispositions remain NOT_RUN.",
+    "Prompt09 re-audit enforces readiness through both write budgets and current-time consumed reference validation; docs/archive/reports/ess_release_09_audit_2026-10-04.md records fresh software and read-only evidence. Relative motion/staging hardware dispositions remain NOT_RUN.",
     "Prompt10 implements absolute/wrapped finite positioning and explicit zero-only device clear through the same owner and public preparation/operation APIs. Motion/clear physical qualification remains NOT_RUN; host arithmetic/read-only checks never replace independent shaft or linear travel evidence.",
     "Prompt12 derives pair_write_policy for every writable pair from the same register ledger: exact reviewed FC10 windows, split-FC06 denial and unresolved interpretation/wire-form reasons. This adds no typed-write or hardware credit; see docs/ess_pair_writes.md.",
     "Prompt13 implements seven typed single-word settings and raw paired-limit reads; unavailable limit-pair writes remain UNSUPPORTED. Settings enum choices receive WRITE coverage separately from native action choices. ACK/readback never imply active or saved settings.",

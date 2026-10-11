@@ -128,7 +128,7 @@ one checked read, immutable result inspection and explicit release. It does not
 retry or write settings. The Python `Console` can submit explicitly selected
 typed groups through the same correlated protocol.
 
-The [initial driver-settings report](reports/ess_release_13_2026-10-04.md)
+The [initial driver-settings report](archive/reports/ess_release_13_2026-10-04.md)
 records its tests, image sizes and read-only evidence. Later
 [position-boundary testing](reports/2026-10-07_position_limits.md) exercised
 subdivision changes and restoration on the recorded free-shaft motor. That

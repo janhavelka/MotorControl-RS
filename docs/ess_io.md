@@ -169,7 +169,7 @@ types enter the public operation signatures.
 ## Storage and evidence bounds
 
 Context sizes depend on the current ABI and enabled settings families. The
-[I/O implementation report](reports/ess_release_15_2026-10-04.md) retains its
+[I/O implementation report](archive/reports/ess_release_15_2026-10-04.md) retains its
 historical image measurements; use current build and `memory` output when
 budgeting application storage.
 The application places retained contexts, prerequisites, caches and two 8192-byte

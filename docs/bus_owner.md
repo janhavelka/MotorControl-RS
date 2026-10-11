@@ -253,7 +253,7 @@ a uniform physical timestamp.
 Owner/slots consume `sizeof(BusOwner) + Q*sizeof(PendingSlot) +
 R*sizeof(ResultSlot) + P*sizeof(ProducerSlot)`, separately from Runner and TX/RX/trace.
 Use the current toolchain's `sizeof` values for allocation. The original size
-and stack measurements in the [scheduling report](reports/ess_release_02_2026-10-03.md)
+and stack measurements in the [scheduling report](archive/reports/ess_release_02_2026-10-03.md)
 describe that historical source; retained timing, traffic and commissioning
 state have since expanded. Static object sizes are separate from stack peaks,
 callee usage and measured runtime headroom. Current firmware emits resource
@@ -261,8 +261,8 @@ observations through `memory`, `load` and `drv`.
 
 [bus_owner_test.cpp](../test/bus_owner_test.cpp) uses real Runner, independent
 fake wire times and no trace ring. The
-[owner report](reports/ess_release_01_2026-10-03.md) and
-[owner audit](reports/ess_release_01_audit_2026-10-03.md) retain the original
+[owner report](archive/reports/ess_release_01_2026-10-03.md) and
+[owner audit](archive/reports/ess_release_01_audit_2026-10-03.md) retain the original
 deadline/closure evidence. Current [scheduling tests](../test/bus_scheduling_test.cpp)
 exercise fairness, urgent capacity, immutable sequence budgets with earlier
 step deadlines, cancellation, physical settlement, recovery and ambiguous
@@ -276,5 +276,5 @@ discards are excluded. These diagnostics do not require optional trace storage.
 enforces the recovery deadline, while postponing drain/reinitialization until
 the application completes safe adapter cleanup. The standalone application
 uses this gate for explicit 500-ms recovery settlement; no automatic recovery.
-The [scheduling audit](reports/ess_release_02_audit_2026-10-03.md) records the
+The [scheduling audit](archive/reports/ess_release_02_audit_2026-10-03.md) records the
 delayed-cancellation and recovery-evidence fixes represented in those tests.

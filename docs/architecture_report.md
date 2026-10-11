@@ -92,12 +92,6 @@ packages and retain their own licensing. The
 [release scope](releases/1.0.0.md) separates build/native coverage from the
 recorded motor/firmware/fixture evidence; S2 is compile-only.
 
-Earlier architecture/capture development is preserved in the
-[initial audit](reports/2026-10-03_audit.md),
-[capture/load audit](reports/2026-10-03_capture_load.md),
-[platform-boundary audit](reports/2026-10-03_platform_scope_audit.md),
-[owner implementation](reports/ess_release_01_2026-10-03.md),
-[scheduling audit](reports/ess_release_02_2026-10-03.md) and
-[console integration](reports/ess_release_03_2026-10-03.md).
-Their version numbers, suite counts and then-planned work describe those
-snapshots. They are not the current API or source inventory.
+Earlier architecture, capture, owner and console development is indexed in the
+[development archive](archive/README.md). Its version numbers, suite counts and
+then-planned work describe those snapshots, not the current source inventory.

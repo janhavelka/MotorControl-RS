@@ -154,7 +154,7 @@ twenty-three actual core/formatter fixtures include full sixteen-step output and
 cancellation at every boundary; the largest current fixture is 2980/8192 bytes.
 These are software evidence, independently of physical behavior.
 
-The [implementation COM13 evidence](reports/ess_release_17_2026-10-04.json) reads all
+The [implementation COM13 evidence](archive/reports/ess_release_17_2026-10-04.json) reads all
 eight fields as `[3,4000,5600,100,40,100,40,200]`. The stopped lock-delay update
 200 to 201 ms and explicit restoration to 200 ms both have confirmed separate
 readbacks. Every FC06 frame keeps acknowledgement false, response source
@@ -177,14 +177,14 @@ contexts/cache remain application storage in PSRAM on the reference ESP32-S3;
 ISR/capture/driver state and stacks remain internal. Final ABI sizes and memory
 watermarks belong to the named-image report.
 
-The [fresh combined audit](reports/ess_release_16_17_audit_2026-10-04.md) checks
+The [fresh combined audit](archive/reports/ess_release_16_17_audit_2026-10-04.md) checks
 stored-segment and control-setting contracts. Write acknowledgement or checked device
 rejection requires qualified frame closure within the retained write budget;
 late checked bytes stay raw evidence with unknown execution. An on-time closure
 delivered later keeps its original classification. The Python checker follows
 the same rule.
 
-The [fresh 17/18 audit](reports/ess_release_17_18_audit_2026-10-04.md) caps writes
+The [fresh 17/18 audit](archive/reports/ess_release_17_18_audit_2026-10-04.md) caps writes
 by every copied previous-settings window as well as stationary, identity and
 effects evidence. `driverWriteDeadline` supplies the same immutable budget to
 the CLI. Baselines require the complete checked transport envelope. A failed

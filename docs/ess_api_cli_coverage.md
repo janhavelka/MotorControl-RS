@@ -11,7 +11,7 @@ dispatch. Callback availability controls help and capability reporting.
 
 ## Installed API roles
 
-[Cross-platform testing](reports/ess_release_26_2026-10-05.md) qualifies the shared Arduino/native
+[Cross-platform testing](archive/reports/ess_release_26_2026-10-05.md) qualifies the shared Arduino/native
 IDF S3 paths for read/state/control, loaded capture, finite relative motion,
 normal/fast stop and reversible lock-delay updates. Other entries retain their
 individual unresolved/unsupported/unimplemented and fixture dispositions; S2
@@ -139,7 +139,7 @@ Successful stored reconciliation does not manufacture an acknowledgement.
 
 The snapshot is volatile application storage. A controller restart loses it
 while the motor can retain its staged parameters; the
-[console integration report](reports/ess_release_23_2026-10-05.md) records such
+[console integration report](archive/reports/ess_release_23_2026-10-05.md) records such
 a bench case. Session restoration cannot recover an archive lost on host restart.
 Arbitrary archived parameter preparation remains a named gap below.
 

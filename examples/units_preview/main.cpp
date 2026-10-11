@@ -39,7 +39,7 @@ static int runPreview() {
     PREVIEW_PRINTF("90 degrees = %.6f command steps\n", position.value);
     PREVIEW_PRINTF("6 rpm = %.6f command steps/s\n", speed.value);
     PREVIEW_PRINTF("360 degrees/s^2 = %.9f radians/s^2\n", acceleration.value);
-    PREVIEW_PRINTF("These are host conversions; the ESS ramp register is not yet mapped.\n");
+    PREVIEW_PRINTF("These are host conversions; mapping acceleration to ESS ramp times remains unresolved.\n");
     const ESS_RS::RegisterDescriptor* subdivision =
         ESS_RS::findRegister(ESS_RS::Registers::SUBDIVISION);
     if (!subdivision) return 2;

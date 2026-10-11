@@ -229,12 +229,22 @@ Outside paragraph.
 
     def test_historical_and_generated_sources_excluded_targets_still_checked(self):
         self.write("docs/reports/old.md", "[historical](missing.md)")
+        self.write("docs/archive/reports/older.md", "[historical](missing.md)")
         self.write("docs/pdf-extracted-md/raw.md", "[raw](missing.md)")
         self.write("examples/build/generated.md", "[generated](missing.md)")
-        self.write("README.md", "[report](docs/reports/old.md)\n[missing report](docs/reports/absent.md)")
+        self.write("README.md", "[report](docs/reports/old.md)\n[archive](docs/archive/reports/older.md)\n"
+                   "[missing report](docs/reports/absent.md)\n[missing archive](docs/archive/reports/absent.md)")
         findings = checker.check_docs(self.root)
-        self.assertEqual(len(findings), 1, findings)
-        self.assertIn("absent.md", findings[0])
+        self.assertEqual(len(findings), 2, findings)
+        self.assertTrue(all("absent.md" in item for item in findings), findings)
+
+    def test_report_indexes_and_archived_prompt_links_remain_checked(self):
+        for name in ("docs/reports/README.md", "docs/archive/README.md",
+                     "docs/archive/reports/README.md", "docs/archive/prompts/old.md"):
+            self.write(name, "[missing](absent.md)")
+        findings = checker.check_docs(self.root)
+        self.assertEqual(len(findings), 4, findings)
+        self.assertTrue(all("absent.md" in item for item in findings), findings)
 
     def metadata(self):
         self.write("src/Core.cpp", '#include "MotorControlRS/Core.h"\n')

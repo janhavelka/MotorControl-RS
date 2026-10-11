@@ -4,8 +4,9 @@
 No downloads, Git, framework tools or PDF parser are required. PDF bytes and
 their recorded page-count metadata are checked here; the contrast preparation
 tool separately checks actual PDF page counts. Anchors and external URLs are
-not availability checks. Historical reports and raw PDF extracts are excluded
-as link sources; links to those files must still resolve.
+not availability checks. Historical report bodies and raw PDF extracts are
+excluded as link sources; report/archive indexes and links to retained files
+must still resolve.
 """
 
 import argparse
@@ -274,7 +275,11 @@ def markdown_files(root):
         relative = path.relative_to(root)
         if any(part in GENERATED_DIRECTORIES for part in relative.parts):
             continue
-        if relative.parts[:2] in (("docs", "reports"), ("docs", "pdf-extracted-md")):
+        if relative.parts[:2] == ("docs", "pdf-extracted-md"):
+            continue
+        historical_report = (relative.parts[:2] == ("docs", "reports") or
+                             relative.parts[:3] == ("docs", "archive", "reports"))
+        if historical_report and path.name != "README.md":
             continue
         yield path
 

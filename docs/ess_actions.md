@@ -180,7 +180,7 @@ measurement and independent shaft observation.
 Device position clear hardware remains NOT RUN, independently of its native
 tests and zero-TX admission gates. It is never added to read/load campaigns;
 the one-attempt Python `position-clear` command is explicit. See the
-[device-position-clear report](reports/ess_release_10_2026-10-04.md) for its
+[device-position-clear report](archive/reports/ess_release_10_2026-10-04.md) for its
 software tests and retained no-TX bench evidence.
 
 ## Finite-move integration

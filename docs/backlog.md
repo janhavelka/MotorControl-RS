@@ -1,26 +1,15 @@
 # Implementation and qualification backlog
 
 Current as of the 11 October 2026 source audit. This page lists remaining work;
-completed implementation and historical test dispositions live in the linked
-reports. The [release scope](releases/1.0.0.md) and checked
+completed work and historical test dispositions live in the
+[development archive](archive/README.md) and [changelog](../CHANGELOG.md).
+The [release scope](releases/1.0.0.md) and checked
 [operation inventory](ess_api_cli_coverage.md) distinguish implementation,
 native tests and hardware evidence. A successful bench subset does not close
 unrelated commands or fixtures.
 
 ## Maintenance and FieldCore integration
 
-- [x] Audit stale code, current contracts and the actual FieldCore owner/backend
-  read-only; correct reference-owner admission of earlier per-step deadlines.
-  See the [audit](reports/2026-10-11_fieldcore_audit.md).
-- [x] Replace obsolete implementation plans in current guides with source-backed
-  behavior; retain original manuals, historical reports and failed bench evidence.
-- [x] Complete the [follow-up cleanup audit](reports/2026-10-11_cleanup_audit.md):
-  remove redundant private helpers and unused test scaffolding, require the
-  native-IDF simple-motion fixture in verification, and separate the current
-  bench guide from its historical ledger. Hardware qualification is unchanged.
-- [x] Complete the [complexity audit](reports/2026-10-11_complexity_audit.md) and
-  bounded refactors of settings policy selection, reserved console capacity and
-  repeated test build declarations. Public behavior and hardware scope are unchanged.
 - [ ] Execute the [maintainability sequence](prompts/maintainability/README.md)
   in small reviewed blocks: explicit operation kinds, settings validation,
   pure host evidence and routing, console/application boundaries and evidence
@@ -42,7 +31,7 @@ the register catalogue alone is not semantic command coverage.
 - [ ] Implement supported missing native parameter reads/staging, including
   restoring an arbitrary archived position profile without starting motion.
   Host reset loses the RAM backup; never replay a move as restoration.
-  [Evidence](reports/ess_release_23_2026-10-05.md).
+  [Evidence](archive/reports/ess_release_23_2026-10-05.md).
 - [ ] Resolve signed stored-target encoding, admissible limit/stored-target
   write forms, and home-offset order/sign/scale before exposing their setters.
 - [ ] Resolve external-switch homing and collision methods, including method 18's
@@ -51,13 +40,13 @@ the register catalogue alone is not semantic command coverage.
   [Method dispositions](ess_homing_methods.md).
 - [ ] Resolve shared-start 1: native 0-to-1 write read back 0 on the bench.
   Preserve that FAIL/uncertain result; no retry or assumed FC06 semantics.
-  [Stored-record evidence](reports/ess_release_16_2026-10-04.md).
+  [Stored-record evidence](archive/reports/ess_release_16_2026-10-04.md).
 - [ ] Resolve output function 11, custom function 2 and crossmapped custom
   actuation. No external trigger/selector edges are synthesized by serial
   settings. [I/O contract](ess_io.md).
 - [ ] Resolve the earlier collision registers 0x003B/0x003C and later collision
   values 0/0 outside documented ranges on firmware 0x0029. Keep unknown values
-  raw. [Tuning evidence](reports/ess_release_18_2026-10-04.md).
+  raw. [Tuning evidence](archive/reports/ess_release_18_2026-10-04.md).
 
 ## Exact-drive behavior and motion evidence
 
@@ -80,7 +69,7 @@ functional evidence; independent shaft calibration remains absent.
   actual speed/ramp behavior using correlated independent shaft measurements.
   Two requested 100-increment moves reported raw delta 99; do not change scale
   or completion thresholds from that observation alone.
-  [Platform audit](reports/ess_release_25_26_audit_2026-10-05.md).
+  [Platform audit](archive/reports/ess_release_25_26_audit_2026-10-05.md).
 - [ ] Qualify physical angle/travel equivalence, origins/device clear,
   negative encoding and loaded mechanisms separately from pure conversions.
   Linear travel needs an actual configured mechanism.
@@ -90,11 +79,11 @@ functional evidence; independent shaft calibration remains absent.
 - [ ] Qualify signed velocity and physical ramp/acceleration mappings before
   broadening their motion claims. Same-endpoint in-motion speed changes remain
   unavailable; bare speed writes are not proven smooth updates.
-  [Live-speed review](reports/2026-10-06_rounding_and_live_speed.md).
+  [Live-speed review](archive/reports/2026-10-06_rounding_and_live_speed.md).
 - [ ] Resolve effective-current limits/percentage denominator and qualify
   torque, encoder, lock, filtering, gains and collision effects. Peak current
   is not an effective-current conversion; no universal tuning default follows.
-  [Control evidence](reports/ess_release_17_2026-10-04.md).
+  [Control evidence](archive/reports/ess_release_17_2026-10-04.md).
 
 ## Transport, endurance and platform qualification
 
@@ -108,11 +97,15 @@ functional evidence; independent shaft calibration remains absent.
 - [ ] Independently measure TX/RX/DE, final stop-bit publication, FIFO sampling,
   idle watermarks, echo source, turnaround and service/load tolerance. Decide
   the production capture CPU budget. Cache-off capture remains unsupported.
-  [Timing contract](runner.md), [capture review](reports/ess_release_04_2026-10-04.md).
+  [Timing contract](runner.md), [capture review](archive/reports/ess_release_04_2026-10-04.md).
+- [ ] Qualify the remaining physical frame shapes: five-byte exception replies
+  and FC10 windows 0x0024/2, 0x001D/3 and 0x0031/6 (13, 15 and 21 TX bytes).
+  Keep each operation's normal prerequisites and fixture requirements; raw
+  writes are not a substitute. [Frame-size matrix](archive/reports/ess_release_29_2026-10-05.md#frame-size-qualification-matrix).
 - [ ] Resolve malformed F9/E5 responses and UART errors at mismatched host
   tuples using the missing raw error bitmap and wire measurements. Diagnostic
   recovery/restoration passing does not turn strict no-response experiments
-  into PASS. [Host tuple evidence](reports/ess_release_19_2026-10-04.md).
+  into PASS. [Host tuple evidence](archive/reports/ess_release_19_2026-10-04.md).
 - [ ] Qualify alternate motor tuples, duplicate physical responders and
   undocumented watchdog interactions. A valid discovery response cannot
   exclude collisions. [Discovery contract](ess_discovery.md).
@@ -128,10 +121,10 @@ functional evidence; independent shaft calibration remains absent.
   Exhausted confirmation slots require explicit handoff, not automatic scans.
 - [ ] Qualify ESP32-S2 hardware/UART and other SDKs. S2 core and portable
   application builds are compile-only; S3 Arduino/native-IDF functional parity
-  does not qualify another adapter. [Platform evidence](reports/ess_release_26_2026-10-05.md).
+  does not qualify another adapter. [Platform evidence](archive/reports/ess_release_26_2026-10-05.md).
 - [ ] Resolve esptool 5.3.0 bootloader flash-read truncation at 188,416 bytes:
   compare ROM/stub reads and capture USB at the failing packet. Firmware is
-  not running during this failure. [Investigation](reports/2026-10-03_platform_scope_audit.md).
+  not running during this failure. [Investigation](archive/reports/2026-10-03_platform_scope_audit.md).
 
 ## Release and future profiles
 

@@ -1,7 +1,7 @@
 # Code complexity audit, 11 October 2026
 
 Baseline: `9dc3c1cf21239ce3d258b03e3547dcbb837299a8`, clean and synchronized
-with `origin/main`. This audit follows the [stale-code cleanup](2026-10-11_cleanup_audit.md)
+with `origin/main`. This audit follows the [stale-code cleanup](../archive/reports/2026-10-11_cleanup_audit.md)
 and examines accidental complexity, change risk and useful refactoring seams.
 The larger changes below are **planned, not implemented**. No new motor-path
 defect was demonstrated by this review.

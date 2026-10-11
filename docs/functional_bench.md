@@ -73,5 +73,5 @@ intervals are not independent physical stop-latency measurements.
 [Passive traffic observation](traffic.md) works during these operations and
 ordinary application traffic. Raw and decoded displays consume only diagnostic
 copies; display pressure cannot consume protocol bytes or delay the bus owner.
-The earlier [functional campaign](reports/functional_motion_2026-10-04.md) remains
+The earlier [functional campaign](archive/reports/functional_motion_2026-10-04.md) remains
 historical evidence for the superseded image, not instructions to rebuild it.

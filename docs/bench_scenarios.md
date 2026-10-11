@@ -1,6 +1,6 @@
 # Finite Python bench scenarios
 
-The [cross-platform qualification matrix](reports/ess_release_29_2026-10-05.md) records
+The [cross-platform qualification matrix](archive/reports/ess_release_29_2026-10-05.md) records
 bounded combined load, owner-delay, result-pressure and finite feature campaigns
 using these helpers. Its evidence archive includes exact plans and orchestration.
 After a long phase or explicit recovery, refresh the prerequisites of the next
@@ -51,7 +51,7 @@ read operations; fixed qualified motion phases select node 1. `--timeout` is a
 finite command bound up to 60 seconds; existing operation/request deadlines are
 unchanged. The reusable motion phases use their fixed five-second command bounds.
 
-Examples of explicit qualified inputs used in the [scenario evidence](reports/ess_release_24_2026-10-05.md):
+Examples of explicit qualified inputs used in the [scenario evidence](archive/reports/ess_release_24_2026-10-05.md):
 
 ```powershell
 python scripts/bench_scenarios.py --scenario observations --count 2 --out build/bench/state-new
@@ -103,7 +103,7 @@ An interrupted startup read also blocks further traffic. Failure while closing
 the owned port makes the session fail; simultaneous work/startup and closure
 errors retain the primary `error` and separate `owner_error`.
 
-The [scenario audit](reports/ess_release_24_audit_2026-10-05.md) records
+The [scenario audit](archive/reports/ess_release_24_audit_2026-10-05.md) records
 these failure regressions and the repeated COM13 finite functional checks.
 
 Uncertain movement is never retried. A volatile profile backup is preserved by

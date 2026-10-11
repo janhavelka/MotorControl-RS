@@ -11,7 +11,7 @@ their raw observations or qualify motion.
 | Encoder: incremental, differential, three signal channels, 1000 PPR | Same product page, encoder electrical specifications; documented product specification |
 | Full motor step: 1.80 degrees, hence 200 full steps/revolution | [Preserved RS20 datasheet](../vendor/ESS23-RS20_Full_Datasheet.pdf), physical p1, drawing A4573; visually rechecked |
 | Encoder count convention: four times the encoder line value | [Function manual](../vendor/Modbus-Series-Bus-Product-Function-Manual-V1.0_1_.pdf), physical p77 (printed p75); visually rechecked. Nominal 1000 PPR therefore means 4000 decoded counts/revolution, or 0.09 degrees/count |
-| Configured encoder resolution 4000; subdivision 1000 | Existing [typed COM13 readback](../reports/ess_release_05_2026-10-04.md), repeated in later reports; configuration evidence, not a new measurement |
+| Configured encoder resolution 4000; subdivision 1000 | Existing [typed COM13 readback](../archive/reports/ess_release_05_2026-10-04.md), repeated in later reports; configuration evidence, not a new measurement |
 | Raw model `0x4EEA`, version `0x0029`, algorithm 3 | Same readback. These values are now associated with the user-confirmed bench SKU; this does not establish a universal code mapping or undocumented algorithm semantics |
 
 The product page links the same three PDF filenames already preserved in
@@ -41,8 +41,8 @@ additional label photograph is a prerequisite for independent preparation.
 This correction changes documentation only. No motor setting, firmware, host
 axis configuration or generated descriptor was changed; no new hardware run
 was performed. Prompt08 was not executed by this documentation correction;
-its subsequent [action/stop disposition](../reports/ess_release_08_2026-10-04.md)
+its subsequent [action/stop disposition](../archive/reports/ess_release_08_2026-10-04.md)
 recorded the then-current timing/echo gates. Later
-[regular-API integration](../reports/regular_api_sniff_2026-10-04.md) replaces
+[regular-API integration](../archive/reports/regular_api_sniff_2026-10-04.md) replaces
 those admission gates with the declared wiring and checked software receive
 contract; this does not change the identity-source facts above.

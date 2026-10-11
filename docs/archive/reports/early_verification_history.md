@@ -1,0 +1,264 @@
+# Early verification history
+
+Archived from the verification guide on 11 October 2026. These are dated
+development snapshots, with their original versions, commands, test counts
+and unperformed-hardware dispositions. They are not the current feature or
+qualification status. Use [current verification](../../verification.md) and
+[release scope](../../releases/1.0.0.md) for present guidance.
+
+
+
+## Prompt15 optional digital I/O
+
+[Implementation/review and current-image evidence](ess_release_15_2026-10-04.md)
+passes37/37 CTest checks,173 Python host/IO units,16 actual I/O console parity
+fixtures, the installed C++11 consumer and allfour firmware environments.
+A190-frame COM13 campaign performs13 explicit passive/unloaded settings updates
+with checked readbacks and restores every original word. No external switch/load
+physical function, electrical output state or new motion qualification is claimed.
+The first missing-accepted-line failure and its native/hardware correction are
+retained; uncertain motor writes are not automatically replayed.
+
+## Prompt08 bounded actions and stop
+
+[Action verification](ess_release_08_2026-10-04.md): 21/21 CTest suites
+pass under strict C++11 Release with warnings as errors, including 118 Python
+harness cases and 13 inventory cases. Installed consumer and all four firmware
+builds pass. Final COM13 campaign passes 28 read-only frames and five zero-TX
+action gates. Physical action/stop and electrical qualification remain NOT RUN.
+
+## Fresh prompt07 audit
+
+[Fresh independent review](ess_release_07_audit_2026-10-04.md) corrects
+relative displacement limits, zero-radian exactness, cancellation onto zero and
+strict fractional parsing. All 20 native suites, 109 Python cases, installed
+C++11 consumer and four firmware builds pass, plus 45,000 independent rational
+oracle cases. The corrected image passes 23 read-only COM13 frames with no
+transport errors and unchanged drive settings; motion and travel remain unqualified.
+
+## Prompt07 exact target preparation
+
+[Preparation verification](ess_release_07_2026-10-04.md) passes 20 native
+suites, 107 Python cases, the installed C++11 consumer and all four firmware
+builds. Independent integer oracles pass 13,776 rounding/origin and 3,600
+large-rational allowance cases in both extended and binary64 arithmetic modes.
+COM13 host API checks and 23 checked read-only frames pass with no device settings
+change. Origin/source/physical travel and motor execution remain unqualified.
+
+## Fresh prompt06 audit
+
+[Fresh independent review](ess_release_06_audit_2026-10-04.md) corrects
+superseded feedback interpretation confidence and strict cached JSON validation.
+19 native suites,103 Python cases, installed C++11 consumer and all four firmware
+builds pass. Current-image COM13 state/poll/configuration/probe checks pass50
+frames with zero transport errors; physical units/source and motion remain unresolved.
+
+## Prompt06 state and health
+
+[Typed state/cache verification](ess_release_06_2026-10-04.md) passes19
+CTest suites, the installed C++11 consumer, all four firmware builds and stationary
+COM13 state/health/polling checks. Per-block age, failed refresh retention,
+generation mismatch, urgent scheduling and cancellation have native regressions.
+Actual feedback units/source and physical motion completion remain unresolved.
+
+## Fresh prompt 03 audit
+
+The [fresh independent audit](ess_release_03_audit_2026-10-04.md) fixes
+result-view reuse, expired adapter recovery, deadline diagnostics, output/cache
+coupling, valid cache retention and strict Python retained-result inspection.
+16/16 CTest suites, 8 generator cases, 70 Python cases and all three firmware
+environments pass. Current-image COM13 campaigns pass 37 checked reads plus
+the expected pre-TX 20-ms-delay failure, retained inspection and explicit recovery.
+Electrical, physical USB saturation/disconnect, cache-off, motion/stop and
+extended soak remain unqualified.
+
+## Release prompt 03 owner/console integration
+
+Strict C++11 Release build with assertions and warnings as errors: 16/16 CTest
+suites, 8 generator cases and 66 Python cases pass. All three probe/load firmware
+environments build. Final timer-image COM13 campaigns passed 35 checked reads,
+including active console queries, competing load, retained results, delayed
+observation ages and explicit recovery. The deliberate upper 20-ms setup-delay
+failure is retained and reproduced; no timeout or retry policy was weakened.
+See [prompt 03 evidence](ess_release_03_2026-10-03.md). Electrical,
+cache-off, motion/stop and extended soak qualification remain open.
+
+## Platform boundary and optional I/O audit
+
+The current standalone environments are `bench_s3_units`, `bench_s3_probe`,
+`bench_s3_load_poll` and `bench_s3_load_timer`. The adapter is `Esp32S3Uart`,
+with application-supplied pins and polarity. Earlier entries retain historical
+names and results. See the [scope audit](2026-10-03_platform_scope_audit.md)
+for the cleanup, independent review, build and new-image bench evidence.
+
+## Repository rename preparation
+
+On 2026-10-03, a clean copy named `MotorControl-RS` passed all 13 CTest suites
+and built `e2_s3_units` and `e2_s3_load_timer`. PlatformIO's local dependency
+links and regenerated VS Code paths pointed to that copy. No hardware was
+flashed for this metadata/documentation change. See the
+[rename guide](../../repository_rename.md) for the tested move/cache procedure.
+
+## Capture and load audit, version 0.6.0
+
+Checks on 2026-10-03: Release build with warnings as errors and **13/13 CTest
+suites**, including 44 Python harness cases, passed. Native SDK fixtures compile
+the real E2 adapter and runner and independently schedule wire arrival, capture
+and owner service. Tests cover timer lifecycle failures, delayed DE observations,
+FIFO/ring overflow, late replies and missing/contradictory timing evidence.
+
+E2 polling and timer load builds compile. Read-only COM13 campaigns, memory/CPU
+measurements, audit fixes and remaining hardware limits are recorded in the
+[capture/load report](2026-10-03_capture_load.md). These checks do not
+establish external timing, cache-off tolerance or motion qualification.
+
+## Implementation audit, version 0.5.1
+
+Checks on 2026-10-03: clean Release build with warnings as errors and **12/12
+CTest suites passed**, including eight adapter groups, five actual-application
+groups and 28 Python fake serial tests. Both ESP32-S3 examples built. COM13 ran
+20/20 checked probes, cached monitoring with unchanged bus counters, and explicit
+timeout/interlock/recovery/reset/alias checks. All 14 retained source hashes match.
+
+See the [audit report](2026-10-03_audit.md), measured metrics and fault
+transcript for defects, fixes and limits. External timing qualification, exact
+motor identity and motion remain open. Historical results below retain the
+versions and scope in which they were obtained.
+
+## E2 adapter and read-only probe, version 0.5.0
+
+Checks on 2026-10-03:
+
+| Check | Result |
+| --- | --- |
+| CMake Release and CTest | 11/11 passed, including actual adapter code built against SDK fakes, console and Python harness |
+| Runner | 20 groups, including interval ambiguity, incomplete capture, explicit reply turnaround and prior 1000-transaction fake soak |
+| E2 adapter fakes | Six groups cover ownership/init errors, physical TX versus FIFO empty, interval capture, faults/recovery/storage and full runner probe |
+| Console | Eight groups cover input/correlation bounds, no side effects on invalid input, cached health and retained raw/timing evidence |
+| Python harness | 24 fake serial tests, including framing/deadlines/reset detection, explicit repeated probes and passive watch |
+| Arduino headers | Fixed DEFAULT/DISABLED macro collisions; native macro regression and Arduino-first include build pass |
+| ESP32-S3 | Probe firmware and existing offline units preview build with the pinned platform |
+| Bench | 100 consecutive parsed probes, later 20-probe run, explicit timeout/recovery, cached watch/staleness and local counter reset |
+| Memory | Interval runner: 320 bytes native / 256 ESP32-S3; trace entry 32 bytes. App storage actually allocated in PSRAM; runtime metrics retained |
+
+See the [bench report](2026-10-03_e2_probe.md), its metrics and fault
+transcript. Strict native warnings pass. These results do not establish exact
+motor identity, external timing bounds, motion, native ESP-IDF firmware or
+FieldCore integration. COM13 was deliberately flashed after firmware backup;
+historical sections below describe earlier blocks in which it was untouched.
+
+## Native standalone runner, version 0.4.0
+
+Checks on 2026-10-03:
+
+| Check | Result |
+| --- | --- |
+| CMake Release and CTest | Passed, 8/8 including the new runner suite and all existing core/generated-file checks |
+| Runner scenarios | 17 test groups covering fake wire timing, exceptions, codec handoff, fragmentation, overflow, drain, cancellation, echo, faults, recovery, storage and diagnostics |
+| Repeated use | 1000 deterministic transactions on the same runner/buffers; normal/exception mix, varied gaps and polling, clock above UINT32_MAX, exact counters, trace overwrite and no replay |
+| Deadline/framing regressions | Physical TX timestamp distinct from service time; final t3.5 included in response budget; lagging capture cannot become a drive timeout; busy wire blocks TX admission/enqueue |
+| Fault regressions | Short enqueue is never resumed; cancellation drains accepted bytes; failed recovery remains interlocked; TX hold respects physical idle despite deadline failure; a later clock error preserves the completed transaction |
+| Bounded service | Tests enforce at most 64 read callbacks in one poll, including DRAIN-to-HOLD transitions with buffered echo |
+| Native warnings | Runner/tests compile and run with C++11, `-Wall -Wextra -Wpedantic -Werror` |
+| ESP32-S3 compile | Runner translation unit compiles with installed Xtensa GCC, C++11, `-Os -fno-exceptions -fno-rtti` and strict warnings; this is not a UART adapter or full firmware test |
+| Memory | Runner object: 304 bytes native, 240 bytes ESP32-S3; trace entry: 24 bytes on both. Caller buffers/rings measured separately in the runner guide |
+
+The runner and test adapter perform no hardware I/O. COM13 was not opened or
+flashed. Actual UART error/timing capture, DE polarity/latency, PSRAM placement
+and motion behavior remain unqualified. The existing offline Arduino preview
+does not run the new helper. No new package/API is imposed on FieldCore or
+the core library; this implementation lives in the repository's example layer.
+
+See [the runner guide](../../runner.md) for callback obligations, retained evidence,
+recovery preconditions and the memory budget. The
+[platform review](../../reference/10_runner_platform_review.md) records FieldCore
+reuse and the future ESP32/Python work.
+
+## Rename and full audit, version 0.3.0
+
+Checks on 2026-10-03:
+
+| Check | Result |
+| --- | --- |
+| CMake Release build and CTest | Passed, 7/7: units, catalogue, codec, preview, two generated-file checks and gap-ledger rejection tests |
+| Unit regressions | Motor-side conversions without gearing; linear encoder conversion without lead; missing crossed scales; both polarities and directions; small-value scale/time conversion |
+| Binary64 arithmetic | Units pass strict C++11 builds with normal MinGW `long double` and `-mlong-double-64`, exercising the intermediate-underflow fix |
+| FC10 windows | Independent position, speed and homing request/echo fixtures added alongside the original pair; output capacities and rejected neighbouring/subset windows checked |
+| Manual defect | P16's extra-byte request has a valid CRC but invalid payload length; corrected five-word request has its own literal fixture |
+| Register access | All 65536 addresses checked against descriptors; every start/count read window through 0x013F cross-checked against the compact access map |
+| Gap ledger | Complete 242-word map plus 78 undocumented words across 15 gaps; negative tests reject missing/overlapping gaps and incorrect reserved/access categories |
+| Public headers | All 8 renamed headers compile independently with C++11, `-Wall -Wextra -Wpedantic -Werror` |
+| Source package and installed consumer | MotorControl-RS archive contains both private headers, excludes references and old include paths; standalone build/install and `find_package(MotorControlRS)` consumer pass |
+| Codec footprint boundary | Installed codec consumer links the compact access map; symbol inspection confirms descriptive catalogue and lookup are absent. This is not a target-MCU size measurement |
+| E2 ESP32-S3 preview | Renamed 0.3.0 Arduino build passes; 325980 flash bytes and 22800 static RAM bytes for this offline units/catalogue preview |
+| Source integrity | All 9 original reference hashes and all 5 contrasting manufacturer hashes match their manifests; local documentation links checked |
+| Independent review | Final codec, access-map and generator review found no further correctness defect; original FC10 page images and complete appendix audited |
+
+The [timing audit](../../reference/09_timing_and_gap_audit.md) records document facts
+and calculated times separately from missing firmware guarantees. No numeric
+response/save/startup bound or undocumented register meaning was invented.
+COM13 was not opened or flashed. This block does not qualify hardware behavior,
+native ESP-IDF firmware, ESP32-S2 firmware or motion workflows.
+
+## ESS codec block, version 0.2.0
+
+Checks on 2026-10-03:
+
+| Check | Result |
+| --- | --- |
+| CMake Release build and CTest | Passed, 6/6: units, catalogue, codec, preview and both generated-file checks |
+| Independent codec fixtures | Literal ESS manual frames plus a forward-polynomial CRC oracle independent of the production reflected-polynomial implementation |
+| Frame validation | Expected address/function/count, complete normal/exception lengths, all truncations, overlong/impossible lengths, byte counts, CRCs, both write echoes and error precedence |
+| Raw exception handling | All 256 raw exception-byte values preserved; malformed/wrong-function/bad-CRC exceptions rejected |
+| Request policy and outputs | All 256 node-byte values, reviewed map access, gaps/reserved/unknown access, paired-write rejection, FC10 window, byte/word capacities, nulls, overlap and unchanged error outputs |
+| Probe and word conversion | Exact minimal probe frame, unknown raw model retention, both word orders, invalid order and signed/unsigned 32-bit boundaries |
+| Public headers | All 8 compile independently with C++11, `-Wall -Wextra -Wpedantic -Werror` |
+| Independent source review | Codec/tests reviewed against original ESS PDF page images; no blocking issue found |
+| Clean source package | PlatformIO archive includes the private RTU helper and excludes vendor/reference downloads; standalone CMake build/install passed |
+| External package consumer | Separate installed-package program built and ran probe construction and synthetic reply parsing |
+| E2 ESP32-S3 build | Offline Arduino preview built; the new codec translation unit compiled with the pinned Xtensa toolchain |
+| Reference integrity | All 9 original hashes unchanged; all 5 new manufacturer PDFs match the separate source/hash manifest |
+
+The embedded preview still exercises units/catalogue only; it does not call
+the codec on real data or initialize the motor UART. The native codec tests
+and external consumer use fixtures. COM13 was not opened or flashed. No drive
+timing, state, movement or persistent effects have been qualified. Native
+ESP-IDF firmware and ESP32-S2 builds remain pending.
+
+Run the current native suite with the CMake/CTest commands below. Verify the
+additional manufacturer snapshots offline with
+`python scripts/prepare_serial_contrasts.py --check`.
+
+## Initial foundation, version 0.1.0
+
+Software checks on 2026-10-02 for version 0.1.0:
+
+| Check | Result |
+| --- | --- |
+| CMake Release build, MinGW-w64 G++ 15.1.0 | Passed; library and tests use C++11 |
+| CTest | 5/5: units, catalogue, preview, version generation, catalogue generation |
+| Every public header included alone | 7 headers passed C++11 with warnings treated as errors |
+| Native unit behaviour | Steps/angles/travel, gear ratios, encoder bases/polarities, rpm/s and squared time units, missing/invalid configuration, precision bounds, output preservation, exact integer boundaries |
+| Catalogue behaviour | All 65536 possible register addresses checked against independently transcribed intervals; pairs, gaps, reserved words, indexed limits and key native choices checked |
+| CMake installed consumer | Separate `find_package` application compiled, linked and ran unit conversion plus register lookup |
+| Source archive | Core-only PlatformIO package contains no vendor/standards downloads; standalone CMake build checked |
+| E2 ESP32-S3 preview | Compiled with pioarduino 55.03.311, Arduino 3.3.11 and Xtensa GCC 14.2.0 using the N16R8 board recipe |
+| Reference preservation | All 9 original source files match the recorded SHA-256 hashes |
+
+Run repository checks with:
+
+```sh
+cmake -S . -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/native
+ctest --test-dir build/native --output-on-failure
+```
+
+On Windows the example build uses `.\scripts\pio.cmd run -e e2_s3_units`.
+The preview exercises units and catalogue metadata only. It does not initialize
+RS485 or move a motor. Those initial build/package checks did not establish
+frame-codec correctness or resolve the original manual's conflicting fields.
+
+COM13 was not opened or flashed. Motor identity, encoder/subdivision settings,
+direction timing, communication and physical motion remain untested. Native
+ESP-IDF firmware and ESP32-S2 consumer builds remain pending; the framework-free
+core and IDF component registration do not substitute for those builds.

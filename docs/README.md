@@ -66,10 +66,8 @@ rating or a guarantee of absolute reliability.
 - [High-subdivision source review](reference/12_ess_rs_motion_web_review.md): manuals, vendor information and unresolved drive behavior.
 - [Hardware bench](hardware_bench.md): actual wiring, image and fixture limits.
 - [Roadmap](roadmap.md) and [backlog](backlog.md): implementation and qualification gaps.
-- [11 October maintenance audit](reports/2026-10-11_fieldcore_audit.md): applied
-  cleanup and source-backed integration findings.
-- [Follow-up cleanup audit](reports/2026-10-11_cleanup_audit.md): core, examples,
-  host tooling, test fixtures and documentation reviewed after that maintenance.
+- [Current evidence and open investigations](reports/README.md): operating limits,
+  unresolved failures and their retained artifacts.
 - [Code complexity audit](reports/2026-10-11_complexity_audit.md) and
   [current refactor prompts](prompts/maintainability/README.md): small applied
   simplifications and staged larger changes with behavior-preservation checks.
@@ -85,13 +83,10 @@ and external switch/load behavior remain separate qualification work.
 - [ESS function manual](vendor/Modbus-Series-Bus-Product-Function-Manual-V1.0_1_.pdf), [RS10/RS20 hardware manual](vendor/ESS23-RS1020_Series_Bus_Integrated_Motor_Hardware_Manual.pdf) and [RS20 datasheet](vendor/ESS23-RS20_Full_Datasheet.pdf).
 - [Searchable extracts](pdf-extracted-md/README.md): search aids; original PDF tables and diagrams remain authoritative.
 - [Reference software](vendor/software/README.md): vendor files retain their own licensing.
-- [Development prompt sequence](prompts/ess_release/README.md), [historical candidate](release_candidate.md), [candidate evidence](reports/ess_release_30_2026-10-05.md) and [reports](reports/).
-- [Historical bench ledger](reports/hardware_bench_history_2026-10-11.md): preserved
-  session snapshots; use the [bench guide](hardware_bench.md) for the fixture and
-  latest recorded ending state.
+- [Development archive](archive/README.md): completed prompts, superseded drafts,
+  implementation/audit reports, candidate artifacts and the historical bench ledger.
 
-The numbered development prompts describe the original implementation sequence;
-use the current guides and backlog for present behavior and remaining work.
-Historical reports preserve the code, versions, failed attempts and evidence
-from their dates. They are not the current command reference. Earlier version
-numbers were development checkpoints, not published releases.
+Only unexecuted work remains in [active prompts](prompts/README.md). Archived
+reports preserve the versions, failed attempts and evidence from their dates;
+their navigation links follow the archive locations. Earlier version numbers
+were development checkpoints, not published releases.

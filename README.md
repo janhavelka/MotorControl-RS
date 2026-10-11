@@ -129,7 +129,7 @@ No communication-loss stop or industrial certification is claimed.
 - [Native ESP-IDF build/flash](docs/esp_idf_probe.md)
 - [Named finite test scenarios](docs/bench_scenarios.md)
 - [Quick/full verifier and CI](docs/verification.md)
-- [Maintenance audit and cleanup](docs/reports/2026-10-11_cleanup_audit.md)
+- [Current evidence and open investigations](docs/reports/README.md)
 
 ```sh
 python -m pip install -r scripts/requirements-verification.txt

@@ -3,7 +3,8 @@
 The first release is **1.0.0**, with the bounded ESS subset described in
 [release scope](releases/1.0.0.md). Implementation, native validation and physical
 qualification are separate milestones. The [backlog](backlog.md) owns remaining
-work; dated [reports](reports/) retain successful and failed experiments.
+work; [current reports](reports/README.md) and the [archive](archive/README.md)
+retain successful and failed experiments.
 
 ## Delivered foundation
 
@@ -15,17 +16,11 @@ work; dated [reports](reports/) retain successful and failed experiments.
 | Consumers and tooling | Shared Arduino/native ESP-IDF S3 application, S2 compile-only fixtures, strict host tools, source/install packages and CI | S3 functional evidence belongs to the exact tested image, motor and fixture; S2 hardware is unqualified |
 | Documentation | Current contracts and operation coverage, source-backed FieldCore handoff, preserved manuals and bench reports | Old numbered prompts are historical delivery instructions, not current missing-feature lists |
 
-The [11 October audit](reports/2026-10-11_fieldcore_audit.md) fixes admission of
-earlier per-step deadlines and removes stale code/documentation claims. Larger
-maintainability work is isolated in the [current refactor sequence](prompts/maintainability/README.md).
-The [follow-up cleanup](reports/2026-10-11_cleanup_audit.md) removes additional
-redundancy and unused test scaffolding, closes a verification-inventory gap,
-and separates maintained bench guidance from historical snapshots. It adds
-software verification, not new hardware qualification.
-The later [complexity audit](reports/2026-10-11_complexity_audit.md) applies
-small settings/console/build simplifications and replaces the old refactor
-draft with seven staged, still-unexecuted prompts. Necessary timing, exact
-arithmetic and operation-specific uncertainty rules remain explicit.
+Completed maintenance is recorded in the [changelog](../CHANGELOG.md) and
+development archive. The [complexity audit](reports/2026-10-11_complexity_audit.md)
+defines seven unexecuted [refactor stages](prompts/maintainability/README.md).
+Necessary timing, exact arithmetic and operation-specific uncertainty rules
+remain explicit. Archived delivery instructions are not pending work.
 
 ## Current bench evidence
 

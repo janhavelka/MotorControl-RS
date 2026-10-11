@@ -154,9 +154,9 @@ The current free-shaft bench has power and RS485 only. External-triggered
 motion is therefore NOT RUN. Register read/write/readback evidence does not
 qualify trigger transitions, selectability, ramps or shaft movement.
 
-The current [bench evidence](reports/ess_release_16_2026-10-04.json) reads
+The current [bench evidence](archive/reports/ess_release_16_2026-10-04.json) reads
 position, speed and shared starting-speed records 1 and 16, preserving raw
-words and timing. The [first campaign](reports/ess_release_16_attempt1_2026-10-04.json)
+words and timing. The [first campaign](archive/reports/ess_release_16_attempt1_2026-10-04.json)
 changes all three scalar fields in PT record 1 and PV record 16, verifies
 matching stored readbacks, explicitly restores the original values and
 verifies restoration. All other records retain native coverage; these narrow
@@ -173,8 +173,8 @@ evidence or exact firmware semantics is still required to identify the cause.
 The read path remains usable; the failed write is not hardware-qualified.
 
 Consumers must size storage using their installed types and target ABI.
-Historical context sizes are retained in the [segment report](reports/ess_release_16_2026-10-04.md)
-and [control-settings report](reports/ess_release_17_2026-10-04.md#storage-verification-and-handoff);
+Historical context sizes are retained in the [segment report](archive/reports/ess_release_16_2026-10-04.md)
+and [control-settings report](archive/reports/ess_release_17_2026-10-04.md#storage-verification-and-handoff);
 they are not current portable ABI guarantees.
 The application retains larger settings contexts/cache and console storage
 in PSRAM; capture/driver state and stacks remain internal. The report records
@@ -187,7 +187,7 @@ cancellation cannot stand in for retained checked FC06 evidence, stored
 readback settlement or physical TX settlement. The core imports no FieldCore,
 UART, MCU, console or scheduler types.
 
-The [fresh combined audit](reports/ess_release_16_17_audit_2026-10-04.md) checks
+The [fresh combined audit](archive/reports/ess_release_16_17_audit_2026-10-04.md) checks
 stored-segment and control-setting contracts. Write acknowledgement or checked device
 rejection requires qualified frame closure within the retained write budget;
 late checked bytes stay raw evidence with unknown execution. An on-time closure

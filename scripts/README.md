@@ -38,7 +38,7 @@ Use a new evidence prefix for each run. A selected settings/motion campaign can
 write to or move the drive; a passing probe is not preparation for every feature.
 See [scenario bounds and cleanup](../docs/bench_scenarios.md),
 [motion checks](../docs/functional_bench.md) and
-[the repeat-motion comparison](../docs/reports/2026-10-05_repeat_motion_timing.md).
+[the repeat-motion comparison](../docs/archive/reports/2026-10-05_repeat_motion_timing.md).
 Uncertain writes are never automatically replayed.
 
 ## Reference preparation

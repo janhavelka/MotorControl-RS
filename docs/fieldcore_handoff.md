@@ -8,7 +8,7 @@ Working sources were re-inspected read-only on 2026-10-11 at `develop`
 motor-command prompts were inspected as proposals, not implemented APIs, and
 left untouched. The intervening documentation commit did not change the reviewed
 owner, backend, binding or runtime source.
-Recheck those sources before integration. The [audit and regression evidence](reports/2026-10-11_fieldcore_audit.md)
+Recheck those sources before integration. The [audit and regression evidence](archive/reports/2026-10-11_fieldcore_audit.md)
 records the library baseline and the reference-owner deadline fix.
 MotorControl-RS stays independently consumable through its installed headers and
 `MotorControlRS::MotorControlRS` CMake target.
@@ -141,7 +141,7 @@ Give stop an explicit policy and observation budget. `ActionOptions` defaults
 to 20 polls at 10,000 us; a three-second outer deadline alone does not lengthen
 that poll budget. The ordinary example's configured-deceleration stop uses a
 3,000,000-us budget, 50,000-us interval and 64 polls (see
-[normal-stop correction](reports/2026-10-06_normal_stop_budget.md)). Port the
+[normal-stop correction](archive/reports/2026-10-06_normal_stop_budget.md)). Port the
 policy deliberately, then qualify it with the selected workload/controller.
 Direct stop has separate behavior/evidence. Local cancel, runtime disable,
 watchdog restart and transport recovery send no implicit stop.
@@ -254,7 +254,7 @@ no-exceptions option), without editing or building FieldCore. Such a check prove
 source/language compatibility only: it does not implement the missing motor
 commands, change the eight-byte contract or qualify that owner/backend.
 Exact candidate compiler commands/results belong to the prompt30 evidence.
-The [11 October audit](reports/2026-10-11_fieldcore_audit.md) adds a host C++17
+The [11 October audit](archive/reports/2026-10-11_fieldcore_audit.md) adds a host C++17
 coexistence check using current local headers. Its Xtensa-only attempt was not
 completed; the earlier target-compiler evidence remains historical. Neither
 check claims an integrated FieldCore build.

@@ -34,9 +34,8 @@ application bus owners. Extract shared units/types only after the second
 implementation demonstrates concrete reuse; do not add a universal transport
 engine or a speculative common framework here. The accepted package name is
 `MotorControl-RS`; C++ namespace, include directory and CMake identity are
-`MotorControlRS`. Repository/board metadata is prepared for the user's GitHub
-rename to `janhavelka/MotorControl-RS`. Keep the working Git remote until that
-endpoint exists, then update it. See [rename steps](docs/repository_rename.md)
+`MotorControlRS`. The repository rename to `janhavelka/MotorControl-RS` is
+complete and this checkout uses that remote. See [rename steps](docs/repository_rename.md)
 for generated-cache handling; never delete bench evidence with build caches.
 
 ## Delivery workflow
@@ -143,7 +142,7 @@ processing or blocking transactions under observer/console pressure.
    `docs/reference/06_encoder_units.md`. Read
    `docs/reference/09_timing_and_gap_audit.md` for framing and unresolved
    response, configuration and motion timing before transport/workflow work.
-   Read `docs/runner.md`, `docs/esp32_probe.md`, the current bench report and
+   Read `docs/runner.md`, `docs/esp32_probe.md`, `docs/reports/README.md` and
    `docs/reference/10_runner_platform_review.md`
    before runner, ESP32 adapter or automated bench work.
    Read

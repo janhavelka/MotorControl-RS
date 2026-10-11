@@ -54,7 +54,7 @@ Native ESP-IDF consumes the core through CMake. The
 [standalone native-IDF application](../esp_idf_probe.md) uses ESP-IDF 5.5.5,
 example Kconfig board settings and explicitly checked native SDK options;
 Arduino USB macros do not configure it. Its initial read-only smoke and
-[bounded motion/load qualification](../reports/ess_release_26_2026-10-05.md)
+[bounded motion/load qualification](../archive/reports/ess_release_26_2026-10-05.md)
 passed for its recorded image. Later [four-hour position testing](../reports/2026-10-07_rate_boundary.md)
 adds evidence for one Arduino image and operating envelope. Electrical timing,
 independent shaft measurements and broader endurance qualification remain open.

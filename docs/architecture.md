@@ -557,4 +557,4 @@ firmware/core/portable fixtures. Available Arduino/native-IDF S3 campaigns
 exercise checked reads, finite positive moves, both stops and reversible stored
 settings. S2 remains compile-only; electrical/shaft measurements, physical fault
 injection, endurance and the remaining native-family cases stay open in the
-[qualification matrix](reports/ess_release_29_2026-10-05.md).
+[qualification matrix](archive/reports/ess_release_29_2026-10-05.md).

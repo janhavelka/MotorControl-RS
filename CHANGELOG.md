@@ -15,6 +15,17 @@
 
 ### Maintenance
 
+- Archived the completed ESS delivery sequence, superseded maintenance draft
+  and 83 historical reports with their evidence. Active prompts now contain
+  only the seven unexecuted maintainability stages; current reports retain
+  operating-limit evidence and unresolved investigations. Removed the redundant
+  development-candidate page and completed backlog entries.
+- Updated documentation and operation-ledger links for the archive. Report and
+  archive indexes are now checked alongside active and archived prompt links;
+  raw JSON/JSONL/ZIP artifacts retain their bytes and hashes.
+- Corrected the units preview's obsolete ramp-register message: engineering
+  acceleration conversion remains unresolved, while native ramp-time settings
+  are implemented.
 - Made settings read-count/field policy explicit and shared the exact echo-readback
   eligibility rule between event handling and uncertainty tracking.
 - Shared the console's ordinary/reserved-stop slot selection across admission

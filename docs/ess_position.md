@@ -105,7 +105,7 @@ a changed scalar (FC06), target pair (`0x0024/2`) or full block for mixed change
 `USE_STORED` explicitly relies on existing drive settings and sends start only.
 No read failure yields a write. No failed write yields start or a retry.
 See [repeat usage](move_example.md#repeating-a-move) and the
-[measured comparison](reports/2026-10-05_repeat_motion_timing.md).
+[measured comparison](archive/reports/2026-10-05_repeat_motion_timing.md).
 The application uses its existing owner and holds the same-axis reservation
 across verification, setup and start, preserving deadlines, uncertainty and explicit stop handling.
 Successful start ends with outcome `ACKNOWLEDGED`
@@ -307,10 +307,10 @@ the move. An interrupted acceptance/result wait also makes the session unusable,
 including interruption before the move's accepted record arrives. Cleanup
 evidence remains unknown when commands cannot be delivered;
 reported non-running does not supply missing independent shaft observation.
-See [the relative-motion audit](reports/ess_release_09_audit_2026-10-04.md) and
-[implementation report](reports/ess_release_09_2026-10-04.md) for tests,
+See [the relative-motion audit](archive/reports/ess_release_09_audit_2026-10-04.md) and
+[implementation report](archive/reports/ess_release_09_2026-10-04.md) for tests,
 actual image/bench evidence and outstanding physical gates.
-The [absolute/wrapped-motion implementation report](reports/ess_release_10_2026-10-04.md)
+The [absolute/wrapped-motion implementation report](archive/reports/ess_release_10_2026-10-04.md)
 records the initial software and read-only/gate evidence. Physical absolute/wrapped
 motion had not run in that historical image; the later short campaign records
 native absolute returns. Equivalent-unit shaft comparisons and linear travel

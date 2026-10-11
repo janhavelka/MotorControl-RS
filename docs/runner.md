@@ -245,7 +245,7 @@ for larger task-context histories, retained frames and caches. Task-context
 TX/RX buffers can use PSRAM where the driver permits it. Keep ISR,
 cache-disabled and driver-required storage internal; initially keep stacks
 and the small timing object internal too. The adapter keeps its small capture working set internal. Its
-[bench report](reports/2026-10-03_e2_probe.md) records runtime memory; native
+[bench report](archive/reports/2026-10-03_e2_probe.md) records runtime memory; native
 tests alone make no claim of runtime PSRAM use.
 
 ## Verification and qualification
@@ -266,8 +266,8 @@ human/JSON console; [Python scenarios](bench_scenarios.md) exercise finite reads
 motion and settings through the same API path. Native SDK fakes compile the
 actual adapter source. The independent wire fixture and timer load bench exercise a sleeping
 owner, FIFO batches/overflow, late/foreign replies, missing evidence and
-interrupt masking. See the [capture/load audit](reports/2026-10-03_capture_load.md).
-The [capture review](reports/ess_release_04_2026-10-04.md) records
+interrupt masking. See the [capture/load audit](archive/reports/2026-10-03_capture_load.md).
+The [capture review](archive/reports/ess_release_04_2026-10-04.md) records
 37-byte delayed-owner/masked-interrupt cases and a timer sampling-gap interlock.
 Cache-off operation during capture is unsupported; consumers must quiesce the
 owner and stop capture first. External TX/RX/DE timing remains unqualified.

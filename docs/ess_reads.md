@@ -111,9 +111,9 @@ write/action, implementation, CLI and evidence dispositions without creating
 another address catalogue. Reads never satisfy write/action obligations.
 
 Historical identity/configuration native/public-package and hardware evidence
-is in the [identity/configuration implementation report](reports/ess_release_05_2026-10-04.md).
+is in the [identity/configuration implementation report](archive/reports/ess_release_05_2026-10-04.md).
 
-The [identity/configuration audit](reports/ess_release_05_audit_2026-10-04.md)
+The [identity/configuration audit](archive/reports/ess_release_05_audit_2026-10-04.md)
 independently rechecks these contracts and repeats native, installed-package,
 build and read-only bench verification.
 
@@ -183,9 +183,9 @@ The Python `state-health` finite campaign reads configuration once, performs
 explicit health checks, inspects/releases results and verifies passive cache
 queries preserve bounds and increase age. It stops on framing/failure, without
 recovery or replay. Current native/hardware limits and exact stationary baseline
-are in the [state-observation report](reports/ess_release_06_2026-10-04.md).
+are in the [state-observation report](archive/reports/ess_release_06_2026-10-04.md).
 
-The [state-observation audit](reports/ess_release_06_audit_2026-10-04.md) separates raw
+The [state-observation audit](archive/reports/ess_release_06_audit_2026-10-04.md) separates raw
 feedback freshness from decoded interpretation confidence. Cached FEEDBACK adds
 `current_config_operation_id` (latest successful configuration for that exact
 target/generation, otherwise 0) and `interpretation_current`. The latter is true

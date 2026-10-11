@@ -11,10 +11,10 @@ The original review on 3 October 2026 used FieldCore commit
 `560f8a234d8d840b4737c61dcb4196f438ca01a1`. The relevant owner/backend/binding
 contracts were checked read-only again on 11 October at
 `479d9ff308d3852d92b1f7552f803b6c990a59f0`. Historical
-[capture/load](../reports/2026-10-03_capture_load.md),
-[owner](../reports/ess_release_01_2026-10-03.md),
-[scheduling](../reports/ess_release_02_2026-10-03.md) and
-[console](../reports/ess_release_03_2026-10-03.md) reports preserve their exact
+[capture/load](../archive/reports/2026-10-03_capture_load.md),
+[owner](../archive/reports/ess_release_01_2026-10-03.md),
+[scheduling](../archive/reports/ess_release_02_2026-10-03.md) and
+[console](../archive/reports/ess_release_03_2026-10-03.md) reports preserve their exact
 source, tests and bench evidence. This source review does not qualify FieldCore
 hardware or change any FieldCore file.
 
@@ -124,7 +124,7 @@ contexts. These are implemented mechanisms to map and test in FieldCore.
 The 20-us GPTimer sampler and 64-slot internal capture ring let this example's
 owner sleep between service turns. The sampler rejects ambiguous multi-byte
 FIFO batches; it cannot reconstruct missing inter-byte gaps. Historical
-[capture measurements](../reports/2026-10-03_capture_load.md) place about
+[capture measurements](../archive/reports/2026-10-03_capture_load.md) place about
 19-21% of one core inside capture alone, excluding some interrupt overhead.
 This measured reference therefore needs a production CPU-budget review before
 adoption into FieldCore's full workload.

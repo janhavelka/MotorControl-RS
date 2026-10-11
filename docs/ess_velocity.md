@@ -105,7 +105,7 @@ raw readback is not decoded as actual RPM. No ESS communication-loss stop is
 established. The user-confirmed ESS23-RS20/nominal 1000 PPR identity is recorded;
 it does not resolve these firmware semantics.
 
-See [implementation/evidence](reports/ess_release_11_2026-10-04.md) and the
-[fresh independent audit](reports/ess_release_11_audit_2026-10-04.md). The native
+See [implementation/evidence](archive/reports/ess_release_11_2026-10-04.md) and the
+[fresh independent audit](archive/reports/ess_release_11_audit_2026-10-04.md). The native
 console emits ten actual public-operation outcomes for a registered Python
 parity check; synthetic terminal records do not substitute for that path.

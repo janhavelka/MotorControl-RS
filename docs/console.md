@@ -90,7 +90,7 @@ The ESS manual documents replacing a positioning command while running via
 the positioning interrupt bit. It does not guarantee that writing speed alone
 updates an active move, or that replacement is a smooth speed transition.
 The current `speed` command remains a next-move setting and rejects changes
-during an active move. See [the investigation](reports/2026-10-06_rounding_and_live_speed.md).
+during an active move. See [the investigation](archive/reports/2026-10-06_rounding_and_live_speed.md).
 
 The boot angle scale is a declared **ASSUMED 1000 command increments per turn**,
 not a measured calibration or an inferred subdivision relationship. Set the
@@ -256,9 +256,9 @@ Do not release/replay the move to bypass this. `stop fast` established stopped
 state in the reproduced case; normal stop did not. The same assumed 2.5-turn
 request completed at subdivision 1600 / 2000 rpm and 51200 / 60 rpm. Use
 `subdivision 1600` for the tested 2000-rpm path; changing subdivision explicitly establishes a new session zero.
-The exact drive cause remains [open with evidence](reports/2026-10-06_completion_discrepancy.md).
+The exact drive cause remains [open with evidence](archive/reports/2026-10-06_completion_discrepancy.md).
 
-Normal stop allows up to three seconds of bounded status observation so the documented two-second deceleration can finish. Fast stop keeps its existing policy. A deadline still means completion was not established; no stop is replayed automatically. See the [measured stop correction](reports/2026-10-06_normal_stop_budget.md).
+Normal stop allows up to three seconds of bounded status observation so the documented two-second deceleration can finish. Fast stop keeps its existing policy. A deadline still means completion was not established; no stop is replayed automatically. See the [measured stop correction](archive/reports/2026-10-06_normal_stop_budget.md).
 
 ### Default speed boundary
 

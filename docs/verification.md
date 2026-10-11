@@ -4,7 +4,7 @@ Use the commands below to verify the current source and produce a core package.
 The package version comes from `library.json`; generated headers and installed
 CMake metadata must agree. Software checks do not establish motor or electrical
 qualification. Older candidate and hardware records remain under
-[reports](reports/ess_release_30_2026-10-05.md) with their original versions,
+[reports](archive/reports/ess_release_30_2026-10-05.md) with their original versions,
 commits and hashes.
 
 Run from the repository root with Python 3.10+, CMake/CTest 3.26+, Ninja and
@@ -56,9 +56,11 @@ failure. Registration checks require the actual interpreter, script, native
 executable and check arguments; per-test Python optimization overrides fail.
 CTest properties that turn a failing exit into PASS are also rejected.
 Reference checks are offline; original vendor bytes remain separately
-licensed. Local links are checked in maintained documents, excluding historical
-reports/PDF extracts; external URLs, anchors and explicitly named sibling
-reference repositories are not availability claims.
+licensed. Local links are checked in maintained documents, active/archived
+prompts and report/archive indexes. Dated report bodies and PDF extracts keep
+their historical link-source exemption; links to those files must still resolve.
+External URLs, anchors and explicitly named sibling reference repositories are
+not availability claims.
 
 For a clean check, use a fresh checkout or a staging copy of tracked source
 plus the reviewed changes, with no `.pio` or build outputs. Tool download caches
@@ -103,4 +105,4 @@ including separately licensed vendor references. The verifier's
 ZIP when a consumer needs only the library. Its SHA-256 is recorded in the
 verifier's `summary.json`.
 
-Earlier measurements are preserved in [early verification history](reports/early_verification_history.md).
+Earlier measurements are preserved in [early verification history](archive/reports/early_verification_history.md).
