@@ -1,21 +1,21 @@
 # Standalone RTU transaction runner
 
-Prompt19 adds idle-only `Runner::configureTiming` under the bus owner's exclusive
+`Runner::configureTiming` is idle-only under the bus owner's exclusive
 `beginConfiguration` / `finishConfiguration` lease. It preserves the monotonic
 clock, statistics and retained results; invalid timing leaves the lease held.
 Admissions, dispatch, sequences and recovery are blocked until configuration
 settles. [Host serial support](host_serial.md) supplies per-tuple timing outside
 the installed core.
 
-First implemented in version 0.4.0, extended with timing intervals in 0.5.0, under
+Implemented in
 [RtuRunner.h](../examples/common/RtuRunner.h) and
 [RtuRunner.cpp](../examples/common/RtuRunner.cpp), namespace
 `MotorControlRSExample::Rtu`. The [native tests](../test/runner_test.cpp)
 provide a fake UART with independent wire times. The [ESP32-S3 probe](esp32_probe.md)
-now adds a hardware adapter and read-only console with explicit qualification limits.
+provides the hardware adapter and shared motor console with explicit qualification limits.
 The [bounded bus owner](bus_owner.md) adds fair admission, copied requests,
 reserved retained results and synchronous checked-parser settlement around this
-same Runner. Release prompt 03 connects it to the responsive standalone console.
+same runner. The console executes reads, motion and settings through that owner.
 
 ## Boundary and responsibilities
 
@@ -248,7 +248,7 @@ and the small timing object internal too. The adapter keeps its small capture wo
 [bench report](reports/2026-10-03_e2_probe.md) records runtime memory; native
 tests alone make no claim of runtime PSRAM use.
 
-## Verification and next block
+## Verification and qualification
 
 The runner suite exercises probe and exception frames through the existing
 ESS parser, malformed framing/CRC boundaries, physical TX drain and hold,
@@ -257,20 +257,21 @@ capture lag, deadlines, recovery and trace overwrite. A deterministic
 1,000-transaction soak reuses the same runner and buffers with varied
 fragmentation, normal/exception replies and a clock crossing `UINT32_MAX`.
 
-Run the repository's CMake/CTest commands from [README](../README.md).
+Run the repository's quick/full checks from [verification](verification.md).
 The runner is also compiled independently with strict C++11 warnings and
 the ESP32-S3 compiler. Those checks do not establish UART or motor behavior.
 
-The [ESP32-S3 probe](esp32_probe.md) now supplies the adapter, read-only JSONL console
-and Python probe/stress/cached-watch harness. Native SDK fakes compile the
-actual adapter source. Bench probes establish a working communication path;
-The independent wire fixture and timer load bench now exercise a sleeping
+The [ESP32-S3 application](esp32_probe.md) supplies the adapter and shared
+human/JSON console; [Python scenarios](bench_scenarios.md) exercise finite reads,
+motion and settings through the same API path. Native SDK fakes compile the
+actual adapter source. The independent wire fixture and timer load bench exercise a sleeping
 owner, FIFO batches/overflow, late/foreign replies, missing evidence and
 interrupt masking. See the [capture/load audit](reports/2026-10-03_capture_load.md).
-The [current capture review](reports/ess_release_04_2026-10-04.md) adds
+The [capture review](reports/ess_release_04_2026-10-04.md) records
 37-byte delayed-owner/masked-interrupt cases and a timer sampling-gap interlock.
 Cache-off operation during capture is unsupported; consumers must quiesce the
-owner and stop capture first. External TX/RX/DE timing and motion remain
-separate qualification work. Admission/results and fairness/cancellation are implemented
-in the [bus owner](bus_owner.md); prompt 03 connects the actual standalone
-console under the [roadmap](roadmap.md).
+owner and stop capture first. External TX/RX/DE timing remains unqualified.
+Finite motor evidence is specific to the operations/images in the
+[release scope](releases/1.0.0.md), independent of runner tests.
+Admission/results, fairness, cancellation and priority stop are implemented
+in the [bus owner](bus_owner.md).

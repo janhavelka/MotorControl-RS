@@ -8,7 +8,7 @@ use this console.
 For firmware diagnosis, `drv` reports owner-watchdog subscription, feed errors,
 completed turns, reset reason and the previous retained runtime progress marker.
 `stats` reports `cache_interrupted` separately from a sampling-gap violation;
-either can require explicit transport recovery. `reset` clears statistics, not
+either can require explicit transport recovery. `stats reset` clears statistics, not
 that fault. A watchdog restart is not a motor stop and never replays a move.
 See the [firmware health report](reports/2026-10-06_firmware_health.md).
 
@@ -147,7 +147,7 @@ The next explicit stop replaces a delivered successful stop result in its
 reserved slot, so repeated successful stops do not fill ordinary storage.
 A failed/unknown stop is retained in a free ordinary slot before admitting
 another stop; if none exists, inspect and release a terminal result first.
-Active or undelivered stops cannot be replaced. Local cancellation, `reset`
+Active or undelivered stops cannot be replaced. Local cancellation, `stats reset`
 and `recover` never substitute for a confirmed motor stop.
 
 For basic communication inspection:
@@ -210,8 +210,8 @@ See the [debug workflow](traffic.md) for effects and measurement limits.
 Prefix a command with `@` and a nonzero decimal ID to receive the existing JSONL
 protocol, for example `@42 read state`. Python tools already use this spelling;
 their existing schemas, command correlations and operation semantics remain available.
-`@ID settings` adds a `motor_settings` report; the old host alias is now `config`.
-The new simple move commands add a `simple_move` report with a session operation
+`@ID settings` returns a `motor_settings` report; `config` inspects the host.
+The simple move commands return a `simple_move` report with a session operation
 ID and a separate `move_operation_id` for the ordinary typed move's full evidence.
 Release the session ID, not its owned child. A subsequent simple move reclaims
 its previous delivered successful session. Explicit JSON/API results remain

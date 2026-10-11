@@ -93,7 +93,7 @@ the capture section separately, excluding driver dispatch/return overhead;
 these measurements must not be added as if they were disjoint CPU categories.
 
 The [initial capture review](reports/ess_release_04_2026-10-04.md) retains the
-20-us sampler at about 20â€“21% of one core inside capture. `timer_callbacks`
+20-us sampler at about 20-21% of one core inside capture. `timer_callbacks`
 counts timer alarms separately from aggregate `capture_samples`; neither
 measures SDK interrupt dispatch cost. `capture_high_water` reports ring occupancy.
 
@@ -145,8 +145,9 @@ with that framework. The reusable MotorControlRS library has no such dependency.
 | USB console | 115200 baud setting, separate from motor bus |
 | Initial probe address | 1; an explicit probe argument accepts 1 through 247 |
 
-The serial tuple is the documented ESS default used as a commissioning
-candidate. It is not readback of the connected motor. Board provenance and
+The serial tuple began as a documented ESS commissioning default and has
+successful response evidence on the recorded motor. A connection default alone
+is not device-setting readback. Board provenance and
 the previously running CO2control firmware are recorded in
 [the board review](reference/04_esp32_bench.md) and
 [bench notes](hardware_bench.md).
@@ -171,8 +172,9 @@ query, scan, configuration write or motion command.
 | [ProbeApp.cpp](../examples/probe_cli/ProbeApp.cpp) | Own the application buffers, runner, UART, console, retained results, memory snapshots and recovery policy; shared by Arduino and native IDF. |
 | [ProbeConsole.h](../examples/probe_cli/ProbeConsole.h) / [ProbeConsole.cpp](../examples/probe_cli/ProbeConsole.cpp) | Parse bounded lines, validate arguments, dispatch commands and retain reply format. [ConsoleText.cpp](../examples/probe_cli/ConsoleText.cpp) renders human text from the same evidence. Platform neutral. |
 | [Esp32S3Uart.h](../examples/common/Esp32S3Uart.h) / [Esp32S3Uart.cpp](../examples/common/Esp32S3Uart.cpp) | Set up UART2 and DE, sample the peripheral, preserve timing ranges and report capture/UART errors. ESP32-S3 specific. |
-| [RtuRunner.h](../examples/common/RtuRunner.h) / [RtuRunner.cpp](../examples/common/RtuRunner.cpp) | Apply bus admission, TX drain, DE hold, receive framing, deadlines and recovery interlocks using supplied observations. |
-| [Codec.h](../include/MotorControlRS/profiles/ess_rs/Codec.h) | Build the model read and check slave, function, length, count, CRC and exception response. |
+| [RtuBusOwner.h](../examples/common/RtuBusOwner.h) / [RtuBusOwner.cpp](../examples/common/RtuBusOwner.cpp) | Own copied admissions, queues, sequence reservations, stop priority and retained checked results. |
+| [RtuRunner.h](../examples/common/RtuRunner.h) / [RtuRunner.cpp](../examples/common/RtuRunner.cpp) | Execute one transaction: idle guard, TX drain, DE hold, receive framing, deadlines and recovery interlocks. |
+| [Codec.h](../include/MotorControlRS/profiles/ess_rs/Codec.h) and other ESS headers | Build and validate frames; typed profile preparations/sequences define the motor operations. |
 | [bench_probe.py](../scripts/bench_probe.py) | Correlate console requests, run finite campaigns and save JSONL evidence. |
 
 The application is the only bus owner. The adapter configures UART2 without

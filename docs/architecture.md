@@ -42,10 +42,8 @@ cancellation and explicit recovery. The [runner](runner.md) and
 commissioning and motion reuse that owner; no second UART engine is introduced.
 FieldCore integration remains separate work through its existing owner.
 
-The [historical architecture report](architecture_report.md) preserves the
-3 October source review. Use current headers and the API inventory for file and
-symbol names. The planned layout below remains a design guide, not a list of
-implemented files.
+The [source map](architecture_report.md) locates the implemented layers and
+their tests. Historical audit reports remain linked there as dated evidence.
 
 The [axis contract](axis_contract.md) defines common operations and units;
 the [profile contract](profile_contract.md) defines native command coverage;
@@ -161,39 +159,38 @@ Time is an explicit input where needed. Contexts contain bounded copied
 values, not borrowed frame or transient request pointers. Independent
 contexts are reentrant; applications synchronize shared buffers and contexts.
 
-## Planned file responsibilities
+## Source responsibilities
 
-The units, status, entry/version headers, ESS catalogue and codec already exist.
-The following layout also includes planned files; it is not a request to
-create stubs. See the root README for the current callable surface.
+These are implemented locations. Public headers define the actual signatures;
+the [API inventory](ess_api_cli_coverage.md) records remaining coverage gaps.
 
-| Current or planned path | Responsibility |
+| Path | Responsibility |
 | --- | --- |
 | `include/MotorControlRS/MotorControlRS.h` | Common public entry point, without forcing all profile headers into every consumer |
-| `include/MotorControlRS/Axis.h` | Common command intent, capabilities and observations |
+| `include/MotorControlRS/Axis.h` | Exact target preparation, coordinate/reference configuration, quantization and host limits |
 | `include/MotorControlRS/Units.h` | Explicit quantities, coordinate configuration and checked conversion |
-| `include/MotorControlRS/Profiles.h` | Profile identity and finite dispatch contracts |
-| `include/MotorControlRS/Sequence.h` | Bounded caller-owned operation state, supplied events and yielded work |
+| `include/MotorControlRS/Discovery.h` | Compiled profile identity, discovery capabilities and probe outcomes |
+| `include/MotorControlRS/ReadOperation.h`, `ActionOperation.h`, `MoveOperation.h`, `VelocityOperation.h` | Shared targets, supplied events, requests, evidence and operation policies |
 | `include/MotorControlRS/Status.h` | Shared validation result and parser error categories |
 | `include/MotorControlRS/profiles/ess_rs/Codec.h` | Implemented bounded builders, validators, checked parsers, probe and word conversion |
 | `src/rtu/Frame.h` | Private byte packing, CRC and frame helpers without device policy |
 | `examples/common/RtuRunner.h`, `RtuRunner.cpp` | Implemented bounded application transaction runner with caller-owned buffers/traces and native fake tests |
-| `include/MotorControlRS/profiles/ess_rs/Commands.h` | Full typed ESS command surface and sequence descriptions |
+| `include/MotorControlRS/profiles/ess_rs/Reads.h`, `Actions.h`, `Position.h`, `Velocity.h`, `Homing.h` | Typed observations and bounded caller-owned motor operation contexts |
+| `include/MotorControlRS/profiles/ess_rs/DriverSettings.h`, `Segments.h`, `ControlSettings.h`, `Tuning.h`, `Communication.h`, `Persistence.h` | Typed settings, commissioning and persistence operations |
+| `include/MotorControlRS/profiles/ess_rs/Discovery.h` | Checked probe preparation and observation |
 | `include/MotorControlRS/profiles/ess_rs/Registers.h` | Verified ESS register definitions and value enums |
 | `include/MotorControlRS/profiles/ess_rs/Types.h` | Exact ESS values, raw flags, alarms and word order |
 | `include/MotorControlRS/Version.h` | Implemented generated version constants from package metadata |
-| `src/axis/`, `src/units/`, `src/protocol/` | Common validation, conversion and proven reusable framing helpers |
+| `src/Axis.cpp`, `src/Units.cpp`, `src/Discovery.cpp`, `src/Traffic.cpp` | Common preparation, conversion, discovery inventory and passive traffic storage |
 | `src/profiles/ess_rs/` | ESS codec, native command mapping and bounded sequencing |
-| `examples/01_basic_bringup_cli/` | Arduino entry point, example transport and board integration |
+| `examples/probe_cli/` | Shared application/console, operation executors and Arduino entry point |
 | `examples/common/` | Board pins, platform adapters, shared console inventory/dispatch and application support |
-| `examples/espidf_basic/` | First-class native ESP-IDF consumer of the same core and console semantics |
-| `test/` | Native codec, units, sequence and consumer-contract tests when behavior exists |
-| `docs/IDF_PORT.md` | Framework-neutral consumption and native IDF instructions when implemented |
+| `examples/probe_idf/` | Native ESP-IDF consumer of the same core and console semantics |
+| `test/` | Native codec, units, sequence, adapter, console and consumer tests |
 
-The first implementation uses `include/MotorControlRS/` and `src/Units.cpp`,
-with the ESS catalogue under `profiles/ess_rs/`. The old empty ESS-only header
-directory has been removed. Do not create empty profile APIs or a Leadshine
-implementation merely to mirror the design table. Split files only when useful.
+There is no generic `Profiles.h`, `Sequence.h` or ESS `Commands.h` facade.
+Operation-specific contexts keep concrete bounds and evidence visible. Add a
+shared abstraction only when implemented consumers demonstrate useful reuse.
 
 Every public header must compile alone and include only public or standard
 headers. Doxygen must state units, input limits, buffer lifetimes, failures,
@@ -380,14 +377,11 @@ checks are not relaxed for other manufacturers' extensions.
 
 ## Explicit native commands and shared sequences
 
-Later typed builders should make `buildEnable`, `buildRelease`, `buildStop`,
-`buildEmergencyStop`, `buildStartPosition`, `buildStartSpeed`, `buildStartHoming`,
-`buildClearAlarm`, `buildClearPosition`, `buildSaveParameters` and
-`buildRestoreFactoryParameters` distinct operations, subject to the vendor
-review. These names describe frame construction only. Do not introduce a
-generic reboot/reset command unless the ESS documentation establishes one.
-
-These initial names do not bound the native API. The
+Typed action, position, velocity, homing, settings, communication and persistence
+preparations are implemented in their respective ESS headers. Their `next...`
+and `advance...` functions yield and consume bounded work; raw builders such as
+`buildStartPosition` construct frames only. Do not introduce a generic drive
+reboot/reset command without documented ESS semantics. The
 [profile contract](profile_contract.md) requires complete coverage of every
 documented command and register for a supported ESS model/firmware scope,
 including tuning, I/O, segment configuration and persistence. Unresolved
@@ -466,8 +460,9 @@ metadata and prepared queries. Manufacturer grouping does not supply a
 universal detection command; ambiguous matches and unsupported probes stay
 explicit. A successful probe does not refresh position, alarms or readiness.
 Startup performs no automatic enable, movement, alarm clear, homing, save, restore
-or device communication change. Persistence, if added, stores explicitly
-selected host settings only and never replays commands after boot.
+or device communication change. Host persistence, if added, stores explicitly
+selected host settings and never replays commands after boot. Implemented drive
+save/factory-restore operations remain explicit, separately qualified requests.
 
 Logical profile/address rebinding and changes to scale, origin, word order or
 observed drive settings invalidate the affected identity, decoding and readiness

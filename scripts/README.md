@@ -1,16 +1,54 @@
-# Reference preparation
+# Development and bench tools
 
 The [verification entry point](../docs/verification.md) composes the repository's
-checks and clean package consumers: `python scripts/verify.py --mode quick` or
-`--mode full` with the existing Arduino/IDF toolchains. Missing checks fail;
-offline references need `requirements-verification.txt`. No port is opened.
+checks and clean package consumers. Run from the project root:
+
+```sh
+python -m pip install -r scripts/requirements-verification.txt
+python scripts/verify.py --mode quick
+```
+
+`--mode full` also builds the pinned Arduino/IDF firmware configurations.
+Missing checks fail. Verification opens no serial port and changes no drive.
+
+| Tool | Purpose |
+| --- | --- |
+| `verify.py` | Composed native/Python/package checks; optional firmware builds |
+| `check_repository.py` | Offline snapshot hashes, maintained documentation links and metadata |
+| `check_ess_operations.py` | Register/API/CLI coverage accounting; `--details` prints the full inventory |
+| `generate_ess_registers.py` | Generate register tables and documentation from the reviewed ledger; `--check` verifies |
+| `generate_version.py` | `sync` generates `Version.h` from `library.json`; `check` verifies |
+| `pio.cmd` | Windows wrapper for the installed PlatformIO toolchain |
+
+## Finite bench tools
+
+These tools use the ordinary firmware console and the same strict command/result
+parser. Live serial connections require `pyserial`; the fake-serial tests use
+the Python standard library. Only one process may own the board's port.
+
+| Tool | Purpose |
+| --- | --- |
+| `bench_probe.py` | Read-only probes, state/health/load checks and explicitly selected typed feature operations |
+| `bench_scenarios.py` | Named finite campaigns; default `quick` is motor read-only; `--list` and `--plan-only` open no port |
+| `bench_motion.py` | Explicit finite position/action/stop phases with retained evidence and cleanup |
+| `bench_repeat.py` | Bounded comparison of full, verified and stored position setup policies |
+| `bench_session.py` | Shared session/evidence implementation imported by the campaign tools |
+
+Use a new evidence prefix for each run. A selected settings/motion campaign can
+write to or move the drive; a passing probe is not preparation for every feature.
+See [scenario bounds and cleanup](../docs/bench_scenarios.md),
+[motion checks](../docs/functional_bench.md) and
+[the repeat-motion comparison](../docs/reports/2026-10-05_repeat_motion_timing.md).
+Uncertain writes are never automatically replayed.
+
+## Reference preparation
 
 `prepare_references.py` downloads the nine references listed in the source
 inventory, validates their formats, extracts searchable PDF text, and writes
 `docs/reference/sources.json` with SHA-256 checksums.
 
-Requirements: Python 3.10+, `requests`, and `PyMuPDF` (all available during initial
-preparation). Run from the project root:
+Requirements: Python 3.10+, `requests`, and `PyMuPDF`, supplied by
+`requirements-verification.txt`. The download command is:
 
 ```powershell
 python scripts/prepare_references.py
@@ -24,16 +62,8 @@ review such changes explicitly. This helper is documentation tooling only.
 manuals. Use `python scripts/prepare_serial_contrasts.py --check` to verify
 their recorded hashes offline without downloading or replacing anything.
 
-`generate_ess_registers.py` generates public descriptors, a compact private
-codec access table and the readable catalogue from the ESS JSON ledger. It
-checks complete coverage of documented words and declared gaps. Run it after
-editing that ledger; `--check` verifies the generated files without changing them.
-
-`generate_version.py sync` updates the version header from `library.json`;
-`generate_version.py check` verifies it. These two generators and the native
-generator tests use only the Python standard library.
-
-`bench_probe.py` runs finite read-only probe/stress campaigns or cached
-health/memory watching through the standalone JSONL console. A live port needs
-`pyserial`; its fake serial tests use the Python standard library. See the
-[ESP32-S3 guide](../docs/esp32_probe.md) for commands, evidence and failure behavior.
+The ESS JSON ledger is the transcription source for public descriptors, private
+codec access tables and the readable catalogue. Regenerate after reviewed ledger
+changes; never edit the generated tables directly. The two generators and their
+native tests use only the Python standard library. Original vendor files and
+historical bench evidence are not disposable build output.

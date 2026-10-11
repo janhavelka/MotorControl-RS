@@ -1,305 +1,155 @@
 # Standalone runner: FieldCore and ESP32 review
 
-Reviewed on 2026-10-03 against FieldCore-node commit
-`063ca063a50bcb8afb2b3b59f9af0f3f89bfc82f`. Its inspected RS485 files had no
-local changes. This is source review and guidance for the later ESP32-S3 adapter;
-no firmware was flashed and COM13 was not opened. The native transaction
-runner belongs under `examples/common/`. FieldCore continues to own its bus.
+The standalone [runner](../runner.md), [bus owner](../bus_owner.md),
+[S3 adapter](../esp32_probe.md) and shared Arduino/native-IDF console are
+implemented. Typed reads, settings and motion use that same path. This review
+records the boundary decisions and their FieldCore implications; the
+[current handoff](../fieldcore_handoff.md) specifies the later FieldCore edits.
 
-This is the version 0.4.0 review. The later [ESP32-S3 implementation](../esp32_probe.md)
-uses direct polling without installing the IDF driver and supplies conservative
-timing intervals to the extended runner. See its current contract and bench
-report for implemented behavior and outstanding external qualification.
-
-Release prompt 01 has now delivered the [bounded application bus owner](../bus_owner.md).
-Its [handoff](../reports/ess_release_01_2026-10-03.md) records the newer read-only
-FieldCore source review, copied/reserved ownership and intentional deadline/
-parser differences. Later-step guidance below remains historical context;
-fairness/cancellation and console integration are delivered by prompts 02–03.
+The original review on 3 October 2026 used FieldCore commit
+`063ca063a50bcb8afb2b3b59f9af0f3f89bfc82f`; a later source pass used
+`560f8a234d8d840b4737c61dcb4196f438ca01a1`. The relevant owner/backend/binding
+contracts were checked read-only again on 11 October at
+`479d9ff308d3852d92b1f7552f803b6c990a59f0`. Historical
+[capture/load](../reports/2026-10-03_capture_load.md),
+[owner](../reports/ess_release_01_2026-10-03.md),
+[scheduling](../reports/ess_release_02_2026-10-03.md) and
+[console](../reports/ess_release_03_2026-10-03.md) reports preserve their exact
+source, tests and bench evidence. This source review does not qualify FieldCore
+hardware or change any FieldCore file.
 
 ## Reuse that saves work
 
-| FieldCore source | Useful behavior | MotorControl-RS application |
-| --- | --- | --- |
-| [ArduinoRs485Backend.cpp](https://github.com/janhavelka/FieldCore-node/blob/063ca063a50bcb8afb2b3b59f9af0f3f89bfc82f/src/rs485/ArduinoRs485Backend.cpp) | UART2, explicit active-high DE/RE, initialization checks and an IDF TX-completion call | Adapt these small board/driver operations when implementing the ESP32 backend. Keep them out of the library core. |
-| [Rs485Task.cpp](https://github.com/janhavelka/FieldCore-node/blob/063ca063a50bcb8afb2b3b59f9af0f3f89bfc82f/src/rs485/Rs485Task.cpp) | One active transfer, a DE shadow, bounded storage, separate transport observations and parser results | Keep the same ownership. Preserve one terminal result and its evidence until the application consumes it. |
-| [Rs485Diagnostics.cpp](https://github.com/janhavelka/FieldCore-node/blob/063ca063a50bcb8afb2b3b59f9af0f3f89bfc82f/src/rs485/Rs485Diagnostics.cpp) | Fixed diagnostic rings, drop counts, high-water marks, passive status copies and PSRAM allocation at initialization | Reuse these diagnostic conventions as the standalone CLI grows. Do not import the whole worker/runtime subsystem. |
-| [Rs485Devices.h](https://github.com/janhavelka/FieldCore-node/blob/063ca063a50bcb8afb2b3b59f9af0f3f89bfc82f/include/TunnelMonitor/contracts/Rs485Devices.h) | Separate bus, device and parser state; traces include state, event, counts, timestamps and sequence numbers | Keep transport failure, codec failure, motor alarms and stale observations separate. |
+FieldCore already has the right ownership pattern: one RS485 worker, bounded
+copied work, device-owned sequencing, passive status and retained results.
+Its `Rs485DeviceBinding` lends RX bytes only during `acceptObservation`;
+modules copy/parse evidence before returning. Device waits can release the bus
+for another binding. Retain those contracts instead of starting another owner
+or importing FieldCore services into the motor library.
 
-The existing [bench board reference](04_esp32_bench.md) remains the pin
-authority: UART2, TX47, RX48 and active-high DE/RE21 for the user-confirmed
-bench. Product selection and the physical board are separate. Do not import a
-FieldCore product environment just to reuse its UART operations.
+The [board reference](04_esp32_bench.md) records UART2, TX47/RX48 and active-high
+DE/RE21 for this bench. Pins are explicit application inputs, not motor protocol
+constants. FieldCore product definitions and its other sensor protocols are not
+dependencies of the standalone examples.
 
 ## What needs different treatment
 
-FieldCore's current owner is built for its selected sensor modules. These
-specific details prevent direct reuse as a motor transaction runner:
-
-- Its [transaction contract](https://github.com/janhavelka/FieldCore-node/blob/063ca063a50bcb8afb2b3b59f9af0f3f89bfc82f/include/TunnelMonitor/rs485/Rs485OwnerTransaction.h)
-  has an eight-byte TX array. Reviewed ESS FC10 requests need up to 21 bytes.
-- `processResponse()` removes any initial RX bytes identical to the request.
-  A genuine FC06 acknowledgement is identical to that request. Echo treatment
-  must therefore be an explicit, qualified adapter policy. An optional-echo
-  guess cannot reliably distinguish an acknowledgement from an echo.
-- `responseComplete()` uses an expected length or a suffix. An ESS exception
-  is five bytes, which can be shorter than the normal reply. Frame collection
-  must preserve complete exception frames for the existing checked parser.
-- `read()` returns available byte batches without wire timestamps or UART
-  error evidence. The worker normally sleeps 5 ms between polls. Those facts
-  cannot establish sub-millisecond RTU inter-byte gaps. Sampling a batch at a
-  particular time does not prove when each byte arrived.
-- The normal 2 ms pre-TX guard and 20 ms inter-request gap are FieldCore
-  application settings. They are not ESS response deadlines or transceiver
-  setup specifications. Use the [timing audit](09_timing_and_gap_audit.md).
-- The selected command kinds are probe, measurement and cached read. Motion,
-  uncertain execution and stop priority need their own FieldCore contracts.
-  Sensor retry/recovery behavior is not a motor replay policy.
-
-These observations do not require sibling edits in this implementation block.
-Later integration should improve FieldCore's existing owner/backend and add a
-motor device module. Starting a second owner on UART2 would violate ownership.
-
-## Requirements for the later ESP32 callbacks
-
-The following describes adapter obligations, not additional public core APIs.
-
-| Operation | Required evidence |
+| FieldCore source/behavior | Required motor treatment |
 | --- | --- |
-| Start transmission | Report how many bytes were accepted and any driver failure. Accepting bytes is not physical TX completion. The adapter must send one continuous RTU frame; it must not insert scheduler delays between short writes. |
-| Check TX completion | Report success only after the final stop bit. Keep DE asserted while physical TX is pending; expose failure separately from pending. |
-| Change direction | One owner controls DE/RE and records its state. Apply documented transceiver setup/hold requirements, then release promptly after TX. |
-| Receive | Deliver bounded bytes plus usable timing and UART error evidence. Overflow, parity, framing errors and lost timing evidence must not silently become a valid frame. |
-| Read time | Use a monotonic microsecond time source. Keep its epoch and meaning consistent with RX/TX observations; the runner must not read a platform clock itself. |
-| Recover | Settle or explicitly abort the physical transmitter, restore receive mode and drain stale traffic under application policy. Recovery does not prove that a timed-out command was not executed. |
+| `Rs485OwnerTransaction.h`: eight-byte TX storage | Reviewed ESS FC10 requests need up to 21 bytes; grow copied storage deliberately and measure all containing queues |
+| `Rs485Task::processResponse`: matching request prefix stripped as echo | FC06 ACK is byte-identical to its request; require qualified per-transaction echo/provenance policy |
+| `responseComplete`: fixed length or suffix | Preserve legacy modes; add checked normal/short-exception framing without relying on a normal-length timeout |
+| `Rs485Backend::read`: untimed available batches | Supply usable timing/framing and UART-error evidence; worker wake time is not byte arrival time |
+| `setTransmitEnabled` has no success result | Expose confirmed or explicitly uncertain direction state and settle physical TX before cancellation/recovery |
+| 8N1-only format validation/baud-only backend selection | Keep that explicit boundary until other host formats are implemented and checked |
+| `DeviceRequestKind`: Probe/Measure/ReadLast; float readings | Add typed motor intent and exact integer/evidence results; do not tunnel writes through measurement |
+| Administrative cancellation/module enable and sensor retry policy | Keep these distinct from physical stop/enable; never replay an uncertain motor write |
 
-FieldCore already calls `uart_wait_tx_done(UART_NUM_2, ticks)` instead of
-relying on free FIFO space. The reviewed IDF v5.5 implementation checks the
-transmitter state and the TX-done event. It can be polled with a zero-tick
-wait; the adapter must map timeout to pending while its own deadline remains
-open. `uart_tx_chars()` avoids waiting for FIFO space, but its implementation
-still takes the driver TX mutex with an unlimited wait. Exclusive UART
-ownership is necessary before treating this as a bounded callback.
-[IDF UART implementation](https://github.com/espressif/esp-idf/blob/v5.5/components/esp_driver_uart/src/uart.c#L1356)
+These are adaptation requirements, not a request to replace FieldCore's task
+or all serial completion rules. Its buffered UART can receive independently of
+the worker; a 5 ms worker interval alone does not prove byte loss. The missing
+piece is exposed timing/framing evidence and a bounded operation-service budget.
+Its pre-TX/inter-request guards are application choices, not ESS response or
+transceiver timing guarantees.
 
-The ESP32-S3 UART driver exposes parity/framing/overflow events and receive
-timeout configuration. These are useful building blocks, but dequeuing an
-event later does not create a precise byte-arrival timestamp. The eventual
-adapter needs a reviewed framing strategy and measured timing uncertainty.
-The runner requires usable bounds on TX stop-bit and RX start/stop times,
-plus a receive observation watermark; version 0.5.0 added explicit uncertainty
-intervals. See [the callback contract](../runner.md#adapter-timing-contract).
-`uart_wait_tx_done()` establishes current idle but does not by itself supply
-that actual completion timestamp. Reusing the call does not complete the
-adapter's timing work.
-Driver-controlled RS485 half-duplex is another option; FieldCore currently
-enables that only in an optional HIL variant. Select and qualify one direction
-owner rather than combining driver RTS control with manual GPIO writes.
-[Espressif UART guide](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/api-reference/peripherals/uart.html)
+## Adapter obligations
 
-The exact framework version resolved by the standalone build must be checked
-again during adapter implementation. These IDF v5.5 references explain the
-mechanism; they are not qualification of every Arduino package or board.
+| Operation | Evidence and bounded behavior |
+| --- | --- |
+| TX enqueue | Report accepted byte count/errors and send one continuous frame; acceptance is not completion |
+| TX completion | Confirm the physical final stop bit, retaining earliest/latest bounds when observation is delayed |
+| DE/RE | One direction owner, explicit polarity/setup/hold and confirmed release or uncertainty |
+| RX | Bounded bytes, timing intervals/watermark and UART errors; reject overflow or missing evidence explicitly |
+| Time | One monotonic microsecond domain supplied to the runner; the reusable core reads no clock |
+| Recovery | Settle physical TX/DE, drain stale traffic and establish fresh idle evidence; never infer that a lost command did not execute |
+
+The standalone adapter uses direct UART2 register sampling and optional GPTimer
+capture without installing the IDF UART driver. FieldCore uses the installed
+driver and `uart_wait_tx_done`. The latter can establish physical idle, but
+not the actual completion instant or RX timing intervals on its own. Do not
+install both implementations on one UART. Driver RTS control and manual DE
+must likewise have one owner.
+
+The [runner timing contract](../runner.md#adapter-timing-contract) specifies
+which intervals and watermark are required. Polling observations bound wire
+events; they are not exact timestamps. Frame-level hardware evidence could be
+a valid FieldCore alternative if its uncertainty and failure behavior satisfy
+the contract. Do not require one interrupt per byte or shorten every task's
+period without evidence that this is needed.
 
 ## Memory and PSRAM
 
-The runner and codecs should allocate nothing. The application provides fixed
-storage and decides its placement. This permits native arrays for tests and
-PSRAM-backed task-context storage on the ESP32-S3 bench without an ESP32 dependency in core
-headers. Fixed capacity does not require internal RAM or repeated allocation.
+Codecs and the portable runner allocate nothing. Applications own storage and
+choose placement: task-only retained frames, traces and larger caches can use
+PSRAM when the platform contract permits it; ISR state, driver-required buffers,
+stacks and cache-disabled working data remain internal. Immutable catalogue
+strings remain in the linked read-only image. No native consumer needs a PSRAM
+allocator.
 
-FieldCore's [PsramAllocator.h](https://github.com/janhavelka/FieldCore-node/blob/063ca063a50bcb8afb2b3b59f9af0f3f89bfc82f/include/TunnelMonitor/core/PsramAllocator.h)
-uses `MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT`. Its RS485 runtime allocates ingress
-and trace storage once. Its worker stack and queue control remain static
-internal storage. This is a useful placement pattern, not a requirement to
-copy its 8 KiB task or its duplicate diagnostic rings into a small example.
+Allocate bounded application storage at startup and report failure explicitly.
+Measure free, minimum-free and largest contiguous internal/PSRAM blocks, plus
+stack high-water marks; aggregate free bytes alone are insufficient. Do not copy
+FieldCore's entire worker storage layout into the example to reproduce this
+policy. The current [Arduino](../esp32_probe.md) and
+[native-IDF](../esp_idf_probe.md) guides record actual placement and SDK limits.
 
-Recommended placement for the later adapter:
+Cache-off capture is unsupported by the current callback contract. Quiesce
+admission, settle TX/DE and stop capture before flash/cache-off/sleep work;
+explicit recovery and fresh evidence are required afterward. Internal buffers
+alone do not make the whole callback path cache-safe.
 
-| Storage | Placement and policy |
-| --- | --- |
-| Full diagnostic history, retained raw frames, future test results and larger caches | Prefer one bounded PSRAM allocation at initialization. Report allocation failure or deliberately select a smaller documented capacity. |
-| Caller-owned TX/RX and task-only runner state | PSRAM is suitable when accessed only from normal task context and the driver contract permits those buffers. Retain storage for the whole transaction. |
-| ISR bookkeeping, cache-disabled paths and driver-required storage | Keep internal. Follow the exact driver allocation contract; do not pass arbitrary PSRAM buffers to DMA. |
-| Task stacks, synchronization objects and tiny timing state | Keep internal initially. Measure stack use before reducing it; moving a small object saves little compared with moving histories and caches. |
-| Immutable register descriptions and lookup tables | Leave in the linked read-only image. Do not copy them into either RAM merely to expose a diagnostic view. |
+## Diagnostics and Python runners
 
-External RAM can be inaccessible when the flash cache is disabled. ESP-IDF
-normally keeps task stacks internal; ESP32-S3 DMA has additional restrictions,
-including internal DMA descriptors. These constraints justify retaining a
-small internal working set even on an 8 MB PSRAM board.
-[Espressif external RAM guide](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/api-guides/external-ram.html#restrictions)
+Retain TX acceptance/completion, DE state, RX timing, raw bytes, error phase,
+codec result, operation identity and resources. Printing stays outside the
+timing path. A host operation ID does not add transaction correlation to the
+Modbus wire protocol. Passive traffic observation copies owner records without
+consuming bytes or delaying transactions when the console is full.
 
-Use capability-aware allocation for the intended memory region and retain
-free, minimum-free and largest-free-block measurements separately for
-internal memory and PSRAM. A free-byte total alone does not show whether the
-next required contiguous buffer can be allocated.
-[Espressif heap APIs](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/api-reference/system/mem_alloc.html)
-
-No PSRAM allocator is needed in the native runner. Actual allocation, fallback
-policy, memory measurements and ESP32 timing remain adapter qualification work.
-
-## Diagnostics and later Python runners
-
-Keep a terminal transaction snapshot with raw byte lengths, TX acceptance,
-physical TX completion, direction state, RX timing, timeout phase and codec
-status. Printing belongs outside the timing path. A host trace identifier is
-useful for logs, but is not a Modbus wire transaction identifier.
-
-FieldCore's [framed serial helper](https://github.com/janhavelka/FieldCore-node/blob/063ca063a50bcb8afb2b3b59f9af0f3f89bfc82f/scripts/hil_serial_cli.py)
-provides bounded command/response collection with explicit end markers. Its
-[RS485 stress runner](https://github.com/janhavelka/FieldCore-node/blob/063ca063a50bcb8afb2b3b59f9af0f3f89bfc82f/scripts/hil_rs485_stress.py)
-records firmware identity, configuration, before/after counters, serial logs
-and cleanup. Its [memory probe](https://github.com/janhavelka/FieldCore-node/blob/063ca063a50bcb8afb2b3b59f9af0f3f89bfc82f/scripts/hil_memory_stack_probe.py)
-records memory and stack checkpoints. Reuse these small patterns when a real
-standalone console exists; their current product commands and sensor fixtures
-do not apply to ESS unchanged.
-
-The first motor automation should use bounded non-changing probes and record
-timeouts, malformed replies, lost traces, latency distribution, reset/panic
-evidence and internal/PSRAM watermarks. Cached health and state watching must
-not accidentally generate extra bus traffic. Later motion stress needs
-explicit command identity, uncertain-execution handling and a separate stop
-path; a failed acknowledgement must never cause automatic motion replay.
-
-Native fake tests establish runner state transitions and bounded behavior.
-They do not qualify UART timing, echo wiring, PSRAM under load or the motor.
+The [finite Python scenarios](../bench_scenarios.md) use strict correlation,
+bounded logs and stop/restoration procedures on the ordinary firmware path.
+Default regression reads only. Failed acknowledgements never cause automatic
+motor replay; a later successful read does not erase an earlier uncertain write.
+Native fixtures qualify state transitions and software bounds, separately from
+physical timing, wiring, shaft behavior and loaded mechanics.
 
 ## Develop the integration reference here
 
-On 2026-10-03 the user requested that the major transport development and
-testing happen in this simpler repository, leaving FieldCore read-only for
-the session. This is feasible and is the recommended development route.
-Keep a working reference and portable test scenarios here; later FieldCore
-integration must still validate its actual scheduling, devices and hardware.
+The session boundary keeps FieldCore read-only. Transport/owner development
+and motor tests belong here; integration remains a separately authorized step.
+The reference now includes copied admission, per-producer scheduling, retained
+results, urgent stop, bounded cancellation, checked validation and typed motor
+contexts. These are implemented mechanisms to map and test in FieldCore.
 
-A fresh read-only source check used the FieldCore checkout at HEAD
-`560f8a234d8d840b4737c61dcb4196f438ca01a1`. The inspected transaction header
-still limits TX to eight bytes; `processResponse()` still strips a matching
-request prefix; completion still uses fixed length or suffix; the backend
-returns untimed byte batches; and the worker still delays 5 ms between cycles.
-These observations concern the inspected source, not a new FieldCore build or
-test. The earlier pinned source review above retains its original provenance.
+The 20-us GPTimer sampler and 64-slot internal capture ring let this example's
+owner sleep between service turns. The sampler rejects ambiguous multi-byte
+FIFO batches; it cannot reconstruct missing inter-byte gaps. Historical
+[capture measurements](../reports/2026-10-03_capture_load.md) place about
+19-21% of one core inside capture alone, excluding some interrupt overhead.
+This measured reference therefore needs a production CPU-budget review before
+adoption into FieldCore's full workload.
 
-The existing MotorControl-RS runner already covers the bounded single-request
-state machine, separate TX acceptance/completion, explicit echo, exception
-length, fault cleanup and retained diagnostics. Reuse that implementation and
-its tests. Keep motor codecs, units and future profile sequences in the public
-framework-independent library; keep bus ownership, queues, UART capture,
-FreeRTOS and health policy in the standalone application layer.
-
-| Develop and test here | What later remains in FieldCore |
-| --- | --- |
-| UART capture under realistic task/interrupt/console load; physical TX drain and DE control | Adapt its one existing UART owner/backend to the qualified capture strategy; repeat measurements with its full workload |
-| Transaction behavior: reviewed request sizes, FC06 echo/ack distinction, normal/exception replies, late traffic and uncertain writes | Map request/result fields and deadlines without losing information; retain compatibility with existing sensor protocols |
-| Small bounded bus-owner reference with multiple producers, explicit admission, queue limits and priority for a pending stop | Connect its command ingress, device module lifecycle and scheduling; verify fairness, cancellation and stop latency in the real runtime |
-| Motor profile preparation/sequencing and state interpretation, with native fault injection | Integrate the motor module, product configuration and health presentation |
-| Raw traces, memory watermarks, deterministic scenarios and Python campaigns | Run the same cases through its integration adapter, then add product-specific regressions |
-
-Avoid copying the complete FieldCore task and its runtime dependencies here.
-That would create a second firmware to maintain. Implement only the ownership
-and scheduling behavior needed to exercise the transport and motor contracts.
-Later reuse should favor the tested helper where its boundary fits; if a direct
-reuse does not fit, port the small mechanism with its regression scenarios.
-Do not maintain two independently evolving copies of the transaction engine.
-Packaging a shared transport component can be decided at that concrete reuse
-point; it is not a reason to put UART ownership into the motor library now.
-
-### First block: capture and scheduling evidence
-
-The polling ESP32-S3 adapter is a working bench reference, not a proven backend for
-FieldCore's worker. At 115200 baud an 8N1 character lasts about 87 microseconds;
-5 ms spans about 58 characters. Our adapter deliberately rejects more than one
-byte waiting in the hardware FIFO. Increasing the buffer or calling the same
-polling code from a slower task cannot reconstruct the missing wire timing.
-The original 0.5.1 four-slot queue was not an interrupt-fed receive buffer.
-Version 0.6.0 adds a 64-slot internal ring filled by optional GPTimer capture;
-this changes the capture service schedule, not the need for timing evidence.
-FieldCore's existing UART driver does buffer bytes independently of its worker;
-a 5 ms worker interval does not itself establish byte loss. Its current backend
-does not expose the timing/framing evidence required by our runner. Reliable
-frame-level hardware evidence may be a suitable alternative to per-byte timing;
-select that boundary from evidence, rather than requiring one interrupt per byte
-or shortening every application task's polling interval.
-
-The first capture/load implementation block is now complete; see the
-[capture/load audit](../reports/2026-10-03_capture_load.md). Native fixtures
-separate wire arrival from service and test batch/overflow, late/foreign replies,
-missing evidence and no replay. The ESP32 load fixture measures task/USB load,
-service gaps, failures and resources. GPTimer sampling and asynchronous DE
-release allow the owner to sleep; atomic TX/release bounds replace separate
-completion observations. No per-byte times are reconstructed from a FIFO batch.
-
-The measured 20-us sampler costs about 19 to 21% of one core inside the capture
-section alone. This is a reference choice that needs a production CPU-budget
-review. External TX/RX/DE, cache-off behavior and the full FieldCore workload
-remain separate qualification work; native tests and successful probes do not
-replace those measurements.
-
-Then add the smallest application bus owner needed for multiple request
-producers and stop priority. Admission must be bounded, queue-full behavior
-explicit, and a device's wait between sequence steps must release the bus.
-A pending stop gets the next permitted opportunity after settling the in-flight
-transaction; it cannot cut through an RTU frame or override unresolved bus
-recovery. Define and measure the latency bound for that case. Local cancellation
-is still not a motor stop, and bus failure cannot guarantee a physical stop.
-
-Use fake responders for writes, exceptions, dropped acknowledgements, echoes
-and incompatible frames before exercising typed motor operations on the bench.
-Keep normal-response correctness, rejection of bad evidence, service latency
-and resource limits as separate pass criteria. Existing FieldCore fixed-length
-and suffix protocols will need their own regression cases; this RTU runner
-must not silently redefine how all existing serial devices complete frames.
-
-The result should be working code, reproducible tests and a short mapping to
-FieldCore's ownership contract. It can remove much of the protocol debugging
-from integration. It cannot establish FieldCore thread safety, product timing,
-shared-device behavior or memory use without subsequent tests in that firmware.
+Reuse a tested helper where its boundary fits, or port the smallest mechanism
+with its regression cases. Do not maintain independently evolving transaction
+engines or extract a universal transport framework in advance of concrete
+integration. Motor sequences remain installed core code; queues, UART capture,
+FreeRTOS, cache placement and product health remain application responsibilities.
 
 ## Expected size of the FieldCore change
 
-The user confirmed the small reference approach: reuse this repository's runner
-and tests, with no copy of the FieldCore task. The following is an engineering
-assessment from inspected source, not a completed implementation or a time quote.
+Read-only motor observations are a smaller integration than motion. Complete
+motion needs coordinated owner/backend, command/result, module, product and
+CLI changes. Preserve the current architecture while adding enough information
+to distinguish accepted, transmitted, acknowledged, completed and unknown.
 
-For the full motion contract, budget a medium-to-large change within the RS485
-and device-command subsystem. The existing FieldCore architecture can remain:
-one bus owner, device modules, bounded queues, retained results and diagnostics.
-Adding read-only motor observations is a smaller step than adding dependable
-movement, interruption and uncertain execution handling.
+Required integration tests cover short exceptions, local/no echo and FC06
+provenance, partial TX, cancellation settlement, stale/late frames, priority
+stop, result capacity, sequence deadlines and no replay. Repeat existing sensor
+protocol regressions and run with the complete product workload. A drive command
+can continue after ACK; cancelling the host's wait does not cancel its movement.
 
-| Area | Inspected behavior and required change | Relative scope |
-| --- | --- | --- |
-| Request storage | Eight-byte TX limit must accommodate reviewed ESS requests up to 21 bytes. Check every containing queue/structure's memory use. | Small, with regression checks |
-| Response handling | Request-identical prefixes are stripped, which can discard a genuine single-register write acknowledgement. Add explicit echo policy and normal/exception framing while preserving existing sensor framing modes. | Moderate |
-| UART/backend contract | Current reads return untimed batches; DE changes return no success/failure result. Add usable capture/error evidence, physical TX drain and confirmed or explicitly uncertain direction state. Validate under actual task/interrupt load. | Substantial; hardware evidence determines the final design |
-| Commands and results | Current requests are Probe/Measure/ReadLast and readings use float. Add typed motion intent, exact native integer values and separate accepted/acknowledged/completed/unknown outcomes. Carry these through ingress, binding and result delivery without changing sensor meanings. | Substantial contract work across several files |
-| Cancellation and scheduling | Current cancellation clears active transport after requesting DE release. Motor operations need transport settlement, distinct local cancellation versus drive stop, pending-stop priority and explicit queued-motion disposition. | Moderate to substantial |
-| Retry and recovery policy | The inspected SHZK module owns its retries; the bus owner is not a universal automatic retry engine. Preserve that separation. A motor module must handle lost write acknowledgements without automatically repeating a possibly executed command. | Focused motor policy plus bus-recovery integration |
-| Product integration | Add the motor device module, configuration, composition and cached health/state presentation. Test compatibility with existing devices and the complete workload. | Moderate, after transport behavior is proven |
-
-The main behavioral difference is what a request means. A sensor transaction
-usually obtains an observation. A motor write may start an action that continues
-after the acknowledgement. If the reply to a relative move is lost, repeating
-the command can cause a second move. Cancelling the host's wait does not cancel
-the drive's movement. Those facts require different operation state and explicit
-recovery decisions, even when the wire protocol is still Modbus RTU.
-
-The ESP32 is not being asked to generate the motor's step pulses or close the
-drive's internal servo loop. It must deliver commands reliably, retain what is
-known about their execution, observe completion/faults and schedule stop within
-a defined bus-service budget. A functioning bus is still required for a serial
-stop command to reach the drive.
-
-Capture during competing work now has an implemented, measured reference.
-The next block is the small bus owner that decides which request may use the
-wire next, reusing the codecs and runner. Typed drive operations then add their
-own sequencing and state rules. Queueing, stop priority and typed motion are
-not supplied by the current read-only probe.
-
-Developing those blocks here can turn later FieldCore work into adaptation of
-tested mechanisms with known limits. It cannot make integration a header-only
-addition or remove tests for concurrency, old sensors, memory and product load.
-No reliable line count, effort percentage or completion date follows from this
-source review alone. Carry forward the capture/load evidence, add the bounded
-owner and reuse the same scenarios when integration is separately authorized.
+Standalone success removes protocol debugging from some of that work, but does
+not establish FieldCore thread safety, memory use, shared-device timing or a
+physical stop guarantee. No line-count estimate or completion date follows from
+this source review. Use the [handoff](../fieldcore_handoff.md) as the concrete
+implementation checklist.

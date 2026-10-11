@@ -6,6 +6,12 @@ folder name is not part of the API.
 
 ## Preparation status
 
+Verified on 2026-10-11: this checkout is `Projects/MotorControl-RS`, its `origin`
+is `https://github.com/janhavelka/MotorControl-RS.git`, and fetching that remote
+succeeds. The rename is complete here. The preparation notes and procedure below
+remain useful for older clones; do not repeat cache renames or remove bench
+evidence merely because this procedure is present.
+
 Prepared on 2026-10-03:
 
 - `library.json` and the standalone bench board metadata point to
@@ -21,8 +27,8 @@ Prepared on 2026-10-03:
 
 At preparation, GitHub still reported `janhavelka/ESS23-RS`; the new URL did
 not exist. The tracked URLs are deliberately prepared for the rename, not a
-claim that it already happened. This clone's working `origin` is left at the
-existing endpoint so preparation can be committed and pushed.
+claim that it had already happened. At that time this clone's working `origin`
+was left at the existing endpoint so preparation could be committed and pushed.
 
 ## GitHub and folder steps
 

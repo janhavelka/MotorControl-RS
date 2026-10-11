@@ -143,9 +143,10 @@ one physical device is present at that address.
 
 - `profile list` is the local manufacturer/profile catalog; `caps` includes
   probe/discovery availability and gaps.
-- `probe` / `ping` prepares the selected profile's minimal query.
+- `probe` prepares the selected profile's minimal query. Protocol 3 has no
+  `ping` alias.
 - `read identity` explicitly requests supported identity fields.
-- `discover [manufacturer <id> | profile <id>] [bounds...]` performs the
+- `discover [manufacturer stepperonline | profile ess_rs] [bounds...]` performs the
   explicit bounded scan. Help specifies address/tuple, time/request and
   result limits. `cancel` stops further scan work without erasing results.
 

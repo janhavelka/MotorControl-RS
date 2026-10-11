@@ -1,6 +1,6 @@
 # Host serial tuple support
 
-Release prompt 19 changes the standalone application's host UART settings.
+Host serial configuration changes the standalone application's UART settings.
 It does not change ESS registers, save drive parameters or change a selected
 endpoint. The implementation remains application support under
 `examples/common/`, outside the installed `MotorControlRS` core.
@@ -140,7 +140,7 @@ still require a current observation; a retained baseline does not establish
 either. Changed settings invalidate affected origins, scales and prepared
 targets; unchanged settings preserve them.
 
-## CLI, Python and next steps
+## CLI, Python and related operations
 
 `host` and `host caps` query the application snapshot. Explicit changes use
 `host baud RATE`, `host fmt FORMAT` or `host set RATE FORMAT`; `host restore`
@@ -165,11 +165,12 @@ retains the mismatched host state. A subsequent diagnostic recovery/restoration
 must be explicit. Queries and refusals preserve failure, divider readback and
 capability diagnostics; attempted reads include interrupted or lost admissions.
 
-[Prompt20 communication commissioning](ess_communication.md) reuses these
+[Communication commissioning](ess_communication.md) reuses these
 restoration/failure APIs under `BusOwner::beginCommissioning` token ownership.
 Normal producers remain excluded until explicit session finish; host recovery
-alone does not prove a responding candidate. Prompt22 can reuse the same owner
-for bounded discovery; no discovery orchestration is delivered here.
+alone does not prove a responding candidate. [Bounded discovery](ess_discovery.md)
+also uses the same owner and restores its starting host tuple before releasing
+the scan session.
 
 Native adapter/application/fake-console tests establish software behavior.
 This document makes no new hardware qualification claim. Alternate tuple

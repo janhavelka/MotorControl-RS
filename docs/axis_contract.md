@@ -1,14 +1,12 @@
 # Common axis API contract
 
-This is the accepted design for the common axis layer of `MotorControlRS`.
-It defines the intended callable library behavior for applications and consoles.
-`Units.h` implements displacement, velocity and acceleration conversion with
-independent preferences. Prompt 07 adds [exact host target preparation](axis_preparation.md),
-origins, reference evidence, quantization and native soft limits through `Axis.h`.
-Prompt 09 implements the bounded ESS finite-relative sequence; prompt 10 reuses
-it for absolute and wrapped-angle motion with shared `preparePosition` arithmetic.
-Prompt11 adds [finite serial velocity](ess_velocity.md), shared exact rate
-preparation, native ramp snapshots and the existing priority stop.
+This contract describes the common axis semantics and their implemented ESS
+mapping. `Units.h` supplies displacement, velocity and acceleration conversion;
+`Axis.h` supplies [exact target preparation](axis_preparation.md), origins,
+reference evidence, quantization and native soft limits. ESS relative,
+absolute and wrapped-angle sequences reuse `preparePosition` arithmetic.
+[Finite serial velocity](ess_velocity.md) uses shared exact rate preparation,
+native ramp snapshots and the same priority stop path.
 Finite position/stop evidence covers the documented bench subset; wider physical
 qualification and general profile ramp mapping remain open. Current operations
 and gaps are in the [API inventory](ess_api_cli_coverage.md). See
@@ -43,31 +41,36 @@ post-trigger observations are independent and remain mandatory.
 
 ## Callable surface and ownership
 
-Use the following function names as the planned common vocabulary. This is
-a behavior contract, not a declaration of final C++ signatures or layouts.
-Each fallible call returns `Status`. Preparation, conversion and codec payload
-outputs remain unchanged on call failure, with the documented output-count
-exception. `advanceOperation` separately records valid failure events and
-operation outcomes as specified below. Unsupported operations fail before
-any transaction is yielded.
+The following surface is implemented; profile headers expose common forwarding
+overloads where applicable. Consult those headers for exact arguments and
+context types. Preparation, conversion and codec payload outputs remain
+unchanged on call failure, with the documented output-count exception.
+Sequence advancement separately records valid failure events and operation
+outcomes. Unsupported operations fail before any transaction is yielded.
 
-| Operation | Planned callable behavior |
+| Operation | Callable behavior |
 | --- | --- |
-| Select and inspect | `getCapabilities`, `getAxisConfig`; report the selected profile and caller-owned configuration |
-| Discovery capability and presence | `getDiscoveryCapabilities`, `prepareProbe`; inspect per-profile discovery methods and prepare the smallest supported non-changing presence query |
+| Inspect profile/read capability | `getDiscoveryProfile`, `getDiscoveryCapabilities`, `ESS_RS::readCapabilities`; caller-owned `AxisConfig` holds host configuration |
+| Presence | `prepareProbe`; prepare the smallest supported non-changing presence query |
 | Configure interpretation | `validateAxisConfig`, `configureAxis`; validate and replace host-side scale/reference configuration while idle |
-| Convert quantities | `convertPosition`, `convertDisplacement`, `convertVelocity`, `convertAcceleration`; checked, side-effect-free conversions with quantization reports |
-| Observe | `prepareReadIdentity`, `prepareReadState`, `prepareReadConfiguration`; prepare supported reads, with explicit requested fields |
+| Convert quantities | `convertDisplacement`, `convertVelocity`, `convertAcceleration`; `preparePosition` resolves exact targets, frames and quantization; `prepareVelocityTarget` resolves exact rates |
+| Observe | `ESS_RS::prepareIdentity`, `prepareState`, `prepareConfig`; bounded typed reads with checked per-block observations |
 | Position | `prepareMoveAbsolute`, `prepareMoveRelative`; prepare a drive-internal trajectory in an explicit coordinate frame |
 | Wrapped orientation | `prepareMoveAngle`; resolve an angular path and prepare its resulting multi-turn target |
-| Continuous velocity | `prepareVelocity`; prepare the requested signed velocity, ramp policy and any required refresh contract |
+| Finite velocity | `prepareVelocity`; prepare signed velocity, explicit duration, ramp policy and stop behavior |
 | Reference search/return | `prepareHome`; require a supported, explicit homing or home-return method |
 | Coordinate change | `setAxisOrigin` for host interpretation; `prepareSetDevicePosition` for an explicit supported device counter change |
 | Stop | `prepareStop`; require explicit stop behavior and pending-device-command policy |
 | Drive power state | `prepareEnable`, `prepareRelease`; change drive state independently of polling or module selection |
 | Fault action | `prepareClearAlarm`; request a documented clear action and preserve the original alarm evidence |
-| Optional effort control | `prepareTorque`, `prepareCurrent`; available only for profiles with the corresponding documented control mode and units |
-| Execute a finite step | `advanceOperation`; process one supplied event and yield bounded work, a wait requirement or a result |
+| Execute a finite step | Operation-specific `nextRead`/`advanceRead`, `nextAction`/`advanceAction`, `nextMove`/`advanceMove`, `nextVelocity`/`advanceVelocity` and `nextHome`/`advanceHome` |
+
+There is no generic `OperationContext`/`advanceOperation` API. Read, action,
+move, velocity and homing contexts retain their concrete bounds and evidence.
+Torque/current motion, continuous unbounded velocity, jerk/blending and live
+target updates are not implemented; related design requirements below do not
+advertise callable operations. Native current settings are configuration,
+not an effort-control mode.
 
 The common layer implements units, limits and operation semantics. The
 selected profile implements family sequencing and the codec validates frames.
@@ -81,7 +84,7 @@ sequencing. FieldCore can call the same surface without console text.
 
 All data is fixed-size or caller-provided with explicit capacities. A
 preparation function validates the request and populates a caller-owned
-`OperationContext`; it performs no UART access, motor action or waiting.
+operation context; it performs no UART access, motor action or waiting.
 Contexts contain only bounded owned values and explicit state. Any reference
 to immutable profile tables must have static lifetime; transaction/input
 buffers are borrowed only for the duration of a call.
@@ -451,19 +454,19 @@ must not erase this result; retain its original axis, target and profile.
 
 ## Bounded operation sequences and stop priority
 
-An optional `OperationContext` supports sequences shared by all consumers:
+Caller-owned profile contexts support sequences shared by all consumers:
 configuration reads, checked parameter staging, explicit trigger, handshake,
 completion observation and documented refresh requirements. A profile may
 complete a command in one transaction or require several. The context must
 describe that difference rather than claim that one generic frame implements
 every move.
 
-`advanceOperation` consumes a caller-supplied event: response bytes,
+Each operation-specific `advance...` function consumes a caller-supplied event: response bytes,
 transmission evidence, transport failure, observation, elapsed-time/deadline
 event or local cancellation. It validates event correlation against operation,
-target/profile and configuration generation. One call performs bounded work
-and yields at most one transaction, a wait/service requirement, or an outcome.
-It never spins, reads a clock, sleeps, drives GPIO or calls transport.
+target/profile and configuration generation. A `next...` call yields at most
+one transaction, a wait requirement, or an outcome. Both calls perform bounded
+work without reading a clock, sleeping, driving GPIO or calling transport.
 
 The call's validation result and the operation outcome are separate. An
 invalid argument, malformed event envelope or event for another operation
@@ -515,7 +518,7 @@ origin-invalidation rules.
 An unreachable drive and shared-bus contention prevent a universal stop-time
 guarantee; no software API implies an independent hardware emergency stop.
 
-## Acceptance checks when implemented
+## Verification requirements
 
 Native tests must verify exact integer/rational round trips, negative and
 overflow boundaries, sign/origin transforms, gearing/travel conversion,

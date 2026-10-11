@@ -38,14 +38,16 @@ discover [profile ess_rs | manufacturer stepperonline]
 discover inspect|cancel|restore|finish
 ```
 
-Default scope is the bound ESS axis at the actual current host tuple, query500ms,
-overall5000ms,16 admitted requests and8 findings. Direct application configuration
-accepts addresses1..247, up to4 distinct adapter-supported tuples, query1..5000ms,
-overall1..60000ms, requests1..256 and findings1..8. The console retains its128-byte
-line and20-token limits; omit default options to fit a command. Tuple formats are
-8N1/8N2/8E1/8O1 at9600/19200/38400/115200. Support means host setup capability;
-alternate motor tuples remain unqualified. Only the recorded1152008N1 bench
-tuple has the304us first-response exception.
+Default scope is the bound ESS axis at the actual current host tuple, a 500 ms
+query budget, 5000 ms overall budget, 16 admitted requests and 8 findings.
+Direct application configuration accepts addresses 1..247, up to 4 distinct
+adapter-supported tuples, query budgets 1..5000 ms, overall budgets 1..60000 ms,
+1..256 requests and 1..8 findings. The console retains its 128-byte line limit
+including the terminator and 22-token limit including an optional `@ID`;
+omit default options to fit a command. Tuple formats are
+8N1/8N2/8E1/8O1 at 9600/19200/38400/115200 baud. Support means host setup
+capability; alternate motor tuples remain unqualified. Only the recorded
+115200 8N1 bench tuple has the 304 us first-response exception.
 
 Each admitted probe consumes one finding and one request. Identity refinement
 consumes another request and attaches evidence to that finding. All attempts,
@@ -84,12 +86,12 @@ still invalidates logical confidence.
 retention, then the next BEGIN may replace it. Generic transaction `result/release`
 remain for ordinary transactions; scan evidence uses `discover inspect/finish`.
 Console command IDs correlate each control separately from scan/query operation
-IDs. Output remains bounded8192bytes with existing nonblocking backpressure.
+IDs. Output remains bounded to 8192 bytes with existing nonblocking backpressure.
 Python validates the same grammar, correlation, immutable evidence and deadlines;
 `discovery-check` performs one finite scan and reports an interlock without
 automatically repairing it. Serial provenance is re-queried after scans.
 
-[Prompt22 evidence](reports/ess_release_22_2026-10-05.md) records native failure
+[Discovery evidence](reports/ess_release_22_2026-10-05.md) records native failure
 coverage, actual COM13 scans/restoration and the remaining qualification limits.
 The [fresh audit](reports/ess_release_22_audit_2026-10-05.md) adds recovery-before-
 delivery, refinement failure/cancellation and strict retained-evidence checks.

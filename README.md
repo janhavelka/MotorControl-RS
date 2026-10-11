@@ -13,6 +13,8 @@ Start with [getting started](docs/getting_started.md), the
 [interactive console](docs/console.md) or the [C++ move example](docs/move_example.md).
 See [all documentation](docs/README.md), [changelog](CHANGELOG.md) and
 [1.0.0 scope and evidence](docs/releases/1.0.0.md).
+The 1.0.0 tag fixes that release's source; the current branch may contain later
+maintenance documented in the changelog.
 
 ## Supported scope
 
@@ -144,8 +146,9 @@ retain their own licensing and hashes; they are excluded from core packages.
 `library.json` controls the version; `Version.h` is generated from it.
 
 Package name: `MotorControl-RS`. Namespace/include/CMake identity:
-`MotorControlRS`. The active repository is `janhavelka/ESS23-RS`; canonical
-metadata is prepared for `janhavelka/MotorControl-RS` under the
-[rename guide](docs/repository_rename.md).
+`MotorControlRS`. The repository is
+[`janhavelka/MotorControl-RS`](https://github.com/janhavelka/MotorControl-RS).
+The [rename guide](docs/repository_rename.md) records the completed rename and
+instructions for updating older clones.
 The [FieldCore handoff](docs/fieldcore_handoff.md) describes future integration;
 FieldCore is not a library dependency.

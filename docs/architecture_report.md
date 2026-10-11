@@ -1,418 +1,100 @@
-# Historical architecture review: 3 October 2026
+# MotorControl-RS source map
 
-This report describes the development source as inspected on **3 October 2026**.
-Its file counts, planned APIs and qualification statements are historical.
-Version numbers below were development identifiers, not published releases.
+Reviewed against the implementation on 11 October 2026. This page locates the
+current layers; [architecture](architecture.md) defines their contracts and
+[API/CLI coverage](ess_api_cli_coverage.md) records remaining gaps. The core
+contains no framework I/O, heap allocation, clocks, scheduler or hidden retry.
+The standalone firmware supplies those application responsibilities.
 
-For the current design and callable surface use [architecture](architecture.md),
-[API/CLI coverage](ess_api_cli_coverage.md) and [1.0.0 scope](releases/1.0.0.md).
-The [verifier](verification.md) requires Python for repository tests; clean
-exported core consumers remain independent of Python and firmware frameworks.
+## Installed core
 
-Updated on 2026-10-03 for version 0.6.0. The original core review used version
-0.3.0, commit `2c9970c`; the application audit started at commit `d2d9a3a`.
-The remaining text records that source snapshot and its then-planned work. The [architecture contract](architecture.md)
-remains the detailed design baseline; names marked **planned** below are not
-callable APIs yet.
-
-The [standalone runner](runner.md), [ESP32-S3 adapter and probe CLI](esp32_probe.md), and
-Python bench tools now have native tests and recorded read-only communication.
-The [0.5.1 audit](reports/2026-10-03_audit.md) covers capture races, fault
-reporting and harness validation. External timing and motion qualification
-remain open. The [capture/load audit](reports/2026-10-03_capture_load.md) adds
-independent wire scheduling, sleeping-owner reception, bounded load measurements
-and the atomic TX/DE timing contract. The [roadmap](roadmap.md) records release gates.
-The [platform-boundary audit](reports/2026-10-03_platform_scope_audit.md)
-updates the example naming, explicit pin configuration and optional drive I/O
-contract. Earlier report names and source revisions remain historical evidence.
-
-Release prompt 01 adds [BusOwner](bus_owner.md), a tested application FIFO with
-copied requests, reserved non-consuming results and checked-parser settlement.
-Runner now supports absolute deadlines and retained closure bounds. Its
-[handoff](reports/ess_release_01_2026-10-03.md) updates the software baseline to
-14 CTest suites and records current FieldCore inspection and Runner regression.
-Prompt 02 adds per-producer FIFO/cyclic fairness, reserved urgent admission,
-cancellation, sequence invalidation and a separate retained recovery outcome;
-15 CTest suites pass. Its [handoff](reports/ess_release_02_2026-10-03.md) records
-mixed-validator tests and conditional latency bounds. Prompt 03 now connects
-BusOwner to the actual Console/UART/load paths: bounded active input, one
-nonblocking USB writer, retained operation correlation, explicit release/cancel,
-separate qualified observation/delivery/recovery times and guarded host cleanup.
-Its [handoff](reports/ess_release_03_2026-10-03.md) records 16 native suites,
-current-image timer bench results and limits. Earlier observations below retain
-their provenance; prompt 03 supersedes direct Runner admission and blocking output.
-
-## 1. Assessment
-
-The current structure is a suitable base for both a standalone motor test
-application and a FieldCore device module. Keep the present separation:
-common calculations, drive-specific protocol code, and application-owned
-hardware. There is no reason to reorganize working files or introduce a
-general driver framework at this stage.
-
-The implemented library is small: three C++ source files provide units,
-ESS frame handling and register descriptions. Public code has no Arduino,
-ESP-IDF or FieldCore dependency. It does not allocate heap memory, create tasks,
-read clocks, log messages or retain transaction buffers. This makes the
-existing behavior practical to test on a desktop and reuse in firmware.
-
-This is still an early foundation. There are separate offline and read-only
-standalone programs; motion preparation, typed commands, sequencing and
-FieldCore bus integration remain to be built. The present tests do not establish an
-industrial qualification or guaranteed motor stopping behavior. The main
-work ahead is making those boundaries observable and testable, then
-qualifying the exact hardware and firmware.
-
-## 2. What exists and where it lives
-
-The package name is `MotorControl-RS`. C++ headers and namespace use
-`MotorControlRS`; the ESS family uses `MotorControlRS::ESS_RS`. The recommended
-checkout/GitHub name is `MotorControl-RS`; see [rename steps](repository_rename.md).
-
-| Current location | Responsibility |
+| Source | Responsibility |
 | --- | --- |
-| [MotorControlRS.h](../include/MotorControlRS/MotorControlRS.h) | Small common entry header: includes Status, Units and Version. Drive headers are included explicitly. |
-| [Status.h](../include/MotorControlRS/Status.h) | Result of a pure library call: error category, numeric detail and static diagnostic text. |
-| [Units.h](../include/MotorControlRS/Units.h), [Units.cpp](../src/Units.cpp) | Displacement, velocity and acceleration conversion; explicit scales, coordinate bases, polarity and arithmetic checks. Exact integer range/narrowing helpers. |
-| [Version.h](../include/MotorControlRS/Version.h) | Generated version constants from package metadata. |
-| [ESS Codec.h](../include/MotorControlRS/profiles/ess_rs/Codec.h), [Codec.cpp](../src/profiles/ess_rs/Codec.cpp) | Validate requests, build frames, check replies, expose the minimal probe and convert pairs of raw words. |
-| [ESS Types.h](../include/MotorControlRS/profiles/ess_rs/Types.h) | Generated native choices, flags and evidence categories. An enum value is not an implemented operation. |
-| [ESS Registers.h](../include/MotorControlRS/profiles/ess_rs/Registers.h), [Registers.cpp](../src/profiles/ess_rs/Registers.cpp) | Generated addresses, descriptors, source notes and indexed lookups. Useful for inspection and diagnostics. |
-| [ESS Defaults.h](../include/MotorControlRS/profiles/ess_rs/Defaults.h) | Explicitly labelled bench conversion assumptions. It does not configure or read a drive. |
-| [ESS Access.h](../src/profiles/ess_rs/Access.h) | Private generated 320-byte table for readable/single-word-writable addresses. Keeps codec use independent of descriptive catalogue strings. |
-| [rtu/Frame.h](../src/rtu/Frame.h) | Private byte packing, CRC and buffer-overlap helpers. Contains no UART or device register policy. |
-| [examples/units_preview/main.cpp](../examples/units_preview/main.cpp) | One offline program for desktop or Arduino USB console. Prints conversions and catalogue information. |
-| [examples/common/RtuRunner.h](../examples/common/RtuRunner.h), [RtuRunner.cpp](../examples/common/RtuRunner.cpp) | Bounded application transaction state, caller-owned buffers/traces, callback timing, framing, deadlines and recovery. |
-| [examples/common/Esp32S3Uart.h](../examples/common/Esp32S3Uart.h), [Esp32S3Uart.cpp](../examples/common/Esp32S3Uart.cpp) | Exclusive UART2/DE ownership and conservative polling or GPTimer capture on ESP32-S3. External timing qualification remains open. |
-| [examples/probe_cli/Esp32Load.h](../examples/probe_cli/Esp32Load.h), [Esp32Load.cpp](../examples/probe_cli/Esp32Load.cpp) | Optional competing task, console load, active-owner delay and measurement window. Lives only in the load example. |
-| [examples/probe_cli/](../examples/probe_cli/) | Platform-neutral bounded JSONL console and the Arduino application that owns its buffers, runner, cached results and policy. |
-| [examples/common/](../examples/common/) | Also contains board pins, console setting and flash partition file. |
-| [boards/bench_s3_n16r8.json](../boards/bench_s3_n16r8.json), [platformio.ini](../platformio.ini) | ESP32-S3 Arduino build selection and pinned toolchain/platform settings. |
-| [CMakeLists.txt](../CMakeLists.txt), [library.json](../library.json) | Native build/test/install, ESP-IDF component registration and PlatformIO packaging. |
-| [test/](../test/) | Native units/catalogue/codec/runner/console tests; actual adapter and application loop built against shared SDK fakes; Python harness and register-gap checks. |
-| [scripts/](../scripts/README.md) | Generators, reference preservation and finite probe/stress/cached-watch campaigns. Development tools, not firmware dependencies. |
-| [docs/reference/](reference/) | Source ledger, register evidence, audits and unresolved questions. |
-| [docs/vendor/](vendor/), [docs/standards/](standards/), [docs/pdf-extracted-md/](pdf-extracted-md/) | Preserved originals and searchable extracts. Excluded from the distributed library package. |
+| [MotorControlRS.h](../include/MotorControlRS/MotorControlRS.h) | Common umbrella; profile headers remain explicit |
+| [Status.h](../include/MotorControlRS/Status.h) | Pure-call validation result, numeric detail and static diagnostic text |
+| [Units.h](../include/MotorControlRS/Units.h), [Units.cpp](../src/Units.cpp) | Checked displacement, velocity and acceleration conversion with explicit scales |
+| [Axis.h](../include/MotorControlRS/Axis.h), [Axis.cpp](../src/Axis.cpp) | Exact rational target preparation, origins, reference validity, quantization and limits |
+| [ReadOperation.h](../include/MotorControlRS/ReadOperation.h), [ActionOperation.h](../include/MotorControlRS/ActionOperation.h), [MoveOperation.h](../include/MotorControlRS/MoveOperation.h), [VelocityOperation.h](../include/MotorControlRS/VelocityOperation.h) | Shared request/event/evidence value types |
+| [Discovery.h](../include/MotorControlRS/Discovery.h), [Discovery.cpp](../src/Discovery.cpp) | Finite profile inventory, probe capabilities and outcomes |
+| [Traffic.h](../include/MotorControlRS/Traffic.h), [Traffic.cpp](../src/Traffic.cpp) | Bounded caller-owned passive traffic records and cursors |
+| [Codec.h](../include/MotorControlRS/profiles/ess_rs/Codec.h), [Codec.cpp](../src/profiles/ess_rs/Codec.cpp) | ESS builders, checked response parsing, raw exceptions and pair word order |
+| [rtu/Frame.h](../src/rtu/Frame.h) | Private framing/CRC/overlap mechanics without transport or device policy |
+| [Registers.h](../include/MotorControlRS/profiles/ess_rs/Registers.h), [Types.h](../include/MotorControlRS/profiles/ess_rs/Types.h), [Access.h](../src/profiles/ess_rs/Access.h) | Generated register descriptors/enums and compact codec access policy from one ledger |
+| [Defaults.h](../include/MotorControlRS/profiles/ess_rs/Defaults.h) | Explicit bench conversion assumptions; no device configuration or detection |
+| [Reads.h](../include/MotorControlRS/profiles/ess_rs/Reads.h), [Discovery.h](../include/MotorControlRS/profiles/ess_rs/Discovery.h) | Typed bounded observations and minimal checked probe preparation |
+| [Actions.h](../include/MotorControlRS/profiles/ess_rs/Actions.h), [Position.h](../include/MotorControlRS/profiles/ess_rs/Position.h), [Velocity.h](../include/MotorControlRS/profiles/ess_rs/Velocity.h), [Homing.h](../include/MotorControlRS/profiles/ess_rs/Homing.h) | Concrete action/motion contexts, prerequisites, yielded work and event advancement |
+| [DriverSettings.h](../include/MotorControlRS/profiles/ess_rs/DriverSettings.h), [Segments.h](../include/MotorControlRS/profiles/ess_rs/Segments.h), [ControlSettings.h](../include/MotorControlRS/profiles/ess_rs/ControlSettings.h), [Tuning.h](../include/MotorControlRS/profiles/ess_rs/Tuning.h) | Typed native settings and bounded whole-candidate validation |
+| [Communication.h](../include/MotorControlRS/profiles/ess_rs/Communication.h), [Persistence.h](../include/MotorControlRS/profiles/ess_rs/Persistence.h) | Explicit communication/save/restore operations with retained uncertainty |
+| [Version.h](../include/MotorControlRS/Version.h) | Generated version constants from `library.json` |
 
-`Axis.h`, `Profiles.h`, `Sequence.h`, ESS `Commands.h`, the full motor CLI and an
-ESP-IDF example are **planned**. No placeholder files are needed. The current
-`src/Units.cpp` and `src/rtu/Frame.h` should stay where they are until an actual
-implementation gives a reason to split them.
+Profile implementations live in [src/profiles/ess_rs](../src/profiles/ess_rs/).
+Concrete `next...` functions yield a request, wait or result; `advance...`
+functions consume supplied evidence and time. There is no generic `Sequence.h`
+or `Commands.h` engine to import. Public common forwarding overloads call the
+same profile contexts. A raw codec remains independently usable and does not
+claim readiness, physical completion or complete native command coverage.
 
-## 3. How the current code connects
+## Standalone application and adapters
 
-Arrows below mean "uses". These are existing code dependencies, not UART
-traffic. A consumer may use units, the ESS codec or catalogue independently.
+| Source | Responsibility |
+| --- | --- |
+| [RtuRunner](../examples/common/RtuRunner.h) | One bounded transaction, physical TX/DE settlement, RX timing/framing, deadlines and explicit recovery |
+| [RtuBusOwner](../examples/common/RtuBusOwner.h) | Copied admission, producer scheduling, urgent capacity, sequence reservation and retained checked results |
+| [EssRtuValidator](../examples/common/EssRtuValidator.h) | Checked ESS response validation at owner settlement |
+| [Esp32S3Uart](../examples/common/Esp32S3Uart.h) | S3 UART2/pin configuration, optional GPTimer capture and atomic TX/release evidence |
+| [HostSerial.h](../examples/common/HostSerial.h), [BoardPins.h](../examples/common/BoardPins.h) | Host tuple timing/capability and standalone board configuration |
+| [ProbeApp.cpp](../examples/probe_cli/ProbeApp.cpp) and its operation helpers | Application-owned contexts/caches, operation admission, sequence driving and results |
+| [ProbeConsole.cpp](../examples/probe_cli/ProbeConsole.cpp), [ConsoleText.cpp](../examples/probe_cli/ConsoleText.cpp) | One command inventory, strict parsing, human/JSON rendering and bounded output |
+| [ProbePlatform.h](../examples/probe_cli/ProbePlatform.h), [ArduinoPlatform.cpp](../examples/probe_cli/ArduinoPlatform.cpp), [IdfPlatform.cpp](../examples/probe_idf/main/IdfPlatform.cpp) | Small independent startup/time/USB/idle/diagnostic adapters |
+| [Esp32UsbConsole.cpp](../examples/probe_cli/Esp32UsbConsole.cpp) | Shared bounded USB Serial/JTAG output |
+| [Esp32Load](../examples/probe_cli/Esp32Load.h) | Optional task/console/load fixture; no independent motor path |
+| [probe_idf](../examples/probe_idf/), [platformio.ini](../platformio.ini) | Native-IDF application and Arduino example builds |
+| [units_preview](../examples/units_preview/) | Offline conversion/catalogue example |
 
-```mermaid
-flowchart TD
-    App[Consumer: native test or firmware] --> Units[Common units]
-    App --> Codec[ESS codec]
-    App --> Catalogue[Optional ESS catalogue lookup]
-    App --> Defaults[ESS bench defaults]
-    Defaults --> Units
-    Units --> Status[Common Status]
-    Codec --> Status
-    Codec --> Constants[ESS register constants and native types]
-    Codec --> Access[Private access table]
-    Codec --> RTU[Private byte and CRC helpers]
-    Catalogue --> Constants
-```
+The physical UART has one owner. The application executes the core's yielded
+work and returns copied/qualified evidence. Neither the console nor the passive
+traffic observer consumes bytes directly from normal protocol processing.
+Large task-context storage may use PSRAM; ISR/driver-required state and stacks
+remain internal under the adapter contract. These choices do not constrain
+other core consumers.
 
-There is no dependency from the common units module back into ESS. The
-codec does not convert engineering units or decide whether a move is
-appropriate. The catalogue describes documented fields; it does not act
-as a live device object or implement setters.
+## FieldCore boundary
 
-The register data follows a separate development-time path:
+The relevant FieldCore owner/backend/binding sources were inspected read-only
+at commit `479d9ff308d3852d92b1f7552f803b6c990a59f0`. Its existing owner remains
+appropriate, but its eight-byte TX capacity, unconditional matching-prefix echo
+stripping, fixed/suffix completion, untimed RX batches and measurement-only
+command/results contract require explicit adaptation before motor integration.
+The [handoff](fieldcore_handoff.md) is the current implementation plan and source
+map for those edits; the historical reviews below are supporting evidence.
 
-```text
-Original ESS PDFs
-  -> reviewed transcription: docs/reference/ess_rs_registers.json
-  -> scripts/generate_ess_registers.py
-  -> Types.h, Registers.h, Registers.cpp, Access.h and register reference
-```
+Keep exact motion types and contexts in a FieldCore-owned device module, with
+its existing bus owner/backend executing work. Do not copy the standalone CLI,
+replace sensor completion rules with ESS rules, tunnel motion through `Measure`,
+or treat administrative `setEnabled`/cancel as drive enable/stop. No FieldCore
+source is changed or qualified by this repository's tests.
 
-Edit the JSON ledger and regenerate these outputs. Do not hand-edit generated
-C++ tables. The generator checks address coverage and keeps undocumented
-holes separate from reserved words and entries with unspecified access.
-FC10's four admitted write windows remain explicit reviewed policy in
-`Codec.cpp`; the JSON ledger is not a complete executable motion contract.
-The generator is also deliberately ESS-specific: segment geometry and some
-homing classifications remain code rules. A change to those parts of the
-ledger requires reviewing the generator and independent tests as well.
+## Tests, packaging and evidence
 
-With the tested static-library build, using the codec does not pull in the
-catalogue object and its descriptions. Calling `findRegister()` does. The
-current preview deliberately uses that catalogue, so its firmware size is
-not a measurement of the smallest possible codec consumer.
+[Native tests](../test/) cover codecs, arithmetic, sequence failures, settings,
+owner scheduling, transport timing, SDK fakes, console/API parity and Python
+campaign behavior. [Verification](verification.md) defines quick/full checks,
+clean source/install/package consumers and required CI. Python is required for
+repository verification but not for the exported core package.
 
-## 4. What the public API actually does
+The root [CMakeLists.txt](../CMakeLists.txt) supports native build/install and
+ESP-IDF component consumption. [library.json](../library.json) supplies package
+identity/version. Original vendor/reference files are excluded from core
+packages and retain their own licensing. The
+[release scope](releases/1.0.0.md) separates build/native coverage from the
+recorded motor/firmware/fixture evidence; S2 is compile-only.
 
-| Current API group | Result | What still needs application or future profile work |
-| --- | --- | --- |
-| `convertDisplacement`, `convertVelocity`, `convertAcceleration` | Checked engineering value and arithmetic error bound | Origin, absolute reference, rounding into a target, limits and device ramp encoding |
-| `validateNativePosition`, `narrowNativePosition` | Exact integer range validation/narrowing | Selection of the correct device field range |
-| `registerCount`, `registerAt`, `findRegister`, indexed lookups | Immutable source metadata | Readback, configuration and complete native command execution |
-| `validate*Request`, `build*Registers` | Request admission result or encoded bytes | Typed value meaning, readiness, side effects and transmission |
-| `validateReadResponseExpected`, `parse*` | Checked reply or structured failure | Complete-frame collection, response correlation and motion completion |
-| `buildProbe`, `parseProbe` | One model-word read and its raw response | Confirmed identity, discovery scan, readiness and freshness of other fields |
-| `encodeInt32` / `decodeInt32` and unsigned variants | Explicit word-order conversion | Proof that a particular ESS field uses that signed encoding and scale |
-
-Units are explicit at each call. Changing preferred units changes host
-interpretation, not drive configuration. Steps, encoder counts, load angles
-and machine travel have different bases. Gear ratio and lead are required
-only when the conversion crosses those bases. A scale marked `ASSUMED` is
-usable but remains an assumption; application policy decides when readback
-or qualification is required. The arithmetic error bound does not cover an
-incorrect mechanical ratio or encoder setting.
-
-The wire API currently allows addressed unicast, FC03 reads of up to 16
-reviewed words, FC06 single-word writes and four documented FC10 windows.
-The largest currently supported request is 21 bytes; the largest normal
-read reply is 37 bytes. Write acknowledgements are 8 bytes and exceptions
-are 5 bytes. These are implementation bounds, not universal drive limits.
-
-Builders return a byte length or zero and preserve the buffer on failure.
-They reject null, short or overlapping output buffers themselves. The separate
-request validators explain request-policy failures such as an unsupported
-address/window; they do not check output storage. A zero-length result must
-never be submitted to a transport. Parsers require request expectations;
-output capacity is not the expected register count. Failed parsing preserves
-payload outputs and resets an explicit output count to zero. Diagnostic and
-count storage must not alias frame or payload storage.
-
-## 5. Ownership and an example transaction
-
-| Concern | Library | Standalone application or FieldCore |
-| --- | --- | --- |
-| Units, frame bytes and response validation | Pure calculations and checked codecs | Supplies configuration and expected request details |
-| Buffers | Borrows valid storage for one call | Owns TX/RX storage through transaction completion |
-| UART and direction pin | No hardware access | Opens UART, controls DE/RE and verifies physical TX completion |
-| Time and shared bus | No clock or scheduler | Owns RTU gaps, timeouts, arbitration and late-frame recovery |
-| Device sequence, **planned** | Advances bounded caller-owned state and yields the next work item | Owns state, feeds events/time and schedules yielded work |
-| Cached feedback and health | Current core retains neither | Owns observations, timestamps, failure counters and health policy |
-| Retry and recovery | No automatic attempt | Applies explicit policy; preserves uncertain write outcomes |
-| Console, logging and storage | No services | Parses commands, records evidence and persists selected settings |
-
-For a model-word probe, the implemented standalone path is:
-
-1. The application selects an explicit target address and host serial format.
-2. `ESS_RS::buildProbe()` fills its caller's eight-byte request buffer.
-3. The bus owner waits for admission, transmits it and releases DE after the
-   last stop bit. It collects a complete reply or records a transport failure.
-4. `ESS_RS::parseProbe()` checks address, function, exact length, count and CRC.
-5. The application retains the attempt's transport/codec result and time. On
-   success it also publishes the raw model word. On failure, its model output
-   is invalid; a checked exception retains its raw rejection code.
-
-Step 3 uses the example runner and ESP32-S3 adapter. Neither a builder nor a parser
-sends data by itself. The console serves cached diagnostics after a terminal
-fault even if DE cleanup is still pending; admission remains interlocked.
-
-The bus owner is essential to correctness: an FC03 reply carries no register
-start address or transaction ID. A delayed reply of the same shape cannot be
-distinguished by CRC and count alone. Likewise, an FC06 local echo can have
-exactly the same bytes as the real acknowledgement. These problems require
-transport evidence and recovery policy; adding another parser check cannot
-recover information absent from the wire.
-
-## 6. How motion should be added
-
-The [axis contract](axis_contract.md) and [profile contract](profile_contract.md)
-already describe the intended behavior. Implement it in small steps:
-
-```text
-Typed application request, e.g. relative move in degrees
-  -> common preparation: units, reference, limits and capability checks
-  -> ESS preparation: verified register values and device command sequence
-  -> caller-owned operation state yields a transaction
-  -> application bus owner performs it
-  -> checked reply or timeout event advances the operation
-  -> application retains acknowledgement and completion evidence separately
-```
-
-The preparation and sequence API in this flow is **planned**. It should be
-shared by the standalone program and FieldCore so neither consumer needs
-its own ESS setup/start/observe logic. One advancement processes one event;
-it does not sleep or run a private UART loop. Motor-specific commands that
-do not fit the common vocabulary remain explicit ESS extensions.
-
-Stop must interrupt pending application work while the owner settles the
-transaction already on the wire. Cancelling a local wait is not a stop.
-An acknowledged start is not completed movement. A timeout after transmission
-can leave execution unknown; automatic replay of a relative move can move
-twice. Tests for these cases belong with the first sequence implementation,
-before increasing command coverage.
-
-Additional serial families should reuse proven byte helpers and common
-motion meaning while keeping their own limits, register encodings, timing
-and completion rules. Leadshine remains a design comparison, not a supported
-profile. CANopen remains a separate future library under the accepted scope.
-
-## 7. Standalone testing application
-
-The existing preview exercises public units and catalogue APIs on a desktop
-or the ESP32-S3 Arduino build. It does not initialize RS485, accept motor commands
-or test motor behavior. Its selected pins are TX47, RX48 and DE21; these
-remain example configuration. Core headers contain no board pins.
-
-The separate `examples/probe_cli` application has a small Arduino entry point
-and shared command dispatch; `examples/common` owns its runner and UART adapter.
-It calls the public ESS probe builder/parser and retains diagnostics in PSRAM.
-Its only motor operation is the model-word read. Native tests inject replies,
-timeouts, echo, capture races and stuck TX into the actual implementation.
-A native ESP-IDF entry point with equivalent semantics remains planned.
-
-The CLI should call the same public motion/profile APIs that upper firmware
-uses. It should not perform its own angle conversion or construct ESS
-register sequences. `status` and `health` show cached evidence; explicit
-read/check commands refresh it. `stats reset` clears local statistics, `recover`
-repairs host transport, and motor actions have explicit names. See the
-[CLI contract](cli_contract.md) for the agreed vocabulary.
-
-The sibling repositories provide useful codec and cooperative transport
-patterns, but their example transports are not interchangeable. SHZK/VTN
-have blocking-flush considerations; VibWire's helper is restricted to
-eight-byte FC04 requests. Audit and adapt the necessary pieces rather than
-copy a sensor transport with its retry assumptions. Details are in the
-[ecosystem review](reference/02_ecosystem_review.md).
-
-## 8. FieldCore integration
-
-FieldCore source was rechecked at commit `063ca063`. Its unrelated local
-settings/storage edits were left untouched. The source links in this section
-navigate the adjacent checkout and require that checkout to be present;
-they are evidence links, not build dependencies.
-
-FieldCore should consume this library through a motor device module in its
-own repository. That module owns axis configuration, operation state and
-cached observations. FieldCore's existing RS485 owner remains the sole owner
-of the physical bus. Do not link the standalone CLI/transport into FieldCore
-or create a second UART task for the motor library.
-
-The intended connection is:
-
-```text
-FieldCore command / product policy
-  -> motor device module and public MotorControlRS API
-  -> existing RS485 transaction owner and hardware backend
-  -> received observation back to the module and checked library parser
-  -> cached motor state, retained operation result and FieldCore health
-```
-
-The existing binding already has useful ownership hooks: `start`, `poll`,
-`takeStep`, `acceptObservation`, `takeResult` and cached status. Permanent
-modules and immutable bindings are assembled in product composition. The
-future motor module can follow this lifetime pattern while using a richer
-motion command/result contract. See
-[Rs485DeviceBinding.h](../../FieldCore-node/include/TunnelMonitor/rs485/Rs485DeviceBinding.h)
-and [TunnelMonitorRuntimeComposition.cpp](../../FieldCore-node/src/product/tunnelmonitor/TunnelMonitorRuntimeComposition.cpp),
-especially the module/binding construction near lines 343-346.
-
-An observation's RX pointer is borrowed. `Rs485Task::finishTransport()` calls
-the module's `acceptObservation()` and then clears the receive buffer. Parse
-and copy the required facts inside that callback; never keep the pointer for
-a later tick. Device waits should release the bus for other modules.
-
-| Current FieldCore limitation | Source evidence | Required integration work |
-| --- | --- | --- |
-| Eight-byte TX buffer | `kRs485TransactionTxCapacity`, owner contract line 10 | Admit the reviewed ESS requests up to 21 bytes; review queue and transaction storage together. |
-| Request-identical RX prefixes are removed | `Rs485Task.cpp`, near line 1216 | Introduce an explicit, qualified echo policy so an FC06 acknowledgement is neither discarded nor confused with local echo. |
-| Completion supports fixed length or suffix | Owner contract line 27; `responseComplete()` near line 1305 | Handle normal replies and five-byte exceptions promptly, and establish RTU frame boundaries. An exception can currently remain until timeout; it is not necessarily discarded. |
-| Five-millisecond worker polling and byte batches without receive timestamps | `Rs485Diagnostics.cpp`, line 117; backend `read()`, near line 190 | Provide or qualify receive timing/idle evidence. Buffered reads cannot reconstruct sub-millisecond gaps; a long inter-request delay does not solve this. |
-| Only Probe, Measure and ReadLast requests; readings use float | `DeviceMeasurement.h`, lines 25, 63 and 110 | Add explicit typed motion commands and retained results. Preserve exact native position integers separately from float telemetry. |
-| Local cancellation and sensor retry policies | `Rs485Task::processCancelWork()`; sensor module retry handling | Define stop scheduling, late-reply handling and uncertain execution. Do not equate local cancel/module disable with motor stop/release or replay timed-out motion. |
-| Only selected baud rates with 8N1 are admitted | `rs485SerialFormatValid()`, owner contract line 78 | Advertise the supported format subset and extend only when needed; do not claim all ESS or other drive formats already work. |
-
-Relevant source files are the
-[owner transaction contract](../../FieldCore-node/include/TunnelMonitor/rs485/Rs485OwnerTransaction.h),
-[Rs485Task.cpp](../../FieldCore-node/src/rs485/Rs485Task.cpp),
-[Rs485Diagnostics.cpp](../../FieldCore-node/src/rs485/Rs485Diagnostics.cpp),
-[ArduinoRs485Backend.cpp](../../FieldCore-node/src/rs485/ArduinoRs485Backend.cpp),
-[DeviceMeasurement.h](../../FieldCore-node/include/TunnelMonitor/contracts/DeviceMeasurement.h)
-and [ShzkDeviceModule.cpp](../../FieldCore-node/src/rs485/ShzkDeviceModule.cpp).
-
-The future FieldCore motor device/product has not been defined. This handoff
-concerns its RS485 task and motor module only; it imposes no CO2control product
-or E2 sensor-bus requirement. The standalone bench uses its own explicit
-[wiring configuration](reference/04_esp32_bench.md).
-
-Library behavior must not be reduced to fit FieldCore's current sensor path.
-Qualify the small standalone read path first. Then make narrowly tested
-FieldCore transport changes and add a read-only ESS module before exposing
-motion through an explicit application command contract.
-
-## 9. Debugging and verification
-
-Keep these four meanings separate in logs and APIs:
-
-| Evidence | Example | Owner |
-| --- | --- | --- |
-| Pure-call result | Bad CRC, unsupported window, missing scale | `Status`; optional `FrameError` for parser category |
-| Device data | Raw alarm word, drive released, position | Future typed profile decoding and application cache |
-| Transaction/operation outcome | Not sent, timed out after TX, acknowledged, completion observed | Application transport and future caller-owned sequence |
-| Health/freshness | Communication degraded, stale position, drive alarm | Application policy over retained observations |
-
-Interpret `Status.detail` together with the operation and error category.
-It may be a raw ESS exception byte, a `UnitError`, a frame reason or a request
-argument. It is not one universal error enum. Static message text is for
-people; program logic should use documented categories.
-
-The current probe path records target/serial settings, raw TX/RX with actual
-lengths, transaction phase, time ranges, parser result and retained outcome.
-Later commands should also record their register/count and each observation's
-age separately. A fresh identity reply must not make an old position fresh.
-Keep this logging in the application so the library remains easy to test
-without a logger or clock.
-
-The 0.6.0 audit runs **13 CTest suites**, covering the core, runner, adapter,
-actual application loop, console, Python harness, generated files and preview.
-Build and historical package/header evidence is recorded in
-[verification.md](verification.md), separately from hardware qualification.
-
-Run the native checks with:
-
-```sh
-cmake -S . -B build/motorcontrol-native -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build/motorcontrol-native
-ctest --test-dir build/motorcontrol-native --output-on-failure
-```
-
-CMake currently treats Python 3.10+ as optional. Without it, only nine CTest
-checks are registered, so a successful run alone does not establish that
-generated files and gap metadata were checked. Full repository validation
-must include those Python checks. Ordinary consumers need only the generated
-C++ code. Native ESP-IDF and ESP32-S2 firmware qualification remain pending.
-
-CMake consumers can use `add_subdirectory` or an installed package with
-`find_package(MotorControlRS CONFIG REQUIRED)`, linking
-`MotorControlRS::MotorControlRS`. ESP-IDF component registration is present,
-but its existence is not a completed IDF firmware test. The verified native
-package path is static linking; Windows DLL export support is not established.
-The units implementation requires `double` with at least 53 bits of precision.
-
-COM13 now runs the read-only probe application, with the original CO2control
-flash backup retained. External UART timing, motion, stop behavior and
-persistence remain unqualified; see the dated bench and audit reports.
-
-## 10. Review findings and next work
-
-The audit found and fixed example-layer defects; no core API or register-policy
-change was needed. Keep the existing free functions, fixed buffers, small helpers and
-separate catalogue. Avoid splitting the three source files merely to make
-the folder tree look more complete.
-
-| Priority | Finding | Recommended next step |
-| --- | --- | --- |
-| Before expanding bus use | The read-only path works on the bench; its timing assumptions and raw model identity remain unqualified. | Capture external TX/RX/DE evidence and resolve exact identity/settings through reviewed read-only helpers. |
-| Before movement | Raw writable registers are not typed motion validation or command sequencing. | Add explicit state decoders and checked command preparation; test lost acknowledgements, partial setup and stop interruption with the first workflow. |
-| Before FieldCore integration | Current sensor command/transport assumptions cannot carry the full motor contract. | Develop and qualify the small transport/bus-owner reference here first, then adapt FieldCore's existing owner in a separately authorized integration step. See the [development route](reference/10_runner_platform_review.md#develop-the-integration-reference-here). |
-| For repeatable releases | Header/package/binary64 checks are recorded manual verification; Python checks are optional and no CI workflow is checked in. | Add a small repeatable verification command and CI in a separate block; require the complete check set for releases. |
-| During each implementation block | Design documents contain more APIs than the current headers. | Keep current code status explicit, update the backlog, and add files only with real behavior and tests. |
-
-The [backlog](backlog.md) tracks these steps. Source uncertainties and timing
-limits remain in the [implementation reference](reference/01_implementation_reference.md)
-and [timing audit](reference/09_timing_and_gap_audit.md). Resolve those through
-document evidence and measured behavior, without inventing register meanings
-or treating host timeout settings as drive guarantees.
+Earlier architecture/capture development is preserved in the
+[initial audit](reports/2026-10-03_audit.md),
+[capture/load audit](reports/2026-10-03_capture_load.md),
+[platform-boundary audit](reports/2026-10-03_platform_scope_audit.md),
+[owner implementation](reports/ess_release_01_2026-10-03.md),
+[scheduling audit](reports/ess_release_02_2026-10-03.md) and
+[console integration](reports/ess_release_03_2026-10-03.md).
+Their version numbers, suite counts and then-planned work describe those
+snapshots. They are not the current API or source inventory.

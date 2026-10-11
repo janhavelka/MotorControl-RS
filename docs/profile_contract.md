@@ -1,29 +1,18 @@
 # Drive profile and complete native API contract
 
-Prompt18 implements [typed native tuning](ess_tuning.md): twenty reviewed
-parameters reuse bounded settings preparation, sequencing and raw observation.
-Ambiguous earlier collision access, unknown physical scaling and independent
-effects qualification remain guarded before traffic.
+This contract defines profile scope, native coverage and evidence alongside
+the [common axis API](axis_contract.md). ESS-RS implements checked codecs,
+typed observations/settings and bounded action, position, velocity, homing,
+commissioning and persistence operations. The [API/CLI inventory](ess_api_cli_coverage.md)
+records the remaining gaps; the register catalogue alone is not callable
+coverage. Leadshine iEM-RS is a contrasting design case, not an implementation.
 
-Prompt17 adds [typed control configuration](ess_control_settings.md): two bounded reads and checked single-word updates with whole-candidate model/effects/current validation. These are settings, not commanded current or torque modes. Raw algorithm3 and conflicting percent/current semantics remain explicit.
-
-
-Prompt16 implements [stored PT/PV records](ess_segments.md) through the existing bounded typed settings mechanism. All16 records are readable; reserved slots remain unavailable and pulse-pair writes unsupported. Storage, externally selectable combinations and physical qualification remain separate.
-
-
-Prompt14 implements [ESS homing methods33/34/35](ess_homing.md), with [all35 source dispositions](ess_homing_methods.md), existing active auxiliary7 and qualified zero offset only. No I/O setter, collision alias or new paired span is introduced.
-
-Prompts 05–06 implement bounded [typed identity/configuration/state reads](ess_reads.md), common/profile routes, passive per-block status/health and finite opt-in polling. The [linked inventory](reference/ess_rs_operations.json) separates read/write/action, native and hardware evidence. Model/firmware mappings and physical feedback units remain unresolved; these reads perform no writes. Later ordinary-firmware finite free-shaft tests provide checked drive-reported action/motion evidence for their recorded subset, not universal readiness or calibrated feedback.
-
-This is the accepted profile-layer design for `MotorControlRS`. It specifies how
-each selected drive exposes its complete documented functionality alongside
-the [common axis API](axis_contract.md). The first implementation supplies the
-[ESS register catalogue](reference/05_ess_register_catalog.md), generated C++
-descriptors and native enums. Checked raw ESS codecs and a minimal probe are
-also implemented. Typed identity/configuration/state reads, bounded actions and finite position sequencing have available functional bench evidence for the recorded ordinary-firmware subset. Independent shaft observation, electrical timing and wider hardware qualification remain open. The installed [relative-position API](ess_position.md) shares common target preparation and the existing action evidence boundary.
-ESS-RS is the first target; Leadshine iEM-RS
-is a contrasting design case whose concrete model and firmware still require
-selection.
+The [release scope](releases/1.0.0.md) identifies the bench-tested subset and
+unperformed qualification. Model/firmware mappings, physical feedback units,
+electrical timing and independent shaft measurements remain unresolved. Current
+settings are not torque/current motion; stored segment configuration supplies
+no serial trigger. Homing methods 33/34/35 require their exact documented
+prerequisites; they do not qualify switch-based methods.
 
 The [architecture](architecture.md) defines ownership and the three layers.
 The [CLI contract](cli_contract.md) provides console access to these same
@@ -72,10 +61,11 @@ for diagnostics but cannot substitute for documented native API coverage.
 
 ## Coverage ledger
 
-Extend the existing ESS register ledger with linked, reviewable operational
-coverage as typed implementation proceeds. Keep register transcription in one
-source and generate documentation from it where useful. The operational fields
-below are requirements, not completed coverage. Expand every applicable vendor register,
+The [operation ledger](reference/ess_rs_operations.json) links implementation
+and evidence to the ESS register transcription. Keep register facts in one
+source and generate documentation from it where useful. The fields below
+define complete coverage; they do not assert that every entry is resolved.
+Account for every applicable vendor register,
 object, command value, meaningful bitfield and indexed record, including
 reserved entries needed to account for the source map. Link command prose,
 appendix rows and diagrams that describe the same feature. Record differing
@@ -119,26 +109,31 @@ returns an unsupported result before yielding a transaction.
 
 ## Typed native surface
 
-The ESS family namespace is `MotorControlRS::ESS_RS`. The table distinguishes
-existing files from planned operations; do not create placeholder headers.
+The ESS family namespace is `MotorControlRS::ESS_RS`. These are installed
+headers; unresolved operations stay explicit in the inventory without
+placeholder APIs.
 
 | Path / implementation state | Responsibility |
 | --- | --- |
-| `include/MotorControlRS/Profiles.h` (planned) | Profile identity, capability and coverage metadata shared by applications |
+| `include/MotorControlRS/Discovery.h` | Compiled profile identity, discovery capabilities and generic outcomes |
 | `include/MotorControlRS/profiles/ess_rs/Codec.h` | Stateless bounded frame builders, validators, decoders and checked response parsers |
 | `include/MotorControlRS/ReadOperation.h` | Portable read targets, application-supplied events, timing evidence and declared wiring |
 | `include/MotorControlRS/profiles/ess_rs/Reads.h` | Bounded typed identity/configuration preparations, observations and read capabilities |
 | `include/MotorControlRS/profiles/ess_rs/Registers.h` | Resolved register identities and typed descriptors, including access and widths |
-| `include/MotorControlRS/profiles/ess_rs/Types.h` | Existing generated family enums; future handwritten observations and operation types belong in separately owned headers |
+| `include/MotorControlRS/profiles/ess_rs/Types.h` | Generated native enums; handwritten observations and operations live in separate headers |
 | `include/MotorControlRS/ActionOperation.h` | Explicit action/stop policies and caller-supplied transaction evidence |
 | `include/MotorControlRS/profiles/ess_rs/Actions.h` | Bounded enable/release/alarm-clear/normal/direct-stop preparations and contexts |
-| `src/profiles/ess_rs/` | Codec/catalogue implementation, typed reads in `Reads.cpp` and bounded actions in `Actions.cpp` |
+| `include/MotorControlRS/profiles/ess_rs/Position.h`, `Velocity.h`, `Homing.h` | Concrete motion contexts, preparations, event advancement and yielded work |
+| `include/MotorControlRS/profiles/ess_rs/DriverSettings.h`, `Segments.h`, `ControlSettings.h`, `Tuning.h` | Typed native settings and whole-candidate validation |
+| `include/MotorControlRS/profiles/ess_rs/Communication.h`, `Persistence.h`, `Discovery.h` | Explicit commissioning, persistence and non-changing probe operations |
+| `src/profiles/ess_rs/` | Implementations corresponding to the profile headers |
 
 Expose named read preparations, typed configuration preparations and explicit
-actions. Native operations can use the `prepare...` vocabulary and the same
-caller-owned `OperationContext`/`advanceOperation` contract as the common
-layer. Final family function signatures and resolved types are established
-against the completed ledger, rather than invented here.
+actions. Native operations use `prepare...` functions and concrete caller-owned
+contexts. Operation-specific `next...`/`advance...` calls implement the shared
+event/ownership contract; common forwarding overloads use those same contexts.
+Exact signatures and bounds belong to the headers, not a speculative generic
+sequence facade.
 
 Use distinct types for quantities with different meanings, bounded terminal
 and segment indexes, and family-specific enums for native choices. A typed
@@ -273,9 +268,9 @@ representable command when the caller cannot meet its timing requirements.
 ## Sequencing, conflicts and cached knowledge
 
 Family sequences are optional reusable library logic with application-owned
-state. A native preparer fills the same bounded `OperationContext` used by
-common operations. `advanceOperation` consumes one supplied event and
-yields a bounded transaction, a wait requirement, or a result. It never
+state. Native and common preparations fill the same operation-specific context.
+`advance...` consumes one supplied event; `next...` yields a bounded transaction,
+a wait requirement, or a result. Neither function
 transmits, waits, reads a clock or retries on its own. Direct codec consumers
 may manage the equivalent workflow themselves and retain responsibility for
 the same prerequisites and uncertainty handling.
@@ -325,8 +320,8 @@ certainty only when the documented application evidence supports it.
 
 FieldCore can own the same contexts and events inside a future motor module;
 the reusable profile does not become a bus owner or a scheduler. Current
-FieldCore transaction and device-module limitations remain as recorded in
-the [ecosystem review](reference/02_ecosystem_review.md). No existing motor
+FieldCore transaction and device-module limitations are recorded in the current
+[integration handoff](fieldcore_handoff.md). No existing motor
 integration or deadline guarantee is claimed by this contract.
 
 ## Acceptance for a complete profile
@@ -357,8 +352,8 @@ A future release may claim complete documented API coverage only when:
    advertised fast probe has its own validation, side-effect and timing
    evidence; a full identity/status sweep is not hidden behind `probe`.
 
-The catalogue and bounded raw ESS codec are implemented. They do not establish
-complete typed native command coverage. Resolving remaining vendor ambiguities,
-implementing typed operations and qualifying hardware are subsequent blocks.
+The implemented typed subset remains short of complete native command coverage.
+Resolving remaining vendor ambiguities, closing the named inventory gaps and
+qualifying additional physical operations are separate work.
 The [serial comparison](reference/08_serial_protocol_review.md) supplies original
 manuals and protocol contrasts for future families without claiming support.

@@ -31,7 +31,7 @@ word, and no missing address is invented.
 The position target preserves both raw words and an unsigned assembled value
 only when the retained word order is established. Signed meaning and physical
 command scale remain separate qualifications. Every stored target pair has
-an unavailable typed-write disposition: [prompt 12's policy](ess_pair_writes.md)
+an unavailable typed-write disposition: the [pair policy](ess_pair_writes.md)
 establishes no admissible FC10 window for those pairs, a five-word subset or a
 whole record. Two FC06 writes are not a substitute. A candidate combining an
 unsupported pair with otherwise legal scalar changes fails before any write.
@@ -172,12 +172,10 @@ no speculative restore was sent. Independent response-source/device-acceptance
 evidence or exact firmware semantics is still required to identify the cause.
 The read path remains usable; the failed write is not hardware-qualified.
 
-On the historical prompt16 ESP32-S3 image, `DriverContext` occupied 3096 bytes,
-`DriverRequest` 88, `DriverPrerequisites` 848 and `SegmentObservation` 152.
-Prompt17 extended the shared settings types; its [named-image measurements](reports/ess_release_17_2026-10-04.md#storage-verification-and-handoff)
-are `DriverContext` 3456 bytes, `DriverRequest` 104 and `DriverPrerequisites` 1192.
-Consumers must size storage using their installed types; these measurements
-are not portable ABI guarantees.
+Consumers must size storage using their installed types and target ABI.
+Historical context sizes are retained in the [segment report](reports/ess_release_16_2026-10-04.md)
+and [control-settings report](reports/ess_release_17_2026-10-04.md#storage-verification-and-handoff);
+they are not current portable ABI guarantees.
 The application retains larger settings contexts/cache and console storage
 in PSRAM; capture/driver state and stacks remain internal. The report records
 actual memory watermarks and service/capture gaps for the named image.
@@ -190,7 +188,7 @@ readback settlement or physical TX settlement. The core imports no FieldCore,
 UART, MCU, console or scheduler types.
 
 The [fresh combined audit](reports/ess_release_16_17_audit_2026-10-04.md) checks
-both families against the full prompts. Write acknowledgement or checked device
+stored-segment and control-setting contracts. Write acknowledgement or checked device
 rejection requires qualified frame closure within the retained write budget;
 late checked bytes stay raw evidence with unknown execution. An on-time closure
 delivered later keeps its original classification. The Python checker follows

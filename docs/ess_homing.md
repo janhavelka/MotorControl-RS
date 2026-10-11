@@ -12,7 +12,7 @@ Methods 33 and 34 implement negative/positive internal-Z search, and 35 uses
 the current mechanical position. Other switch methods remain unimplemented;
 method 18 and collision methods −1 through −4 have unresolved source semantics.
 See the [complete method table](ess_homing_methods.md) for trajectories,
-prerequisites, source conflicts and the prompt 15 fixture handoff.
+prerequisites, source conflicts and external-input fixture requirements.
 
 ## Admission and yielded work
 
@@ -129,6 +129,6 @@ uncertainty and bounded evidence.
 The finite Python `home` scenario offers method 35 with an explicit normal/direct
 cleanup stop, retained-result inspection and final state/health reads. Methods
 33/34 need independently qualified index/mechanics before a physical campaign.
-The current firmware keeps write timing/echo and method qualifications closed;
+The current firmware has no qualified homing method/parameter fixture;
 no physical homing or independent zero/return measurement is established by
 native tests or a read-only bench regression.

@@ -58,7 +58,7 @@ bool BusOwner::sequenceValid(const BusRequest& request) const noexcept {
     const ProducerSlot& producer = storage_.producers[request.producer];
     return id.owner == this && id.producer == request.producer && id.generation &&
         id.generation == producer.generation && producer.deadlineUs &&
-        request.wire.deadlineUs == producer.deadlineUs;
+        request.wire.deadlineUs <= producer.deadlineUs;
 }
 
 BusAdmission BusOwner::admit(const BusRequest& request, uint64_t nowUs, RequestId& output) noexcept {

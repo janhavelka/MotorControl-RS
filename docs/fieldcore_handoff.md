@@ -1,18 +1,45 @@
 # FieldCore RS485 motor integration handoff
 
-This is a proposal for a separately authorized integration. FieldCore was read
-only; no motor module, product wiring or working integration is claimed. Current
-working sources were inspected on 2026-10-05 against its `develop` reference
-`d19758865852f4e215ea05c6572d060edc4f0c66`. Recheck those sources before integration.
+The core is ready for a bounded ESS integration, but the current FieldCore RS485
+owner/backend is not yet motor-ready. This is the implementation handoff for that
+separately authorized work. No working FieldCore motor module is claimed.
+Working sources were re-inspected read-only on 2026-10-11 at `develop`
+`479d9ff308d3852d92b1f7552f803b6c990a59f0`. Its RodTester motor-transport and
+motor-command prompts were inspected as proposals, not implemented APIs, and
+left untouched. The intervening documentation commit did not change the reviewed
+owner, backend, binding or runtime source.
+Recheck those sources before integration. The [audit and regression evidence](reports/2026-10-11_fieldcore_audit.md)
+records the library baseline and the reference-owner deadline fix.
 MotorControl-RS stays independently consumable through its installed headers and
 `MotorControlRS::MotorControlRS` CMake target.
 
-The candidate's supported subset and remaining physical/native-feature gaps are
-in the [qualification matrix](reports/ess_release_29_2026-10-05.md) and
+The current supported subset and remaining physical/native-feature gaps are
+in the [1.0.0 release scope](releases/1.0.0.md) and
 [API/CLI coverage](ess_api_cli_coverage.md). Compile compatibility does not close
 those gaps. Board/UART/pins and external-input policy belong to the later
 application selection; the standalone COM13 bench is evidence, not a FieldCore
 product specification.
+
+## Implementation order in FieldCore
+
+Keep one existing RS485 owner and one backend. The simplest change is an explicit
+RTU transport mode plus a concrete ESS motor module and typed command/result arms
+in the existing ingress. Do not import the standalone console/application, place
+another runner on the UART, or build a universal transport framework.
+
+| Block | Files to edit in FieldCore | Completion criterion |
+| --- | --- | --- |
+| Dependency and types | `config/build_profiles.json`, its existing dependency preparation/generation tools, proposed `include/TunnelMonitor/contracts/MotorControl.h` | Pin a fetchable full MotorControl-RS commit; declare exact typed motor requests/results and capacities. Keep motor library headers in the concrete module, without adding the dependency to unrelated products. Change source manifests, not generated build profiles by hand. |
+| Physical transactions | `rs485/Rs485OwnerTransaction.h`, `Rs485Backend.h`, `Rs485Task.h`, `src/rs485/Rs485Task.cpp`, `ArduinoRs485Backend.h/.cpp` | Implement the five owner/backend changes below. Extend `test/native/support/FakeRs485Backend.h` and owner/link tests for actual FC03/FC06/FC10 frames, settlement and sensor compatibility. |
+| Motor module and binding | `Rs485DeviceBinding.h`, proposed `device/Rs485MotorModule.h` and `src/devices/rs485_motor/Rs485MotorModule.cpp` | Add paired typed motor start/result callbacks alongside the existing sensor callbacks; retain `poll/takeStep/acceptObservation`. Hold real library contexts and one axis reservation across waits. Current binding shape/catalogue validation must support a typed motor without fabricated float readings. |
+| Runtime delivery | `Rs485Task.h/.cpp`, `Rs485RuntimeIngress.h`, `Rs485Diagnostics.h/.cpp`, motor CLI/presenter | Carry the typed work through actual ingress locks, worker dispatch and retained results, including reserved urgent-stop and recovery capacity. Direct-owner tests alone do not verify runtime delivery. Test the actual runtime seam and explicit inspect/release. |
+| Product selection and qualification | Selected product configuration/composition and its tests | Bind the module to the selected controller/board, supply units/prerequisites and stop budgets, then repeat transport, finite move/stop and concurrent-sensor tests under that product's load. The free-shaft bench does not qualify RodTester mechanics. |
+
+The proposed names above agree with the inspected RodTester motor-transport and
+motor-command prompts; they do not exist as implemented interfaces yet. Core
+integration needs no cloud, E2 sensor bus, settings service or copied product
+framework. Select only the operations the consumer needs first; nine native-family
+gaps and 18 guarded pair setters remain independently tracked.
 
 ## Existing boundaries and proposed mapping
 
@@ -41,6 +68,12 @@ the stop result independently. `takeDeviceResult` currently consumes the owner
 result; the runtime copies it into tracked ingress storage. Preserve that
 conservation and make motor result lifetime explicit for all callers.
 
+The current binding also requires a valid scalar reading catalogue in
+`Rs485Task::bindingsValid` and uses it again when collecting results. Extending
+`DeviceRequestKind` alone is insufficient: add and validate the typed motor
+capability through binding, owner work/results, runtime ingress and presentation.
+Keep sensor catalogue/result validation intact for sensor bindings.
+
 Sensor `takeOrReclaimDevice` (`Rs485RuntimeIngress.h:294`) can mark unfinished
 work reclaimed at its cutoff or discard a terminal completed at or after it;
 `completeDevice` then discards a reclaimed command's late result. The existing
@@ -52,6 +85,66 @@ age or transport repair must not discard a possibly executed write or overwrite
 the interrupted operation's result. Retain recovery's distinct result even
 under ordinary result pressure; queue capacity and retention capacity are
 separate limits.
+
+## Library execution rules the adapter must preserve
+
+- Include the actual ESS headers (`Position.h`, `Actions.h`, `Reads.h`, and any
+  selected extension); `MotorControlRS.h` does not include the ESS profile.
+  `moveBy`/`moveTo` in the standalone example are application conveniences,
+  not installed transport-owning functions.
+- `prepare*` success means prepared work, and `advance*` success means the event
+  was consumed. An accepted event can leave the context FAILED because of CRC,
+  exception, timeout or cancellation. Inspect `state`, `outcome`, `status`,
+  execution and completion independently; do not publish success from the
+  returned `Status` alone. A rejected envelope leaves the context unchanged.
+  Resolve the adapter/correlation fault using the retained transaction; do not
+  blindly call `next*` and transmit the same step again.
+- `next*` inspects context without marking a transaction sent. Track one pending
+  transaction per operation/step until its observation is consumed. Publish one
+  terminal result and preserve raw evidence before releasing transport storage.
+- Use a monotonic 64-bit microsecond clock for core time and evidence. Do not
+  widen a wrapping 32-bit `micros()` result or qualify a frame from `nowMs*1000`.
+  For a millisecond worker wake, round an eligibility time upward and a deadline
+  downward, then recheck actual microsecond deadlines before TX; reject expired
+  or unrepresentable conversions. The scheduler may wake late, but retained
+  qualified closure bounds can establish that a reply completed on time.
+- Keep the operation deadline immutable and apply each yielded `deadlineUs` to
+  the complete transaction, including queueing, setup, TX and RX. Readiness expiry
+  can make it earlier than the operation deadline. A dispatch cutoff alone does
+  not cover time spent inside the backend. The reference owner's sequence token
+  now accepts these earlier step deadlines without allowing operation extension.
+- `ReadEvent::frame` must address at least `length` accessible bytes. When only a
+  prefix was retained, supply its actual stored length in a failure event; retain
+  total observed length/truncation separately in the firmware result. Never pass
+  a larger wire count as the borrowed buffer length, or parse a truncated prefix
+  as a complete FRAME. Qualified bounds describe closure, not the first RX byte
+  or the time the worker dequeues it.
+
+For common `prepareMoveRelative/Absolute/Angle`, supply actual subdivision, the
+axis/configuration generation and qualified word order, ramps, readiness, inputs,
+units and any consumed reference. The default position limits combine 2,000 rpm,
+200,000 command increments/s and 100..2,000-ms native ramp words; subdivision
+51,200 therefore permits at most 234 rpm. Do not feed encoder resolution into the
+command-subdivision field. Exact endpoint completion is optional and requires the
+qualified feedback-to-command relation and reference; otherwise use the documented
+activity/arrival evidence. Raw algorithm 3 does not become a known algorithm merely
+because the bench reports it.
+
+`ESS_RS::PositionCommand` is a separate native-intent route. It terminates at
+ACKNOWLEDGED with completion NOT_OBSERVED and does not establish motion readiness
+or arrival. `USE_STORED` starts the drive's existing profile/target; validation of
+requested values does not read or verify those stored values. Use common observed
+motion with `WRITE_ALL` initially, or its fresh `VERIFY_AND_UPDATE` path when
+needed. No API route silently enables the drive or disables assigned inputs.
+
+Give stop an explicit policy and observation budget. `ActionOptions` defaults
+to 20 polls at 10,000 us; a three-second outer deadline alone does not lengthen
+that poll budget. The ordinary example's configured-deceleration stop uses a
+3,000,000-us budget, 50,000-us interval and 64 polls (see
+[normal-stop correction](reports/2026-10-06_normal_stop_budget.md)). Port the
+policy deliberately, then qualify it with the selected workload/controller.
+Direct stop has separate behavior/evidence. Local cancel, runtime disable,
+watchdog restart and transport recovery send no implicit stop.
 
 ## Required owner/backend changes
 
@@ -161,6 +254,10 @@ no-exceptions option), without editing or building FieldCore. Such a check prove
 source/language compatibility only: it does not implement the missing motor
 commands, change the eight-byte contract or qualify that owner/backend.
 Exact candidate compiler commands/results belong to the prompt30 evidence.
+The [11 October audit](reports/2026-10-11_fieldcore_audit.md) adds a host C++17
+coexistence check using current local headers. Its Xtensa-only attempt was not
+completed; the earlier target-compiler evidence remains historical. Neither
+check claims an integrated FieldCore build.
 
 Size caller-owned contexts, saved settings, transaction/result slots and traces
 for the selected firmware. Current FieldCore diagnostics allocate larger runtime

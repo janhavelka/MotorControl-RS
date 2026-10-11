@@ -115,7 +115,11 @@ guarantee. Priority cannot bypass a fault or erase an uncertain outcome.
 
 `beginSequence(producer, absoluteDeadline, nowUs, SequenceId&)` requires that
 producer to have no queued/active work and creates/replaces its optional token.
-Every continuation retains the same token and absolute deadline. This is a host
+Every continuation retains the same token and is bounded by the original sequence
+deadline. Its wire deadline may be earlier, for example when typed move readiness
+expires before the operation budget; that earlier limit covers queueing, setup,
+TX and RX. A dispatch-only deadline cannot substitute for it. No continuation
+may extend the sequence deadline. This is a host
 stale-work barrier, not a motor operation ID or axis reservation.
 `invalidate(sequence, nowUs)` cancels matching work and invalidates a token even
 between steps. `invalidateProducer(producer, nowUs)` cancels all producer work;

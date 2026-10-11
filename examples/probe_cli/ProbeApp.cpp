@@ -648,6 +648,22 @@ MotorControlRS::ActionEvent actionEvent(const App::Record& record, ReadEventKind
     event.transport.step = record.homeOperation ? record.home.step : record.driverOperation ? record.driver.step : record.velocityOperation ? record.velocity.step : record.moveOperation ? record.move.step : record.action.step; event.transport.kind = kind;
     return event;
 }
+// Copy the owner's borrowed transport evidence consistently. Callers retain
+// their operation/step correlation and choose their own terminal-event and
+// response-source policies; the typed parser still validates the frame.
+void copyCompletion(MotorControlRS::ReadEvent& event, const Rtu::Completion& result) {
+    event.target.id = result.expected.target;
+    event.target.address = result.expected.address;
+    event.target.generation = result.expected.targetGeneration;
+    event.txAccepted = result.transport.txAccepted;
+    event.executionUnknown = result.executionUnknown;
+    event.transportDetail = static_cast<int32_t>(result.transport.reason);
+    event.frame = result.transport.rxLength ? result.raw : nullptr;
+    event.length = result.transport.rxLength;
+    event.qualified = event.kind == ReadEventKind::FRAME && result.transport.closureQualified;
+    event.earliestUs = event.qualified ? result.transport.closureEarliestUs : 0;
+    event.latestUs = event.qualified ? result.transport.closureLatestUs : 0;
+}
 Rtu::BusAdmission admitActionStep(App& a, App::Record& record, const ESS::PreparedAction& prepared, uint64_t now) {
     Rtu::BusRequest request;
     request.wire.bytes = prepared.bytes; request.wire.length = prepared.length;
@@ -761,13 +777,15 @@ Probe::Action startAction(void* context, uint32_t commandId, uint8_t address,
         if (a.discoveryRequest.owner) a.owner.cancelUnsent(a.discoveryRequest, now);
     }
     operationId = a.latestOperationId = record->operationId;
-    if (stop) cancelSimplePreparation(a, address, now);
-    if (stop) for (auto& interrupted : a.records) {
-        if (&interrupted == record || (!interrupted.actionOperation && !interrupted.moveOperation && !interrupted.velocityOperation && !interrupted.driverOperation && !interrupted.homeOperation) || interrupted.address != address ||
-            terminal(a, interrupted)) continue;
-        interrupted.cancelContinuation = true;
-        interrupted.interruptedByStop = true;
-        if (interrupted.requestId.owner) a.owner.cancelUnsent(interrupted.requestId, now);
+    if (stop) {
+        cancelSimplePreparation(a, address, now);
+        for (auto& interrupted : a.records) {
+            if (&interrupted == record || (!interrupted.actionOperation && !interrupted.moveOperation && !interrupted.velocityOperation && !interrupted.driverOperation && !interrupted.homeOperation) || interrupted.address != address ||
+                terminal(a, interrupted)) continue;
+            interrupted.cancelContinuation = true;
+            interrupted.interruptedByStop = true;
+            if (interrupted.requestId.owner) a.owner.cancelUnsent(interrupted.requestId, now);
+        }
     }
     return Probe::Action::OK;
 }
@@ -1551,18 +1569,7 @@ void advanceReads(App& a, uint64_t sampled) {
                 result->outcome == Rtu::Outcome::CANCELLED ? ReadEventKind::CANCEL :
                 ReadEventKind::TRANSPORT_FAILURE;
             auto event = readEvent(record, kind);
-            event.target.id = result->expected.target; event.target.address = result->expected.address;
-            event.target.generation = result->expected.targetGeneration;
-            event.txAccepted = result->transport.txAccepted; event.executionUnknown = result->executionUnknown;
-            event.transportDetail = static_cast<int32_t>(result->transport.reason);
-            event.length = result->transport.rxLength; event.frame = event.length ? result->raw : nullptr;
-            if (kind == ReadEventKind::FRAME) {
-                event.qualified = result->transport.closureQualified;
-                if (event.qualified) {
-                    event.earliestUs = result->transport.closureEarliestUs;
-                    event.latestUs = result->transport.closureLatestUs;
-                }
-            }
+            copyCompletion(event, *result);
             if (!ESS::advanceRead(record.read, event, sampled)) {
                 // An impossible owner/event envelope is an integration failure.
                 // Preserve the captured prefix and terminate; never re-admit it.
@@ -1773,14 +1780,7 @@ void advanceActions(App& a, uint64_t now) {
                 result->outcome == Rtu::Outcome::QUEUE_EXPIRED || result->outcome == Rtu::Outcome::DISPATCH_EXPIRED ? ReadEventKind::DEADLINE :
                 result->outcome == Rtu::Outcome::CANCELLED ? ReadEventKind::CANCEL : ReadEventKind::TRANSPORT_FAILURE;
             auto event = actionEvent(record, kind);
-            event.transport.target.id = result->expected.target;
-            event.transport.target.address = result->expected.address;
-            event.transport.target.generation = result->expected.targetGeneration;
-            event.transport.txAccepted = result->transport.txAccepted;
-            event.transport.executionUnknown = result->executionUnknown;
-            event.transport.transportDetail = static_cast<int32_t>(result->transport.reason);
-            event.transport.frame = result->transport.rxLength ? result->raw : nullptr;
-            event.transport.length = result->transport.rxLength;
+            copyCompletion(event.transport, *result);
             event.txComplete = result->transport.txComplete;
             // Checked FC03/FC10 replies have distinct request/response wire forms.
             // FC06 retains uncertain source evidence unless the adapter/user
@@ -1790,13 +1790,6 @@ void advanceActions(App& a, uint64_t now) {
                 (result->outcome == Rtu::Outcome::SUCCESS || result->outcome == Rtu::Outcome::DEVICE_REJECTED) &&
                 result->transport.closureQualified &&
                 result->transport.txComplete && (writeResponseConfirmed || result->expected.function != 6);
-            if (kind == ReadEventKind::FRAME) {
-                event.transport.qualified = result->transport.closureQualified;
-                if (event.transport.qualified) {
-                    event.transport.earliestUs = result->transport.closureEarliestUs;
-                    event.transport.latestUs = result->transport.closureLatestUs;
-                }
-            }
             if (!advanceOperation(record, event, now)) {
                 auto failed = actionEvent(record, ReadEventKind::TRANSPORT_FAILURE);
                 failed.transport.transportDetail = -1;

@@ -133,7 +133,8 @@ counts, mA, percent or ms. Unselected values do not change, and no startup/probe
 ordinary motion preparation writes these settings. The Python console preserves
 command/operation correlation, checked raw evidence and explicit retention and
 release. Its finite setting campaign never retries an uncertain write.
-The existing console limit is 128 input bytes and 20 tokens; long field names
+The console allows 128 input bytes including the terminator and 22 tokens
+including an optional `@ID`; long field names
 can limit a single CLI candidate before the public API's eight-field capacity.
 Split explicit commands are separate non-atomic updates, each with its own fresh
 baseline, qualifications and retained result. The API still supports all eight
@@ -155,11 +156,11 @@ These are software evidence, independently of physical behavior.
 
 The [implementation COM13 evidence](reports/ess_release_17_2026-10-04.json) reads all
 eight fields as `[3,4000,5600,100,40,100,40,200]`. The stopped lock-delay update
-200-to201 ms and explicit restoration to200 ms both have confirmed separate
+200 to 201 ms and explicit restoration to 200 ms both have confirmed separate
 readbacks. Every FC06 frame keeps acknowledgement false, response source
 unconfirmed and execution unknown. Stored-value settlement passes; active lock
 behavior, torque and persistence remain unqualified. In particular, the observed
-effective-current code5600 does not resolve the model ceiling or justify a
+effective-current code 5600 does not resolve the model ceiling or justify a
 peak-current conversion.
 
 Algorithm, encoder and current candidates fail before traffic through nine
@@ -177,7 +178,7 @@ ISR/capture/driver state and stacks remain internal. Final ABI sizes and memory
 watermarks belong to the named-image report.
 
 The [fresh combined audit](reports/ess_release_16_17_audit_2026-10-04.md) checks
-both families against the full prompts. Write acknowledgement or checked device
+stored-segment and control-setting contracts. Write acknowledgement or checked device
 rejection requires qualified frame closure within the retained write budget;
 late checked bytes stay raw evidence with unknown execution. An on-time closure
 delivered later keeps its original classification. The Python checker follows

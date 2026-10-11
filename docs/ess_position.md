@@ -17,10 +17,10 @@ mode. [Short motion checks](functional_bench.md) use the same preparations as
 applications. Activity/completion reports remain separate from acknowledgement,
 calibrated feedback and independent electrical/shaft measurement.
 
-Prompt09 adds the installed common intent in
+The installed common intent is in
 [MoveOperation.h](../include/MotorControlRS/MoveOperation.h) and the concrete ESS
 sequence in [Position.h](../include/MotorControlRS/profiles/ess_rs/Position.h).
-Prompt10 adds `prepareMoveAbsolute` and `prepareMoveAngle` beside
+It supports `prepareMoveAbsolute`, `prepareMoveAngle` and
 `prepareMoveRelative`. Common `MotorControlRS` and native `ESS_RS` routes invoke
 the same implementation and reuse `nextMove`/`advanceMove`; there is one staging,
 trigger and completion sequence. Construction and advancement perform no I/O, read no
@@ -180,12 +180,13 @@ applicable device bounds; the malformed manual range is not qualification.
 Serial positioning needs no home switch or output load. Unconnected inputs
 remain assigned inputs. An affected limit, stop, release or external trigger
 must be accounted for by qualification; this operation changes no assignments,
-polarity, soft limits or saved settings. Required I/O changes remain for 15.
+polarity, soft limits or saved settings. Required I/O changes use the separate
+[typed I/O API](ess_io.md).
 
 The caller owns `MoveContext`, retains it read-only between API calls, and feeds
 copied transaction evidence through `ActionEvent`. Preparation snapshots the
 request, effective target and prerequisites. Borrowed frame memory is consumed
-only during `advanceMove`, with bounded nine-byte reply-prefix copies and a
+only during `advanceMove`, with bounded 19-byte reply copies and a
 separate full fifteen-byte verification-read frame. The
 application must correlate its retained owner transaction before supplying an
 event and must independently qualify FC06 response source against local echo.
@@ -285,7 +286,7 @@ eight ordinary application result slots, with explicit `result`/`release`.
 Accepted records use `move-relative`, `move-absolute` or `move-angle`, followed
 by one `type=move` terminal. Requested path/tie, resolved target/displacement,
 quantization and copied reference provenance are retained. Context lookup is
-non-consuming. Maximum output is 4608 bytes, including bounded reference and
+non-consuming. Maximum output is 8192 bytes, including bounded reference and
 numerical provenance.
 
 The application uses the shared position operating policy above; the earlier
@@ -306,11 +307,11 @@ the move. An interrupted acceptance/result wait also makes the session unusable,
 including interruption before the move's accepted record arrives. Cleanup
 evidence remains unknown when commands cannot be delivered;
 reported non-running does not supply missing independent shaft observation.
-See [the fresh prompt09 audit](reports/ess_release_09_audit_2026-10-04.md) and
+See [the relative-motion audit](reports/ess_release_09_audit_2026-10-04.md) and
 [implementation report](reports/ess_release_09_2026-10-04.md) for tests,
 actual image/bench evidence and outstanding physical gates.
-Prompt10 software and current read-only/gate evidence are recorded separately in
-[its report](reports/ess_release_10_2026-10-04.md). Physical absolute/wrapped
+The [absolute/wrapped-motion implementation report](reports/ess_release_10_2026-10-04.md)
+records the initial software and read-only/gate evidence. Physical absolute/wrapped
 motion had not run in that historical image; the later short campaign records
 native absolute returns. Equivalent-unit shaft comparisons and linear travel
 remain NOT RUN;
@@ -334,7 +335,7 @@ when feedback is available. The window is not documented as an atomic internal
 snapshot; the two reports do not claim exact drive sample timing.
 
 `positionConfirmed`, `observedPosition`, `observedSpeed` and
-`positionMatchEvidence` preserve this proof. `ActionEvidence` retains up to19
+`positionMatchEvidence` preserve this proof. `ActionEvidence` retains up to 19
 bytes, covering the full reply. JSON exposes the policy, confirmation and both
 reports; Python checks CRC, correlation, ordering and endpoint agreement.
 Historical nine-byte evidence remains readable. The public default stays off.
@@ -344,7 +345,7 @@ Direct C++ `moveBy`/`moveTo`/`submitMove` and advanced CLI moves leave this
 fallback disabled; they require the observed RUNNING transition. Direct users
 of the core may explicitly supply the qualified prerequisites described above.
 
-The [firmware0x0029 investigation](reports/2026-10-07_position_completion.md)
+The [firmware 0x0029 investigation](reports/2026-10-07_position_completion.md)
 records short-move success and remaining high-subdivision failures. Exact
 matching leaves ambiguous/quantized endpoints unconfirmed; no encoder tolerance
 or universal firmware qualification is invented.

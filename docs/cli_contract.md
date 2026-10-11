@@ -1,584 +1,203 @@
 # MotorControl-RS standalone CLI contract
 
-Ordinary console commands now use a [human-readable presentation](console.md),
-with one complete grouped `help` menu, usage examples and operation hints.
-Human and JSON inventories list each command once. `help COMMAND` exposes
-actual detailed syntax, including `move`. Console protocol 3 removes the old
-`?`, `ver`, `ping`, `reset`, `health check`, `help advanced` and `profile ess_rs`
-operation aliases. `stop fast` replaces `stop direct`, including the bounded
-velocity stop policy. Scripts must use the matching protocol-3 client.
-Explicit `@ID` commands retain structured JSONL output. Output format is retained per asynchronous
-operation and deferred stop reply; there is one command/API/owner path.
+Arduino and native ESP-IDF compile the same
+[console](../examples/probe_cli/ProbeConsole.cpp) and
+[application](../examples/probe_cli/ProbeApp.cpp). `help` lists callable commands
+once; `help COMMAND` supplies exact syntax and examples. The
+[console guide](console.md) explains ordinary use, and the
+[API/CLI inventory](ess_api_cli_coverage.md) records coverage and explicit gaps.
+These sources replace the earlier speculative `motor ...` and
+`profile ess-rs ...` grammar.
 
-The interactive `moveby VALUE [steps|deg|turn|mm]` / `moveto ...` workflow owns
-one finite preparation session in the application. `speed`, `accel`, `decel`,
-`motion write|stored` and `stepsperturn` retain host intent. Missing checked
-configuration/profile data is read through existing typed executors; fresh
-state is obtained before admission. Default movement still writes parameters
-and then starts through the public move sequence. Boot intent is 60 rpm with 100 ms ramps and an explicitly ASSUMED 1000-command-steps/turn
-host scale. The simple workflow establishes a RAM-only boot-session origin
-from its first stationary read under the documented ASSUMED feedback-coordinate
-convention; it writes neither the device counter nor ESP NVS. Enable and I/O
-assignments remain explicit. Completed finite moves preserve the fixed origin;
-unresolved execution blocks new moves until reconciled by a checked stop.
-Release, unexpected running and interpretation changes invalidate the fixed zero;
-enabled feedback variation alone does not. Ramp times are not
-physical acceleration. Position speed accepts 0..3000 rpm (a move needs nonzero),
-ramps 0..2000 ms as host intent. Position admission additionally enforces the
-shared defaults: at most 2000 rpm, 200000 command increments/s and 100..2000 ms
-ramps. `settings` shows the subdivision-dependent RPM ceiling; moves reject
-outside it without clamping. See [position limits](ess_position.md#default-position-operating-limits).
-The old 60-rpm/250-increment experiment caps are removed.
-`settings` reads current configuration and position parameters without writes and
-separates those from next-move intent. It replaces the old host `config` alias.
-Existing detailed commands remain available to automation.
-`subdivision [INTEGER|options]` uses the shared application session to read,
-check stopped-state/configuration prerequisites, invoke the typed driver setter,
-verify readback and establish the standalone host scale/session zero. No manual
-preparatory reads are required. A same-value request performs no setting write.
-Successful human-command results may be recycled after output delivery on the
-next bus command; failed/uncertain and explicit correlated/API results remain
-pinned. Passive inspection is non-consuming. `read state` human terminals are
-concise; full JSON/result evidence remains available.
+Plain commands produce human-readable output. An explicit `@ID` prefix selects
+correlated JSONL; command IDs and admitted operation IDs are distinct. Output
+format is retained for asynchronous completion and deferred stop replies.
+Protocol 3 uses `stats reset` for local counters, `stop fast` for the ESS
+emergency-stop request and `probe` for presence. The former `?`, `ver`, `ping`,
+`reset`, `health check`, `help advanced` and `profile ess_rs` operation aliases
+are unavailable. Automation must use the matching protocol-3 client.
 
-Convenience `moveby`/`moveto` use nearest-command-step quantization, ties to even,
-bounded to half a step. Their prepared result includes `effective_native` and
-`rounding_error`; human output reports nonzero rounding. Zero displacement after
-rounding causes no motion write. Detailed requests preserve the EXACT default.
-No core scheduler, additional bus owner or conversion path is introduced.
+## API and application boundary
 
-Simple session IDs own their read/move/setting child records. `result N` inspects the
-session; its `move_operation_id` exposes full ordinary move evidence via
-`@ID result CHILD`; `driver_operation_id` identifies setting evidence.
-Release uses the session ID while it owns its children. A new simple session
-reclaims delivered successful work; failed/uncertain move or setting children
-remain inspectable by their child IDs. Unresolved execution still interlocks
-motion until a checked stop/reconciliation. Retaining a historical failure alone
-does not reserve the motor after that stop.
-Accepted stop interrupts preparation only after urgent admission succeeds.
-Human motion/action replies are compact; diagnostic evidence remains available
-through explicit JSON inspection and copied `debug raw|decoded` traffic.
+Every motor command calls the same installed common/profile preparation and
+sequencing API available to firmware. Parsing adds no private register writes,
+conversion formulas or motor semantics. Host utilities call application
+services; all bus traffic passes through one owner. The installed core depends
+on neither the CLI nor its runtime.
 
-[Named Python scenarios](bench_scenarios.md) reuse this console's strict
-correlation, typed operations and runtime debug events. Default regression
-sends only motor reads; motion/settings/persistence require explicit selection.
-One port session retains snapshots through cleanup, with bounded evidence and
-unknown outcomes preserved on framing/stop/restoration failure.
+The command inventory drives dispatch and help. Parsing, formatting and
+application code are shared; adapters supply terminal I/O, UART/capture,
+startup and time. Equivalent Arduino/ESP-IDF builds expose the same operations.
+Capabilities distinguish unavailable callbacks, unimplemented features,
+unresolved semantics and physical qualification.
 
-Prompt23 reconciles callable help, canonical typed parameter groups, target
-selection, capability states and local polling controls. The complete
-[API/CLI coverage handoff](ess_api_cli_coverage.md) records exact implemented
-routes and substantial gaps returned to their owning prompts. `useaddr` is
-idle-only host selection; it changes no drive address. `motion-profile forget`
-is explicit idle snapshot release. Cached monitor query/off remains usable
-during transport faults; reset/recover preserve terminal uncertainty.
+Input/output use fixed capacities and bounded service work. Reject truncated
+input, excess tokens, trailing junk, numeric overflow, unsupported units and
+unresolved conversions before writes. Exact numbers retain rational or integer
+precision. The input capacity is 128 bytes including NUL, with at most 22
+parsed tokens and route-specific argument limits. A settings candidate must
+fit and validate in full before admission.
 
-`wiring [x0|x1|x2|x3|y0|y1 unknown|unconnected|connected]` declares
-application wiring only, through the same checked callback as direct callers.
-Queries are passive even during a fault. Changes require idle ownership and
-invalidate dependent host knowledge; they do not change drive assignments or
-terminal levels. `useaddr` resets declarations to unknown, so declare the
-selected fixture explicitly after rebinding.
+## Commands and effects
 
-`motion-profile` accepts read/inspect/restore/forget. An accepted restoration reserves the axis until
-checked readback matches the original snapshot. On failed or uncertain restore,
-`restore_unsettled` blocks another restore, forget, rebinding and competing
-motor writes. Repair transport explicitly if needed, refresh configuration and
-state, then issue `motion-profile read` for read-only reconciliation. An uncertain
-write also needs stationary evidence observed after its delivery. Inspection,
-reset and recovery never erase or replay it. Historical write bytes, outcome,
-deadline and generations remain separate from the reconciliation read; matching
-stored words does not turn a lost acknowledgement into an acknowledged write.
+This table groups implemented routes. `help COMMAND` and the linked operation
+guides define complete arguments and prerequisites.
 
-Prompt21 implements `persistence inspect|snapshot|plan|begin|verify|host before|finish`
-through the public [persistence API](ess_persistence.md). Save and factory restore
-are explicit stopped-state actions. One retained invocation, two nonvolatile
-attempts per boot, and two verification read sequences per invocation are
-bounded; failed reads consume the verification budget. Inspect/plan are passive,
-and ACK/live readback/restart survival are separate. The existing commissioning
-token excludes other producers and is retained through uncertain outcomes.
-No reset/recover/probe/stress path writes persistence.
-
-Prompt20 implements `communication inspect|plan|begin|host|confirm|finish`
-through the public communication preparation. Candidate selection is explicit;
-ordinary producers remain excluded until the session settles. The finite Python
-`communication-check` defaults to planning and never saves, restarts or replays
-a write. See [communication commands and prerequisites](ess_communication.md).
-
-Prompt19 implements host-only `host`, `host caps`, `host baud RATE`,
-`host fmt 8N1|8N2|8E1|8O1`, `host set RATE FORMAT` and `host restore` through
-the application serial callback. Supported rates are 9600, 19200, 38400 and
-115200; support means adapter capability, not motor communication qualification.
-Changes require settled queues, operation continuations, capture and DE, with
-monitoring disabled. A failed change holds exclusive configuration ownership
-and blocks admissions until explicit repair. `recover` cannot clear that failure.
-See [host serial contracts](host_serial.md) for timing, generation isolation,
-immutable `host_serial` result provenance and the finite Python `host-check`.
-
-Prompt18 implements `tuning GROUP read|set FIELD INTEGER ...`
-for filters, current-loop, LA and collision through the same public typed
-preparations. Native units, group masks, partial progress and stored versus
-active settings remain explicit; [tuning contracts](ess_tuning.md) describe
-the command bounds and actual standalone qualification policy.
-
-Prompt17 implements `control read|set FIELD VALUE ... [address]` through `ControlSettings.h` and the existing settings sequence. Strict native integer fields and named algorithms share direct API validation. Unknown codes, partial progress and stored versus acknowledged/active settings remain separate; [control contracts](ess_control_settings.md) state the128-byte/20-token candidate limit.
-
-
-Prompt16 adds `segment position|speed|start INDEX read|set ... [address]`. Index1..16, strict integer field/value pairs and the public whole-candidate validator precede admission. Supported scalar fields are speed/acceleration/deceleration and shared starting `value`; `target` reports unsupported before any write. Type/command `segment`, driver group and retained `segment_index` correlate accepted/terminal/inspection records. Configuration does not generate an external trigger; see [stored record contracts](ess_segments.md).
-
-
-Prompt14 adds `home methods` and `home METHOD SEARCH_NATIVE RETURN_NATIVE RAMP_NATIVE zero [address]`, through [the installed homing API](ess_homing.md). Methods33/34/35 are implemented; all35 method dispositions and reasons are queryable. Production timing/method gates remain closed; parameters are native words, not inferred RPM or acceleration.
-
-Implemented driver routes: `driver read [address]` and
-`driver set FIELD INTEGER [FIELD INTEGER ...] [address]` use the
-same public [driver preparation](ess_driver_settings.md). Groups validate before
-TX, retain ACK/readback/partial uncertainty and use existing result/cancel/release
-correlation. Long groups respect the existing 128-byte input bound. Native limit
-pair setters reject explicitly; host `axis` configuration remains separate.
-Driver/configuration prerequisite caches belong to the configured axis; reads
-at other addresses retain their own results. Unconfirmed reads/readbacks never
-clear write uncertainty or qualify another settings update.
-
-
-Prompt10 implements `move absolute`, `move angle` and explicit zero-only
-`position-clear`. See the actual positional
-grammar and limits in [finite positioning](ess_position.md),
-[clear action](ess_actions.md) and [pure previews](axis_preparation.md).
-The future grammar below does not add aliases to the current console.
-Multi-turn absolute values preserve turns; wrapped requests require explicit
-path/tie and fresh established command coordinates. All unit routes reuse
-the installed preparation API; host origins perform no motor traffic.
-Production admission retains explicit configuration/reference checks. The
-reviewed finite native free-shaft subset has functional drive-report evidence;
-wider unit/fixture cases remain qualification-gated.
-
-Prompt09 implements `move relative <value> <unit> <native|motor|load> <native_rpm>
-configured [address]` through the public
-preparation/sequence. Accepted and retained terminal evidence remains distinct;
-see [finite relative positioning](ess_position.md). The ordinary bench firmware supports the reviewed finite free-shaft subset.
-Independent physical units, electrical timing and wider motion qualification
-remain separate; see [current functional procedure](functional_bench.md).
-
-
-Prompt 07 adds [host axis configuration and pure target previews](axis_preparation.md)
-through the same installed public API; these commands generate no motor traffic.
-
-Prompts 05–06 implement bounded [typed identity/configuration/state reads](ess_reads.md), common/profile routes, passive per-block status/health and finite opt-in observation polling. The [linked inventory](reference/ess_rs_operations.json) keeps native/hardware evidence and read/write/action obligations separate. Unknown model/firmware mappings and physical feedback units remain unresolved; readiness is assessed per operation. These reads perform no writes and do not qualify unrelated motion modes.
-
-This defines the standalone console for `MotorControlRS` and its family
-profiles, beginning with `MotorControlRS::ESS_RS`. The
-[API/CLI handoff](ess_api_cli_coverage.md) identifies every implemented route
-and named prerequisite gaps. Broader grammar examples below remain planned
-where they do not match callable help; they are not claims of dispatch support.
-The current protocol-3 subset also implements `drv`, non-consuming `result`,
-explicit `release`, local `cancel [operation-id]` and asynchronous host recovery.
-Finite admission/retention/output limits and measured evidence are in the
-[probe guide](esp32_probe.md) and [prompt 03 report](reports/ess_release_03_2026-10-03.md).
-The [fresh audit](reports/ess_release_03_audit_2026-10-04.md) verifies retained
-value/attempt attribution, deadline-gated recovery and immutable result inspection.
-The fixed `capture-read [address]` timing fixture reads reviewed settings window
-0x0130/16 through the existing public codec and bus owner. It preserves model
-cache evidence and returns raw frames; it does not implement typed settings
-operations or the planned general command surface. See
-[prompt 04](reports/ess_release_04_2026-10-04.md).
-Checkout naming is independent of the CLI. The [architecture](architecture.md),
-[axis contract](axis_contract.md) and [profile contract](profile_contract.md)
-define the public operations that the console exposes.
-
-## Public API and console boundary
-
-Every device command calls the same public common-axis or typed profile API
-available to upper firmware. The console has no private register writes,
-second conversion implementation, hidden motion modes or CLI-only sequences.
-Host utilities use application services; host axis configuration uses the
-public validation/configuration functions. The console never reaches behind
-the bus owner to perform a transaction.
-
-Use one bounded command inventory for dispatch, help, side-effect descriptions
-and API coverage checks. Reusable tokenization, semantic dispatch and result
-formatting are framework-neutral; example adapters supply terminal I/O,
-transport, time, persistence and application policy. Arduino, native ESP-IDF
-and native fake-transport consumers exercise the same command semantics.
-Native ESP-IDF is a first-class independent consumer and needs neither Arduino
-nor FieldCore. Equivalent builds expose the same common and profile commands;
-help reports deliberate build exclusions and actual adapter limitations.
-
-A planned command is not an implemented handler. Help advertises only callable
-commands in the selected build/profile, while inventory/capability reports
-also identify documented but unresolved, unimplemented or unqualified items.
-Those states are distinct from a drive capability known to be unsupported.
-
-## Admission, ownership and interruption
-
-One transport owner serializes every transaction on a UART. Start with one
-foreground operation per selected axis; ordinary conflicting work returns a
-structured busy result. Cached reports remain available while it runs. All
-multi-transaction operations advance cooperatively through the public
-`advanceOperation` contract using caller-owned state and supplied events/time.
-
-A supported stop request is admissible while movement, homing, polling or a
-native operation is busy. It supersedes queued ordinary work and receives
-priority at a bounded, safe frame boundary; it does not cut off an in-flight
-frame or bypass direction/framing settlement. Retain the interrupted
-operation's evidence and the stop's result separately. Stop behavior and
-whether pending device commands are retained or discarded are explicit public
-request fields. A profile emergency-stop command uses the same priority path,
-with its own documented effects; software cannot guarantee physical stopping
-when communication fails.
-
-`cancel` cancels unsent work and local waiting. It does not command a motor
-stop, reverse a transmitted action or erase execution uncertainty. Cancelling
-the superseded operation must not cancel an already admitted stop. The owner
-settles pending TX, DE/RE and RX boundaries before another transfer.
-
-Before starting, the application admits required refresh/handshake deadlines
-against its bus schedule and reserves capacity for stop handling. Reject work
-whose service requirements cannot be met. `auto off` affects optional
-telemetry polling, not a running operation's required keepalive. A missed
-deadline is reported; it is not proof that the drive stopped.
-
-Use fixed input/output capacities and bounded work per console iteration.
-Reject truncated input, excess tokens, trailing junk, numeric overflow,
-negative unsigned values, NaN/infinity, unsupported units and unresolved
-conversion before yielding transactions. Preserve integer/rational precision
-instead of routing all numbers through floating point.
-
-## Selection, configuration and observations
-
-The following is the intended command vocabulary. Optional arguments and
-profile-specific fields are defined by the public operation descriptors when
-implemented. Each operation has one canonical spelling on every platform.
-
-| Command | Public operation or application behavior | Motor bus traffic |
-| --- | --- | --- |
-| `help [command]` | Actual command syntax, API mapping and effects | None |
-| `version` / `ver` | Library/build, profile and platform identity | None |
-| `profile list` | Compiled profiles, scope, implementation and qualification | None |
-| `profile select <profile>` | Explicit idle-only local profile binding | None |
-| `caps` | Implemented routes and explicit unsupported/unresolved/unimplemented dispositions; qualification remains separate | None |
-| `useaddr <profile-address>` | Idle-only local target selection using the profile address rules | None |
-| `config` / `settings` | Host settings, `getAxisConfig` and cached device settings, separately labelled | None |
-| `host [baud <rate> \| fmt <format>]` | Show/change host serial tuple when idle, subject to adapter capability | None |
-| `axis config show` | `getAxisConfig`, including scale/reference sources and missing fields | None |
-| `axis config set <fields...>` | Build a complete candidate, `validateAxisConfig`, then idle-only `configureAxis` | None |
-| `probe` | `prepareProbe`; smallest supported non-changing presence query, with explicit identity confidence | Minimal query |
-| `read identity` | Implemented `ESS_RS::prepareIdentity`/`getIdentity`; raw identity with unresolved model/firmware mapping | Reads |
-| `discover [manufacturer <id> \| profile <id>] [bounds...]` | Application-owned bounded scan through reviewed probe/identity operations | Non-changing queries |
-| `read state` | Implemented `ESS_RS::prepareState`/`getStateBlock`; three independently timed non-consuming blocks | Reads |
-| `read config` | Implemented `ESS_RS::prepareConfig`/`getConfig`; bounded read-only motion-prerequisite subset | Reads |
-| `status` | Cached host, transport, motor and operation state with ages | None |
-| `health` | Cached presence/freshness and motor-readiness assessment | None |
-| `stats` | Transport/application counters | None |
-| `stats reset` | Clear local counters only | None |
-| `drv` | Transport phase, deadlines, queue/buffer state and adapter capabilities | None |
-| `diagnose` | Bounded public non-consuming observations plus host diagnostics | Reads |
-| `auto on [ms]` / `auto off` | Start/stop optional telemetry polling; report admitted cadence | Reads while enabled |
-| `result [operation-id]` | Retained operation evidence/result, without consuming it | None |
-| `cancel` | Cancel unsent work/local waiting; settle existing activity | No new device command |
-| `verbose on\|off` | Bounded TX/RX tracing | None beyond scheduled work |
-| `recover` | Explicit host transport recovery; interrupt queued/active work and settle physical TX/DE before reinitialization; retain outcomes and invalidate communication confidence | None |
-| `flush` | Explicit idle-only host RX discard, recorded in diagnostics | None |
-
-Address syntax and limits belong to the selected protocol/profile. Do not
-impose Modbus numeric addressing on every serial drive. For ESS, the reviewed
-initial scope uses unicast addresses 1-247; other profiles may require a
-character address or an additional axis/module selector. Selection is local:
-no automatic scan, guessed configuration write, enable or mode change occurs.
-Optional discovery is an explicit bounded read-only operation over reviewed
-protocol/tuple ranges; responding on RS485 does not establish compatibility
-or safe mixed-protocol coexistence.
-
-The [discovery contract](discovery_contract.md) defines query selection,
-manufacturer grouping, address/tuple/deadline/request/result bounds, partial
-results, cancellation and host-setting restoration. `profile list` is local;
-`probe` performs one minimal supported query, with no hidden identity/status
-sweep or automatic retries. A profile with no suitable probe returns a clear
-unsupported/unresolved result before TX. `read identity` remains explicit.
-The default discovery scope is the selected profile/current tuple, not an
-unbounded protocol scan. Findings do not automatically rebind the selected
-axis or write device settings. Probe success refreshes only the evidence
-actually observed, not stale position, alarms, homing or motion readiness.
-
-Classify observation effects, not merely the wire function. Some profiles have
-read-to-clear completion/event fields. Generic reads, discovery, diagnostics,
-health checks and optional polling must not silently consume those fields.
-The profile declares destructive reads and a single designated consumer for
-each handshake/event; explicit typed consumption or the owning operation
-collects it once and publishes the retained observation to other consumers.
-If only a consuming source can supply a requested field, generic observation
-reports that restriction instead of issuing it behind the owner's back.
-
-`axis config set` validates the entire replacement before publishing it and
-advances the relevant configuration generation. It may preserve unspecified
-fields from the current configuration in that candidate, but never partially
-applies invalid input. Host scale, gearing, lead, polarity or reference settings
-do not change drive subdivision, electronic gearing or encoder configuration.
-Device configuration changes use explicit typed profile operations and
-invalidate/reconcile affected host assumptions. Display operator assumptions,
-device readback, qualified configuration and absent values distinctly.
-
-Protocol decoding assumptions also belong to the profile. For example,
-`profile ess-rs codec ...` may select an explicit local word-order assumption;
-it is not a universal serial setting or a device word-order write. Show its
-source and invalidate affected decoded values when it changes.
-
-Rebinding profile/address or changing host serial settings requires settled
-outstanding bus work and no active operation. Invalidate selected-device
-identity, decoding/reference confidence and readiness as appropriate. Retain
-historical raw observations and uncertain results under their original
-profile, target, tuple and configuration generation. Never reinterpret old
-register words using a newly selected word order or assign an old operation's
-result to another motor.
-
-## Common motion and coordinate commands
-
-These commands map to the planned public axis functions. Their options must
-represent public request fields; the CLI may not implement extra conversion,
-angle selection or trajectory logic. Unsupported or unresolved requests fail
-before any parameter write or start trigger.
-
-| Command | Public operation | Meaning |
-| --- | --- | --- |
-| `motor move absolute <value> <unit> [options...]` | `prepareMoveAbsolute` | Signed unwrapped target in an explicit frame, preserving full turns |
-| `motor move relative <value> <unit> [options...]` | `prepareMoveRelative` | Signed displacement with an explicit supported actual/commanded/queued-endpoint basis |
-| `motor move angle <value> <deg\|turn\|rad> via <positive\|negative\|shortest> [tie <reject\|positive\|negative>] [options...]` | `prepareMoveAngle` | Wrapped orientation resolved to a multi-turn target using fresh referenced position |
-| `motor velocity <value> <rate-unit> [options...]` | `prepareVelocity` | Signed continuous velocity with explicit ramp/service requirements |
-| `motor home <method> [options...]` | `prepareHome` | A named supported reference-search or home-return method |
-| `motor stop [options...]` | `prepareStop` | Explicit stopping and pending-device-command policy; may interrupt busy work |
-| `motor enable` | `prepareEnable` | Enable the drive according to profile semantics |
-| `motor release` | `prepareRelease` | Release drive power according to profile semantics |
-| `motor alarm clear` | `prepareClearAlarm` | Request documented alarm clear, preserving prior alarm evidence |
-| `axis origin <value> <unit> [options...]` | `setAxisOrigin` | Change host coordinate interpretation without bus traffic or movement |
-| `motor position device <value> <native-unit> [options...]` | `prepareSetDevicePosition` | Explicit supported device-coordinate write without intentional movement |
-| `motor torque <value> <effort-unit> [options...]` | `prepareTorque` | Optional documented torque mode; never inferred from current control |
-| `motor current <value> A [options...]` | `prepareCurrent` | Optional documented current mode, distinct from torque |
-
-Expose the complete common unit surface when the selected profile and
-configuration can represent it:
-
-- `steps`: configured command-position increments.
-- `fullsteps`: motor mechanical full steps, only when the motor scale is known.
-- `counts`: a named encoder source with established scale and coordinate
-  relation to the command position; otherwise observation-only.
-- `turn`, `deg`, `rad`: configured load-axis rotation.
-- `mm`: configured linear travel, requiring known travel per load revolution.
-
-Every position identifies its coordinate frame. Show the selected frame in
-configuration and operation output; when omission is allowed in console syntax,
-it means the explicitly configured default frame, not an inferred shaft.
-Command and feedback coordinates remain separately identified. Relative
-requests state their supported basis; stale feedback cannot silently turn a
-relative operation into an absolute one.
-
-Rate inputs include `steps/s`, `fullsteps/s`, source-qualified `counts/s`,
-`turn/s`, `deg/s`, `rad/s`, load-axis `rpm` and configured `mm/s`.
-Acceleration/deceleration use `steps/s2`, `fullsteps/s2`, source-qualified
-`counts/s2`, `turn/s2`, `deg/s2`, `rad/s2` or configured `mm/s2`, where `s2`
-means seconds squared. Explicit `rpm/s` means change in load rpm per second
-and converts to turn/s2 by dividing by 60. Reject `rpm/s2` in acceleration
-fields; it is a different physical quantity. Apply the public ramp semantics.
-The CLI calls the same `convertPosition`,
-`convertDisplacement`, `convertVelocity` and `convertAcceleration` used by
-preparation. A profile's native ramp-time parameter is not relabelled as an
-acceleration without a verified conversion.
-
-Request options expose public frame/basis, speed, ramp, limit, rounding and
-permitted-error fields. `EXACT` is the default for integer/rational requests;
-explicit alternatives are `NEAREST`, `TOWARD_ZERO`, `FLOOR` and `CEIL`, with the
-axis contract's tie rules. Radian conversion declares its approximation/error
-bound and requires a permitted error; it is never described as mathematically
-exact. Admission/result output includes requested and effective native values,
-conversion/quantization error and any zero displacement after rounding.
-
-For example, `motor move absolute 2 turn` and `motor move absolute 720 deg`
-describe the same unwrapped target in the same configured frame.
-`motor move relative -90 deg` requests a displacement.
-`motor move angle 0 deg via shortest` selects an orientation using current
-referenced turn count, rather than requesting absolute zero.
-Its half-turn tie defaults to rejection; limits and uncertain references do
-not silently select another revolution. These examples illustrate planned
-syntax, not implemented or universally supported commands.
-
-`axis origin` requires the axis contract's idle/reference evidence and
-changes only host interpretation. It neither homes the motor nor rewrites its
-counter. `motor position device` requires an implemented operation with resolved
-no-motion counter semantics and invalidates affected origin relations.
-A profile that only supports
-clearing a counter to zero rejects other values; it must not substitute a
-movement or host-offset change. Lost write acknowledgement retains coordinate
-uncertainty.
-
-## Complete typed profile access
-
-The common surface is not the ceiling of supported family functionality.
-Every implemented public profile device operation must be reachable through
-a typed `profile <family> ...` command. For example, `profile ess-rs ...` routes to
-`MotorControlRS::ESS_RS`. The explicit family must match the selected profile;
-it does not silently rebind a motor or infer a protocol from a command.
-Pure codec helpers such as CRC calculation do not require individual commands.
-
-The [profile contract](profile_contract.md) owns the complete ESS inventory,
-register evidence and coverage states. The following groups organize CLI
-access and effects without duplicating that register inventory:
-
-| ESS command group | Access and effect classification |
+| Commands | Meaning and traffic |
 | --- | --- |
-| `profile ess-rs help` / `inventory` | Implemented typed commands plus explicit documented gaps; local |
-| `profile ess-rs identity` / `state` / `feedback ...` | Identity, raw status/alarms, I/O, position and speed; reads |
-| `profile ess-rs codec ...` | Host decoding assumptions and provenance; local |
-| `profile ess-rs communication ...` | Explicit device address/baud/format reads or writes; show active versus pending values and power-cycle requirements |
-| `profile ess-rs driver ...` | Direction, subdivision, device word order and native driver configuration; classify each read/write |
-| `profile ess-rs position ...` / `speed ...` / `jog ...` | Native motion parameters and documented serial actions; separate configuration, start and observation |
-| `profile ess-rs home ...` / `limits ...` | Homing method/parameters, software limits, over-limit and fixed-length interruption settings |
-| `profile ess-rs segments ...` | Multi-position/multi-speed and shared start-speed configuration; expose documented trigger requirements |
-| `profile ess-rs io ...` | Reviewed input/output functions, explicit disabled/none assignment, polarity and custom output control |
-| `profile ess-rs tuning ...` | Closed-loop, encoder, current, lock, filter, deviation, arrival, current-loop and LA settings |
-| `profile ess-rs auxiliary ...` | Explicit enable/release, stop/emergency-stop, alarm/position clear, save and factory restore |
-| `profile ess-rs parameter <typed-name> ...` | Remaining reviewed parameter descriptors with typed values, ranges, prerequisites and effects |
-| `profile ess-rs reg read <register> [count]` | Diagnostic FC03 read within reviewed non-consuming readable windows and the ESS 16-register limit |
+| `help`, `version`, `profile list`, `caps` | Local syntax, identity and coverage |
+| `config`, `host`, `useaddr`, `wiring` | Host selection/configuration; no drive-setting writes |
+| `status`, `health`, `stats`, `drv`, `memory`, `result` | Passive cached diagnostics and retained results |
+| `stats reset` | Clear local counters; preserve faults, observations and uncertainty |
+| `probe [address]` | Minimal checked model read; no hidden identity/state sweep |
+| `read identity\|config\|state [address]` | Explicit non-changing [typed reads](ess_reads.md) |
+| `settings`, `subdivision [INTEGER\|options]` | Read actual settings; an explicit integer requests checked subdivision configuration |
+| `moveby`, `moveto`, `speed`, `accel`, `decel`, `motion`, `stepsperturn` | Simple finite positioning and host intent; [console guide](console.md) |
+| `axis config`, `axis origin`, `prepare` | Pure host coordinates and [target preview](axis_preparation.md) |
+| `move relative\|absolute\|angle` | Detailed [finite moves](ess_position.md) with explicit frame/setup/rounding |
+| `velocity` | [Finite velocity](ess_velocity.md) with explicit duration and stop policy |
+| `enable`, `motor-release`, `alarm-clear`, `position-clear`, `stop normal\|fast` | Explicit [drive actions](ess_actions.md) |
+| `home methods`, `home ...` | Method inventory and qualified [homing](ess_homing.md) |
+| `driver`, `io`, `segment`, `control`, `tuning` | Typed reads/whole-candidate updates; [driver](ess_driver_settings.md), [I/O](ess_io.md), [segments](ess_segments.md), [control](ess_control_settings.md), [tuning](ess_tuning.md) |
+| `motion-profile read\|inspect\|restore\|forget` | Retained position-parameter snapshot and explicit restoration |
+| `communication ...`, `persistence ...` | Explicit [drive communication](ess_communication.md) and [save/restore](ess_persistence.md) workflows |
+| `discover ...` | Bounded non-changing [scan](ess_discovery.md) |
+| `monitor [off\|INTERVAL_MS COUNT]` | Inspect or enable finite state polling; `off` cancels its local continuation |
+| `cancel [ID]`, `release ID`, `recover` | Local cancellation, terminal-result release and explicit host transport recovery |
+| `debug [off\|raw\|decoded]`, `capture-read`, `load` | Copied traffic, fixed read-only timing fixture and optional host workload |
 
-These are groups for later concrete commands, not blanket handlers accepting
-arbitrary payloads. Every leaf identifies a public operation and its exact
-validation, volatility/persistence, coordinate effects and state prerequisites.
-A typed parameter command is acceptable only with a reviewed public descriptor;
-an unrestricted `writereg` escape hatch does not count as command coverage.
-Unknown/unresolved descriptors fail before writes. Full serial command access
-does not invent actions that the device exposes only through external I/O.
-In particular, the current ESS manual describes multisegment execution as
-external-input-triggered: the CLI exposes documented configuration, not an
-invented serial `startSegment` action. Model-specific I/O counts likewise come
-from the ESS inventory, not generic prose for other product families.
+`config` reports host settings; `settings` reads motor configuration and position
+parameters and shows next-move intent. Neither implicitly enables the drive.
+`release ID` frees result storage; `motor-release` sends a drive action. Local
+`cancel`, `monitor off`, `stats reset` and `recover` do not stop a motor. There
+is no raw-register write command or serial segment-start command.
 
-The typed I/O commands must expose an explicit `none`/disabled function for
-each supported terminal. For ESS this maps to the existing native
-`InputFunction::UNDEFINED` or `OutputFunction::UNDEFINED`, value `0`; it is not
-a polarity change. Selecting unused external I/O is a valid setup for serial
-motion. Host wiring declarations are local configuration and must be shown
-separately from drive assignment readback and raw/logical levels. An
-unconnected terminal must not silently acquire a disabled assignment, and a
-disabled output must not be reported electrically inactive without evidence.
-Commands whose selected mode needs external signals report the missing
-prerequisite before writes; other serial commands remain available. Neither
-startup nor a normal move rewrites I/O assignments. These commands call the
-same typed profile API as any application; input/output no-function, polarity
-and custom-output paths are implemented with separate qualification evidence.
+## Simple positioning and coordinates
 
-No startup, `setup`, `diagnose`, `recover` or host configuration command may
-silently enable, move, home, clear alarms, save parameters, restore defaults or
-change device communication. Use explicit device operation names and report
-persistence and post-write verification. If host persistence is added, use
-`host save`, `host load`, `host defaults`; never persist a command for replay.
-Application interlocks and any commissioning confirmation policy apply equally
-to common and profile routes. They are not codec features or a reason to hide
-native commands only on ESP-IDF.
+`moveby VALUE [steps|deg|turn|mm]` and `moveto ...` use one finite application
+session. It reads missing checked configuration/profile data and obtains
+stationary state before admitting the ordinary move sequence. Speed/ramp
+commands and `motion write|stored` retain intent for the next move. Full staging
+before start is the default; stored reuse is explicit.
 
-## Status, health and retained outcomes
+Boot intent is 60 rpm and 100 ms ramps with an explicitly ASSUMED scale of
+1000 command increments per motor turn. A first checked stationary read can
+establish a RAM-only boot-session zero under the standalone's documented
+ASSUMED feedback-to-command convention. It does not home, clear the device
+counter or write NVS. `stepsperturn` changes host interpretation only;
+`subdivision INTEGER` is the separate typed device-setting workflow.
 
-Each report identifies the profile, target and configuration generation and
-separates the following information:
+Simple moves use nearest-command-step quantization with ties to even and at
+most half a step of error. Results retain effective native value and rounding
+error; zero displacement after rounding yields no motion write. Detailed
+requests default to EXACT and expose explicit rounding/approximation choices.
+Angles and travel require the corresponding scale, frame and origin.
 
-- Host configuration/capabilities: serial tuple, frames, scales, origins,
-  decoding assumptions and their sources or missing prerequisites.
-- Transport: idle/transmitting/waiting/fault phase, deadlines and last error.
-- Observations: per-block validity, source, last attempt/success and age,
-  retaining the original target/tuple/configuration context.
-- Motor: raw alarm/status/unknown bits and supported decoded flags; actual
-  versus commanded position/velocity, with native and qualified physical units.
-- Operation: admission, transmission, acknowledgement, queue/execution/completion
-  evidence where observable, plus unknown execution and original context.
-- Health: communication/presence/freshness separately from motor alarm/readiness,
-  including reasons and configured thresholds. Monitoring `disabled` does not
-  mean drive windings released.
+Host speed intent accepts 0..3000 rpm and ramp intent accepts 0..2000 ms.
+Position admission additionally enforces at most 2000 rpm, 200000 command
+increments/s and native ramp times 100..2000 ms. A move requires nonzero speed
+and actual drive subdivision. `settings` shows the subdivision-dependent speed
+ceiling; excess values reject without clamping. Native ramp time is not
+physical acceleration. These defaults describe the recorded bench envelope.
 
-`status` and plain `health` are passive. Explicit `read ...` commands
-refresh observations. This intentionally resolves inconsistent live/cached
-behavior among [sibling consoles](reference/02_ecosystem_review.md) and matches
-passive FieldCore snapshots. Failed reads retain last valid values and advance
-the latest attempt error; they do not publish zeros. A successful identity
-read does not refresh position/alarm age or prove motion compatibility.
-Separate reads do not claim an atomic motor snapshot.
+Completed moves preserve the fixed origin. Release, counter changes,
+unexpected motion and interpretation changes invalidate dependent confidence;
+enabled feedback variation alone does not reset the zero. Uncertain execution
+blocks new motion until checked stop/reconciliation. The interrupted result
+remains historical evidence after that interlock settles.
 
-Print a concise admission result, a local operation ID for asynchronous work
-and one terminal result per foreground operation; bounded progress events may
-precede it. IDs are host correlation, not invented wire transaction IDs.
-Retain codec code/detail, raw device exception/alarm, transport result and
-execution uncertainty. `status`/`result` printing does not consume results.
-Routine telemetry output is rate-limited.
+`subdivision` reads settings; `subdivision options` lists accepted choices.
+An explicit integer requests stopped-state checks, the public setter, readback
+and the matching standalone assumed scale/zero. An unchanged value produces
+no setting write. A changed scale discards the old motion-profile snapshot;
+no automatic movement or nonvolatile save follows.
 
-A validated write acknowledgement is not motion completion. Later readable
-state does not prove that a lost non-idempotent command never executed. Do not
-automatically retry relative movement or replay commands after recovery.
-Implemented `monitor off` disables finite observation polling and cancels its local continuation while physical TX settles; it is not a motor stop. Other planned automatic modes remain unimplemented. `recover` explicitly interrupts queued/active work and settles physical TX/DE
-before reinitializing host transport. It retains uncertain results and never
-clears alarms, enables the motor or resends work. `stats reset` always means local
-statistics only and does not erase uncertain operations or coordinate state.
+## Selection, observations and settings
 
-## Independent consumers and verification
+`useaddr 1..247` is idle-only host binding, not a device-address write. Rebinding
+invalidates selected-target knowledge and resets terminal wiring declarations
+to unknown. `wiring` is local and changes no assignment or signal level.
+Queries remain passive during faults.
 
-Prompt 08 implements the [bounded action routes](ess_actions.md): `enable`,
-`motor-release`, `alarm-clear`, and `stop normal|fast`, through public ESS preparations. `release operation_id` continues to release a host result. Stop
-admission has reserved correlation/output capacity and never substitutes another
-stop policy. Terminal evidence exposes accepted-stop interruption separately
-from actual write acknowledgement and checked completion. Normal firmware uses the configured wiring/receive contract for checked
-acknowledgements, without an analyzer admission flag. Passive `debug
-[off|raw|decoded]` shows copied traffic without taking protocol bytes or result
-capacity. `motion-profile read|inspect|restore` uses typed profile helpers.
+[Host serial changes](host_serial.md) require settled queues, continuations,
+capture and DE with monitoring off. Failure retains exclusive configuration
+ownership until explicit repair; `recover` cannot clear that block. Historical
+results retain their original target, tuple and generations. A routine tuple
+change does not itself change device coordinates or motor configuration.
 
-Standalone operation has no dependency on FieldCore queues, settings, headers
-or CLI registry. A future FieldCore adapter uses its existing bus owner and
-retained-result routing, mapping common/profile operations into typed product
-requests. Its current `rs485 status`, `timing`, `trace`, `recover`, `result` and
-device `probe`/`read`/`read last` provide integration conventions, not limits on
-this library's command coverage. The documented
-[integration gaps](reference/02_ecosystem_review.md#fieldcore-integration-gaps)
-remain separate work.
+Identity, configuration and each state block have separate valid data and
+attempt/success evidence. Probe success refreshes responsiveness only.
+`status` and `health` generate no traffic. Age expiry defaults to disabled;
+generation checks, absent evidence, transaction deadlines and operation-specific
+new-event completion checks still apply.
 
-When implementation is requested, verify help/dispatch/public-API coverage,
-including every implemented typed profile device operation. Test rejected requests
-produce no transaction, exact large integer parsing, source-specific count
-conversion, multi-turn versus wrapped-angle targets, and both coordinate-change
-operations. Exercise host-only commands without device writes; preserve cache
-and uncertainty across failed reads, configuration changes, reset and recovery.
-Verify one UART transaction, bounded cancellation, stop interruption, required
-service deadlines and no automatic motion replay. Equivalent Arduino/native
-ESP-IDF consumers must pass the same semantic command cases; report actual
-adapter serial/echo/timing capabilities separately.
+Typed settings validate the complete candidate before writes and retain ACK,
+readback, partial progress and uncertain effects separately. Matching stored
+readback does not manufacture a missing acknowledgement or establish physical
+activation. Unsupported native pair setters reject. I/O `none` means documented
+function zero; unconnected wiring never implicitly disables an input, limit or
+stop. Settings do not invent torque/current modes or external triggers.
 
-Include the no-external-I/O setup in API/CLI parity tests. Verify explicit
-no-function writes and readback, local-only wiring declarations, and rejection
-of switch/trigger-dependent requests when their required terminals are unused.
+`motion-profile restore` reserves the axis until checked readback matches the
+snapshot. Failed/uncertain restoration retains `restore_unsettled`, blocking
+competing writes, rebinding, forget and another restore. Explicit transport
+repair, configuration/state reads and `motion-profile read` can reconcile the
+stored values. An uncertain write also requires stationary evidence obtained
+after delivery. Original write bytes, deadline and uncertainty remain intact.
 
-The [ESS implementation reference](reference/01_implementation_reference.md)
-and original vendor PDFs remain authoritative for native behavior. Console
-contract tests, firmware builds and physical motor qualification are distinct.
-See [verification](verification.md) and the linked bench reports for completed
-checks; the remaining native families and physical qualification remain open.
+Communication, persistence and discovery use exclusive application sessions.
+Planning/inspection are passive; writes are explicit. Save ACK, live readback
+and restart survival are different evidence. Discovery retains findings and
+restores host selection before ordinary work resumes; a fault requires explicit
+recovery/restoration and does not restart the scan.
 
-Prompt11 implements `velocity VALUE UNIT FRAME DURATION_MS configured normal|fast`
-with public preparation and bounded
-start/observe/stop sequence. Strict optional rounding/approximation, result
-correlation, limits and Python cleanup are documented in [finite serial velocity](ess_velocity.md).
-Velocity zero is distinct from stop/release; unqualified ramps and unsupported
-acceleration/jerk/blending/live/effort modes fail before traffic.
+## Admission, stop and retained outcomes
 
+One owner serializes UART transactions. Same-axis conflicts reject before
+writes; sequences release bus time while waiting without releasing their axis
+reservation. Contexts advance through operation-specific `next...`/`advance...`
+APIs using supplied events/time. Admission respects operation deadlines and
+any required service cadence.
 
-Prompt15 implements `io read|set` through the same installed
-`DriverSettings.h` preparation/decoder as direct callers. Fields are
-`input-polarity`, `x0`-`x3`, `output-polarity`, `y0`, `y1`, and `custom`;
-`none` selects documented function zero. Values are strict integers, duplicate
-fields fail, input masks are bounded to15 and output/custom masks to3.
-Terminal type/command is `io`; command IDs and operation IDs remain separate.
-`driver_group`, `echo_readback_policy`, `settlement`, progress and original raw
-TX/response-source/closure evidence preserve stored/readback versus acknowledged
-and active settings. One candidate validates before any write; no automatic
-assignment, polarity workaround, replay or save occurs. The explicit unwired
-settings policy may settle matching stored readback while the FC06 acknowledgement
-remains false and execution remains unknown. See [I/O contracts](ess_io.md)
-and [current evidence](reports/ess_release_15_2026-10-04.md).
+Stop uses reserved urgent admission, invalidates superseded ordinary work and
+waits for the in-flight frame/direction boundary to settle. Preserve both the
+interrupted operation and stop outcomes. Requested deceleration and device
+queue policy must be supported; bus failure cannot guarantee physical stopping.
+Stop interrupts simple preparation only after urgent admission succeeds.
 
-Prompt22 implements the [bounded discovery routes](ess_discovery.md): one retained
-scan, eight findings, four host tuples, explicit absolute budgets, identity
-refinement and `discover inspect/cancel/restore/finish`. Bare `cancel` while a
-scan owns the session, or `cancel SCAN_ID`, stops future scan work. A transport
-fault requires explicit recovery and scan restoration; no scan resumes after
-repair. Command correlation is separate from scan and per-query operation IDs.
+Cancellation ends unsent work/local waiting, settles physical TX/DE and retains
+uncertain transmitted effects. It does not reverse a write or erase evidence.
+No timeout, startup, recovery, discovery or polling path automatically replays
+motor commands. ACK is distinct from observed completion; old completion flags
+cannot satisfy a new operation.
+
+`result ID` is non-consuming. Explicit correlated/API and failed/uncertain
+results remain retained until released. Delivered successful human-command
+results can be recycled on the next bus command only after terminal output
+leaves both queues. Simple session IDs own their read/move/setting children;
+child IDs expose full retained evidence. Historical failure retention alone
+does not reserve the motor after checked stop/reconciliation.
+
+Human action/motion terminals are concise; JSON inspection retains diagnostic
+detail. `debug raw|decoded` copies owner traffic without consuming protocol
+bytes or blocking transactions under output pressure. Dropped observations
+are counted. Debug mode uses the same production operation path.
+
+## Verification and qualification
+
+Native console/application tests cover help parity, strict parsing, direct API
+equivalence, zero-traffic rejection, provenance, retained results, pressure,
+stop/cancel and commissioning isolation. Adapter tests exercise shared code
+against SDK fakes; firmware builds check platform boundaries. See
+[verification](verification.md) for required checks.
+
+[Named Python scenarios](bench_scenarios.md) use strict correlation and bounded
+evidence. The default regression reads only; motion/settings/persistence require
+explicit selection. Each result identifies firmware, target, settings and
+fixture; it cannot qualify every callable route. The
+[release scope](releases/1.0.0.md), [coverage inventory](ess_api_cli_coverage.md)
+and original vendor PDFs retain remaining limits.
+
+FieldCore integration uses its own device module and existing owner; it does
+not embed this CLI or reuse measurement requests as motor commands. See the
+[integration handoff](fieldcore_handoff.md).

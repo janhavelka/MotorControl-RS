@@ -154,7 +154,9 @@ public:
     BusAdmission admit(const BusRequest& request, uint64_t nowUs, RequestId& output) noexcept;
     /** Immediate urgent work only; ordinary pressure cannot consume its quotas. */
     BusAdmission admitUrgent(const BusRequest& request, uint64_t nowUs, RequestId& output) noexcept;
-    /** Begin/replace a sequence on an idle producer. Its deadline cannot be renewed. */
+    /** Begin/replace a sequence on an idle producer. Its deadline cannot be renewed.
+     * Each transaction may have an earlier absolute deadline (e.g. readiness expiry).
+     * It may never extend the sequence deadline. */
     bool beginSequence(std::size_t producer, uint64_t deadlineUs, uint64_t nowUs, SequenceId& output) noexcept;
     /** Cancel a sequence (including a wait with no queued work). Results survive. */
     bool invalidate(const SequenceId& sequence, uint64_t nowUs) noexcept;

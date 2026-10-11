@@ -1,6 +1,6 @@
 # Finite Python bench scenarios
 
-The [prompt29 qualification matrix](reports/ess_release_29_2026-10-05.md) records
+The [cross-platform qualification matrix](reports/ess_release_29_2026-10-05.md) records
 bounded combined load, owner-delay, result-pressure and finite feature campaigns
 using these helpers. Its evidence archive includes exact plans and orchestration.
 After a long phase or explicit recovery, refresh the prerequisites of the next
@@ -34,24 +34,24 @@ supplied image's hash; console version does not attest the flashed image.
 | `configuration` | One typed configuration and I/O read | No settings write |
 | `native-read` | `--native driver\|io\|control\|segment\|tuning`; `--native-args` use existing typed grammar | Reject setter arguments; inspect and release correlated result |
 | `settings` | `--setting input-filter\|lock-delay --value N`; exactly one native-unit difference | Save raw group, refresh existing prerequisites, change once, read back, rebuild invalidated evidence, restore once and compare the complete raw group |
-| `position` | `--phase forward\|absolute\|return`; node1, 100 native increments at 60rpm, configured ramps | Same-session stop, fresh standstill and original profile restoration; absolute/return require the existing raw fixture window |
+| `position` | `--phase forward\|absolute\|return`; node 1, 100 native increments at 60 rpm, configured ramps | Same-session stop, fresh standstill and original profile restoration; absolute/return require the existing raw fixture window |
 | `actions` | One explicit initially-enabled stationary release/enable cycle | Ends enabled; initial released state refuses before an action write |
-| `stop` | `--stop-policy normal\|direct`; one finite250-increment move | Require new RUNNING report, interrupted move result, stop and standstill, then restore original profile |
+| `stop` | `--stop-policy normal\|direct`; one finite 250-increment move | Require new RUNNING report, interrupted move result, stop and standstill, then restore original profile |
 | `angle` | Explicit `--arguments` matching public wrapped-angle grammar; optional stop policy | Existing coordinate/firmware gates; one stop and profile restoration only after qualified standstill |
-| `velocity` | Explicit public `--arguments`, finite duration and stop policy; timeout must include duration | Existing sign/ramp/stop gates; no autonomous hardware test in this qualification. Standalone native-parameter backup remains owning gap11 |
+| `velocity` | Explicit public `--arguments`, finite duration and stop policy; timeout must include duration | Existing sign/ramp/stop gates; hardware execution remains unqualified. Standalone native-parameter reads/backup remain a named coverage gap |
 | `homing-prerequisites` | One caps/wiring/I/O check | No homing execution; method-specific admission still required. Existing explicit finite `bench_probe.py home` campaign remains available behind its gates |
 | `discovery` | `--discovery` with existing bounded candidate/budget grammar; default selected ESS/current tuple | Require COMPLETE, retained findings and actual original host tuple/selection after restoration; incomplete scan fails without implicit recovery |
 | `persistence-plan` | Explicit `--persistence-kind save\|factory-restore` | Local plan; no nonvolatile write or durability claim |
 | `persistence` | Same explicit kind; existing backup/recommissioning gates | One deliberate action and verification; no replay, automatic restart or inferred durability |
 
-Single-attempt scenarios report count1 and reject `--count`/`--interval`.
+Single-attempt scenarios report count 1 and reject `--count`/`--interval`.
 Scenario-specific arguments cannot silently enter another scenario. No stress
 mode sweeps setters, persistence or motion. `--address` is 1..247 for supported
-read operations; fixed qualified motion phases select node1. `--timeout` is a
-finite command bound up to60seconds; existing operation/request deadlines are
+read operations; fixed qualified motion phases select node 1. `--timeout` is a
+finite command bound up to 60 seconds; existing operation/request deadlines are
 unchanged. The reusable motion phases use their fixed five-second command bounds.
 
-Examples of explicit qualified inputs used in [prompt24 evidence](reports/ess_release_24_2026-10-05.md):
+Examples of explicit qualified inputs used in the [scenario evidence](reports/ess_release_24_2026-10-05.md):
 
 ```powershell
 python scripts/bench_scenarios.py --scenario observations --count 2 --out build/bench/state-new
@@ -64,8 +64,8 @@ python scripts/bench_scenarios.py --scenario discovery --discovery addresses 1 1
 ```
 
 These are separate experiments, not a command chain to execute blindly.
-The filter example applies only when the checked original value is2 and the
-existing passive/unconnected-terminal policy permits2/3. Unknown wiring is not
+The filter example applies only when the checked original value is 2 and the
+existing passive/unconnected-terminal policy permits 2/3. Unknown wiring is not
 overridden. Settings refreshes must observe the changed native group before
 rebuilding dependent I/O/configuration evidence; otherwise cache invalidation
 correctly refuses restoration. Lock-delay experiments obey the existing exact
@@ -83,11 +83,11 @@ the CRC, address, model window, decoded model and reported parser disposition.
 Ordinary read/configuration/motion scenarios compare before/after configuration;
 a deliberate factory restore instead preserves its changed readback.
 
-The JSONL stream flushes each record and defaults to20,000 records/16MiB, with
-a 1MiB per-record bound. CLI maxima are200,000 records/64MiB. Capacity exhaustion,
+The JSONL stream flushes each record and defaults to 20,000 records/16 MiB, with
+a 1 MiB per-record bound. CLI maxima are 200,000 records/64 MiB. Capacity exhaustion,
 short file writes and disk/flush errors interlock subsequent evidence/traffic.
 The independent summary retains fixed snapshots, cumulative failure counts,
-the last16 campaign records and last32 motion-command records; no unbounded raw
+the last 16 campaign records and last 32 motion-command records; no unbounded raw
 history is held in memory. Raw lines and traffic events stream incrementally.
 Asynchronous debug display drops remain separate from protocol failures.
 
@@ -103,7 +103,7 @@ An interrupted startup read also blocks further traffic. Failure while closing
 the owned port makes the session fail; simultaneous work/startup and closure
 errors retain the primary `error` and separate `owner_error`.
 
-The [fresh prompt24 audit](reports/ess_release_24_audit_2026-10-05.md) records
+The [scenario audit](reports/ess_release_24_audit_2026-10-05.md) records
 these failure regressions and the repeated COM13 finite functional checks.
 
 Uncertain movement is never retried. A volatile profile backup is preserved by

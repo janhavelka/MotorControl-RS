@@ -157,8 +157,9 @@ tuning GROUP set FIELD INTEGER [FIELD INTEGER ...] [address]
 
 Values use strict native integer parsing. Duplicate fields, mixed groups,
 unsupported parameters and out-of-range values fail before admission. There is
-no bare-address tuning setter. The existing 128-byte input and 20-token console
-bounds still apply; the direct API can prepare a complete eight-field candidate.
+no bare-address tuning setter. The 128-byte input limit includes the terminator
+and the 22-token limit includes an optional `@ID`; the direct API can prepare
+a complete eight-field candidate.
 The transport keeps command correlation distinct from retained operation IDs,
 supports interleaved accepted/terminal records and never splits or retries an
 oversized or failed write automatically.
@@ -204,9 +205,9 @@ are outside this feature. Current-loop/LA gain, collision and arrival/deviation
 physical effects remain unqualified unless separately measured on a suitable
 fixture. The free-shaft bench supplies no collision mechanism, switches or loads.
 
-Integrated verification passes all 45 native CTest cases, the installed
-consumer, all four example builds, generator checks and the 21 inventory tests.
-The source PDF and generated descriptors remain unchanged.
+The [implementation report](reports/ess_release_18_2026-10-04.md) retains the
+test/build counts for that image. Use the [verification guide](verification.md)
+for current checks; historical counts are not the present test inventory.
 
 FieldCore's current request/work/result and RS485 owner were inspected read-only.
 Serialized bounded work is compatible vocabulary. Its eight-byte transactions,

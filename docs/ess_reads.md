@@ -57,7 +57,8 @@ Configuration preserves unknown enum codes and reserved polarity bits while
 marking typed values unknown. It includes direction, subdivision, stored node,
 baud/format, limit settings, paired-word order, input assignments/polarity,
 algorithm and configured encoder resolution. A known word order is required
-before future paired payload decoding; configuration reads do not themselves read a pair. State feedback uses a matching copied configuration before unsigned pair assembly.
+before paired payload decoding; configuration reads do not themselves read a pair.
+State feedback uses a matching copied configuration before unsigned pair assembly.
 Stored serial codes are distinct from the actual host tuple used successfully
 for these reads. They do not prove that pending settings are active or saved.
 Subdivision remains SCALE_UNRESOLVED; it never replaces a command scale with
@@ -71,7 +72,7 @@ The rest of `UnitConfig` stays unknown.
 
 Input assignments, declared wiring and observed levels are independent. Function
 0 is the documented no-function assignment. UNKNOWN or UNCONNECTED wiring never
-disables an assigned function. Configuration input levels stay unknown; the independently timed state I/O block supplies logical levels. Serial-only reads require no external I/O. Future homing,
+disables an assigned function. Configuration input levels stay unknown; the independently timed state I/O block supplies logical levels. Serial-only reads require no external I/O. Homing,
 limit, enable/stop and trigger operations must check only their relevant input
 assignments, wiring and state; this operation changes none of them.
 
@@ -81,7 +82,9 @@ frontend operations plus a separate recovery result. One current request ID per
 read prevents duplicate admission. Intermediate owner results are explicitly
 released only after their evidence is copied into the context. Another eligible
 request may use the bus between windows. The frontend slot remains reserved
-until explicit `release`; result inspection never consumes it. Recovery increments
+until explicit `release`, or until the console recycles a delivered successful
+human result for later work. Explicitly correlated, JSON and API results remain
+retained; inspection never consumes them. Recovery increments
 the application binding generation and cancels old continuations, preserving
 their outcomes and raw evidence. A bit-identical delayed RTU response still has
 no wire request ID; host generations do not eliminate that ambiguity.
@@ -91,8 +94,9 @@ The existing console supports `read identity [address]`, `read config [address]`
 per-window TX/RX data and timing. `result` inspects the same retained operation;
 `cancel` and `release` use its operation ID, independently of command correlation.
 Input/output remain bounded and serviced during active transactions. Capabilities
-advertise only implemented non-changing reads, never motion or exact-model
-qualification. `config` is a local host report; it labels device settings cached
+distinguish implemented read preparations from operations and their admission
+requirements; a read does not qualify motion or identify an exact model.
+`config` is a local host report; it labels device settings cached
 only after a complete configuration observation, with target/generation IDs.
 The standalone configuration and driver-settings prerequisite caches belong
 to its configured axis. Other target reads remain inspectable retained results.
@@ -107,9 +111,9 @@ write/action, implementation, CLI and evidence dispositions without creating
 another address catalogue. Reads never satisfy write/action obligations.
 
 Historical identity/configuration native/public-package and hardware evidence
-is in the [prompt 05 handoff](reports/ess_release_05_2026-10-04.md).
+is in the [identity/configuration implementation report](reports/ess_release_05_2026-10-04.md).
 
-The [fresh prompt 05 audit](reports/ess_release_05_audit_2026-10-04.md)
+The [identity/configuration audit](reports/ess_release_05_audit_2026-10-04.md)
 independently rechecks these contracts and repeats native, installed-package,
 build and read-only bench verification.
 
@@ -128,15 +132,15 @@ not observations of zero. Three FC03 windows are not an atomic snapshot.
 None of their fields are consuming/read-to-clear; future consuming fields require
 an explicit consumer and cannot be added implicitly to this poll set.
 
-The original function manual physical pages68/69 establish bits0..6 and released
-polarity: bit4 set means released, clear means enabled. Alarm labels0,1,2,3,5
-are reviewed; raw4 indicates an error but lacks a named decoded label. Unknown
+The original function manual physical pages 68/69 establish bits 0..6 and released
+polarity: bit 4 set means released, clear means enabled. Alarm labels 0, 1, 2, 3, 5
+are reviewed; raw 4 indicates an error but lacks a named decoded label. Unknown
 codes/bits remain raw. I/O flags are logical valid levels, not terminal voltages,
 wiring declarations or proof of an input's operational effect.
 
 Position is given/commanded in reviewed open-loop mode or subdivision-equivalent
 encoder feedback in reviewed closed-loop mode. It is never raw encoder counts.
-Unknown algorithm, including observed raw3, leaves that distinction unresolved.
+Unknown algorithm, including observed raw 3, leaves that distinction unresolved.
 Known word order permits unsigned bit assembly only. Signed encoding, position
 scale and speed units remain explicit `ReadResolution` reasons; no RPM, signed
 position, physical angle or motion completion is inferred.
@@ -162,7 +166,7 @@ bound/age. Elapsed-age expiry is disabled by default (`stale_after_ms=0`);
 applications can opt into a positive `observationMaxAgeMs` budget. Missing,
 invalidated, future-timestamped or wrong-generation evidence still fails.
 
-`monitor` queries, `monitor <interval_ms> <count>` enables100..60000ms and1..1000
+`monitor` queries, `monitor <interval_ms> <count>` enables 100..60000 ms and 1..1000
 finite attempts, and `monitor off` disables/cancels future work. Default disabled
 means no polling traffic. One private frontend record yields only these three
 normal-priority read windows through the existing owner; urgent work still wins
@@ -179,12 +183,12 @@ The Python `state-health` finite campaign reads configuration once, performs
 explicit health checks, inspects/releases results and verifies passive cache
 queries preserve bounds and increase age. It stops on framing/failure, without
 recovery or replay. Current native/hardware limits and exact stationary baseline
-are in the [06 report](reports/ess_release_06_2026-10-04.md).
+are in the [state-observation report](reports/ess_release_06_2026-10-04.md).
 
-The [fresh06 audit](reports/ess_release_06_audit_2026-10-04.md) separates raw
+The [state-observation audit](reports/ess_release_06_audit_2026-10-04.md) separates raw
 feedback freshness from decoded interpretation confidence. Cached FEEDBACK adds
 `current_config_operation_id` (latest successful configuration for that exact
-target/generation, otherwise0) and `interpretation_current`. The latter is true
+target/generation, otherwise 0) and `interpretation_current`. The latter is true
 only when the original nonzero `config_operation_id` still matches. A newer
 configuration observation conservatively supersedes the old interpretation,
 even if readback values are unchanged; it does not rewrite historical raw/decoded

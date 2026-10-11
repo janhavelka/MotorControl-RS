@@ -2,6 +2,7 @@
 #include "../examples/common/RtuBusOwner.h"
 #include "../examples/common/EssRtuValidator.h"
 #include "MotorControlRS/profiles/ess_rs/Codec.h"
+#include "MotorControlRS/profiles/ess_rs/Position.h"
 #include "MotorControlRS/profiles/ess_rs/Registers.h"
 #include "MotorControlRS/profiles/ess_rs/Types.h"
 #include <algorithm>
@@ -606,6 +607,64 @@ void testSequenceInvalidation() {
     assert(settling.owner.beginSequence(0, 30000, 2180, replacement));
     assert(replacement.generation == initial.generation + 2); // Cancel once, begin once.
 }
+void testSequenceStepDeadline() {
+    // Use actual typed move work: readiness expires before the whole operation.
+    MotorControlRS::AxisConfig axis;
+    axis.target.id = 100; axis.target.address = 1; axis.target.generation = 9;
+    axis.generation = 7; axis.supportedRelativeBases = 1;
+    axis.nativeMinimum = -1000; axis.nativeMaximum = 1000;
+    MotorControlRS::MoveRequest move;
+    move.position.value = MotorControlRS::Rational(25);
+    move.position.configurationGeneration = axis.generation;
+    move.speedRpm = 60;
+    move.ramp = MotorControlRS::MoveRamp::VERIFIED_CONFIGURED;
+    Ess::MovePrerequisites prerequisites;
+    prerequisites.target = axis.target; prerequisites.configurationGeneration = axis.generation;
+    prerequisites.commandUnitsVerified = prerequisites.relativeBasisVerified = true;
+    prerequisites.configuredRampVerified = prerequisites.serialInputsPermit = true;
+    prerequisites.readinessQualified = prerequisites.wordOrderKnown = prerequisites.startSpeedKnown = true;
+    prerequisites.accelerationTime = prerequisites.decelerationTime = 100;
+    prerequisites.startSpeed = 30; prerequisites.subdivision = 1000;
+    prerequisites.observedUs = 900; prerequisites.maximumAgeUs = 4100;
+    Ess::MoveContext context;
+    assert(Ess::prepareMoveRelative(context, axis, nullptr, 12, move, prerequisites, 1000, 30000));
+    Ess::PreparedMove prepared;
+    assert(Ess::nextMove(context, 1000, prepared));
+    assert(prepared.length == 19 && prepared.deadlineUs == 5000 && context.deadlineUs == 30000);
+
+    for (unsigned phase = 0; phase < 3; ++phase) {
+        Rig rig; SequenceId sequence;
+        assert(rig.owner.beginSequence(0, context.deadlineUs, 1000, sequence));
+        BusRequest step;
+        step.sequence = sequence; step.wire.bytes = prepared.bytes; step.wire.length = prepared.length;
+        step.wire.replyLength = 8; step.wire.responseTimeoutUs = 10000;
+        step.wire.deadlineUs = prepared.deadlineUs;
+        step.expected.target = prepared.target.id; step.expected.targetGeneration = prepared.target.generation;
+        step.expected.address = prepared.target.address; step.expected.function = prepared.function;
+        step.expected.first = prepared.reg; step.expected.count = prepared.count;
+        step.validator = essValidator();
+        const RequestId id = admit(rig, step);
+        if (phase == 1) { rig.service(1000); rig.service(1350); } // DE setup, no accepted bytes.
+        if (phase == 2) rig.send(); // Full accepted frame, no response.
+        rig.service(prepared.deadlineUs);
+        assert(done(rig, id).deadlineUs == prepared.deadlineUs);
+        assert(done(rig, id).transport.reason == Reason::REQUEST_DEADLINE);
+        assert(done(rig, id).transport.txAccepted == (phase == 2 ? 19 : 0));
+        assert(done(rig, id).executionUnknown == (phase == 2));
+        assert(!rig.runner.transmitEnabled());
+        assert(rig.fake.sent.size() == (phase == 2 ? 1U : 0U));
+        assert(rig.producers[0].deadlineUs == context.deadlineUs); // Never renewed or shortened.
+        step.wire.deadlineUs = context.deadlineUs + 1;
+        RequestId rejected; rejected.generation = 99;
+        assert(rig.owner.admit(step, prepared.deadlineUs, rejected) == BusAdmission::INVALID);
+        assert(rejected.generation == 99);
+        assert(rig.owner.invalidate(sequence, prepared.deadlineUs));
+        step.wire.deadlineUs = context.deadlineUs;
+        assert(rig.owner.admit(step, prepared.deadlineUs, rejected) == BusAdmission::INVALID);
+        rig.service(40000); // No automatic retry, including after accepted TX.
+        assert(rig.fake.sent.size() == (phase == 2 ? 1U : 0U));
+    }
+}
 void testRecoveryPressureAndSettlement() {
     Rig rig(3, 3, 1, 1); uint8_t bytes[32];
     SequenceId sequence; assert(rig.owner.beginSequence(0, 30000, 1000, sequence));
@@ -904,6 +963,7 @@ int main() {
     testScheduleBounds(); testCancellationPhases(); testDeadlineCancellation(); testLateCancelOverReadBudget();
     testCancellationPrecedesLaterExpiry(); testFairnessAndIsolation();
     testUrgentReservationAndOrdering(); testStopShapedUrgentScheduling(); testDeferredAndDispatchExpiry(); testSequenceInvalidation();
+    testSequenceStepDeadline();
     testRecoveryPressureAndSettlement(); testRecoveryFailuresAndExpiry();
     testRecoveryRejectsContradictoryDrainEvidence(); testRequestCancellationSurvivesRecoveryExpiry(); testUrgentCannotBypassRecovery();
     testExpiredRecoveryCannotReopenThroughHistoricalSuccess(); testRecoveryDoesNotDoubleReadBudgetAfterCompletion();

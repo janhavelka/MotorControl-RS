@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Reference-owner admission accepts a typed step deadline within its immutable
+  operation budget, including earlier readiness expiry. It still rejects work
+  outside that budget and never replays an uncertain write.
+- Shared application completion handling preserves captured timing, source
+  confirmation and uncertainty while keeping each operation's response policy.
+
+### Maintenance
+
+- Removed unreachable console-rendering code, corrected the obsolete `?` help
+  hint, and resolved C++11/volatile build warnings without changing motor semantics.
+- Corrected current API/console bounds, settings and motion evidence, repository
+  identity and FieldCore integration guidance. Historical reports and vendor
+  references remain unchanged; larger refactors have a separate promptset.
+
 ## 1.0.0 - First release
 
 All earlier 0.x numbers were development versions, not published releases.

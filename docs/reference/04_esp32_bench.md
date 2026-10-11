@@ -1,6 +1,6 @@
 # ESP32-S3 standalone bench configuration
 
-Updated 2026-10-03. This file describes the available motor-test hardware,
+Reviewed 2026-10-11. This file describes the available motor-test hardware,
 not a required board or a FieldCore product. The library core and portable
 RS485 runner do not depend on this MCU, SDK, USB console or PSRAM.
 
@@ -39,7 +39,7 @@ TX/RX/DE timing remains unqualified; historical pin matches do not prove it.
 
 - pioarduino 55.03.311, Arduino 3.3.11 and its ESP-IDF 5.5.5 libraries;
 - 240 MHz CPU, 80 MHz flash, QIO flash and OPI PSRAM recipe;
-- USB CDC console and an explicitly chosen upload port;
+- shared IDF USB Serial/JTAG console and an explicitly chosen upload port;
 - `bench_s3_units`, `bench_s3_probe`, `bench_s3_load_poll` and
   `bench_s3_load_timer` example environments.
 
@@ -51,11 +51,13 @@ firmware restoration procedure. ISR/capture state and stacks remain internal;
 large example buffers use PSRAM. This is an example allocation policy only.
 
 Native ESP-IDF consumes the core through CMake. The
-[standalone native-IDF application](../esp_idf_probe.md) uses ESP-IDF5.5.5,
+[standalone native-IDF application](../esp_idf_probe.md) uses ESP-IDF 5.5.5,
 example Kconfig board settings and explicitly checked native SDK options;
 Arduino USB macros do not configure it. Its initial read-only smoke and
-[prompt26's bounded motion/load subset](../reports/ess_release_26_2026-10-05.md)
-pass; electrical timing, independent shaft measurements and endurance remain open.
+[bounded motion/load qualification](../reports/ess_release_26_2026-10-05.md)
+passed for its recorded image. Later [four-hour position testing](../reports/2026-10-07_rate_boundary.md)
+adds evidence for one Arduino image and operating envelope. Electrical timing,
+independent shaft measurements and broader endurance qualification remain open.
 Another platform can use the same core and [portable runner](../runner.md)
 with its own callbacks and caller-owned storage.
 

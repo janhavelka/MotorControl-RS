@@ -37,7 +37,7 @@ implemented:
 
 Positive/negative limit candidates are explicit typed fields, but preparations
 containing either reject with `PAIR_WRITE_UNSUPPORTED` before *all* traffic.
-Their reads are implemented. [Prompt 12's pair policy](ess_pair_writes.md) admits
+Their reads are implemented. The [pair policy](ess_pair_writes.md) admits
 neither separate FC06 halves nor a new FC10 limit window. No settings request
 implicitly reassigns an input, changes communications or saves the drive.
 
@@ -115,28 +115,31 @@ driver set FIELD INTEGER [FIELD INTEGER ...] [address]
 Fields are `direction`, `subdivision`, `word-order`, `soft-limit`, `over-limit`,
 `interruption`, `position-mode`, `positive-limit`, `negative-limit`. Enum fields
 use their documented zero/one codes. Values use strict integer parsing; duplicate
-fields and incomplete pairs reject. The existing 128-byte line/20-token bound
-limits CLI group size; the direct API accepts all seven single-word fields.
+fields and incomplete pairs reject. The 128-byte line limit includes the
+terminator; the 22-token limit includes an optional `@ID`. These bounds limit
+CLI group size; the direct API accepts all seven single-word fields.
 Host `axis` configuration remains distinct. Operations use ordinary retained
 capacity (eight frontend records), existing command correlation, explicit result
 inspection/release, cancellation and the reserved stop/recovery paths. Compact
-terminal evidence fits the unchanged 4608-byte output bound.
+terminal evidence fits the shared 8192-byte output bound.
 
 `python scripts/bench_probe.py --port COM13 --log <new.jsonl> driver-read` performs
 one checked read, immutable result inspection and explicit release. It does not
 retry or write settings. The Python `Console` can submit explicitly selected
 typed groups through the same correlated protocol.
 
-See the [prompt 13 report](reports/ess_release_13_2026-10-04.md) for tests, actual
-platform sizes and current read-only evidence. Physical settings changes and
-restoration are NOT RUN pending electrical/FC06 response-source and input
-qualification. Software-limit movement also needs resolved pair encoding,
-homing/reference semantics and a suitable fixture; raw zero limits are no proof.
+The [initial driver-settings report](reports/ess_release_13_2026-10-04.md)
+records its tests, image sizes and read-only evidence. Later
+[position-boundary testing](reports/2026-10-07_position_limits.md) exercised
+subdivision changes and restoration on the recorded free-shaft motor. That
+evidence does not qualify every driver field or electrical behavior.
+Software-limit movement still needs resolved pair encoding, homing/reference
+semantics and a suitable fixture; raw zero limits are no proof.
 
 
-Prompt15 extends this same sequencer with `DriverGroup::IO`, separate stored I/O
+The same sequencer supports `DriverGroup::IO`, separate stored I/O
 observations, typed function setters and checked polarity/custom masks. The
 DRIVE group retains its four read windows and seven writable fields; I/O has
 three gap-safe read windows and at most nine writes plus nine readbacks.
-Field/effect masks are32 bits, supported logical raw indices are16, and copied
-reply capacity is15 bytes. See [I/O API/lifetime and effects](ess_io.md).
+Field/effect masks are 32 bits; the DRIVE and I/O groups use logical raw indices
+0..15, and copied reply capacity is 15 bytes. See [I/O API/lifetime and effects](ess_io.md).

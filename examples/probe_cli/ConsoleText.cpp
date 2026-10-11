@@ -420,8 +420,8 @@ bool reviewReleaseHint(Writer& writer, const Value& report) {
         return operation.kind != Kind::NUMBER || equal(operation, "0") ||
             (writer.text("After reviewing: release ") && writer.scalar(operation) && writer.text(".\n"));
     }
-    return operation.kind != Kind::NUMBER || equal(operation, "0") ||
-        (writer.text("Retained details: release ") && writer.scalar(operation) && writer.text(" after review; this frees result storage only.\n"));
+    return writer.text("Retained details: release ") && writer.scalar(operation) &&
+        writer.text(" after review; this frees result storage only.\n");
 }
 const char* motionReason(const Value& reason) {
     if (equal(reason, "busy")) return "the application is still finishing an operation or delivering its result";

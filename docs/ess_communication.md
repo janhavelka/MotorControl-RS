@@ -1,6 +1,6 @@
 # ESS communication commissioning
 
-Prompt 20 adds explicit communication preparations in
+Explicit communication preparations are in
 [`Communication.h`](../include/MotorControlRS/profiles/ess_rs/Communication.h).
 They share the checked FC06/FC03 codecs, `ActionEvent`, `ReadTarget` and
 `ActiveSerialTuple`. Transport and tuple selection remain application-owned.
@@ -9,7 +9,8 @@ They share the checked FC06/FC03 codecs, `ActionEvent`, `ReadTarget` and
 
 The original function manual physical pages 6 and 69 and hardware manual
 physical page 11 establish these settings. Page 26 describes the separate
-stopped-state save-all command; prompt 21 owns its implementation.
+stopped-state save-all command, implemented separately by the
+[persistence API](ess_persistence.md).
 
 | Field | Register and source values | Pending effect / qualification |
 | --- | --- | --- |
@@ -67,7 +68,7 @@ Active profile continuations and monitoring also prevent entry.
 
 Host configuration and explicit recovery keep this lease. Ordinary `host`
 changes, axis changes and normal producers cannot bypass it. Session host
-commands reuse prompt 19's adapter/timing/reconfiguration implementation.
+commands reuse the [host serial](host_serial.md) adapter and timing implementation.
 Failed configuration keeps the host blocked and both candidates inspectable;
 successful UART repair alone does not establish a responding target. Recovery
 does not clear write evidence or replay it.
@@ -119,11 +120,11 @@ therefore rejects begin before TX. Native tests inject simulated qualification
 into the actual application; those flags are not available as console overrides.
 Physical address/baud/format change, restart, readback and restoration are
 **NOT RUN**. This limitation is independent of the confirmed power/RS485-only,
-free-shaft setup. [Prompt21's persistence API](ess_persistence.md) now saves a
+free-shaft setup. The [persistence API](ess_persistence.md) can save a
 pending custom address through this same token-based commissioning lease.
 Candidate confirmation precedes its bounded snapshot; save and post-save reads
 never release the parent lease. Communication finish needs fresh confirmation
 after save or recovery. Native tests cover both original/requested responding
 addresses and host setup failure/restoration; physical saved-address activation
 remains NOT RUN until an actual restart/recommissioning route is available.
-Prompt 22 receives no permission to write during discovery.
+[Discovery](ess_discovery.md) remains non-changing and never uses these writes.

@@ -60,25 +60,13 @@ void serviceCommissioning(App& a, uint64_t now) {
     const auto* result = a.owner.result(a.commissioningRequest);
     if (!result) return;
     MotorControlRS::ActionEvent event;
-    event.transport.target.id = result->expected.target;
-    event.transport.target.address = result->expected.address;
-    event.transport.target.generation = result->expected.targetGeneration;
     event.transport.operationId = a.commissioning.operationId; event.transport.step = a.commissioning.step;
     event.transport.kind = result->transport.reason == Rtu::Reason::FRAME ? ReadEventKind::FRAME :
         result->outcome == Rtu::Outcome::CANCELLED ? ReadEventKind::CANCEL : ReadEventKind::TRANSPORT_FAILURE;
-    event.transport.txAccepted = result->transport.txAccepted;
-    event.transport.executionUnknown = result->executionUnknown;
-    event.transport.transportDetail = static_cast<int32_t>(result->transport.reason);
-    event.transport.frame = result->transport.rxLength ? result->raw : nullptr;
-    event.transport.length = result->transport.rxLength;
+    copyCompletion(event.transport, *result);
     event.txComplete = result->transport.txComplete;
     event.responseConfirmed = event.transport.kind == ReadEventKind::FRAME &&
         (a.commissioning.step != 0 || a.commissioningResponseQualified);
-    if (event.transport.kind == ReadEventKind::FRAME && result->transport.closureQualified) {
-        event.transport.qualified = true;
-        event.transport.earliestUs = result->transport.closureEarliestUs;
-        event.transport.latestUs = result->transport.closureLatestUs;
-    }
     if (!ESS::advanceCommunication(a.commissioning, event, now)) return;
     if (a.commissioning.step && a.commissioning.observedActiveKnown &&
         a.commissioningRequestBinding == a.bindingGeneration)

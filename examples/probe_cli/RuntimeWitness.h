@@ -20,8 +20,12 @@ inline void begin() {
                     retained.inputLines, retained.outputQueued, retained.outputBlocked};
     else previous = {};
     retained.magic = 0;
-    retained.stage = STARTUP; retained.uptimeMs = retained.loops = 0;
-    retained.inputLines = retained.outputQueued = retained.outputBlocked = 0;
+    retained.stage = STARTUP;
+    retained.uptimeMs = 0;
+    retained.loops = 0;
+    retained.inputLines = 0;
+    retained.outputQueued = 0;
+    retained.outputBlocked = 0;
     retained.magic = MAGIC;
 }
 inline void mark(Stage stage) { retained.stage = stage; }

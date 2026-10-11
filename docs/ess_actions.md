@@ -6,8 +6,8 @@ case retains UNKNOWN execution. The ordinary board uses its declared combined
 DE/~RE wiring and checked post-release receive intervals for acknowledgement;
 no analyzer or special firmware mode is required. See [motion checks](functional_bench.md).
 
-Prompt 08 implements the installed `ActionOperation.h` and
-`profiles/ess_rs/Actions.h` contract. Applications own `ActionContext`, the
+The installed `ActionOperation.h` and `profiles/ess_rs/Actions.h` define the
+action contract. Applications own `ActionContext`, the
 clock, transport, scheduling, reservation and retained results. Core functions
 perform no I/O, allocation, retries or clock reads. Include the ESS header to
 use the common `MotorControlRS::prepareEnable`, `prepareRelease`,
@@ -44,7 +44,7 @@ stop is not a qualified independent emergency-stop mechanism.
 
 ## Explicit device position clear
 
-Prompt10 adds `prepareSetDevicePosition(context, target, operationId,
+`prepareSetDevicePosition(context, target, operationId,
 nativePosition, qualified, nowUs, deadlineUs, options)` through common and native
 ESS routes. Only zero is supported; any nonzero value rejects without yielding
 traffic. The command is auxiliary value `0x0031` at `0x002D`, documented on
@@ -55,7 +55,8 @@ The caller must qualify the clear semantics and stopped-state prerequisites;
 this is a conservative application policy. The manual's explicit stopped-state
 note on pages26/71 applies to factory restore/save, not position clear. The
 standalone also requires new, matching, enabled/stopped/alarm-free readiness
-and caps the request deadline by that retained readiness age. Its separate
+and, when age expiry is enabled, caps the request deadline by that retained
+readiness age. Its separate
 `positionClearQualified` commissioning flag remains false on the actual board.
 
 The checked, source-confirmed acknowledgement is followed by bounded new FC03
@@ -142,8 +143,8 @@ accepted interruption are both retained.
 
 Stop does not depend on host origin, scales, fresh position, idle state,
 alarm-free state or a home switch. Unconnected, disabled and unknown inputs remain
-different observations; no input changes occur implicitly. Dependent input
-configuration belongs to prompt 15.
+different observations; no input changes occur implicitly. Use the explicit
+[I/O settings API](ess_io.md) for input configuration.
 
 ## Console and bench restriction
 
@@ -179,7 +180,8 @@ measurement and independent shaft observation.
 Device position clear hardware remains NOT RUN, independently of its native
 tests and zero-TX admission gates. It is never added to read/load campaigns;
 the one-attempt Python `position-clear` command is explicit. See the
-[prompt10 report](reports/ess_release_10_2026-10-04.md) for current dispositions.
+[device-position-clear report](reports/ess_release_10_2026-10-04.md) for its
+software tests and retained no-TX bench evidence.
 
 ## Finite-move integration
 

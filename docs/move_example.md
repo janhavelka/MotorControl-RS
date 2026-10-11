@@ -1,9 +1,9 @@
 # Move by an amount, or move to a target
 
-For interactive use, the existing console now accepts `moveby 100 steps` and
+For interactive use, the console accepts `moveby 100 steps` and
 `moveto 100 steps`, plus `speed`, `accel`, `decel` and `stepsperturn`. It performs
 missing read-only preparation and prints a short outcome. See the
-[console guide](console.md) for units, manufacturer ranges and error handling.
+[console guide](console.md) for units, operating limits and error handling.
 The C++ calls below remain direct application submissions using the prepared
 configuration/state/profile caches; they do not run that interactive preparation
 session or automatically release previous results.

@@ -2,7 +2,7 @@
 
 This table records the 35 documented choices in the preserved
 [ESS function manual](vendor/Modbus-Series-Bus-Product-Function-Manual-V1.0_1_.pdf).
-Physical PDF pages 19–20, 32–67 and 72–73 were visually inspected for prompt 14.
+The source review covers physical PDF pages 19–20, 32–67 and 72–73.
 The [register ledger](reference/ess_rs_registers.json) remains the source of
 generated enums and catalogue descriptors. A listed enum is not an executable
 capability. No methods 0, 15, 16, 31 or 32 are documented.
@@ -112,9 +112,9 @@ diagrams. P73's `0x003B/0x003C` lack access notation; p79's `0x0122/0x0123`
 have RW/S and a conflicting threshold minimum. They remain distinct registers,
 without aliases, writable permission or an invented collision procedure.
 
-## Prompt 15 admission and fixture handoff
+## External-input admission and fixture requirements
 
-Prompt 15 must reuse its typed terminal setters, then bind fresh X0–X3
+Use the [typed terminal setters](ess_io.md), then bind fresh X0–X3
 function/polarity readback and declared wiring to the exact target and
 configuration generation. Origin requires function 1, positive limit function
 2 and negative limit function 3. Function 0 disables a function; unconnected

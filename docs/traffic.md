@@ -30,7 +30,6 @@ direction, RX bounds and execution uncertainty. Device actions and parameter
 changes continue to use their normal typed commands. Debugging does not introduce
 unchecked register writes or a second motion implementation.
 
-The console command previously named `sniff` is now `debug`; update host scripts.
 The installed library API remains `TrafficCapture` plus the ESS traffic decoder.
 
 `MotorControlRS::TrafficCapture` is an installed, framework-independent observer.
@@ -90,7 +89,7 @@ sequence/transaction identity. The Python harness validates and logs them
 without consuming a command result. `bench_motion.py --debug raw|decoded`
 exercises the same regular API with observation enabled.
 
-The example retains16 records in application storage and formats at most one
+The example retains 16 records in application storage and formats at most one
 copy per service loop. It reserves output room for ordinary replies. If console
 output is blocked it drops diagnostic display copies and reports the loss,
 leaving bus work and operation results intact. Mode changes skip old display

@@ -1,6 +1,6 @@
 # Finite ESS serial velocity
 
-Prompt11 implements signed serial velocity using the installed core in
+Signed serial velocity uses the installed core in
 `VelocityOperation.h` and `profiles/ess_rs/Velocity.h`. It reuses `Axis.cpp` exact
 factor cancellation and quantization, checked ESS codecs and the existing
 `ActionContext` stop. There is no clock, UART, allocation or retry in the core.
@@ -77,8 +77,8 @@ Units: rpm, steps/s, fullsteps/s, counts/s, turns/s, deg/s, rad/s, mm/s.
 Frames: native/motor/load. Optional `round exact|nearest|zero|floor|ceil ERROR`
 and `approx ERROR` use strict exact-number parsing; optional final address is
 1..247. This reference limits requested/effective speed to +/-60 native RPM and
-duration to1..1000ms, with an additional immutable2s stop budget, 20ms observation
-interval and64 polls. This is a proposed software envelope, not physical
+duration to 1..1000 ms, with an additional immutable 2 s stop budget, 20 ms observation
+interval and 64 polls. This is a proposed software envelope, not physical
 qualification. Production qualification flags remain false and have no CLI
 bypass. These commands reject before TX on the current bench.
 
@@ -97,12 +97,12 @@ bench stop mechanism.
 Original function PDF pages17/18 document signed RPM, the three native words and
 serial start; pages18/19 distinguish external JOG functions8/9/10. Page25 describes
 normal stop using deceleration set before motion and direct stop without that
-ramp. Page70 contradicts examples/defaults: speed120 labelled5rpm, ramp50
-labelled100ms. Therefore no default ratio becomes a conversion formula. Exact
-firmware0029 with model4EEA remains unqualified for negative wire encoding, RPM
+ramp. Page 70 contradicts examples/defaults: speed 120 labelled 5 rpm, ramp 50
+labelled 100 ms. Therefore no default ratio becomes a conversion formula. Exact
+firmware `0x0029` with model `0x4EEA` remains unqualified for negative wire encoding, RPM
 factor, ramp factor/initial speed, physical acceleration and stopping. CURRENT_SPEED
 raw readback is not decoded as actual RPM. No ESS communication-loss stop is
-established. The user-confirmed ESS23-RS20/nominal1000PPR identity is recorded;
+established. The user-confirmed ESS23-RS20/nominal 1000 PPR identity is recorded;
 it does not resolve these firmware semantics.
 
 See [implementation/evidence](reports/ess_release_11_2026-10-04.md) and the

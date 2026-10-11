@@ -13,6 +13,7 @@ operations and physical qualification are separate; see the
 - [C++ moveBy / moveTo](move_example.md): example application submissions and service loop.
 - [Arduino ESP32-S3 build](esp32_probe.md) and [native ESP-IDF build](esp_idf_probe.md): board configuration, flash and recovery.
 - [Verification and packaging](verification.md): quick/full checks, clean consumers and CI.
+- [Tool index](../scripts/README.md): verification, generators, reference preparation and finite bench utilities.
 - [Python scenarios](bench_scenarios.md): finite checks, retained evidence and cleanup.
 - [Traffic diagnostics](traffic.md): passive raw/decoded observation through the normal owner.
 
@@ -65,6 +66,9 @@ rating or a guarantee of absolute reliability.
 - [High-subdivision source review](reference/12_ess_rs_motion_web_review.md): manuals, vendor information and unresolved drive behavior.
 - [Hardware bench](hardware_bench.md): actual wiring, image and fixture limits.
 - [Roadmap](roadmap.md) and [backlog](backlog.md): implementation and qualification gaps.
+- [11 October maintenance audit](reports/2026-10-11_fieldcore_audit.md) and
+  [optional refactor prompts](prompts/maintenance/README.md): applied cleanup and
+  larger source-backed follow-up work.
 
 Arduino and native-IDF S3 have recorded functional evidence. S2 consumption is
 compile-only. Electrical timing, calibrated shaft measurements, loaded mechanics
@@ -79,6 +83,8 @@ and external switch/load behavior remain separate qualification work.
 - [Reference software](vendor/software/README.md): vendor files retain their own licensing.
 - [Development prompt sequence](prompts/ess_release/README.md), [historical candidate](release_candidate.md), [candidate evidence](reports/ess_release_30_2026-10-05.md) and [reports](reports/).
 
+The numbered development prompts describe the original implementation sequence;
+use the current guides and backlog for present behavior and remaining work.
 Historical reports preserve the code, versions, failed attempts and evidence
 from their dates. They are not the current command reference. Earlier version
 numbers were development checkpoints, not published releases.

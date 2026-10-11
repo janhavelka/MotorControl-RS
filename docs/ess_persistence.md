@@ -102,7 +102,7 @@ The Python `persistence` command validates strict correlated records.
 step leaves retained evidence and ownership for explicit inspection/recovery;
 there is no automatic replay or cleanup persistence write.
 
-Current software and hardware dispositions are in the
-[prompt21 handoff](reports/ess_release_21_2026-10-04.md). Physical save, restart
+Implementation tests and bench dispositions are in the
+[persistence report](reports/ess_release_21_2026-10-04.md). Physical save, restart
 survival and factory restoration remain NOT RUN without the restart/backup/
 recommissioning procedure. Register readback does not close those proof gaps.

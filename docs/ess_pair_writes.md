@@ -1,6 +1,6 @@
 # ESS paired-register write disposition
 
-Prompt 12 reviews all **20 writable pairs** in the ESS ledger: the active
+This policy covers all **20 writable pairs** in the ESS ledger: the active
 position target, homing offset, two software limits and sixteen stored position
 targets. The twenty-first pair, current position `0x000A/2`, is read-only and
 has no direct write form. This review establishes no new admissible write
@@ -36,7 +36,7 @@ not change the reviewed start/count.
 
 | Field | Pair addresses | Source range and signed meaning | Word order | Admissible write / remaining proof |
 | --- | --- | --- | --- | --- |
-| Active position target | `0x0024–0x0025` | p16 gives positive/negative direction; p70 prints malformed `-0xFFFFFFF` to `0xFFFFFFFF`. Negative wire encoding and applicable device bounds remain unresolved. | Configurable by `0x0019`, p30 | `0x0024/2` or containing `0x0021/5`; existing typed move path uses the latter with qualified prerequisites. |
+| Active position target | `0x0024–0x0025` | p16 gives positive/negative direction; p70 prints malformed `-0xFFFFFFF` to `0xFFFFFFFF`. Negative wire encoding and applicable device bounds remain unresolved. | Configurable by `0x0019`, p30 | `0x0024/2` or containing `0x0021/5`; the typed move sequence selects a reviewed window under its setup policy. |
 | Homing offset | `0x0035–0x0036` | p73: `-0xFFFFFFF` to `0xFFFFFFF`; negative encoding and native scale unresolved. | High/low labels on p19/p73; configurable behavior unresolved | Only containing `0x0031/6` is reviewed. Standalone offset write and a typed homing setter remain unavailable. |
 | Positive software limit | `0x0037–0x0038` | p73: `-0xFFFFFFF` to `0xFFFFFFF`; negative encoding and native scale unresolved. | Configurable, p30 | No established admissible write window. Applies only after homing, p29/p73. |
 | Negative software limit | `0x0039–0x003A` | Same p73 range and uncertainties | Configurable, p30 | No established admissible write window. Applies only after homing, p29/p73. |
@@ -97,8 +97,12 @@ Acknowledgement proves neither motion completion nor persistence.
 
 Reuse [Position.h](../include/MotorControlRS/profiles/ess_rs/Position.h):
 `prepareMoveRelative`, `prepareMoveAbsolute`, `prepareMoveAngle`, `nextMove`
-and `advanceMove` already encode the target with `encodeInt32` and validate
-the `0x0021/5` transaction before publishing work. The mathematical signed32
+and `advanceMove` encode the target with `encodeInt32` and validate the selected
+transaction before publishing work. `WRITE_ALL` stages `0x0021/5`.
+`VERIFY_AND_UPDATE` reads the profile and selects a changed scalar, the
+`0x0024/2` target pair or the full block; an unchanged profile needs no write.
+`USE_STORED` sends the start using explicitly supplied existing settings.
+The mathematical signed32
 subset is not a source range resolution; negative values require the explicit
 qualified two's-complement prerequisite. The existing `move relative`,
 `move absolute`, `move angle` and `move-*` console routes call
@@ -106,10 +110,10 @@ these public operations. Keep their readiness, axis reservation, uncertainty
 and physical-write gates; do not add duplicate pair writers or unavailable
 setter stubs. Exact CLI grammar is in [the positioning guide](ess_position.md).
 
-Prompts 13–18 must retain the above field-specific unavailable reasons.
+Settings preparations retain the above field-specific unavailable reasons.
 Homing's containing window does not resolve its offset interpretation; software
 limits and stored targets need wire-form evidence before typed setters.
-Single-word parameters can be considered independently by their owning prompt,
+Single-word parameters have independent typed settings preparations,
 without implying that a complete pair-bearing record can be written.
 
 The current FieldCore `Rs485OwnerTransaction.h` still has eight TX bytes;
@@ -119,12 +123,15 @@ even the 13-byte `0x0024/2` request. This repository keeps its own checked codec
 explicit response evidence and larger bounded requests. No FieldCore edit or
 motor-compatibility claim accompanies this review.
 
-## Narrow future firmware experiment
+## Qualification and further experiments
 
-The unexpanded paired-write families remain **NOT RUN** where admissible wire
-forms or stopped-state/input prerequisites remain unresolved. An analyzer is
-not an admission requirement. A future
-experiment may examine only the already reviewed `0x0024/2` parameter on the
+The [repeat-motion comparison](reports/2026-10-05_repeat_motion_timing.md)
+records a successful `0x0024/2` selective-update case. That does not qualify the
+unexpanded paired-write families, negative encoding or atomicity.
+The unexpanded families remain **NOT RUN** where admissible wire forms or
+operation prerequisites are unresolved. An analyzer is not an admission
+requirement. A separate parameter-only experiment may examine the already
+reviewed `0x0024/2` parameter on the
 identified firmware, with exclusive bus ownership, checked software TX/RX/DE timing
 and the configured response provenance, fresh stopped/alarm-free observations, understood
 active inputs and independently prevented external triggers. No assignment or

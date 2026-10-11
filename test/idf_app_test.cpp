@@ -99,7 +99,7 @@ void testStartupDelimitsRetainedBootBytesBeforeCorrelatedReply() {
     const auto replyAt = Serial.output.find("{\"type\":\"reply\"", greeting);
     assert(replyAt != std::string::npos && Serial.output[replyAt - 1] == '\n');
     const auto welcome = Serial.output.substr(greeting, replyAt - greeting);
-    assert(welcome.find("Type help or ?") != std::string::npos);
+    assert(welcome.find("Type help for commands; help COMMAND shows usage.") != std::string::npos);
     const std::string reply = Serial.output.substr(replyAt);
     assert(reply.find("{\"type\":\"reply\"") == 0);
     assert(reply.find("\"id\":1,\"command\":\"version\",\"ok\":true") != std::string::npos);

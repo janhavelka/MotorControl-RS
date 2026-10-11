@@ -151,7 +151,7 @@ setting a function does not make the method ready. Methods 33/34/35 have no
 required external terminal and retain their existing index, readiness,
 parameter, completion and reference qualifications.
 
-For prompt 16, PT/PV triggers and PIN0-PIN3 are external-input choices. Their
+PT/PV triggers and PIN0-PIN3 are external-input choices. Their
 setters configure the drive; they do not send a trigger or establish a physical
 edge. Segment execution requires its own assigned connected trigger, selector
 ownership, valid timing and stopped/sequence policy. The manual permits no
@@ -168,14 +168,16 @@ types enter the public operation signatures.
 
 ## Storage and evidence bounds
 
-On the ESP32-S3 ABI, `DriverContext` is2936 bytes, `DriverPrerequisites`704,
-`DriverRequest`72, `DriverObservation`464, `IoObservation`352,
-`DriverEvidence`96, `DriverProgress`20 and `PreparedDriver`48.
-The application places retained contexts, prerequisites, caches and two8192-byte
+Context sizes depend on the current ABI and enabled settings families. The
+[I/O implementation report](reports/ess_release_15_2026-10-04.md) retains its
+historical image measurements; use current build and `memory` output when
+budgeting application storage.
+The application places retained contexts, prerequisites, caches and two 8192-byte
 console buffers in its caller-owned PSRAM block. Capture/driver state and stacks
 remain internal. No new queue, task, heap allocation or I/O enters the core.
-The existing128-byte input/20-token,32-byte input service and64-byte output
-service budgets remain; direct API candidates support allnine I/O fields,
+The 128-byte input limit includes the terminator and the 22-token limit includes
+an optional `@ID`. The 32-byte input service and 64-byte output service budgets
+remain; direct API candidates support all nine I/O fields,
 while a CLI candidate must also fit those line/token bounds. The console has nine ordinary
 correlation slots and one separate stop slot; application admission is also
 bounded by eight ordinary retained operation records. The existing dedicated

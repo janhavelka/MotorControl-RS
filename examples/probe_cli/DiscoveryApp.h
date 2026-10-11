@@ -3,17 +3,10 @@
 // One query at a time uses the same cooperative bus owner and checked validator.
 MotorControlRS::ReadEvent discoveryEvent(const Rtu::Completion& result, uint32_t operation) {
     MotorControlRS::ReadEvent event;
-    event.target.id = result.expected.target; event.target.address = result.expected.address;
-    event.target.generation = result.expected.targetGeneration; event.operationId = operation;
+    event.operationId = operation;
     event.kind = result.transport.reason == Rtu::Reason::FRAME ? ReadEventKind::FRAME :
         result.outcome == Rtu::Outcome::CANCELLED ? ReadEventKind::CANCEL : ReadEventKind::TRANSPORT_FAILURE;
-    event.frame = result.transport.rxLength ? result.raw : nullptr; event.length = result.transport.rxLength;
-    event.txAccepted = result.transport.txAccepted; event.executionUnknown = result.executionUnknown;
-    event.transportDetail = static_cast<int32_t>(result.transport.reason);
-    if (event.kind == ReadEventKind::FRAME && result.transport.closureQualified) {
-        event.qualified = true; event.earliestUs = result.transport.closureEarliestUs;
-        event.latestUs = result.transport.closureLatestUs;
-    }
+    copyCompletion(event, result);
     return event;
 }
 void discoveryEnd(App& a, Probe::DiscoveryOutcome outcome) {

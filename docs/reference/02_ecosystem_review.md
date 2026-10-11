@@ -1,10 +1,15 @@
 # RS485 ecosystem review
 
-Reviewed on 2026-10-02 to establish the ESS23-RS architecture before code is
-implemented. Findings below describe inspected local source; ESS decisions
-are in [architecture.md](../architecture.md) and the
-[CLI contract](../cli_contract.md). This review does not qualify sibling or
-ESS hardware behavior.
+The sibling comparison below records the source inspected on 2 October 2026,
+before ESS implementation. Its sibling versions, aliases and design suggestions
+are historical. Current ESS behavior is in [architecture](../architecture.md),
+the [CLI contract](../cli_contract.md) and the [source map](../architecture_report.md).
+This review does not qualify sibling or ESS hardware behavior.
+
+The relevant FieldCore owner/backend/binding contracts were rechecked read-only
+on 11 October 2026 at `479d9ff308d3852d92b1f7552f803b6c990a59f0`.
+The integration gaps below remain applicable; the
+[FieldCore handoff](../fieldcore_handoff.md) is the current change plan.
 
 ## Source scope and provenance
 
@@ -228,13 +233,14 @@ No route exposes raw transactions. See
 
 ## FieldCore integration gaps
 
-These are observed limits in the inspected code, not changes made by this
-architecture task.
+These are observed limits in the inspected code, rechecked against the owner,
+backend and command contracts at the 11 October commit above. No FieldCore
+changes are made by this audit.
 
 | Current evidence | Consequence for ESS integration |
 | --- | --- |
 | `Rs485Task::processResponse` strips a received prefix equal to TX as local echo | A valid FC06 acknowledgement is identical to TX and can be discarded on a no-echo bus. Define topology-aware handling and test no echo, local echo, split echo, acknowledgement and echo-only ambiguity. |
-| `kRs485TransactionTxCapacity = 8` | FC06 fits; FC10 needs at least 13 bytes for a two-register write. Increase capacity deliberately when supported operations are known. |
+| `kRs485TransactionTxCapacity = 8` | FC06 fits; reviewed ESS FC10 requests need up to 21 bytes. Increase copied request capacity and check every containing queue's memory use. |
 | `rs485SerialFormatValid` accepts only 8N1; backend configures baud only | Other ESS formats need owner/backend work. Existing compatible baud settings alone do not establish complete serial-format support. |
 | `responseComplete` supports expected fixed length or suffix | A five-byte exception for a longer expected reply waits for a transport timeout before module parsing. SHZK can still recognize it then; latency must be considered for motor operation. |
 | `DeviceRequestKind` contains only `Probe`, `Measure`, `ReadLast` with no control payload | Add a typed application motor command contract; do not hide writes in measurement requests. |

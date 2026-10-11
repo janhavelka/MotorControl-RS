@@ -643,7 +643,7 @@ bool Console::welcome() noexcept {
     const Format saved=outputFormat_;
     outputFormat_=Format::HUMAN;
     std::snprintf(output_,sizeof(output_),
-        "MotorControl-RS %s\nType help or ? for commands; help COMMAND shows usage.\nPlain commands use human output. Prefix @ID for JSON, for example @1 status.",Core::VERSION);
+        "MotorControl-RS %s\nType help for commands; help COMMAND shows usage.\nPlain commands use human output. Prefix @ID for JSON, for example @1 status.",Core::VERSION);
     emit(0,true);
     outputFormat_=saved;
     return true;

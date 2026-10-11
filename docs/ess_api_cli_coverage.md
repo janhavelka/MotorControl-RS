@@ -11,7 +11,7 @@ dispatch. Callback availability controls help and capability reporting.
 
 ## Installed API roles
 
-[Prompt26](reports/ess_release_26_2026-10-05.md) qualifies the shared Arduino/native
+[Cross-platform testing](reports/ess_release_26_2026-10-05.md) qualifies the shared Arduino/native
 IDF S3 paths for read/state/control, loaded capture, finite relative motion,
 normal/fast stop and reversible lock-delay updates. Other entries retain their
 individual unresolved/unsupported/unimplemented and fixture dispositions; S2
@@ -27,7 +27,7 @@ physical effects. Native console/application tests verify runtime parity.
 Device rows use producing `cli_commands`; helper rows use local `cli_topics`
 to identify related command families without claiming additional device access.
 
-Prompt28 separates twelve implemented read-only status/alarm decoders from
+The inventory separates twelve implemented read-only status/alarm decoders from
 setting and action choices. A passing state read does not prove physical
 activation of every alarm or flag, so those individual choice hardware rows
 remain NOT RUN. Raw DIP interpretation remains unresolved; reading a writable
@@ -137,11 +137,11 @@ frame, UNKNOWN outcome, original deadline and configuration/tuple/binding
 generations remain immutable while the new read has its own deadline/context.
 Successful stored reconciliation does not manufacture an acknowledgement.
 
-The snapshot is volatile application storage. On this bench, opening another
-USB session reset that storage while the motor retained its staged parameters.
-The prompt23 report preserves the original target 5000 and final stopped
-target 100 separately. Session restoration cannot recover an archive lost on
-host restart; arbitrary archived parameter preparation belongs to 09/11.
+The snapshot is volatile application storage. A controller restart loses it
+while the motor can retain its staged parameters; the
+[console integration report](reports/ess_release_23_2026-10-05.md) records such
+a bench case. Session restoration cannot recover an archive lost on host restart.
+Arbitrary archived parameter preparation remains a named gap below.
 
 The local `wiring` command queries declarations or explicitly changes one
 terminal's declaration while idle. It supplies operation prerequisites without
@@ -154,7 +154,7 @@ assignment, and disabled outputs do not promise an electrical level.
 
 ## Coverage and explicit gaps
 
-Prompt24 [finite scenarios](bench_scenarios.md) exercise these same typed routes
+[Finite scenarios](bench_scenarios.md) exercise these same typed routes
 and retain strict result/parser evidence. Same-session backup restoration closes
 a harness lifetime defect; it does not implement the arbitrary archived/native
 parameter gaps below or grant missing physical qualification.
@@ -165,19 +165,19 @@ operation sequences, metadata, diagnostics and CLI routes. Helpers/builders are
 not independent device actions. The checker rejects missing installed function
 classifications and invented routes; native parity tests check actual requests.
 
-Substantial prerequisite gaps remain assigned to their original prompts:
+The remaining gaps are tracked by feature, independently of hardware evidence:
 
-| Owning prompt | Open obligation | Actual boundary |
+| Area | Open obligation | Actual boundary |
 | --- | --- | --- |
-| 09 | Native ignore-versus-interrupt position command | Fixed noninterrupting triggers are implemented; bit3 has no typed option or CLI route. Priority stop does not implement position interruption. |
-| 09/11 | Native positioning start-speed setter | Profile snapshot reads start speed; restoration never writes it |
-| 09/11 | Arbitrary native five-word profile candidates and archived restoration | Typed builder exists, but CLI restoration accepts only the volatile original snapshot; finite-move staging is not standalone parameter access |
-| 11 | Standalone typed velocity parameter reads | Finite velocity stages qualified supplied words; that is write sequencing, not a parameter-read API |
-| 14 | Standalone typed homing parameter reads and auxiliary setter | Existing homing requires independently qualified active auxiliary 7 |
-| 14 | Remaining homing trajectories | Three methods implemented, 27 unimplemented, five unresolved; I/O configuration does not implement a switch trajectory |
-| 12/14 | Nonzero homing offset and additional paired-write forms | Zero-only reviewed staging does not resolve offset order, signedness or units |
-| 12/13/16 | Limit and stored-position paired setters | Reviewed write restrictions stay in the source denominator; no split FC06 workaround |
-| 18 | Earlier collision entries `0x003B/0x003C` | Unspecified access stays unresolved; no alias to the later collision pair |
+| Position | Native ignore-versus-interrupt position command | Fixed noninterrupting triggers are implemented; bit 3 has no typed option or CLI route. Priority stop does not implement position interruption. |
+| Position | Native positioning start-speed setter | Profile snapshot reads start speed; restoration never writes it |
+| Position | Arbitrary native five-word profile candidates and archived restoration | Typed builder exists, but CLI restoration accepts only the volatile original snapshot; finite-move staging is not standalone parameter access |
+| Velocity | Standalone typed velocity parameter reads | Finite velocity stages qualified supplied words; that is write sequencing, not a parameter-read API |
+| Homing | Standalone typed homing parameter reads and auxiliary setter | Existing homing requires independently qualified active auxiliary 7 |
+| Homing | Remaining homing trajectories | Three methods implemented, 27 unimplemented, five unresolved; I/O configuration does not implement a switch trajectory |
+| Homing | Nonzero homing offset and additional paired-write forms | Zero-only reviewed staging does not resolve offset order, signedness or units |
+| Settings | Limit and stored-position paired setters | Reviewed write restrictions stay in the source denominator; no split FC06 workaround |
+| Tuning | Earlier collision entries `0x003B/0x003C` | Unspecified access stays unresolved; no alias to the later collision pair |
 
 Unsupported torque/current motion and serial segment start remain distinct from
 those gaps. Settings access does not establish those motion capabilities.

@@ -9,11 +9,11 @@ an API or component requirement.
 
 The native CMake/Ninja firmware build passed on 2026-10-05 with ESP-IDF 5.5.5.
 Source sharing establishes the command/operation path. The
-[prompt26 qualification](reports/ess_release_26_2026-10-05.md) adds matched
+[platform qualification](reports/ess_release_26_2026-10-05.md) records matched
 Arduino/native capture, loaded owner/console, finite motion, both stops and
 reversible native settings checks. Electrical timing and independent physical
 measurements remain unqualified. The
-[prompt25 report](reports/ess_release_25_2026-10-05.md) records the native image,
+[native bring-up report](reports/ess_release_25_2026-10-05.md) records the native image,
 SDK configuration and corrected startup framing. See the
 [current Arduino guide](esp32_probe.md) for retained historical evidence and the
 [CLI coverage inventory](ess_api_cli_coverage.md) for supported operations.
@@ -179,10 +179,10 @@ esptool restoration command and partition verification limits; check the file
 hash and intended board before using it. Device configuration in flash backups
 stays outside Git.
 
-Prompt25 also retains the complete immediately preceding Arduino motor image
+The native bring-up also retained the immediately preceding Arduino motor image
 in `build/p25/original-image/flash-16mb-v4.bin` (16 MiB), SHA-256
 `09b0700e6b4f392e9bc3dbf4d935029cdacd0d2fe3d96d2be1613614680ea408`.
-Its application at0x10000 matches the previously recorded 575424-byte image
+Its application at `0x10000` matches the previously recorded 575424-byte image
 `4ae880946615c4828992f864e983da36417123df39c15c82a045dd38f30487d3`.
 Keep this backup when cleaning generated build directories. The report archive
 preserves the previous application/bootloader/partition regions separately;
