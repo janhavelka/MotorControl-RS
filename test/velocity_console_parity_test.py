@@ -6,6 +6,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from bench_probe import Console, MAX_LINE, unique_object
+from bench_probe_test import check_fixture_routes
 
 expected = {
     "readiness_before_tx", "readiness_after_staging", "duration_after_staging",
@@ -20,6 +21,7 @@ for line in output.splitlines():
     assert name in expected and name not in seen, name
     assert len(json.dumps(record, separators=(",", ":"))) <= MAX_LINE
     Console._check_velocity(record, 1, None)
+    check_fixture_routes(record, live_command="velocity")
     seen.add(name)
 assert seen == expected, (seen, expected)
 print(f"PASS: {len(seen)} actual core/console velocity terminals accepted by Python")

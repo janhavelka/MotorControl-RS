@@ -6,6 +6,7 @@ import subprocess
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from bench_probe import BenchError, Console, MAX_LINE, unique_object, wire_crc
+from bench_probe_test import check_fixture_routes
 
 expected = {"current_origin", "index_origin", "stale_homed", "lost_trigger_ack", "cancelled", "deadline", "unconfirmed_trigger", "exception", "late_trigger_echo",
             "timing_unqualified", "drive_fault", "unexpected_activity", "nonzero_position", "delayed_completion_deadline", "wrong_function_exception"}
@@ -16,6 +17,7 @@ for line in subprocess.check_output([sys.argv[1], "--home-fixtures"], text=True,
     assert name in expected and name not in seen
     assert len(json.dumps(record, separators=(",", ":"))) < MAX_LINE
     Console._check_home(record, 1, None)
+    check_fixture_routes(record)
     if name == "exception":
         assert record["status"] == "EXCEPTION" and record["execution"] == "rejected"
     if name == "wrong_function_exception":

@@ -7,6 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from bench_probe import BenchError, Console, MAX_LINE, unique_object
+from bench_probe_test import check_fixture_routes
 
 expected = {"read", "unknown_read", "full_update", "partial_lost_ack", "cancelled",
             "readback_mismatch", "deadline", "wrong_echo", "late_delivery", "unqualified",
@@ -19,6 +20,7 @@ for line in output.splitlines():
     assert name in expected and name not in seen, name
     assert len(json.dumps(record, separators=(",", ":"))) < MAX_LINE
     Console._check_driver(record, 1, None)
+    check_fixture_routes(record)
     for mutate in (lambda r: r.update(active_settings_known=True),
                    lambda r: r.update(configuration_generation=0),
                    lambda r: r.update(address=2),

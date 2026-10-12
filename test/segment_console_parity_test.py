@@ -6,11 +6,13 @@ import subprocess
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"scripts"))
 from bench_probe import BenchError, Console, MAX_LINE, segment_arguments
+from bench_probe_test import check_fixture_routes
 rows=subprocess.check_output([sys.argv[1],"--segment-fixtures"],text=True,timeout=10).splitlines()
 assert len(rows)==18
 for row in rows:
     fixture=json.loads(row); r=fixture["record"]
     Console._check_driver(r,1,None,"segment")
+    check_fixture_routes(r)
     assert len(row)<MAX_LINE
     kind={"position_segment":"position","speed_segment":"speed","segment_start_speed":"start"}[r["driver_group"]]
     args=(kind,str(r["segment_index"]),"read") if r["driver_kind"]=="read" else (kind,str(r["segment_index"]),"set","value","60") if kind=="start" else (kind,str(r["segment_index"]),"set","speed","60","acceleration","90","deceleration","80")

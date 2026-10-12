@@ -616,7 +616,209 @@ class Serial:
         return len(data) - 1 if self.short else len(data)
 
 
+def operation_transcript(record, mutate=None, mutate_live=False):
+    """Route an existing terminal fixture without recreating its payload schema."""
+    terminal = copy.deepcopy(record)
+    terminal.update(id=2, command_id=2, operation_id=102)
+    command = terminal["command"]
+    wire_command = "read" if command in bench.TYPED_READS else "move" if command in bench.MOVE_COMMANDS else command
+
+    def handler(request_id, requested, args):
+        if requested == wire_command:
+            terminal.update(id=request_id, command_id=request_id)
+            accepted = reply(request_id, command, result="accepted", operation_id=102,
+                             address=terminal.get("address", 1), read_kind=bench.TYPED_READS.get(command))
+            item = copy.deepcopy(terminal)
+            if mutate is not None and mutate_live:
+                mutate(item)
+            return encoded(accepted) + encoded(item)
+        if requested == "result":
+            item = dict(copy.deepcopy(terminal), type="reply", id=request_id, command="result")
+            if mutate is not None and not mutate_live:
+                mutate(item)
+            return encoded(item)
+        return Serial.normal(request_id, requested, args)
+
+    return handler
+
+
+def check_fixture_routes(record, *, live_command=None):
+    """Use real formatter payloads at the admitted dispatcher boundary.
+
+    Arguments remain unknown here; fake-serial tests separately exercise begin
+    and correlation with the exact original request arguments.
+    """
+    clock = Clock()
+    port = Serial()
+    console = bench.Console(port, clock=clock, sleeper=clock.sleep)
+    terminal = dict(copy.deepcopy(record), id=2, command_id=2, operation_id=102)
+    if live_command is not None:
+        terminal.update(command=live_command, type=live_command)
+    original = bench.Command(console, 2, terminal["command"], 0, 1,
+                             terminal.get("address"), None, 102)
+    original.accepted = True
+    original.stop_policy = terminal.get("stop_policy") if terminal.get("action_kind") == "stop" else None
+    console.pending[2] = original
+    console.operations[102] = original
+    console._dispatch(terminal)
+    assert original.terminal is terminal
+    for request_id, historical in ((3, False), (4, True)):
+        if historical:
+            console.operations.clear()
+        query = bench.Command(console, request_id, "result", 0, 1, None, None, 102)
+        console.pending[request_id] = query
+        inspected = dict(copy.deepcopy(terminal), type="reply", id=request_id, command="result")
+        console._dispatch(inspected)
+        assert query.terminal is inspected and original.terminal is terminal
+    # Real failed terminals must not slip through the permissive raw failure
+    # validator after their only family selector disappears.
+    stripped = dict(copy.deepcopy(terminal), type="reply", id=5, command="result")
+    for key in ("driver", "home", "velocity"):
+        stripped.pop(key, None)
+    query = bench.Command(console, 5, "result", 0, 1, None, None, 102)
+    console.pending[5] = query
+    try:
+        console._dispatch(stripped)
+    except bench.BenchError:
+        pass
+    else:
+        raise AssertionError("historical fixture without its family selector accepted")
+    assert query.terminal is None and original.terminal is terminal
+    assert not port.writes, "result routing cannot issue recovery or replay"
+
+
 class Framing(unittest.TestCase):
+    def routing_fixtures(self):
+        for command in ("probe", "capture-read", "recover"):
+            yield json.loads(Serial.normal(2, command, []).splitlines()[1]), {}
+        for kind in ("identity", "config", "state"):
+            yield typed_terminal(2, kind), {}
+        for command in bench.ACTION_COMMANDS:
+            policy = "normal" if command == "stop" else None
+            yield action_terminal(2, command, policy), dict(stop_policy=policy)
+        yield move_terminal(2), dict(move_args=self.MOVE_ARGS)
+        yield velocity_terminal(2), dict(velocity_args=self.VELOCITY_ARGS)
+        yield home_terminal(2), dict(home_args=self.HOME_ARGS)
+        yield driver_terminal(2), dict(driver_args=("read",))
+
+    def test_all_operation_families_keep_live_retained_and_historical_routing(self):
+        for terminal, arguments in self.routing_fixtures():
+            command = terminal["command"]
+            with self.subTest(command=command):
+                console = self.session(operation_transcript(terminal), fragment=17)
+                handle = console.begin(command, timeout_s=.1, **arguments)
+                live = console.wait(handle)
+                inspected = console.command("result", operation_id=102, timeout_s=.1)
+                self.assertEqual(inspected["command_id"], live["command_id"])
+                self.assertIs(handle.terminal, live)
+                self.assertIs(console.operations[102], handle)
+                console.command("release", operation_id=102, timeout_s=.1)
+                self.assertEqual(len(self.port.writes), 4)
+                self.assertFalse(console.operations)
+
+                console = self.session(operation_transcript(terminal), fragment=17)
+                historical = console.command("result", operation_id=102, timeout_s=.1)
+                self.assertEqual(historical["command_id"], 2)
+                self.assertFalse(console.operations, "historical inspection cannot invent a local admission")
+                self.assertEqual(self.port.writes, [b"@1 version\n", b"@2 result 102\n"])
+
+    def test_conflicting_kind_flags_refused_on_every_terminal_route(self):
+        selectors = dict(home=True, driver=True, velocity=True, move_kind="relative",
+                         action_kind="enable", recovery=True, capture_read=True, read_kind="state")
+        for terminal, arguments in self.routing_fixtures():
+            for field, value in selectors.items():
+                if terminal.get(field) == value:
+                    continue
+                for route in ("live", "retained", "historical"):
+                    with self.subTest(command=terminal["command"], field=field, route=route):
+                        mutate = lambda item: item.update({field: value})
+                        console = self.session(operation_transcript(terminal, mutate, route == "live"))
+                        if route == "live":
+                            self.failed(lambda: console.wait(console.begin(terminal["command"], timeout_s=.1, **arguments)), "kind")
+                            self.assertIsNone(console.operations[102].terminal)
+                            self.assertEqual(len(self.port.writes), 2)
+                        else:
+                            if route == "retained":
+                                handle = console.begin(terminal["command"], timeout_s=.1, **arguments)
+                                original = console.wait(handle)
+                            self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), ".+")
+                            if route == "retained":
+                                self.assertIs(handle.terminal, original)
+                            self.assertEqual(len(self.port.writes), 3 if route == "retained" else 2)
+
+    def test_missing_or_malformed_kind_cannot_select_another_validator(self):
+        for terminal, arguments in self.routing_fixtures():
+            active = [name for name in ("home", "driver", "velocity", "move_kind", "action_kind",
+                                        "recovery", "capture_read", "read_kind") if terminal.get(name)]
+            mutations = [lambda item: item.update(move_kind=[]),
+                         lambda item: item.update(home=1),
+                         lambda item: item.update(recovery="false")]
+            mutations.extend(lambda item, name=name: item.pop(name) for name in active)
+            for index, mutate in enumerate(mutations):
+                for route in ("live", "retained", "historical"):
+                    with self.subTest(command=terminal["command"], mutation=index, route=route):
+                        console = self.session(operation_transcript(terminal, mutate, route == "live"))
+                        if route == "live":
+                            action = lambda: console.wait(console.begin(terminal["command"], timeout_s=.1, **arguments))
+                        else:
+                            if route == "retained":
+                                console.wait(console.begin(terminal["command"], timeout_s=.1, **arguments))
+                            action = lambda: console.command("result", operation_id=102, timeout_s=.1)
+                        self.failed(action, ".+")
+
+    def test_unknown_failed_result_cannot_hide_its_family_as_a_raw_probe(self):
+        for terminal, _ in self.routing_fixtures():
+            if terminal["command"] in ("probe", "recover"):
+                continue
+            with self.subTest(command=terminal["command"]):
+                def remove_kind(item):
+                    item["ok"] = False
+                    for field in ("home", "driver", "velocity", "move_kind", "action_kind", "capture_read", "read_kind"):
+                        item.pop(field, None)
+                console = self.session(operation_transcript(terminal, remove_kind))
+                self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), ".+")
+                self.assertFalse(console.operations)
+                self.assertEqual(self.port.writes, [b"@1 version\n", b"@2 result 102\n"])
+
+        raw = json.loads(Serial.normal(2, "probe", []).splitlines()[1])
+        raw.update(ok=False, outcome="cancelled", transport="CANCELLED", confidence="none")
+        console = self.session(operation_transcript(raw))
+        result = console.command("result", operation_id=102, timeout_s=.1)
+        self.assertFalse(result["ok"])
+        self.assertFalse(console.operations)
+        for field, value in (("register_start", False), ("register_count", True),
+                             ("register_start", 304), ("register_count", 16),
+                             ("register_start", None), ("register_count", None)):
+            with self.subTest(field=field, value=value):
+                def malformed_window(item):
+                    if value is None:
+                        item.pop(field)
+                    else:
+                        item[field] = value
+                console = self.session(operation_transcript(raw, malformed_window))
+                self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), "probe kind")
+
+    def test_pending_historical_result_requires_one_unambiguous_kind(self):
+        selectors = [("home", True), ("driver", True), ("velocity", True), ("move_kind", "relative"),
+                     ("action_kind", "enable"), ("recovery", True), ("capture_read", True), ("read_kind", "state")]
+        for index, (field, value) in enumerate(selectors):
+            for other, other_value in selectors[index + 1:]:
+                with self.subTest(fields=(field, other)):
+                    def handler(i, command, args):
+                        if command == "result":
+                            fields = dict(result="pending", operation_id=102, command_id=2, recovery=False)
+                            fields.update({field: value, other: other_value})
+                            return encoded(reply(i, command, **fields))
+                        return Serial.normal(i, command, args)
+                    console = self.session(handler)
+                    self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), "kind")
+                    self.assertFalse(console.operations)
+                    self.assertEqual(len(self.port.writes), 2)
+
+        console = self.session(lambda i, command, args: encoded(reply(i, command, result="pending",
+            operation_id=102, command_id=2)) if command == "result" else Serial.normal(i, command, args))
+        self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), "lifecycle")
+
     def test_exact_endpoint_completion_without_running(self):
         t = move_terminal(1)
         empty = dict(t["failure_evidence"])
@@ -2999,7 +3201,8 @@ class Framing(unittest.TestCase):
         for mutate in mutations:
             with self.subTest(mutate=mutate):
                 console = self.session(TypedSerial(mutate))
-                self.failed(lambda: console.command("read-config", address=1, timeout_s=0.1), "typed-read")
+                self.failed(lambda: console.command("read-config", address=1, timeout_s=0.1),
+                            "typed-read|result kind does not match retained operation")
                 self.assertEqual(len(self.port.writes), 2)
 
     def test_typed_unknown_codes_and_zero_encoder_remain_successful_raw_reads(self):
@@ -3147,7 +3350,7 @@ class Framing(unittest.TestCase):
                     return encoded(accepted) + encoded({**terminal, **change})
                 self.port.handler = handler
                 self.failed(lambda: console.command("capture-read", timeout_s=0.1),
-                            "inconsistent|result evidence|sequence is invalid")
+                            "inconsistent|result evidence|sequence is invalid|result kind does not match retained operation")
 
     def test_capture_read_pending_inspection_cannot_change_kind(self):
         for command in ("probe", "capture-read"):
@@ -4096,7 +4299,8 @@ class Framing(unittest.TestCase):
                     return encoded(accepted) + encoded({**terminal, **fields})
 
                 self.port.handler = malformed
-                self.failed(lambda: console.command("recover", timeout_s=0.1), "recovery")
+                self.failed(lambda: console.command("recover", timeout_s=0.1),
+                            "result kind does not match retained operation" if "recovery" in fields or "read_kind" in fields else "recovery")
                 self.assertEqual(len(self.port.writes), 2)
 
     def test_probe_observation_bounds_are_separate_from_delivery(self):

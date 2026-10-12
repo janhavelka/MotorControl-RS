@@ -7,6 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from bench_probe import BenchError, Console, MAX_LINE, driver_arguments, wire_crc
+from bench_probe_test import check_fixture_routes
 
 rows = subprocess.check_output([sys.argv[1], "--control-fixtures"], text=True, timeout=10).splitlines()
 assert len(rows) == 23
@@ -70,6 +71,7 @@ for row in rows:
     record = fixture["record"]
     arguments = ("read",) if record["driver_kind"] == "read" else candidate
     Console._check_driver(record, 1, arguments, "control_settings")
+    check_fixture_routes(record)
     assert len(row) < MAX_LINE
     assert record["command"] == record["type"] == "control"
     if fixture["case"] in ("previous_settings_deadline", "previous_settings_late_echo"):

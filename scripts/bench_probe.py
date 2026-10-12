@@ -2027,6 +2027,101 @@ class Console:
                   operation_id=handle.operation_id,
                   duration_s=round(self.clock() - handle.started, 6), ok=item["ok"])
 
+    def _check_operation_payload(self, item: dict, original: Command | None, *, pending: bool = False) -> None:
+        """Check the complete kind combination before selecting one payload validator.
+
+        Live terminals and inspected results use the same closed classification.
+        A retained request supplies expectations; only unknown historical results
+        may derive them from the checked kind. Pending inspections have no terminal
+        payload, but must satisfy the same kind and original-command correlation.
+        """
+        recovery = item.get("recovery", False)
+        capture_read = item.get("capture_read", False)
+        read_kind = item.get("read_kind")
+        action_kind = item.get("action_kind")
+        move_kind = item.get("move_kind")
+        velocity = item.get("velocity", False)
+        driver = item.get("driver", False)
+        home = item.get("home", False)
+        if (type(home) is not bool or
+                (home and (driver or velocity or move_kind is not None or action_kind is not None
+                           or recovery or capture_read or read_kind is not None)) or
+                (original is not None and home != (original.command == "home"))):
+            raise BenchError("result home kind does not match retained operation")
+        if (type(driver) is not bool or
+                (driver and (velocity or move_kind is not None or action_kind is not None
+                             or recovery or capture_read or read_kind is not None)) or
+                (original is not None and driver != (original.command in ("driver", "io", "segment", "control", "tuning")))):
+            raise BenchError("result driver kind does not match retained operation")
+        if (type(velocity) is not bool or
+                (velocity and (move_kind is not None or action_kind is not None
+                               or recovery or capture_read or read_kind is not None)) or
+                (original is not None and velocity != (original.command == "velocity"))):
+            raise BenchError("result velocity kind does not match retained operation")
+        stop_policy = item.get("stop_policy")
+        if (move_kind is not None and (type(move_kind) is not str or "move-" + move_kind not in MOVE_COMMANDS)) or (
+                move_kind is not None and (action_kind is not None or recovery or capture_read or read_kind is not None)) or (
+                original is not None and move_kind != (original.command[5:] if original.command in MOVE_COMMANDS else None)):
+            raise BenchError("result move kind does not match retained operation")
+        if (action_kind is not None and action_kind not in ACTION_KINDS.values()) or (
+                action_kind == "stop" and stop_policy not in ("normal", "fast")) or (
+                action_kind != "stop" and not velocity and stop_policy is not None) or (
+                action_kind is not None and (recovery or capture_read or read_kind is not None)) or (
+                original is not None and action_kind != ACTION_KINDS.get(original.command)) or (
+                not velocity and stop_policy != (original.stop_policy if original else stop_policy)):
+            raise BenchError("result action kind or policy does not match retained operation")
+        if (type(recovery) is not bool or
+                type(capture_read) is not bool or (recovery and capture_read) or
+                (read_kind is not None and (type(read_kind) is not str or read_kind not in TYPED_WINDOWS)) or
+                (read_kind is not None and (recovery or capture_read)) or
+                (original is not None and (recovery != (original.command == "recover") or
+                 capture_read != (original.command == "capture-read") or
+                 read_kind != TYPED_READS.get(original.command)))):
+            raise BenchError("result kind does not match retained operation")
+        if pending:
+            return
+
+        # Every discriminator has now been checked, including inactive flags.
+        # Prefer the original request over claimed expectations in the payload.
+        address = original.address if original else None
+        if home:
+            self._check_home(item, address, original.home_args if original else None)
+        elif driver:
+            expected_group = None
+            if original is not None:
+                if original.command == "driver":
+                    expected_group = "drive"
+                elif original.command == "control":
+                    expected_group = "control_settings"
+                else:
+                    expected_group = original.command  # io, segment or tuning
+            self._check_driver(item, address, original.driver_args if original else None, expected_group)
+        elif velocity:
+            self._check_velocity(item, address, original.velocity_args if original else None)
+        elif move_kind is not None:
+            kind = original.command[5:] if original else move_kind
+            self._check_move(item, address, original.move_args if original else None, kind)
+        elif action_kind is not None:
+            action_command = original.command if original else next(
+                name for name, kind in ACTION_KINDS.items() if kind == action_kind)
+            self._check_action(item, action_command, address, original.stop_policy if original else stop_policy)
+        elif recovery:
+            self._check_recovery(item)
+        elif capture_read:
+            self._check_capture_read(item, address)
+        elif read_kind is not None:
+            kind = TYPED_READS[original.command] if original else read_kind
+            self._check_typed_read(item, kind, address)
+        else:
+            # Probe has no positive kind flag. Without the original request,
+            # require its identifying window even on failure; absent flags alone
+            # must not turn another family's failed terminal into a raw probe.
+            if original is None and (
+                    type(item.get("register_start")) is not int or item["register_start"] != 0 or
+                    type(item.get("register_count")) is not int or item["register_count"] != 1):
+                raise BenchError("result probe kind lacks its identifying register window")
+            self._check_probe(item, address)
+
     def _dispatch(self, item: dict) -> None:
         if item.get("type") == "traffic":
             self._check_traffic(item)
@@ -2082,24 +2177,7 @@ class Console:
                     or type(item.get("command_id")) is not int or item["command_id"] != handle.id):
                 raise BenchError("terminal operation ID or original command ID does not match acceptance")
             self._check_host_serial(item, handle.serial)
-            if handle.command == "probe":
-                self._check_probe(item, handle.address)
-            elif handle.command == "capture-read":
-                self._check_capture_read(item, handle.address)
-            elif handle.command in TYPED_READS:
-                self._check_typed_read(item, TYPED_READS[handle.command], handle.address)
-            elif handle.command in ACTION_COMMANDS:
-                self._check_action(item, handle.command, handle.address, handle.stop_policy)
-            elif handle.command == "velocity":
-                self._check_velocity(item, handle.address, handle.velocity_args)
-            elif handle.command == "home":
-                self._check_home(item, handle.address, handle.home_args)
-            elif handle.command in ("driver", "io", "segment", "control", "tuning"):
-                self._check_driver(item, handle.address, handle.driver_args, "tuning" if handle.command == "tuning" else "segment" if handle.command == "segment" else "control_settings" if handle.command == "control" else "io" if handle.command == "io" else "drive")
-            elif handle.command in MOVE_COMMANDS:
-                self._check_move(item, handle.address, handle.move_args, handle.command[5:])
-            else:
-                self._check_recovery(item)
+            self._check_operation_payload(item, handle)
         else:
             if item.get("type") != "reply":
                 raise BenchError("unexpected structured console event")
@@ -2115,66 +2193,13 @@ class Console:
                     if (not self._operation_id(original_id)
                             or (original is not None and original_id != original.id)):
                         raise BenchError("result original command ID does not match retained operation")
-                    recovery = item.get("recovery", False)
-                    capture_read = item.get("capture_read", False)
-                    read_kind = item.get("read_kind")
-                    action_kind = item.get("action_kind")
-                    move_kind = item.get("move_kind")
-                    velocity = item.get("velocity", False)
-                    driver = item.get("driver", False)
-                    home = item.get("home", False)
-                    if (type(home) is not bool or (home and (driver or velocity or move_kind is not None or action_kind is not None or recovery or capture_read or read_kind is not None)) or
-                            (original is not None and home != (original.command == "home"))):
-                        raise BenchError("result home kind does not match retained operation")
-                    if (type(driver) is not bool or (driver and (velocity or move_kind is not None or action_kind is not None or recovery or capture_read or read_kind is not None)) or
-                            (original is not None and driver != (original.command in ("driver", "io", "segment", "control", "tuning")))):
-                        raise BenchError("result driver kind does not match retained operation")
-                    if type(velocity) is not bool or (velocity and (move_kind is not None or action_kind is not None or recovery or capture_read or read_kind is not None)) or (original is not None and velocity != (original.command == "velocity")):
-                        raise BenchError("result velocity kind does not match retained operation")
-                    stop_policy = item.get("stop_policy")
-                    if (move_kind is not None and "move-" + move_kind not in MOVE_COMMANDS) or (
-                            move_kind is not None and (action_kind is not None or recovery or capture_read or read_kind is not None)) or (
-                            original is not None and move_kind != (original.command[5:] if original.command in MOVE_COMMANDS else None)):
-                        raise BenchError("result move kind does not match retained operation")
-                    if (action_kind is not None and action_kind not in ACTION_KINDS.values()) or (
-                            action_kind == "stop" and stop_policy not in ("normal", "fast")) or (
-                            action_kind != "stop" and not velocity and stop_policy is not None) or (
-                            action_kind is not None and (recovery or capture_read or read_kind is not None)) or (
-                            original is not None and action_kind != ACTION_KINDS.get(original.command)) or (
-                            not velocity and stop_policy != (original.stop_policy if original else stop_policy)):
-                        raise BenchError("result action kind or policy does not match retained operation")
-                    if (type(recovery) is not bool or
-                            type(capture_read) is not bool or (recovery and capture_read) or
-                            (read_kind is not None and (type(read_kind) is not str or read_kind not in TYPED_WINDOWS)) or
-                            (read_kind is not None and (recovery or capture_read)) or
-                            (original is not None and (recovery != (original.command == "recover") or
-                             capture_read != (original.command == "capture-read") or
-                             read_kind != TYPED_READS.get(original.command)))):
-                        raise BenchError("result kind does not match retained operation")
-                    if item.get("result") == "pending":
+                    pending = item.get("result") == "pending"
+                    self._check_operation_payload(item, original, pending=pending)
+                    if pending:
                         if item["ok"] is not True or type(item.get("recovery")) is not bool:
                             raise BenchError("pending result lacks a valid lifecycle")
                         if original is not None and original.terminal is not None:
                             raise BenchError("completed retained operation regressed to pending")
-                    elif home:
-                        self._check_home(item, original.address if original else None, original.home_args if original else None)
-                    elif driver:
-                        self._check_driver(item, original.address if original else None, original.driver_args if original else None, ("tuning" if original.command == "tuning" else "segment" if original.command == "segment" else "control_settings" if original.command == "control" else "io" if original.command == "io" else "drive") if original else None)
-                    elif velocity:
-                        self._check_velocity(item, original.address if original else None, original.velocity_args if original else None)
-                    elif move_kind is not None:
-                        self._check_move(item, original.address if original else None, original.move_args if original else None, move_kind)
-                    elif action_kind is not None:
-                        action_command = next(name for name, kind in ACTION_KINDS.items() if kind == action_kind)
-                        self._check_action(item, action_command, original.address if original else None, stop_policy)
-                    elif recovery:
-                        self._check_recovery(item)
-                    elif capture_read:
-                        self._check_capture_read(item, original.address if original else None)
-                    elif read_kind is not None:
-                        self._check_typed_read(item, read_kind, original.address if original else None)
-                    else:
-                        self._check_probe(item, original.address if original else None)
                     if original is not None and original.terminal is not None:
                         routing = {"type", "id", "command", "recovery"}
                         retained = {key: value for key, value in original.terminal.items() if key not in routing}

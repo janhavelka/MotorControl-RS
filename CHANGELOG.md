@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Live host terminals now reject the conflicting kind flags already rejected by
+  retained inspection; malformed move kinds raise the ordinary protocol error.
 - Verification now requires the shared native-IDF simple-motion fixture to
   remain registered with its actual executable; missing or misdirected fixtures
   fail before a passing test run can hide the omission.
@@ -15,6 +17,9 @@
 
 ### Maintenance
 
+- Shared live/retained host payload classification and validation, preserving
+  original request expectations, immutable terminals and explicit lifecycle
+  ownership. Added family/conflict transcripts and actual console routing parity.
 - Extracted canonical host error/wire/check helpers and probe/capture/typed-read/
   state/cache validators into a private pure module, retaining existing imports
   and Console aliases. Corrected file-spec test loaders and added error-identity,

@@ -1,6 +1,6 @@
 # Implementation and qualification backlog
 
-Current as of the 12 October 2026 host-evidence refactor. This page lists remaining work;
+Current as of the 12 October 2026 host-dispatch refactor. This page lists remaining work;
 completed work and historical test dispositions live in the
 [development archive](archive/README.md) and [changelog](../CHANGELOG.md).
 The [release scope](releases/1.0.0.md) and checked
@@ -19,10 +19,13 @@ unrelated commands or fixtures.
 - [x] Extract pure host read and action/move/velocity/home validators with one
   shared error/helper identity and explicit imports; retain Console session ownership.
   [Software handoff](reports/2026-10-12_host_evidence.md); hardware NOT RUN.
-- [ ] Continue prompts 04–07 of the [maintainability sequence](prompts/maintainability/README.md)
+- [x] Share closed live/retained host payload validation, including conflicting
+  kind rejection and original-request correlation.
+  [Software handoff](reports/2026-10-12_host_dispatch.md); hardware NOT RUN.
+- [ ] Continue prompts 05–07 of the [maintainability sequence](prompts/maintainability/README.md)
   in small reviewed blocks:
-  host routing, console/application boundaries and evidence copying.
-  Prompts 01–03 are implemented; this sequence supersedes the earlier draft.
+  console/application boundaries and evidence copying.
+  Prompts 01–04 are implemented; this sequence supersedes the earlier draft.
   Optional host settings-validator extraction remains a separate group-policy task.
 - [ ] Implement the [FieldCore handoff](fieldcore_handoff.md) in a separately
   authorized FieldCore step: typed motor results, adequate frame storage,

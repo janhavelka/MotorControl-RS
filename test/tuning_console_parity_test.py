@@ -7,6 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from bench_probe import BenchError, Console, MAX_LINE, TUNING_FIELDS, TUNING_GROUPS, tuning_arguments, wire_crc
+from bench_probe_test import check_fixture_routes
 
 rows = subprocess.check_output([sys.argv[1], "--tuning-fixtures"], text=True, timeout=10).splitlines()
 assert len(rows) == 66
@@ -23,6 +24,7 @@ for line in rows:
         slugs[group], "set", *(token for field, value in zip(TUNING_FIELDS[group], updates[group])
                               for token in (field, str(value))))
     Console._check_driver(record, 1, arguments, "tuning")
+    check_fixture_routes(record)
     assert record["command"] == record["type"] == "tuning" and len(line) < MAX_LINE
     if fixture["case"] in ("previous_settings_deadline", "previous_settings_late_echo"):
         assert record["stationary_valid_until_us"] == 250

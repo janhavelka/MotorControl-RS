@@ -18,6 +18,7 @@ No report makes its recorded bench state a fresh observation.
 | [Explicit application record kind](2026-10-12_operation_kind.md) | Prompt 01 role inventory, lifecycle coverage and storage measurements; remaining prompts and hardware qualification stay separate. |
 | [Settings admission and publication](2026-10-12_settings_validation.md) | Prompt 02 rejection/mutation baseline, five private admission stages, characterization coverage and compiler stack measurements; scheduler and hardware scope unchanged. |
 | [Pure host evidence boundary](2026-10-12_host_evidence.md) | Prompt 03 canonical helpers, read/motion validators, import identity and retained Console session ownership; optional settings extraction stays separate. |
+| [Live and retained host routing](2026-10-12_host_dispatch.md) | Prompt 04 reply-kind inventory, shared closed payload validation, original-request correlation and malformed-kind rejection; session ownership and firmware unchanged. |
 
 Each report links its retained raw artifacts. Earlier implementation handoffs,
 software audits, closed corrections and qualification records are in the
