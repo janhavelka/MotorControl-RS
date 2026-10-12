@@ -153,6 +153,58 @@ void testWholeCandidateAndPrerequisites() {
     const Saved<Ess::DriverContext> saved(c);
     assert(!Ess::prepareDriverSettings(c, target(), 4, c.request, c.prerequisites, 200, 1000)); saved.check(c);
 }
+void testAdmissionPrecedenceAndAliasing() {
+    auto c = update(); const Saved<Ess::DriverContext> retained(c);
+    auto r = request(); auto p = prerequisites(); auto t = target();
+    uint32_t operationId = 12; uint64_t deadline = 9000;
+    const auto refuse = [&](Err code, Ess::DriverError detail, const char* message) {
+        const Status status = Ess::prepareDriverSettings(c, t, operationId, r, p, 200, deadline);
+        assert(status.code == code && status.detail == static_cast<int32_t>(detail));
+        assert(!std::strcmp(status.msg, message)); retained.check(c);
+    };
+    // Leave later failures present while removing each earlier rejection.
+    t.id = 0; operationId = 0; deadline = 200; r.fields = 0;
+    refuse(Err::INVALID_CONFIG, Ess::DriverError::INVALID_TARGET, "invalid driver-settings target");
+    t = target();
+    refuse(Err::INVALID_CONFIG, Ess::DriverError::INVALID_OPERATION, "zero operation or configuration generation");
+    operationId = 12;
+    refuse(Err::INVALID_CONFIG, Ess::DriverError::INVALID_DEADLINE, "expired driver-settings deadline");
+    deadline = 9000; p.allowEchoReadback = true;
+    refuse(Err::INVALID_CONFIG, Ess::DriverError::INVALID_CANDIDATE, "invalid or empty driver-settings selection");
+    r = request(1 | 128); r.direction = static_cast<Ess::DefaultDirection>(2);
+    refuse(Err::INVALID_CONFIG, Ess::DriverError::INVALID_CANDIDATE, "echo/readback policy requires IO or inhibited segment settings");
+    p.allowEchoReadback = false;
+    refuse(Err::UNSUPPORTED, Ess::DriverError::PAIR_WRITE_UNSUPPORTED, "software-limit pair has no reviewed FC10 window; split writes are unavailable");
+    r.fields = 1; p.previous.configurationGeneration++;
+    refuse(Err::INVALID_CONFIG, Ess::DriverError::INVALID_CANDIDATE, "illegal driver-setting enum or native range");
+    r = request(); p.previous.provenance[0].txComplete = false; p.previous.raw[0]++;
+    p.stationaryQualified = false;
+    refuse(Err::INVALID_CONFIG, Ess::DriverError::STALE_SETTINGS, "previous driver-settings context does not match");
+    p.previous.configurationGeneration--;
+    refuse(Err::INVALID_CONFIG, Ess::DriverError::STALE_SETTINGS, "previous driver-settings provenance is invalid");
+    p.previous.provenance[0].txComplete = true;
+    refuse(Err::INVALID_CONFIG, Ess::DriverError::STALE_SETTINGS, "previous settings disagree with checked raw provenance");
+    p.previous.raw[0]--; p.maxAgeUs = 100;
+    refuse(Err::INVALID_CONFIG, Ess::DriverError::STATIONARY_REQUIRED, "fresh qualified stopped-state and input policy required");
+    p.stationaryQualified = true; p.stationaryEarliestUs = p.stationaryLatestUs = 199;
+    refuse(Err::INVALID_CONFIG, Ess::DriverError::STALE_SETTINGS, "previous driver-settings observation is stale");
+
+    p = prerequisites();
+    Status status = Ess::prepareDriverSettings(c, target(), 0, c.request, p, 200, 9000);
+    assert(status.detail == static_cast<int32_t>(Ess::DriverError::INVALID_OPERATION)); retained.check(c);
+    status = Ess::prepareDriverSettings(c, target(), 12, c.request, p, 200, 9000);
+    assert(status.code == Err::INVALID_CONFIG && status.detail == static_cast<int32_t>(Ess::DriverError::INVALID_CANDIDATE));
+    assert(!std::strcmp(status.msg, "preparation inputs must not alias output members")); retained.check(c);
+    status = Ess::prepareDriverSettings(c, target(), 12, r, c.prerequisites, 200, 9000);
+    assert(status.code == Err::INVALID_CONFIG && !std::strcmp(status.msg, "preparation inputs must not alias output members")); retained.check(c);
+    // A target reference inside output is copied before its in-place reinitialization.
+    assert(Ess::prepareDriverSettings(c, c.target, 13, r, p, 200, 9000));
+    assert(c.target.id == target().id && c.target.address == target().address && c.target.generation == target().generation);
+    assert(Ess::prepareDriverSettings(c, c.prerequisites.previous.target, 14, r, p, 200, 9000));
+    assert(c.target.id == target().id && work(c).reg == Ess::Registers::DEFAULT_DIRECTION);
+    assert(Ess::prepareDriverRead(c, c.target, 15, 17, 200, 9000));
+    assert(c.target.id == target().id && c.operationId == 15 && !work(c).write);
+}
 void testLimitDependencies() {
     auto r = request(1); auto p = prerequisites(1); checkUnchangedReject(r, p);
     r.fields |= field(Ess::DriverField::SOFT_LIMIT_ENABLE); r.softLimitEnable = Ess::SoftLimitEnable::LIMITS_OFF;
@@ -330,6 +382,7 @@ static void testOptionalAgePolicy() {
 }
 int main() {
     testOptionalAgePolicy();
+    testAdmissionPrecedenceAndAliasing();
     testReadAndPairOrder(); testWholeCandidateAndPrerequisites(); testLimitDependencies();
     testProgressNoRollbackAndCopiedStorage(); testFaultsCancellationAndExpiry();
     testUnconfirmedReadEvidence();

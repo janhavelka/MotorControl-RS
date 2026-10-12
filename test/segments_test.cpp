@@ -195,6 +195,28 @@ void progressAndFailure() {
     c=update(request(),false,230); ack(c); e=frame(c,rb,225);
     assert(E::advanceDriver(c,e,1000)&&c.state==ReadState::SUCCEEDED&&c.deadlineUs==230);
 }
+void admissionPrecedence() {
+    auto r = request(); auto p = prerequisites(r);
+    auto c = update(r); const Saved<E::DriverContext> retained(c);
+    const auto refuse = [&](Err code, E::DriverError detail, const char* message) {
+        const auto status = E::prepareSegmentSettings(c, target(), 12, r, p, 200, 9000);
+        assert(status.code == code && status.detail == static_cast<int32_t>(detail));
+        assert(!std::strcmp(status.msg, message)); retained.check(c);
+    };
+    r.segmentIndex = 0; r.fields |= field(E::DriverField::SEGMENT_PULSE_TARGET); r.segmentSpeed = -1;
+    p.stationaryQualified = false; p.externalTriggerInhibitedQualified = false;
+    refuse(Err::INVALID_CONFIG, E::DriverError::SEGMENT_INDEX, "segment index must be 1..16");
+    r.segmentIndex = 1;
+    refuse(Err::UNSUPPORTED, E::DriverError::PAIR_WRITE_UNSUPPORTED, "stored pulse pair has no reviewed FC10 window");
+    r.fields &= ~field(E::DriverField::SEGMENT_PULSE_TARGET);
+    refuse(Err::INVALID_CONFIG, E::DriverError::INVALID_CANDIDATE, "PT speed is nonnegative");
+    r = request();
+    refuse(Err::INVALID_CONFIG, E::DriverError::STATIONARY_REQUIRED, "fresh qualified stopped-state and input policy required");
+    p.stationaryQualified = true; p.qualifiedSegment.segmentSpeed++;
+    refuse(Err::INVALID_CONFIG, E::DriverError::TRIGGER_POLICY_REQUIRED, "fresh exact external-trigger inhibition policy required");
+    p.externalTriggerInhibitedQualified = true;
+    refuse(Err::INVALID_CONFIG, E::DriverError::TRIGGER_POLICY_REQUIRED, "qualified segment values differ from candidate");
+}
 void readFailuresAndLifetime() {
     auto c=read(); auto b=reply({0x1234,0x5678,0xFFFF,50,50}); supply(c,b); b.assign(b.size(),0);
     E::SegmentObservation out; assert(E::getSegment(c,out)&&out.speed==0xFFFF&&!(out.knownFields&field(E::DriverField::SEGMENT_SPEED)));
@@ -224,4 +246,4 @@ static void testOptionalAgePolicy() {
     assert(!E::prepareSegmentSettings(c, target(), 12, r, p, 100000, 110000)); saved.check(c);
 }
 int main() {
-    testOptionalAgePolicy(); layouts(); rangesAndPolicies(); progressAndFailure(); readFailuresAndLifetime(); }
+    testOptionalAgePolicy(); admissionPrecedence(); layouts(); rangesAndPolicies(); progressAndFailure(); readFailuresAndLifetime(); }

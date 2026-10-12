@@ -162,6 +162,41 @@ void identityEffectsAndBounds() {
     r=request(6);r.lockPercent=75;p=prerequisites(r);p.previous=snapshot(1,4000,1000,100,50,50);
     assert(E::prepareControlSettings(c,target(),12,r,p,200,9000));
 }
+void admissionPrecedence() {
+    auto r = request(2); r.maximumEffectiveCurrentMa = 2001;
+    auto p = prerequisites(r); p.previous = snapshot(3);
+    auto c = update(request()); const Saved<E::DriverContext> retained(c);
+    const auto refuse = [&](Err code, E::DriverError detail, const char* message) {
+        const auto status = E::prepareControlSettings(c, target(), 12, r, p, 200, 9000);
+        assert(status.code == code && status.detail == static_cast<int32_t>(detail));
+        assert(!std::strcmp(status.msg, message)); retained.check(c);
+    };
+    p.stationaryQualified = false; p.exactModelQualified = false;
+    p.controlEffectsQualifiedFields = 0; p.nativeCurrentLimitQualified = false; p.currentPercentBaseQualified = false;
+    r.fields |= bit(1); r.encoderResolution = 0;
+    refuse(Err::INVALID_CONFIG, E::DriverError::ZERO_ENCODER_SCALE, "zero configured encoder resolution is not a mathematical scale");
+    r.fields = bit(2);
+    refuse(Err::INVALID_CONFIG, E::DriverError::STATIONARY_REQUIRED, "fresh qualified stopped-state and input policy required");
+    p.stationaryQualified = true;
+    refuse(Err::INVALID_CONFIG, E::DriverError::MODEL_REQUIRED, "fresh checked identity and independent exact-model qualification required");
+    p.exactModelQualified = true; p.controlLatestUs = 201; p.qualifiedControl.maximumEffectiveCurrentMa++;
+    refuse(Err::UNSUPPORTED, E::DriverError::CONTROL_EFFECTS_REQUIRED, "setting effects are not independently qualified");
+    p.controlEffectsQualifiedFields = r.fields;
+    refuse(Err::INVALID_CONFIG, E::DriverError::CONTROL_EFFECTS_REQUIRED, "fresh exact setting effects qualification required");
+    p.controlLatestUs = 120;
+    refuse(Err::INVALID_CONFIG, E::DriverError::CONTROL_EFFECTS_REQUIRED, "qualified setting values differ from candidate");
+    p.qualifiedControl = r;
+    refuse(Err::UNSUPPORTED, E::DriverError::CURRENT_LIMIT_UNRESOLVED, "exact-model effective-current ceiling is not qualified");
+    p.nativeCurrentLimitQualified = true;
+    refuse(Err::UNSUPPORTED, E::DriverError::CURRENT_BASE_UNRESOLVED, "current-percent reference conflicts with ESS map; independent formula qualification required");
+    p.currentPercentBaseQualified = true;
+    refuse(Err::UNSUPPORTED, E::DriverError::CURRENT_BASE_UNRESOLVED, "current mode is unknown");
+    p.previous = snapshot(2, 4000, 1000, 150);
+    refuse(Err::INVALID_CONFIG, E::DriverError::CURRENT_DEPENDENCY, "intermediate effective current exceeds qualified model limit");
+    r.maximumEffectiveCurrentMa = 2000; r.fields |= bit(3); r.closedMaximumPercent = 50;
+    p.controlEffectsQualifiedFields = r.fields; p.qualifiedControl = r;
+    refuse(Err::INVALID_CONFIG, E::DriverError::CURRENT_DEPENDENCY, "intermediate current formula exceeds qualified model limit");
+}
 void fullCapacity() {
     auto r=request(); r.fields=0x7F800000u; r.maximumEffectiveCurrentMa=2300;
     r.closedMaximumPercent=100; r.closedBasePercent=50; r.openMaximumPercent=100;
@@ -290,4 +325,4 @@ static void testOptionalAgePolicy() {
     assert(!E::prepareControlSettings(c, target(), 12, r, p, 100000, 110000)); saved.check(c);
 }
 int main(){
-    testOptionalAgePolicy();readAndPreservation();rangesAndWholeCandidate();identityEffectsAndBounds();fullCapacity();deadlineEvidence();previousSettingsBudget();previousSettingsEnvelope();lifecycle();}
+    testOptionalAgePolicy();admissionPrecedence();readAndPreservation();rangesAndWholeCandidate();identityEffectsAndBounds();fullCapacity();deadlineEvidence();previousSettingsBudget();previousSettingsEnvelope();lifecycle();}

@@ -6,10 +6,10 @@ These are executable work instructions, not implemented features. The
 behavior; [reports](../reports/README.md) retain evidence. Root [AGENTS.md](../../AGENTS.md)
 remains the engineering entry point.
 
-- [Maintainability sequence](maintainability/README.md): current, unexecuted
-  refactors for operation selection, settings validation, host evidence/routing,
-  console/application boundaries and shared evidence copying. The complexity
-  audit records the small changes already applied separately from these plans.
+- [Maintainability sequence](maintainability/README.md): operation selection and
+  settings validation are implemented; host evidence/routing, console/application
+  boundaries and shared evidence copying remain unexecuted. The complexity audit
+  records the small changes already applied separately from these stages.
 
 Open a set's README, select the next numbered prompt and dispatch that prompt
 explicitly. Preparation does not execute any prompt. Do not run multiple

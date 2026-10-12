@@ -292,6 +292,174 @@ bool unresolvedWrite(const DriverContext& c) {
     }
     return false;
 }
+// Admission helpers only inspect inputs; publication remains in prepareDriverSettings.
+Status validatePriorSettingsAndStandstill(const ReadTarget& target, const DriverRequest& request,
+                                          const DriverPrerequisites& prerequisites, uint64_t nowUs) {
+    const DriverObservation& previous = prerequisites.previous;
+    if (request.configurationGeneration != prerequisites.configurationGeneration ||
+        request.configurationGeneration != previous.configurationGeneration ||
+        !sameTarget(previous.target, target) || !previous.operationId || previous.group != request.group || (segmentGroup(request.group) && previous.segmentIndex != request.segmentIndex))
+        return invalid(DriverError::STALE_SETTINGS, "previous driver-settings context does not match");
+    DriverObservation checked;
+    const Status decoded = decode(previous.provenance, target, request.group, checked, request.segmentIndex);
+    if (!decoded) return invalid(DriverError::STALE_SETTINGS, "previous driver-settings provenance is invalid");
+    if (checked.knownFields != previous.knownFields || checked.pairKnown != previous.pairKnown ||
+        checked.positiveBits != previous.positiveBits || checked.negativeBits != previous.negativeBits ||
+        std::memcmp(checked.raw, previous.raw, sizeof(checked.raw)) ||
+        std::memcmp(checked.positiveWords, previous.positiveWords, sizeof(checked.positiveWords)) ||
+        std::memcmp(checked.negativeWords, previous.negativeWords, sizeof(checked.negativeWords)))
+        return invalid(DriverError::STALE_SETTINGS, "previous settings disagree with checked raw provenance");
+    if (!prerequisites.stationaryQualified || (request.group == DriverGroup::DRIVE && !prerequisites.inputsPermit) ||
+        !sameTarget(prerequisites.stationaryTarget, target) ||
+        prerequisites.stationaryEarliestUs > prerequisites.stationaryLatestUs ||
+        prerequisites.stationaryLatestUs > nowUs ||
+        !evidenceAgeValid(prerequisites.stationaryEarliestUs, nowUs, prerequisites.maxAgeUs) ||
+        prerequisites.rawAlarm || (prerequisites.rawMotion & 0xFFEC))
+        return invalid(DriverError::STATIONARY_REQUIRED, "fresh qualified stopped-state and input policy required");
+    for (uint8_t i = 0; i < readSteps(request.group); ++i) {
+        const DriverEvidence& e = previous.provenance[i];
+        if (e.attemptedUs > e.earliestUs || e.earliestUs > e.latestUs || e.latestUs > nowUs ||
+            !evidenceAgeValid(e.attemptedUs, nowUs, prerequisites.maxAgeUs))
+            return invalid(DriverError::STALE_SETTINGS, "previous driver-settings observation is stale");
+    }
+    return Ok();
+}
+Status validateStoredTriggerPolicy(const ReadTarget& target, const DriverRequest& request,
+                                   const DriverPrerequisites& prerequisites, uint64_t nowUs) {
+    const DriverRequest& q = prerequisites.qualifiedSegment;
+    if (!prerequisites.externalTriggerInhibitedQualified || !sameTarget(prerequisites.triggerTarget, target) ||
+        prerequisites.triggerConfigurationGeneration != request.configurationGeneration ||
+        prerequisites.triggerEarliestUs > prerequisites.triggerLatestUs || prerequisites.triggerLatestUs > nowUs ||
+        !evidenceAgeValid(prerequisites.triggerEarliestUs, nowUs, prerequisites.maxAgeUs) ||
+        q.group != request.group || q.segmentIndex != request.segmentIndex || q.fields != request.fields ||
+        q.configurationGeneration != request.configurationGeneration)
+        return invalid(DriverError::TRIGGER_POLICY_REQUIRED, "fresh exact external-trigger inhibition policy required");
+    if (((request.fields & (1u << 18)) && request.segmentSpeed != q.segmentSpeed) ||
+        ((request.fields & (1u << 19)) && request.segmentAcceleration != q.segmentAcceleration) ||
+        ((request.fields & (1u << 20)) && request.segmentDeceleration != q.segmentDeceleration) ||
+        ((request.fields & (1u << 21)) && request.segmentStartSpeed != q.segmentStartSpeed))
+        return invalid(DriverError::TRIGGER_POLICY_REQUIRED, "qualified segment values differ from candidate");
+    return Ok();
+}
+Status validateModelAndEffects(const ReadTarget& target, const DriverRequest& request,
+                               const DriverPrerequisites& prerequisites, uint64_t nowUs) {
+    const bool tuning = isTuningGroup(request.group);
+    const IdentityObservation& identity = prerequisites.controlIdentity;
+    const ReadStepObservation& source = identity.provenance;
+    uint16_t identityWords[4] = {}; std::size_t decodedIdentity = 0;
+    if (!prerequisites.exactModelQualified || !prerequisites.modelSourceId || !identity.operationId ||
+        !sameTarget(identity.target, target) || identity.rawModel != prerequisites.qualifiedModelCode ||
+        identity.rawVersion != prerequisites.qualifiedFirmwareCode || source.first != Registers::DRIVER_MODEL || source.count != 4 ||
+        source.event != ReadEventKind::FRAME || !source.qualified || !source.status || source.executionUnknown ||
+        source.length != 13 || source.receivedLength != source.length || source.txAccepted != READ_REQUEST_LEN ||
+        source.attemptedUs > source.earliestUs || source.earliestUs > source.latestUs || source.latestUs > nowUs ||
+        !evidenceAgeValid(source.attemptedUs, nowUs, prerequisites.maxAgeUs) ||
+        !parseRegisters(source.raw, source.length, target.address, 4, identityWords, 4, decodedIdentity) ||
+        identityWords[0] != identity.rawModel || identityWords[1] != identity.rawVersion ||
+        identityWords[2] != identity.rawActiveNode || identityWords[3] != identity.rawDip)
+        return invalid(DriverError::MODEL_REQUIRED, "fresh checked identity and independent exact-model qualification required");
+    const DriverRequest& q = tuning ? prerequisites.qualifiedTuning : prerequisites.qualifiedControl;
+    const uint32_t qualifiedFields = tuning ? prerequisites.tuningEffectsQualifiedFields : prerequisites.controlEffectsQualifiedFields;
+    const uint64_t earliest = tuning ? prerequisites.tuningEarliestUs : prerequisites.controlEarliestUs;
+    const uint64_t latest = tuning ? prerequisites.tuningLatestUs : prerequisites.controlLatestUs;
+    const DriverError effectsError = tuning ? DriverError::TUNING_EFFECTS_REQUIRED : DriverError::CONTROL_EFFECTS_REQUIRED;
+    if ((qualifiedFields & request.fields) != request.fields)
+        return Status(Err::UNSUPPORTED, static_cast<int32_t>(effectsError), "setting effects are not independently qualified");
+    if (q.group != request.group || q.fields != request.fields || q.configurationGeneration != request.configurationGeneration ||
+        earliest > latest || latest > nowUs || !evidenceAgeValid(earliest, nowUs, prerequisites.maxAgeUs))
+        return invalid(effectsError, "fresh exact setting effects qualification required");
+    for (uint8_t i = 0; i < (tuning ? tuningFieldCount(request.group) : 8); ++i)
+        if ((request.fields & bit(i, request.group)) && requested(request, i) != requested(q, i))
+            return invalid(effectsError, "qualified setting values differ from candidate");
+    return Ok();
+}
+Status validateIntermediateCurrentTuple(const DriverRequest& request,
+                                       const DriverPrerequisites& prerequisites) {
+    const DriverObservation& previous = prerequisites.previous;
+    const uint32_t currentFields = bit(0, request.group) | bit(2, request.group) | bit(3, request.group) | bit(4, request.group) |
+        bit(5, request.group) | bit(6, request.group);
+    if (request.fields & currentFields) {
+        if (!prerequisites.nativeCurrentLimitQualified || !prerequisites.maximumEffectiveLimitMa ||
+            prerequisites.maximumEffectiveLimitMa > 5600)
+            return Status(Err::UNSUPPORTED, static_cast<int32_t>(DriverError::CURRENT_LIMIT_UNRESOLVED), "exact-model effective-current ceiling is not qualified");
+        if (!prerequisites.currentPercentBaseQualified)
+            return Status(Err::UNSUPPORTED, static_cast<int32_t>(DriverError::CURRENT_BASE_UNRESOLVED), "current-percent reference conflicts with ESS map; independent formula qualification required");
+        uint16_t candidate[8];
+        for (uint8_t i = 0; i < 8; ++i) candidate[i] = previous.raw[i];
+        // Check each selected write in the exact published order, before
+        // yielding the first one. A safe final tuple cannot hide an unsafe
+        // intermediate tuple. No inferred rollback or reordered writes.
+        for (uint8_t changed = 0; changed < 8; ++changed) {
+            if (!(request.fields & bit(changed, request.group))) continue;
+            candidate[changed] = requested(request, changed);
+            if (changed == 0 && candidate[0] == static_cast<uint16_t>(ControlAlgorithm::ALGORITHM_1) && !candidate[1])
+                return invalid(DriverError::ZERO_ENCODER_SCALE, "closed-loop transition requires a positive previously configured encoder scale");
+            if (!legalControl(0, candidate[0]))
+                return Status(Err::UNSUPPORTED, static_cast<int32_t>(DriverError::CURRENT_BASE_UNRESOLVED), "current mode is unknown");
+            if (candidate[2] > prerequisites.maximumEffectiveLimitMa)
+                return invalid(DriverError::CURRENT_DEPENDENCY, "intermediate effective current exceeds qualified model limit");
+            for (uint8_t i = 3; i <= 6; ++i) {
+                if (i == 5 && candidate[0] != static_cast<uint16_t>(ControlAlgorithm::OPEN_LOOP)) continue;
+                if ((i == 3 || i == 4) && candidate[0] == static_cast<uint16_t>(ControlAlgorithm::OPEN_LOOP)) continue;
+                if (!legalControl(i, candidate[i]) || static_cast<uint32_t>(candidate[2]) * candidate[i] >
+                    static_cast<uint32_t>(prerequisites.maximumEffectiveLimitMa) * 100)
+                    return invalid(DriverError::CURRENT_DEPENDENCY, "intermediate current formula exceeds qualified model limit");
+            }
+        }
+    }
+    return Ok();
+}
+Status validateIoEffects(const ReadTarget& target, const DriverRequest& request,
+                         const DriverPrerequisites& prerequisites, uint64_t nowUs) {
+    const DriverObservation& previous = prerequisites.previous;
+    const uint8_t maskIndices[] = {7, 12, 15};
+    for (uint8_t index : maskIndices)
+        if ((request.fields & bit(index)) && !legal(index, previous.raw[index]))
+            return invalid(DriverError::INVALID_CANDIDATE, "reserved stored IO mask bits cannot be overwritten");
+    if (!prerequisites.ioLevelsQualified || !sameTarget(prerequisites.ioTarget, target) ||
+        prerequisites.ioConfigurationGeneration != request.configurationGeneration ||
+        (prerequisites.actualInputs & ~0xFu) || (prerequisites.actualOutputs & ~3u) ||
+        prerequisites.ioEarliestUs > prerequisites.ioLatestUs || prerequisites.ioLatestUs > nowUs ||
+        !evidenceAgeValid(prerequisites.ioEarliestUs, nowUs, prerequisites.maxAgeUs))
+        return invalid(DriverError::IO_EVIDENCE_REQUIRED, "fresh qualified actual IO levels required");
+    const DriverRequest& qualified = prerequisites.qualifiedIo;
+    if ((prerequisites.ioEffectsQualifiedFields & request.fields) != request.fields ||
+        qualified.group != DriverGroup::IO || qualified.configurationGeneration != request.configurationGeneration ||
+        qualified.fields != request.fields)
+        return invalid(DriverError::IO_EFFECTS_REQUIRED, "exact external-effect qualification required");
+    for (uint8_t i = 7; i < DRIVER_FIELD_COUNT; ++i)
+        if ((request.fields & bit(i)) && requested(request, i) != requested(qualified, i))
+            return invalid(DriverError::IO_EFFECTS_REQUIRED, "qualified IO values differ from candidate");
+    uint16_t affectedInputs = 0, affectedOutputs = 0;
+    if (request.fields & bit(7)) affectedInputs |= request.inputPolarity ^ previous.raw[7];
+    if (request.fields & bit(12)) affectedOutputs |= request.outputPolarity ^ previous.raw[12];
+    if (request.fields & bit(15)) affectedOutputs |= request.customOutput ^ previous.raw[15];
+    for (uint8_t i = 0; i < 4; ++i) if (request.fields & bit(8 + i)) affectedInputs |= 1u << i;
+    for (uint8_t i = 0; i < 2; ++i) if (request.fields & bit(13 + i)) affectedOutputs |= 1u << i;
+    for (uint8_t i = 0; i < 4; ++i)
+        if ((affectedInputs & (1u << i)) && (prerequisites.inputWiring[i] == InputWiring::UNKNOWN || prerequisites.inputWiring[i] > InputWiring::CONNECTED))
+            return invalid(DriverError::WIRING_REQUIRED, "affected input wiring must be declared");
+    for (uint8_t i = 0; i < 2; ++i)
+        if ((affectedOutputs & (1u << i)) && (prerequisites.outputWiring[i] == InputWiring::UNKNOWN || prerequisites.outputWiring[i] > InputWiring::CONNECTED))
+            return invalid(DriverError::WIRING_REQUIRED, "affected output wiring must be declared");
+    if (prerequisites.allowEchoReadback) {
+        for (uint8_t i = 0; i < 4; ++i)
+            if ((affectedInputs & (1u << i)) && prerequisites.inputWiring[i] != InputWiring::UNCONNECTED)
+                return invalid(DriverError::WIRING_REQUIRED, "unconfirmed echo verification requires affected terminals unconnected");
+        for (uint8_t i = 0; i < 2; ++i)
+            if ((affectedOutputs & (1u << i)) && prerequisites.outputWiring[i] != InputWiring::UNCONNECTED)
+                return invalid(DriverError::WIRING_REQUIRED, "unconfirmed echo verification requires affected terminals unconnected");
+    }
+    if (request.fields & bit(15)) {
+        for (uint8_t i = 0; i < 2; ++i) {
+            if (!((request.customOutput | previous.raw[15]) & (1u << i))) continue;
+            const uint16_t function = request.fields & bit(13 + i) ? requested(request, 13 + i) : previous.raw[13 + i];
+            if (function != 9 + i)
+                return invalid(DriverError::CUSTOM_DEPENDENCY, "custom bits require corresponding terminal's canonical custom function; cross-mapping unresolved");
+        }
+    }
+    return Ok();
+}
 } // namespace
 
 Status prepareDriverRead(DriverContext& output, const ReadTarget& target, uint32_t operationId,
@@ -360,156 +528,26 @@ Status prepareDriverSettings(DriverContext& output, const ReadTarget& target, ui
     }
     if (control && (request.fields & bit(1, request.group)) && !request.encoderResolution)
         return invalid(DriverError::ZERO_ENCODER_SCALE, "zero configured encoder resolution is not a mathematical scale");
-    const DriverObservation& previous = prerequisites.previous;
-    if (request.configurationGeneration != prerequisites.configurationGeneration ||
-        request.configurationGeneration != previous.configurationGeneration ||
-        !sameTarget(previous.target, target) || !previous.operationId || previous.group != request.group || (segment && previous.segmentIndex != request.segmentIndex))
-        return invalid(DriverError::STALE_SETTINGS, "previous driver-settings context does not match");
-    DriverObservation checked;
-    const Status decoded = decode(previous.provenance, target, request.group, checked, request.segmentIndex);
-    if (!decoded) return invalid(DriverError::STALE_SETTINGS, "previous driver-settings provenance is invalid");
-    if (checked.knownFields != previous.knownFields || checked.pairKnown != previous.pairKnown ||
-        checked.positiveBits != previous.positiveBits || checked.negativeBits != previous.negativeBits ||
-        std::memcmp(checked.raw, previous.raw, sizeof(checked.raw)) ||
-        std::memcmp(checked.positiveWords, previous.positiveWords, sizeof(checked.positiveWords)) ||
-        std::memcmp(checked.negativeWords, previous.negativeWords, sizeof(checked.negativeWords)))
-        return invalid(DriverError::STALE_SETTINGS, "previous settings disagree with checked raw provenance");
-    if (!prerequisites.stationaryQualified || (request.group == DriverGroup::DRIVE && !prerequisites.inputsPermit) ||
-        !sameTarget(prerequisites.stationaryTarget, target) ||
-        prerequisites.stationaryEarliestUs > prerequisites.stationaryLatestUs ||
-        prerequisites.stationaryLatestUs > nowUs ||
-        !evidenceAgeValid(prerequisites.stationaryEarliestUs, nowUs, prerequisites.maxAgeUs) ||
-        prerequisites.rawAlarm || (prerequisites.rawMotion & 0xFFEC))
-        return invalid(DriverError::STATIONARY_REQUIRED, "fresh qualified stopped-state and input policy required");
-    for (uint8_t i = 0; i < readSteps(request.group); ++i) {
-        const DriverEvidence& e = previous.provenance[i];
-        if (e.attemptedUs > e.earliestUs || e.earliestUs > e.latestUs || e.latestUs > nowUs ||
-            !evidenceAgeValid(e.attemptedUs, nowUs, prerequisites.maxAgeUs))
-            return invalid(DriverError::STALE_SETTINGS, "previous driver-settings observation is stale");
-    }
+    // Preserve admission precedence: common evidence, then each group's policy.
+    const Status prior = validatePriorSettingsAndStandstill(target, request, prerequisites, nowUs);
+    if (!prior) return prior;
     if (segment) {
-        const DriverRequest& q = prerequisites.qualifiedSegment;
-        if (!prerequisites.externalTriggerInhibitedQualified || !sameTarget(prerequisites.triggerTarget, target) ||
-            prerequisites.triggerConfigurationGeneration != request.configurationGeneration ||
-            prerequisites.triggerEarliestUs > prerequisites.triggerLatestUs || prerequisites.triggerLatestUs > nowUs ||
-            !evidenceAgeValid(prerequisites.triggerEarliestUs, nowUs, prerequisites.maxAgeUs) ||
-            q.group != request.group || q.segmentIndex != request.segmentIndex || q.fields != request.fields ||
-            q.configurationGeneration != request.configurationGeneration)
-            return invalid(DriverError::TRIGGER_POLICY_REQUIRED, "fresh exact external-trigger inhibition policy required");
-        if (((request.fields & (1u << 18)) && request.segmentSpeed != q.segmentSpeed) ||
-            ((request.fields & (1u << 19)) && request.segmentAcceleration != q.segmentAcceleration) ||
-            ((request.fields & (1u << 20)) && request.segmentDeceleration != q.segmentDeceleration) ||
-            ((request.fields & (1u << 21)) && request.segmentStartSpeed != q.segmentStartSpeed))
-            return invalid(DriverError::TRIGGER_POLICY_REQUIRED, "qualified segment values differ from candidate");
+        const Status trigger = validateStoredTriggerPolicy(target, request, prerequisites, nowUs);
+        if (!trigger) return trigger;
     }
     if (control || tuning) {
-        const IdentityObservation& identity = prerequisites.controlIdentity;
-        const ReadStepObservation& source = identity.provenance;
-        uint16_t identityWords[4] = {}; std::size_t decodedIdentity = 0;
-        if (!prerequisites.exactModelQualified || !prerequisites.modelSourceId || !identity.operationId ||
-            !sameTarget(identity.target, target) || identity.rawModel != prerequisites.qualifiedModelCode ||
-            identity.rawVersion != prerequisites.qualifiedFirmwareCode || source.first != Registers::DRIVER_MODEL || source.count != 4 ||
-            source.event != ReadEventKind::FRAME || !source.qualified || !source.status || source.executionUnknown ||
-            source.length != 13 || source.receivedLength != source.length || source.txAccepted != READ_REQUEST_LEN ||
-            source.attemptedUs > source.earliestUs || source.earliestUs > source.latestUs || source.latestUs > nowUs ||
-            !evidenceAgeValid(source.attemptedUs, nowUs, prerequisites.maxAgeUs) ||
-            !parseRegisters(source.raw, source.length, target.address, 4, identityWords, 4, decodedIdentity) ||
-            identityWords[0] != identity.rawModel || identityWords[1] != identity.rawVersion ||
-            identityWords[2] != identity.rawActiveNode || identityWords[3] != identity.rawDip)
-            return invalid(DriverError::MODEL_REQUIRED, "fresh checked identity and independent exact-model qualification required");
-        const DriverRequest& q = tuning ? prerequisites.qualifiedTuning : prerequisites.qualifiedControl;
-        const uint32_t qualifiedFields = tuning ? prerequisites.tuningEffectsQualifiedFields : prerequisites.controlEffectsQualifiedFields;
-        const uint64_t earliest = tuning ? prerequisites.tuningEarliestUs : prerequisites.controlEarliestUs;
-        const uint64_t latest = tuning ? prerequisites.tuningLatestUs : prerequisites.controlLatestUs;
-        const DriverError effectsError = tuning ? DriverError::TUNING_EFFECTS_REQUIRED : DriverError::CONTROL_EFFECTS_REQUIRED;
-        if ((qualifiedFields & request.fields) != request.fields)
-            return Status(Err::UNSUPPORTED, static_cast<int32_t>(effectsError), "setting effects are not independently qualified");
-        if (q.group != request.group || q.fields != request.fields || q.configurationGeneration != request.configurationGeneration ||
-            earliest > latest || latest > nowUs || !evidenceAgeValid(earliest, nowUs, prerequisites.maxAgeUs))
-            return invalid(effectsError, "fresh exact setting effects qualification required");
-        for (uint8_t i = 0; i < (tuning ? tuningFieldCount(request.group) : 8); ++i)
-            if ((request.fields & bit(i, request.group)) && requested(request, i) != requested(q, i))
-                return invalid(effectsError, "qualified setting values differ from candidate");
-        const uint32_t currentFields = bit(0, request.group) | bit(2, request.group) | bit(3, request.group) | bit(4, request.group) |
-            bit(5, request.group) | bit(6, request.group);
-        if (control && (request.fields & currentFields)) {
-            if (!prerequisites.nativeCurrentLimitQualified || !prerequisites.maximumEffectiveLimitMa ||
-                prerequisites.maximumEffectiveLimitMa > 5600)
-                return Status(Err::UNSUPPORTED, static_cast<int32_t>(DriverError::CURRENT_LIMIT_UNRESOLVED), "exact-model effective-current ceiling is not qualified");
-            if (!prerequisites.currentPercentBaseQualified)
-                return Status(Err::UNSUPPORTED, static_cast<int32_t>(DriverError::CURRENT_BASE_UNRESOLVED), "current-percent reference conflicts with ESS map; independent formula qualification required");
-            uint16_t candidate[8];
-            for (uint8_t i = 0; i < 8; ++i) candidate[i] = previous.raw[i];
-            // Check each selected write in the exact published order, before
-            // yielding the first one. A safe final tuple cannot hide an unsafe
-            // intermediate tuple. No inferred rollback or reordered writes.
-            for (uint8_t changed = 0; changed < 8; ++changed) {
-                if (!(request.fields & bit(changed, request.group))) continue;
-                candidate[changed] = requested(request, changed);
-                if (changed == 0 && candidate[0] == static_cast<uint16_t>(ControlAlgorithm::ALGORITHM_1) && !candidate[1])
-                    return invalid(DriverError::ZERO_ENCODER_SCALE, "closed-loop transition requires a positive previously configured encoder scale");
-                if (!legalControl(0, candidate[0]))
-                    return Status(Err::UNSUPPORTED, static_cast<int32_t>(DriverError::CURRENT_BASE_UNRESOLVED), "current mode is unknown");
-                if (candidate[2] > prerequisites.maximumEffectiveLimitMa)
-                    return invalid(DriverError::CURRENT_DEPENDENCY, "intermediate effective current exceeds qualified model limit");
-                for (uint8_t i = 3; i <= 6; ++i) {
-                    if (i == 5 && candidate[0] != static_cast<uint16_t>(ControlAlgorithm::OPEN_LOOP)) continue;
-                    if ((i == 3 || i == 4) && candidate[0] == static_cast<uint16_t>(ControlAlgorithm::OPEN_LOOP)) continue;
-                    if (!legalControl(i, candidate[i]) || static_cast<uint32_t>(candidate[2]) * candidate[i] >
-                        static_cast<uint32_t>(prerequisites.maximumEffectiveLimitMa) * 100)
-                        return invalid(DriverError::CURRENT_DEPENDENCY, "intermediate current formula exceeds qualified model limit");
-                }
-            }
-        }
+        const Status effects = validateModelAndEffects(target, request, prerequisites, nowUs);
+        if (!effects) return effects;
+    }
+    if (control) {
+        const Status current = validateIntermediateCurrentTuple(request, prerequisites);
+        if (!current) return current;
     }
     if (request.group == DriverGroup::IO) {
-        const uint8_t maskIndices[] = {7, 12, 15};
-        for (uint8_t index : maskIndices)
-            if ((request.fields & bit(index)) && !legal(index, previous.raw[index]))
-                return invalid(DriverError::INVALID_CANDIDATE, "reserved stored IO mask bits cannot be overwritten");
-        if (!prerequisites.ioLevelsQualified || !sameTarget(prerequisites.ioTarget, target) ||
-            prerequisites.ioConfigurationGeneration != request.configurationGeneration ||
-            (prerequisites.actualInputs & ~0xFu) || (prerequisites.actualOutputs & ~3u) ||
-            prerequisites.ioEarliestUs > prerequisites.ioLatestUs || prerequisites.ioLatestUs > nowUs ||
-            !evidenceAgeValid(prerequisites.ioEarliestUs, nowUs, prerequisites.maxAgeUs))
-            return invalid(DriverError::IO_EVIDENCE_REQUIRED, "fresh qualified actual IO levels required");
-        const DriverRequest& qualified = prerequisites.qualifiedIo;
-        if ((prerequisites.ioEffectsQualifiedFields & request.fields) != request.fields ||
-            qualified.group != DriverGroup::IO || qualified.configurationGeneration != request.configurationGeneration ||
-            qualified.fields != request.fields)
-            return invalid(DriverError::IO_EFFECTS_REQUIRED, "exact external-effect qualification required");
-        for (uint8_t i = 7; i < DRIVER_FIELD_COUNT; ++i)
-            if ((request.fields & bit(i)) && requested(request, i) != requested(qualified, i))
-                return invalid(DriverError::IO_EFFECTS_REQUIRED, "qualified IO values differ from candidate");
-        uint16_t affectedInputs = 0, affectedOutputs = 0;
-        if (request.fields & bit(7)) affectedInputs |= request.inputPolarity ^ previous.raw[7];
-        if (request.fields & bit(12)) affectedOutputs |= request.outputPolarity ^ previous.raw[12];
-        if (request.fields & bit(15)) affectedOutputs |= request.customOutput ^ previous.raw[15];
-        for (uint8_t i = 0; i < 4; ++i) if (request.fields & bit(8 + i)) affectedInputs |= 1u << i;
-        for (uint8_t i = 0; i < 2; ++i) if (request.fields & bit(13 + i)) affectedOutputs |= 1u << i;
-        for (uint8_t i = 0; i < 4; ++i)
-            if ((affectedInputs & (1u << i)) && (prerequisites.inputWiring[i] == InputWiring::UNKNOWN || prerequisites.inputWiring[i] > InputWiring::CONNECTED))
-                return invalid(DriverError::WIRING_REQUIRED, "affected input wiring must be declared");
-        for (uint8_t i = 0; i < 2; ++i)
-            if ((affectedOutputs & (1u << i)) && (prerequisites.outputWiring[i] == InputWiring::UNKNOWN || prerequisites.outputWiring[i] > InputWiring::CONNECTED))
-                return invalid(DriverError::WIRING_REQUIRED, "affected output wiring must be declared");
-        if (prerequisites.allowEchoReadback) {
-            for (uint8_t i = 0; i < 4; ++i)
-                if ((affectedInputs & (1u << i)) && prerequisites.inputWiring[i] != InputWiring::UNCONNECTED)
-                    return invalid(DriverError::WIRING_REQUIRED, "unconfirmed echo verification requires affected terminals unconnected");
-            for (uint8_t i = 0; i < 2; ++i)
-                if ((affectedOutputs & (1u << i)) && prerequisites.outputWiring[i] != InputWiring::UNCONNECTED)
-                    return invalid(DriverError::WIRING_REQUIRED, "unconfirmed echo verification requires affected terminals unconnected");
-        }
-        if (request.fields & bit(15)) {
-            for (uint8_t i = 0; i < 2; ++i) {
-                if (!((request.customOutput | previous.raw[15]) & (1u << i))) continue;
-                const uint16_t function = request.fields & bit(13 + i) ? requested(request, 13 + i) : previous.raw[13 + i];
-                if (function != 9 + i)
-                    return invalid(DriverError::CUSTOM_DEPENDENCY, "custom bits require corresponding terminal's canonical custom function; cross-mapping unresolved");
-            }
-        }
+        const Status effects = validateIoEffects(target, request, prerequisites, nowUs);
+        if (!effects) return effects;
     }
+    const DriverObservation& previous = prerequisites.previous;
     const bool disabling = request.group == DriverGroup::DRIVE && (request.fields & bit(3)) && request.softLimitEnable == SoftLimitEnable::LIMITS_OFF;
     const bool enabling = request.group == DriverGroup::DRIVE && (request.fields & bit(3)) && request.softLimitEnable == SoftLimitEnable::AFTER_HOMING;
     if (request.group == DriverGroup::DRIVE && (request.fields & GEOMETRY_MASK) && !disabling &&
@@ -530,6 +568,7 @@ Status prepareDriverSettings(DriverContext& output, const ReadTarget& target, ui
             prerequisites.negativeLimit >= prerequisites.positiveLimit)
             return invalid(DriverError::LIMIT_REFERENCE_REQUIRED, "qualified ordered native limits and homed reference required");
     }
+    // All admission checks passed. This is the first mutation of caller output.
     initialize(output, target, operationId, request.configurationGeneration, nowUs, deadlineUs);
     output.group = request.group; output.kind = DriverKind::UPDATE; output.request = request; output.prerequisites = prerequisites;
     for (uint8_t i = 0; i < DRIVER_FIELD_COUNT; ++i) {

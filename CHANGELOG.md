@@ -15,6 +15,10 @@
 
 ### Maintenance
 
+- Extracted five private ESS settings-admission validators, preserving first-error
+  precedence, full-candidate checks, in-place publication and write/readback order.
+  Added baseline-tested precedence, unchanged-output, alias and I/O-order cases;
+  public contexts, group metadata and sequencing remain unchanged.
 - Replaced the shared application's six record-context flags with one private
   operation kind and explicit dispatch, preserving concrete storage, lifecycle
   facts, result retention and physical uncertainty. Added failed-preparation
@@ -37,8 +41,8 @@
 - Grouped identical native-fixture source declarations; compiler invocations and
   test registrations remain unchanged.
 - Audited complexity and prepared seven staged maintainability prompts for larger
-  changes. The older maintenance draft is superseded; prompt 01 is now delivered
-  and the remaining six stages are pending.
+  changes. The older maintenance draft is superseded; prompts 01–02 are delivered
+  and the remaining five stages are pending.
 - Reused private RTU frame/word/CRC helpers and removed a redundant register
   decode buffer while preserving checked-parser output and validation contracts.
 - Simplified cached-health help and callback checks, removed an unused example

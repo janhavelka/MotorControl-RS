@@ -157,8 +157,10 @@ void testFullUpdatePartialAndCustom() {
     auto r = request(); r.fields = 0x3FE00; r.inputPolarity = 15; r.outputPolarity = 3; r.customOutput = 3;
     r.outputFunctions[0] = E::OutputFunction::CUSTOM_0; r.outputFunctions[1] = E::OutputFunction::CUSTOM_1;
     auto c = update(r); assert(c.fieldCount == 9);
+    const uint16_t registers[] = {0x40, 0x41, 0x42, 0x43, 0x44, 0x4B, 0x4C, 0x4D, 0x4F};
     for (uint8_t step = 0; step < 9; ++step) {
-        const auto w = work(c); assert(w.write && w.count == 1);
+        const auto w = work(c); assert(w.write && w.count == 1 && w.reg == registers[step]);
+        assert(c.order[step] == step + 7);
         ack(c); assert(c.uncertain); supply(c, reply({w.value})); assert(!c.uncertain);
     }
     assert(c.state == ReadState::SUCCEEDED && c.completedSteps == 18 && c.effects == r.fields);
@@ -189,6 +191,30 @@ void testFullUpdatePartialAndCustom() {
     c = update(); auto failed = local(c, ReadEventKind::TRANSPORT_FAILURE); failed.transport.txAccepted = 8; failed.txComplete = true;
     assert(E::advanceDriver(c, failed, 300) && c.uncertain && c.effects == mask(8));
     const Saved<E::DriverContext> retained(c); assert(!E::advanceDriver(c, failed, 301)); retained.check(c);
+}
+void testAdmissionPrecedence() {
+    auto r = request(15); r.customOutput = 1;
+    auto p = prerequisites(r, read(0, 0, 4));
+    auto c = update(); const Saved<E::DriverContext> retained(c);
+    const auto refuse = [&](E::DriverError detail, const char* message) {
+        const auto status = E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000);
+        assert(status.code == Err::INVALID_CONFIG && status.detail == static_cast<int32_t>(detail));
+        assert(!std::strcmp(status.msg, message)); retained.check(c);
+    };
+    p.ioLevelsQualified = false; p.ioEffectsQualifiedFields = 0; p.outputWiring[0] = InputWiring::UNKNOWN;
+    refuse(E::DriverError::INVALID_CANDIDATE, "reserved stored IO mask bits cannot be overwritten");
+    assert(E::getDriver(read(), p.previous));
+    refuse(E::DriverError::IO_EVIDENCE_REQUIRED, "fresh qualified actual IO levels required");
+    p.ioLevelsQualified = true; p.qualifiedIo.customOutput = 0;
+    refuse(E::DriverError::IO_EFFECTS_REQUIRED, "exact external-effect qualification required");
+    p.ioEffectsQualifiedFields = r.fields;
+    refuse(E::DriverError::IO_EFFECTS_REQUIRED, "qualified IO values differ from candidate");
+    p.qualifiedIo = r;
+    refuse(E::DriverError::WIRING_REQUIRED, "affected output wiring must be declared");
+    p.outputWiring[0] = InputWiring::CONNECTED; p.allowEchoReadback = true;
+    refuse(E::DriverError::WIRING_REQUIRED, "unconfirmed echo verification requires affected terminals unconnected");
+    p.outputWiring[0] = InputWiring::UNCONNECTED;
+    refuse(E::DriverError::CUSTOM_DEPENDENCY, "custom bits require corresponding terminal's canonical custom function; cross-mapping unresolved");
 }
 void testEchoReadbackAndFaults() {
     auto c = update(); ack(c, false); assert(c.outcome == E::DriverOutcome::UNCONFIRMED_RESPONSE && c.uncertain);
@@ -227,6 +253,7 @@ static void testOptionalAgePolicy() {
 }
 int main() {
     testOptionalAgePolicy();
+    testAdmissionPrecedence();
     testChoicesAndDisable(); testRawAndImmutable(); testPrerequisitesAndMasks();
     testFullUpdatePartialAndCustom(); testEchoReadbackAndFaults();
 }

@@ -158,6 +158,26 @@ void wholeCandidateQualifications() {
     Saved<E::DriverRequest> unchanged(selected);
     assert(!E::prepareTuningValue(selected,E::TuningParameter::CURRENT_LOOP_KP,5)); unchanged.check(selected);
 }
+void admissionPrecedence() {
+    for (auto group : GROUPS) {
+        const auto r = request(group); auto p = prerequisites(r);
+        auto c = update(r); const Saved<E::DriverContext> retained(c);
+        const auto refuse = [&](Err code, E::DriverError detail, const char* message) {
+            const auto status = E::prepareTuningSettings(c, target(), 12, r, p, 200, 9000);
+            assert(status.code == code && status.detail == static_cast<int32_t>(detail));
+            assert(!std::strcmp(status.msg, message)); retained.check(c);
+        };
+        p.exactModelQualified = false; p.tuningEffectsQualifiedFields = 0;
+        p.tuningLatestUs = 201; p.qualifiedTuning.tuningValues[0]++;
+        refuse(Err::INVALID_CONFIG, E::DriverError::MODEL_REQUIRED, "fresh checked identity and independent exact-model qualification required");
+        p.exactModelQualified = true;
+        refuse(Err::UNSUPPORTED, E::DriverError::TUNING_EFFECTS_REQUIRED, "setting effects are not independently qualified");
+        p.tuningEffectsQualifiedFields = r.fields;
+        refuse(Err::INVALID_CONFIG, E::DriverError::TUNING_EFFECTS_REQUIRED, "fresh exact setting effects qualification required");
+        p.tuningLatestUs = 120;
+        refuse(Err::INVALID_CONFIG, E::DriverError::TUNING_EFFECTS_REQUIRED, "qualified setting values differ from candidate");
+    }
+}
 void fullSequencesAndPartialFailures() {
     for(auto group:GROUPS) {
         const auto r=request(group); auto c=update(r,true);
@@ -269,6 +289,7 @@ static void testOptionalAgePolicy() {
 }
 int main() {
     testOptionalAgePolicy();
+    admissionPrecedence();
     metadataAndAllNativeRanges(); readsAndUnknownValues(); wholeCandidateQualifications(); fullSequencesAndPartialFailures();
     lostTransportAndEffectsBudget(); previousSettingsBudget(); previousSettingsEnvelope();
 }

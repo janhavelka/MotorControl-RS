@@ -16,6 +16,7 @@ No report makes its recorded bench state a fresh observation.
 | [Later overnight failure and USB diagnosis](2026-10-07_overnight_hil.md) | Preserves the failed endurance sessions and reproduced HWCDC lost-event stall. The shared-driver correction still needs renewed overnight qualification. |
 | [Complexity audit](2026-10-11_complexity_audit.md) | Distinguishes completed small cleanups from the seven planned [maintainability prompts](../prompts/maintainability/README.md). It adds no hardware qualification. |
 | [Explicit application record kind](2026-10-12_operation_kind.md) | Prompt 01 role inventory, lifecycle coverage and storage measurements; remaining prompts and hardware qualification stay separate. |
+| [Settings admission and publication](2026-10-12_settings_validation.md) | Prompt 02 rejection/mutation baseline, five private admission stages, characterization coverage and compiler stack measurements; scheduler and hardware scope unchanged. |
 
 Each report links its retained raw artifacts. Earlier implementation handoffs,
 software audits, closed corrections and qualification records are in the
