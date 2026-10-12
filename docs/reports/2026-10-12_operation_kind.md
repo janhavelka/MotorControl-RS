@@ -149,3 +149,42 @@ on the exact pushed commit; the final handoff identifies that run.
 Hardware **NOT RUN**: this behavior-preserving refactor was not flashed.
 Independent electrical timing, extended soak and existing native-family gaps
 remain unchanged.
+
+## Fresh independent audit
+
+The completed implementation at `068669629d9f4a6bb41ce4093ad4df7889948479`
+was audited again on 12 October after rereading the entire original prompt
+and execution/delivery rules. Three parallel read-only reviewers separately
+examined correctness/edge cases, requirements/test coverage and scope/simplicity.
+The lead checked their findings against the actual `cf1f17b..0686696` diff,
+current production source, session helpers and test fixtures.
+
+No confirmed defect, missing acceptance case or required correction was found.
+All seven admission functions establish one of the eight record kinds only
+after successful admission; placement reset restores `EMPTY`. Urgent-stop
+relocation preserves the whole record and evidence. Concrete storage, separate
+lifecycle facts, quotas, immutable deadlines, physical uncertainty and service
+order match the baseline. Synthetic fixtures set the intended kind; shared
+Arduino/IDF motion fixtures execute the real application. Every named acceptance
+case has assertions in an executed fixture, so no additional tests were added.
+No implementation change or additional abstraction was warranted.
+
+Current FieldCore request/result, binding, owner and SHZK module source was
+rechecked read-only at the same `c591ecdd` revision. The intentional consumer
+differences recorded above still apply. Storage evidence was checked against
+the retained native assembly and production ELF measurements; no size or
+hardware-qualification claim changed.
+
+Fresh verification passed independently of the earlier runs:
+
+- `build/operation-kind-independent-audit`: quick verifier, 77/77 suites and
+  all 15 source/package/install checks.
+- `build/operation-kind-independent-audit/arduino-builds.log`: all four pinned
+  Arduino consumers passed.
+- `build/operation-kind-independent-idf`: full pinned ESP-IDF 5.5.5 verifier,
+  77/77 suites and all 19 checks, including all four native-IDF consumers.
+- The audited implementation's [exact-commit CI run](https://github.com/janhavelka/MotorControl-RS/actions/runs/38223403983)
+  was queried again: GCC, Clang, Arduino and IDF all completed successfully for
+  `0686696`. The audit-record push also requires its own exact-commit CI check.
+
+Hardware **NOT RUN**; no image was flashed during this audit.
