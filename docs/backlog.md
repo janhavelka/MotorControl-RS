@@ -24,6 +24,8 @@ unrelated commands or fixtures.
   [Software handoff](reports/2026-10-12_host_dispatch.md); hardware NOT RUN.
 - [x] Extract pure HOME grammar and bounded formatting separately, preserving
   the single command catalogue, admission order and Console delivery ownership.
+  Independently audited with full retained-frame-width output comparisons and
+  corrected formatting-policy documentation.
   [Software handoff](reports/2026-10-12_console_boundaries.md); hardware NOT RUN.
 - [ ] Continue prompts 06–07 of the [maintainability sequence](prompts/maintainability/README.md)
   in small reviewed blocks:

@@ -1839,18 +1839,24 @@ void testMaximumHomeOutputAndRetention(bool fixtures = false) {
     Probe::Console console(h, Probe::Format::JSON); send(console, "@77 home 35 60 30 100 zero\n");
     Ess::HomeContext c; c.operationId = UINT32_MAX;
     c.state = MotorControlRS::ActionState::FAILED;
-    c.outcome = MotorControlRS::ActionOutcome::TRANSPORT_ERROR;
+    c.outcome = MotorControlRS::ActionOutcome::UNCONFIRMED_RESPONSE;
     c.target.id = c.target.generation = c.request.configurationGeneration = UINT32_MAX; c.target.address = 247;
     c.startedUs = c.deadlineUs = c.servicedUs = c.completionObservedUs = UINT64_MAX;
     c.prerequisites.observedUs = c.prerequisites.maximumAgeUs = UINT64_MAX;
     c.prerequisites.qualifiedMethod = Ess::HomingMethod::METHOD_35;
-    c.prerequisites.qualifiedSearchSpeed = 60; c.prerequisites.qualifiedReturnSpeed = 30; c.prerequisites.qualifiedRampTime = 100;
-    c.words[0] = 35; c.words[1] = 60; c.words[2] = 30; c.words[3] = 100;
+    c.prerequisites.qualifiedSearchSpeed = 3000; c.prerequisites.qualifiedReturnSpeed = 300; c.prerequisites.qualifiedRampTime = 2000;
+    c.prerequisites.rawMotion = UINT16_MAX;
+    for (auto& word : c.words) word = UINT16_MAX;
+    c.polls = Ess::ACTION_MAX_POLLS; c.phase = Ess::HomePhase::ZERO_CHECK;
+    c.status = {MotorControlRS::Err::INVALID_CONFIG, INT32_MIN, "invalid"};
     c.rawAlarm = c.rawMotion = c.rawPositionWords[0] = c.rawPositionWords[1] = UINT16_MAX;
     Ess::ActionEvidence* evidence[] = {&c.stagingEvidence,&c.triggerEvidence,&c.activityEvidence,&c.lowEvidence,&c.lastObservation,&c.completionEvidence,&c.zeroEvidence,&c.failureEvidence};
     for (auto* e : evidence) {
-        e->step = UINT8_MAX; e->length = 9; e->receivedLength = e->txAccepted = UINT32_MAX;
-        std::memset(e->raw, 255, 9); e->earliestUs = e->latestUs = e->deliveredUs = UINT64_MAX;
+        // Malformed frames retain their full bounded prefix, which can exceed
+        // the nine bytes in a valid HOME status/position reply.
+        e->step = UINT8_MAX; e->length = sizeof(e->raw); e->receivedLength = e->txAccepted = UINT32_MAX;
+        e->event = MotorControlRS::ReadEventKind::DEADLINE; e->frameError = Ess::FrameError::EXCEPTION;
+        std::memset(e->raw, 255, sizeof(e->raw)); e->earliestUs = e->latestUs = e->deliveredUs = UINT64_MAX;
         e->transportDetail = INT32_MIN; e->status = {MotorControlRS::Err::INVALID_CONFIG,INT32_MIN,"invalid"};
     }
     checkHomeFormatterBounds(c);

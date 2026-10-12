@@ -38,8 +38,9 @@ comes from the queried axis. Invalid grammar calls no motor callback.
 | HOME terminal/result body or evidence | Any append failure returns false without emitting or clearing correlation. The host retains its complete evidence. |
 | HOME host-serial append | Returns false with the same retained correlation; no partial line is emitted. |
 | Action, driver, move and velocity terminals | Body/evidence or serial append failure likewise returns false and retains correlation. |
-| Probe initial `snprintf`, general typed-read body, recovery initial `snprintf` | Overflow emits the existing terminal formatting-error reply. For live delivery, pending terminal bookkeeping untracks after sink acceptance; immediate acceptance clears the slot immediately. |
-| Later probe/read/recovery append | Returns false and retains correlation. This differs from their initial overflow path. |
+| Probe initial `snprintf`, JSON typed-read body/evidence, recovery initial `snprintf` | Overflow emits the existing terminal formatting-error reply. For live delivery, pending terminal bookkeeping untracks after sink acceptance; immediate acceptance clears the slot immediately. |
+| Probe confidence append; probe/read/recovery host-serial append | Returns false and retains correlation. This differs from their initial/body overflow paths. |
+| Human live state-read summary append | Returns false and retains correlation without emitting a formatting-error line. |
 | Successfully formatted terminal under output backpressure | `emit` retains one complete line and reports transfer. `serviceOutput` clears its correlation only after the sink accepts the complete line. |
 | Human renderer failure | Console emits its existing fallback text through the same terminal delivery path. |
 
@@ -68,10 +69,12 @@ and Python parity suites checks grammar and formatter behavior. No duplicate
 registry or speculative source-text grammar checker is introduced.
 
 The moved symbols are `HomeConsole::parse`, `HomeConsole::formatMethods` and
-`HomeConsole::formatResult`; the compact evidence helper stays private to the formatter.
+`HomeConsole::formatResult`; the compact evidence helper stays private to the
+formatter.
 `ConsoleNumbers.h` shares the original checked unsigned-decimal parser, and
 `ConsoleReport.h` shares the original bounded append, boolean, execution/outcome
-names and hex helpers. Each has one implementation; other families keep using it. `Console::formatHome` remains a small
+names and hex helpers. Each has one implementation; other families keep using it.
+`Console::formatHome` remains a small
 serial-append/emission wrapper, and `Console::reportHome` keeps correlation and
 terminal delivery checks.
 
@@ -138,7 +141,8 @@ seven real console/Python parity suites and operation inventory failure tests.
 All four pinned Arduino builds passed.
 `verify.py --mode full --firmware idf --build-dir build/console-boundaries-idf`
 with pinned IDF 5.5.5 passed another full quick run plus the S3 application,
-core S3/S2 consumers and portable S2 owner/console consumer. Exact pushed-commit CI is checked after delivery commits;
+core S3/S2 consumers and portable S2 owner/console consumer. Exact pushed-commit
+CI is checked after delivery commits;
 the final delivery records its commit and workflow run.
 
 `sizeof(Console)` is unchanged: **18,944 bytes native; 18,496 bytes ESP32-S3**.
@@ -154,3 +158,49 @@ GNU ELF section measurements follow (before -> after bytes):
 These are build/storage measurements, with no memory-optimization claim.
 Hardware **NOT RUN**; no firmware flash or serial port is needed for this
 behavior-preserving extraction.
+
+## Independent audit of `edc52b3`
+
+A fresh parallel audit checked the original prompt, actual parent/current diff,
+production callers, lifecycle and pressure tests, all build memberships, the
+operation checker and current FieldCore CLI/presenter source read-only. No
+production bug, changed admission/error order, lifetime regression, duplicated
+grammar or unnecessary framework was found. The narrow HOME boundary remains
+the intended scope; other command families stay with their existing owners.
+
+Two confirmed gaps were corrected:
+
+- The inherited maximum-width HOME fixture covered nine retained raw bytes,
+  although malformed frames can retain all `ACTION_MAX_REPLY_BYTES` (19 bytes).
+  The same fixture now covers all 19 bytes, wider numeric fields and the longest
+  valid outcome label. Its output-pressure, immediate delivery and retained
+  result assertions remain intact; no duplicate fixture or snapshot framework
+  was added.
+- The formatting-outcome table overgeneralized typed-read append failures.
+  JSON typed-read body/evidence failure emits the terminal formatting-error
+  path; its serial append failure retains correlation. Human live state-read
+  summary failure also retains correlation. The table now states those distinct
+  policies; production formatting behavior is unchanged.
+
+The identical updated fixture source was compiled against both saved original
+`c656564` production and the extracted production. Complete boundary output is
+byte-identical: **13 records, 8,386 bytes**, SHA-256
+`ba306c2ed8cabcb3f7b47f97cef0d771db89944ff57ea2c3b7aaaabe0465e90d`.
+The saved original console/header/presenter files were independently matched to
+the actual parent commit. The original complete probe/human transcripts and all
+seven family outputs also remain byte-identical. Both full probe-console runs
+and all seven real Python parity suites pass.
+
+Fresh `verify.py --mode quick --build-dir build/console-boundaries-audit-quick`
+passes all **77 registered tests**, inventory/reference/metadata checks and
+strict package consumers. All four pinned Arduino builds pass again. Fresh
+`verify.py --mode full --firmware idf --build-dir build/console-boundaries-audit-idf`
+passes all 77 tests again plus the S3 application, S3/S2 core consumers and S2
+portable owner/console consumer. The audit changes only tests and documentation:
+actual application/retained storage and firmware sizes are unchanged from the
+before/after measurements above. Hardware **NOT RUN**.
+
+All four CI jobs passed for the original extraction commit `edc52b3` in
+[run 38254715366](https://github.com/janhavelka/MotorControl-RS/actions/runs/38254715366).
+All four jobs must also pass for the audit delivery commit after push; its exact
+commit/run is recorded in the final delivery message.
