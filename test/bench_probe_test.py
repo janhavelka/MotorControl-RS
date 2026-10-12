@@ -798,6 +798,69 @@ class Framing(unittest.TestCase):
                 console = self.session(operation_transcript(raw, malformed_window))
                 self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), "probe kind")
 
+    def test_malformed_settings_group_refused_before_terminal_publication(self):
+        terminal = driver_terminal(2)
+        for group in ([], {}, False, None, 1):
+            for route in ("live", "retained", "historical"):
+                with self.subTest(group=group, route=route):
+                    mutate = lambda item: item.update(driver_group=group)
+                    console = self.session(operation_transcript(terminal, mutate, route == "live"))
+                    if route == "live":
+                        action = lambda: console.wait(console.begin("driver", driver_args=("read",), timeout_s=.1))
+                    else:
+                        if route == "retained":
+                            handle = console.begin("driver", driver_args=("read",), timeout_s=.1)
+                            original = console.wait(handle)
+                        action = lambda: console.command("result", operation_id=102, timeout_s=.1)
+                    self.failed(action, "driver group")
+                    if route == "live":
+                        self.assertIsNone(console.operations[102].terminal)
+                    elif route == "retained":
+                        self.assertIs(handle.terminal, original)
+                    else:
+                        self.assertFalse(console.operations)
+                    query_id = 3 if route == "retained" else 2
+                    self.assertIsNone(console.pending[query_id].terminal)
+                    self.assertFalse(any(event["event"] == "complete" and event["id"] == query_id
+                                         for event in self.events))
+                    self.assertEqual(len(self.port.writes), query_id)
+
+    def test_pending_velocity_policy_matches_pending_formatter_contract(self):
+        for known in (False, True):
+            for fields in ({}, {"stop_policy": None}, *({"stop_policy": value}
+                           for value in ("normal", "fast", "invalid", [], {}, False, 1))):
+                with self.subTest(known=known, fields=fields):
+                    def handler(i, command, args):
+                        if command == "velocity":
+                            return encoded(reply(i, command, result="accepted", operation_id=102, address=1))
+                        if command == "result":
+                            return encoded(reply(i, command, result="pending", operation_id=102,
+                                                 command_id=2, recovery=False, velocity=True, **fields))
+                        return Serial.normal(i, command, args)
+                    console = self.session(handler)
+                    if known:
+                        handle = console.begin("velocity", velocity_args=self.VELOCITY_ARGS, timeout_s=.1)
+                    query_id = 3 if known else 2
+                    if fields.get("stop_policy") is None:
+                        result = console.command("result", operation_id=102, timeout_s=.1)
+                        self.assertEqual(result["result"], "pending")
+                        self.assertTrue(console.synchronized)
+                    else:
+                        self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), "policy")
+                        self.assertIsNone(console.pending[query_id].terminal)
+                        self.assertFalse(any(event["event"] == "complete" and event["id"] == query_id
+                                             for event in self.events))
+                    if known:
+                        self.assertIs(console.operations[102], handle)
+                        self.assertIsNone(handle.terminal)
+                    else:
+                        self.assertFalse(console.operations)
+                    expected = [b"@1 version\n"]
+                    if known:
+                        expected.append(b"@2 velocity 60 rpm native 500 configured normal\n")
+                    expected.append(f"@{query_id} result 102\n".encode())
+                    self.assertEqual(self.port.writes, expected)
+
     def test_pending_historical_result_requires_one_unambiguous_kind(self):
         selectors = [("home", True), ("driver", True), ("velocity", True), ("move_kind", "relative"),
                      ("action_kind", "enable"), ("recovery", True), ("capture_read", True), ("read_kind", "state")]

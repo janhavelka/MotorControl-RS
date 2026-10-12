@@ -37,7 +37,8 @@ full probe evidence checks. Missing the selected discriminator cannot silently
 change the kind of a known original operation.
 
 `stop_policy` is required for stop actions (`normal` or `fast`), permitted for
-velocity under its own validator, and null/absent for other kinds. Settings
+completed velocity under its own validator, and null/absent for pending velocity
+and other kinds. Settings
 terminals validate their group and read/update payload (the legacy DRIVE group
 may be omitted and defaults to `drive`); a pending settings result
 has only the common driver flag, so does not require terminal-only group/data
@@ -174,3 +175,55 @@ Every push requires GCC, Clang, Arduino and native-IDF CI on its exact commit;
 the final delivery handoff identifies the resulting run. Firmware source and
 registration did not change, so additional local Arduino builds are not required
 for this host-only change. CI still builds all four Arduino environments.
+
+## Fresh independent audit
+
+The completed change at `eb5cd42` was audited again against the full original
+prompt, execution rules, actual `81fc6c0..eb5cd42` diff, current source, callers
+and test assertions. Three fresh parallel reviewers examined correctness,
+requirements/coverage and simplicity/ownership. The lead independently
+reproduced the confirmed issues and checked the corrections.
+
+Two malformed-selector gaps were found and corrected:
+
+- A non-string `driver_group`, such as a JSON array or object, reached dictionary
+  membership in `_check_driver` and leaked `TypeError`. The group now passes a
+  string check before membership and raises the existing `BenchError` group
+  message. The default omitted DRIVE group and all valid settings groups retain
+  their behavior; no group registry was added.
+- Pending velocity results bypass terminal payload validation and previously
+  admitted arbitrary `stop_policy` values. The actual pending formatter emits
+  null for velocity; only a pending stop action carries its policy. The shared
+  classifier now requires pending velocity policy to be absent/null. Completed
+  velocity retains its required normal/fast policy and original-argument checks.
+
+Both fixes stay within reply-kind/group classification. Session mutation,
+publication, pending lifecycle, immutable comparison, budgets and no-replay
+handling remain unchanged. Review of the original extraction found no other
+scope or simplicity correction worth adding. Existing move variants and exact
+request checks already exercise their shared correlation behavior; duplicate
+subtype fixtures were not added.
+
+FieldCore was rechecked read-only at the same `c591ecdd` revision, including
+owner result validation/enqueueing and consuming module/delivery callbacks.
+The documented boundary remains accurate. Hardware **NOT RUN**.
+
+The two regression tests exercise malformed settings groups on live, retained
+and unknown-historical routes, plus valid absent/null and malformed non-null
+pending velocity policy on known and historical operations. Assertions require
+`BenchError`, no terminal/completion publication on refusal, unchanged original
+retention and no additional emitted command. All **253 fake-serial tests**, all
+seven real console/Python parity suites, **37 motion campaign** and **36 scenario**
+tests pass. A final independent reviewer rechecked the two-line production fix
+and its tests; no further confirmed gap remains.
+
+Fresh pre-correction quick verification in
+`build/host-dispatch-independent-audit` passed **77/77 suites and all 15 checks**.
+After both corrections, fresh full verification in
+`build/host-dispatch-independent-idf` reran the complete quick checks and passed
+**77/77 suites and all 19 checks**, including all 253 fake-serial cases, rebuilt
+parity fixtures, source/install consumers and pinned ESP-IDF 5.5.5 S3 application,
+S3/S2 core and portable S2 consumers. The original implementation's
+[exact-commit CI](https://github.com/janhavelka/MotorControl-RS/actions/runs/38247910480)
+was independently queried again: all four jobs passed for `eb5cd42`.
+The audit corrections require their own exact-commit CI before final handoff.

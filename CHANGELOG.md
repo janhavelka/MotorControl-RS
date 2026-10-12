@@ -6,6 +6,8 @@
 
 - Live host terminals now reject the conflicting kind flags already rejected by
   retained inspection; malformed move kinds raise the ordinary protocol error.
+- Host settings groups reject non-string selectors with the normal protocol
+  error; pending velocity results reject terminal-only stop-policy claims.
 - Verification now requires the shared native-IDF simple-motion fixture to
   remain registered with its actual executable; missing or misdirected fixtures
   fail before a passing test run can hide the omission.

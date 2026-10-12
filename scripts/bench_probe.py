@@ -647,6 +647,7 @@ class Console:
             return type(value) is int and 0 <= value <= maximum
 
         group = item.get("driver_group", "drive")
+        require(type(group) is str, "group differs from command")
         segment = group in SEGMENT_GROUPS.values()
         tuning = group in TUNING_FIELDS
         require(group in ("drive", "io", "control_settings", *SEGMENT_GROUPS.values(), *TUNING_FIELDS) and (expected_group is None or group == expected_group or expected_group == "segment" and segment or expected_group == "tuning" and tuning), "group differs from command")
@@ -2065,6 +2066,7 @@ class Console:
             raise BenchError("result move kind does not match retained operation")
         if (action_kind is not None and action_kind not in ACTION_KINDS.values()) or (
                 action_kind == "stop" and stop_policy not in ("normal", "fast")) or (
+                velocity and pending and stop_policy is not None) or (
                 action_kind != "stop" and not velocity and stop_policy is not None) or (
                 action_kind is not None and (recovery or capture_read or read_kind is not None)) or (
                 original is not None and action_kind != ACTION_KINDS.get(original.command)) or (
