@@ -120,6 +120,18 @@ void gatesAndParity() {
     assert(untouched == 77 && !hardware.writes);
     command("@1 velocity 30 rpm native 200 configured normal\n");
     assert(!hardware.writes);
+    qualify(); auto invalid = request(); invalid.value = Rational(61);
+    const auto next = app->nextOperationId;
+    assert(startVelocity(app, 2, 1, invalid, untouched) == Probe::Action::INVALID);
+    assert(untouched == 77 && app->nextOperationId == next && !app->records[0].operationId);
+    assert(app->records[0].kind == App::OperationKind::EMPTY && !app->owner.pending() && !axisReserved(*app, 1));
+    const auto reused = app->nextOperationId;
+    for (const char value : std::string("@3 velocity 30 rpm native 200 configured normal\n")) app->console.feed(value);
+    assert(app->latestOperationId == reused);
+    assert(findRecord(*app, reused) == &app->records[0] && app->records[0].kind == App::OperationKind::VELOCITY);
+    assert(cancel(app, reused) == Probe::Action::OK); pump(1000);
+    assert(!view(reused).pending && !hardware.writes && !axisReserved(*app, 1));
+    assert(release(app, reused) == Probe::Action::OK && app->records[0].kind == App::OperationKind::EMPTY);
     for (bool profile : {false, true}) {
         fresh(); qualify(); app->axis.units.commandStepsPerMotorTurn = UnitScale(1000,1,ScaleSource::ASSUMED);
         command(profile ? "@1 velocity 30 rpm native 200 configured normal\n" :

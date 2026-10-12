@@ -92,6 +92,20 @@ void productionAndFixtureGates() {
     auto r = request(); r.offset = 1;
     assert(host(app).startHome(app,4,1,r,unchanged) == Probe::Action::UNRESOLVED);
     assert(unchanged == 77 && !hardware.writes);
+    // The invalid console cases above advance the fixture clock past the
+    // readiness age; establish fresh simulated evidence for this reuse case.
+    qualify(); auto mismatch = request(); mismatch.searchSpeed = 61;
+    const auto next = app->nextOperationId;
+    assert(startHome(app, 5, 1, mismatch, unchanged) == Probe::Action::INVALID);
+    assert(unchanged == 77 && app->nextOperationId == next);
+    assert(app->records[0].kind == App::OperationKind::EMPTY && !app->records[0].operationId);
+    const auto reused = app->nextOperationId;
+    for (const char value : std::string("@5 home 35 60 30 100 zero\n")) app->console.feed(value);
+    assert(app->latestOperationId == reused);
+    assert(findRecord(*app, reused) == &app->records[0] && app->records[0].kind == App::OperationKind::HOME);
+    assert(cancel(app, reused) == Probe::Action::OK); pump();
+    assert(!view(reused).pending && !hardware.writes && !axisReserved(*app, 1));
+    assert(release(app, reused) == Probe::Action::OK && app->records[0].kind == App::OperationKind::EMPTY);
 }
 void completeAndInvalidateReference() {
     fresh(); qualify(); const uint32_t generation = app->axis.generation; const auto id = admit();

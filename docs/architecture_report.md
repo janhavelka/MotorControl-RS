@@ -1,13 +1,14 @@
 # MotorControl-RS source map
 
-Reviewed against the implementation on 11 October 2026. This page locates the
+Reviewed against the implementation on 12 October 2026. This page locates the
 current layers; [architecture](architecture.md) defines their contracts and
 [API/CLI coverage](ess_api_cli_coverage.md) records remaining gaps. The core
 contains no framework I/O, heap allocation, clocks, scheduler or hidden retry.
 The standalone firmware supplies those application responsibilities.
 The [complexity audit](reports/2026-10-11_complexity_audit.md) identifies
 refactoring seams and [planned stages](prompts/maintainability/README.md).
-Those larger module changes are unexecuted; this map describes current code.
+Prompt 01 now uses an explicit private record kind; the remaining stages and
+larger module changes are unexecuted. This map describes current code.
 
 ## Installed core
 
@@ -46,7 +47,7 @@ claim readiness, physical completion or complete native command coverage.
 | [EssRtuValidator](../examples/common/EssRtuValidator.h) | Checked ESS response validation at owner settlement |
 | [Esp32S3Uart](../examples/common/Esp32S3Uart.h) | S3 UART2/pin configuration, optional GPTimer capture and atomic TX/release evidence |
 | [HostSerial.h](../examples/common/HostSerial.h), [BoardPins.h](../examples/common/BoardPins.h) | Host tuple timing/capability and standalone board configuration |
-| [ProbeApp.cpp](../examples/probe_cli/ProbeApp.cpp) and its operation helpers | Application-owned contexts/caches, operation admission, sequence driving and results |
+| [ProbeApp.cpp](../examples/probe_cli/ProbeApp.cpp) and its operation helpers | Application-owned concrete contexts/caches, private record-kind dispatch, independent lifecycle/ownership facts, operation admission, sequence driving and results |
 | [ProbeConsole.cpp](../examples/probe_cli/ProbeConsole.cpp), [ConsoleText.cpp](../examples/probe_cli/ConsoleText.cpp) | One command inventory, strict parsing, human/JSON rendering and bounded output |
 | [ProbePlatform.h](../examples/probe_cli/ProbePlatform.h), [ArduinoPlatform.cpp](../examples/probe_cli/ArduinoPlatform.cpp), [IdfPlatform.cpp](../examples/probe_idf/main/IdfPlatform.cpp) | Small independent startup/time/USB/idle/diagnostic adapters |
 | [Esp32UsbConsole.cpp](../examples/probe_cli/Esp32UsbConsole.cpp) | Shared bounded USB Serial/JTAG output |

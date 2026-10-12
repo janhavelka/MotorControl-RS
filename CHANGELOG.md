@@ -15,9 +15,13 @@
 
 ### Maintenance
 
+- Replaced the shared application's six record-context flags with one private
+  operation kind and explicit dispatch, preserving concrete storage, lifecycle
+  facts, result retention and physical uncertainty. Added failed-preparation
+  and cross-kind slot-reuse coverage, including the shared Arduino/IDF fixture.
 - Archived the completed ESS delivery sequence, superseded maintenance draft
   and 83 historical reports with their evidence. Active prompts now contain
-  only the seven unexecuted maintainability stages; current reports retain
+  only the seven staged maintainability prompts; current reports retain
   operating-limit evidence and unresolved investigations. Removed the redundant
   development-candidate page and completed backlog entries.
 - Updated documentation and operation-ledger links for the archive. Report and
@@ -33,7 +37,8 @@
 - Grouped identical native-fixture source declarations; compiler invocations and
   test registrations remain unchanged.
 - Audited complexity and prepared seven staged maintainability prompts for larger
-  changes. The older maintenance draft is superseded; neither set has been executed.
+  changes. The older maintenance draft is superseded; prompt 01 is now delivered
+  and the remaining six stages are pending.
 - Reused private RTU frame/word/CRC helpers and removed a redundant register
   decode buffer while preserving checked-parser output and validation contracts.
 - Simplified cached-health help and callback checks, removed an unused example

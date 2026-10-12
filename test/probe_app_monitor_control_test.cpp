@@ -91,7 +91,7 @@ void testOffCancelsContinuationDuringConfigurationOwnership() {
     // Represent the actual read sequence between settled transactions. No
     // owner request is admitted, so idle configuration ownership is possible.
     auto& record = app->records[REQUEST_CAPACITY];
-    record.operationId = 1; record.typedRead = record.monitored = true;
+    record.operationId = 1; record.kind = App::OperationKind::TYPED_READ; record.monitored = true;
     assert(ESS::prepareState(record.read, app->axis.target, record.operationId,
         nowUs(), nowUs() + REQUEST_US, communicationTuple(app->serial.active)));
     app->monitorState.operationId = record.operationId;
@@ -110,7 +110,7 @@ void testTargetSelectionIsLocalAndPreservesUncertainResults() {
     using namespace MotorControlRS;
     fresh();
     auto& record = app->records[0]; record.operationId = 1;
-    record.address = record.commandId = 1; record.actionOperation = true;
+    record.address = record.commandId = 1; record.kind = App::OperationKind::ACTION;
     record.serialTuple = app->serial.active; record.serialGeneration = app->serial.generation;
     assert(ESS::prepareNormalStop(record.action, app->axis.target, record.operationId,
         nowUs(), nowUs() + REQUEST_US));
@@ -123,7 +123,7 @@ void testTargetSelectionIsLocalAndPreservesUncertainResults() {
     const auto original = record.action;
     // A checked old identity may still await output delivery at rebinding.
     auto& identity = app->records[1]; identity.operationId = identity.commandId = 2;
-    identity.address = 1; identity.typedRead = true;
+    identity.address = 1; identity.kind = App::OperationKind::TYPED_READ;
     identity.serialTuple = app->serial.active; identity.serialGeneration = app->serial.generation;
     assert(ESS::prepareIdentity(identity.read, app->axis.target, identity.operationId,
         nowUs(), nowUs() + REQUEST_US, communicationTuple(app->serial.active)));
@@ -224,7 +224,7 @@ void testWiringDeclarationsAreLocalAndGenerationChecked() {
     using namespace MotorControlRS;
     fresh();
     assert(selectTarget(app, 2) == Probe::Action::OK && selectTarget(app, 1) == Probe::Action::OK);
-    auto& retained = app->records[0]; retained.operationId = 100; retained.address = 1; retained.actionOperation = true;
+    auto& retained = app->records[0]; retained.operationId = 100; retained.address = 1; retained.kind = App::OperationKind::ACTION;
     assert(ESS::prepareNormalStop(retained.action, app->axis.target, 100, nowUs(), nowUs() + REQUEST_US));
     ActionEvent failure; failure.transport.target = app->axis.target; failure.transport.operationId = 100;
     failure.transport.kind = ReadEventKind::TRANSPORT_FAILURE; failure.transport.txAccepted = 8;
@@ -287,7 +287,7 @@ void testWiringRefusesInvalidBusyAndExhaustedRequests() {
         if (busy == 6) app->serial.configuring = true;
         if (busy == 7) { uint64_t token = 0; assert(app->owner.beginCommissioning(nowUs(), token)); }
         if (busy == 8) {
-            auto& record = app->records[0]; record.operationId = 1; record.typedRead = true;
+            auto& record = app->records[0]; record.operationId = 1; record.kind = App::OperationKind::TYPED_READ;
             assert(ESS::prepareState(record.read, app->axis.target, 1, nowUs(), nowUs() + REQUEST_US));
         }
         assert(wiring(app, &request, view) == Probe::Action::BUSY);

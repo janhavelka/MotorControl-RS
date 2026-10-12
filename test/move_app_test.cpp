@@ -147,6 +147,65 @@ void testProductionGateAndImmutableAdmission() {
     assert(host(app).startMove(app, 3, 1, r, unchanged) == Probe::Action::INVALID);
     assert(unchanged == 77 && hardware.writes == 0 && !axisReserved(*app, 1));
 }
+void testFailedPreparationAndCrossKindSlotReuse() {
+    fresh(); qualify();
+    auto& slot = app->records[0];
+    const uint32_t next = app->nextOperationId;
+    uint32_t unchanged = 77;
+    assert(typedRead(app, 1, 1, static_cast<ESS::ReadKind>(255), unchanged) == Probe::Action::INVALID);
+    auto invalid = request(); invalid.speedRpm = 3001;
+    assert(startMove(app, 2, 1, invalid, unchanged) == Probe::Action::INVALID);
+    assert(unchanged == 77 && app->nextOperationId == next && !slot.operationId);
+    assert(slot.kind == App::OperationKind::EMPTY && !slot.requestId.owner);
+    assert(!app->owner.pending() && !axisReserved(*app, 1) && !hardware.writes);
+
+    Probe::ResultView reused;
+    const auto trackedAdmission = [&](const char* text) {
+        const auto nextId = app->nextOperationId;
+        // Feed the production console without servicing the owner: it tracks
+        // terminal delivery while the admitted transaction remains unsent.
+        for (const char* at = text; *at; ++at) app->console.feed(*at);
+        assert(app->latestOperationId == nextId && slot.operationId == nextId);
+        return nextId;
+    };
+    const auto settleAndRelease = [&](uint32_t operation) {
+        assert(findRecord(*app, operation) == &slot);
+        assert(lookup(app, operation, reused) && reused.pending);
+        assert(cancel(app, operation) == Probe::Action::OK);
+        pump(1000);
+        assert(lookup(app, operation, reused) && !reused.pending);
+        assert(release(app, operation) == Probe::Action::OK);
+        assert(!slot.operationId && slot.kind == App::OperationKind::EMPTY);
+        const auto retainedId = reused.operationId;
+        assert(!lookup(app, operation, reused) && reused.operationId == retainedId);
+        assert(!app->owner.pending() && !axisReserved(*app, 1) && !hardware.writes);
+    };
+
+    const uint32_t moving = trackedAdmission("@3 move relative 20 steps native 60 configured\n");
+    assert(slot.kind == App::OperationKind::MOVE);
+    settleAndRelease(moving);
+    const auto enabling = trackedAdmission("@4 enable\n");
+    assert(enabling == moving + 1 && slot.kind == App::OperationKind::ACTION);
+    assert(lookup(app, enabling, reused) && reused.actionContext && !reused.moveContext);
+    settleAndRelease(enabling);
+    const auto reading = trackedAdmission("@5 read identity 1\n");
+    assert(reading == enabling + 1 && slot.kind == App::OperationKind::TYPED_READ);
+    assert(lookup(app, reading, reused) && reused.typedRead && !reused.moveContext && !reused.actionContext);
+    settleAndRelease(reading);
+    const auto driver = trackedAdmission("@6 driver read 1\n");
+    assert(driver == reading + 1 && slot.kind == App::OperationKind::DRIVER);
+    assert(lookup(app, driver, reused) && reused.driverContext && !reused.typedRead);
+    settleAndRelease(driver);
+    const auto capture = trackedAdmission("@7 capture-read 1\n");
+    assert(capture == driver + 1 && slot.kind == App::OperationKind::TRANSACTION && slot.captureRead);
+    assert(lookup(app, capture, reused) && reused.captureRead && !reused.driverContext && !reused.typedRead);
+    settleAndRelease(capture);
+    const auto probing = trackedAdmission("@8 probe 1\n");
+    assert(probing == capture + 1 && slot.kind == App::OperationKind::TRANSACTION && !slot.captureRead);
+    finishProbe(probing, 1); pump(1000);
+    assert(release(app, probing) == Probe::Action::OK && slot.kind == App::OperationKind::EMPTY);
+    assert(hardware.writes == 1 && !axisReserved(*app, 1));
+}
 void testIndependentWritesRespectQualificationAndMoveStartup() {
     fresh(); uint8_t bytes[8] = {}; Rtu::RequestId write;
     const auto unqualified = configurationWrite(bytes, sizeof(bytes));
@@ -428,7 +487,7 @@ void deliverChangedConfiguration(unsigned field) {
     if (field == 3) raw.softLimitEnable = 1;
     auto& record = app->records[REQUEST_CAPACITY - 1];
     assert(!record.operationId);
-    record.operationId = record.commandId = 1000; record.address = 1; record.typedRead = true;
+    record.operationId = record.commandId = 1000; record.address = 1; record.kind = App::OperationKind::TYPED_READ;
     record.serialTuple = app->serial.active; record.serialGeneration = app->serial.generation;
     record.configurationGeneration = app->axis.generation;
     assert(ESS::prepareConfig(record.read, app->axis.target, 1000, hardware.time - 1000, hardware.time + REQUEST_US));
@@ -1017,6 +1076,7 @@ void testPositionLimitUsesDriveSubdivision() {
     pump(); assert(hardware.writes==before);
 }
 int main() {
+    testFailedPreparationAndCrossKindSlotReuse();
     testPositionLimitUsesDriveSubdivision();
     testVerificationReadDoesNotAdoptNewGeneration();
     testLocalMoveCancellationInvalidatesRememberedSettings();

@@ -315,7 +315,7 @@ int main() {
     // A host snapshot release cannot release a lost-acknowledgement operation
     // or its physical-axis conflict, even when both belong to this address.
     auto& retained=app->records[0]; retained.operationId=600;
-    retained.address=1; retained.actionOperation=true;
+    retained.address=1; retained.kind=App::OperationKind::ACTION;
     assert(ESS::prepareNormalStop(retained.action,app->axis.target,600,nowUs(),nowUs()+REQUEST_US));
     ActionEvent failure; failure.transport.target=app->axis.target;
     failure.transport.operationId=600; failure.transport.kind=ReadEventKind::TRANSPORT_FAILURE;

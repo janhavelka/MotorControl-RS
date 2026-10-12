@@ -213,7 +213,7 @@ void consoleAdmissionAndTerminalCorrelation() {
     assert(Serial.output.find("\"result\":\"accepted\"") != std::string::npos);
     const auto operation = app->latestOperationId;
     const auto* record = findRecord(*app,operation);
-    assert(record && record->commandId == 55 && record->driverOperation);
+    assert(record && record->commandId == 55 && record->kind == App::OperationKind::DRIVER);
     assert(record->driver.request.inputFunctions[0] == ESS::InputFunction::UNDEFINED);
     reply(operation,{}); reply(operation,words({0}));
     for (unsigned i = 0; i < 1000 && app->outputCount; ++i) step();

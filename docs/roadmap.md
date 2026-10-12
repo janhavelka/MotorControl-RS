@@ -18,7 +18,9 @@ retain successful and failed experiments.
 
 Completed maintenance is recorded in the [changelog](../CHANGELOG.md) and
 development archive. The [complexity audit](reports/2026-10-11_complexity_audit.md)
-defines seven unexecuted [refactor stages](prompts/maintainability/README.md).
+defines seven [refactor stages](prompts/maintainability/README.md). The
+[private record-kind stage](reports/2026-10-12_operation_kind.md) is implemented;
+the remaining six stages are pending.
 Necessary timing, exact arithmetic and operation-specific uncertainty rules
 remain explicit. Archived delivery instructions are not pending work.
 

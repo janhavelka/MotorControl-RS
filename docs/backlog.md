@@ -1,6 +1,6 @@
 # Implementation and qualification backlog
 
-Current as of the 11 October 2026 source audit. This page lists remaining work;
+Current as of the 12 October 2026 operation-kind refactor. This page lists remaining work;
 completed work and historical test dispositions live in the
 [development archive](archive/README.md) and [changelog](../CHANGELOG.md).
 The [release scope](releases/1.0.0.md) and checked
@@ -10,10 +10,13 @@ unrelated commands or fixtures.
 
 ## Maintenance and FieldCore integration
 
-- [ ] Execute the [maintainability sequence](prompts/maintainability/README.md)
-  in small reviewed blocks: explicit operation kinds, settings validation,
+- [x] Replace private application record selectors with one explicit kind;
+  retain independent lifecycle/ownership facts and concrete contexts.
+  [Software handoff](reports/2026-10-12_operation_kind.md); hardware NOT RUN.
+- [ ] Continue prompts 02–07 of the [maintainability sequence](prompts/maintainability/README.md)
+  in small reviewed blocks: settings validation,
   pure host evidence and routing, console/application boundaries and evidence
-  copying. These seven prompts supersede the earlier unexecuted draft.
+  copying. Prompt 01 is implemented; this sequence supersedes the earlier draft.
 - [ ] Implement the [FieldCore handoff](fieldcore_handoff.md) in a separately
   authorized FieldCore step: typed motor results, adequate frame storage,
   qualified RTU/echo handling, immutable deadlines, stop priority and retained

@@ -104,7 +104,10 @@ struct App {
     Rtu::Runner runner;
     Rtu::BusOwner owner;
     Probe::Console console;
+    // One context selection; reservations, consumers and evidence remain independent.
+    enum class OperationKind : uint8_t { EMPTY, TRANSACTION, TYPED_READ, ACTION, MOVE, VELOCITY, DRIVER, HOME };
     struct Record {
+        OperationKind kind = OperationKind::EMPTY;
         uint32_t operationId = 0, commandId = 0;
         HostTuple serialTuple;
         uint32_t serialGeneration = 0;
@@ -113,22 +116,19 @@ struct App {
         uint64_t deliveredUs = 0;
         uint64_t deadlineUs = 0;
         bool observed = false, delivered = false, captureRead = false, interactive = false;
-        bool typedRead = false, monitored = false, simpleChild = false;
+        bool monitored = false, simpleChild = false;
         bool cancelContinuation = false; ///< Cancel the operation after its current frame settles.
         ESS::ReadContext read;
-        bool actionOperation = false, axisReserved = false, effectsInvalidated = false, interruptedByStop = false;
+        bool axisReserved = false, effectsInvalidated = false, interruptedByStop = false;
         bool motionUnresolved = false; // Our possible movement, until a later checked stop; not historical outcome.
         bool discoveryStop = false; ///< Urgent stop waits for the scan's original tuple.
         ESS::ActionContext action;
-        bool moveOperation = false, programmaticMove = false;
+        bool programmaticMove = false;
         ESS::MoveContext move;
-        bool velocityOperation = false;
         ESS::VelocityContext velocity;
-        bool driverOperation = false;
         uint32_t configurationGeneration = 0;
         uint32_t driverEffects = 0;
         ESS::DriverContext driver;
-        bool homeOperation = false;
         ESS::HomeContext home;
     } records[REQUEST_CAPACITY + 2]; // Dedicated monitor and urgent-stop frontend reservations.
     Probe::StateCache stateCache;
@@ -260,13 +260,28 @@ App::Record* findRecord(App& a, uint32_t operation) {
     for (auto& record : a.records) if (record.operationId && record.operationId == operation) return &record;
     return nullptr;
 }
+bool sequenced(const App::Record& record) {
+    switch (record.kind) {
+    case App::OperationKind::ACTION: case App::OperationKind::MOVE:
+    case App::OperationKind::VELOCITY: case App::OperationKind::DRIVER:
+    case App::OperationKind::HOME: return true;
+    case App::OperationKind::EMPTY: case App::OperationKind::TRANSACTION:
+    case App::OperationKind::TYPED_READ: return false;
+    }
+    return false;
+}
 bool terminal(const App& a, const App::Record& record) {
-    if (record.homeOperation) return record.home.state != MotorControlRS::ActionState::ACTIVE;
-    if (record.driverOperation) return record.driver.state != ReadState::ACTIVE;
-    if (record.velocityOperation) return record.velocity.state != MotorControlRS::ActionState::ACTIVE;
-    if (record.moveOperation) return record.move.state != MotorControlRS::ActionState::ACTIVE;
-    if (record.actionOperation) return record.action.state != MotorControlRS::ActionState::ACTIVE;
-    return record.typedRead ? record.read.state != ReadState::ACTIVE : a.owner.result(record.requestId) != nullptr;
+    switch (record.kind) {
+    case App::OperationKind::EMPTY: return false;
+    case App::OperationKind::TRANSACTION: return a.owner.result(record.requestId) != nullptr;
+    case App::OperationKind::TYPED_READ: return record.read.state != ReadState::ACTIVE;
+    case App::OperationKind::ACTION: return record.action.state != MotorControlRS::ActionState::ACTIVE;
+    case App::OperationKind::MOVE: return record.move.state != MotorControlRS::ActionState::ACTIVE;
+    case App::OperationKind::VELOCITY: return record.velocity.state != MotorControlRS::ActionState::ACTIVE;
+    case App::OperationKind::DRIVER: return record.driver.state != ReadState::ACTIVE;
+    case App::OperationKind::HOME: return record.home.state != MotorControlRS::ActionState::ACTIVE;
+    }
+    return false;
 }
 bool axisReserved(const App& a, uint8_t address = 0) {
     if (a.simple.view.pending && !a.simple.admitting && (!address || address == a.simple.view.address)) return true;
@@ -283,12 +298,12 @@ bool axisReserved(const App& a, uint8_t address = 0) {
 bool acting(const App& a) {
     if (a.simple.view.pending && !a.simple.admitting) return true;
     for (const auto& record : a.records)
-        if ((record.actionOperation || record.moveOperation || record.velocityOperation || record.driverOperation || record.homeOperation) && !terminal(a, record)) return true;
+        if (sequenced(record) && !terminal(a, record)) return true;
     return false;
 }
 bool reading(const App& a) {
     for (const auto& record : a.records)
-        if (record.operationId && record.typedRead && record.read.state == ReadState::ACTIVE) return true;
+        if (record.operationId && record.kind == App::OperationKind::TYPED_READ && record.read.state == ReadState::ACTIVE) return true;
     return false;
 }
 // Raw observations keep their original transport generation. Only derived host
@@ -302,9 +317,9 @@ void invalidateAxis(App& a, const App::Record* changing = nullptr, uint64_t samp
     if (!MotorControlRS::invalidateAxisReference(a.axis, a.coordinateReference)) a.axis.generation = 0;
     a.axis.target.generation = a.bindingGeneration;
     for (auto& record : a.records) if (&record != changing &&
-        (record.moveOperation || record.velocityOperation || record.homeOperation ||
-         (record.driverOperation && record.driver.kind == ESS::DriverKind::UPDATE) ||
-         (record.typedRead && record.read.kind == ESS::ReadKind::STATE)) && !terminal(a, record)) {
+        (record.kind == App::OperationKind::MOVE || record.kind == App::OperationKind::VELOCITY || record.kind == App::OperationKind::HOME ||
+         (record.kind == App::OperationKind::DRIVER && record.driver.kind == ESS::DriverKind::UPDATE) ||
+         (record.kind == App::OperationKind::TYPED_READ && record.read.kind == ESS::ReadKind::STATE)) && !terminal(a, record)) {
         record.cancelContinuation = true;
         if (record.requestId.owner) a.owner.cancelUnsent(record.requestId, sampled);
     }
@@ -330,13 +345,22 @@ bool triggeredMotion(const App& a, uint8_t address) {
         // A locally cancelled operation can still be moving until a checked
         // stop resolves the interlock. Do not mistake that for external motion.
         if (terminal(a, record) && !record.motionUnresolved) continue;
-        if (record.velocityOperation && (record.velocity.triggerEvidence.txAccepted ||
-            (record.velocity.phase == ESS::VelocityPhase::TRIGGER && record.requestId.owner && a.owner.txAccepted(record.requestId)))) return true;
-        if (record.homeOperation && (record.home.triggerEvidence.txAccepted ||
-            (record.home.phase == ESS::HomePhase::TRIGGER && record.requestId.owner && a.owner.txAccepted(record.requestId)))) return true;
-        if (!record.moveOperation) continue;
-        if (record.move.triggerEvidence.txAccepted ||
-            (record.move.step == record.move.triggerStep && record.requestId.owner && a.owner.txAccepted(record.requestId))) return true;
+        switch (record.kind) {
+        case App::OperationKind::VELOCITY:
+            if (record.velocity.triggerEvidence.txAccepted ||
+                (record.velocity.phase == ESS::VelocityPhase::TRIGGER && record.requestId.owner && a.owner.txAccepted(record.requestId))) return true;
+            break;
+        case App::OperationKind::HOME:
+            if (record.home.triggerEvidence.txAccepted ||
+                (record.home.phase == ESS::HomePhase::TRIGGER && record.requestId.owner && a.owner.txAccepted(record.requestId))) return true;
+            break;
+        case App::OperationKind::MOVE:
+            if (record.move.triggerEvidence.txAccepted ||
+                (record.move.step == record.move.triggerStep && record.requestId.owner && a.owner.txAccepted(record.requestId))) return true;
+            break;
+        case App::OperationKind::EMPTY: case App::OperationKind::TRANSACTION: case App::OperationKind::TYPED_READ:
+        case App::OperationKind::ACTION: case App::OperationKind::DRIVER: break;
+        }
     }
     return false;
 }
@@ -569,7 +593,7 @@ Probe::Action startRead(void* context, uint32_t commandId, uint8_t address, uint
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
     record->requestId = id; operationId = a.latestOperationId = record->operationId;
     record->deadlineUs = request.wire.deadlineUs;
-    record->captureRead = captureRead;
+    record->kind = App::OperationKind::TRANSACTION; record->captureRead = captureRead;
     return Probe::Action::OK;
 }
 Probe::Action probe(void* context, uint32_t commandId, uint8_t address, uint32_t& operationId) {
@@ -631,7 +655,7 @@ Probe::Action startTypedRead(void* context, uint32_t commandId, uint8_t address,
     }
     record->serialTuple = a.serial.active; record->serialGeneration = a.serial.generation;
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
-    record->deadlineUs = record->read.deadlineUs; record->typedRead = true;
+    record->deadlineUs = record->read.deadlineUs; record->kind = App::OperationKind::TYPED_READ;
     record->configurationGeneration = a.axis.generation;
     record->monitored = monitored; operationId = record->operationId;
     if (!monitored) a.latestOperationId = operationId;
@@ -642,9 +666,16 @@ Probe::Action typedRead(void* context, uint32_t commandId, uint8_t address, ESS:
 }
 MotorControlRS::ActionEvent actionEvent(const App::Record& record, ReadEventKind kind) {
     MotorControlRS::ActionEvent event;
-    event.transport.target = record.homeOperation ? record.home.target : record.driverOperation ? record.driver.target : record.velocityOperation ? record.velocity.target : record.moveOperation ? record.move.target : record.action.target;
+    switch (record.kind) {
+    case App::OperationKind::HOME: event.transport.target = record.home.target; event.transport.step = record.home.step; break;
+    case App::OperationKind::DRIVER: event.transport.target = record.driver.target; event.transport.step = record.driver.step; break;
+    case App::OperationKind::VELOCITY: event.transport.target = record.velocity.target; event.transport.step = record.velocity.step; break;
+    case App::OperationKind::MOVE: event.transport.target = record.move.target; event.transport.step = record.move.step; break;
+    case App::OperationKind::ACTION: event.transport.target = record.action.target; event.transport.step = record.action.step; break;
+    case App::OperationKind::EMPTY: case App::OperationKind::TRANSACTION: case App::OperationKind::TYPED_READ: break;
+    }
     event.transport.operationId = record.operationId;
-    event.transport.step = record.homeOperation ? record.home.step : record.driverOperation ? record.driver.step : record.velocityOperation ? record.velocity.step : record.moveOperation ? record.move.step : record.action.step; event.transport.kind = kind;
+    event.transport.kind = kind;
     return event;
 }
 // Copy the owner's borrowed transport evidence consistently. Callers retain
@@ -768,7 +799,7 @@ Probe::Action startAction(void* context, uint32_t commandId, uint8_t address,
     record->serialTuple = scanStop ? a.discovery.originalTuple : a.serial.active;
     record->serialGeneration = scanStop ? a.discovery.originalSerialGeneration : a.serial.generation;
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
-    record->deadlineUs = preparedContext.deadlineUs; record->actionOperation = record->axisReserved = true;
+    record->deadlineUs = preparedContext.deadlineUs; record->kind = App::OperationKind::ACTION; record->axisReserved = true;
     if (scanStop) {
         record->discoveryStop = true;
         a.discovery.cancelRequested = true;
@@ -779,7 +810,7 @@ Probe::Action startAction(void* context, uint32_t commandId, uint8_t address,
     if (stop) {
         cancelSimplePreparation(a, address, now);
         for (auto& interrupted : a.records) {
-            if (&interrupted == record || (!interrupted.actionOperation && !interrupted.moveOperation && !interrupted.velocityOperation && !interrupted.driverOperation && !interrupted.homeOperation) || interrupted.address != address ||
+            if (&interrupted == record || !sequenced(interrupted) || interrupted.address != address ||
                 terminal(a, interrupted)) continue;
             interrupted.cancelContinuation = true;
             interrupted.interruptedByStop = true;
@@ -905,6 +936,7 @@ Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
         a.nextOperationId, request, prerequisites, now, deadline, options);
     if (!checked) {
         if (a.simple.admitting) a.simple.view.status = checked;
+        clearRecord(*record);
         return checked.code == Err::UNSUPPORTED ? Probe::Action::UNSUPPORTED : Probe::Action::INVALID;
     }
     if (request.setup == MoveSetup::USE_STORED &&
@@ -919,7 +951,7 @@ Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
     if (admitted != Probe::Action::OK) { clearRecord(*record); return admitted; }
     record->serialTuple = a.serial.active; record->serialGeneration = a.serial.generation;
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
-    record->deadlineUs = deadline; record->moveOperation = record->axisReserved = true;
+    record->deadlineUs = deadline; record->kind = App::OperationKind::MOVE; record->axisReserved = true;
     operationId = a.latestOperationId = record->operationId;
     return Probe::Action::OK;
 }
@@ -990,7 +1022,7 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
     if (admitted != Probe::Action::OK) { clearRecord(*record); return admitted; }
     record->serialTuple = a.serial.active; record->serialGeneration = a.serial.generation;
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
-    record->deadlineUs = deadline; record->velocityOperation = record->axisReserved = true;
+    record->deadlineUs = deadline; record->kind = App::OperationKind::VELOCITY; record->axisReserved = true;
     operationId = a.latestOperationId = record->operationId; return Probe::Action::OK;
 }
 Probe::Action admitHomeStep(App& a, App::Record& record, const ESS::PreparedHome& work, uint64_t now) {
@@ -1051,7 +1083,7 @@ Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
     if (admitted != Probe::Action::OK) { clearRecord(*record); return admitted; }
     record->serialTuple = a.serial.active; record->serialGeneration = a.serial.generation;
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
-    record->deadlineUs = deadline; record->homeOperation = record->axisReserved = true;
+    record->deadlineUs = deadline; record->kind = App::OperationKind::HOME; record->axisReserved = true;
     record->configurationGeneration = a.axis.generation;
     operationId = a.latestOperationId = record->operationId; return Probe::Action::OK;
 }
@@ -1361,7 +1393,7 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
     record->serialTuple = a.serial.active; record->serialGeneration = a.serial.generation;
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
     record->deadlineUs = record->driver.deadlineUs; record->configurationGeneration = generation;
-    record->driverOperation = true; record->axisReserved = kind == ESS::DriverKind::UPDATE;
+    record->kind = App::OperationKind::DRIVER; record->axisReserved = kind == ESS::DriverKind::UPDATE;
     operationId = a.latestOperationId = record->operationId; return Probe::Action::OK;
 }
 // Apply possible changes as soon as TX is accepted. Readback never rewrites
@@ -1505,7 +1537,7 @@ void reconcileConfigRead(App& a, App::Record& record, uint64_t now) {
     }
 }
 void reconcileDriverRead(App& a, App::Record& record, uint64_t now) {
-    if (!record.driverOperation || record.driver.kind != ESS::DriverKind::READ ||
+    if (record.kind != App::OperationKind::DRIVER || record.driver.kind != ESS::DriverKind::READ ||
         segmentGroup(record.driver.group) || record.address != a.axis.target.address ||
         record.configurationGeneration != a.axis.generation || record.driver.target.generation != a.bindingGeneration) return;
     const bool tuning = ESS::isTuningGroup(record.driver.group);
@@ -1558,7 +1590,7 @@ MotorControlRS::ReadEvent readEvent(const App::Record& record, ReadEventKind kin
 // The frontend record reserves terminal storage across the gaps between steps.
 void advanceReads(App& a, uint64_t sampled) {
     for (auto& record : a.records) {
-        if (!record.operationId || !record.typedRead || record.read.state != ReadState::ACTIVE) continue;
+        if (!record.operationId || record.kind != App::OperationKind::TYPED_READ || record.read.state != ReadState::ACTIVE) continue;
         if (record.requestId.owner) {
             const auto* result = a.owner.result(record.requestId); if (!result) continue;
             const uint8_t block = record.read.step;
@@ -1629,10 +1661,11 @@ void advanceReads(App& a, uint64_t sampled) {
 void updateActionReservation(App& a, App::Record& record) {
     using namespace MotorControlRS;
     if (!terminal(a, record)) return;
-    record.motionUnresolved = (record.moveOperation && record.move.uncertain && record.move.triggerEvidence.txAccepted) ||
-        (record.velocityOperation && (record.velocity.uncertain || record.velocity.needsStop) && record.velocity.triggerEvidence.txAccepted) ||
-        (record.homeOperation && record.home.uncertain && record.home.triggerEvidence.txAccepted);
-    if (record.homeOperation) {
+    record.motionUnresolved = (record.kind == App::OperationKind::MOVE && record.move.uncertain && record.move.triggerEvidence.txAccepted) ||
+        (record.kind == App::OperationKind::VELOCITY && (record.velocity.uncertain || record.velocity.needsStop) && record.velocity.triggerEvidence.txAccepted) ||
+        (record.kind == App::OperationKind::HOME && record.home.uncertain && record.home.triggerEvidence.txAccepted);
+    switch (record.kind) {
+    case App::OperationKind::HOME: {
         record.axisReserved = false;
         if (record.home.uncertain)
             a.actionConflicts[record.address / 8] |= static_cast<uint8_t>(1U << (record.address % 8));
@@ -1647,7 +1680,7 @@ void updateActionReservation(App& a, App::Record& record) {
         }
         return;
     }
-    if (record.driverOperation) {
+    case App::OperationKind::DRIVER: {
         driverEffects(a, record, record.driver.effects, nowUs());
         record.axisReserved = false;
         const bool segment = segmentGroup(record.driver.group);
@@ -1693,21 +1726,35 @@ void updateActionReservation(App& a, App::Record& record) {
         }
         return;
     }
+    case App::OperationKind::ACTION: case App::OperationKind::MOVE: case App::OperationKind::VELOCITY: break;
+    case App::OperationKind::EMPTY: case App::OperationKind::TRANSACTION: case App::OperationKind::TYPED_READ: return;
+    }
     // Completion/cancellation does not supply a fresh current position. Neither
     // changes the fixed origin; release, counter clear and configuration still
     // invalidate it through their own effect paths.
-    if (((record.moveOperation && record.move.triggerEvidence.txAccepted) ||
-        (record.velocityOperation && record.velocity.triggerEvidence.txAccepted)))
+    if (((record.kind == App::OperationKind::MOVE && record.move.triggerEvidence.txAccepted) ||
+        (record.kind == App::OperationKind::VELOCITY && record.velocity.triggerEvidence.txAccepted)))
         invalidateMotionObservations(a, record.address);
     record.axisReserved = false;
-    if (record.moveOperation && record.move.uncertain) a.rememberedMoveGeneration = 0;
+    if (record.kind == App::OperationKind::MOVE && record.move.uncertain) a.rememberedMoveGeneration = 0;
     const uint8_t mask = static_cast<uint8_t>(1U << (record.address % 8));
-    if (record.velocityOperation ? record.velocity.needsStop || record.velocity.uncertain : record.moveOperation ? record.move.uncertain :
-        (record.action.execution == ActionExecution::UNKNOWN ||
-        (record.action.execution == ActionExecution::ACKNOWLEDGED && record.action.completion != ActionCompletion::OBSERVED)))
-        a.actionConflicts[record.address / 8] |= mask;
-    if ((record.velocityOperation && record.velocity.stop.completion == ActionCompletion::OBSERVED) ||
-        (!record.moveOperation && !record.velocityOperation && record.action.request.kind == ActionKind::STOP && record.action.completion == ActionCompletion::OBSERVED)) {
+    bool conflict = false, stopped = false;
+    switch (record.kind) {
+    case App::OperationKind::VELOCITY:
+        conflict = record.velocity.needsStop || record.velocity.uncertain;
+        stopped = record.velocity.stop.completion == ActionCompletion::OBSERVED;
+        break;
+    case App::OperationKind::MOVE: conflict = record.move.uncertain; break;
+    case App::OperationKind::ACTION:
+        conflict = record.action.execution == ActionExecution::UNKNOWN ||
+            (record.action.execution == ActionExecution::ACKNOWLEDGED && record.action.completion != ActionCompletion::OBSERVED);
+        stopped = record.action.request.kind == ActionKind::STOP && record.action.completion == ActionCompletion::OBSERVED;
+        break;
+    case App::OperationKind::EMPTY: case App::OperationKind::TRANSACTION: case App::OperationKind::TYPED_READ:
+    case App::OperationKind::HOME: case App::OperationKind::DRIVER: break; // Handled above.
+    }
+    if (conflict) a.actionConflicts[record.address / 8] |= mask;
+    if (stopped) {
         // A new checked stopped-state report reconciles conflicts; historical
         // interrupted outcomes and their execution uncertainty stay unchanged.
         a.actionConflicts[record.address / 8] &= static_cast<uint8_t>(~mask);
@@ -1717,10 +1764,27 @@ void updateActionReservation(App& a, App::Record& record) {
     }
 }
 MotorControlRS::Status advanceOperation(App::Record& record, const MotorControlRS::ActionEvent& event, uint64_t now) {
-    if (record.homeOperation) return ESS::advanceHome(record.home, event, now);
-    if (record.driverOperation) return ESS::advanceDriver(record.driver, event, now);
-    if (record.velocityOperation) return ESS::advanceVelocity(record.velocity, event, now);
-    return record.moveOperation ? ESS::advanceMove(record.move, event, now) : ESS::advanceAction(record.action, event, now);
+    switch (record.kind) {
+    case App::OperationKind::HOME: return ESS::advanceHome(record.home, event, now);
+    case App::OperationKind::DRIVER: return ESS::advanceDriver(record.driver, event, now);
+    case App::OperationKind::VELOCITY: return ESS::advanceVelocity(record.velocity, event, now);
+    case App::OperationKind::MOVE: return ESS::advanceMove(record.move, event, now);
+    case App::OperationKind::ACTION: return ESS::advanceAction(record.action, event, now);
+    case App::OperationKind::EMPTY: case App::OperationKind::TRANSACTION: case App::OperationKind::TYPED_READ: break;
+    }
+    return MotorControlRS::Status(MotorControlRS::Err::INVALID_CONFIG, 0, "record has no action sequence");
+}
+bool invalidatesMotion(const App::Record& record) {
+    switch (record.kind) {
+    case App::OperationKind::VELOCITY: return record.velocity.step == 0;
+    case App::OperationKind::MOVE:
+        return record.move.step <= record.move.triggerStep &&
+            !(record.move.request.setup == MotorControlRS::MoveSetup::VERIFY_AND_UPDATE && record.move.step == 0);
+    case App::OperationKind::ACTION: return record.action.step == 0;
+    case App::OperationKind::EMPTY: case App::OperationKind::TRANSACTION: case App::OperationKind::TYPED_READ:
+    case App::OperationKind::DRIVER: case App::OperationKind::HOME: return false;
+    }
+    return false;
 }
 void advanceActions(App& a, uint64_t now) {
     for (auto& record : a.records) {
@@ -1737,9 +1801,9 @@ void advanceActions(App& a, uint64_t now) {
                 advanceOperation(record, actionEvent(record, ReadEventKind::TRANSPORT_FAILURE), now);
             updateActionReservation(a, record);
         }
-        if ((!record.actionOperation && !record.moveOperation && !record.velocityOperation && !record.driverOperation && !record.homeOperation) || terminal(a, record)) continue;
+        if (!sequenced(record) || terminal(a, record)) continue;
         if (record.requestId.owner) {
-            if (record.homeOperation && !record.effectsInvalidated && a.owner.txAccepted(record.requestId)) {
+            if (record.kind == App::OperationKind::HOME && !record.effectsInvalidated && a.owner.txAccepted(record.requestId)) {
                 record.effectsInvalidated = true;
                 invalidateAxis(a, &record);
                 record.configurationGeneration = a.axis.generation;
@@ -1747,7 +1811,7 @@ void advanceActions(App& a, uint64_t now) {
                 for (auto& block : a.stateCache.blocks)
                     if (block.value.target.address == record.address) block.invalidatedUs = now;
             }
-            if (record.driverOperation && record.driver.kind == ESS::DriverKind::UPDATE &&
+            if (record.kind == App::OperationKind::DRIVER && record.driver.kind == ESS::DriverKind::UPDATE &&
                 a.owner.txAccepted(record.requestId)) {
                 ESS::PreparedDriver work;
                 if (ESS::nextDriver(record.driver, record.driver.servicedUs, work) && work.write)
@@ -1755,21 +1819,18 @@ void advanceActions(App& a, uint64_t now) {
                         if (progress.selected && progress.reg == work.reg)
                             driverEffects(a, record, static_cast<uint32_t>(progress.field), now);
             }
-            if (((record.moveOperation && record.move.step == record.move.triggerStep) ||
-                (record.velocityOperation && record.velocity.phase == ESS::VelocityPhase::TRIGGER)) && record.address == a.axis.target.address &&
+            if (((record.kind == App::OperationKind::MOVE && record.move.step == record.move.triggerStep) ||
+                (record.kind == App::OperationKind::VELOCITY && record.velocity.phase == ESS::VelocityPhase::TRIGGER)) && record.address == a.axis.target.address &&
                 a.owner.txAccepted(record.requestId)) {
                 a.coordinateReference.nativeKnown = false;
                 a.simpleEndpointKnown = false;
             }
-            if (!record.driverOperation && !record.homeOperation && !record.effectsInvalidated &&
-                (record.velocityOperation ? record.velocity.step == 0 : record.moveOperation ?
-                    (record.move.step <= record.move.triggerStep && !(record.move.request.setup == MotorControlRS::MoveSetup::VERIFY_AND_UPDATE && record.move.step == 0)) :
-                    record.action.step == 0) && a.owner.txAccepted(record.requestId)) {
+            if (!record.effectsInvalidated && invalidatesMotion(record) && a.owner.txAccepted(record.requestId)) {
                 record.effectsInvalidated = true;
-                if (record.moveOperation && record.move.step < record.move.triggerStep) a.rememberedMoveGeneration = 0;
+                if (record.kind == App::OperationKind::MOVE && record.move.step < record.move.triggerStep) a.rememberedMoveGeneration = 0;
                 for (auto& block : a.stateCache.blocks)
                     if (block.valid && block.value.target.address == record.address) block.invalidatedUs = now;
-                if (!record.moveOperation && !record.velocityOperation && (record.action.request.kind == MotorControlRS::ActionKind::RELEASE ||
+                if (record.kind == App::OperationKind::ACTION && (record.action.request.kind == MotorControlRS::ActionKind::RELEASE ||
                     record.action.request.kind == MotorControlRS::ActionKind::CLEAR_POSITION) &&
                     a.axis.target.address == record.address) invalidateAxis(a);
             }
@@ -1799,7 +1860,7 @@ void advanceActions(App& a, uint64_t now) {
                 if (!advanceOperation(record, failed, now)) continue;
             }
             observeCommunication(a, *result);
-            if (record.moveOperation) {
+            if (record.kind == App::OperationKind::MOVE) {
                 // Capture short RUNNING transitions promptly; once observed,
                 // use bounded slower completion polls for longer moves. The
                 // original absolute deadline and 64-poll cap never extend.
@@ -1819,12 +1880,12 @@ void advanceActions(App& a, uint64_t now) {
             a.owner.release(record.requestId); record.requestId = Rtu::RequestId();
         }
         if (!terminal(a, record)) {
-            if (record.cancelContinuation || (record.homeOperation ? record.home.target.generation : record.driverOperation ? record.driver.target.generation : record.velocityOperation ? record.velocity.target.generation : record.moveOperation ? record.move.target.generation : record.action.target.generation) != a.bindingGeneration ||
-                (record.moveOperation && record.move.prepared.configurationGeneration != a.axis.generation) ||
-                (record.velocityOperation && record.velocity.request.configurationGeneration != a.axis.generation) ||
-                (record.homeOperation && (!a.axis.generation || record.configurationGeneration != a.axis.generation)))
+            if (record.cancelContinuation || actionEvent(record, ReadEventKind::CANCEL).transport.target.generation != a.bindingGeneration ||
+                (record.kind == App::OperationKind::MOVE && record.move.prepared.configurationGeneration != a.axis.generation) ||
+                (record.kind == App::OperationKind::VELOCITY && record.velocity.request.configurationGeneration != a.axis.generation) ||
+                (record.kind == App::OperationKind::HOME && (!a.axis.generation || record.configurationGeneration != a.axis.generation)))
                 advanceOperation(record, actionEvent(record, ReadEventKind::CANCEL), now);
-            else if (record.velocityOperation) {
+            else if (record.kind == App::OperationKind::VELOCITY) {
                 // Evidence above is consumed before elapsed time. A borrowed
                 // admitted token must settle before stop changes its correlation.
                 ESS::serviceVelocity(record.velocity, now);
@@ -1841,7 +1902,8 @@ void advanceActions(App& a, uint64_t now) {
             else if (now >= record.deadlineUs)
                 advanceOperation(record, actionEvent(record, ReadEventKind::DEADLINE), now);
             else if (!a.owner.needsRecovery() && !uart.needsRecovery()) {
-                if (record.homeOperation) {
+                switch (record.kind) {
+                case App::OperationKind::HOME: {
                     ESS::PreparedHome work;
                     const auto next = ESS::nextHome(record.home, now, work);
                     if (!next) advanceOperation(record, actionEvent(record, ReadEventKind::DEADLINE), now);
@@ -1851,23 +1913,33 @@ void advanceActions(App& a, uint64_t now) {
                             admitted != Probe::Action::RESULTS_FULL && admitted != Probe::Action::RECOVERY_REQUIRED)
                             advanceOperation(record, actionEvent(record, ReadEventKind::TRANSPORT_FAILURE), now);
                     }
-                } else if (record.moveOperation) {
+                    break;
+                }
+                case App::OperationKind::MOVE: {
                     ESS::PreparedMove work;
                     const auto next = ESS::nextMove(record.move, now, work);
                     if (!next && next.detail == static_cast<int32_t>(MotorControlRS::MoveError::READINESS))
                         advanceOperation(record, actionEvent(record, ReadEventKind::DEADLINE), now);
                     else if (next && work.kind == ESS::ActionWork::TRANSACTION)
                         admitMoveStep(a, record, work, now);
-                } else if (record.driverOperation) {
+                    break;
+                }
+                case App::OperationKind::DRIVER: {
                     ESS::PreparedDriver work;
                     const auto next = ESS::nextDriver(record.driver, now, work);
                     if (!next) advanceOperation(record, actionEvent(record, ReadEventKind::DEADLINE), now);
                     else if (work.kind == ESS::ActionWork::TRANSACTION)
                         admitDriverStep(a, record, work, now);
-                } else {
+                    break;
+                }
+                case App::OperationKind::ACTION: {
                     ESS::PreparedAction work;
                     if (ESS::nextAction(record.action, now, work) && work.kind == ESS::ActionWork::TRANSACTION)
                         admitActionStep(a, record, work, now); // Pressure defers unadmitted work, never replays a frame.
+                    break;
+                }
+                case App::OperationKind::EMPTY: case App::OperationKind::TRANSACTION:
+                case App::OperationKind::TYPED_READ: case App::OperationKind::VELOCITY: break;
                 }
             }
         }
@@ -1893,10 +1965,10 @@ Probe::Action recover(void* context, uint32_t commandId, uint32_t& operationId) 
     ++a.bindingGeneration;
     invalidateAxis(a);
     a.monitorState.settings.enabled = false; a.monitorState.remaining = 0;
-    for (auto& record : a.records) if (record.operationId && record.typedRead &&
+    for (auto& record : a.records) if (record.operationId && record.kind == App::OperationKind::TYPED_READ &&
         record.read.state == ReadState::ACTIVE && !record.requestId.owner)
         ESS::advanceRead(record.read, readEvent(record, ReadEventKind::CANCEL), now);
-    for (auto& record : a.records) if ((record.actionOperation || record.moveOperation || record.velocityOperation || record.driverOperation || record.homeOperation) && !terminal(a, record)) {
+    for (auto& record : a.records) if (sequenced(record) && !terminal(a, record)) {
         record.cancelContinuation = true;
         if (!record.requestId.owner) {
             advanceOperation(record, actionEvent(record, ReadEventKind::CANCEL), now);
@@ -1930,28 +2002,32 @@ bool lookup(void* context, uint32_t operationId, Probe::ResultView& out) {
     out.serialTuple = record->serialTuple; out.serialGeneration = record->serialGeneration;
     out.commandId = record->commandId; out.operationId = operationId; out.address = record->address;
     out.captureRead = record->captureRead;
-    if (record->homeOperation) {
+    switch (record->kind) {
+    case App::OperationKind::EMPTY: return false;
+    case App::OperationKind::TRANSACTION: break;
+    case App::OperationKind::HOME: {
         out.homeContext = &record->home; out.pending = !terminal(a, *record);
         out.interruptedByStop = record->interruptedByStop; return true;
     }
-    if (record->driverOperation) {
+    case App::OperationKind::DRIVER: {
         out.driverContext = &record->driver; out.pending = !terminal(a, *record); return true;
     }
-    if (record->velocityOperation) {
+    case App::OperationKind::VELOCITY: {
         out.velocityContext = &record->velocity; out.pending = !terminal(a, *record);
         out.interruptedByStop = record->interruptedByStop; return true;
     }
-    if (record->moveOperation) {
+    case App::OperationKind::MOVE: {
         out.moveContext = &record->move; out.pending = !terminal(a, *record);
         out.interruptedByStop = record->interruptedByStop; return true;
     }
-    if (record->actionOperation) {
+    case App::OperationKind::ACTION: {
         out.actionContext = &record->action; out.pending = !terminal(a, *record);
         out.interruptedByStop = record->interruptedByStop; return true;
     }
-    if (record->typedRead) {
+    case App::OperationKind::TYPED_READ: {
         out.typedRead = &record->read; out.pending = record->read.state == ReadState::ACTIVE;
         return true;
+    }
     }
     const auto* result = a.owner.result(record->requestId); out.pending = !result; if (!result) return true;
     Probe::ProbeResult& p = out.probe;
@@ -1993,7 +2069,7 @@ Probe::Action cancel(void* context, uint32_t operationId) {
         operationId = a.simple.view.moveOperationId;
     }
     auto* record = findRecord(a, operationId); if (!record) return Probe::Action::INVALID;
-    if (record->actionOperation || record->moveOperation || record->velocityOperation || record->driverOperation || record->homeOperation) {
+    if (sequenced(*record)) {
         if (terminal(a, *record)) return Probe::Action::ALREADY_TERMINAL;
         record->cancelContinuation = true;
         if (record->requestId.owner) a.owner.cancel(record->requestId, uart.sample());
@@ -2003,13 +2079,13 @@ Probe::Action cancel(void* context, uint32_t operationId) {
         }
         return Probe::Action::OK;
     }
-    if (record->typedRead && record->read.state != ReadState::ACTIVE) return Probe::Action::ALREADY_TERMINAL;
-    if (record->typedRead && !record->requestId.owner) {
+    if (record->kind == App::OperationKind::TYPED_READ && record->read.state != ReadState::ACTIVE) return Probe::Action::ALREADY_TERMINAL;
+    if (record->kind == App::OperationKind::TYPED_READ && !record->requestId.owner) {
         ESS::advanceRead(record->read, readEvent(*record, ReadEventKind::CANCEL), nowUs());
         return Probe::Action::OK;
     }
     const auto result = a.owner.cancel(record->requestId, uart.sample());
-    if (record->typedRead && result != Rtu::Cancel::INVALID) {
+    if (record->kind == App::OperationKind::TYPED_READ && result != Rtu::Cancel::INVALID) {
         record->cancelContinuation = true;
         return Probe::Action::OK;
     }
@@ -2261,13 +2337,17 @@ void recycleInteractiveResults(void* context) {
     if (a.outputCount || a.console.outputPending()) return;
     for (auto& r : a.records) {
         if (!r.interactive || !r.delivered || r.simpleChild || r.axisReserved || r.motionUnresolved) continue;
-        const bool success = r.homeOperation ? r.home.state == MotorControlRS::ActionState::SUCCEEDED && !r.home.uncertain :
-            r.driverOperation ? r.driver.state == ReadState::SUCCEEDED && !r.driver.uncertain :
-            r.velocityOperation ? r.velocity.state == MotorControlRS::ActionState::SUCCEEDED && !r.velocity.uncertain :
-            r.moveOperation ? r.move.state == MotorControlRS::ActionState::SUCCEEDED && !r.move.uncertain :
-            r.actionOperation ? r.action.state == MotorControlRS::ActionState::SUCCEEDED :
-            r.typedRead ? r.read.state == ReadState::SUCCEEDED :
-            a.owner.result(r.requestId) && a.owner.result(r.requestId)->outcome == Rtu::Outcome::SUCCESS;
+        bool success = false;
+        switch (r.kind) {
+        case App::OperationKind::EMPTY: break;
+        case App::OperationKind::HOME: success = r.home.state == MotorControlRS::ActionState::SUCCEEDED && !r.home.uncertain; break;
+        case App::OperationKind::DRIVER: success = r.driver.state == ReadState::SUCCEEDED && !r.driver.uncertain; break;
+        case App::OperationKind::VELOCITY: success = r.velocity.state == MotorControlRS::ActionState::SUCCEEDED && !r.velocity.uncertain; break;
+        case App::OperationKind::MOVE: success = r.move.state == MotorControlRS::ActionState::SUCCEEDED && !r.move.uncertain; break;
+        case App::OperationKind::ACTION: success = r.action.state == MotorControlRS::ActionState::SUCCEEDED; break;
+        case App::OperationKind::TYPED_READ: success = r.read.state == ReadState::SUCCEEDED; break;
+        case App::OperationKind::TRANSACTION: success = a.owner.result(r.requestId) && a.owner.result(r.requestId)->outcome == Rtu::Outcome::SUCCESS; break;
+        }
         if (success && (!r.requestId.owner || a.owner.release(r.requestId))) clearRecord(r);
     }
 }
@@ -2285,30 +2365,33 @@ void deliver(App& a) {
         }
         Probe::ResultView view; if (!lookup(&a, record.operationId, view) || view.pending) continue;
         record.interactive = a.console.humanResult(record.operationId);
-        if (record.homeOperation) {
+        switch (record.kind) {
+        case App::OperationKind::EMPTY: continue;
+        case App::OperationKind::TRANSACTION: break;
+        case App::OperationKind::HOME: {
             if (!a.console.reportHome(record.commandId, record.operationId, record.home, record.interruptedByStop, &record.serialTuple, record.serialGeneration)) continue;
             record.delivered = true; record.deliveredUs = nowUs(); continue;
         }
-        if (record.driverOperation) {
+        case App::OperationKind::DRIVER: {
             if (!record.simpleChild && !a.console.reportDriver(record.commandId, record.operationId, record.driver, &record.serialTuple, record.serialGeneration)) continue;
             record.delivered = true; record.deliveredUs = nowUs(); continue;
         }
-        if (record.velocityOperation) {
+        case App::OperationKind::VELOCITY: {
             if (!a.console.reportVelocity(record.commandId, record.operationId, record.velocity, record.interruptedByStop, &record.serialTuple, record.serialGeneration)) continue;
             record.delivered = true; record.deliveredUs = nowUs(); continue;
         }
-        if (record.moveOperation) {
+        case App::OperationKind::MOVE: {
             if (record.programmaticMove || record.simpleChild) {
                 record.delivered = true; record.deliveredUs = nowUs(); continue;
             }
             if (!a.console.reportMove(record.commandId, record.operationId, record.move, record.interruptedByStop, &record.serialTuple, record.serialGeneration)) continue;
             record.delivered = true; record.deliveredUs = nowUs(); continue;
         }
-        if (record.actionOperation) {
+        case App::OperationKind::ACTION: {
             if (!a.console.reportAction(record.commandId, record.operationId, record.action, record.interruptedByStop, &record.serialTuple, record.serialGeneration)) continue;
             record.delivered = true; record.deliveredUs = nowUs(); continue;
         }
-        if (record.typedRead) {
+        case App::OperationKind::TYPED_READ: {
             if (!record.observed && record.serialGeneration == a.serial.generation &&
                 record.read.target.generation == a.bindingGeneration) {
                 record.observed = true;
@@ -2361,6 +2444,7 @@ void deliver(App& a) {
             }
             if (!record.simpleChild && !a.console.reportRead(record.commandId, record.operationId, record.read, &record.serialTuple, record.serialGeneration)) continue;
             record.delivered = true; record.deliveredUs = nowUs(); continue;
+        }
         }
         const auto* retained = a.owner.result(record.requestId);
         if (!record.observed && !record.captureRead && record.serialGeneration == a.serial.generation &&

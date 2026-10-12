@@ -2,7 +2,7 @@
 
 Prepared by the [complexity audit](../../reports/2026-10-11_complexity_audit.md)
 against `9dc3c1c` and the accompanying small refactors on 11 October 2026.
-**None of the numbered prompts has been executed.** These are structural
+**Prompt 01 has been implemented; prompts 02–07 remain unexecuted.** These are structural
 improvements to working code, not new motor features or hardware qualification.
 
 This set supersedes the earlier [maintenance draft](../../archive/prompts/maintenance/README.md).
@@ -16,7 +16,7 @@ small commits; finish and verify one usable boundary before starting another.
 
 | Prompt | Result | Dependency | Status |
 | --- | --- | --- | --- |
-| [01: operation kind](01_operation_kind.md) | One unambiguous application record discriminator | Current baseline | NOT STARTED |
+| [01: operation kind](01_operation_kind.md) | One unambiguous application record discriminator | Current baseline | IMPLEMENTED — [handoff](../../reports/2026-10-12_operation_kind.md) |
 | [02: settings validation](02_settings_validation.md) | Visible admission stages and group-specific settings policies | 01 delivered; no shared code dependency | NOT STARTED |
 | [03: host evidence](03_host_evidence.md) | Pure validators separated from serial/session ownership | 02 delivered; no shared code dependency | NOT STARTED |
 | [04: host dispatch](04_host_dispatch.md) | One reviewed live/retained payload routing path | 03 | NOT STARTED |

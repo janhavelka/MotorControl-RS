@@ -1526,7 +1526,7 @@ void testMonitorCheckedFailureHasOneAttemptAndNoFeedback() {
     advanceHardware(hardware.time + 500000); loop(); pump(100); assert(hardware.writes == 1);
 }
 void driverStep(uint32_t operation, const std::vector<uint8_t>& supplied) {
-    auto* record = findRecord(*app, operation); assert(record && record->driverOperation);
+    auto* record = findRecord(*app, operation); assert(record && record->kind == App::OperationKind::DRIVER);
     const uint8_t oldStep = record->driver.step;
     const unsigned before = hardware.writes;
     if (app->runner.phase() != Rtu::Phase::DRAIN && app->runner.phase() != Rtu::Phase::HOLD && app->runner.phase() != Rtu::Phase::RECEIVE) startTx(before);

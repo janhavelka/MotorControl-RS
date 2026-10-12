@@ -93,7 +93,7 @@ void testQueuedActiveAndWaitOwnership() {
     fresh();
     // A real public read context can be active between transactions: transport
     // idleness alone is insufficient permission to change its intended tuple.
-    auto& record = app->records[0]; record.operationId = 1; record.typedRead = true;
+    auto& record = app->records[0]; record.operationId = 1; record.kind = App::OperationKind::TYPED_READ;
     MotorControlRS::ActiveSerialTuple serial; serial.known = true; serial.baud = 115200;
     serial.dataBits = 8; serial.stopBits = 1; serial.parity = MotorControlRS::SerialParity::NONE;
     assert(ESS::prepareIdentity(record.read, app->axis.target, 1, hardware.time,
@@ -161,7 +161,7 @@ void testStaleIdentityCannotRepopulateSelectedCache() {
     fresh();
     for (const char value : std::string("@1 read identity\n")) app->console.feed(value);
     const uint32_t operation = app->latestOperationId;
-    auto* record = findRecord(*app, operation); assert(record && record->typedRead);
+    auto* record = findRecord(*app, operation); assert(record && record->kind == App::OperationKind::TYPED_READ);
     for (unsigned i = 0; i < 10000 && !hardware.writes; ++i) {
         advanceHardware(hardware.time + 10); app->owner.service(uart.sample());
     }

@@ -14,7 +14,8 @@ No report makes its recorded bench state a fresh observation.
 | [First overnight failure](2026-10-05_overnight_hil.md) | The requested duration failed and final cleanup is unknown. A later passing subset does not change that aggregate. |
 | [Earlier firmware-health investigation](2026-10-06_firmware_health.md) | Records concrete watchdog/crash-path corrections without claiming a cause for the original no-dump stall. |
 | [Later overnight failure and USB diagnosis](2026-10-07_overnight_hil.md) | Preserves the failed endurance sessions and reproduced HWCDC lost-event stall. The shared-driver correction still needs renewed overnight qualification. |
-| [Complexity audit](2026-10-11_complexity_audit.md) | Distinguishes completed small cleanups from the seven unexecuted [maintainability prompts](../prompts/maintainability/README.md). It adds no hardware qualification. |
+| [Complexity audit](2026-10-11_complexity_audit.md) | Distinguishes completed small cleanups from the seven planned [maintainability prompts](../prompts/maintainability/README.md). It adds no hardware qualification. |
+| [Explicit application record kind](2026-10-12_operation_kind.md) | Prompt 01 role inventory, lifecycle coverage and storage measurements; remaining prompts and hardware qualification stay separate. |
 
 Each report links its retained raw artifacts. Earlier implementation handoffs,
 software audits, closed corrections and qualification records are in the
