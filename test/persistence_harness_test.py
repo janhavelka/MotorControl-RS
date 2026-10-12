@@ -2,10 +2,12 @@
 import copy
 import importlib.util
 import json
+import sys
 from pathlib import Path
 import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 spec=importlib.util.spec_from_file_location("bench_persistence",ROOT/"scripts/bench_probe.py")
 bench=importlib.util.module_from_spec(spec);spec.loader.exec_module(bench)
 WINDOWS=((16,2),(19,3),(23,3),(64,5),(256,2),(0,4),(6,2))

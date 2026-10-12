@@ -1,6 +1,6 @@
 # Implementation and qualification backlog
 
-Current as of the 12 October 2026 settings-admission refactor. This page lists remaining work;
+Current as of the 12 October 2026 host-evidence first boundary. This page lists remaining work;
 completed work and historical test dispositions live in the
 [development archive](archive/README.md) and [changelog](../CHANGELOG.md).
 The [release scope](releases/1.0.0.md) and checked
@@ -20,6 +20,8 @@ unrelated commands or fixtures.
   in small reviewed blocks:
   pure host evidence and routing, console/application boundaries and evidence
   copying. Prompts 01–02 are implemented; this sequence supersedes the earlier draft.
+  Prompt 03's [shared/read evidence boundary](reports/2026-10-12_host_evidence.md)
+  is implemented; action/move/velocity/home extraction remains due. Hardware NOT RUN.
 - [ ] Implement the [FieldCore handoff](fieldcore_handoff.md) in a separately
   authorized FieldCore step: typed motor results, adequate frame storage,
   qualified RTU/echo handling, immutable deadlines, stop priority and retained

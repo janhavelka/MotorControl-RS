@@ -22,6 +22,8 @@ defines seven [refactor stages](prompts/maintainability/README.md). The
 [private record-kind stage](reports/2026-10-12_operation_kind.md) and
 [settings-admission stage](reports/2026-10-12_settings_validation.md) are implemented;
 the remaining five stages are pending.
+Prompt 03's [pure read-evidence boundary](reports/2026-10-12_host_evidence.md) is
+delivered first; its motion-validator chunk remains in progress.
 Necessary timing, exact arithmetic and operation-specific uncertainty rules
 remain explicit. Archived delivery instructions are not pending work.
 

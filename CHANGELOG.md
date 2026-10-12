@@ -15,6 +15,10 @@
 
 ### Maintenance
 
+- Extracted canonical host error/wire/check helpers and probe/capture/typed-read/
+  state/cache validators into a private pure module, retaining existing imports
+  and Console aliases. Corrected file-spec test loaders and added error-identity,
+  no-I/O import and wire-precedence coverage; session ownership is unchanged.
 - Extracted five private ESS settings-admission validators, preserving first-error
   precedence, full-candidate checks, in-place publication and write/readback order.
   Added baseline-tested precedence, unchanged-output, alias and I/O-order cases;

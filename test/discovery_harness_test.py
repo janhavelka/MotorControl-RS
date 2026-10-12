@@ -8,6 +8,7 @@ from pathlib import Path
 import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 spec=importlib.util.spec_from_file_location("bench_discovery",ROOT/"scripts/bench_probe.py")
 bench=importlib.util.module_from_spec(spec);spec.loader.exec_module(bench)
 CONSOLE_BINARY=Path(sys.argv.pop(1)) if len(sys.argv)>1 and not sys.argv[1].startswith("-") else None

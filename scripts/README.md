@@ -26,6 +26,11 @@ These tools use the ordinary firmware console and the same strict command/result
 parser. Live serial connections require `pyserial`; the fake-serial tests use
 the Python standard library. Only one process may own the board's port.
 
+`_bench_evidence.py` is the private pure read-evidence boundary. Shared errors,
+wire/age/count helpers and existing `Console` static check names remain available
+through `bench_probe`; framing, correlation, deadlines and serial ownership stay
+there. See the [dependency and delivery handoff](../docs/reports/2026-10-12_host_evidence.md).
+
 | Tool | Purpose |
 | --- | --- |
 | `bench_probe.py` | Read-only probes, state/health/load checks and explicitly selected typed feature operations |

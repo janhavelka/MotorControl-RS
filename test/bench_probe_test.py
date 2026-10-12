@@ -5,15 +5,100 @@ import importlib.util
 import io
 import json
 import math
+import subprocess
+import sys
+import tempfile
 from contextlib import redirect_stderr
 from pathlib import Path
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 SPEC = importlib.util.spec_from_file_location("bench_probe", ROOT / "scripts/bench_probe.py")
 bench = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(bench)
+
+
+class EvidenceImports(unittest.TestCase):
+    def test_error_and_helpers_have_one_identity_across_supported_imports(self):
+        import _bench_evidence as evidence
+        import bench_probe as imported
+        import bench_motion
+        import bench_repeat
+        import bench_session
+        import bench_scenarios
+
+        alias_spec = importlib.util.spec_from_file_location("bench_evidence_import_alias", ROOT / "scripts/bench_probe.py")
+        alias = importlib.util.module_from_spec(alias_spec)
+        alias_spec.loader.exec_module(alias)
+        for module in (bench, imported, alias, bench_motion, bench_repeat, bench_session, bench_scenarios.probe):
+            self.assertIs(module.BenchError, evidence.BenchError)
+        for name in ("wire_crc", "check_counts", "unique_object", "invalid_constant",
+                     "evidence_age_valid", "evidence_age_deadline", "_reply_status"):
+            self.assertIs(getattr(bench, name), getattr(evidence, name))
+            self.assertIs(getattr(imported, name), getattr(evidence, name))
+        for name in ("operation_id", "check_probe", "check_read_evidence", "check_capture_read",
+                     "check_typed_read", "check_state_values", "check_state_block", "check_cached_state"):
+            self.assertIs(getattr(bench.Console, "_" + name), getattr(evidence, name))
+            self.assertIs(getattr(imported.Console, "_" + name), getattr(evidence, name))
+        with self.assertRaises(imported.BenchError):
+            evidence.check_counts({"count": True}, ("count",), "fixture")
+
+    def test_pure_module_import_and_validation_need_no_session_or_io(self):
+        # A fresh interpreter makes this independent of already imported sessions.
+        code = '''
+import builtins
+import importlib.abc
+import json
+import sys
+import time
+sys.path.insert(0, sys.argv[1])
+class ForbiddenSession(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split(".")[0] in {"bench_probe", "serial"}:
+            raise AssertionError("pure evidence imported session/serial")
+sys.meta_path.insert(0, ForbiddenSession())
+def forbidden(*args, **kwargs):
+    raise AssertionError("pure evidence performed file/clock I/O")
+builtins.open = forbidden
+time.monotonic = time.time = time.sleep = forbidden
+import _bench_evidence as evidence
+assert not hasattr(evidence, "Console")
+assert evidence.wire_crc(bytes.fromhex("01030200017984")) == 0
+evidence.check_counts({"count": 1}, ("count",), "fixture")
+evidence.check_typed_read(json.loads(sys.argv[2]), "state", 1)
+assert "bench_probe" not in sys.modules and "serial" not in sys.modules
+'''
+        result = subprocess.run([sys.executable, "-I", "-B", "-c", code, str(ROOT / "scripts"),
+                                 json.dumps(typed_terminal(2, "state"))],
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_direct_script_help_resolves_private_module_outside_repository(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run([sys.executable, "-B", str(ROOT / "scripts/bench_probe.py"), "--help"],
+                                    cwd=directory, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--port", result.stdout)
+        self.assertIn("capture-read", result.stdout)
+
+    def test_reply_status_preserves_length_address_function_crc_and_echo_precedence(self):
+        read = bytes.fromhex("01030200017984")
+        write = bytes.fromhex("01060010000149CF")
+        cases = (
+            (b"", 4, 1, 3, 7, None, ("FRAME_ERROR", 2, 2)),
+            (read[:-1], 6, 1, 3, 7, None, ("FRAME_ERROR", 2, 2)),
+            (bytes([2]) + read[1:], 7, 1, 3, 7, None, ("FRAME_ERROR", 3, 3)),
+            (read[:1] + bytes([4]) + read[2:], 7, 1, 3, 7, None, ("FRAME_ERROR", 4, 4)),
+            (read[:2] + bytes([4]) + read[3:], 7, 1, 3, 7, None, ("FRAME_ERROR", 5, 5)),
+            (write[:-1] + bytes([0]), 8, 1, 6, 8, (0x10, 2), ("CRC_ERROR", 6, 6)),
+            (write, 8, 1, 6, 8, (0x10, 2), ("FRAME_ERROR", 7, 7)),
+            (write, 8, 1, 6, 8, (0x10, 1), ("OK", 0, 0)),
+        )
+        for raw, received, address, function, length, echo, expected in cases:
+            with self.subTest(raw=raw.hex(), echo=echo):
+                self.assertEqual(bench._reply_status(raw, received, address, function, length, echo), expected)
 
 
 def encoded(item):
