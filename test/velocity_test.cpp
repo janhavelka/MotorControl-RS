@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include <MotorControlRS/profiles/ess_rs/Velocity.h>
+#include "ActionEvidenceChecks.h"
 #include <cassert>
 #include <cstring>
 #include <cmath>
@@ -200,13 +201,23 @@ void testFailuresAndLocalCancellation() {
         auto failure = local(c, ReadEventKind::TRANSPORT_FAILURE);
         failure.transport.txAccepted = c.phase == Ess::VelocityPhase::STAGING ? 3 : 8;
         failure.transport.executionUnknown = true;
+        const uint8_t partialRx[] = {0x11, 0x22, 0x33};
+        failure.transport.frame = partialRx; failure.transport.length = sizeof(partialRx);
+        failure.transport.transportDetail = -12345;
         assert(Ess::advanceVelocity(c, failure, c.servicedUs + 1));
+        checkActionTransportEvidence(c.failureEvidence, failure, failure.transport.step, c.servicedUs);
+        assert(c.failureEvidence.frameError == Ess::FrameError::NONE);
+        assert(c.failureEvidence.status.code == Err::ILLEGAL_VALUE);
+        assert(c.failureEvidence.status.detail == static_cast<int32_t>(VelocityError::TRANSPORT_FAILURE));
+        assert(std::strcmp(c.failureEvidence.status.msg, "velocity transport failed") == 0);
         assert(c.uncertain && c.outcome == ActionOutcome::TRANSPORT_ERROR);
         if (failPhase == 0) { assert(c.state == ActionState::FAILED && !c.needsStop); noWork(c); }
         else {
             assert(c.phase == Ess::VelocityPhase::STOPPING && c.needsStop && c.state == ActionState::ACTIVE);
             const auto originalStatus = c.status; const auto originalFailure = c.failureEvidence;
+            const Saved<Ess::ActionEvidence> retainedFailure(c.failureEvidence);
             consume(c); consume(c, 1);
+            retainedFailure.check(c.failureEvidence);
             assert(c.state == ActionState::FAILED && !c.needsStop && c.completion == ActionCompletion::OBSERVED);
             assert(c.status.detail == originalStatus.detail && c.failureEvidence.step == originalFailure.step);
             assert(c.execution == (failPhase == 1 ? ActionExecution::UNKNOWN : ActionExecution::ACKNOWLEDGED)); noWork(c);
@@ -232,6 +243,7 @@ void testCheckedRepliesAndEnvelopePreservation() {
             else { e.transport.qualified = false; e.transport.earliestUs = e.transport.latestUs = 0; }
             e.transport.frame = b.data(); e.transport.length = b.size();
             assert(Ess::advanceVelocity(c, e, at + 20));
+            checkActionTransportEvidence(c.failureEvidence, e, e.transport.step, at + 20);
             assert(c.state == ActionState::FAILED || c.phase == Ess::VelocityPhase::STOPPING);
             assert(c.completion == ActionCompletion::NOT_OBSERVED);
         }
@@ -249,12 +261,39 @@ void testCheckedRepliesAndEnvelopePreservation() {
         const Saved<Ess::VelocityContext> saved(c);
         assert(!Ess::advanceVelocity(c, malformed, 140)); saved.check(c);
     }
-    assert(Ess::advanceVelocity(c, e, 140)); b[0] = 99;
+    assert(Ess::advanceVelocity(c, e, 140));
+    checkActionTransportEvidence(c.stagingEvidence, e, 0, 140);
+    const Saved<Ess::ActionEvidence> retained(c.stagingEvidence);
+    b[0] = 99; retained.check(c.stagingEvidence);
     assert(c.stagingEvidence.raw[0] == 1); // transient frame copied
     // A documented checked trigger exception rejects start and does not request stop.
     b = {1,0x86,2}; crc(b); e = frame(c, b, 160);
     assert(Ess::advanceVelocity(c, e, 180));
     assert(c.execution == ActionExecution::REJECTED && !c.needsStop && c.uncertain); noWork(c);
+}
+void testBorrowedAndOversizedEvidence() {
+    auto c = velocity(); auto bytes = reply(c);
+    std::memset(c.stagingEvidence.raw, 0xA5, sizeof(c.stagingEvidence.raw));
+    std::memcpy(c.stagingEvidence.raw, bytes.data(), bytes.size());
+    auto e = frame(c, bytes, 120); e.transport.frame = c.stagingEvidence.raw;
+    e.transport.transportDetail = -12345; e.transport.executionUnknown = true;
+    assert(Ess::advanceVelocity(c, e, 140));
+    checkActionTransportEvidence(c.stagingEvidence, e, 0, 140);
+    assert(std::memcmp(c.stagingEvidence.raw, bytes.data(), bytes.size()) == 0);
+    assert(c.stagingEvidence.status && c.stagingEvidence.status.detail == 0);
+    assert(!*c.stagingEvidence.status.msg);
+    assert(c.stagingEvidence.frameError == Ess::FrameError::NONE);
+    assert(c.setupExecution == ActionExecution::ACKNOWLEDGED);
+    c = velocity(); bytes = reply(c); bytes.resize(40, 0xA5); e = frame(c, bytes, 120);
+    assert(Ess::advanceVelocity(c, e, 140));
+    checkActionTransportEvidence(c.stagingEvidence, e, 0, 140);
+    checkActionTransportEvidence(c.failureEvidence, e, 0, 140);
+    assert(c.stagingEvidence.status.code == Err::FRAME_ERROR);
+    assert(c.stagingEvidence.frameError == Ess::FrameError::LENGTH);
+    assert(c.stagingEvidence.status.detail == static_cast<int32_t>(Ess::FrameError::LENGTH));
+    assert(std::strcmp(c.stagingEvidence.status.msg, "reply does not match request") == 0);
+    const Saved<Ess::ActionEvidence> retained(c.failureEvidence);
+    std::memset(bytes.data(), 0xAA, bytes.size()); retained.check(c.failureEvidence);
 }
 void testDeadlinesActivityAndDelayedService() {
     auto c = velocity(); trigger(c); consume(c, 1);
@@ -280,6 +319,9 @@ void testDeadlinesActivityAndDelayedService() {
     // never a fresh duration or new trigger.
     c = velocity(); consume(c); auto b = reply(c); auto e = frame(c, b, 160);
     assert(Ess::advanceVelocity(c, e, 1200));
+    checkActionTransportEvidence(c.triggerEvidence, e, 1, 1200);
+    assert(c.triggerEvidence.status && c.triggerEvidence.frameError == Ess::FrameError::NONE);
+    assert(c.triggerEvidence.status.detail == 0 && !*c.triggerEvidence.status.msg);
     assert(c.phase == Ess::VelocityPhase::STOPPING && c.stopDueUs == 1100 && c.needsStop);
     c = velocity(); trigger(c); b = reply(c); e = frame(c, b, c.eligibleUs + 20);
     assert(Ess::advanceVelocity(c, e, 1400));
@@ -463,6 +505,7 @@ int main() {
     testOptionalAgePolicy();
     testGoldenFramesCommonParityAndFiniteStop(); testRejectedParametersUnchanged(); testSignRangesAndLatchedSettings();
     testFailuresAndLocalCancellation(); testCheckedRepliesAndEnvelopePreservation(); testDeadlinesActivityAndDelayedService();
+    testBorrowedAndOversizedEvidence();
     testSharedNumericPreparation();
     testBoundedStopAndPreservedPrimaryFailure();
 }

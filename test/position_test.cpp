@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include <MotorControlRS/profiles/ess_rs/Position.h>
+#include "ActionEvidenceChecks.h"
 #include <cassert>
 #include <cstring>
 #include <limits>
@@ -108,7 +109,11 @@ void testTriggerObservationKeepsUnknownExecution() {
         auto c = move(10000); consume(c);
         const auto bytes = reply(c);
         auto e = frame(c, bytes, c.eligibleUs + 20); e.responseConfirmed = false;
-        assert(Ess::advanceMove(c, e, c.eligibleUs + 40));
+        const auto delivered = c.eligibleUs + 40;
+        assert(Ess::advanceMove(c, e, delivered));
+        checkActionTransportEvidence(c.triggerEvidence, e, 1, delivered);
+        assert(c.triggerEvidence.status && c.triggerEvidence.status.detail == 0 && !*c.triggerEvidence.status.msg);
+        assert(c.triggerEvidence.frameError == Ess::FrameError::NONE);
         assert(c.execution == ActionExecution::UNKNOWN && !c.triggerEvidence.responseConfirmed);
         assert(c.state == ActionState::ACTIVE && c.step == 2);
         const Saved<Ess::ActionEvidence> original(c.triggerEvidence);
@@ -267,7 +272,10 @@ void testCancelFailureAndDeadlineAtEveryBoundary() {
                 e.transport.txAccepted = prefix == 0 ? 0 : prefix == 1 ? 3 : length;
                 e.txComplete = prefix == 2;
                 e.transport.transportDetail = 117;
+                const uint8_t partialRx[] = {0x11, 0x22, 0x33};
+                if (prefix == 1) { e.transport.frame = partialRx; e.transport.length = sizeof(partialRx); }
                 assert(Ess::advanceMove(c, e, kind == ReadEventKind::DEADLINE ? c.deadlineUs : c.servicedUs + 20));
+                checkActionTransportEvidence(c.failureEvidence, e, e.transport.step, c.servicedUs);
                 assert(c.state == ActionState::FAILED && c.completion == ActionCompletion::NOT_OBSERVED);
                 assert(c.uncertain == (phase != 0 || prefix != 0));
                 if (phase == 0) assert(c.execution == ActionExecution::NOT_TRANSMITTED);
@@ -297,8 +305,15 @@ void testBadRepliesAndNoAutomaticReplay() {
             auto e = frame(c, bytes, at);
             // FC03 fault3 modifies payload into a nonzero alarm, rather than echo.
             assert(Ess::advanceMove(c, e, at + 20));
+            checkActionTransportEvidence(c.failureEvidence, e, e.transport.step, at + 20);
             assert(c.state == ActionState::FAILED && c.uncertain && c.completion == ActionCompletion::NOT_OBSERVED);
             assert(c.failureEvidence.receivedLength == bytes.size() && c.failureEvidence.length <= Ess::ACTION_MAX_REPLY_BYTES);
+            if (fault == 6) {
+                assert(c.failureEvidence.status.code == Err::FRAME_ERROR);
+                assert(c.failureEvidence.status.detail == static_cast<int32_t>(Ess::FrameError::LENGTH));
+                assert(std::strcmp(c.failureEvidence.status.msg, "reply does not match request") == 0);
+                assert(c.failureEvidence.frameError == Ess::FrameError::LENGTH);
+            }
             if (phase == 0 && fault == 4) assert(c.setupExecution == ActionExecution::REJECTED);
             if (phase == 0 && fault == 5) assert(c.setupExecution == ActionExecution::UNKNOWN);
             if (phase == 1 && fault == 4) assert(c.execution == ActionExecution::REJECTED);
@@ -335,11 +350,27 @@ void testEnvelopeCorrelationAndCopiedEvidence() {
     const Saved<Ess::MoveContext> saved(c);
     assert(!Ess::advanceMove(c, local(c, ReadEventKind::DEADLINE), 140)); saved.check(c);
     assert(Ess::advanceMove(c, good, 140));
+    checkActionTransportEvidence(c.stagingEvidence, good, 0, 140);
     const auto evidence = c.stagingEvidence; std::memset(bytes.data(), 0xAA, bytes.size());
     assert(c.stagingEvidence.length == evidence.length && std::memcmp(c.stagingEvidence.raw, evidence.raw, evidence.length) == 0);
     const Saved<Ess::MoveContext> next(c);
     assert(!Ess::advanceMove(c, good, 140)); next.check(c);
     assert(!Ess::advanceMove(c, local(c, ReadEventKind::CANCEL), 139)); next.check(c);
+}
+void testBorrowedEvidenceInput() {
+    auto c = move(); const auto bytes = reply(c);
+    std::memset(c.stagingEvidence.raw, 0xA5, sizeof(c.stagingEvidence.raw));
+    std::memcpy(c.stagingEvidence.raw, bytes.data(), bytes.size());
+    auto e = frame(c, bytes, 120); e.transport.frame = c.stagingEvidence.raw;
+    e.transport.transportDetail = -12345;
+    e.transport.executionUnknown = true;
+    assert(Ess::advanceMove(c, e, 140));
+    checkActionTransportEvidence(c.stagingEvidence, e, 0, 140);
+    assert(std::memcmp(c.stagingEvidence.raw, bytes.data(), bytes.size()) == 0);
+    assert(c.stagingEvidence.status && c.stagingEvidence.status.detail == 0);
+    assert(!*c.stagingEvidence.status.msg);
+    assert(c.stagingEvidence.frameError == Ess::FrameError::NONE);
+    assert(c.setupExecution == ActionExecution::ACKNOWLEDGED);
 }
 void testFreshCompletionLimitsAndDelayedService() {
     auto c = move(); trigger(c);
@@ -347,7 +378,11 @@ void testFreshCompletionLimitsAndDelayedService() {
     assert(c.state == ActionState::FAILED && c.outcome == ActionOutcome::OBSERVATION_LIMIT && !c.runningObserved && c.uncertain);
     auto late = move(1000); trigger(late); consume(late, 4);
     auto stopped = reply(late, 1);
-    assert(Ess::advanceMove(late, frame(late, stopped, 980), 1200));
+    const auto deliveredLate = frame(late, stopped, 980);
+    assert(Ess::advanceMove(late, deliveredLate, 1200));
+    checkActionTransportEvidence(late.lastObservation, deliveredLate, deliveredLate.transport.step, 1200);
+    assert(late.lastObservation.status && late.lastObservation.status.detail == 0 && !*late.lastObservation.status.msg);
+    assert(late.lastObservation.frameError == Ess::FrameError::NONE);
     assert(late.state == ActionState::SUCCEEDED && late.deadlineUs == 1000 && late.lastObservation.deliveredUs == 1200);
     auto straddle = move(1000); trigger(straddle); consume(straddle, 4);
     stopped = reply(straddle, 1);
@@ -355,7 +390,11 @@ void testFreshCompletionLimitsAndDelayedService() {
     assert(straddle.state == ActionState::FAILED && straddle.outcome == ActionOutcome::DEADLINE && straddle.uncertain);
     assert(straddle.lastObservation.step == 2 && straddle.rawMotion == 4);
     auto lateSetup = move(150); const auto stage = reply(lateSetup);
-    assert(Ess::advanceMove(lateSetup, frame(lateSetup, stage, 120), 200));
+    const auto deliveredSetup = frame(lateSetup, stage, 120);
+    assert(Ess::advanceMove(lateSetup, deliveredSetup, 200));
+    checkActionTransportEvidence(lateSetup.stagingEvidence, deliveredSetup, 0, 200);
+    assert(lateSetup.stagingEvidence.status && lateSetup.stagingEvidence.status.detail == 0 && !*lateSetup.stagingEvidence.status.msg);
+    assert(lateSetup.stagingEvidence.frameError == Ess::FrameError::NONE);
     assert(lateSetup.stagingApplied && lateSetup.execution == ActionExecution::NOT_TRANSMITTED && lateSetup.uncertain);
     noMoreWork(lateSetup);
     auto stale = move(); trigger(stale);
@@ -736,6 +775,7 @@ int main() {
     testExactStageTriggerAndCommonParity(); testAllPreparationGatesLeaveOutputUnchanged();
     testSignWordOrderAndRange(); testAdmittedPrerequisitesAreCopied(); testCancelFailureAndDeadlineAtEveryBoundary();
     testBadRepliesAndNoAutomaticReplay(); testEnvelopeCorrelationAndCopiedEvidence();
+    testBorrowedEvidenceInput();
     testFreshCompletionLimitsAndDelayedService(); testDriveFaultAndPreviousObservationRetention();
     testWriteDeadlinesRetainReadinessAndOperationBudgets();
     testConsumedReferenceUsesOperationTimeAndCoversWrites();

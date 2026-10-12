@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "MotorControlRS/profiles/ess_rs/Actions.h"
 #include "MotorControlRS/profiles/ess_rs/Registers.h"
-#include <cstring>
+#include "ActionEvidence.h"
 
 namespace MotorControlRS { namespace ESS_RS {
 namespace {
@@ -173,14 +173,7 @@ Status advanceAction(ActionContext& c, const ActionEvent& supplied, uint64_t now
         return invalid(ActionError::INVALID_EVENT, "invalid local action event envelope");
     }
     ActionEvidence evidence;
-    evidence.step = c.step; evidence.event = event.kind;
-    evidence.txAccepted = event.txAccepted; evidence.txComplete = supplied.txComplete;
-    evidence.responseConfirmed = supplied.responseConfirmed; evidence.executionUnknown = event.executionUnknown;
-    evidence.qualified = event.qualified; evidence.earliestUs = event.earliestUs; evidence.latestUs = event.latestUs;
-    evidence.deliveredUs = nowUs; evidence.transportDetail = event.transportDetail;
-    evidence.receivedLength = event.length;
-    evidence.length = event.length < ACTION_MAX_REPLY_BYTES ? event.length : ACTION_MAX_REPLY_BYTES;
-    if (evidence.length) std::memcpy(evidence.raw, event.frame, evidence.length);
+    Detail::copyActionEvidence(evidence, supplied, c.step, nowUs);
     uint16_t words[2] = {}; std::size_t count = 0;
     if (event.kind == ReadEventKind::FRAME) {
         evidence.status = c.step == 0 ?

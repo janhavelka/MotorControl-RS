@@ -1,6 +1,6 @@
 # Implementation and qualification backlog
 
-Current as of the 12 October 2026 application-session audit. This page lists remaining work;
+Current as of the 12 October 2026 evidence-copying refactor. This page lists remaining work;
 completed work and historical test dispositions live in the
 [development archive](archive/README.md) and [changelog](../CHANGELOG.md).
 The [release scope](releases/1.0.0.md) and checked
@@ -31,13 +31,18 @@ unrelated commands or fixtures.
   ownership, bounded copied observation and explicit console/output-pressure inputs.
   Independent source, lifetime, coverage and build audit found no further gap.
   [Software handoff](reports/2026-10-12_application_modules.md); hardware NOT RUN.
-- [ ] Continue prompt 07 of the [maintainability sequence](prompts/maintainability/README.md)
-  for evidence copying. Other application sessions retain their documented
-  cache/child-result dependencies; communication/persistence must migrate together.
-  Prompts 01–06 are implemented; other console-family extraction remains optional
-  and requires family-specific formatting/error characterization.
-  This sequence supersedes the earlier draft.
-  Optional host settings-validator extraction remains a separate group-policy task.
+- [x] Share mechanical transport-evidence copying across actions, position,
+  velocity and homing; preserve sequence-local validation, publication,
+  execution classification and completion policy.
+  [Software handoff](reports/2026-10-12_evidence_copying.md); hardware NOT RUN.
+
+Prompts 01–07 of the [maintainability sequence](prompts/maintainability/README.md)
+are implemented at their bounded seams; this sequence supersedes the earlier
+draft. Further console-family extraction requires family-specific formatting/error
+characterization. Other application sessions retain their documented
+cache/child-result dependencies; communication/persistence must migrate together.
+Optional host settings-validator extraction remains a separate group-policy task.
+
 - [ ] Implement the [FieldCore handoff](fieldcore_handoff.md) in a separately
   authorized FieldCore step: typed motor results, adequate frame storage,
   qualified RTU/echo handling, immutable deadlines, stop priority and retained

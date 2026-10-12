@@ -7,9 +7,11 @@ The larger changes below were **planned, not implemented at this audit**.
 [Prompt 01](2026-10-12_operation_kind.md),
 [prompt 02](2026-10-12_settings_validation.md),
 [prompt 03](2026-10-12_host_evidence.md),
-[prompt 04](2026-10-12_host_dispatch.md) and the
-[prompt 05 HOME boundary](2026-10-12_console_boundaries.md) were subsequently
-implemented on 12 October; prompts 06–07 remain pending. No new motor-path
+[prompt 04](2026-10-12_host_dispatch.md),
+[prompt 05 HOME boundary](2026-10-12_console_boundaries.md),
+[prompt 06 debug-session boundary](2026-10-12_application_modules.md) and
+[prompt 07 transport-evidence copying](2026-10-12_evidence_copying.md) were subsequently
+implemented on 12 October at their bounded seams. No new motor-path
 defect was demonstrated by this review.
 
 ## Applied small refactors

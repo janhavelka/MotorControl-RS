@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include <MotorControlRS/profiles/ess_rs/Homing.h>
+#include "ActionEvidenceChecks.h"
 #include <cassert>
 #include <cstring>
 #include <limits>
@@ -274,7 +275,15 @@ void testFailuresAndEnvelopes() {
     }
     // Lost setup ACK never stages a trigger and records possible partial application.
     e = local(c, ReadEventKind::TRANSPORT_FAILURE); e.transport.txAccepted = 10;
+    const uint8_t partialRx[] = {0x11, 0x22, 0x33};
+    e.transport.frame = partialRx; e.transport.length = sizeof(partialRx); e.transport.transportDetail = -12345;
     assert(Ess::advanceHome(c, e, 150)); assert(c.setupExecution == ActionExecution::UNKNOWN && c.uncertain); done(c);
+    checkActionTransportEvidence(c.stagingEvidence, e, 0, 150);
+    checkActionTransportEvidence(c.failureEvidence, e, 0, 150);
+    assert(c.stagingEvidence.frameError == Ess::FrameError::NONE);
+    assert(c.stagingEvidence.status.code == Err::ILLEGAL_VALUE);
+    assert(c.stagingEvidence.status.detail == static_cast<int32_t>(Ess::HomeError::TRANSPORT_FAILURE));
+    assert(std::strcmp(c.stagingEvidence.status.msg, "home transport failed") == 0);
     c = home(); consume(c); e = local(c, ReadEventKind::TRANSPORT_FAILURE);
     e.transport.txAccepted = 8; e.txComplete = true;
     assert(Ess::advanceHome(c, e, c.servicedUs + 20)); assert(c.execution == ActionExecution::UNKNOWN && c.stagingApplied); done(c);
@@ -290,8 +299,39 @@ void testFailuresAndEnvelopes() {
     assert(c.status.detail == static_cast<int32_t>(Ess::HomeError::ZERO_NOT_OBSERVED) && c.completion == ActionCompletion::NOT_OBSERVED); done(c);
     c = home(); auto corrupt = reply(c); corrupt.back() ^= 1; e = frame(c, corrupt, 120);
     assert(Ess::advanceHome(c, e, 150)); assert(c.outcome == ActionOutcome::REPLY_ERROR && c.uncertain); done(c);
+    checkActionTransportEvidence(c.stagingEvidence, e, 0, 150);
+    assert(c.stagingEvidence.status.code == Err::CRC_ERROR && c.stagingEvidence.frameError == Ess::FrameError::CRC);
+    assert(c.stagingEvidence.status.detail == static_cast<int32_t>(Ess::FrameError::CRC));
+    assert(std::strcmp(c.stagingEvidence.status.msg, "reply does not match request") == 0);
     c = home(); auto unchecked = reply(c); e = frame(c, unchecked, 120); e.responseConfirmed = false;
     assert(Ess::advanceHome(c, e, 150)); assert(c.outcome == ActionOutcome::UNCONFIRMED_RESPONSE); done(c);
+    checkActionTransportEvidence(c.stagingEvidence, e, 0, 150);
+    assert(c.stagingEvidence.status && c.stagingEvidence.frameError == Ess::FrameError::NONE);
+    assert(c.stagingEvidence.status.detail == 0 && !*c.stagingEvidence.status.msg);
+}
+void testBorrowedAndOversizedEvidence() {
+    auto c = home(); auto bytes = reply(c);
+    std::memset(c.stagingEvidence.raw, 0xA5, sizeof(c.stagingEvidence.raw));
+    std::memcpy(c.stagingEvidence.raw, bytes.data(), bytes.size());
+    auto e = frame(c, bytes, 120); e.transport.frame = c.stagingEvidence.raw;
+    e.transport.transportDetail = -12345; e.transport.executionUnknown = true;
+    assert(Ess::advanceHome(c, e, 140));
+    checkActionTransportEvidence(c.stagingEvidence, e, 0, 140);
+    assert(std::memcmp(c.stagingEvidence.raw, bytes.data(), bytes.size()) == 0);
+    assert(c.stagingEvidence.status && c.stagingEvidence.status.detail == 0);
+    assert(!*c.stagingEvidence.status.msg);
+    assert(c.stagingEvidence.frameError == Ess::FrameError::NONE);
+    assert(c.setupExecution == ActionExecution::ACKNOWLEDGED);
+    c = home(); bytes = reply(c); bytes.resize(40, 0xA5); e = frame(c, bytes, 120);
+    assert(Ess::advanceHome(c, e, 140));
+    checkActionTransportEvidence(c.stagingEvidence, e, 0, 140);
+    checkActionTransportEvidence(c.failureEvidence, e, 0, 140);
+    assert(c.stagingEvidence.status.code == Err::FRAME_ERROR);
+    assert(c.stagingEvidence.frameError == Ess::FrameError::LENGTH);
+    assert(c.stagingEvidence.status.detail == static_cast<int32_t>(Ess::FrameError::LENGTH));
+    assert(std::strcmp(c.stagingEvidence.status.msg, "reply does not match request") == 0);
+    const Saved<Ess::ActionEvidence> retained(c.failureEvidence);
+    std::memset(bytes.data(), 0xAA, bytes.size()); retained.check(c.failureEvidence);
 }
 void testReadinessAndDelayedEvidence() {
     auto c = home(); consume(c);
@@ -303,6 +343,9 @@ void testReadinessAndDelayedEvidence() {
     auto b = reply(c); e = frame(c, b, c.eligibleUs + 20);
     assert(e.transport.latestUs < c.deadlineUs);
     assert(Ess::advanceHome(c, e, 1000)); assert(c.state == ActionState::SUCCEEDED); done(c);
+    checkActionTransportEvidence(c.zeroEvidence, e, e.transport.step, 1000);
+    assert(c.zeroEvidence.status && c.zeroEvidence.status.detail == 0 && !*c.zeroEvidence.status.msg);
+    assert(c.zeroEvidence.frameError == Ess::FrameError::NONE);
     AxisReference reference; assert(!Ess::getHomeReference(c, 1000, 500, reference));
     c = home(Ess::HomingMethod::METHOD_35, 1, 600); trigger(c);
     b = reply(c, 3); e = frame(c, b, c.eligibleUs + 20);
@@ -334,4 +377,5 @@ int main() {
     testOptionalAgePolicy();
     testDescriptorsAndNoTraffic(); testPreparationAndBounds(); testExactQualificationCannotBeReused(); testExactWireAndReference();
     testCorrelatedTransitions(); testFailuresAndEnvelopes(); testReadinessAndDelayedEvidence();
+    testBorrowedAndOversizedEvidence();
 }

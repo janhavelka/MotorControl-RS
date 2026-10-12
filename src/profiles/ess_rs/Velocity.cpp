@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "MotorControlRS/profiles/ess_rs/Velocity.h"
 #include "MotorControlRS/profiles/ess_rs/Registers.h"
+#include "ActionEvidence.h"
 #include <cstring>
 #include <limits>
 #include <cmath>
@@ -255,14 +256,7 @@ Status advanceVelocity(VelocityContext& c, const ActionEvent& supplied, uint64_t
         supplied.responseConfirmed || (event.kind == ReadEventKind::DEADLINE && now < stepDeadline(c)))
         return invalid(VelocityError::INVALID_EVENT, "invalid local velocity event envelope");
     ActionEvidence evidence;
-    evidence.step = c.step; evidence.event = event.kind; evidence.txAccepted = event.txAccepted;
-    evidence.txComplete = supplied.txComplete; evidence.responseConfirmed = supplied.responseConfirmed;
-    evidence.executionUnknown = event.executionUnknown; evidence.qualified = event.qualified;
-    evidence.earliestUs = event.earliestUs; evidence.latestUs = event.latestUs;
-    evidence.deliveredUs = now; evidence.transportDetail = event.transportDetail;
-    evidence.receivedLength = event.length;
-    evidence.length = event.length < ACTION_MAX_REPLY_BYTES ? event.length : ACTION_MAX_REPLY_BYTES;
-    if (evidence.length) std::memcpy(evidence.raw, event.frame, evidence.length);
+    Detail::copyActionEvidence(evidence, supplied, c.step, now);
     uint16_t words[2] = {}; std::size_t count = 0;
     if (event.kind == ReadEventKind::FRAME) {
         if (c.phase == VelocityPhase::STAGING) evidence.status = parseWriteMultipleRegisters(event.frame, event.length,

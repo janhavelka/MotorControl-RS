@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include <MotorControlRS/profiles/ess_rs/Actions.h>
+#include "ActionEvidenceChecks.h"
 #include <cassert>
 #include <cstring>
 #include <limits>
@@ -135,6 +136,9 @@ void testObservationRetainsUnknownExecution() {
         Ess::PreparedAction work; assert(Ess::nextAction(c, 100, work));
         auto e = frame(c, work.bytes, work.length, 200); e.responseConfirmed = false;
         assert(Ess::advanceAction(c, e, 220));
+        checkActionTransportEvidence(c.writeEvidence, e, 0, 220);
+        assert(c.writeEvidence.status && c.writeEvidence.status.detail == 0 && !*c.writeEvidence.status.msg);
+        assert(c.writeEvidence.frameError == Ess::FrameError::NONE);
         assert(c.state == ActionState::ACTIVE && c.execution == ActionExecution::UNKNOWN && c.step == 1);
         const Saved<Ess::ActionEvidence> original(c.writeEvidence);
         assert(Ess::nextAction(c, c.eligibleUs, work));
@@ -222,7 +226,19 @@ void testFailuresRetainUncertaintyAndNeverReplay() {
             auto c = action(); auto e = event(c, kind);
             e.transport.txAccepted = accepted; e.txComplete = accepted == 8;
             e.transport.transportDetail = 123;
+            const uint8_t partialRx[] = {0x11, 0x22, 0x33};
+            if (accepted == 3) { e.transport.frame = partialRx; e.transport.length = sizeof(partialRx); }
             assert(Ess::advanceAction(c, e, kind == ReadEventKind::DEADLINE ? c.deadlineUs : 200));
+            checkActionTransportEvidence(c.writeEvidence, e, 0, c.servicedUs);
+            checkActionTransportEvidence(c.failureEvidence, e, 0, c.servicedUs);
+            assert(c.writeEvidence.frameError == Ess::FrameError::NONE);
+            assert(c.writeEvidence.status.code == Err::ILLEGAL_VALUE);
+            const auto reason = kind == ReadEventKind::TRANSPORT_FAILURE ? ActionError::TRANSPORT_FAILURE :
+                kind == ReadEventKind::CANCEL ? ActionError::CANCELLED : ActionError::DEADLINE_EXPIRED;
+            const char* message = kind == ReadEventKind::TRANSPORT_FAILURE ? "action transport failed" :
+                kind == ReadEventKind::CANCEL ? "action locally cancelled" : "action deadline expired";
+            assert(c.writeEvidence.status.detail == static_cast<int32_t>(reason));
+            assert(std::strcmp(c.writeEvidence.status.msg, message) == 0);
             assert(c.state == ActionState::FAILED && c.completion == ActionCompletion::NOT_OBSERVED);
             assert(c.execution == (accepted ? ActionExecution::UNKNOWN : ActionExecution::NOT_TRANSMITTED));
             assert(c.writeEvidence.txAccepted == accepted && c.failureEvidence.transportDetail == 123);
@@ -248,6 +264,14 @@ void testBadRepliesAndExceptionPreserveEvidence() {
         // command execution unknown. This is a correlated failure to consume.
         received.transport.executionUnknown = fault != 3;
         assert(Ess::advanceAction(c, received, 220));
+        checkActionTransportEvidence(c.writeEvidence, received, 0, 220);
+        checkActionTransportEvidence(c.failureEvidence, received, 0, 220);
+        const Ess::FrameError errors[] = {Ess::FrameError::CRC, Ess::FrameError::ECHO,
+            Ess::FrameError::LENGTH, Ess::FrameError::EXCEPTION};
+        assert(c.writeEvidence.frameError == errors[fault]);
+        assert(c.writeEvidence.status.code == (fault == 0 ? Err::CRC_ERROR : fault == 3 ? Err::EXCEPTION : Err::FRAME_ERROR));
+        assert(c.writeEvidence.status.detail == (fault == 3 ? 7 : static_cast<int32_t>(errors[fault])));
+        assert(std::strcmp(c.writeEvidence.status.msg, fault == 3 ? "device exception (raw code)" : "reply does not match request") == 0);
         assert(c.state == ActionState::FAILED && c.outcome == ActionOutcome::REPLY_ERROR);
         assert(c.execution == (fault == 3 ? ActionExecution::REJECTED : ActionExecution::UNKNOWN));
         assert(c.failureEvidence.receivedLength == bad.size() && c.failureEvidence.length <= Ess::ACTION_MAX_REPLY_BYTES);
@@ -259,6 +283,9 @@ void testBadRepliesAndExceptionPreserveEvidence() {
     auto acknowledged = frame(confirmed, NORMAL, sizeof(NORMAL), 200);
     acknowledged.transport.executionUnknown = true;
     assert(Ess::advanceAction(confirmed, acknowledged, 220));
+    checkActionTransportEvidence(confirmed.writeEvidence, acknowledged, 0, 220);
+    assert(confirmed.writeEvidence.status && confirmed.writeEvidence.status.detail == 0 && !*confirmed.writeEvidence.status.msg);
+    assert(confirmed.writeEvidence.frameError == Ess::FrameError::NONE);
     assert(confirmed.execution == ActionExecution::ACKNOWLEDGED && confirmed.writeEvidence.executionUnknown);
     auto c = action(); acknowledge(c); observe(c, 0x55, 0x8004);
     const auto last = c.lastObservation; auto bad = motion(0, 0); bad.back() ^= 1;
@@ -296,7 +323,11 @@ void testObservationLimitsAndLateDelivery() {
     assert(c.state == ActionState::FAILED && c.outcome == ActionOutcome::OBSERVATION_LIMIT && c.polls == 3);
     assert(c.execution == ActionExecution::ACKNOWLEDGED && c.rawMotion == 4);
     auto lateAck = action(ActionKind::STOP, 215);
-    assert(Ess::advanceAction(lateAck, frame(lateAck, NORMAL, sizeof(NORMAL), 200), 250));
+    const auto lateEvent = frame(lateAck, NORMAL, sizeof(NORMAL), 200);
+    assert(Ess::advanceAction(lateAck, lateEvent, 250));
+    checkActionTransportEvidence(lateAck.writeEvidence, lateEvent, 0, 250);
+    assert(lateAck.writeEvidence.status && lateAck.writeEvidence.status.detail == 0 && !*lateAck.writeEvidence.status.msg);
+    assert(lateAck.writeEvidence.frameError == Ess::FrameError::NONE);
     assert(lateAck.outcome == ActionOutcome::DEADLINE && lateAck.execution == ActionExecution::ACKNOWLEDGED);
     auto lateDelivery = action(ActionKind::STOP, 400); acknowledge(lateDelivery);
     auto bytes = motion(5, 8); // Stop observation does not require alarm-free readiness.
@@ -319,6 +350,28 @@ void testObservationLimitsAndLateDelivery() {
     assert(!Ess::nextAction(boundary, maximum - 1, p)); saved.check(p);
     assert(Ess::advanceAction(boundary, event(boundary, ReadEventKind::DEADLINE), maximum - 1));
     assert(boundary.execution == ActionExecution::ACKNOWLEDGED && boundary.outcome == ActionOutcome::DEADLINE);
+}
+void testBorrowedEvidenceInput() {
+    auto c = action();
+    std::memset(c.writeEvidence.raw, 0xA5, sizeof(c.writeEvidence.raw));
+    std::memcpy(c.writeEvidence.raw, NORMAL, sizeof(NORMAL));
+    auto e = frame(c, c.writeEvidence.raw, sizeof(NORMAL), 200);
+    e.transport.transportDetail = -12345;
+    e.transport.executionUnknown = true;
+    assert(Ess::advanceAction(c, e, 220));
+    checkActionTransportEvidence(c.writeEvidence, e, 0, 220);
+    assert(std::memcmp(c.writeEvidence.raw, NORMAL, sizeof(NORMAL)) == 0);
+    assert(c.writeEvidence.status && c.writeEvidence.status.detail == 0);
+    assert(!*c.writeEvidence.status.msg);
+    assert(c.writeEvidence.frameError == Ess::FrameError::NONE);
+    assert(c.execution == ActionExecution::ACKNOWLEDGED);
+    auto bytes = motion(0, 0);
+    e = frame(c, bytes.data(), bytes.size(), c.eligibleUs);
+    const auto delivered = c.eligibleUs + 20;
+    assert(Ess::advanceAction(c, e, delivered));
+    checkActionTransportEvidence(c.lastObservation, e, 1, delivered);
+    const Saved<Ess::ActionEvidence> retained(c.lastObservation);
+    std::memset(bytes.data(), 0xAA, bytes.size()); retained.check(c.lastObservation);
 }
 void testZeroOnlyDeviceClearNeedsQualifiedFreshReadback() {
     Ess::ActionContext c = action(); const Saved<Ess::ActionContext> saved(c);
@@ -367,5 +420,6 @@ int main() {
     testFailuresRetainUncertaintyAndNeverReplay(); testBadRepliesAndExceptionPreserveEvidence();
     testExceptionExecutionUsesOnlyDocumentedRejections();
     testObservationLimitsAndLateDelivery();
+    testBorrowedEvidenceInput();
     testZeroOnlyDeviceClearNeedsQualifiedFreshReadback();
 }

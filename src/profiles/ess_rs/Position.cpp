@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "MotorControlRS/profiles/ess_rs/Position.h"
 #include "MotorControlRS/profiles/ess_rs/Registers.h"
+#include "ActionEvidence.h"
 #include <cstring>
 #include <limits>
 
@@ -328,14 +329,7 @@ Status advanceMove(MoveContext& c, const ActionEvent& supplied, uint64_t nowUs) 
         supplied.responseConfirmed || (event.kind == ReadEventKind::DEADLINE && nowUs < stepDeadline(c)))
         return invalid(MoveError::INVALID_EVENT, "invalid local move event envelope");
     ActionEvidence evidence;
-    evidence.step = c.step; evidence.event = event.kind; evidence.txAccepted = event.txAccepted;
-    evidence.txComplete = supplied.txComplete; evidence.responseConfirmed = supplied.responseConfirmed;
-    evidence.executionUnknown = event.executionUnknown; evidence.qualified = event.qualified;
-    evidence.earliestUs = event.earliestUs; evidence.latestUs = event.latestUs;
-    evidence.deliveredUs = nowUs; evidence.transportDetail = event.transportDetail;
-    evidence.receivedLength = event.length;
-    evidence.length = event.length < ACTION_MAX_REPLY_BYTES ? event.length : ACTION_MAX_REPLY_BYTES;
-    if (evidence.length) std::memcpy(evidence.raw, event.frame, evidence.length);
+    Detail::copyActionEvidence(evidence, supplied, c.step, nowUs);
     const bool checking = verifying(c), setting = staging(c), triggering = c.step == c.triggerStep;
     uint16_t words[7] = {}; std::size_t count = 0;
     if (event.kind == ReadEventKind::FRAME) {

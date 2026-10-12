@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "MotorControlRS/profiles/ess_rs/Homing.h"
 #include "MotorControlRS/profiles/ess_rs/Registers.h"
-#include <cstring>
+#include "ActionEvidence.h"
 
 namespace MotorControlRS { namespace ESS_RS {
 namespace {
@@ -193,14 +193,7 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
         supplied.responseConfirmed || (event.kind == ReadEventKind::DEADLINE && nowUs < stepDeadline(c)))
         return invalid(HomeError::INVALID_EVENT, "invalid local home event envelope");
     ActionEvidence evidence;
-    evidence.step = c.step; evidence.event = event.kind; evidence.txAccepted = event.txAccepted;
-    evidence.txComplete = supplied.txComplete; evidence.responseConfirmed = supplied.responseConfirmed;
-    evidence.executionUnknown = event.executionUnknown; evidence.qualified = event.qualified;
-    evidence.earliestUs = event.earliestUs; evidence.latestUs = event.latestUs;
-    evidence.deliveredUs = nowUs; evidence.transportDetail = event.transportDetail;
-    evidence.receivedLength = event.length;
-    evidence.length = event.length < ACTION_MAX_REPLY_BYTES ? event.length : ACTION_MAX_REPLY_BYTES;
-    if (evidence.length) std::memcpy(evidence.raw, event.frame, evidence.length);
+    Detail::copyActionEvidence(evidence, supplied, c.step, nowUs);
     uint16_t words[2] = {}; std::size_t count = 0;
     if (event.kind == ReadEventKind::FRAME) {
         if (c.step == 0) evidence.status = parseWriteMultipleRegisters(event.frame, event.length, c.target.address,

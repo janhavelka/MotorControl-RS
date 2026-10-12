@@ -8,6 +8,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [Transport evidence copying](2026-10-12_evidence_copying.md) | Prompt 07 field inventory and private concrete copier for actions, position, velocity and homing; sequence-local outcomes, borrowed-frame lifetime and commissioning policies remain independent. |
 | [Application session boundary](2026-10-12_application_modules.md) | Prompt 06 session/dependency inventory, private debug compilation unit, final-storage lifetime, bounded copied observation and build/storage comparison; other sessions remain explicitly coupled. |
 | [Default position boundaries](2026-10-07_position_limits.md) | 408 motion/stop cases and admission checks support the conservative application defaults on the recorded ESS23-RS20. They are not a universal drive rating. |
 | [Rate-boundary experiment](2026-10-07_rate_boundary.md) | Four hours of accumulated active testing passed in the stated envelope; broader tests reproduced reset-like loss of volatile settings and persistent RUNNING. Their drive-side causes remain unresolved. |
@@ -15,7 +16,7 @@ No report makes its recorded bench state a fresh observation.
 | [First overnight failure](2026-10-05_overnight_hil.md) | The requested duration failed and final cleanup is unknown. A later passing subset does not change that aggregate. |
 | [Earlier firmware-health investigation](2026-10-06_firmware_health.md) | Records concrete watchdog/crash-path corrections without claiming a cause for the original no-dump stall. |
 | [Later overnight failure and USB diagnosis](2026-10-07_overnight_hil.md) | Preserves the failed endurance sessions and reproduced HWCDC lost-event stall. The shared-driver correction still needs renewed overnight qualification. |
-| [Complexity audit](2026-10-11_complexity_audit.md) | Distinguishes completed small cleanups from the seven planned [maintainability prompts](../prompts/maintainability/README.md). It adds no hardware qualification. |
+| [Complexity audit](2026-10-11_complexity_audit.md) | Records the small cleanups and the seven subsequently implemented [maintainability prompts](../prompts/maintainability/README.md), each at its bounded seam. It adds no hardware qualification. |
 | [Explicit application record kind](2026-10-12_operation_kind.md) | Prompt 01 role inventory, lifecycle coverage and storage measurements; remaining prompts and hardware qualification stay separate. |
 | [Settings admission and publication](2026-10-12_settings_validation.md) | Prompt 02 rejection/mutation baseline, five private admission stages, characterization coverage and compiler stack measurements; scheduler and hardware scope unchanged. |
 | [Pure host evidence boundary](2026-10-12_host_evidence.md) | Prompt 03 canonical helpers, read/motion validators, import identity and retained Console session ownership; optional settings extraction stays separate. |
