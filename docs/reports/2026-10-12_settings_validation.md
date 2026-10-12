@@ -126,8 +126,9 @@ Original downloaded bytes are preserved.
 ## Acceptance coverage
 
 The five existing group suites gained focused characterization assertions.
-Each new refusal case retains an active output byte-for-byte and checks exact
-error code, detail and message while later failures remain present. Those suites
+The new precedence chains retain an active output byte-for-byte and check exact
+error code, detail and message while later failures remain present. Alias
+refusals also preserve output and check their relevant rejection. Those suites
 passed against both the original static library (whose source matches the
 baseline) and the refactored implementation under C++11 with warnings enabled.
 Existing lifecycle and parity assertions were retained.
@@ -197,3 +198,48 @@ not physical memory-watermark qualification or a storage-optimization claim.
 Hardware **NOT RUN**: no image was flashed and no serial port accessed.
 Prompts 03–07, nine native-family gaps, 18 guarded paired setters, electrical
 qualification and the deferred soak remain separate work.
+
+## Fresh independent audit
+
+The completed implementation at `acbe1d8fb1f47a5872b63ae3593b3d2657770e4d`
+was audited again on 12 October after rereading the full original prompt and
+delivery rules. Three parallel reviewers independently inspected correctness and
+edge cases, acceptance assertions, and scope/simplicity/storage. The lead checked
+their findings against the actual `e68243e..acbe1d8` diff, current source,
+public contracts and production callers.
+
+No confirmed implementation defect or missing acceptance case was found.
+The five private helpers retain the original conditions, errors and order.
+Identity/alias/candidate admission and publication are unchanged; decoding,
+read windows, deadlines and scheduler bodies match the baseline. Full candidate
+and intermediate-current checks still precede mutation. Explicit OFF ordering,
+unknown codes, exact trigger/effects policies, guarded pairs, source confirmation,
+partial effects and cancellation retain their original behavior. No additional
+abstraction, source change or duplicate test was warranted.
+
+One documentation overstatement was corrected: precedence-chain refusals check
+the complete error triple, while some alias cases check only the relevant
+rejection. Both preserve output byte-for-byte. The coverage table was checked
+against actual assertions and production-generated console/Python records.
+
+Current FieldCore module/owner/backend source was rechecked read-only at the
+same `c591ecdd` revision. The deliberate integration differences above remain
+applicable. Retained baseline source, compiler stack reports, type-size assembly
+and firmware section measurements were checked; their claims remain unchanged.
+
+Fresh verification, independent of the earlier runs:
+
+- `build/settings-audit-correctness`: five current group suites PASS against
+  both a fresh current C++11 Release library and a separately compiled original
+  `e68243e` implementation. This checks the new assertions against both versions.
+- `build/settings-independent-audit`: 77/77 native/Python suites and all 15
+  quick source/package/install checks PASS.
+- `build/settings-independent-audit/arduino.log`: all four pinned Arduino
+  consumer builds PASS.
+- `build/settings-independent-idf`: 77/77 suites and all 19 pinned ESP-IDF
+  checks PASS, including S3 application, S3/S2 core and portable S2 consumers.
+- The implementation's [exact-commit CI run](https://github.com/janhavelka/MotorControl-RS/actions/runs/38227298517)
+  was independently queried: GCC, Clang, Arduino and IDF all completed
+  successfully for `acbe1d8`. The audit-record push requires its own CI check.
+
+Hardware **NOT RUN**; no firmware was flashed or serial port accessed.
