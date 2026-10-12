@@ -3,7 +3,7 @@
 Complete [03](03_host_evidence.md), then read [execution rules](README.md).
 Inspect `Console._dispatch`, `_complete`, `begin`, `wait`, pending command records,
 terminal retention and result inspection in
-[bench_probe.py](../../../scripts/bench_probe.py). Read the actual transcript
+[bench_probe.py](../../../../scripts/bench_probe.py). Read the actual transcript
 tests and recheck the current FieldCore result-delivery boundary read-only.
 
 `_dispatch` selects payload validators twice: once for arriving terminal replies

@@ -130,6 +130,7 @@ No communication-loss stop or industrial certification is claimed.
 - [Named finite test scenarios](docs/bench_scenarios.md)
 - [Quick/full verifier and CI](docs/verification.md)
 - [Current evidence and open investigations](docs/reports/README.md)
+- [Source map](docs/source_map.md) and [completed development work](docs/archive/README.md)
 
 ```sh
 python -m pip install -r scripts/requirements-verification.txt
@@ -149,7 +150,7 @@ retain their own licensing and hashes; they are excluded from core packages.
 Package name: `MotorControl-RS`. Namespace/include/CMake identity:
 `MotorControlRS`. The repository is
 [`janhavelka/MotorControl-RS`](https://github.com/janhavelka/MotorControl-RS).
-The [rename guide](docs/repository_rename.md) records the completed rename and
+The [archived rename guide](docs/archive/reports/2026-10-11_repository_rename.md) records the completed rename and
 instructions for updating older clones.
 The [FieldCore handoff](docs/fieldcore_handoff.md) describes future integration;
 FieldCore is not a library dependency.

@@ -5,7 +5,7 @@ task; the complexity audit only simplified local settings/console helpers.
 
 ## Inspect
 
-In [ProbeApp.cpp](../../../examples/probe_cli/ProbeApp.cpp), inspect `App::Record`,
+In [ProbeApp.cpp](../../../../examples/probe_cli/ProbeApp.cpp), inspect `App::Record`,
 `terminal`, all admission functions, `actionEvent`, operation advancement,
 `cancel`, `lookup`, `deliver` and result recycling. Include the session helpers
 that create/inspect records and tests that include the real application source.

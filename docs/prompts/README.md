@@ -1,22 +1,16 @@
-# Active implementation prompts
+# Implementation prompts
 
-These are executable work instructions, not implemented features. The
-[roadmap](../roadmap.md) owns delivery order and release gates; the
-[backlog](../backlog.md) owns individual gaps; the architecture/contracts own
-behavior; [reports](../reports/README.md) retain evidence. Root [AGENTS.md](../../AGENTS.md)
-remains the engineering entry point.
+There are currently no unexecuted promptsets. The completed
+[maintainability sequence](../archive/prompts/maintainability/README.md) and
+[ESS delivery sequence](../archive/prompts/ess_release/README.md) are archived
+with their original requirements and handoffs. Do not dispatch them again as
+new work.
 
-- [Maintainability sequence](maintainability/README.md): operation selection and
-  settings validation are implemented; host evidence/routing, console/application
-  boundaries and shared evidence copying remain unexecuted. The complexity audit
-  records the small changes already applied separately from these stages.
+Use the [backlog](../backlog.md) for open implementation and qualification gaps,
+the [roadmap](../roadmap.md) for release gates, and the
+[documentation index](../README.md) for current behavior. Root
+[AGENTS.md](../../AGENTS.md) remains the engineering entry point.
 
-Open a set's README, select the next numbered prompt and dispatch that prompt
-explicitly. Preparation does not execute any prompt. Do not run multiple
-numbered prompts concurrently.
-
-Completed delivery instructions and superseded drafts belong in the
-[development archive](../archive/README.md), with their handoffs and disposition.
-Move a set there when no actionable prompts remain; keep unresolved implementation
-and qualification obligations in the current backlog. Archived instructions must
-not be dispatched as a new sequence.
+A future promptset belongs here only while it contains actionable work. Archive
+it after its bounded scope is implemented and verified; record any independent
+remaining obligations in the backlog.

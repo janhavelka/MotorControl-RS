@@ -42,7 +42,7 @@ cancellation and explicit recovery. The [runner](runner.md) and
 commissioning and motion reuse that owner; no second UART engine is introduced.
 FieldCore integration remains separate work through its existing owner.
 
-The [source map](architecture_report.md) locates the implemented layers and
+The [source map](source_map.md) locates the implemented layers and
 their tests. Historical audit reports remain linked there as dated evidence.
 
 The [axis contract](axis_contract.md) defines common operations and units;
@@ -62,7 +62,7 @@ questions remain in the [implementation reference](reference/01_implementation_r
 Use `MotorControl-RS` as the package name, `MotorControlRS` as the namespace
 and CMake identity, and `MotorControlRS/MotorControlRS.h` as the entry header.
 The recommended repository/folder name is `MotorControl-RS`; a checkout rename
-does not change these identities. See [rename steps](repository_rename.md).
+does not change these identities. See [rename steps](archive/reports/2026-10-11_repository_rename.md).
 The ESS family lives under `MotorControlRS::ESS_RS`.
 Consumers must update old includes/names; no legacy alias layer is supplied.
 

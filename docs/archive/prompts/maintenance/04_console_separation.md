@@ -5,7 +5,7 @@
 > [current backlog](../../../backlog.md). The original instructions below
 > describe their historical snapshot; they do not reopen completed work.
 
-Superseded by [current prompt 05](../../../prompts/maintainability/05_console_boundaries.md).
+Superseded by [implemented prompt 05](../maintainability/05_console_boundaries.md).
 The original instructions below are retained as an unexecuted historical draft.
 
 Read [the execution rules](README.md). Inspect `ProbeConsole.cpp/.h`,

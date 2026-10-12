@@ -19,6 +19,18 @@
 
 ### Maintenance
 
+- Completed and independently audited all seven maintainability stages at their
+  specified seams. Archived the finished promptset, complexity review and
+  implementation handoffs; corrected stale pending-work claims and consolidated
+  navigation around current guides, the source map and open qualification work.
+  Preserved vendor references and all raw bench evidence.
+- Shared one private concrete transport-evidence copier across action, position,
+  velocity and homing. Full received length remains separate from the bounded
+  capture; envelope checks, parsing, publication, deadlines and outcomes remain
+  local. Commissioning policy is unchanged.
+- Extracted HOME grammar and bounded formatting into separate private units.
+  Console retains command inventory, admission, correlation and output ownership;
+  full-width evidence and formatting/backpressure behavior remain covered.
 - Extracted application debug orchestration into its own private translation
   unit with concrete console/output-pressure inputs, unchanged storage and
   noncopyable capture ownership. Added linked session tests and S2 consumption;
@@ -43,8 +55,7 @@
   facts, result retention and physical uncertainty. Added failed-preparation
   and cross-kind slot-reuse coverage, including the shared Arduino/IDF fixture.
 - Archived the completed ESS delivery sequence, superseded maintenance draft
-  and 83 historical reports with their evidence. Active prompts now contain
-  only the seven staged maintainability prompts; current reports retain
+  and 83 historical reports with their evidence. Current reports retain
   operating-limit evidence and unresolved investigations. Removed the redundant
   development-candidate page and completed backlog entries.
 - Updated documentation and operation-ledger links for the archive. Report and
@@ -59,9 +70,8 @@
   and tracking, preserving callback and delivery order.
 - Grouped identical native-fixture source declarations; compiler invocations and
   test registrations remain unchanged.
-- Audited complexity and prepared seven staged maintainability prompts for larger
-  changes. The older maintenance draft is superseded; prompts 01–02 are delivered
-  and the remaining five stages are pending.
+- Audited complexity and delivered seven staged maintainability refactors.
+  The older maintenance draft remains archived as superseded without execution.
 - Reused private RTU frame/word/CRC helpers and removed a redundant register
   decode buffer while preserving checked-parser output and validation contracts.
 - Simplified cached-health help and callback checks, removed an unused example

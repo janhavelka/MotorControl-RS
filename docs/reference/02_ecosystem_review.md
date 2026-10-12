@@ -3,7 +3,7 @@
 The sibling comparison below records the source inspected on 2 October 2026,
 before ESS implementation. Its sibling versions, aliases and design suggestions
 are historical. Current ESS behavior is in [architecture](../architecture.md),
-the [CLI contract](../cli_contract.md) and the [source map](../architecture_report.md).
+the [CLI contract](../cli_contract.md) and the [source map](../source_map.md).
 This review does not qualify sibling or ESS hardware behavior.
 
 The relevant FieldCore owner/backend/binding contracts were rechecked read-only

@@ -97,7 +97,7 @@ For future releases, create an annotated tag only after the release commit is
 pushed and all four CI jobs pass. Push the tag, then check its new CI run. A tag
 does not publish a GitHub Release; publication is a separate GitHub action.
 The active remote was verified on 11 October as `janhavelka/MotorControl-RS`;
-the [repository rename](repository_rename.md) has completed for this checkout.
+the [repository rename](archive/reports/2026-10-11_repository_rename.md) has completed for this checkout.
 
 GitHub's automatically generated source archives contain the repository,
 including separately licensed vendor references. The verifier's

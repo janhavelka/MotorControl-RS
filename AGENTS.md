@@ -35,7 +35,7 @@ implementation demonstrates concrete reuse; do not add a universal transport
 engine or a speculative common framework here. The accepted package name is
 `MotorControl-RS`; C++ namespace, include directory and CMake identity are
 `MotorControlRS`. The repository rename to `janhavelka/MotorControl-RS` is
-complete and this checkout uses that remote. See [rename steps](docs/repository_rename.md)
+complete and this checkout uses that remote. See [rename steps](docs/archive/reports/2026-10-11_repository_rename.md)
 for generated-cache handling; never delete bench evidence with build caches.
 
 ## Delivery workflow

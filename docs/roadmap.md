@@ -16,20 +16,15 @@ retain successful and failed experiments.
 | Consumers and tooling | Shared Arduino/native ESP-IDF S3 application, S2 compile-only fixtures, strict host tools, source/install packages and CI | S3 functional evidence belongs to the exact tested image, motor and fixture; S2 hardware is unqualified |
 | Documentation | Current contracts and operation coverage, source-backed FieldCore handoff, preserved manuals and bench reports | Old numbered prompts are historical delivery instructions, not current missing-feature lists |
 
-Completed maintenance is recorded in the [changelog](../CHANGELOG.md) and
-development archive. The [complexity audit](reports/2026-10-11_complexity_audit.md)
-defines seven [refactor stages](prompts/maintainability/README.md). The
-[private record-kind stage](reports/2026-10-12_operation_kind.md),
-[settings-admission stage](reports/2026-10-12_settings_validation.md),
-[pure host-evidence stage](reports/2026-10-12_host_evidence.md),
-[host reply-routing stage](reports/2026-10-12_host_dispatch.md),
-[HOME console-boundary stage](reports/2026-10-12_console_boundaries.md),
-[debug application-session stage](reports/2026-10-12_application_modules.md) and
-[transport-evidence copying stage](reports/2026-10-12_evidence_copying.md) are implemented.
-Further console-family, application
-session and host settings-validator extraction require their own dependency/policy review.
-Necessary timing, exact arithmetic and operation-specific uncertainty rules
-remain explicit. Archived delivery instructions are not pending work.
+The seven [maintainability stages](archive/prompts/maintainability/README.md)
+are complete at their bounded seams and independently audited. The
+[changelog](../CHANGELOG.md) records the delivered changes; the
+[completion audit](archive/reports/2026-10-12_maintainability_completion.md)
+and archived handoffs retain verification and remaining dependencies.
+Further console-family, application-session and host settings-validator
+extraction requires a new dependency/policy review. Necessary timing, exact
+arithmetic and operation-specific uncertainty remain explicit. Completed prompts
+do not close the native-coverage or hardware gates below.
 
 ## Current bench evidence
 
@@ -49,8 +44,8 @@ no independent shaft calibration, electrical timing or loaded-machine claim.
 
 ## Next delivery blocks
 
-1. **Maintain the tested implementation.** Apply bounded cleanup and the optional
-   maintenance prompts, preserving frames, event ordering, deadlines, retained
+1. **Maintain the tested implementation.** Scope any further refactor as new
+   work, preserving frames, event ordering, deadlines, retained
    uncertainty and command syntax. Keep current guides separate from history.
 2. **Resolve evidence-backed gaps.** Investigate exact-drive failures and source
    ambiguities before extending native access, velocity/ramp semantics, homing,

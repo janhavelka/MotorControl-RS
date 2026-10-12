@@ -5,7 +5,7 @@
 > [current backlog](../../../backlog.md). The original instructions below
 > describe their historical snapshot; they do not reopen completed work.
 
-Superseded by [current prompt 06](../../../prompts/maintainability/06_application_modules.md).
+Superseded by [implemented prompt 06](../maintainability/06_application_modules.md).
 The original instructions below are retained as an unexecuted historical draft.
 
 Read [the execution rules](README.md) and complete prompt 01 first. Inspect the

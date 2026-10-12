@@ -1,7 +1,7 @@
 # 05: separate console grammar and bounded reporting
 
 Read [execution rules](README.md). Inspect
-[ProbeConsole.cpp](../../../examples/probe_cli/ProbeConsole.cpp), its header,
+[ProbeConsole.cpp](../../../../examples/probe_cli/ProbeConsole.cpp), its header,
 `ConsoleText.cpp`, `AxisConsole.h`, host callbacks and protocol-3/parity tests.
 Inspect `check_ess_operations.py` before relocating command source. Recheck
 FieldCore CLI/presenter ownership read-only, without importing it.

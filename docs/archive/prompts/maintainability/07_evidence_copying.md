@@ -2,7 +2,7 @@
 
 Read [execution rules](README.md). Inspect the evidence-publication blocks in
 `advanceAction`, `advanceMove`, `advanceVelocity` and `advanceHome` under
-[src/profiles/ess_rs](../../../src/profiles/ess_rs/), their event/context headers
+[src/profiles/ess_rs](../../../../src/profiles/ess_rs), their event/context headers
 and their malformed-event, uncertainty, timing and cancellation tests. Inspect
 current FieldCore observation lifetime/copying read-only.
 

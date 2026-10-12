@@ -5,11 +5,11 @@
 > [current backlog](../../../backlog.md). The original instructions below
 > describe their historical snapshot; they do not reopen completed work.
 
-**Do not dispatch this draft.** The later source audit produced the current
-[maintainability sequence](../../../prompts/maintainability/README.md), with narrower stages,
+**Do not dispatch this draft.** The later source audit produced the now-completed
+[maintainability sequence](../maintainability/README.md), with narrower stages,
 additional core/host findings and explicit acceptance cases. None of this
-earlier draft was executed. It remains for provenance; use the new set once,
-not both versions of the same refactor.
+earlier draft was executed. Both sets now remain for provenance; neither is
+pending work.
 
 Prepared by the 11 October 2026 audit against `main` based on `72e0e01`, with
 the accompanying small cleanup/deadline fix. **These prompts have not been

@@ -2,7 +2,7 @@
 
 Complete [01](01_operation_kind.md) and [05](05_console_boundaries.md), then
 read [execution rules](README.md). Inspect the `*App.h` implementations included
-inside [ProbeApp.cpp](../../../examples/probe_cli/ProbeApp.cpp), `App` storage,
+inside [ProbeApp.cpp](../../../../examples/probe_cli/ProbeApp.cpp), `App` storage,
 the service loop, startup adapters and tests that include the `.cpp` directly.
 Inspect current FieldCore owner/module/runtime boundaries read-only.
 

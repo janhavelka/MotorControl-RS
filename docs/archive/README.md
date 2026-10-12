@@ -12,11 +12,11 @@ remain separately indexed.
 | Record | Disposition |
 | --- | --- |
 | [ESS delivery sequence](prompts/ess_release/README.md) | Historical implementation sequence and original acceptance requirements. Delivery of a prompt does not close its separately recorded native or hardware gaps. |
-| [Earlier maintenance draft](prompts/maintenance/README.md) | Superseded without execution by the active [maintainability sequence](../prompts/maintainability/README.md). Do not dispatch both versions. |
+| [Earlier maintenance draft](prompts/maintenance/README.md) | Superseded without execution by the completed [maintainability sequence](prompts/maintainability/README.md). Do not dispatch either set again. |
+| [Maintainability sequence](prompts/maintainability/README.md) | All seven bounded stages implemented and independently audited; [completion review](reports/2026-10-12_maintainability_completion.md). HOME and debug are the deliberately selected console/application seams. |
 
-The active maintainability prompts remain outside the archive and have not been
-executed. Original prompt wording is preserved for provenance, including
-instructions that no longer describe the current implementation.
+Original prompt wording is preserved for provenance, including instructions
+that no longer describe the current implementation.
 
 ## Evidence by subject
 
@@ -36,10 +36,20 @@ and independent-audit records.
 | Framework parity, packaging and development candidate | [Arduino/IDF audit](reports/ess_release_25_26_audit_2026-10-05.md), [verification](reports/ess_release_27_audit_2026-10-05.md), [qualification matrix](reports/ess_release_29_2026-10-05.md), [unpublished 0.6.0 candidate](reports/ess_release_30_2026-10-05.md) | [Verification](../verification.md), [1.0.0 scope](../releases/1.0.0.md) |
 | Maintenance and consolidated history | [FieldCore/source audit](reports/2026-10-11_fieldcore_audit.md), [cleanup audit](reports/2026-10-11_cleanup_audit.md), [early verification history](reports/early_verification_history.md), [bench session ledger](reports/hardware_bench_history_2026-10-11.md) | [FieldCore handoff](../fieldcore_handoff.md), [bench guide](../hardware_bench.md) |
 
+## Completed maintainability work
+
+The [sequence index](prompts/maintainability/README.md) links all seven handoffs,
+their baseline inventories, independent audits, tests and measured storage.
+The [complexity audit](reports/2026-10-11_complexity_audit.md) records the starting
+snapshot. The [repository rename record](reports/2026-10-11_repository_rename.md)
+preserves the completed migration and useful cache-preserving steps for older
+clones. Current source navigation lives in the [source map](../source_map.md).
+
 ## Relocation and preservation
 
 - Historical prompt directories moved from `docs/prompts/ess_release/` and
   `docs/prompts/maintenance/` to `docs/archive/prompts/` under the same names.
+  The completed `maintainability/` sequence now follows the same rule.
 - Archived files moved from `docs/reports/` to `docs/archive/reports/`, preserving
   basenames and the `evidence/` subdirectory. The reports listed in the
   [current evidence index](../reports/README.md) and their artifacts stay under
@@ -52,7 +62,7 @@ and independent-audit records.
   to the relocated evidence. Its implementation and qualification dispositions
   remain separate. Archiving an evidence file does not remove its obligation.
   Numeric `gaps[].owner` values such as `09/11` identify the archived ESS
-  delivery prompts, not the active maintainability prompts.
+  delivery prompts, not the completed maintainability sequence.
 
 Original vendor references and their manifests remain in their existing
 locations. The unpublished candidate artifacts are historical snapshots, not

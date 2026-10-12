@@ -1,7 +1,7 @@
 # 03: separate pure host evidence validation
 
 Read [execution and delivery rules](README.md). Inspect
-[bench_probe.py](../../../scripts/bench_probe.py), its four campaign/session
+[bench_probe.py](../../../../scripts/bench_probe.py), its four campaign/session
 callers, native-console parity fixtures and all import paths in Python tests.
 Inspect FieldCore result/evidence contracts read-only; retain independent host
 checking of motor firmware evidence rather than adopting measurement results.

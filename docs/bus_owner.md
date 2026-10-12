@@ -14,7 +14,7 @@ the installed library. It owns bounded admission, one active Runner transaction
 and retained completions in one cooperative context. Construction initializes
 caller-supplied slots without I/O. Logical producers use that context; calls
 are not thread-safe. Arduino and native ESP-IDF use this same owner through the
-shared application; see the [source map](architecture_report.md).
+shared application; see the [source map](source_map.md).
 
 ## Admission and lifetime
 

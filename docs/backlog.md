@@ -1,6 +1,6 @@
 # Implementation and qualification backlog
 
-Current as of the 12 October 2026 evidence-copying refactor. This page lists remaining work;
+Current as of the 12 October 2026 promptset completion audit. This page lists remaining work;
 completed work and historical test dispositions live in the
 [development archive](archive/README.md) and [changelog](../CHANGELOG.md).
 The [release scope](releases/1.0.0.md) and checked
@@ -10,39 +10,14 @@ unrelated commands or fixtures.
 
 ## Maintenance and FieldCore integration
 
-- [x] Replace private application record selectors with one explicit kind;
-  retain independent lifecycle/ownership facts and concrete contexts.
-  [Software handoff](reports/2026-10-12_operation_kind.md); hardware NOT RUN.
-- [x] Expose private settings-admission stages while preserving rejection order,
-  complete candidate validation, publication and sequencing.
-  [Software handoff](reports/2026-10-12_settings_validation.md); hardware NOT RUN.
-- [x] Extract pure host read and action/move/velocity/home validators with one
-  shared error/helper identity and explicit imports; retain Console session ownership.
-  [Software handoff](reports/2026-10-12_host_evidence.md); hardware NOT RUN.
-- [x] Share closed live/retained host payload validation, including conflicting
-  kind rejection and original-request correlation.
-  [Software handoff](reports/2026-10-12_host_dispatch.md); hardware NOT RUN.
-- [x] Extract pure HOME grammar and bounded formatting separately, preserving
-  the single command catalogue, admission order and Console delivery ownership.
-  Independently audited with full retained-frame-width output comparisons and
-  corrected formatting-policy documentation.
-  [Software handoff](reports/2026-10-12_console_boundaries.md); hardware NOT RUN.
-- [x] Extract the debug session into a private compilation unit with final-storage
-  ownership, bounded copied observation and explicit console/output-pressure inputs.
-  Independent source, lifetime, coverage and build audit found no further gap.
-  [Software handoff](reports/2026-10-12_application_modules.md); hardware NOT RUN.
-- [x] Share mechanical transport-evidence copying across actions, position,
-  velocity and homing; preserve sequence-local validation, publication,
-  execution classification and completion policy.
-  Independent source, coverage, lifetime and package audit found no further gap.
-  [Software handoff](reports/2026-10-12_evidence_copying.md); hardware NOT RUN.
-
-Prompts 01–07 of the [maintainability sequence](prompts/maintainability/README.md)
-are implemented at their bounded seams; this sequence supersedes the earlier
-draft. Further console-family extraction requires family-specific formatting/error
-characterization. Other application sessions retain their documented
+The seven [maintainability stages](archive/prompts/maintainability/README.md)
+are complete and independently audited; their handoffs are archived. Completion
+covers the specified bounded seams, including HOME console parsing/reporting and
+the debug application session. Further console-family extraction requires its
+own formatting/error characterization. Other application sessions retain their
 cache/child-result dependencies; communication/persistence must migrate together.
-Optional host settings-validator extraction remains a separate group-policy task.
+Host settings-validator extraction remains optional work requiring group-policy
+review. These are future refactors, not unfinished prompts from the completed set.
 
 - [ ] Implement the [FieldCore handoff](fieldcore_handoff.md) in a separately
   authorized FieldCore step: typed motor results, adequate frame storage,

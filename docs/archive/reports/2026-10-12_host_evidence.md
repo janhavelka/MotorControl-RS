@@ -7,7 +7,7 @@ retry/cleanup policy and hardware qualification are unchanged.
 
 ## Inventory and delivered boundaries
 
-The canonical private module [scripts/_bench_evidence.py](../../scripts/_bench_evidence.py)
+The canonical private module [scripts/_bench_evidence.py](../../../scripts/_bench_evidence.py)
 contains shared error/wire/check helpers and probe/capture/typed-read/state/cache
 and action/move/velocity/home validators. It imports only `re`, `math`,
 `Fraction` and annotations, and consumes supplied evidence

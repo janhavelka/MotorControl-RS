@@ -1,7 +1,7 @@
 # 02: expose settings admission and publication stages
 
 Read [execution and delivery rules](README.md). Inspect
-[DriverSettings.cpp](../../../src/profiles/ess_rs/DriverSettings.cpp), its public
+[DriverSettings.cpp](../../../../src/profiles/ess_rs/DriverSettings.cpp), its public
 context/request contracts, group-specific codecs and all callers/tests. Recheck
 FieldCore's module/owner boundary read-only; no FieldCore type belongs here.
 

@@ -45,11 +45,11 @@ serial start, and unwired inputs cannot qualify switch-dependent homing.
 
 ## Architecture and integration
 
-- [Architecture](architecture.md) and [source map](architecture_report.md): core/application/platform boundaries.
+- [Architecture](architecture.md) and [source map](source_map.md): core/application/platform boundaries.
 - [Bus owner](bus_owner.md) and [RTU runner](runner.md): scheduling, checked transport, timing and retained results.
 - Contracts: [axis](axis_contract.md), [profile](profile_contract.md), [CLI](cli_contract.md), [discovery](discovery_contract.md).
 - [FieldCore handoff](fieldcore_handoff.md): a proposed future integration with its existing owner; no FieldCore motor device is implemented here.
-- [Repository identity and rename](repository_rename.md): package name, namespace and active remote.
+- [Repository rename record](archive/reports/2026-10-11_repository_rename.md): completed migration and cache-preserving instructions for older clones.
 
 Applications own UART, DE, clocks, scheduling, retries and storage. The core
 prepares bounded requests and consumes supplied events; it performs no I/O.
@@ -68,15 +68,25 @@ rating or a guarantee of absolute reliability.
 - [Roadmap](roadmap.md) and [backlog](backlog.md): implementation and qualification gaps.
 - [Current evidence and open investigations](reports/README.md): operating limits,
   unresolved failures and their retained artifacts.
-- [Code complexity audit](reports/2026-10-11_complexity_audit.md) and
-  [current refactor prompts](prompts/maintainability/README.md): small applied
-  simplifications and staged larger changes with behavior-preservation checks.
+- [Maintainability completion audit](archive/reports/2026-10-12_maintainability_completion.md): all seven bounded stages verified; original prompts and handoffs are archived.
 
 Arduino and native-IDF S3 have recorded functional evidence. S2 consumption is
 compile-only. Electrical timing, calibrated shaft measurements, loaded mechanics
 and external switch/load behavior remain separate qualification work.
 
 ## Sources and development history
+
+Current usage guides and architecture/contracts live at the documentation root.
+The subdirectories have distinct purposes:
+
+| Directory | Contents |
+| --- | --- |
+| [reference](reference/00_document_inventory.md) | Reviewed source facts, register/operation ledgers and download manifests |
+| [vendor](vendor/), [standards](standards/), [pdf-extracted-md](pdf-extracted-md/README.md) | Original reference files and searchable aids; retained unchanged |
+| [reports](reports/README.md) | Evidence supporting current limits and unresolved investigations |
+| [releases](releases/1.0.0.md) | Maintained release scope and qualification limits |
+| [archive](archive/README.md) | Finished instructions, dated implementation/audit handoffs and superseded plans |
+| [prompts](prompts/README.md) | Status of actionable promptsets; currently none |
 
 - [Document inventory](reference/00_document_inventory.md), [implementation reference](reference/01_implementation_reference.md) and [source manifest](reference/sources.json).
 - [Register catalogue](reference/05_ess_register_catalog.md), [encoder/units](reference/06_encoder_units.md) and [timing audit](reference/09_timing_and_gap_audit.md).
@@ -86,7 +96,8 @@ and external switch/load behavior remain separate qualification work.
 - [Development archive](archive/README.md): completed prompts, superseded drafts,
   implementation/audit reports, candidate artifacts and the historical bench ledger.
 
-Only unexecuted work remains in [active prompts](prompts/README.md). Archived
-reports preserve the versions, failed attempts and evidence from their dates;
+There are no active promptsets; [prompt status](prompts/README.md) points to the
+completed sequences. Archived reports preserve the versions, failed attempts
+and evidence from their dates;
 their navigation links follow the archive locations. Earlier version numbers
 were development checkpoints, not published releases.

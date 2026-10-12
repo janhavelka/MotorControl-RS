@@ -1,18 +1,22 @@
-# Maintainability refactor sequence
+# Completed maintainability refactor sequence
+
+Archived after the final completion audit. There are no pending prompts in this
+set; the original execution instructions below are retained as history.
 
 Prepared by the [complexity audit](../../reports/2026-10-11_complexity_audit.md)
 against `9dc3c1c` and the accompanying small refactors on 11 October 2026.
 **Prompts 01–07 have been implemented at their bounded seams.** These are structural
 improvements to working code, not new motor features or hardware qualification.
 
-This set supersedes the earlier [maintenance draft](../../archive/prompts/maintenance/README.md).
+This set supersedes the earlier [maintenance draft](../maintenance/README.md).
 That draft remains historical; do not execute both versions of the same work.
-Read root [AGENTS.md](../../../AGENTS.md), current source and affected tests
+Read root [AGENTS.md](../../../../AGENTS.md), current source and affected tests
 before each prompt. Symbols below are navigation aids; line numbers and file
 sizes in the audit describe the inspected snapshot.
 
-Execute one prompt at a time in this order. Each prompt may deliver several
-small commits; finish and verify one usable boundary before starting another.
+Do not execute this set again. The [completion audit](../../reports/2026-10-12_maintainability_completion.md)
+records the final review. The original requirements and execution rules below
+remain historical; current open work is in the [backlog](../../../backlog.md).
 
 | Prompt | Result | Dependency | Status |
 | --- | --- | --- | --- |

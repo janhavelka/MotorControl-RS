@@ -5,8 +5,8 @@
 > [current backlog](../../../backlog.md). The original instructions below
 > describe their historical snapshot; they do not reopen completed work.
 
-Superseded by [current prompt 03](../../../prompts/maintainability/03_host_evidence.md) and
-[prompt 04](../../../prompts/maintainability/04_host_dispatch.md). The original instructions
+Superseded by [implemented prompt 03](../maintainability/03_host_evidence.md) and
+[prompt 04](../maintainability/04_host_dispatch.md). The original instructions
 below are retained as an unexecuted historical draft.
 
 Read [the execution rules](README.md). Inspect `scripts/bench_probe.py`, its
