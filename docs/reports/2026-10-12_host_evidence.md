@@ -5,11 +5,12 @@ from `24a3ace` on the existing `main` branch. This is a host-code boundary
 refactor; firmware, installed core APIs, console protocol 3, command arguments,
 retry/cleanup policy and hardware qualification are unchanged.
 
-## Inventory and first delivered boundary
+## Inventory and delivered boundaries
 
 The canonical private module [scripts/_bench_evidence.py](../../scripts/_bench_evidence.py)
 contains shared error/wire/check helpers and probe/capture/typed-read/state/cache
-validators. It imports only the standard library and consumes supplied evidence
+and action/move/velocity/home validators. It imports only `re`, `math`,
+`Fraction` and annotations, and consumes supplied evidence
 and timestamps. It does not import `Console` or `bench_probe`, own a port, read a
 clock, retain session state or send commands.
 
@@ -25,6 +26,12 @@ clock, retain session state or send commands.
 | `check_typed_read` | Shared checks, constants, wire status, `check_state_values` |
 | `check_state_values`, `check_state_block` | Concrete decoded-block checks; explicit configuration/provenance inputs |
 | `check_cached_state` | Counts and state-block checks; supplied cache snapshot, selected binding, invalidation watermark and age |
+| `check_action` | Shared checks, `ACTION_KINDS`, `re`, CRC; action-specific acknowledgement/completion/uncertainty policies |
+| `check_move` | Shared checks, age policy, `move_arguments`, `Fraction`, `math`, `re`, CRC; exact preparation, staging/trigger and endpoint evidence |
+| `check_velocity` | Shared checks, `velocity_arguments`, `Fraction`, `math`, `re`, CRC; bounded velocity and separately observed stop evidence |
+| `check_home` | Shared checks, age policy, `home_arguments`, `HOME_EVIDENCE_COLUMNS`, `re`, CRC; exact homing qualification and transition/reference evidence |
+| `home_arguments`, `move_arguments`, `velocity_arguments` | Original pure grammar and exact-number parsers; still re-exported through `bench_probe` for Console/CLI callers |
+| `ACTION_KINDS`, `HOME_EVIDENCE_COLUMNS` | Single canonical motion-kind/schema tables; original exports and values retained |
 
 The corresponding `Console._operation_id` and `Console._check_*` names are direct
 `staticmethod` aliases. There is one implementation per check. Existing imports
@@ -59,9 +66,12 @@ Recovery/axis/use-address/wiring/admission helpers and load checks also stay the
 they are outside the extracted evidence families. Pure settings validation stays
 in `Console` for a separate optional group-policy extraction.
 
-The next checked chunk extracts action/move/velocity/home validators, their
-canonical argument parsers and required schema constants into the same private
-module. Prompt 03 is not complete at this first boundary.
+Delivery used two checked chunks: shared/read evidence first, then the four
+motion families with their parser/schema dependencies. Settings extraction is
+optional in prompt 03 and deliberately remains separate: `_check_driver`,
+`driver_arguments`, `segment_arguments`, `tuning_arguments` and all drive/I/O/
+segment/control/tuning field/register/window/range tables retain their original
+group masks, unknown-value handling and settlement policies in `bench_probe`.
 
 ## FieldCore boundary
 
@@ -94,3 +104,47 @@ Every pushed chunk requires GCC, Clang, Arduino and IDF CI on its exact commit;
 the delivery handoff identifies those runs. Python-only extraction changes no
 firmware storage layout, so the earlier application storage measurements remain
 unchanged. Hardware **NOT RUN**; no image was flashed or serial port opened.
+
+## Motion-family verification and review
+
+The first chunk `a5879013d2866739a5d7bb03bfab4b65dd2f1c60` passed
+[all four exact-commit CI jobs](https://github.com/janhavelka/MotorControl-RS/actions/runs/38230939839)
+before motion extraction began. The first-family independent behavioral audit
+also compared six valid fixtures and 5,950 malformed variants with the baseline:
+outcomes, messages, exception causes and unchanged input records matched.
+
+The motion chunk preserves the original bodies and parser grammar. Existing
+`Console` aliases and the shared module use one implementation; no wrapper
+hierarchy, event dispatch engine or session-state dictionary was introduced.
+Independent AST review of the entire extraction found 23 moved definitions
+equivalent after naming/rebinding/docstring normalization, four identical
+constant tables, and every remaining Console/top-level function body unchanged.
+The existing direct CLI help output remains identical.
+
+After motion extraction, `bench_probe_test.py` still passes all 246 tests;
+motion campaign tests pass all 37 and scenarios all 36. All seven actual native-
+console/Python parity suites passed against the production console fixture.
+The existing identity test now covers every moved validator/parser/table; the
+isolated no-I/O test validates supplied action/move/velocity/home and typed-state
+evidence while forbidding session/serial imports and file/clock calls.
+
+The independent motion differential also compared nine valid action/move/
+velocity/home fixtures and 10,480 malformed variants against the original
+implementation. Outcomes, exception type/message/cause and input preservation
+matched. A separate final reviewer inspected the actual source/diff and callers,
+reran bench/motion/scenario/parity cases and found no implementation gap.
+
+Final fresh quick verification in `build/host-evidence-final` passed 77/77
+suites and all 15 source/package/install checks. After grouping the compatibility
+aliases, all 14 affected Python suites were rerun and passed, including all seven
+console parity suites (`final-python-tests.log`). Full local native-IDF verification
+in `build/host-evidence-idf` passed 77/77 suites and all 19 checks with pinned
+ESP-IDF 5.5.5: S3 application, exported-core S3/S2 and portable-owner S2 consumers.
+Firmware source and registration did not change, so no additional local Arduino
+build is required for this Python-only chunk; every exact-commit CI run still
+builds all four Arduino environments and native-IDF consumers.
+
+Generated operation/reference/metadata checks, test registration and source/core
+package boundaries are unchanged. Final delivery requires all four CI jobs on
+the motion chunk's exact pushed commit; the final handoff links that run.
+No hardware test or new physical claim is part of this host-only refactor.

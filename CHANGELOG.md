@@ -19,6 +19,10 @@
   state/cache validators into a private pure module, retaining existing imports
   and Console aliases. Corrected file-spec test loaders and added error-identity,
   no-I/O import and wire-precedence coverage; session ownership is unchanged.
+- Extracted host action/move/velocity/home checks and their canonical parser/schema
+  dependencies into the same pure module, preserving exception messages,
+  validation order, exact arithmetic and public script arguments. Settings and
+  session validators retain their existing boundaries.
 - Extracted five private ESS settings-admission validators, preserving first-error
   precedence, full-candidate checks, in-place publication and write/readback order.
   Added baseline-tested precedence, unchanged-output, alias and I/O-order cases;

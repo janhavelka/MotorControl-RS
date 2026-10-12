@@ -80,6 +80,13 @@ source is changed or qualified by this repository's tests.
 
 ## Tests, packaging and evidence
 
+The Python host [bench_probe.py](../scripts/bench_probe.py) owns serial sessions,
+framing, correlation and lifecycle policy. Its private
+[_bench_evidence.py](../scripts/_bench_evidence.py) supplies pure read/motion
+evidence checks and shared helpers, exposed through the existing host imports
+and Console aliases. Settings and host/commissioning/discovery/debug/profile
+checks retain their original session/module boundaries.
+
 [Native tests](../test/) cover codecs, arithmetic, sequence failures, settings,
 owner scheduling, transport timing, SDK fakes, console/API parity and Python
 campaign behavior. [Verification](verification.md) defines quick/full checks,

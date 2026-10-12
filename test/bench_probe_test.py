@@ -35,11 +35,14 @@ class EvidenceImports(unittest.TestCase):
         for module in (bench, imported, alias, bench_motion, bench_repeat, bench_session, bench_scenarios.probe):
             self.assertIs(module.BenchError, evidence.BenchError)
         for name in ("wire_crc", "check_counts", "unique_object", "invalid_constant",
-                     "evidence_age_valid", "evidence_age_deadline", "_reply_status"):
+                     "evidence_age_valid", "evidence_age_deadline", "_reply_status",
+                     "home_arguments", "move_arguments", "velocity_arguments",
+                     "ACTION_KINDS", "HOME_EVIDENCE_COLUMNS", "HOST_BAUDS", "TYPED_WINDOWS"):
             self.assertIs(getattr(bench, name), getattr(evidence, name))
             self.assertIs(getattr(imported, name), getattr(evidence, name))
         for name in ("operation_id", "check_probe", "check_read_evidence", "check_capture_read",
-                     "check_typed_read", "check_state_values", "check_state_block", "check_cached_state"):
+                     "check_typed_read", "check_state_values", "check_state_block", "check_cached_state",
+                     "check_action", "check_move", "check_velocity", "check_home"):
             self.assertIs(getattr(bench.Console, "_" + name), getattr(evidence, name))
             self.assertIs(getattr(imported.Console, "_" + name), getattr(evidence, name))
         with self.assertRaises(imported.BenchError):
@@ -67,11 +70,19 @@ import _bench_evidence as evidence
 assert not hasattr(evidence, "Console")
 assert evidence.wire_crc(bytes.fromhex("01030200017984")) == 0
 evidence.check_counts({"count": 1}, ("count",), "fixture")
-evidence.check_typed_read(json.loads(sys.argv[2]), "state", 1)
+fixtures = json.loads(sys.argv[2])
+evidence.check_typed_read(fixtures["state"], "state", 1)
+evidence.check_action(fixtures["action"], "enable", 1, None)
+evidence.check_move(fixtures["move"], 1, tuple(fixtures["move_args"]))
+evidence.check_velocity(fixtures["velocity"], 1, tuple(fixtures["velocity_args"]))
+evidence.check_home(fixtures["home"], 1, tuple(fixtures["home_args"]))
 assert "bench_probe" not in sys.modules and "serial" not in sys.modules
 '''
+        fixtures = dict(state=typed_terminal(2, "state"), action=action_terminal(2, "enable"),
+                        move=move_terminal(2), velocity=velocity_terminal(2), home=home_terminal(2),
+                        move_args=Framing.MOVE_ARGS, velocity_args=Framing.VELOCITY_ARGS, home_args=Framing.HOME_ARGS)
         result = subprocess.run([sys.executable, "-I", "-B", "-c", code, str(ROOT / "scripts"),
-                                 json.dumps(typed_terminal(2, "state"))],
+                                 json.dumps(fixtures)],
                                 capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
 

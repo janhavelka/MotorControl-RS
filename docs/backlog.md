@@ -1,6 +1,6 @@
 # Implementation and qualification backlog
 
-Current as of the 12 October 2026 host-evidence first boundary. This page lists remaining work;
+Current as of the 12 October 2026 host-evidence refactor. This page lists remaining work;
 completed work and historical test dispositions live in the
 [development archive](archive/README.md) and [changelog](../CHANGELOG.md).
 The [release scope](releases/1.0.0.md) and checked
@@ -16,12 +16,14 @@ unrelated commands or fixtures.
 - [x] Expose private settings-admission stages while preserving rejection order,
   complete candidate validation, publication and sequencing.
   [Software handoff](reports/2026-10-12_settings_validation.md); hardware NOT RUN.
-- [ ] Continue prompts 03–07 of the [maintainability sequence](prompts/maintainability/README.md)
+- [x] Extract pure host read and action/move/velocity/home validators with one
+  shared error/helper identity and explicit imports; retain Console session ownership.
+  [Software handoff](reports/2026-10-12_host_evidence.md); hardware NOT RUN.
+- [ ] Continue prompts 04–07 of the [maintainability sequence](prompts/maintainability/README.md)
   in small reviewed blocks:
-  pure host evidence and routing, console/application boundaries and evidence
-  copying. Prompts 01–02 are implemented; this sequence supersedes the earlier draft.
-  Prompt 03's [shared/read evidence boundary](reports/2026-10-12_host_evidence.md)
-  is implemented; action/move/velocity/home extraction remains due. Hardware NOT RUN.
+  host routing, console/application boundaries and evidence copying.
+  Prompts 01–03 are implemented; this sequence supersedes the earlier draft.
+  Optional host settings-validator extraction remains a separate group-policy task.
 - [ ] Implement the [FieldCore handoff](fieldcore_handoff.md) in a separately
   authorized FieldCore step: typed motor results, adequate frame storage,
   qualified RTU/echo handling, immutable deadlines, stop priority and retained

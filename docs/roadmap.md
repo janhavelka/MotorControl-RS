@@ -20,10 +20,10 @@ Completed maintenance is recorded in the [changelog](../CHANGELOG.md) and
 development archive. The [complexity audit](reports/2026-10-11_complexity_audit.md)
 defines seven [refactor stages](prompts/maintainability/README.md). The
 [private record-kind stage](reports/2026-10-12_operation_kind.md) and
-[settings-admission stage](reports/2026-10-12_settings_validation.md) are implemented;
-the remaining five stages are pending.
-Prompt 03's [pure read-evidence boundary](reports/2026-10-12_host_evidence.md) is
-delivered first; its motion-validator chunk remains in progress.
+[settings-admission stage](reports/2026-10-12_settings_validation.md) and
+[pure host-evidence stage](reports/2026-10-12_host_evidence.md) are implemented;
+the remaining four stages are pending. Optional host settings-validator extraction
+still requires a separate group-policy review.
 Necessary timing, exact arithmetic and operation-specific uncertainty rules
 remain explicit. Archived delivery instructions are not pending work.
 

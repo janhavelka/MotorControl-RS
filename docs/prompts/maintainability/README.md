@@ -2,7 +2,7 @@
 
 Prepared by the [complexity audit](../../reports/2026-10-11_complexity_audit.md)
 against `9dc3c1c` and the accompanying small refactors on 11 October 2026.
-**Prompts 01–02 are implemented; prompt 03 is in progress; prompts 04–07 remain unexecuted.** These are structural
+**Prompts 01–03 have been implemented; prompts 04–07 remain unexecuted.** These are structural
 improvements to working code, not new motor features or hardware qualification.
 
 This set supersedes the earlier [maintenance draft](../../archive/prompts/maintenance/README.md).
@@ -18,7 +18,7 @@ small commits; finish and verify one usable boundary before starting another.
 | --- | --- | --- | --- |
 | [01: operation kind](01_operation_kind.md) | One unambiguous application record discriminator | Current baseline | IMPLEMENTED — [handoff](../../reports/2026-10-12_operation_kind.md) |
 | [02: settings validation](02_settings_validation.md) | Visible admission stages and group-specific settings policies | 01 delivered; no shared code dependency | IMPLEMENTED — [handoff](../../reports/2026-10-12_settings_validation.md) |
-| [03: host evidence](03_host_evidence.md) | Pure validators separated from serial/session ownership | 02 delivered; no shared code dependency | IN PROGRESS — [first boundary](../../reports/2026-10-12_host_evidence.md) |
+| [03: host evidence](03_host_evidence.md) | Pure validators separated from serial/session ownership | 02 delivered; no shared code dependency | IMPLEMENTED — [handoff](../../reports/2026-10-12_host_evidence.md) |
 | [04: host dispatch](04_host_dispatch.md) | One reviewed live/retained payload routing path | 03 | NOT STARTED |
 | [05: console boundaries](05_console_boundaries.md) | Parsing/reporting boundaries with one command inventory | 01; keep preceding host changes stable | NOT STARTED |
 | [06: application modules](06_application_modules.md) | Explicit private session dependencies and ordinary translation units | 01 and 05 | NOT STARTED |
