@@ -4,9 +4,12 @@ Baseline: `9dc3c1cf21239ce3d258b03e3547dcbb837299a8`, clean and synchronized
 with `origin/main`. This audit follows the [stale-code cleanup](../archive/reports/2026-10-11_cleanup_audit.md)
 and examines accidental complexity, change risk and useful refactoring seams.
 The larger changes below were **planned, not implemented at this audit**.
-[Prompt 01](2026-10-12_operation_kind.md) and
-[prompt 02](2026-10-12_settings_validation.md) were subsequently implemented on
-12 October; the other stages remain pending. No new motor-path
+[Prompt 01](2026-10-12_operation_kind.md),
+[prompt 02](2026-10-12_settings_validation.md),
+[prompt 03](2026-10-12_host_evidence.md),
+[prompt 04](2026-10-12_host_dispatch.md) and the
+[prompt 05 HOME boundary](2026-10-12_console_boundaries.md) were subsequently
+implemented on 12 October; prompts 06–07 remain pending. No new motor-path
 defect was demonstrated by this review.
 
 ## Applied small refactors

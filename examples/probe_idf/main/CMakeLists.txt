@@ -4,6 +4,8 @@ idf_component_register(
         "${EXAMPLES}/probe_cli/Esp32UsbConsole.cpp"
         "${EXAMPLES}/probe_cli/ProbeApp.cpp"
         "${EXAMPLES}/probe_cli/ProbeConsole.cpp"
+        "${EXAMPLES}/probe_cli/HomeConsoleParser.cpp"
+        "${EXAMPLES}/probe_cli/HomeConsoleFormat.cpp"
         "${EXAMPLES}/probe_cli/ConsoleText.cpp"
         "${EXAMPLES}/probe_cli/Esp32Load.cpp"
         "${EXAMPLES}/common/RtuRunner.cpp"

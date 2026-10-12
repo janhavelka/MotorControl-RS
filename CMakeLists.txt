@@ -88,6 +88,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         foreach(suite human_console probe_console host_console communication_console
                       discovery_console persistence_console)
             target_sources(${suite}_test PRIVATE examples/probe_cli/ProbeConsole.cpp
+                examples/probe_cli/HomeConsoleParser.cpp examples/probe_cli/HomeConsoleFormat.cpp
                 examples/probe_cli/ConsoleText.cpp examples/common/RtuRunner.cpp)
         endforeach()
         target_sources(console_text_test PRIVATE examples/probe_cli/ConsoleText.cpp)
@@ -100,6 +101,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         endforeach()
         foreach(suite discovery_app persistence_app communication_app)
             target_sources(${suite}_test PRIVATE examples/probe_cli/ProbeConsole.cpp
+                examples/probe_cli/HomeConsoleParser.cpp examples/probe_cli/HomeConsoleFormat.cpp
                 examples/probe_cli/ConsoleText.cpp examples/common/RtuBusOwner.cpp
                 examples/common/EssRtuValidator.cpp)
         endforeach()
@@ -116,11 +118,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                       motion_profile_app velocity_app driver_app control_app
                       host_app tuning_app io_app home_app)
             target_sources(${suite}_test PRIVATE examples/probe_cli/ProbeConsole.cpp
+                examples/probe_cli/HomeConsoleParser.cpp examples/probe_cli/HomeConsoleFormat.cpp
                 examples/probe_cli/ConsoleText.cpp examples/common/RtuBusOwner.cpp
                 examples/common/EssRtuValidator.cpp)
         endforeach()
         add_executable(probe_app_load_test test/probe_app_test.cpp
             examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp examples/probe_cli/Esp32Load.cpp
+            examples/probe_cli/HomeConsoleParser.cpp examples/probe_cli/HomeConsoleFormat.cpp
             examples/common/RtuRunner.cpp examples/common/RtuBusOwner.cpp
             examples/common/EssRtuValidator.cpp examples/common/Esp32S3Uart.cpp
             test/fakes/esp32_uart/FakeEsp.cpp)
@@ -138,6 +142,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         add_test(NAME probe_app_load COMMAND probe_app_load_test)
         add_executable(idf_app_test test/idf_app_test.cpp
             examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp examples/probe_cli/Esp32Load.cpp
+            examples/probe_cli/HomeConsoleParser.cpp examples/probe_cli/HomeConsoleFormat.cpp
             examples/common/RtuRunner.cpp examples/common/RtuBusOwner.cpp
             examples/common/EssRtuValidator.cpp examples/common/Esp32S3Uart.cpp
             test/fakes/esp32_uart/FakeEsp.cpp test/fakes/esp32_uart/FakeUsb.cpp)
@@ -156,6 +161,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         foreach(suite move_app simple_motion_app control_app)
             add_executable(idf_${suite}_test test/${suite}_test.cpp
                 examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
+                examples/probe_cli/HomeConsoleParser.cpp examples/probe_cli/HomeConsoleFormat.cpp
                 examples/common/RtuRunner.cpp examples/common/RtuBusOwner.cpp
                 examples/common/EssRtuValidator.cpp examples/common/Esp32S3Uart.cpp
                 test/fakes/esp32_uart/FakeEsp.cpp test/fakes/esp32_uart/FakeUsb.cpp)

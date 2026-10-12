@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "../examples/probe_cli/ProbeConsole.h"
+#include "../examples/probe_cli/HomeConsoleParser.h"
+#include "../examples/probe_cli/HomeConsoleFormat.h"
 #include <MotorControlRS/profiles/ess_rs/Tuning.h>
 
 #include <cassert>
@@ -1651,6 +1653,125 @@ void testHomeRoutesAndDescriptors() {
     assert(f.homes == 2 && c.inputDropped());
 }
 
+void testHomeFirstErrorOrder(bool fixtures = false) {
+    auto check = [fixtures](Fake& f, Probe::Console& c, const char* input,
+                            const char* expected, const char* name) {
+        const auto before = f.lines.size();
+        send(c, input);
+        if (f.lines.size() != before + 1 || f.lines.back() != expected)
+            std::fprintf(stderr, "%s: expected %s, got %s\n", name, expected,
+                f.lines.size() == before ? "<no output>" : f.lines.back().c_str());
+        assert(f.lines.size() == before + 1 && f.lines.back() == expected);
+        if (fixtures) std::printf("{\"case\":\"%s\",\"record\":%s}\n", name, f.lines.back().c_str());
+    };
+    // Missing execution hooks precede argument parsing; the local method
+    // inventory is covered separately and needs none of these hooks.
+    for (unsigned missing = 0; missing != 3; ++missing) {
+        Fake f; auto h = f.host(); h.startHome = Fake::startHome; h.axis = Fake::axis;
+        if (missing == 0) h.startHome = nullptr;
+        if (missing == 1) h.snapshot = nullptr;
+        if (missing == 2) h.axis = nullptr;
+        Probe::Console c(h, Probe::Format::JSON);
+        check(f, c, "@70 home bad 0 0 0 nonzero 0\n",
+            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":70,\"command\":\"home\",\"ok\":false,\"result\":\"unavailable\"}",
+            missing == 0 ? "missing_home_hook" : missing == 1 ? "missing_snapshot_hook" : "missing_axis_hook");
+        assert(!f.homes && !f.snapshots && !f.axisCalls);
+    }
+    Fake f; f.data.address = 0;
+    f.axisStatus = {MotorControlRS::Err::INVALID_CONFIG, 0, "no axis"};
+    auto h = f.host(); h.startHome = Fake::startHome; h.axis = Fake::axis;
+    Probe::Console c(h, Probe::Format::JSON);
+    check(f, c, "@71 home bad 0 0 0 nonzero 0\n",
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":71,\"command\":\"home\",\"ok\":false,\"result\":\"invalid_arguments\"}", "shape_before_address");
+    check(f, c, "@72 home 35 4 30 100 zero 0\n",
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":72,\"command\":\"home\",\"ok\":false,\"result\":\"invalid_arguments\"}", "rates_before_address");
+    check(f, c, "@73 home 35 60 30 100 zero 0\n",
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":73,\"command\":\"home\",\"ok\":false,\"result\":\"invalid_address\"}", "explicit_address_before_axis");
+    assert(!f.snapshots && !f.axisCalls && !f.homes);
+    check(f, c, "@74 home 35 60 30 100 zero\n",
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":74,\"command\":\"home\",\"ok\":false,\"result\":\"invalid_address\"}", "cached_address_before_axis");
+    assert(f.snapshots == 1 && !f.axisCalls && !f.homes);
+    check(f, c, "@75 home 35 60 30 100 zero 1\n",
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":75,\"command\":\"home\",\"ok\":false,\"result\":\"unavailable\"}", "axis_before_admission");
+    assert(f.snapshots == 1 && f.axisCalls == 1 && !f.homes);
+    // The same correlation can be used after every rejected command.
+    f.axisStatus = MotorControlRS::Ok(); f.axisConfig.generation = 3;
+    check(f, c, "@75 home 35 60 30 100 zero 1\n",
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":75,\"command\":\"home\",\"ok\":true,\"result\":\"done\",\"address\":1,\"operation_id\":100}", "rejected_id_reused");
+    assert(f.homes == 1 && f.axisCalls == 2 && f.homeRequest.configurationGeneration == 3);
+    check(f, c, "@75 home bad 0 0 0 nonzero 0\n",
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":75,\"command\":\"input\",\"ok\":false,\"result\":\"duplicate_id\"}", "correlation_before_grammar");
+    assert(f.homes == 1 && f.axisCalls == 2 && f.snapshots == 1);
+}
+
+void testHomeParserBounds() {
+    Ess::HomeRequest request;
+    request.configurationGeneration = 99;
+    uint8_t address = 42; bool explicitAddress = true;
+    const char* minimum[] = {"-32768", "5", "5", "30", "zero"};
+    assert(!Probe::HomeConsole::parse(minimum, 5, request, address, explicitAddress));
+    assert(static_cast<int>(request.method) == -32768 && request.searchSpeed == 5 &&
+        request.returnSpeed == 5 && request.rampTime == 30);
+    assert(!explicitAddress && address == 0 && request.configurationGeneration == 99);
+    const char* maximum[] = {"32767", "3000", "300", "2000", "zero", "247"};
+    assert(!Probe::HomeConsole::parse(maximum, 6, request, address, explicitAddress));
+    assert(static_cast<int>(request.method) == 32767 && request.searchSpeed == 3000 &&
+        request.returnSpeed == 300 && request.rampTime == 2000);
+    assert(explicitAddress && address == 247 && request.configurationGeneration == 99);
+    // These invalid lexical/range edges leave the caller's typed request and
+    // address selection intact. Supported methods are admitted by the host.
+    const struct { unsigned field; const char* token; const char* reason; } invalid[] = {
+        {0, "-32769", "invalid_arguments"}, {0, "32768", "invalid_arguments"},
+        {0, "+35", "invalid_arguments"}, {0, "35.0", "invalid_arguments"},
+        {0, "35/1", "invalid_arguments"}, {0, "-", "invalid_arguments"},
+        {1, "4", "invalid_arguments"}, {1, "3001", "invalid_arguments"},
+        {1, "4294967296", "invalid_arguments"}, {2, "4", "invalid_arguments"},
+        {2, "301", "invalid_arguments"}, {3, "29", "invalid_arguments"},
+        {3, "2001", "invalid_arguments"}, {4, "0", "invalid_arguments"},
+        {5, "0", "invalid_address"}, {5, "248", "invalid_address"},
+        {5, "4294967296", "invalid_address"}
+    };
+    for (const auto& edge : invalid) {
+        const char* args[] = {"35", "60", "30", "100", "zero", "1"};
+        args[edge.field] = edge.token;
+        const char* reason = Probe::HomeConsole::parse(args, 6, request, address, explicitAddress);
+        assert(reason && !std::strcmp(reason, edge.reason));
+        assert(static_cast<int>(request.method) == 32767 && request.searchSpeed == 3000 &&
+            request.returnSpeed == 300 && request.rampTime == 2000 && request.configurationGeneration == 99);
+        assert(explicitAddress && address == 247);
+    }
+    const char* excess[] = {"35", "60", "30", "100", "zero", "1", "extra"};
+    for (std::size_t count : {std::size_t(0), std::size_t(4), std::size_t(7)}) {
+        const char* reason = Probe::HomeConsole::parse(excess, count, request, address, explicitAddress);
+        assert(reason && !std::strcmp(reason, "invalid_arguments"));
+    }
+}
+
+void checkHomeFormatterBounds(const Ess::HomeContext& context) {
+    for (bool methods : {false, true}) {
+        auto format = [&](char* out, std::size_t capacity, std::size_t& used) {
+            return methods ? Probe::HomeConsole::formatMethods(out, capacity, used, UINT32_MAX) :
+                Probe::HomeConsole::formatResult(out, capacity, used, UINT32_MAX, UINT32_MAX,
+                    UINT32_MAX, context, false, true);
+        };
+        char complete[Probe::OUTPUT_CAPACITY]; std::size_t length = 123;
+        assert(format(complete, sizeof(complete), length));
+        assert(length == std::strlen(complete) && length < sizeof(complete));
+        const std::string expected(complete, length);
+        char guarded[Probe::OUTPUT_CAPACITY + 2];
+        for (std::size_t capacity : {std::size_t(0), std::size_t(1), std::size_t(64), length}) {
+            std::memset(guarded, '#', sizeof(guarded)); std::size_t used = 123;
+            assert(!format(guarded + 1, capacity, used));
+            assert(guarded[0] == '#' && (capacity ? used < capacity : used == 0));
+            for (std::size_t i = capacity + 1; i < sizeof(guarded); ++i) assert(guarded[i] == '#');
+        }
+        std::memset(guarded, '#', sizeof(guarded)); std::size_t used = 123;
+        assert(format(guarded + 1, length + 1, used));
+        assert(used == length && std::string(guarded + 1) == expected && guarded[0] == '#');
+        for (std::size_t i = length + 2; i < sizeof(guarded); ++i) assert(guarded[i] == '#');
+    }
+}
+
 void homeFixtures() {
     using namespace MotorControlRS;
     AxisConfig axis; axis.target.id = axis.target.address = 1; axis.target.generation = 9; axis.generation = 3;
@@ -1712,7 +1833,7 @@ void homeFixtures() {
     c = prepare(35, false); consume(c, 0, 0); consume(c, 0, 9); emit("wrong_function_exception", c);
 }
 
-void testMaximumHomeOutputAndRetention() {
+void testMaximumHomeOutputAndRetention(bool fixtures = false) {
     Fake f; f.data.address = 1; f.nextOperation = UINT32_MAX;
     auto h = f.host(false, true); h.startHome = Fake::startHome; h.axis = Fake::axis;
     Probe::Console console(h, Probe::Format::JSON); send(console, "@77 home 35 60 30 100 zero\n");
@@ -1732,14 +1853,18 @@ void testMaximumHomeOutputAndRetention() {
         std::memset(e->raw, 255, 9); e->earliestUs = e->latestUs = e->deliveredUs = UINT64_MAX;
         e->transportDetail = INT32_MIN; e->status = {MotorControlRS::Err::INVALID_CONFIG,INT32_MIN,"invalid"};
     }
+    checkHomeFormatterBounds(c);
     f.blocked = true; assert(console.reportHome(77, c.operationId, c));
     assert(console.outputPending() && !console.reportHome(77,c.operationId,c));
     f.blocked = false; assert(console.serviceOutput());
     f.contains("\"low_evidence\":["); assert(f.lines.back().size() < Probe::OUTPUT_CAPACITY);
+    if (fixtures) std::printf("{\"case\":\"maximum_terminal\",\"record\":%s}\n", f.lines.back().c_str());
     f.view.commandId = 77; f.view.operationId = c.operationId; f.view.homeContext = &c;
     send(console, "@78 result 4294967295\n"); f.contains("\"home\":true");
+    if (fixtures) std::printf("{\"case\":\"maximum_inspection\",\"record\":%s}\n", f.lines.back().c_str());
     f.view.pending = true; send(console, "@79 result 4294967295\n");
     f.contains("\"result\":\"pending\""); f.contains("\"home\":true");
+    if (fixtures) std::printf("{\"case\":\"maximum_pending\",\"record\":%s}\n", f.lines.back().c_str());
 }
 
 // Complete valid candidates keep their original snapshot. Only its oldest
@@ -2202,6 +2327,9 @@ void testSimpleMotionGrammarAndReports() {
     f.contains("\"rx_hex\":\"018302\""); f.contains("\"error\":\"transaction\"");
 }
 int main(int argc, char** argv) {
+    if (argc == 2 && !std::strcmp(argv[1], "--home-boundary-fixtures")) {
+        testHomeFirstErrorOrder(true); testMaximumHomeOutputAndRetention(true); return 0;
+    }
     if (argc==2 && !std::strcmp(argv[1],"--debug-fixtures")) { debugFixtures(); return 0; }
     if (argc == 2 && !std::strcmp(argv[1], "--tuning-fixtures")) { tuningFixtures(); return 0; }
     if (argc == 2 && !std::strcmp(argv[1], "--control-fixtures")) { controlFixtures(); return 0; }
@@ -2223,6 +2351,8 @@ int main(int argc, char** argv) {
     testTuningRoutes();
     testIoRoutes();
     testHomeRoutesAndDescriptors();
+    testHomeFirstErrorOrder();
+    testHomeParserBounds();
     testMaximumHomeOutputAndRetention();
     testFramingAndIds();
     testInvalidInputHasNoEffects();

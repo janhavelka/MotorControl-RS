@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 #include "ProbeConsole.h"
 #include "ConsoleText.h"
+#include "ConsoleNumbers.h"
+#include "HomeConsoleParser.h"
+#include "HomeConsoleFormat.h"
+#include "ConsoleReport.h"
 #include "MotorControlRS/Version.h"
 #include "MotorControlRS/profiles/ess_rs/Traffic.h"
 #include "MotorControlRS/profiles/ess_rs/Registers.h"
@@ -9,7 +13,6 @@
 #include "MotorControlRS/profiles/ess_rs/Tuning.h"
 
 #include <cstdio>
-#include <cstdarg>
 #include <cstring>
 #include <limits>
 
@@ -32,6 +35,12 @@ Action driverAdmissionStatus(const MotorControlRS::Status& status) noexcept {
     }
 }
 namespace {
+using ConsoleNumbers::number;
+using ConsoleReport::append;
+using ConsoleReport::boolean;
+using ConsoleReport::executionName;
+using ConsoleReport::motorOutcome;
+using ConsoleReport::hex;
 
 enum class Command : uint8_t { HELP, VERSION, CONFIG, STATUS, HEALTH, STATS, PROBE, CAPTURE_READ, RECOVER, MEMORY, LOAD, DRV, RESULT, CANCEL, RELEASE, READ, PROFILE, CAPS, READ_IDENTITY, READ_CONFIG, READ_STATE, MONITOR, AXIS, PREPARE, ENABLE, MOTOR_RELEASE, ALARM_CLEAR, STOP, MOVE, POSITION_CLEAR, VELOCITY, DRIVER, IO, HOME, SEGMENT, CONTROL, TUNING, HOST, COMMUNICATION, PERSISTENCE, MOTION_PROFILE, DEBUG, DISCOVER, USEADDR, WIRING, MOVE_BY, MOVE_TO, SPEED, ACCEL, DECEL, MOTION, STEPS_PER_TURN, SETTINGS, SUBDIVISION };
 struct Entry { const char* name; Command command; const char* syntax; const char* effect; bool bus; const char* description; };
@@ -148,16 +157,6 @@ const char* driverOutcome(Ess::DriverOutcome outcome) {
     case Ess::DriverOutcome::UNCONFIRMED_RESPONSE: return "unconfirmed_response";
     case Ess::DriverOutcome::READBACK_MISMATCH: return "readback_mismatch";
     } return "unknown";
-}
-
-// Append complete fragments or fail; never publish truncated JSON.
-bool append(char* output, std::size_t capacity, std::size_t& used, const char* format, ...) {
-    if (used >= capacity) return false;
-    va_list arguments; va_start(arguments, format);
-    const int written = std::vsnprintf(output + used, capacity - used, format, arguments);
-    va_end(arguments);
-    if (written < 0 || static_cast<std::size_t>(written) >= capacity - used) return false;
-    used += static_cast<std::size_t>(written); return true;
 }
 
 bool parseFormat(const char* token, HostFormat& value) {
@@ -526,20 +525,6 @@ bool helpEffect(char* output,std::size_t capacity,std::size_t& used,const char* 
     return true;
 }
 
-bool number(const char* text, uint32_t& value) {
-    if (!*text) return false;
-    uint32_t result = 0;
-    for (; *text; ++text) {
-        if (*text < '0' || *text > '9') return false;
-        const uint32_t digit = static_cast<uint32_t>(*text - '0');
-        if (result > (std::numeric_limits<uint32_t>::max() - digit) / 10) return false;
-        result = result * 10 + digit;
-    }
-    value = result;
-    return true;
-}
-
-const char* boolean(bool value) { return value ? "true" : "false"; }
 const char* motorKind(Core::ActionKind kind) {
     switch (kind) { case Core::ActionKind::ENABLE: return "enable";
     case Core::ActionKind::RELEASE: return "release"; case Core::ActionKind::CLEAR_ALARM: return "clear_alarm";
@@ -551,29 +536,7 @@ const char* motorCommand(Core::ActionKind kind) {
 const char* stopPolicy(const Core::ActionRequest& request) {
     return request.kind != Core::ActionKind::STOP ? "null" : request.stop.behavior == Core::StopBehavior::CONFIGURED_DECELERATION ? "\"normal\"" : "\"fast\"";
 }
-const char* executionName(Core::ActionExecution execution) {
-    switch (execution) { case Core::ActionExecution::NOT_TRANSMITTED: return "not_transmitted";
-    case Core::ActionExecution::ACKNOWLEDGED: return "acknowledged";
-    case Core::ActionExecution::REJECTED: return "rejected"; case Core::ActionExecution::UNKNOWN: return "unknown"; } return "unknown";
-}
-const char* motorOutcome(Core::ActionOutcome outcome) {
-    switch (outcome) { case Core::ActionOutcome::NONE: return "none"; case Core::ActionOutcome::OBSERVED: return "observed";
-    case Core::ActionOutcome::REPLY_ERROR: return "reply_error"; case Core::ActionOutcome::TRANSPORT_ERROR: return "transport_error";
-    case Core::ActionOutcome::CANCELLED: return "cancelled"; case Core::ActionOutcome::DEADLINE: return "deadline";
-    case Core::ActionOutcome::TIMING_UNQUALIFIED: return "timing_unqualified";
-    case Core::ActionOutcome::UNCONFIRMED_RESPONSE: return "unconfirmed_response";
-    case Core::ActionOutcome::ACKNOWLEDGED: return "acknowledged";
-    case Core::ActionOutcome::OBSERVATION_LIMIT: return "observation_limit"; } return "unknown";
-}
-void hex(const uint8_t* bytes, std::size_t length, char* output, std::size_t capacity) {
-    static const char DIGITS[] = "0123456789ABCDEF";
-    const std::size_t count = bytes ? (length < (capacity - 1) / 2 ? length : (capacity - 1) / 2) : 0;
-    for (std::size_t i = 0; i < count; ++i) {
-        output[2 * i] = DIGITS[bytes[i] >> 4];
-        output[2 * i + 1] = DIGITS[bytes[i] & 15];
-    }
-    output[2 * count] = '\0';
-}
+
 bool actionEvidence(char* output, std::size_t capacity, std::size_t& used, const Ess::ActionEvidence& evidence) {
     char raw[Ess::ACTION_MAX_REPLY_BYTES * 2 + 1]; hex(evidence.raw, evidence.length, raw, sizeof(raw));
     return append(output, capacity, used,
@@ -582,17 +545,6 @@ bool actionEvidence(char* output, std::size_t capacity, std::size_t& used, const
         boolean(evidence.txComplete), boolean(evidence.responseConfirmed), boolean(evidence.qualified), boolean(evidence.executionUnknown),
         static_cast<unsigned long long>(evidence.earliestUs), static_cast<unsigned long long>(evidence.latestUs), static_cast<unsigned long long>(evidence.deliveredUs),
         static_cast<long>(evidence.transportDetail), Core::errToString(evidence.status.code), static_cast<long>(evidence.status.detail), static_cast<unsigned>(evidence.frameError));
-}
-// Homing retains eight observations. One fixed column schema keeps every
-// provenance field within the existing line bound, including 64-bit extremes.
-bool homeEvidence(char* output, std::size_t capacity, std::size_t& used, const Ess::ActionEvidence& e) {
-    char raw[Ess::ACTION_MAX_REPLY_BYTES * 2 + 1]; hex(e.raw, e.length, raw, sizeof(raw));
-    return append(output, capacity, used,
-        "[%u,%u,\"%s\",%u,%u,%s,%s,%s,%s,%llu,%llu,%llu,%ld,\"%s\",%ld,%u]",
-        e.step, static_cast<unsigned>(e.event), raw, static_cast<unsigned>(e.receivedLength), static_cast<unsigned>(e.txAccepted),
-        boolean(e.txComplete), boolean(e.responseConfirmed), boolean(e.qualified), boolean(e.executionUnknown),
-        static_cast<unsigned long long>(e.earliestUs), static_cast<unsigned long long>(e.latestUs), static_cast<unsigned long long>(e.deliveredUs),
-        static_cast<long>(e.transportDetail), Core::errToString(e.status.code), static_cast<long>(e.status.detail), static_cast<unsigned>(e.frameError));
 }
 const char* actionName(Action value) {
     switch (value) {
@@ -1244,49 +1196,24 @@ void Console::dispatch() noexcept {
         const std::size_t args = first + 1;
         if (count == args + 1 && std::strcmp(tokens[args], "methods") == 0) {
             std::size_t used = 0;
-            bool fits = append(output_, sizeof(output_), used,
-                "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"home\",\"ok\":true,\"methods\":[", static_cast<unsigned long>(id));
-            for (uint8_t i = 0; fits && i < Ess::HOME_METHOD_COUNT; ++i) {
-                const auto* method = Ess::homeMethodAt(i);
-                fits = method && append(output_, sizeof(output_), used,
-                    "%s{\"method\":%d,\"support\":\"%s\",\"inputs\":%u,\"index\":%s,\"moves\":%s,\"reason\":%u}",
-                    i ? "," : "", static_cast<int>(method->method),
-                    method->support == Ess::HomeSupport::IMPLEMENTED ? "implemented" : method->support == Ess::HomeSupport::UNIMPLEMENTED ? "unimplemented" : "unresolved",
-                    method->requiredInputs, boolean(method->requiresIndex), boolean(method->moves),
-                    method->support == Ess::HomeSupport::UNIMPLEMENTED ? 0U : static_cast<int>(method->method) < 0 ? 1U :
-                    static_cast<int>(method->method) == 18 ? 2U : static_cast<unsigned>(method->method) - 30U);
-            }
-            fits = fits && append(output_, sizeof(output_), used, "],\"reasons\":{\"0\":\"switch_edges_and_return_pending\",\"1\":\"collision_encoding_and_parameter_conflicts\",\"2\":\"limit_prose_diagram_conflict\",\"3\":\"negative_internal_index_search\",\"4\":\"positive_internal_index_search\",\"5\":\"current_position_origin\"},\"physical_qualified\":false,\"offset\":\"zero_only\",\"auxiliary\":7}");
+            const bool fits = HomeConsole::formatMethods(output_, sizeof(output_), used, id);
             if (!fits) { error(id, "home", "output_full"); return; }
             emit(); return;
         }
         if (!host_.startHome || !host_.snapshot || !host_.axis) { error(id, "home", "unavailable"); return; }
-        if ((count != args + 5 && count != args + 6) || std::strcmp(tokens[args + 4], "zero")) {
-            error(id, "home", "invalid_arguments"); return;
+        Ess::HomeRequest request;
+        uint8_t parsedAddress = 0;
+        bool explicitAddress = false;
+        if (const char* reason = HomeConsole::parse(tokens + args, count - args, request, parsedAddress, explicitAddress)) {
+            error(id, "home", reason); return;
         }
-        Core::Rational method;
-        const char* digit = tokens[args]; if (*digit == '-') ++digit;
-        bool integer = *digit != '\0';
-        for (const char* p = digit; *p; ++p) integer = integer && *p >= '0' && *p <= '9';
-        uint32_t search = 0, returning = 0, ramp = 0, address = 0;
-        if (!integer || !Core::parseExactNumber(tokens[args], method) || method.denominator != 1 ||
-            method.numerator < -32768 || method.numerator > 32767 ||
-            !number(tokens[args + 1], search) || search < 5 || search > 3000 ||
-            !number(tokens[args + 2], returning) || returning < 5 || returning > 300 ||
-            !number(tokens[args + 3], ramp) || ramp < 30 || ramp > 2000) {
-            error(id, "home", "invalid_arguments"); return;
-        }
-        if (count == args + 6) {
-            if (!number(tokens[args + 5], address) || address < 1 || address > 247) { error(id, "home", "invalid_address"); return; }
-        } else { Snapshot snapshot; host_.snapshot(host_.context, snapshot); address = snapshot.address; }
+        uint32_t address = parsedAddress;
+        if (!explicitAddress) { Snapshot snapshot; host_.snapshot(host_.context, snapshot); address = snapshot.address; }
         if (address < 1 || address > 247) { error(id, "home", "invalid_address"); return; }
         AxisCommand query; AxisView axis;
         query.kind = AxisCommandKind::QUERY;
         if (!host_.axis(host_.context, query, axis)) { error(id, "home", "unavailable"); return; }
-        Ess::HomeRequest request;
-        request.method = static_cast<Ess::HomingMethod>(method.numerator);
-        request.searchSpeed = static_cast<uint16_t>(search); request.returnSpeed = static_cast<uint16_t>(returning);
-        request.rampTime = static_cast<uint16_t>(ramp); request.configurationGeneration = axis.configuration.generation;
+        request.configurationGeneration = axis.configuration.generation;
         const bool available = availableSlot() != OUTSTANDING_CAPACITY;
         uint32_t operationId = 0;
         if (available) beginWork();
@@ -2399,28 +2326,8 @@ bool Console::reportHome(uint32_t id, uint32_t operationId, const Ess::HomeConte
 bool Console::formatHome(uint32_t id, uint32_t commandId, uint32_t operationId,
                          const Ess::HomeContext& c, bool inspection, bool interruptedByStop) noexcept {
     std::size_t used = 0;
-    const bool ok = c.state == Core::ActionState::SUCCEEDED && c.completion == Core::ActionCompletion::OBSERVED;
-    bool fits = append(output_, sizeof(output_), used,
-        "{\"type\":\"%s\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"command_id\":%lu,\"operation_id\":%lu,\"home\":true,\"read_kind\":null,\"action_kind\":null,\"move_kind\":null,\"capture_read\":false,\"recovery\":false,\"ok\":%s,\"state\":\"%s\",\"outcome\":\"%s\",\"status\":\"%s\",\"detail\":%ld,\"setup_execution\":\"%s\",\"execution\":\"%s\",\"completion\":\"%s\",\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"started_us\":%llu,\"deadline_us\":%llu,\"serviced_us\":%llu,\"polls\":%u,\"phase\":%u,\"method\":%d,\"staging_words\":[%u,%u,%u,%u,%u,%u],\"staging_applied\":%s,\"uncertain\":%s,\"running_observed\":%s,\"homed_low_observed\":%s,\"observation_known\":%s,\"raw_alarm\":%u,\"raw_motion\":%u,\"raw_position_words\":[%u,%u],\"interrupted_by_stop\":%s,\"prerequisites\":{\"observed_us\":%llu,\"maximum_age_us\":%llu,\"raw_motion\":%u,\"auxiliary\":%u,\"reference_semantics_qualified\":%s,\"qualified_parameters\":[%d,%u,%u,%u]},\"completion_observed_us\":%llu,\"evidence_columns\":[\"step\",\"event\",\"raw_hex\",\"received_length\",\"tx_accepted\",\"tx_complete\",\"response_confirmed\",\"qualified\",\"execution_unknown\",\"earliest_us\",\"latest_us\",\"delivered_us\",\"transport_detail\",\"status\",\"detail\",\"frame_error\"],\"staging_evidence\":",
-        inspection ? "reply" : "home", static_cast<unsigned long>(id), inspection ? "result" : "home",
-        static_cast<unsigned long>(commandId), static_cast<unsigned long>(operationId), boolean(ok),
-        c.state == Core::ActionState::SUCCEEDED ? "succeeded" : "failed", motorOutcome(c.outcome), Core::errToString(c.status.code), static_cast<long>(c.status.detail),
-        executionName(c.setupExecution), executionName(c.execution), c.completion == Core::ActionCompletion::OBSERVED ? "observed" : "not_observed",
-        static_cast<unsigned long>(c.target.id), c.target.address, static_cast<unsigned long>(c.target.generation), static_cast<unsigned long>(c.request.configurationGeneration),
-        static_cast<unsigned long long>(c.startedUs), static_cast<unsigned long long>(c.deadlineUs), static_cast<unsigned long long>(c.servicedUs), c.polls, static_cast<unsigned>(c.phase), static_cast<int>(c.request.method),
-        c.words[0], c.words[1], c.words[2], c.words[3], c.words[4], c.words[5], boolean(c.stagingApplied), boolean(c.uncertain), boolean(c.runningObserved), boolean(c.homedLowObserved), boolean(c.observationKnown),
-        c.rawAlarm, c.rawMotion, c.rawPositionWords[0], c.rawPositionWords[1], boolean(interruptedByStop),
-        static_cast<unsigned long long>(c.prerequisites.observedUs), static_cast<unsigned long long>(c.prerequisites.maximumAgeUs), c.prerequisites.rawMotion, static_cast<unsigned>(c.prerequisites.auxiliary), boolean(c.prerequisites.referenceSemanticsQualified), static_cast<int>(c.prerequisites.qualifiedMethod),
-        c.prerequisites.qualifiedSearchSpeed, c.prerequisites.qualifiedReturnSpeed, c.prerequisites.qualifiedRampTime, static_cast<unsigned long long>(c.completionObservedUs)) &&
-        homeEvidence(output_, sizeof(output_), used, c.stagingEvidence) && append(output_, sizeof(output_), used, ",\"trigger_evidence\":") &&
-        homeEvidence(output_, sizeof(output_), used, c.triggerEvidence) && append(output_, sizeof(output_), used, ",\"activity_evidence\":") &&
-        homeEvidence(output_, sizeof(output_), used, c.activityEvidence) && append(output_, sizeof(output_), used, ",\"low_evidence\":") &&
-        homeEvidence(output_, sizeof(output_), used, c.lowEvidence) && append(output_, sizeof(output_), used, ",\"last_observation\":") &&
-        homeEvidence(output_, sizeof(output_), used, c.lastObservation) && append(output_, sizeof(output_), used, ",\"completion_evidence\":") &&
-        homeEvidence(output_, sizeof(output_), used, c.completionEvidence) && append(output_, sizeof(output_), used, ",\"zero_evidence\":") &&
-        homeEvidence(output_, sizeof(output_), used, c.zeroEvidence) && append(output_, sizeof(output_), used, ",\"failure_evidence\":") &&
-        homeEvidence(output_, sizeof(output_), used, c.failureEvidence) && append(output_, sizeof(output_), used, "}");
-    if (!fits || !appendReportSerial(used)) return false;
+    if (!HomeConsole::formatResult(output_, sizeof(output_), used, id, commandId, operationId,
+                                   c, inspection, interruptedByStop) || !appendReportSerial(used)) return false;
     emit(inspection ? 0 : operationId); return true;
 }
 

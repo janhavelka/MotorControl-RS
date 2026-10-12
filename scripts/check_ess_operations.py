@@ -28,14 +28,15 @@ def console_commands():
     source = CONSOLE.read_text(encoding="utf-8")
     table = source.split("const Entry COMMANDS[] = {", 1)[1].split("\n};", 1)[0]
     return {name: (kind, syntax) for name, kind, syntax in re.findall(
-        r'\{"([^"\\]+)",\s*Command::(\w+),\s*"((?:\\.|[^"\\])*)"', table)}, source
+        r'\{"([^"\\]+)",\s*Command::(\w+),\s*"((?:\\.|[^"\\])*)"', table)}
 
 
-def check_cli_route(command, metadata, source, operation_kind):
-    """Check a documented operation prefix and its real family grammar.
+def check_cli_route(command, metadata, operation_kind):
+    """Check a documented operation prefix against the production catalogue.
 
-    This is a source/inventory check, not a substitute for executing console
-    tests. Parameter placeholders deliberately designate bounded leaf prefixes.
+    This is an inventory check, not a substitute for executing the production
+    family parsers in console tests. Parameter placeholders designate bounded
+    leaf prefixes; the catalogue stays in ProbeConsole.cpp when grammar moves.
     """
     tokens = command.split()
     if not tokens or tokens[0] not in metadata:
@@ -177,7 +178,7 @@ def check(inventory, ledger):
                          "native": "NOT_APPLICABLE", "hardware": "NOT_APPLICABLE"})
     seen = set()
     referenced = Counter()
-    metadata, console_source = console_commands()
+    metadata = console_commands()
     for operation in inventory.get("operations", []):
         keys(operation, "id kind records choices api cli_commands implementation cli native hardware reason", "operation")
         op_id = operation.get("id")
@@ -228,7 +229,7 @@ def check(inventory, ledger):
             for command in commands:
                 if not isinstance(command, str):
                     raise ValueError("invalid CLI command: " + op_id)
-                check_cli_route(command, metadata, console_source, kind)
+                check_cli_route(command, metadata, kind)
         api = operation.get("api", {})
         keys(api, "header symbols", "api")
         header = local_file(api.get("header"))
