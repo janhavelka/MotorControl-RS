@@ -2,7 +2,7 @@
 
 Prepared by the [complexity audit](../../reports/2026-10-11_complexity_audit.md)
 against `9dc3c1c` and the accompanying small refactors on 11 October 2026.
-**Prompts 01–05 have been implemented; prompts 06–07 remain unexecuted.** These are structural
+**Prompts 01–06 have been implemented; prompt 07 remains unexecuted.** These are structural
 improvements to working code, not new motor features or hardware qualification.
 
 This set supersedes the earlier [maintenance draft](../../archive/prompts/maintenance/README.md).
@@ -21,7 +21,7 @@ small commits; finish and verify one usable boundary before starting another.
 | [03: host evidence](03_host_evidence.md) | Pure validators separated from serial/session ownership | 02 delivered; no shared code dependency | IMPLEMENTED — [handoff](../../reports/2026-10-12_host_evidence.md) |
 | [04: host dispatch](04_host_dispatch.md) | One reviewed live/retained payload routing path | 03 | IMPLEMENTED — [handoff](../../reports/2026-10-12_host_dispatch.md) |
 | [05: console boundaries](05_console_boundaries.md) | Parsing/reporting boundaries with one command inventory | 01; keep preceding host changes stable | IMPLEMENTED — HOME family [handoff](../../reports/2026-10-12_console_boundaries.md) |
-| [06: application modules](06_application_modules.md) | Explicit private session dependencies and ordinary translation units | 01 and 05 | NOT STARTED |
+| [06: application modules](06_application_modules.md) | Explicit private session dependencies and ordinary translation units | 01 and 05 | IMPLEMENTED — debug session [handoff](../../reports/2026-10-12_application_modules.md) |
 | [07: evidence copying](07_evidence_copying.md) | One concrete transport-evidence copier with sequence policies kept local | Earlier changes delivered; inspect current sequence code again | NOT STARTED |
 
 ## Rules for every prompt

@@ -59,7 +59,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include(CTest)
     # Distributed source packages contain the core; repository tests stay here.
     if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test")
-        foreach(suite human_console console_text discovery discovery_app discovery_console persistence persistence_console persistence_app traffic motion_profile_app communication communication_console communication_app commissioning_owner units axis registers codec reads actions position position_command velocity homing driver_settings segments control_settings control_app tuning tuning_app host_app host_console io io_app driver_app home_app runner bus_owner bus_scheduling probe_console esp32_uart probe_app probe_app_monitor_control move_app simple_motion_app velocity_app capture_service)
+        foreach(suite human_console console_text debug_session discovery discovery_app discovery_console persistence persistence_console persistence_app traffic motion_profile_app communication communication_console communication_app commissioning_owner units axis registers codec reads actions position position_command velocity homing driver_settings segments control_settings control_app tuning tuning_app host_app host_console io io_app driver_app home_app runner bus_owner bus_scheduling probe_console esp32_uart probe_app probe_app_monitor_control move_app simple_motion_app velocity_app capture_service)
             add_executable(${suite}_test "test/${suite}_test.cpp")
             target_link_libraries(${suite}_test PRIVATE MotorControlRS)
             set_target_properties(${suite}_test PROPERTIES
@@ -85,12 +85,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         add_test(NAME codec_independent COMMAND codec_independent_test)
         # Keep source membership explicit while grouping identical fixture
         # dependencies so console/owner edits stay consistent within each group.
-        foreach(suite human_console probe_console host_console communication_console
+        foreach(suite human_console probe_console host_console communication_console debug_session
                       discovery_console persistence_console)
             target_sources(${suite}_test PRIVATE examples/probe_cli/ProbeConsole.cpp
                 examples/probe_cli/HomeConsoleParser.cpp examples/probe_cli/HomeConsoleFormat.cpp
                 examples/probe_cli/ConsoleText.cpp examples/common/RtuRunner.cpp)
         endforeach()
+        target_sources(debug_session_test PRIVATE examples/probe_cli/DebugSession.cpp)
         target_sources(console_text_test PRIVATE examples/probe_cli/ConsoleText.cpp)
         foreach(suite traffic runner)
             target_sources(${suite}_test PRIVATE examples/common/RtuRunner.cpp)
@@ -112,7 +113,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             target_compile_definitions(${suite}_test PRIVATE CONFIG_IDF_TARGET_ESP32S3=1)
         endforeach()
         foreach(suite discovery_app persistence_app motion_profile_app communication_app probe_app probe_app_monitor_control move_app simple_motion_app velocity_app driver_app home_app io_app control_app tuning_app host_app)
-            target_sources(${suite}_test PRIVATE test/fakes/esp32_uart/FakeUsb.cpp)
+            target_sources(${suite}_test PRIVATE test/fakes/esp32_uart/FakeUsb.cpp
+                examples/probe_cli/DebugSession.cpp)
         endforeach()
         foreach(suite probe_app probe_app_monitor_control move_app simple_motion_app
                       motion_profile_app velocity_app driver_app control_app
@@ -123,6 +125,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 examples/common/EssRtuValidator.cpp)
         endforeach()
         add_executable(probe_app_load_test test/probe_app_test.cpp
+            examples/probe_cli/DebugSession.cpp
             examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp examples/probe_cli/Esp32Load.cpp
             examples/probe_cli/HomeConsoleParser.cpp examples/probe_cli/HomeConsoleFormat.cpp
             examples/common/RtuRunner.cpp examples/common/RtuBusOwner.cpp
@@ -141,6 +144,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         endif()
         add_test(NAME probe_app_load COMMAND probe_app_load_test)
         add_executable(idf_app_test test/idf_app_test.cpp
+            examples/probe_cli/DebugSession.cpp
             examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp examples/probe_cli/Esp32Load.cpp
             examples/probe_cli/HomeConsoleParser.cpp examples/probe_cli/HomeConsoleFormat.cpp
             examples/common/RtuRunner.cpp examples/common/RtuBusOwner.cpp
@@ -160,6 +164,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         # Reuse identical operation/failure assertions with both framework startup adapters.
         foreach(suite move_app simple_motion_app control_app)
             add_executable(idf_${suite}_test test/${suite}_test.cpp
+                examples/probe_cli/DebugSession.cpp
                 examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
                 examples/probe_cli/HomeConsoleParser.cpp examples/probe_cli/HomeConsoleFormat.cpp
                 examples/common/RtuRunner.cpp examples/common/RtuBusOwner.cpp

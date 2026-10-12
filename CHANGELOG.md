@@ -19,6 +19,10 @@
 
 ### Maintenance
 
+- Extracted application debug orchestration into its own private translation
+  unit with concrete console/output-pressure inputs, unchanged storage and
+  noncopyable capture ownership. Added linked session tests and S2 consumption;
+  other sessions retain their documented cache, child-result and lease boundaries.
 - Shared live/retained host payload classification and validation, preserving
   original request expectations, immutable terminals and explicit lifecycle
   ownership. Added family/conflict transcripts and actual console routing parity.

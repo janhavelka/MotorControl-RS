@@ -22,10 +22,11 @@ defines seven [refactor stages](prompts/maintainability/README.md). The
 [private record-kind stage](reports/2026-10-12_operation_kind.md),
 [settings-admission stage](reports/2026-10-12_settings_validation.md),
 [pure host-evidence stage](reports/2026-10-12_host_evidence.md),
-[host reply-routing stage](reports/2026-10-12_host_dispatch.md) and
-[HOME console-boundary stage](reports/2026-10-12_console_boundaries.md) are implemented;
-the remaining two stages are pending. Further console-family extraction and
-host settings-validator extraction require their own family/group-policy review.
+[host reply-routing stage](reports/2026-10-12_host_dispatch.md),
+[HOME console-boundary stage](reports/2026-10-12_console_boundaries.md) and
+[debug application-session stage](reports/2026-10-12_application_modules.md) are implemented;
+the evidence-copying stage remains pending. Further console-family, application
+session and host settings-validator extraction require their own dependency/policy review.
 Necessary timing, exact arithmetic and operation-specific uncertainty rules
 remain explicit. Archived delivery instructions are not pending work.
 

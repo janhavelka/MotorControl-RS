@@ -8,6 +8,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [Application session boundary](2026-10-12_application_modules.md) | Prompt 06 session/dependency inventory, private debug compilation unit, final-storage lifetime, bounded copied observation and build/storage comparison; other sessions remain explicitly coupled. |
 | [Default position boundaries](2026-10-07_position_limits.md) | 408 motion/stop cases and admission checks support the conservative application defaults on the recorded ESS23-RS20. They are not a universal drive rating. |
 | [Rate-boundary experiment](2026-10-07_rate_boundary.md) | Four hours of accumulated active testing passed in the stated envelope; broader tests reproduced reset-like loss of volatile settings and persistent RUNNING. Their drive-side causes remain unresolved. |
 | [Position-completion investigation](2026-10-07_position_completion.md) | Retains the checked replies behind high-subdivision failures and distinguishes the corrected short-move observation limitation from unresolved drive behavior. |

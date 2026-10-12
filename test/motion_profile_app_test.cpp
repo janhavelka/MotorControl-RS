@@ -162,7 +162,9 @@ int main() {
     const auto dropped=app->debug.state.dropped;
     const uint8_t diagnostic[]={1,3,0,0,0,1,0x84,0x0A};
     app->debug.capture.begin(hardware.time); app->debug.capture.transmitted(diagnostic,sizeof(diagnostic),true,hardware.time);
-    app->outputCount=OUTPUT_LINES-2; serviceDebug(*app); app->outputCount=outputCount;
+    app->outputCount=OUTPUT_LINES-2;
+    app->debug.service(app->console, app->outputCount >= OUTPUT_LINES-2);
+    app->outputCount=outputCount;
     assert(app->debug.state.dropped==dropped+1 && app->owner.pending()==queued);
     assert(r->requestId.owner==originalRequest.owner && r->requestId.generation==originalRequest.generation && r->requestId.slot==originalRequest.slot);
     assert(app->owner.result(r->requestId)==nullptr && app->console.outputPending()==pendingOutput);
@@ -172,7 +174,9 @@ int main() {
     // before skipping it, preserving it for independent readers.
     const auto beforeDebug=app->debug.state;
     for (unsigned i=0;i<20;++i) app->debug.capture.event(TrafficKind::END,hardware.time);
-    app->outputCount=OUTPUT_LINES-2; serviceDebug(*app); app->outputCount=outputCount;
+    app->outputCount=OUTPUT_LINES-2;
+    app->debug.service(app->console, app->outputCount >= OUTPUT_LINES-2);
+    app->outputCount=outputCount;
     assert(app->debug.state.missed==beforeDebug.missed+4);
     assert(app->debug.state.observed==beforeDebug.observed+1);
     assert(app->debug.state.dropped==beforeDebug.dropped+1);

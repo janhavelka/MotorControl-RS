@@ -2311,7 +2311,10 @@ Probe::Action hostSerial(void* context, const Probe::HostRequest* requested, Pro
 #include "PersistenceApp.h"
 #include "DiscoveryApp.h"
 
-#include "DebugApp.h"
+Probe::Action debugCommand(void* context, const Probe::DebugMode* requested,
+                           Probe::DebugSnapshot& out) {
+    return static_cast<App*>(context)->debug.command(requested, out);
+}
 Probe::Host host(App* a) {
     Probe::Host h; h.context = a; h.emitLine = emit; h.snapshot = snapshot;
     h.startProbe = probe; h.startCaptureRead = captureRead; h.recover = recover; h.resetStats = reset;
@@ -2621,7 +2624,7 @@ void serviceApplication() {
         if (loadFixture.takeLine(text, sizeof(text), size)) emit(&a, text, size);
     }
 #endif
-    serviceDebug(a);
+    a.debug.service(a.console, a.outputCount >= OUTPUT_LINES - 2);
     drainOutput(a);
     if (!OwnerWatchdog::completed(completedSampleUs)) platformReady = false;
     RuntimeWitness::mark(RuntimeWitness::IDLE);

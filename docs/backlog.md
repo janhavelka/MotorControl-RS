@@ -1,6 +1,6 @@
 # Implementation and qualification backlog
 
-Current as of the 12 October 2026 console-boundary refactor. This page lists remaining work;
+Current as of the 12 October 2026 application-session refactor. This page lists remaining work;
 completed work and historical test dispositions live in the
 [development archive](archive/README.md) and [changelog](../CHANGELOG.md).
 The [release scope](releases/1.0.0.md) and checked
@@ -27,10 +27,13 @@ unrelated commands or fixtures.
   Independently audited with full retained-frame-width output comparisons and
   corrected formatting-policy documentation.
   [Software handoff](reports/2026-10-12_console_boundaries.md); hardware NOT RUN.
-- [ ] Continue prompts 06–07 of the [maintainability sequence](prompts/maintainability/README.md)
-  in small reviewed blocks:
-  private application dependencies and evidence copying.
-  Prompts 01–05 are implemented; other console-family extraction remains optional
+- [x] Extract the debug session into a private compilation unit with final-storage
+  ownership, bounded copied observation and explicit console/output-pressure inputs.
+  [Software handoff](reports/2026-10-12_application_modules.md); hardware NOT RUN.
+- [ ] Continue prompt 07 of the [maintainability sequence](prompts/maintainability/README.md)
+  for evidence copying. Other application sessions retain their documented
+  cache/child-result dependencies; communication/persistence must migrate together.
+  Prompts 01–06 are implemented; other console-family extraction remains optional
   and requires family-specific formatting/error characterization.
   This sequence supersedes the earlier draft.
   Optional host settings-validator extraction remains a separate group-policy task.

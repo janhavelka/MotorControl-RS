@@ -6,6 +6,7 @@
 #include "../../examples/common/EssRtuValidator.h"
 #include "../../examples/common/HostSerial.h"
 #include "../../examples/probe_cli/ProbeConsole.h"
+#include "../../examples/probe_cli/DebugSession.h"
 #include <cstdlib>
 #include <cstring>
 
@@ -58,8 +59,16 @@ Probe::Host consoleHost() {
     return value;
 }
 Probe::Console console(consoleHost());
+Probe::DebugSession debug;
 
 void checkPortableConsumption() {
+    Probe::DebugSnapshot debugState;
+    const auto debugMode = Probe::DebugMode::RAW;
+    if (debug.command(&debugMode, debugState) != Probe::Action::OK ||
+        debugState.mode != debugMode) std::abort();
+    if (!runner.setTrafficCapture(&debug.capture)) std::abort();
+    debug.service(console, false); // Empty copied stream; no platform dependency.
+
     const std::size_t length = Ess::buildProbe(1, tx, sizeof(tx));
     if (length != sizeof(tx) || Ess::calcCrc16(tx, length)) std::abort();
     const uint8_t reply[] = {1, 3, 2, 3, 5, 0x78, 0xB7}; // Synthetic codec fixture.
