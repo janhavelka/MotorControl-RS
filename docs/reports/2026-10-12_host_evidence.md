@@ -148,3 +148,50 @@ Generated operation/reference/metadata checks, test registration and source/core
 package boundaries are unchanged. Final delivery requires all four CI jobs on
 the motion chunk's exact pushed commit; the final handoff links that run.
 No hardware test or new physical claim is part of this host-only refactor.
+
+## Fresh independent audit
+
+The completed extraction at `411bd68a7e73b1bcadcab66238f700789108678b`
+was audited again on 12 October after rereading the full original prompt and
+delivery rules. Three parallel read-only reviewers independently inspected
+correctness/edge cases, requirements/import/test coverage, and scope/simplicity/
+FieldCore integration. The lead checked their findings against the actual
+`24a3ace..411bd68` diff, current source, callers and executed test assertions.
+
+No confirmed implementation defect, missing acceptance case or required
+correction was found. Fresh AST comparison confirms equivalent bodies for all
+22 extracted functions (23 definitions including `BenchError`), unchanged
+remaining Console/top-level bodies and canonical helper/parser aliases. Raw
+storage/hex and captured-length checks still precede `_reply_status`; numeric,
+age, uncertainty, error-message and exception-cause policies remain distinct.
+An independent behavioral comparison ran 7,151 valid/malformed cases against
+the original implementation and found no differences in returns, errors,
+explicit cause chains or caller-data mutation.
+
+Every required acceptance case is exercised by existing tests. Canonical error/
+helper identity, normal/file-spec/direct imports, all four callers, isolated
+pure checks, malformed raw evidence, boolean integers, partial TX, wire-error
+precedence, stale binding, late delivery and interleaved diagnostics were checked
+against their actual assertions. No additional abstraction, test or implementation
+change was warranted. Optional settings extraction and the remaining stateful
+validators retain the documented boundaries.
+
+Current FieldCore result/binding/owner/backend/module source was rechecked
+read-only at the same `c591ecdd` revision. Its measurement results, borrowed RX,
+millisecond completion, echo stripping and sensor retries remain independent of
+retained motor evidence; no FieldCore file changed.
+
+Fresh verification, independent of the earlier delivery runs:
+
+- Bench 246, motion 37 and scenarios 36 tests PASS; all seven parity suites and
+  communication/discovery/persistence/I/O transport checks also passed.
+- `build/host-evidence-independent-audit`: 77/77 registered suites and all 15
+  quick source/package/install checks PASS, with actual native parity fixtures.
+- `build/host-evidence-independent-idf`: 77/77 suites and all 19 pinned ESP-IDF
+  5.5.5 checks PASS, including S3 application, S3/S2 core and portable S2 consumers.
+- The implementation's [exact-commit CI run](https://github.com/janhavelka/MotorControl-RS/actions/runs/38232466680)
+  was queried again: GCC, Clang, Arduino and IDF all completed successfully for
+  `411bd68`. The audit-record push also requires its own exact-commit CI check.
+
+Firmware source and registration remain unchanged. Hardware **NOT RUN**;
+no image was flashed or serial port opened during this audit.
