@@ -140,3 +140,53 @@ storage/build results, with no memory-optimization claim.
 Every delivery push requires GCC, Clang, Arduino and native-IDF CI on its exact
 commit; the final delivery message records that commit and workflow run.
 Hardware **NOT RUN**.
+
+## Independent follow-up audit
+
+A fresh audit re-read the full prompt and execution rules and inspected the
+actual `b816608..7e9edd5` diff, event/context headers, four sequence implementations,
+application callers and tests. Three parallel reviewers checked correctness,
+acceptance coverage and scope/simplicity; the lead verified their findings
+against source. No confirmed bug, missing acceptance case or unnecessary
+abstraction was found. No production or test correction was warranted.
+
+The audit independently compared every original copy assignment and raw bound
+with the helper. Default local initialization, all envelope checks, local parser
+status/frame-error mapping and publication order remain unchanged. Borrowed
+context buffers stay readable through parsing and are copied before publication;
+no alias restriction was added. Full received length and the 19-byte retained
+prefix remain distinct. Action ACK with transport uncertainty or deadline
+failure, position observed/command-only completion, velocity's original failure
+and independent stop, and homing confirmation policy remain separate.
+Communication/persistence's timely, non-uncertain evidence and exception `05`
+classification are untouched.
+
+The reviewers checked actual baseline source bytes and fixture-source hashes,
+not earlier summaries. All four revised fixtures pass against the original
+production archive again; all nine complete outputs from the fresh audit build
+match the baseline (**338,537 bytes**). Invalid-event context preservation,
+partial TX/RX, unconfirmed and late evidence, oversized capture, raw-buffer
+aliasing and post-call external-buffer mutation retain executable coverage.
+The exported source package contains the private helper byte for byte; installed
+public headers exclude it. The private inline header needs no new source-list
+entry.
+
+Current FieldCore observation binding, owner callback-before-RX-clear and module
+parse/copy lifetime were inspected again read-only at `c591ecdd`.
+The deliberately different raw motor-evidence and timing contracts above still
+apply; no FieldCore framework types, measurement results or retry policy enter
+this helper.
+
+Fresh quick verification in `build/evidence-copy-audit-quick` passed **78/78
+suites and all 15 checks**. All four pinned Arduino builds passed again. Fresh
+full verification in `build/evidence-copy-audit-idf` passed **78/78 suites and all
+19 checks**, including pinned IDF 5.5.5 S3 application, core S3/S2 and portable
+S2 owner/console consumers. Retained-size artifacts match the table above;
+fresh Arduino and IDF ELF section sizes match the extracted measurements.
+Repository documentation/metadata checks and `git diff --check` also passed.
+Hardware **NOT RUN**; no image was flashed.
+
+All four CI jobs passed for the original implementation commit `7e9edd5` in
+[run 38270926193](https://github.com/janhavelka/MotorControl-RS/actions/runs/38270926193).
+The documentation-only audit delivery also requires all four jobs on its exact
+pushed commit; the final delivery records that commit and workflow run.
