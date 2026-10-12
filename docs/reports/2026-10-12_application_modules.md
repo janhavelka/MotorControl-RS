@@ -175,3 +175,35 @@ exported-core S3/S2 and portable-owner S2 consumers. Final independent review
 checked the real diff, source lists, session/integration assertions and handoff;
 no further implementation gap was found. All original non-debug sessions and
 their service/deadline/lease logic remain unchanged.
+
+## Independent follow-up audit
+
+Re-read the complete prompt and execution rules and reviewed `7b1633d` against
+its parent `df8ee8b`. Three parallel reviewers independently inspected lifetime
+and correctness, acceptance tests, and scope/build/storage boundaries. The lead
+checked their conclusions against the actual diff and source. No confirmed bug,
+missing acceptance case or unnecessary abstraction was found; no production or
+test change was warranted.
+
+The audit checked final-storage construction and runner capture binding, deleted
+copy/move operations, unchanged service order and timing samples, owner frame
+retention, and the exact output-pressure predicate. The standalone fixture tests
+the linked production unit; whole-App fixtures exercise normal terminal and
+priority-stop retention in off/raw/decoded modes. Partial-RX flushing, independent
+cursors, bounded service and separate loss counters have executable coverage.
+The remaining application fragments and their communication/persistence lease
+relationship remain deliberately together, as permitted by this prompt.
+
+The current FieldCore binding, owner result collection, borrowed observation
+delivery and module result consumption were inspected again read-only at
+`c591ecddcd28ad3965c89a60b37279aa7f9e9940`. No framework dependency was introduced.
+The baseline/current Xtensa size symbols and firmware section artifacts match
+the measurements above; fresh Arduino and IDF builds retain the same section sizes.
+
+Fresh quick verification in `build/application-modules-audit-quick` passed
+**78/78 suites and all 15 checks**. All four Arduino environments passed again
+(subprocess exit zero, `arduino.log` in that directory). Fresh full verification
+in `build/application-modules-audit-idf` passed **78/78 suites and all 19 checks**,
+including the S3 IDF application, exported-core S3/S2 and portable-owner S2
+consumers. Repository documentation/metadata checks and `git diff --check`
+also passed. Hardware **NOT RUN**; no image was flashed during the audit.
