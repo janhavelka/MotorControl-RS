@@ -1,0 +1,52 @@
+# 06 - Add typed serial position interruption to the core
+
+Execute the [shared contract](execution_contract.md) and
+[verification rules](verification.md). Requirement: core portion of N05
+`position_interrupt`. Prerequisite: 01's source-reviewed bit-3 contract.
+
+## Inspect and assign
+
+Read position builders, `PositionCommand`, observed `MovePrerequisites`,
+`MoveContext`, action evidence, existing position/command tests and exact ESS
+MOTION_COMMAND documentation. Inspect current app/owner constraints before
+settling the public shape. Lead owns public API/state/effect contracts. Delegate
+independent wire/evidence fixtures after that contract freezes. Spawn a
+read-only reviewer specifically for interruption attribution and stale state.
+
+## Work
+
+1. Expose explicit typed interruption intent in the smallest suitable existing
+   request/options path. Preserve source compatibility and default noninterrupting
+   behavior. Verify bit polarity and combination with relative/absolute start
+   from source; do not infer them from the name or external PV trigger setting.
+2. Specify admission for observed-state and native-intent callers. The former
+   currently rejects RUNNING; do not simply remove that check for every move.
+   Native intent currently reports ACKNOWLEDGED, not observed arrival. Preserve
+   that distinction and all unrelated preconditions.
+3. Keep staging, trigger execution and completion evidence separate. Bind the
+   replacement to an explicit operation and target/configuration. Old RUNNING,
+   HOMED or ARRIVED samples and late old replies must not certify replacement
+   execution. Decide the minimum observable replacement contract and retain
+   uncertainty when the protocol cannot distinguish possible histories.
+4. Define the core handoff required by 07: settlement/cancellation of old work,
+   effects already possible, replacement trigger admission and required retained
+   results. The core does not allocate a queue, own transport, flush UART bytes,
+   stop the motor on local cancel or infer application ownership.
+5. Implement and document the complete core unit, including real consumers/tests
+   of every added declaration. Keep N05 overall and its CLI coverage open until
+   07 delivers the ordinary owner/application route. Do not expose a placeholder
+   console command that reports success before that route exists.
+
+## Acceptance
+
+Check byte-for-byte unchanged legacy starts and independently derived explicit
+interrupt frames for each admitted coordinate mode. Test invalid intent values,
+capacity, target/binding/generation, unchanged outputs and no start after rejected
+admission. Exercise lost staging ACK, lost trigger ACK, malformed/late replies,
+stale preexisting RUNNING/ARRIVED, deadline boundary, cancel and no replay.
+
+Demonstrate what is ACKNOWLEDGED versus OBSERVED versus UNKNOWN for the new
+operation without discarding old possible effects. Run focused position/command/
+evidence/package tests and integrated verification/required CI. Freeze a concrete
+tested contract for 07 and record its remaining integration obligation in progress.
+
