@@ -1,0 +1,1141 @@
+{
+  "schema_version": 1,
+  "purpose": "Published examples, including known bad frames; no hardware traffic",
+  "caveats": [
+    "Wire-valid does not mean the register, side effect or operation is supported.",
+    "CRC16/Modbus calculated independently; byte labels in vendor tables are inconsistent.",
+    "Repeated exact frames are deduplicated with source page references."
+  ],
+  "vectors": [
+    {
+      "id": "TL-V01",
+      "published_hex": "01 03 00 04 00 01 C5 CB",
+      "shape": "fc03_request",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 4
+        },
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
+        }
+      ],
+      "source_context": "01        03       00      04      00      01     C5     CB",
+      "crc_matches": true,
+      "calculated_crc_hex": "C5 CB",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V02",
+      "published_hex": "01 03 04 00 01 AB F3",
+      "shape": "fc03_reply",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 4
+        },
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 7
+        }
+      ],
+      "source_context": "01        03           04          00      01     AB     F3",
+      "crc_matches": false,
+      "calculated_crc_hex": "99 85",
+      "shape_valid": false,
+      "disposition": "REJECT_PUBLISHED_FRAME",
+      "issue_ids": [
+        "TL-D03"
+      ],
+      "notes": [
+        "Reject published wire frame; preserve bytes without silently repairing the vendor example."
+      ],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V03",
+      "published_hex": "01 06 00 23 03 E8 78 BE",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 4
+        },
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
+        }
+      ],
+      "source_context": "01        06       00      23      03      E8     78     BE",
+      "crc_matches": true,
+      "calculated_crc_hex": "78 BE",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V04",
+      "published_hex": "01 10 00 37 00 02 04 00 00 03 E8 B1 E3",
+      "shape": "fc10_request",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 4
+        },
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 7
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 8
+        }
+      ],
+      "source_context": "01      10    00    37    00    02      04     00    00    03   E8    B1     E3",
+      "crc_matches": true,
+      "calculated_crc_hex": "B1 E3",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V05",
+      "published_hex": "01 10 00 37 00 02 F0 06",
+      "shape": "fc10_reply",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 4
+        },
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 7
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 8
+        }
+      ],
+      "source_context": "01        10       00      37      00      02     F0     06",
+      "crc_matches": true,
+      "calculated_crc_hex": "F0 06",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V06",
+      "published_hex": "01 06 00 4E 00 01 28 1D",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 6
+        },
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 7
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 8
+        }
+      ],
+      "source_context": "例如发送01 06 00 4E 00 01 28 1D，00 01为16进制，转化为2进制位00 4E的Bit0为1，其",
+      "crc_matches": true,
+      "calculated_crc_hex": "28 1D",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V07",
+      "published_hex": "01 03 00 04 00 02 85 CA",
+      "shape": "fc03_request",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 7
+        }
+      ],
+      "source_context": "例如发送01 03 00 04 00 02 85 CA，读取站号为1的从站当前状态",
+      "crc_matches": true,
+      "calculated_crc_hex": "85 CA",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V08",
+      "published_hex": "01 06 00 36 00 64 68 2F",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 7
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 8
+        }
+      ],
+      "source_context": "发送报文：01 06 00 36 00 64 68 2F",
+      "crc_matches": true,
+      "calculated_crc_hex": "68 2F",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V09",
+      "published_hex": "01 10 00 37 00 02 04 FF FF FC 18 F0 73",
+      "shape": "fc10_request",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 7
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 8
+        }
+      ],
+      "source_context": "发送报文：01 10 00 37 00 02 04 FF FF FC 18 F0 73",
+      "crc_matches": true,
+      "calculated_crc_hex": "F0 73",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V10",
+      "published_hex": "01 06 00 36 00 C8 68 52",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 7
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 8
+        }
+      ],
+      "source_context": "发送报文：01 06 00 36 00 C8 68 52",
+      "crc_matches": true,
+      "calculated_crc_hex": "68 52",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V11",
+      "published_hex": "01 06 00 13 00 0C 78 0A",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 8
+        },
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "发送：01 06 00 13 00 0C 78 0A 将DI2配置为位置路径触发",
+      "crc_matches": true,
+      "calculated_crc_hex": "78 0A",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V12",
+      "published_hex": "01 06 00 14 00 0E 48 0A",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 8
+        },
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "01 06 00 14 00 0E 48 0A 将DI3 配置为路径选择开关 0",
+      "crc_matches": true,
+      "calculated_crc_hex": "48 0A",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V13",
+      "published_hex": "01 06 00 15 00 0F D8 0A",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 8
+        },
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "01 06 00 15 00 0F D8 0A 将DI4 配置为路径选择开关 1",
+      "crc_matches": true,
+      "calculated_crc_hex": "D8 0A",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V14",
+      "published_hex": "01 06 00 16 00 10 69 C2",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 8
+        }
+      ],
+      "source_context": "01 06 00 16 00 10 69 C2 将DI5 配置为路径选择开关 2",
+      "crc_matches": true,
+      "calculated_crc_hex": "69 C2",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [
+        "TL-D04"
+      ],
+      "notes": [
+        "Wire-valid but DI5/DI6 register not established for five-input TL57-R. Do not admit to profile policy."
+      ],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V15",
+      "published_hex": "01 06 00 17 00 11 F9 C2",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 8
+        }
+      ],
+      "source_context": "01 06 00 17 00 11 F9 C2 将DI6 配置为路径选择开关 3",
+      "crc_matches": true,
+      "calculated_crc_hex": "F9 C2",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [
+        "TL-D04"
+      ],
+      "notes": [
+        "Wire-valid but DI5/DI6 register not established for five-input TL57-R. Do not admit to profile policy."
+      ],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V16",
+      "published_hex": "01 06 00 26 00 01 A9 C1",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "发送：01 06 00 26 00 01 A9 C1  PA-026设置为当有定位运动执行时忽略新指令",
+      "crc_matches": true,
+      "calculated_crc_hex": "A9 C1",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V17",
+      "published_hex": "01 06 00 4A 00 01 69 DC",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "01 06 00 4A 00 01 69 DC  PA-04A设置为绝对位置模式",
+      "crc_matches": true,
+      "calculated_crc_hex": "69 DC",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V18",
+      "published_hex": "01 10 00 50 00 02 04 FF FF FC 18 B7 BD",
+      "shape": "fc10_request",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "01 10 00 50 00 02 04 FF FF FC 18 B7 BD  设置定位路径0 为反转一圈",
+      "crc_matches": true,
+      "calculated_crc_hex": "B7 BD",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V19",
+      "published_hex": "01 06 00 52 00 64 29 F0",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "01 06 00 52 00 64 29 F0         设置定位路径0 转速为100r/min",
+      "crc_matches": true,
+      "calculated_crc_hex": "29 F0",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V20",
+      "published_hex": "01 10 00 56 00 02 04 00 00 03 E8 76 07",
+      "shape": "fc10_request",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "01 10 00 56 00 02 04 00 00 03 E8 76 07  设置定位路径 1 为正转一圈",
+      "crc_matches": true,
+      "calculated_crc_hex": "76 07",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V21",
+      "published_hex": "01 06 00 58 00 C8 09 8F",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "01 06 00 58 00 C8 09 8F         设置定位路径1 转速为200r/min",
+      "crc_matches": true,
+      "calculated_crc_hex": "09 8F",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V22",
+      "published_hex": "01 10 00 5C 00 02 04 00 01 86 A0 C5 1E",
+      "shape": "fc10_request",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "01 10 00 5C 00 02 04 00 01 86 A0 C5 1E  设置定位路径 2 为正转100 圈",
+      "crc_matches": true,
+      "calculated_crc_hex": "C5 1E",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V23",
+      "published_hex": "01 06 00 5E 01 F4 E8 0F",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "01 06 00 5E 01 F4 E8 0F         设置定位路径2 转速为500r/min",
+      "crc_matches": true,
+      "calculated_crc_hex": "E8 0F",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V24",
+      "published_hex": "01 06 00 10 00 04 89 CC",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "01 06 00 10 00 04 89 CC                     Bit2 置1     触发定位路径0",
+      "crc_matches": true,
+      "calculated_crc_hex": "89 CC",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [
+        "TL-D07"
+      ],
+      "notes": [
+        "Changes input polarity; not an ordinary motion start/stop API. Physical input state and other assigned functions affect result."
+      ],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V25",
+      "published_hex": "01 06 00 10 00 00 88 0F",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 9
+        },
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 10
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "01 06 00 10 00 00 88 0F           所有DI 状态复位为0",
+      "crc_matches": true,
+      "calculated_crc_hex": "88 0F",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [
+        "TL-D07"
+      ],
+      "notes": [
+        "Changes input polarity; not an ordinary motion start/stop API. Physical input state and other assigned functions affect result."
+      ],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V26",
+      "published_hex": "01 06 00 10 00 0C 88 0A",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 10
+        }
+      ],
+      "source_context": "01 06 00 10 00 0C 88 0A                 Bit2、Bit3 同时置1 触发定位路径1",
+      "crc_matches": true,
+      "calculated_crc_hex": "88 0A",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [
+        "TL-D07"
+      ],
+      "notes": [
+        "Changes input polarity; not an ordinary motion start/stop API. Physical input state and other assigned functions affect result."
+      ],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V27",
+      "published_hex": "01 06 00 10 00 11 48 03",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 10
+        }
+      ],
+      "source_context": "01 06 00 10 00 11 48 03                 Bit2、bit4 同时置1 触发定位路径2",
+      "crc_matches": true,
+      "calculated_crc_hex": "48 03",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [
+        "TL-D07",
+        "TL-D03"
+      ],
+      "notes": [
+        "Changes input polarity; not an ordinary motion start/stop API. Physical input state and other assigned functions affect result.",
+        "Published 0x0011 selects bits0/4, contradicting the stated bits2/4."
+      ],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V28",
+      "published_hex": "01 06 00 4E 00 20 E8 05",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 10
+        }
+      ],
+      "source_context": "01 06 00 4E 00 20 E8 05        停止",
+      "crc_matches": true,
+      "calculated_crc_hex": "E8 05",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V29",
+      "published_hex": "01 06 00 11 00 0D 18 0A",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 10
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "发送报文：01 06 00 11 00 0D 18 0A",
+      "crc_matches": true,
+      "calculated_crc_hex": "18 0A",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V30",
+      "published_hex": "01 06 00 B0 00 64 89 C6",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 10
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "发送报文：01 06 00 B0 00 64 89 C6",
+      "crc_matches": true,
+      "calculated_crc_hex": "89 C6",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V31",
+      "published_hex": "01 06 00 10 00 01 49 CF",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 10
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 9
+        }
+      ],
+      "source_context": "发送报文：01 06 00 10 00 01 49 CF",
+      "crc_matches": true,
+      "calculated_crc_hex": "49 CF",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [
+        "TL-D07"
+      ],
+      "notes": [
+        "Changes input polarity; not an ordinary motion start/stop API. Physical input state and other assigned functions affect result."
+      ],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V32",
+      "published_hex": "01 06 00 11 00 01 18 0F",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 11
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 10
+        }
+      ],
+      "source_context": "发送报文：01 06 00 11 00 01 18 0F",
+      "crc_matches": true,
+      "calculated_crc_hex": "18 0F",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V33",
+      "published_hex": "01 06 00 40 00 18 88 14",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 11
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 10
+        }
+      ],
+      "source_context": "发送报文：01 06 00 40 00 18 88 14",
+      "crc_matches": true,
+      "calculated_crc_hex": "88 14",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V34",
+      "published_hex": "01 06 00 4E 00 10 E8 11",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 11
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 10
+        }
+      ],
+      "source_context": "发送报文：01 06 00 4E 00 10 E8 11",
+      "crc_matches": true,
+      "calculated_crc_hex": "E8 11",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V35",
+      "published_hex": "01 06 00 40 00 1D 48 17",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 11
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 10
+        }
+      ],
+      "source_context": "发送报文：01 06 00 40 00 1D 48 17",
+      "crc_matches": true,
+      "calculated_crc_hex": "48 17",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V36",
+      "published_hex": "01 06 00 4F 01 00 B9 8D",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
+        }
+      ],
+      "source_context": "PA_04F       01 06 00 4F 01 00 B9 8D         恢复出厂参数",
+      "crc_matches": true,
+      "calculated_crc_hex": "B9 8D",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V37",
+      "published_hex": "01 06 00 4F 02 00 B9 7D",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
+        }
+      ],
+      "source_context": "PA_04F       01 06 00 4F 02 00 B9 7D   保存当前参数（自动置零的参数无法保",
+      "crc_matches": true,
+      "calculated_crc_hex": "B9 7D",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V38",
+      "published_hex": "01 06 00 4F 04 00 BA DD",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
+        }
+      ],
+      "source_context": "PA_04F       01 06 00 4F 04 00 BA DD         清除当前位置",
+      "crc_matches": true,
+      "calculated_crc_hex": "BA DD",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V39",
+      "published_hex": "01 06 00 4F 05 00 BB 4D",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
+        }
+      ],
+      "source_context": "PA_04F       01 06 00 4F 05 00 BB 4D     电机锁轴（电机默认上电锁轴）",
+      "crc_matches": true,
+      "calculated_crc_hex": "BB 4D",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V40",
+      "published_hex": "01 06 00 4F 06 00 BB BD",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
+        }
+      ],
+      "source_context": "PA_04F       01 06 00 4F 06 00 BB BD          电机松轴",
+      "crc_matches": true,
+      "calculated_crc_hex": "BB BD",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V41",
+      "published_hex": "01 06 00 22 00 01 E8 00",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
+        }
+      ],
+      "source_context": "PA_022       01 06 00 22 00 01 E8 00        电机默认方向取反",
+      "crc_matches": true,
+      "calculated_crc_hex": "E8 00",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V42",
+      "published_hex": "01 03 00 0A 00 02 E4 09",
+      "shape": "fc03_request",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
+        }
+      ],
+      "source_context": "PA_0A        01 03 00 0A 00 02 E4 09        监控当前速度（r/min）",
+      "crc_matches": true,
+      "calculated_crc_hex": "E4 09",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [
+        "TL-D03"
+      ],
+      "notes": [
+        "Reads undocumented address 0x000B after the one-word speed; reject this request in initial profile policy."
+      ],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V43",
+      "published_hex": "01 03 00 08 00 02 45 C9",
+      "shape": "fc03_request",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
+        }
+      ],
+      "source_context": "PA_008       01 03 00 08 00 02 45 c9         监控当前位置",
+      "crc_matches": true,
+      "calculated_crc_hex": "45 C9",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V44",
+      "published_hex": "01 03 00 05 00 01 D4 0A",
+      "shape": "fc03_request",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
+        }
+      ],
+      "source_context": "PA_005       01 03 00 05 00 01 D4 0A         监控当前报警",
+      "crc_matches": false,
+      "calculated_crc_hex": "94 0B",
+      "shape_valid": true,
+      "disposition": "REJECT_PUBLISHED_FRAME",
+      "issue_ids": [
+        "TL-D03"
+      ],
+      "notes": [
+        "Reject published wire frame; preserve bytes without silently repairing the vendor example."
+      ],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V45",
+      "published_hex": "01 06 00 41 01 F4 D9 C9",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
+        }
+      ],
+      "source_context": "PA-041       01 06 00 41 01 F4 D9 C9          回零速度为500",
+      "crc_matches": true,
+      "calculated_crc_hex": "D9 C9",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V46",
+      "published_hex": "01 06 00 42 00 64 28 35",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
+        }
+      ],
+      "source_context": "PA-042       01 06 00 42 00 64 28 35        回零爬行速度为100",
+      "crc_matches": true,
+      "calculated_crc_hex": "28 35",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V47",
+      "published_hex": "01 03 00 0A 00 01 A4 08",
+      "shape": "fc03_request",
+      "sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 24
+        }
+      ],
+      "source_context": "Transcribed from the per-byte protocol table",
+      "crc_matches": true,
+      "calculated_crc_hex": "A4 08",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V48",
+      "published_hex": "01 03 02 00 00 B8 44",
+      "shape": "fc03_reply",
+      "sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 24
+        }
+      ],
+      "source_context": "Transcribed from the per-byte protocol table",
+      "crc_matches": true,
+      "calculated_crc_hex": "B8 44",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V49",
+      "published_hex": "01 06 00 70 00 14 88 1E",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 24
+        }
+      ],
+      "source_context": "Transcribed from the per-byte protocol table",
+      "crc_matches": true,
+      "calculated_crc_hex": "88 1E",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V50",
+      "published_hex": "01 10 00 B0 00 02 04 03 E8 00 64 79 40",
+      "shape": "fc10_request",
+      "sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 25
+        }
+      ],
+      "source_context": "Transcribed from the per-byte protocol table",
+      "crc_matches": true,
+      "calculated_crc_hex": "79 40",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V51",
+      "published_hex": "01 10 00 B0 00 02 40 2F",
+      "shape": "fc10_reply",
+      "sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 25
+        }
+      ],
+      "source_context": "Transcribed from the per-byte protocol table",
+      "crc_matches": true,
+      "calculated_crc_hex": "40 2F",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V52",
+      "published_hex": "01 06 04 10 00",
+      "shape": "exception",
+      "sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 26
+        }
+      ],
+      "source_context": "Transcribed from the per-byte protocol table",
+      "crc_matches": false,
+      "calculated_crc_hex": "22 63",
+      "shape_valid": false,
+      "disposition": "REJECT_PUBLISHED_FRAME",
+      "issue_ids": [
+        "TL-D03"
+      ],
+      "notes": [
+        "Reject published wire frame; preserve bytes without silently repairing the vendor example."
+      ],
+      "hardware": "NOT_TESTED"
+    }
+  ]
+}

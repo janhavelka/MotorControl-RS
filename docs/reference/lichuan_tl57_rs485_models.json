@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "models": [
+    {
+      "model": "TLO57R-36V-1",
+      "closed_loop": false,
+      "source_id": "TL-WEB",
+      "step_angle_degrees": 1.8,
+      "length_mm": 84.2,
+      "holding_torque_nm": 1,
+      "phase_current_a": 4,
+      "rotor_inertia_g_cm2": 300,
+      "weight_kg": 0.83,
+      "encoder_lines": null,
+      "shaft_options_mm": [
+        6.35,
+        8
+      ],
+      "shaft_length_mm": 21,
+      "issue_ids": [
+        "TL-D13"
+      ],
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "model": "TLO57R-36V-2",
+      "closed_loop": false,
+      "source_id": "TL-WEB",
+      "step_angle_degrees": 1.8,
+      "length_mm": 110.2,
+      "holding_torque_nm": 2,
+      "phase_current_a": 4,
+      "rotor_inertia_g_cm2": 480,
+      "weight_kg": 1.48,
+      "encoder_lines": null,
+      "shaft_options_mm": [
+        8,
+        10
+      ],
+      "shaft_length_mm": 21,
+      "issue_ids": [
+        "TL-D13"
+      ],
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "model": "TLO57R-36V-3",
+      "closed_loop": false,
+      "source_id": "TL-WEB",
+      "step_angle_degrees": 1.8,
+      "length_mm": 128.2,
+      "holding_torque_nm": 3,
+      "phase_current_a": 4,
+      "rotor_inertia_g_cm2": 800,
+      "weight_kg": 1.65,
+      "encoder_lines": null,
+      "shaft_options_mm": [
+        8,
+        10
+      ],
+      "shaft_length_mm": 21,
+      "issue_ids": [
+        "TL-D13"
+      ],
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "model": "TLC57R-36V-1",
+      "closed_loop": true,
+      "source_id": "TL-WEB",
+      "step_angle_degrees": 1.8,
+      "length_mm": 84.2,
+      "holding_torque_nm": 1,
+      "phase_current_a": 4,
+      "rotor_inertia_g_cm2": 300,
+      "weight_kg": 0.83,
+      "encoder_lines": 1000,
+      "shaft_options_mm": [
+        6.35,
+        8
+      ],
+      "shaft_length_mm": 21,
+      "issue_ids": [
+        "TL-D13"
+      ],
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "model": "TLC57R-36V-2",
+      "closed_loop": true,
+      "source_id": "TL-WEB",
+      "step_angle_degrees": 1.8,
+      "length_mm": 110.2,
+      "holding_torque_nm": 2,
+      "phase_current_a": 4,
+      "rotor_inertia_g_cm2": 480,
+      "weight_kg": 1.48,
+      "encoder_lines": 1000,
+      "shaft_options_mm": [
+        8,
+        10
+      ],
+      "shaft_length_mm": 21,
+      "issue_ids": [
+        "TL-D13"
+      ],
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "model": "TLC57R-36V-3",
+      "closed_loop": true,
+      "source_id": "TL-WEB",
+      "step_angle_degrees": 1.8,
+      "length_mm": 128.2,
+      "holding_torque_nm": 3,
+      "phase_current_a": 4,
+      "rotor_inertia_g_cm2": 800,
+      "weight_kg": 1.65,
+      "encoder_lines": 1000,
+      "shaft_options_mm": [
+        8,
+        10
+      ],
+      "shaft_length_mm": 21,
+      "issue_ids": [
+        "TL-D13"
+      ],
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED"
+    }
+  ],
+  "requested_listing": "https://www.aliexpress.com/item/1005008320426474.html",
+  "initial_selection": "Screenshot selects RS485 and 1 Nm; open/closed loop and delivered nameplate/firmware are unconfirmed.",
+  "conflicts": [
+    "Listing selector 2.3 Nm vs model table and manufacturer page 2.0 Nm.",
+    "Listing shafts: -1/-2 6.35 or 8 mm; -3 10 mm. TL-USER p5: all 6.35 or 8 mm. TL-WEB: -1 6.35/8, -2/-3 8/10.",
+    "TL-USER maximum output current 4.0 A vs TL-WEB driver current 5.6 A; RMS/peak basis unresolved."
+  ]
+}

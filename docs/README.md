@@ -97,6 +97,11 @@ The subdirectories have distinct purposes:
   [original manuals](vendor/lichuan_lc57bk_rs485/README.md) and
   [12-stage implementation promptset](prompts/lichuan_lc57bk_rs485/README.md):
   RS485 research only; this profile is not implemented or hardware-qualified.
+- [Lichuan TLO57R / TLC57R evidence](reference/14_lichuan_tl57_rs485.md),
+  [original manuals](vendor/lichuan_tl57_rs485/README.md) and
+  [separate 12-stage promptset](prompts/lichuan_tl57_rs485/README.md):
+  the L-type RS485 family has independent protocol policy; research preparation
+  is complete, implementation and physical qualification remain unstarted.
 - [Development archive](archive/README.md): completed prompts, superseded drafts,
   implementation/audit reports, candidate artifacts and the historical bench ledger.
 

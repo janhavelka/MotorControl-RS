@@ -155,6 +155,15 @@ functional evidence; independent shaft calibration remains absent.
   Keep status-address, encoder, sign, I/O and communication ambiguities explicit.
 - [ ] Establish and qualify an actual Lichuan model/firmware/fixture separately
   from ESS; no Lichuan hardware test or availability is claimed by the listing.
+- [x] Prepare the separate [Lichuan TLO57R / TLC57R source bundle and promptset](prompts/lichuan_tl57_rs485/README.md):
+  three manuals (56 pages), 203 register words, 52 audited published frames and
+  six RS485 model candidates. This completes research preparation only.
+- [ ] Implement the TL57-R profile independently of LC57BK, following its 12
+  stages and [TL-D01..TL-D14 evidence gates](reference/14_lichuan_tl57_rs485.md).
+  Preserve the high-word-first signed targets, control-bit semantics, external
+  path trigger restrictions and unresolved version/I/O/timing distinctions.
+- [ ] Identify and qualify an actual TL57 model/firmware/fixture; no TL57
+  communication, motion, I/O, restart or persistence test has been performed.
 - [ ] Develop CANopen in a separate future library, initially the verified
   CL86-C subset, after obtaining firmware-matched manual/EDS and transport
   evidence. Preserve the common motion vocabulary; extract shared types only

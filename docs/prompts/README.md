@@ -12,6 +12,13 @@ Its original manuals, extracted register/frame/model ledgers and unresolved
 documentation differences are preserved. Prepared on 23 October 2026;
 implementation has not started and Lichuan hardware has not been tested.
 
+The separate [Lichuan TLO57R / TLC57R RS485 set](lichuan_tl57_rs485/README.md)
+contains 12 stages for the L-type family. Its register map, signed pair order,
+control words and external path triggers differ from LC57BK. Three original
+manuals, 203 register words, 52 published frames and six model candidates are
+preserved. Prepared on 23 October 2026; implementation and hardware testing
+have not started. The two Lichuan sets can proceed independently.
+
 RodTester integration already exists in FieldCore-node. Its selected board/
 backend and product qualification remain consumer work; see the
 [current handoff](../fieldcore_handoff.md).

@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "collected_on": "2026-10-23",
+  "purpose": "Research and prompts, not implemented or qualified support",
+  "references": [
+    {
+      "id": "TL-USER",
+      "path": "vendor/lichuan_tl57_rs485/Lichuan_TL57-R_User_Manual_CN.pdf",
+      "url": "https://omo-oss-file110.thefastfile.com/portal-saas/pg2024121216272237966/cms/file/tl57-r rs485总线型一体机使用手册.pdf",
+      "resolved_url": "https://omo-oss-cdn.thefastfile.com/portal-saas/pg2024121216272237966/cms/file/tl57-r%20rs485%E6%80%BB%E7%BA%BF%E5%9E%8B%E4%B8%80%E4%BD%93%E6%9C%BA%E4%BD%BF%E7%94%A8%E6%89%8B%E5%86%8C.pdf?sign=1792774512-a832e81aff6605697ba560e4db3a4ab7-0-5bcc862eb1bfeea828ed4a6761b25aee&Expires=1792774512&Signature=EF5izb98wjBeqQq95DMBjtSo0W1YCV-NVyHGbqPJ9d-3b6nks~2aQfdgLl4kfWx07v3lZw3O4jJ0dtdKjoBJ~STT~M99bHunbNl3~Za25hO9B8mgv1~0wlOvJdUv~6GsqHyZzWQl9t4jNVG0REueiJjyzF1-hQk2JmmrSUaKT5uoGOEBRD3PgF-WFCRNdHM~J6x-KDH73MUh-8VZnEx-bCdVt3tpSuJ0yOvdZ3BNhHOhk-5C417zmAMFLODc2SCbqCfrQOOBLwWvCYsRbVG9biPLjH78~Ieyk0Rx2WHgCqsVn92OWFdBGR5trJ7Cpn6CFSmY1NuRadDKIKx-28V1OA&Key-Pair-Id=KITUBNZ25ERQX",
+      "retrieved_at_utc": "2026-10-23T15:55:16.828919+00:00",
+      "bytes": 1512172,
+      "sha256": "92cdf9e8021b791ee74f2550181967c8702c50e0dc3b6dd49619a57c4a835f34",
+      "format": "pdf",
+      "pages": 26,
+      "text_extract": "pdf-extracted-md/Lichuan_TL57-R_User_Manual_CN.md",
+      "discovery_url": "https://www.xlichuan.com/product-xq/175.html",
+      "referer": "https://www.xlichuan.com/",
+      "revision": "No revision identified; pin these exact bytes",
+      "visually_reviewed_pdf_pages": [
+        5,
+        6,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26
+      ]
+    },
+    {
+      "id": "TL-OP",
+      "path": "vendor/lichuan_tl57_rs485/Lichuan_TL57-R_Operation_Manual_CN.pdf",
+      "url": "https://omo-oss-file110.thefastfile.com/portal-saas/pg2024121216272237966/cms/file/tl57-r rs485总线型一体机操作手册1.pdf",
+      "resolved_url": "https://omo-oss-cdn.thefastfile.com/portal-saas/pg2024121216272237966/cms/file/tl57-r%20rs485%E6%80%BB%E7%BA%BF%E5%9E%8B%E4%B8%80%E4%BD%93%E6%9C%BA%E6%93%8D%E4%BD%9C%E6%89%8B%E5%86%8C1.pdf?sign=1792774512-bc6b9f5846d439f146293601fddb9f5c-0-d5ff573e15b83127beaceb6cd7df90e3&Expires=1792774512&Signature=jSpXUlUOc0iT~-87KHoe2NVa8U2HSteZhS9RH2H0a-5ObcfxKaGW0QoHSKSt8g~3UCrSYq8kMm4kCw~~POEuF2k9sgxOHVr2ITUd-wArxJ1hcIN6QeH4ckY7EBMsdFCRaw6VHeP-jJVtmSpuOQ5mlhbP7ka-lrMbfninUaVPW0ZvxEDMFnKnTe-3aCmaCcZ401Un~CT2gVo6utpMOI89Ti7SMj87lNoXCPdx~6H5W~87LqfNRWb7R8F8DoWyHqRSd8~0Ip6mYIfbeKEmJzyFunHDQgVsJrsZdR-zKK-l7DBuWKbVgCS1Y5mEiAgeSbarHr80DRMOiWZYEkYGBvbbGQ&Key-Pair-Id=KITUBNZ25ERQX",
+      "retrieved_at_utc": "2026-10-23T15:55:16.537790+00:00",
+      "bytes": 892533,
+      "sha256": "def80d0f7f74e48e187384ceabf5cc4723069f0a23bb9823e72fd5bfbcad19f6",
+      "format": "pdf",
+      "pages": 18,
+      "text_extract": "pdf-extracted-md/Lichuan_TL57-R_Operation_Manual_CN.md",
+      "discovery_url": "https://www.xlichuan.com/product-xq/175.html",
+      "referer": "https://www.xlichuan.com/",
+      "revision": "No revision identified; pin these exact bytes",
+      "visually_reviewed_pdf_pages": [
+        8,
+        9
+      ]
+    },
+    {
+      "id": "TL-EX",
+      "path": "vendor/lichuan_tl57_rs485/Lichuan_TL-R_Serial_Examples_CN.pdf",
+      "url": "https://omo-oss-file110.thefastfile.com/portal-saas/pg2024121216272237966/cms/file/tl-r总线一体机串口调试案例 .pdf",
+      "resolved_url": "https://omo-oss-cdn.thefastfile.com/portal-saas/pg2024121216272237966/cms/file/tl-r%E6%80%BB%E7%BA%BF%E4%B8%80%E4%BD%93%E6%9C%BA%E4%B8%B2%E5%8F%A3%E8%B0%83%E8%AF%95%E6%A1%88%E4%BE%8B%20.pdf?sign=1792774512-c5ce8ee62e4b460bd49389c75469f76a-0-d2ae0f7166c4459cc638e46356636ac4&Expires=1792774512&Signature=DsNdu8CTHta7QRSejz8qral9hRumI3vz1sCTjiW62l74vEC1omNZQP6xnUxa-9jKdzvJgUTU~xR3B9J6i9hpixzkOR~ro~fhF430eBjgzleYjG7Cri9p0eEWwTsPlp-pFCFA-uNDne6FTxERcJWCP8mHICcC1jyG-snLe6UbBekKwvIOHH3rZrmCMEN6jfthC-m8JaBb6yi0exM0rCja~VPeCp4YDpnPs8VDLU4zvDPSjSJlaSbsTS~2cqBYJY27iP13wv8i4SouZTGqRBSjmxv0JZr6er40hDUgTLkE3afDprmA5Wgf2l--2PJ0WvNxrIbxStfY0CDx36lIBxsASw&Key-Pair-Id=KITUBNZ25ERQX",
+      "retrieved_at_utc": "2026-10-23T15:55:16.337000+00:00",
+      "bytes": 887335,
+      "sha256": "edaaee17117ee9eb36486813a2cde0b3c963019996711daf6df090e19e5ddd07",
+      "format": "pdf",
+      "pages": 12,
+      "text_extract": "pdf-extracted-md/Lichuan_TL-R_Serial_Examples_CN.md",
+      "discovery_url": "https://www.xlichuan.com/product-xq/175.html",
+      "referer": "https://www.xlichuan.com/",
+      "revision": "No revision identified; pin these exact bytes",
+      "visually_reviewed_pdf_pages": [
+        4,
+        7,
+        8,
+        9,
+        10,
+        12
+      ]
+    },
+    {
+      "id": "TL-WEB",
+      "path": "vendor/lichuan_tl57_rs485/Lichuan_TL57-R_Product_Page_2026-10-23.html",
+      "url": "https://www.xlichuan.com/product-xq/175.html",
+      "resolved_url": "https://www.xlichuan.com/product-xq/175.html",
+      "retrieved_at_utc": "2026-10-23T15:54:43.975851+00:00",
+      "bytes": 437920,
+      "sha256": "89ba43c41f5621aba0d6a8118725f0bf8ed19fa7f3b07418ec0a4b7bfbbf0b14",
+      "format": "html",
+      "referer": "https://www.xlichuan.com/"
+    }
+  ],
+  "unavailable": [
+    {
+      "url": "https://www.aliexpress.com/item/1005008320426474.html",
+      "result": "Direct page fetch failed; six user-supplied screenshots reviewed, not downloaded as original files"
+    },
+    {
+      "url": "https://www.lichuanservomotor.com/upload/7257/20240909152550419837.pdf",
+      "result": "English TL-R manual search candidate returned HTTP 404; nl subdomain also unavailable. Not retained or used to resolve device facts."
+    }
+  ]
+}

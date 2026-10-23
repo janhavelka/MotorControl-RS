@@ -1,0 +1,6367 @@
+{
+  "schema_version": 1,
+  "purpose": "Research transcription, not generated C++ access policy",
+  "source": "TL-USER physical PDF pages 15-23; cross-check types with pages 10-14",
+  "caveats": [
+    "Null means not established in this transcription, never a zero default.",
+    "Merged cells in extracted_cells are unnormalized source aids; inspect original PDF.",
+    "Per-word entries for signed pairs are not permission to write isolated halves.",
+    "Gaps are not registers. No addresses inferred for DI5/6 from conflicting serial examples."
+  ],
+  "registers": [
+    {
+      "parameter": "PA_001",
+      "address": 1,
+      "address_hex": "0x0001",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        15
+      ],
+      "extracted_cells": [
+        "PA 001\n_",
+        "1",
+        null,
+        null,
+        "软件版本",
+        "硬件版本",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        "(RO)",
+        null,
+        null
+      ],
+      "name_en": "version_word_1_labels_conflict",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "RO",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D01"
+      ]
+    },
+    {
+      "parameter": "PA_002",
+      "address": 2,
+      "address_hex": "0x0002",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        15
+      ],
+      "extracted_cells": [
+        "PA 002\n_",
+        "2",
+        null,
+        null,
+        "硬件版本",
+        "软件版本",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        "(RO)",
+        null,
+        null
+      ],
+      "name_en": "version_word_2_labels_conflict",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "RO",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D01"
+      ]
+    },
+    {
+      "parameter": "PA_004",
+      "address": 4,
+      "address_hex": "0x0004",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        15
+      ],
+      "extracted_cells": [
+        "PA 004\n_",
+        "4",
+        null,
+        null,
+        "运行状态",
+        "",
+        "",
+        "代码",
+        "",
+        "",
+        "运行状态",
+        "",
+        "",
+        "(RO)",
+        null,
+        null
+      ],
+      "name_en": "drive_status",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "RO",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_005",
+      "address": 5,
+      "address_hex": "0x0005",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        15
+      ],
+      "extracted_cells": [
+        "PA 005\n_",
+        "5",
+        null,
+        null,
+        "当前报警",
+        "故障码 内容\n0x01 过流\n0x02 过压\n0x03 欠压",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        "(RO)",
+        null,
+        null
+      ],
+      "name_en": "current_alarm",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "RO",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_006",
+      "address": 6,
+      "address_hex": "0x0006",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        16
+      ],
+      "extracted_cells": [
+        "PA 006\n_",
+        "6",
+        "DI 组端子状态",
+        "代码 状态\nBit0 DI0\nBit1 DI1\nBit2 DI2\nBit3 DI3\nBit4 DI4",
+        "(RO)"
+      ],
+      "name_en": "digital_input_state",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "RO",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_007",
+      "address": 7,
+      "address_hex": "0x0007",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        16
+      ],
+      "extracted_cells": [
+        "PA 007\n_",
+        "7",
+        "DO 组端子状态",
+        "代码 状态\nBit0 DO0\nBit1 DO1\nBit2 DO2",
+        "(RO)"
+      ],
+      "name_en": "digital_output_state",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "RO",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D04"
+      ]
+    },
+    {
+      "parameter": "PA_008",
+      "address": 8,
+      "address_hex": "0x0008",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        16
+      ],
+      "extracted_cells": [
+        "PA 008\n_",
+        "8",
+        "当前位置H",
+        "开环时为给定指令位置，\n闭环时为反馈位置；",
+        "(RO)"
+      ],
+      "name_en": "current_position_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "RO",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D09"
+      ],
+      "pair_start": 8,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_009",
+      "address": 9,
+      "address_hex": "0x0009",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        16
+      ],
+      "extracted_cells": [
+        "PA 009\n_",
+        "9",
+        "当前位置L",
+        null,
+        null
+      ],
+      "name_en": "current_position_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "RO",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D09"
+      ],
+      "pair_start": 8,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_00A",
+      "address": 10,
+      "address_hex": "0x000A",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        16
+      ],
+      "extracted_cells": [
+        "PA 00A\n_",
+        "10",
+        "当前速度",
+        "单位r/min",
+        "(RO)"
+      ],
+      "name_en": "current_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "RO",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_010",
+      "address": 16,
+      "address_hex": "0x0010",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        16
+      ],
+      "extracted_cells": [
+        "PA 010\n_",
+        "16",
+        null,
+        null,
+        "DI 端子常开/常闭\n切换",
+        "代码 状态\nBit0 DI0\nBit1 DI1\nBit2 DI2\nBit3 DI3\nBit4 DI4\n0：常开；1：常闭",
+        null,
+        null,
+        null,
+        "0~127",
+        null,
+        null
+      ],
+      "name_en": "input_polarity",
+      "word_width_bits": 16,
+      "default": 0,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D04"
+      ],
+      "default_source": {
+        "source_id": "TL-USER",
+        "pdf_page": 8
+      }
+    },
+    {
+      "parameter": "PA_011",
+      "address": 17,
+      "address_hex": "0x0011",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        16
+      ],
+      "extracted_cells": [
+        "PA 011\n_",
+        "17",
+        null,
+        null,
+        "DI 输入口0",
+        "",
+        "代码",
+        "功能",
+        "",
+        "0~17",
+        null,
+        null
+      ],
+      "name_en": "input_0_function",
+      "word_width_bits": 16,
+      "default": 1,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "default_source": {
+        "source_id": "TL-USER",
+        "pdf_page": 8
+      }
+    },
+    {
+      "parameter": "PA_012",
+      "address": 18,
+      "address_hex": "0x0012",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        16
+      ],
+      "extracted_cells": [
+        "PA 012\n_",
+        "18",
+        null,
+        null,
+        "DI 输入口1",
+        null,
+        null,
+        null,
+        null,
+        "0~17",
+        null,
+        null
+      ],
+      "name_en": "input_1_function",
+      "word_width_bits": 16,
+      "default": 2,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "default_source": {
+        "source_id": "TL-USER",
+        "pdf_page": 8
+      }
+    },
+    {
+      "parameter": "PA_013",
+      "address": 19,
+      "address_hex": "0x0013",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        16
+      ],
+      "extracted_cells": [
+        "PA 013\n_",
+        "19",
+        null,
+        null,
+        "DI 输入口2",
+        null,
+        "0x04",
+        "释放信号",
+        null,
+        "0~17",
+        null,
+        null
+      ],
+      "name_en": "input_2_function",
+      "word_width_bits": 16,
+      "default": 3,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "default_source": {
+        "source_id": "TL-USER",
+        "pdf_page": 8
+      }
+    },
+    {
+      "parameter": "PA_014",
+      "address": 20,
+      "address_hex": "0x0014",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        16
+      ],
+      "extracted_cells": [
+        "PA 014\n_",
+        "20",
+        null,
+        null,
+        "DI 输入口3",
+        null,
+        null,
+        null,
+        null,
+        "0~17",
+        null,
+        null
+      ],
+      "name_en": "input_3_function",
+      "word_width_bits": 16,
+      "default": 0,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "default_source": {
+        "source_id": "TL-USER",
+        "pdf_page": 8
+      }
+    },
+    {
+      "parameter": "PA_015",
+      "address": 21,
+      "address_hex": "0x0015",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        16
+      ],
+      "extracted_cells": [
+        "PA 015\n_",
+        "21",
+        null,
+        null,
+        "DI 输入口4",
+        null,
+        "0x0B",
+        "回零触发",
+        null,
+        "0~17",
+        null,
+        null
+      ],
+      "name_en": "input_4_function",
+      "word_width_bits": 16,
+      "default": 0,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "default_source": {
+        "source_id": "TL-USER",
+        "pdf_page": 8
+      }
+    },
+    {
+      "parameter": "PA_01A",
+      "address": 26,
+      "address_hex": "0x001A",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        17
+      ],
+      "extracted_cells": [
+        "PA 01A\n_",
+        "26",
+        "输入口滤波系数",
+        "输入口滤波系数",
+        null,
+        null,
+        null,
+        "0~1024"
+      ],
+      "name_en": "input_filter",
+      "word_width_bits": 16,
+      "default": 2,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "default_source": {
+        "source_id": "TL-USER",
+        "pdf_page": 8
+      }
+    },
+    {
+      "parameter": "PA_01B",
+      "address": 27,
+      "address_hex": "0x001B",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        17
+      ],
+      "extracted_cells": [
+        "PA 01B\n_",
+        "27",
+        "DO 端子常开/常闭\n切换",
+        "代码 状态\nBit0 DO0\nBit1 DO1\n0：常开；1：常闭",
+        null,
+        null,
+        null,
+        "0~7"
+      ],
+      "name_en": "output_polarity",
+      "word_width_bits": 16,
+      "default": 0,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D04"
+      ],
+      "default_source": {
+        "source_id": "TL-USER",
+        "pdf_page": 8
+      }
+    },
+    {
+      "parameter": "PA_01C",
+      "address": 28,
+      "address_hex": "0x001C",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        17
+      ],
+      "extracted_cells": [
+        "PA 01C\n_",
+        "28",
+        "DO 输出口0",
+        "",
+        "代码",
+        "功能",
+        "",
+        "0~3"
+      ],
+      "name_en": "output_0_function",
+      "word_width_bits": 16,
+      "default": 1,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D04"
+      ],
+      "default_source": {
+        "source_id": "TL-USER",
+        "pdf_page": 8
+      }
+    },
+    {
+      "parameter": "PA_01D",
+      "address": 29,
+      "address_hex": "0x001D",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        17
+      ],
+      "extracted_cells": [
+        "PA 01D\n_",
+        "29",
+        "DO 输出口1",
+        null,
+        null,
+        null,
+        null,
+        "0~3"
+      ],
+      "name_en": "output_1_function",
+      "word_width_bits": 16,
+      "default": 0,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D04"
+      ],
+      "default_source": {
+        "source_id": "TL-USER",
+        "pdf_page": 8
+      }
+    },
+    {
+      "parameter": "PA_01F",
+      "address": 31,
+      "address_hex": "0x001F",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        17
+      ],
+      "extracted_cells": [
+        "PA 01F\n_",
+        "31",
+        "输出口强制输出",
+        "代码 DO 功能码\nBit0 0x09\nBit1 0x0A\n0：常开；1：常闭\n注：输出口功能需按对应的功能码设置\n好，然后接通对应的位才会有输出；",
+        null,
+        null,
+        null,
+        "0~7"
+      ],
+      "name_en": "forced_output_control",
+      "word_width_bits": 16,
+      "default": 0,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D04"
+      ],
+      "default_source": {
+        "source_id": "TL-USER",
+        "pdf_page": 8
+      }
+    },
+    {
+      "parameter": "PA_020",
+      "address": 32,
+      "address_hex": "0x0020",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        17
+      ],
+      "extracted_cells": [
+        "PA 020\n_",
+        "32",
+        null,
+        null,
+        "485 ID",
+        "自定义站号",
+        "0~254",
+        null,
+        null
+      ],
+      "name_en": "software_station_address",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        254
+      ],
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D02"
+      ]
+    },
+    {
+      "parameter": "PA_021",
+      "address": 33,
+      "address_hex": "0x0021",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        17
+      ],
+      "extracted_cells": [
+        "PA 021\n_",
+        "33",
+        null,
+        null,
+        "485 数据类型选择",
+        "0： 8 位数据，无校验， 1 个停止位；\n1： 8 位数据，无校验， 2 个停止位；\n2： 8 位数据，偶校验， 1 个停止位；\n3： 8 位数据，奇校验， 1 个停止位；",
+        "0~3",
+        null,
+        null
+      ],
+      "name_en": "serial_format",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D02"
+      ],
+      "values": {
+        "0": "8N1",
+        "1": "8N2",
+        "2": "8E1",
+        "3": "8O1"
+      }
+    },
+    {
+      "parameter": "PA_022",
+      "address": 34,
+      "address_hex": "0x0022",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        17
+      ],
+      "extracted_cells": [
+        "PA 022\n_",
+        "34",
+        null,
+        null,
+        "默认方向设置",
+        "0：默认；\n1：反向；",
+        "0~1",
+        null,
+        null
+      ],
+      "name_en": "direction_inversion",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_023",
+      "address": 35,
+      "address_hex": "0x0023",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        17
+      ],
+      "extracted_cells": [
+        "PA 023\n_",
+        "35",
+        null,
+        null,
+        "细分设置",
+        "细分设置",
+        "400~51200",
+        null,
+        null
+      ],
+      "name_en": "command_pulses_per_revolution",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        400,
+        51200
+      ],
+      "units": "command_pulses_per_motor_revolution",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D09"
+      ]
+    },
+    {
+      "parameter": "PA_024",
+      "address": 36,
+      "address_hex": "0x0024",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        17
+      ],
+      "extracted_cells": [
+        "PA 024\n_",
+        "36",
+        null,
+        null,
+        "限位停车",
+        "0：停止；\n1：强制急停；",
+        "0~1",
+        null,
+        null
+      ],
+      "name_en": "limit_stop_mode",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_025",
+      "address": 37,
+      "address_hex": "0x0025",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        17
+      ],
+      "extracted_cells": [
+        "PA 025\n_",
+        "37",
+        null,
+        null,
+        "软限位有效位",
+        "0：无效；\n1：有效；\n注：软限位只在回零完成后生效；",
+        "0~1",
+        null,
+        null
+      ],
+      "name_en": "soft_limit_enable",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_26",
+      "address": 38,
+      "address_hex": "0x0026",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        17
+      ],
+      "extracted_cells": [
+        "PA 26\n_",
+        "38",
+        null,
+        null,
+        "内部多段位置\n触发模式",
+        "0：打断当前定位运动执行新指令；\n1：当有定位运动执行时忽略新指令；",
+        "",
+        null,
+        null
+      ],
+      "name_en": "external_position_trigger_policy",
+      "word_width_bits": 16,
+      "default": 0,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "default_source": {
+        "source_id": "TL-USER",
+        "pdf_page": 12
+      }
+    },
+    {
+      "parameter": "PA_28",
+      "address": 40,
+      "address_hex": "0x0028",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        17
+      ],
+      "extracted_cells": [
+        "PA 28\n_",
+        "40",
+        null,
+        null,
+        "485 波特率",
+        "0：115200；\n1：38400；\n2：19200；\n3：9600；",
+        "",
+        null,
+        null
+      ],
+      "name_en": "software_baud",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D02"
+      ],
+      "values": {
+        "0": 115200,
+        "1": 38400,
+        "2": 19200,
+        "3": 9600
+      }
+    },
+    {
+      "parameter": "PA_030",
+      "address": 48,
+      "address_hex": "0x0030",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        17
+      ],
+      "extracted_cells": [
+        "PA 030\n_",
+        "48",
+        null,
+        null,
+        "JOG 运行速度",
+        "单位r/min",
+        "-3000~3000",
+        null,
+        null
+      ],
+      "name_en": "jog_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_031",
+      "address": 49,
+      "address_hex": "0x0031",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 031\n_",
+        "49",
+        "JOG 运行加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "jog_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_032",
+      "address": 50,
+      "address_hex": "0x0032",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 032\n_",
+        "50",
+        "JOG 运行减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "jog_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_033",
+      "address": 51,
+      "address_hex": "0x0033",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 033\n_",
+        "51",
+        "定位运行起始速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "position_start_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_034",
+      "address": 52,
+      "address_hex": "0x0034",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 034\n_",
+        "52",
+        "定位运行加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_035",
+      "address": 53,
+      "address_hex": "0x0035",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 035\n_",
+        "53",
+        "定位运行减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_036",
+      "address": 54,
+      "address_hex": "0x0036",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 036\n_",
+        "54",
+        "定位运行速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "position_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_037",
+      "address": 55,
+      "address_hex": "0x0037",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 037\n_",
+        "55",
+        "定位目标H",
+        "单位pulse",
+        "-\n2147483648~\n2147483647"
+      ],
+      "name_en": "position_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 55,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_038",
+      "address": 56,
+      "address_hex": "0x0038",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 038\n_",
+        "56",
+        "定位目标L",
+        null,
+        null
+      ],
+      "name_en": "position_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 55,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_040",
+      "address": 64,
+      "address_hex": "0x0040",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 040\n_",
+        "64",
+        "回零方式",
+        "17：负先接近；\n18：正限接近；\n24：正限原点接近；\n29：负限原点接近；\n35：当前位置为原点；",
+        "17~35"
+      ],
+      "name_en": "homing_method",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "allowed_values": [
+        17,
+        18,
+        24,
+        29,
+        35
+      ]
+    },
+    {
+      "parameter": "PA_041",
+      "address": 65,
+      "address_hex": "0x0041",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 041\n_",
+        "65",
+        "回零接近速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "homing_search_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_042",
+      "address": 66,
+      "address_hex": "0x0042",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 042\n_",
+        "66",
+        "查询零点速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "homing_creep_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_043",
+      "address": 67,
+      "address_hex": "0x0043",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 043\n_",
+        "67",
+        "回零加减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "homing_ramp_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_044",
+      "address": 68,
+      "address_hex": "0x0044",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 044\n_",
+        "68",
+        "原点补偿值H",
+        "单位pulse",
+        "-\n2147483648~\n2147483647"
+      ],
+      "name_en": "homing_offset_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 68,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_045",
+      "address": 69,
+      "address_hex": "0x0045",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 045\n_",
+        "69",
+        "原点补偿值L",
+        null,
+        null
+      ],
+      "name_en": "homing_offset_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 68,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_046",
+      "address": 70,
+      "address_hex": "0x0046",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 046\n_",
+        "70",
+        "正向软限位H",
+        "单位pulse",
+        "-\n2147483648~\n2147483647"
+      ],
+      "name_en": "positive_soft_limit_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 70,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_047",
+      "address": 71,
+      "address_hex": "0x0047",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 047\n_",
+        "71",
+        "正向软限位L",
+        null,
+        null
+      ],
+      "name_en": "positive_soft_limit_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 70,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_048",
+      "address": 72,
+      "address_hex": "0x0048",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 048\n_",
+        "72",
+        "负向软限位H",
+        "单位pulse",
+        "-\n2147483648~\n2147483647"
+      ],
+      "name_en": "negative_soft_limit_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 72,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_049",
+      "address": 73,
+      "address_hex": "0x0049",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 049\n_",
+        "73",
+        "负向软限位L",
+        null,
+        null
+      ],
+      "name_en": "negative_soft_limit_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 72,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_04A",
+      "address": 74,
+      "address_hex": "0x004A",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        18
+      ],
+      "extracted_cells": [
+        "PA 04A\n_",
+        "74",
+        "内部多段位置\n绝对/相对位置模\n式设置",
+        "0：相对位置模式\n1：绝对位置模式",
+        "0~1"
+      ],
+      "name_en": "external_position_relative_absolute_mode",
+      "word_width_bits": 16,
+      "default": 0,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "default_source": {
+        "source_id": "TL-USER",
+        "pdf_page": 12
+      }
+    },
+    {
+      "parameter": "PA_04E",
+      "address": 78,
+      "address_hex": "0x004E",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        19
+      ],
+      "extracted_cells": [
+        "PA 04E\n_",
+        "78",
+        "控制字",
+        "位 功能 说明\n0：无效；\nBit0 定位控制位\n1：有效；\n0：相对；\nBit1 定位模式位\n1：绝对；\n0：当有定位\n运动执行时忽\n略新指令；\nBit2 切换模式\n1：打断当前\n定位运动执行\n新指令\n0：无效；\nBit3 JOG 控制位\n1：有效；\n0：无效；\nBit4 回零控制位\n1：有效；\n0：无效；\nBit5 停止控制位\n1：有效；\n0：无效；\nBit6 急停控制位\n1：有效；",
+        "0~127"
+      ],
+      "name_en": "control_word",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D05",
+        "TL-D06"
+      ]
+    },
+    {
+      "parameter": "PA_04F",
+      "address": 79,
+      "address_hex": "0x004F",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        19
+      ],
+      "extracted_cells": [
+        "PA 04F\n_",
+        "79",
+        "辅助控制",
+        "代码 功能\n0x0000 无效\n0x0100 恢复出厂参数\n0x0200 保存当前参数\n0x0300 清除当前告警\n0x0400 清除当前位置\n0x0500 电机使能\n0x0600 电机释放",
+        ""
+      ],
+      "name_en": "auxiliary_command",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D10",
+        "TL-D11"
+      ]
+    },
+    {
+      "parameter": "PA_050",
+      "address": 80,
+      "address_hex": "0x0050",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        19
+      ],
+      "extracted_cells": [
+        "PA 050\n_",
+        "80",
+        null,
+        null,
+        "定位路径0 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647",
+        null,
+        null
+      ],
+      "name_en": "position_slot_0_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 80,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_051",
+      "address": 81,
+      "address_hex": "0x0051",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        19
+      ],
+      "extracted_cells": [
+        "PA 051\n_",
+        "81",
+        null,
+        null,
+        "定位路径0 定位目标L",
+        null,
+        null,
+        null,
+        null
+      ],
+      "name_en": "position_slot_0_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 80,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_052",
+      "address": 82,
+      "address_hex": "0x0052",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        19
+      ],
+      "extracted_cells": [
+        "PA 052\n_",
+        "82",
+        null,
+        null,
+        "定位路径0 定位速度",
+        "单位r/min",
+        "0~3000",
+        null,
+        null
+      ],
+      "name_en": "position_slot_0_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_053",
+      "address": 83,
+      "address_hex": "0x0053",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        19
+      ],
+      "extracted_cells": [
+        "PA 053\n_",
+        "83",
+        null,
+        null,
+        "定位路径0 定位加速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "position_slot_0_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_054",
+      "address": 84,
+      "address_hex": "0x0054",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        19
+      ],
+      "extracted_cells": [
+        "PA 054\n_",
+        "84",
+        null,
+        null,
+        "定位路径0 定位减速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "position_slot_0_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_056",
+      "address": 86,
+      "address_hex": "0x0056",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        19
+      ],
+      "extracted_cells": [
+        "PA 056\n_",
+        "86",
+        null,
+        null,
+        "定位路径1 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647",
+        null,
+        null
+      ],
+      "name_en": "position_slot_1_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 86,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_057",
+      "address": 87,
+      "address_hex": "0x0057",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        19
+      ],
+      "extracted_cells": [
+        "PA 057\n_",
+        "87",
+        null,
+        null,
+        "定位路径1 定位目标L",
+        null,
+        null,
+        null,
+        null
+      ],
+      "name_en": "position_slot_1_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 86,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_058",
+      "address": 88,
+      "address_hex": "0x0058",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        19
+      ],
+      "extracted_cells": [
+        "PA 058\n_",
+        "88",
+        null,
+        null,
+        "定位路径1 定位速度",
+        "单位r/min",
+        "0~3000",
+        null,
+        null
+      ],
+      "name_en": "position_slot_1_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_059",
+      "address": 89,
+      "address_hex": "0x0059",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        19
+      ],
+      "extracted_cells": [
+        "PA 059\n_",
+        "89",
+        null,
+        null,
+        "定位路径1 定位加速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "position_slot_1_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_05A",
+      "address": 90,
+      "address_hex": "0x005A",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        19
+      ],
+      "extracted_cells": [
+        "PA 05A\n_",
+        "90",
+        null,
+        null,
+        "定位路径1 定位减速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "position_slot_1_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_05C",
+      "address": 92,
+      "address_hex": "0x005C",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        19
+      ],
+      "extracted_cells": [
+        "PA 05C\n_",
+        "92",
+        null,
+        null,
+        "定位路径2 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647",
+        null,
+        null
+      ],
+      "name_en": "position_slot_2_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 92,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_05D",
+      "address": 93,
+      "address_hex": "0x005D",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        19
+      ],
+      "extracted_cells": [
+        "PA 05D\n_",
+        "93",
+        null,
+        null,
+        "定位路径2 定位目标L",
+        null,
+        null,
+        null,
+        null
+      ],
+      "name_en": "position_slot_2_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 92,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_05E",
+      "address": 94,
+      "address_hex": "0x005E",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        19
+      ],
+      "extracted_cells": [
+        "PA 05E\n_",
+        "94",
+        null,
+        null,
+        "定位路径2 定位速度",
+        "单位r/min",
+        "0~3000",
+        null,
+        null
+      ],
+      "name_en": "position_slot_2_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_05F",
+      "address": 95,
+      "address_hex": "0x005F",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 05F\n_",
+        "95",
+        "定位路径2 定位加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_2_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_060",
+      "address": 96,
+      "address_hex": "0x0060",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 060\n_",
+        "96",
+        "定位路径2 定位减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_2_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_062",
+      "address": 98,
+      "address_hex": "0x0062",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 062\n_",
+        "98",
+        "定位路径3 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647"
+      ],
+      "name_en": "position_slot_3_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 98,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_063",
+      "address": 99,
+      "address_hex": "0x0063",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 063\n_",
+        "99",
+        "定位路径3 定位目标L",
+        null,
+        null
+      ],
+      "name_en": "position_slot_3_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 98,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_064",
+      "address": 100,
+      "address_hex": "0x0064",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 064\n_",
+        "100",
+        "定位路径3 定位速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "position_slot_3_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_065",
+      "address": 101,
+      "address_hex": "0x0065",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 065\n_",
+        "101",
+        "定位路径3 定位加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_3_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_066",
+      "address": 102,
+      "address_hex": "0x0066",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 066\n_",
+        "102",
+        "定位路径3 定位减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_3_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_068",
+      "address": 104,
+      "address_hex": "0x0068",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 068\n_",
+        "104",
+        "定位路径4 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647"
+      ],
+      "name_en": "position_slot_4_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 104,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_069",
+      "address": 105,
+      "address_hex": "0x0069",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 069\n_",
+        "105",
+        "定位路径4 定位目标L",
+        null,
+        null
+      ],
+      "name_en": "position_slot_4_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 104,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_06A",
+      "address": 106,
+      "address_hex": "0x006A",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 06A\n_",
+        "106",
+        "定位路径4 定位速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "position_slot_4_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_06B",
+      "address": 107,
+      "address_hex": "0x006B",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 06B\n_",
+        "107",
+        "定位路径4 定位加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_4_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_06C",
+      "address": 108,
+      "address_hex": "0x006C",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 06C\n_",
+        "108",
+        "定位路径4 定位减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_4_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_06E",
+      "address": 110,
+      "address_hex": "0x006E",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 06E\n_",
+        "110",
+        "定位路径5 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647"
+      ],
+      "name_en": "position_slot_5_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 110,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_06F",
+      "address": 111,
+      "address_hex": "0x006F",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 06F\n_",
+        "111",
+        "定位路径5 定位目标L",
+        null,
+        null
+      ],
+      "name_en": "position_slot_5_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 110,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_070",
+      "address": 112,
+      "address_hex": "0x0070",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 070\n_",
+        "112",
+        "定位路径5 定位速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "position_slot_5_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_071",
+      "address": 113,
+      "address_hex": "0x0071",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 071\n_",
+        "113",
+        "定位路径5 定位加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_5_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_072",
+      "address": 114,
+      "address_hex": "0x0072",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 072\n_",
+        "114",
+        "定位路径5 定位减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_5_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_074",
+      "address": 116,
+      "address_hex": "0x0074",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 074\n_",
+        "116",
+        "定位路径6 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647"
+      ],
+      "name_en": "position_slot_6_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 116,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_075",
+      "address": 117,
+      "address_hex": "0x0075",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 075\n_",
+        "117",
+        "定位路径6 定位目标L",
+        null,
+        null
+      ],
+      "name_en": "position_slot_6_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 116,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_076",
+      "address": 118,
+      "address_hex": "0x0076",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 076\n_",
+        "118",
+        "定位路径6 定位速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "position_slot_6_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_077",
+      "address": 119,
+      "address_hex": "0x0077",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 077\n_",
+        "119",
+        "定位路径6 定位加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_6_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_078",
+      "address": 120,
+      "address_hex": "0x0078",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 078\n_",
+        "120",
+        "定位路径6 定位减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_6_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_07A",
+      "address": 122,
+      "address_hex": "0x007A",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 07A\n_",
+        "122",
+        "定位路径7 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647"
+      ],
+      "name_en": "position_slot_7_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 122,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_07B",
+      "address": 123,
+      "address_hex": "0x007B",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 07B\n_",
+        "123",
+        "定位路径7 定位目标L",
+        null,
+        null
+      ],
+      "name_en": "position_slot_7_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 122,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_07C",
+      "address": 124,
+      "address_hex": "0x007C",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 07C\n_",
+        "124",
+        "定位路径7 定位速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "position_slot_7_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_07D",
+      "address": 125,
+      "address_hex": "0x007D",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 07D\n_",
+        "125",
+        "定位路径7 定位加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_7_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_07E",
+      "address": 126,
+      "address_hex": "0x007E",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 07E\n_",
+        "126",
+        "定位路径7 定位减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_7_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_080",
+      "address": 128,
+      "address_hex": "0x0080",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 080\n_",
+        "128",
+        "定位路径8 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647"
+      ],
+      "name_en": "position_slot_8_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 128,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_081",
+      "address": 129,
+      "address_hex": "0x0081",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 081\n_",
+        "129",
+        "定位路径8 定位目标L",
+        null,
+        null
+      ],
+      "name_en": "position_slot_8_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 128,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_082",
+      "address": 130,
+      "address_hex": "0x0082",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 082\n_",
+        "130",
+        "定位路径8 定位速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "position_slot_8_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_083",
+      "address": 131,
+      "address_hex": "0x0083",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 083\n_",
+        "131",
+        "定位路径8 定位加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_8_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_084",
+      "address": 132,
+      "address_hex": "0x0084",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 084\n_",
+        "132",
+        "定位路径8 定位减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_8_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_086",
+      "address": 134,
+      "address_hex": "0x0086",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 086\n_",
+        "134",
+        "定位路径9 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647"
+      ],
+      "name_en": "position_slot_9_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 134,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_087",
+      "address": 135,
+      "address_hex": "0x0087",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 087\n_",
+        "135",
+        "定位路径9 定位目标L",
+        null,
+        null
+      ],
+      "name_en": "position_slot_9_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 134,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_088",
+      "address": 136,
+      "address_hex": "0x0088",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 088\n_",
+        "136",
+        "定位路径9 定位速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "position_slot_9_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_089",
+      "address": 137,
+      "address_hex": "0x0089",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 089\n_",
+        "137",
+        "定位路径9 定位加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_9_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_08A",
+      "address": 138,
+      "address_hex": "0x008A",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 08A\n_",
+        "138",
+        "定位路径9 定位减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_9_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_08C",
+      "address": 140,
+      "address_hex": "0x008C",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 08C\n_",
+        "140",
+        "定位路径10 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647"
+      ],
+      "name_en": "position_slot_10_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 140,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_08D",
+      "address": 141,
+      "address_hex": "0x008D",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 08D\n_",
+        "141",
+        "定位路径10 定位目标L",
+        null,
+        null
+      ],
+      "name_en": "position_slot_10_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 140,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_08E",
+      "address": 142,
+      "address_hex": "0x008E",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 08E\n_",
+        "142",
+        "定位路径10 定位速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "position_slot_10_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_08F",
+      "address": 143,
+      "address_hex": "0x008F",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 08F\n_",
+        "143",
+        "定位路径10 定位加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_10_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_090",
+      "address": 144,
+      "address_hex": "0x0090",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 090\n_",
+        "144",
+        "定位路径10 定位减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_10_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_092",
+      "address": 146,
+      "address_hex": "0x0092",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 092\n_",
+        "146",
+        "定位路径11 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647"
+      ],
+      "name_en": "position_slot_11_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 146,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_093",
+      "address": 147,
+      "address_hex": "0x0093",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        20
+      ],
+      "extracted_cells": [
+        "PA 093\n_",
+        "147",
+        "定位路径11 定位目标L",
+        null,
+        null
+      ],
+      "name_en": "position_slot_11_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 146,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_094",
+      "address": 148,
+      "address_hex": "0x0094",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 094\n_",
+        "148",
+        "定位路径11 定位速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "position_slot_11_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_095",
+      "address": 149,
+      "address_hex": "0x0095",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 095\n_",
+        "149",
+        "定位路径11 定位加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_11_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_096",
+      "address": 150,
+      "address_hex": "0x0096",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 096\n_",
+        "150",
+        "定位路径11 定位减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_11_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_098",
+      "address": 152,
+      "address_hex": "0x0098",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 098\n_",
+        "152",
+        "定位路径12 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647"
+      ],
+      "name_en": "position_slot_12_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 152,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_099",
+      "address": 153,
+      "address_hex": "0x0099",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 099\n_",
+        "153",
+        "定位路径12 定位目标L",
+        null,
+        null
+      ],
+      "name_en": "position_slot_12_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 152,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_09A",
+      "address": 154,
+      "address_hex": "0x009A",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 09A\n_",
+        "154",
+        "定位路径12 定位速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "position_slot_12_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_09B",
+      "address": 155,
+      "address_hex": "0x009B",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 09B\n_",
+        "155",
+        "定位路径12 定位加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_12_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_09C",
+      "address": 156,
+      "address_hex": "0x009C",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 09C\n_",
+        "156",
+        "定位路径12 定位减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_12_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_09E",
+      "address": 158,
+      "address_hex": "0x009E",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 09E\n_",
+        "158",
+        "定位路径13 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647"
+      ],
+      "name_en": "position_slot_13_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 158,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_09F",
+      "address": 159,
+      "address_hex": "0x009F",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 09F\n_",
+        "159",
+        "定位路径13 定位目标L",
+        null,
+        null
+      ],
+      "name_en": "position_slot_13_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 158,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_0A0",
+      "address": 160,
+      "address_hex": "0x00A0",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0A0\n_",
+        "160",
+        "定位路径13 定位速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "position_slot_13_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0A1",
+      "address": 161,
+      "address_hex": "0x00A1",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0A1\n_",
+        "161",
+        "定位路径13 定位加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_13_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0A2",
+      "address": 162,
+      "address_hex": "0x00A2",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0A2\n_",
+        "162",
+        "定位路径13 定位减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_13_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0A4",
+      "address": 164,
+      "address_hex": "0x00A4",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0A4\n_",
+        "164",
+        "定位路径14 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647"
+      ],
+      "name_en": "position_slot_14_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 164,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_0A5",
+      "address": 165,
+      "address_hex": "0x00A5",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0A5\n_",
+        "165",
+        "定位路径14 定位目标L",
+        null,
+        null
+      ],
+      "name_en": "position_slot_14_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 164,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_0A6",
+      "address": 166,
+      "address_hex": "0x00A6",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0A6\n_",
+        "166",
+        "定位路径14 定位速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "position_slot_14_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0A7",
+      "address": 167,
+      "address_hex": "0x00A7",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0A7\n_",
+        "167",
+        "定位路径14 定位加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_14_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0A8",
+      "address": 168,
+      "address_hex": "0x00A8",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0A8\n_",
+        "168",
+        "定位路径14 定位减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_14_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0AA",
+      "address": 170,
+      "address_hex": "0x00AA",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0AA\n_",
+        "170",
+        "定位路径15 定位目标H",
+        "单位pulse",
+        "-2147483648~\n2147483647"
+      ],
+      "name_en": "position_slot_15_target_high",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 170,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_0AB",
+      "address": 171,
+      "address_hex": "0x00AB",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0AB\n_",
+        "171",
+        "定位路径15 定位目标L",
+        null,
+        null
+      ],
+      "name_en": "position_slot_15_target_low",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -2147483648,
+        2147483647
+      ],
+      "units": "pulse",
+      "semantic_type": "signed_32_bit_pair",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [],
+      "pair_start": 170,
+      "pair_order": "high_word_first"
+    },
+    {
+      "parameter": "PA_0AC",
+      "address": 172,
+      "address_hex": "0x00AC",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0AC\n_",
+        "172",
+        "定位路径15 定位速度",
+        "单位r/min",
+        "0~3000"
+      ],
+      "name_en": "position_slot_15_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0AD",
+      "address": 173,
+      "address_hex": "0x00AD",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0AD\n_",
+        "173",
+        "定位路径15 定位加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_15_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0AE",
+      "address": 174,
+      "address_hex": "0x00AE",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0AE\n_",
+        "174",
+        "定位路径15 定位减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "position_slot_15_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0B0",
+      "address": 176,
+      "address_hex": "0x00B0",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0B0\n_",
+        "176",
+        null,
+        null,
+        "速度路径0 运行速度",
+        "单位r/min",
+        "-3000~3000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_0_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0B1",
+      "address": 177,
+      "address_hex": "0x00B1",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0B1\n_",
+        "177",
+        null,
+        null,
+        "速度路径0 加速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_0_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0B2",
+      "address": 178,
+      "address_hex": "0x00B2",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0B2\n_",
+        "178",
+        null,
+        null,
+        "速度路径0 减速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_0_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0B3",
+      "address": 179,
+      "address_hex": "0x00B3",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0B3\n_",
+        "179",
+        null,
+        null,
+        "速度路径1 运行速度",
+        "单位r/min",
+        "-3000~3000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_1_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0B4",
+      "address": 180,
+      "address_hex": "0x00B4",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0B4\n_",
+        "180",
+        null,
+        null,
+        "速度路径1 加速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_1_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0B5",
+      "address": 181,
+      "address_hex": "0x00B5",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0B5\n_",
+        "181",
+        null,
+        null,
+        "速度路径1 减速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_1_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0B6",
+      "address": 182,
+      "address_hex": "0x00B6",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0B6\n_",
+        "182",
+        null,
+        null,
+        "速度路径2 运行速度",
+        "单位r/min",
+        "-3000~3000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_2_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0B7",
+      "address": 183,
+      "address_hex": "0x00B7",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0B7\n_",
+        "183",
+        null,
+        null,
+        "速度路径2 加速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_2_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0B8",
+      "address": 184,
+      "address_hex": "0x00B8",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0B8\n_",
+        "184",
+        null,
+        null,
+        "速度路径2 减速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_2_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0B9",
+      "address": 185,
+      "address_hex": "0x00B9",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0B9\n_",
+        "185",
+        null,
+        null,
+        "速度路径3 运行速度",
+        "单位r/min",
+        "-3000~3000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_3_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0BA",
+      "address": 186,
+      "address_hex": "0x00BA",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0BA\n_",
+        "186",
+        null,
+        null,
+        "速度路径3 加速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_3_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0BB",
+      "address": 187,
+      "address_hex": "0x00BB",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0BB\n_",
+        "187",
+        null,
+        null,
+        "速度路径3 减速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_3_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0BC",
+      "address": 188,
+      "address_hex": "0x00BC",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0BC\n_",
+        "188",
+        null,
+        null,
+        "速度路径4 运行速度",
+        "单位r/min",
+        "-3000~3000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_4_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0BD",
+      "address": 189,
+      "address_hex": "0x00BD",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0BD\n_",
+        "189",
+        null,
+        null,
+        "速度路径4 加速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_4_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0BE",
+      "address": 190,
+      "address_hex": "0x00BE",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0BE\n_",
+        "190",
+        null,
+        null,
+        "速度路径4 减速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_4_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0BF",
+      "address": 191,
+      "address_hex": "0x00BF",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0BF\n_",
+        "191",
+        null,
+        null,
+        "速度路径5 运行速度",
+        "单位r/min",
+        "-3000~3000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_5_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0C0",
+      "address": 192,
+      "address_hex": "0x00C0",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0C0\n_",
+        "192",
+        null,
+        null,
+        "速度路径5 加速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_5_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0C1",
+      "address": 193,
+      "address_hex": "0x00C1",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        21
+      ],
+      "extracted_cells": [
+        "PA 0C1\n_",
+        "193",
+        null,
+        null,
+        "速度路径5 减速时间",
+        "单位ms",
+        "0~2000",
+        null,
+        null
+      ],
+      "name_en": "velocity_slot_5_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0C2",
+      "address": 194,
+      "address_hex": "0x00C2",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0C2\n_",
+        "194",
+        "速度路径6 运行速度",
+        "单位r/min",
+        "-3000~3000"
+      ],
+      "name_en": "velocity_slot_6_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0C3",
+      "address": 195,
+      "address_hex": "0x00C3",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0C3\n_",
+        "195",
+        "速度路径6 加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_6_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0C4",
+      "address": 196,
+      "address_hex": "0x00C4",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0C4\n_",
+        "196",
+        "速度路径6 减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_6_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0C5",
+      "address": 197,
+      "address_hex": "0x00C5",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0C5\n_",
+        "197",
+        "速度路径7 运行速度",
+        "单位r/min",
+        "-3000~3000"
+      ],
+      "name_en": "velocity_slot_7_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0C6",
+      "address": 198,
+      "address_hex": "0x00C6",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0C6\n_",
+        "198",
+        "速度路径7 加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_7_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0C7",
+      "address": 199,
+      "address_hex": "0x00C7",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0C7\n_",
+        "199",
+        "速度路径7 减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_7_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0C8",
+      "address": 200,
+      "address_hex": "0x00C8",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0C8\n_",
+        "200",
+        "速度路径8 运行速度",
+        "单位r/min",
+        "-3000~3000"
+      ],
+      "name_en": "velocity_slot_8_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0C9",
+      "address": 201,
+      "address_hex": "0x00C9",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0C9\n_",
+        "201",
+        "速度路径8 加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_8_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0CA",
+      "address": 202,
+      "address_hex": "0x00CA",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0CA\n_",
+        "202",
+        "速度路径8 减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_8_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0CB",
+      "address": 203,
+      "address_hex": "0x00CB",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0CB\n_",
+        "203",
+        "速度路径9 运行速度",
+        "单位r/min",
+        "-3000~3000"
+      ],
+      "name_en": "velocity_slot_9_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0CC",
+      "address": 204,
+      "address_hex": "0x00CC",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0CC\n_",
+        "204",
+        "速度路径9 加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_9_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0CD",
+      "address": 205,
+      "address_hex": "0x00CD",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0CD\n_",
+        "205",
+        "速度路径9 减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_9_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0CE",
+      "address": 206,
+      "address_hex": "0x00CE",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0CE\n_",
+        "206",
+        "速度路径10 运行速度",
+        "单位r/min",
+        "-3000~3000"
+      ],
+      "name_en": "velocity_slot_10_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0CF",
+      "address": 207,
+      "address_hex": "0x00CF",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0CF\n_",
+        "207",
+        "速度路径10 加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_10_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0D0",
+      "address": 208,
+      "address_hex": "0x00D0",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0D0\n_",
+        "208",
+        "速度路径10 减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_10_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0D1",
+      "address": 209,
+      "address_hex": "0x00D1",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0D1\n_",
+        "209",
+        "速度路径11 运行速度",
+        "单位r/min",
+        "-3000~3000"
+      ],
+      "name_en": "velocity_slot_11_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0D2",
+      "address": 210,
+      "address_hex": "0x00D2",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0D2\n_",
+        "210",
+        "速度路径11 加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_11_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0D3",
+      "address": 211,
+      "address_hex": "0x00D3",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0D3\n_",
+        "211",
+        "速度路径11 减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_11_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0D4",
+      "address": 212,
+      "address_hex": "0x00D4",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0D4\n_",
+        "212",
+        "速度路径12 运行速度",
+        "单位r/min",
+        "-3000~3000"
+      ],
+      "name_en": "velocity_slot_12_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0D5",
+      "address": 213,
+      "address_hex": "0x00D5",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0D5\n_",
+        "213",
+        "速度路径12 加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_12_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0D6",
+      "address": 214,
+      "address_hex": "0x00D6",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0D6\n_",
+        "214",
+        "速度路径12 减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_12_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0D7",
+      "address": 215,
+      "address_hex": "0x00D7",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0D7\n_",
+        "215",
+        "速度路径13 运行速度",
+        "单位r/min",
+        "-3000~3000"
+      ],
+      "name_en": "velocity_slot_13_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0D8",
+      "address": 216,
+      "address_hex": "0x00D8",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0D8\n_",
+        "216",
+        "速度路径13 加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_13_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0D9",
+      "address": 217,
+      "address_hex": "0x00D9",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0D9\n_",
+        "217",
+        "速度路径13 减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_13_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0DA",
+      "address": 218,
+      "address_hex": "0x00DA",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0DA\n_",
+        "218",
+        "速度路径14 运行速度",
+        "单位r/min",
+        "-3000~3000"
+      ],
+      "name_en": "velocity_slot_14_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0DB",
+      "address": 219,
+      "address_hex": "0x00DB",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0DB\n_",
+        "219",
+        "速度路径14 加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_14_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0DC",
+      "address": 220,
+      "address_hex": "0x00DC",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0DC\n_",
+        "220",
+        "速度路径14 减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_14_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0DD",
+      "address": 221,
+      "address_hex": "0x00DD",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0DD\n_",
+        "221",
+        "速度路径15 运行速度",
+        "单位r/min",
+        "-3000~3000"
+      ],
+      "name_en": "velocity_slot_15_speed",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        -3000,
+        3000
+      ],
+      "units": "rpm",
+      "semantic_type": "signed_16",
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0DE",
+      "address": 222,
+      "address_hex": "0x00DE",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0DE\n_",
+        "222",
+        "速度路径15 加速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_15_acceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_0DF",
+      "address": 223,
+      "address_hex": "0x00DF",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 0DF\n_",
+        "223",
+        "速度路径15 减速时间",
+        "单位ms",
+        "0~2000"
+      ],
+      "name_en": "velocity_slot_15_deceleration_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": [
+        0,
+        2000
+      ],
+      "units": "ms",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": []
+    },
+    {
+      "parameter": "PA_100",
+      "address": 256,
+      "address_hex": "0x0100",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 100\n_",
+        "256",
+        null,
+        null,
+        "运行模式\n（重启生效）",
+        "1：开环；\n2：闭环；",
+        "1~2",
+        null,
+        null
+      ],
+      "name_en": "open_closed_loop_mode_restart_required",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ],
+      "allowed_values": [
+        1,
+        2
+      ]
+    },
+    {
+      "parameter": "PA_101",
+      "address": 257,
+      "address_hex": "0x0101",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 101\n_",
+        "257",
+        null,
+        null,
+        "编码器分辨率",
+        "编码器分辨率",
+        "",
+        null,
+        null
+      ],
+      "name_en": "encoder_resolution",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D09",
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_102",
+      "address": 258,
+      "address_hex": "0x0102",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 102\n_",
+        "258",
+        null,
+        null,
+        "最大有效电流",
+        "驱动器输出最大电流值，单位mA；",
+        "",
+        null,
+        null
+      ],
+      "name_en": "maximum_effective_current",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": "mA",
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_103",
+      "address": 259,
+      "address_hex": "0x0103",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 103\n_",
+        "259",
+        null,
+        null,
+        "闭环最大电流比例",
+        "闭环最大电流比例",
+        "",
+        null,
+        null
+      ],
+      "name_en": "closed_loop_maximum_current_ratio",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_104",
+      "address": 260,
+      "address_hex": "0x0104",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 104\n_",
+        "260",
+        null,
+        null,
+        "基础电流比例",
+        "基础电流比例",
+        "",
+        null,
+        null
+      ],
+      "name_en": "base_current_ratio",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_105",
+      "address": 261,
+      "address_hex": "0x0105",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 105\n_",
+        "261",
+        null,
+        null,
+        "开环最大电流比例",
+        "开环最大电流比例",
+        "",
+        null,
+        null
+      ],
+      "name_en": "open_loop_maximum_current_ratio",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_106",
+      "address": 262,
+      "address_hex": "0x0106",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 106\n_",
+        "262",
+        null,
+        null,
+        "锁机电流比例",
+        "锁机电流比例",
+        "",
+        null,
+        null
+      ],
+      "name_en": "holding_current_ratio",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_107",
+      "address": 263,
+      "address_hex": "0x0107",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 107\n_",
+        "263",
+        null,
+        null,
+        "锁机时间",
+        "锁机时间",
+        "",
+        null,
+        null
+      ],
+      "name_en": "holding_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_109",
+      "address": 265,
+      "address_hex": "0x0109",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 109\n_",
+        "265",
+        null,
+        null,
+        "低通滤波系数",
+        "低通滤波系数",
+        "",
+        null,
+        null
+      ],
+      "name_en": "low_pass_filter",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_10A",
+      "address": 266,
+      "address_hex": "0x010A",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        22
+      ],
+      "extracted_cells": [
+        "PA 10A\n_",
+        "266",
+        null,
+        null,
+        "超差阈值",
+        "超差阈值",
+        "",
+        null,
+        null
+      ],
+      "name_en": "following_error_threshold",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_10B",
+      "address": 267,
+      "address_hex": "0x010B",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        23
+      ],
+      "extracted_cells": [
+        "PA 10B\n_",
+        "267",
+        "定位精度阈值",
+        "定位精度阈值",
+        ""
+      ],
+      "name_en": "position_accuracy_threshold",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_10C",
+      "address": 268,
+      "address_hex": "0x010C",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        23
+      ],
+      "extracted_cells": [
+        "PA 10C\n_",
+        "268",
+        "定位完成时间",
+        "定位完成时间",
+        ""
+      ],
+      "name_en": "position_completion_time",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_10D",
+      "address": 269,
+      "address_hex": "0x010D",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        23
+      ],
+      "extracted_cells": [
+        "PA 10D\n_",
+        "269",
+        "均值滤波系数",
+        "均值滤波系数",
+        ""
+      ],
+      "name_en": "mean_filter",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_10E",
+      "address": 270,
+      "address_hex": "0x010E",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        23
+      ],
+      "extracted_cells": [
+        "PA 10E\n_",
+        "270",
+        "电流环增益调整比例",
+        "电流环增益调整比例",
+        ""
+      ],
+      "name_en": "current_loop_gain_ratio",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_10F",
+      "address": 271,
+      "address_hex": "0x010F",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        23
+      ],
+      "extracted_cells": [
+        "PA 10F\n_",
+        "271",
+        "电流环Kp",
+        "电流环Kp",
+        ""
+      ],
+      "name_en": "current_loop_kp",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_110",
+      "address": 272,
+      "address_hex": "0x0110",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        23
+      ],
+      "extracted_cells": [
+        "PA 110\n_",
+        "272",
+        "电流环Ki",
+        "电流环Ki",
+        ""
+      ],
+      "name_en": "current_loop_ki",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_111",
+      "address": 273,
+      "address_hex": "0x0111",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        23
+      ],
+      "extracted_cells": [
+        "PA 111\n_",
+        "273",
+        "电流环Kc",
+        "电流环Kc",
+        ""
+      ],
+      "name_en": "current_loop_kc",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_112",
+      "address": 274,
+      "address_hex": "0x0112",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        23
+      ],
+      "extracted_cells": [
+        "PA 112\n_",
+        "274",
+        "LA 速度Kp1",
+        "LA 速度Kp1",
+        ""
+      ],
+      "name_en": "la_speed_kp1",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_113",
+      "address": 275,
+      "address_hex": "0x0113",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        23
+      ],
+      "extracted_cells": [
+        "PA 113\n_",
+        "275",
+        "LA 速度Kv1",
+        "LA 速度Kv1",
+        ""
+      ],
+      "name_en": "la_speed_kv1",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_114",
+      "address": 276,
+      "address_hex": "0x0114",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        23
+      ],
+      "extracted_cells": [
+        "PA 114\n_",
+        "276",
+        "速度节点1",
+        "速度节点1",
+        ""
+      ],
+      "name_en": "speed_node_1",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_115",
+      "address": 277,
+      "address_hex": "0x0115",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        23
+      ],
+      "extracted_cells": [
+        "PA 115\n_",
+        "277",
+        "LA 速度Kp2",
+        "LA 速度Kp2",
+        ""
+      ],
+      "name_en": "la_speed_kp2",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_116",
+      "address": 278,
+      "address_hex": "0x0116",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        23
+      ],
+      "extracted_cells": [
+        "PA 116\n_",
+        "278",
+        "LA 速度Kv2",
+        "LA 速度Kv2",
+        ""
+      ],
+      "name_en": "la_speed_kv2",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_117",
+      "address": 279,
+      "address_hex": "0x0117",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        23
+      ],
+      "extracted_cells": [
+        "PA 117\n_",
+        "279",
+        "速度节点2",
+        "速度节点1",
+        ""
+      ],
+      "name_en": "speed_node_2_description_conflict",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_118",
+      "address": 280,
+      "address_hex": "0x0118",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        23
+      ],
+      "extracted_cells": [
+        "PA 118\n_",
+        "280",
+        "速度前馈",
+        "速度前馈",
+        ""
+      ],
+      "name_en": "velocity_feedforward",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    },
+    {
+      "parameter": "PA_119",
+      "address": 281,
+      "address_hex": "0x0119",
+      "source_id": "TL-USER",
+      "pdf_pages": [
+        23
+      ],
+      "extracted_cells": [
+        "PA 119\n_",
+        "281",
+        "位置积分",
+        "位置积分",
+        ""
+      ],
+      "name_en": "position_integral",
+      "word_width_bits": 16,
+      "default": null,
+      "value_range": null,
+      "units": null,
+      "semantic_type": null,
+      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "TL-D12"
+      ]
+    }
+  ],
+  "missing_addresses_through_0x0119": [
+    0,
+    3,
+    11,
+    12,
+    13,
+    14,
+    15,
+    22,
+    23,
+    24,
+    25,
+    30,
+    39,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    75,
+    76,
+    77,
+    85,
+    91,
+    97,
+    103,
+    109,
+    115,
+    121,
+    127,
+    133,
+    139,
+    145,
+    151,
+    157,
+    163,
+    169,
+    175,
+    224,
+    225,
+    226,
+    227,
+    228,
+    229,
+    230,
+    231,
+    232,
+    233,
+    234,
+    235,
+    236,
+    237,
+    238,
+    239,
+    240,
+    241,
+    242,
+    243,
+    244,
+    245,
+    246,
+    247,
+    248,
+    249,
+    250,
+    251,
+    252,
+    253,
+    254,
+    255,
+    264
+  ]
+}

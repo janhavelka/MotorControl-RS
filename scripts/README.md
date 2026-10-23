@@ -73,3 +73,16 @@ codec access tables and the readable catalogue. Regenerate after reviewed ledger
 changes; never edit the generated tables directly. The two generators and their
 native tests use only the Python standard library. Original vendor files and
 historical bench evidence are not disposable build output.
+
+`prepare_lichuan_tl57_references.py` checks the separate TL57-R source bundle,
+203-word transcription, 52 published frames and six model candidates offline:
+
+```sh
+python scripts/prepare_lichuan_tl57_references.py --check
+```
+
+Optional `--extract` regenerates page-indexed search aids. `--download-missing`
+uses stable original URLs, checks pinned bytes before exclusive creation and
+never overwrites snapshots. The helper reuses byte/hash/CRC checks from
+`prepare_lichuan_references.py`; it performs no motor I/O and changes no runtime
+or CI registration. See the [TL57 inventory](../docs/vendor/lichuan_tl57_rs485/README.md).

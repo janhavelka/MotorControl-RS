@@ -22,3 +22,13 @@ extract command, `python scripts/prepare_lichuan_references.py --check --extract
 
 See the [English engineering review](../reference/13_lichuan_lc57bk_rs485.md)
 for conflicting addresses, labels and encoder claims. Extraction does not resolve them.
+
+The separate Lichuan TL57-R L-type family uses
+`python scripts/prepare_lichuan_tl57_references.py --check --extract`:
+
+- [TL57-R user manual, Chinese](Lichuan_TL57-R_User_Manual_CN.md)
+- [TL57-R operation manual, Chinese](Lichuan_TL57-R_Operation_Manual_CN.md)
+- [TL-R serial examples, Chinese](Lichuan_TL-R_Serial_Examples_CN.md)
+
+See its [English engineering review](../reference/14_lichuan_tl57_rs485.md)
+for the independent register map, malformed examples and unresolved settings.

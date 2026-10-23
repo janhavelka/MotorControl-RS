@@ -76,3 +76,17 @@ operation manual, plus a preserved manufacturer product page. See the
 The 127 register rows, 21 frame examples and eight listing variants are
 research evidence; no Lichuan implementation or hardware qualification is implied.
 Existing ESS and serial-contrast snapshots remain unchanged.
+
+## Lichuan TLO57R / TLC57R RS485 candidate
+
+Collected on 2026-10-23: the TL57-R user manual (26 pages), operation manual
+(18 pages), TL-R serial examples (12 pages) and original manufacturer product
+HTML. See the [original-source inventory](../vendor/lichuan_tl57_rs485/README.md),
+[hash manifest](lichuan_tl57_rs485_sources.json),
+[engineering comparison and issues](14_lichuan_tl57_rs485.md) and
+[separate promptset](../prompts/lichuan_tl57_rs485/README.md).
+The 203 register words, 52 unique published frames and six RS485 model candidates
+are preparation evidence, not implemented or tested support. Three printed frames
+fail CRC checks; their original bytes remain retained. The English-manual candidate
+was unavailable; all three retained PDFs are Chinese. Original LC57BK and other
+vendor snapshots remain unchanged.

@@ -71,6 +71,14 @@ manuals; code implementation, exact-revision resolution and Lichuan physical
 qualification remain separate open milestones. Preserve ESS behavior while
 adding this profile to the same package.
 
+The separate [TLO57R / TLC57R promptset](prompts/lichuan_tl57_rs485/README.md)
+now covers the requested L-type RS485 family with three preserved manuals,
+register/frame/model extraction and 12 stages. It is a distinct profile from
+LC57BK, not a model alias or a CANopen/EtherCAT extension. Its research preparation
+is complete; implementation, unresolved firmware semantics and physical
+qualification remain independent milestones. Either Lichuan family may be
+implemented first after reviewing actual landed common changes.
+
 Other RS485 profiles require a concrete target and reviewed sources. CANopen
 belongs in a separate future library with the agreed motion vocabulary; no
 universal transport framework or speculative shared package is planned here.
