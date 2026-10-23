@@ -23,11 +23,20 @@ read-only reviewer specifically for interruption attribution and stale state.
    currently rejects RUNNING; do not simply remove that check for every move.
    Native intent currently reports ACKNOWLEDGED, not observed arrival. Preserve
    that distinction and all unrelated preconditions.
+   Review the effects of profile/target writes while running and when the drive
+   consumes them. Bit 3 does not establish staging isolation or atomicity.
+   Define a supported setup-policy matrix: reject `WRITE_ALL` or
+   `VERIFY_AND_UPDATE` during active replacement if their pre-trigger effects
+   are unqualified. `USE_STORED` does not mean a new target has been staged.
 3. Keep staging, trigger execution and completion evidence separate. Bind the
    replacement to an explicit operation and target/configuration. Old RUNNING,
    HOMED or ARRIVED samples and late old replies must not certify replacement
    execution. Decide the minimum observable replacement contract and retain
    uncertainty when the protocol cannot distinguish possible histories.
+   Define coordinate/reference behavior during replacement. A moving sample is
+   not a stationary trigger-time baseline. Reject unsupported wrapped or
+   reference-dependent modes, or supply a source-supported moving-basis contract
+   with tests. Do not reuse an old endpoint to certify a new relative move.
 4. Define the core handoff required by 07: settlement/cancellation of old work,
    effects already possible, replacement trigger admission and required retained
    results. The core does not allocate a queue, own transport, flush UART bytes,
@@ -44,6 +53,10 @@ interrupt frames for each admitted coordinate mode. Test invalid intent values,
 capacity, target/binding/generation, unchanged outputs and no start after rejected
 admission. Exercise lost staging ACK, lost trigger ACK, malformed/late replies,
 stale preexisting RUNNING/ARRIVED, deadline boundary, cancel and no replay.
+Cover each supported/rejected setup policy and possible effects before the
+trigger. Include relative replacement whose endpoint remains unknown without
+qualified feedback, and wrapped/reference-dependent rejection or verified
+moving-basis behavior. Unsupported cases reject before any setup write.
 
 Demonstrate what is ACKNOWLEDGED versus OBSERVED versus UNKNOWN for the new
 operation without discarding old possible effects. Run focused position/command/

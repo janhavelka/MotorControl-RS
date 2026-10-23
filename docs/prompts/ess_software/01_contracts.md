@@ -38,6 +38,9 @@ writers to public headers or new implementation during this stage.
    intent, replacement admission, result reservation and stop priority. Define
    what replacement execution can be observed, and what remains ACK-only or
    uncertain. Do not promise that stale RUNNING/ARRIVED belongs to a new move.
+   Review whether profile/target writes can affect an already running move
+   before the new trigger; bit 3 does not establish staging isolation. Specify
+   admissible setup policies and coordinate/reference modes for replacement.
 5. For homing, confirm the 27-method partition and existing 33/34/35. Decide the
    minimal external-qualification application path and how real configuration,
    logical I/O and motion reads contribute. Distinguish supplied fixture facts

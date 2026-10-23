@@ -23,6 +23,9 @@ reviewer for transaction lifetime, pressure and outcome conservation.
    operation/configuration, at most the explicitly bounded pending replacement,
    and reserved result slots before admission. Distinguish a move not yet
    triggered from one that may be running. Reject unsupported modes clearly.
+   Apply 06's setup-policy and coordinate/reference restrictions before any
+   profile write; a pending replacement must not mutate the running move's
+   parameters through an unqualified staging path.
 3. Settle any in-flight transaction through the existing owner/runner; never
    truncate TX, reuse borrowed buffers early or accept the old reply as the new
    trigger. Preserve the interrupted operation's independent terminal evidence,

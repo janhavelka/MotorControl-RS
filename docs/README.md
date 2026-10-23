@@ -105,8 +105,11 @@ The subdirectories have distinct purposes:
 - [Development archive](archive/README.md): completed prompts, superseded drafts,
   implementation/audit reports, candidate artifacts and the historical bench ledger.
 
-The [standalone promptset](prompts/standalone/README.md) covers verified remaining
-library/application and qualification work. Archived reports preserve the versions, failed attempts
+The [15-stage ESS software promptset](prompts/ess_software/README.md) covers
+verified reads, setters, position interruption and 27 switch homing methods.
+The [broader standalone promptset](prompts/standalone/README.md) retains other
+application, unresolved-source and physical qualification work without duplicate
+implementation ownership. Archived reports preserve the versions, failed attempts
 and evidence from their dates;
 their navigation links follow the archive locations. Earlier version numbers
 were development checkpoints, not published releases.

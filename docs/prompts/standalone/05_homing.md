@@ -1,43 +1,55 @@
-# 05 - Complete supported homing families
+# 05 - Unresolved homing semantics and physical qualification
 
 Read [README](README.md), [execution contract](execution_contract.md) and the
-[audit finding map](audit.md) together with this prompt.
+[original audit](audit.md). Status: NOT EXECUTED.
 
-Findings: **N06, N07, N08, Q07**. Status: **NOT EXECUTED**.
+The [ESS software set](../ess_software/README.md) exclusively owns homing reads
+(stage 03), the auxiliary setter (05), production qualification/admission support
+(08) and the 27 switch methods (09-12). A real switch fixture is not an entry
+requirement for that source-supported software/native-test work. This stage
+retains N06 nonzero offset, unresolved N08 method 18/collision semantics and Q07
+physical qualification. A redirect is not completion.
 
-## Entry gate
+## Entry and inspection
 
-01 supplies actual parameter observations; 04 is required for nonzero offsets. Each external method requires its real fixture.
+For nonzero offsets, require the source/encoding disposition from
+[04](04_paired_values.md). For unresolved methods, obtain authoritative
+method-specific evidence before changing their guards. For physical trials,
+use the actual applicable fixture, source-supported implementation and current
+AGENTS authorization. Missing hardware blocks only the physical trial.
 
-## Inspect before editing
-
-Paths are relative to the repository root. Read implementations, callers and
-existing tests, not just declarations or old reports:
-
-src/profiles/ess_rs/Homing.cpp; include/MotorControlRS/profiles/ess_rs/Homing.h; examples/probe_cli/HomeConsoleParser.cpp, HomeConsoleFormat.cpp and ProbeApp.cpp; test/homing_test.cpp, home_app_test.cpp and home_console_parity_test.py; docs/ess_homing_methods.md, ess_homing.md.
+Inspect current homing core/app/tests, typed parameter/setting/qualification
+paths delivered by the software set, method and pair guides, original PDF
+diagrams and exact model/firmware evidence. Reconcile current code first.
 
 ## Work
 
-1. Preserve implemented methods 33/34/35. Reconcile all 27 unimplemented switch
-   methods and five unresolved collision/diagram methods individually against
-   source diagrams; method 18 and negative collision encodings cannot be guessed.
-2. Add supported auxiliary configuration through existing settings/evidence
-   conventions, with real prior-value readback. Do not silently force value 7
-   or remap external inputs as a convenience of starting home.
-3. Implement only reviewed method trajectories and expected edge/return/index
-   observations using the existing context and owner. Keep wiring assignment,
-   physical connection and qualified input behavior distinct.
-4. Preserve bounded travel/time, stop policy, loss of reference, failed-home
-   result retention and origin establishment only after sufficient evidence.
-   Nonzero offsets require 04's separate semantic resolution.
+1. Preserve method 18's positive-limit prose versus negative-limit figure
+   conflict and negative collision encoding/access questions until concrete
+   evidence resolves them. Do not infer one method from its numbered neighbor.
+2. Resolve nonzero offset order/sign/scale and admissible write form separately.
+   Zero-offset software completion does not supply that evidence. No split
+   FC06 or unreviewed FC10 pair write may be enabled by assumption.
+3. If an ambiguity is genuinely resolved, implement the specific extension
+   through the existing public/owner/application paths with independent source
+   vectors, uncertainty handling, bounded admission and appropriate CI.
+   Document the scope change and update the canonical software coverage.
+4. Qualify physical homing only on a matching switch/index/mechanism fixture.
+   Record input assignments, effective polarity, each initial-location branch,
+   actual search/return/index behavior, bounded travel, stop and origin evidence.
+   The drive executes the trajectory; sampled software state does not prove
+   every physical transition.
+5. Keep raw failures, uncertain writes, interrupted results and remaining limits.
+   No automatic replay or motion restart. No FieldCore/product changes here.
 
 ## Acceptance and handoff
 
-Test wrong/missing/stuck inputs, opposite edge, no index, timeout, interrupted
-home, lost write ACK, malformed state, overflow and origin invalidation. State
-which methods are software implemented versus physically qualified. Keep every
-unresolved method guarded; free-shaft results cannot close switch/collision rows.
+For software extensions, use real APIs/owners with independent native cases and
+ordinary CLI parity, including stale state, lost ACK, stop/cancel and unchanged
+outputs on rejection. For physical qualification, retain exact image/settings,
+fixture and independent observations; missing checks remain NOT RUN. Update
+method-by-method software and physical dispositions separately.
 
-Follow the execution contract for local checks, impact-based CI, documentation,
-owned commits/pushes and explicit remaining hardware/vendor gates. Update this
-stage's status only from actual evidence.
+Do not reimplement the 27 methods or auxiliary setter under this stage. Use the
+software set's reviewed progress as input, preserve unresolved guards and keep
+this remaining work visible until actually completed.

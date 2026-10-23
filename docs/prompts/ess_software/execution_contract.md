@@ -148,10 +148,13 @@ findings and remaining limits. Update the checked operation inventory only when
 an actual producing API and required route exist. Its numeric owner fields refer
 to historical ESS delivery stages; do not renumber them to this set's stages.
 
-Software, build and physical evidence are separate. This set does not dispatch
-physical campaigns; apply existing AGENTS authorization if hardware testing is
-separately requested. Missing switches do not block source-supported software
-and scripted transport tests. Neither a fake nor a build proves physical edges,
+Software, build and physical evidence are separate. Prompt preparation does not
+run physical tests. During implementation, follow AGENTS for short regression
+when behavior reaches an available authorized board; existing authorization
+persists without another permission question. This set does not launch the
+deferred overnight or loaded-mechanism campaigns. Missing switches do not block
+source-supported software and scripted transport tests. Neither a fake nor a
+build proves physical edges,
 index detection, stop behavior or timing. An unavailable required software check
 is BLOCKED/NOT RUN, never PASS. Do not publish a release, retag v1.0.0 or bump a
 version just to close a prompt.

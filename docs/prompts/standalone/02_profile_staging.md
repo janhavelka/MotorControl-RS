@@ -3,11 +3,12 @@
 Read [README](README.md), [execution contract](execution_contract.md) and the
 [audit finding map](audit.md) together with this prompt.
 
-Findings: **N03, N04**. Status: **NOT EXECUTED**.
+Finding: **N03**. Status: **NOT EXECUTED**. N04 is owned exclusively by
+[ESS software 04](../ess_software/04_position_start_speed.md).
 
 ## Entry gate
 
-Use 01's read conventions. Review start-speed semantics separately from the existing 0x0021/5 window.
+Reuse existing profile/read conventions and the 0x0021/5 builder. A new start-speed setter is separate work, not a prerequisite for candidate staging that preserves the existing start speed.
 
 ## Inspect before editing
 
@@ -26,8 +27,8 @@ src/profiles/ess_rs/Position.cpp; include/MotorControlRS/profiles/ess_rs/Positio
    state and external trigger prerequisites before admission. Treat imported
    bytes as untrusted candidate data, not fresh readiness or provenance.
 3. Keep start speed at 0x0020 separate: current 0x0021/5 does not write it.
-   Add a typed setter only after its access, range and native meaning are
-   reviewed. Otherwise deliver candidate staging and retain N04 explicitly.
+   Preserve its existing qualification/restore boundary. Coordinate with the
+   separately owned setter if it exists; do not implement it again here.
 4. Read back requested values, retain original/write/readback evidence and
    invalidate dependent prepared work when a write may have applied. Never
    start motion, save EEPROM or issue automatic rollback as restoration.

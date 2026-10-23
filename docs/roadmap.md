@@ -3,7 +3,8 @@
 The first release is **1.0.0**, with the bounded ESS subset described in
 [release scope](releases/1.0.0.md). Implementation, native validation and physical
 qualification are separate milestones. The [backlog](backlog.md) owns remaining
-work, organized by the [standalone promptset](prompts/standalone/README.md);
+work, organized by the [ESS software promptset](prompts/ess_software/README.md)
+and the [broader standalone plan](prompts/standalone/README.md);
 [current reports](reports/README.md) and the [archive](archive/README.md)
 retain successful and failed experiments.
 

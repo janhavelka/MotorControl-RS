@@ -19,6 +19,12 @@
 
 ### Maintenance
 
+- Added a source-audited 15-stage ESS software promptset for native parameter
+  reads, start-speed and homing-auxiliary setters, serial position interruption
+  and 27 switch homing methods. Included concrete agent ownership, independent
+  review, acceptance tests and portability checks; redirected overlapping older
+  prompts and kept physical/source qualification separate. Implementation has
+  not started as part of prompt preparation.
 - Completed and independently audited all seven maintainability stages at their
   specified seams. Archived the finished promptset, complexity review and
   implementation handoffs; corrected stale pending-work claims and consolidated

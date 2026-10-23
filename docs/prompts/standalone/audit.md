@@ -1,5 +1,12 @@
 # Source audit and finding map, 2026-10-23
 
+Implementation routing update: the detailed [ESS software set](../ess_software/README.md)
+now owns N01, N02, N04, N05, N07 and the 27 switch-method portion of N08.
+The stage numbers below identify this original broad plan; redirected stage
+files point to the current owner. This dated audit does not mark any feature
+implemented. N03, N06, N09, unresolved method 18/collision semantics and physical
+work retain their separate owners.
+
 ## Baseline and method
 
 MotorControl-RS main was fetched and synchronized at

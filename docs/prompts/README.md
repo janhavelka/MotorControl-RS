@@ -1,10 +1,17 @@
 # Implementation prompts
 
-The active [standalone ESS completion and qualification set](standalone/README.md)
-contains 13 bounded stages and a [source-backed audit](standalone/audit.md).
-Prepared on 23 October 2026; numbered implementation/physical stages have not
-been executed. Software gaps, vendor ambiguities and physical gates are labelled
-separately.
+The active [ESS software completion set](ess_software/README.md) contains
+15 bounded stages for the verified missing parameter reads, start-speed and
+homing-auxiliary setters, serial position interruption and 27 switch homing
+methods. It includes a source audit, exhaustive method matrix, concrete agent
+assignments, acceptance cases and implementation progress. Prepared on
+23 October 2026; none of its implementation stages has been executed.
+
+The broader [standalone ESS set](standalone/README.md) retains archived-profile
+staging, unresolved vendor semantics and physical qualification work. Its
+overlapping software stages redirect to the new set; do not execute both for
+the same feature. The [original audit](standalone/audit.md) remains a dated
+baseline, with software and physical evidence kept separate.
 
 The [Lichuan LC57BK-R / RC RS485 set](lichuan_lc57bk_rs485/README.md) contains
 12 implementation and qualification stages for a second manufacturer profile.

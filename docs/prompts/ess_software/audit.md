@@ -40,6 +40,12 @@ ledger currently retains nine named gaps. Recompute it from delivered routes.
   checked. Do not merely append a read-kind enum or blindly share a buffer.
 - `DriverRequest::interruption` controls external PV trigger level/edge behavior.
   It is not serial MOTION_COMMAND bit 3 and cannot close N05.
+- Current move setup policies can write profile/target words before triggering.
+  Their effect during an already active move needs explicit source review;
+  bit 3 alone proves no staging isolation. Reference-dependent endpoint/wrapped
+  calculations also cannot silently reuse a stationary baseline while moving.
+  These are design requirements for the missing interrupt operation, not newly
+  demonstrated defects in the existing noninterrupting contract.
 - `ProbeApp` retains home prerequisites but lacks a normal production population
   path; `home_app_test.cpp` supplies them directly. New methods need an ordinary
   application path for supplied qualification plus real readback/provenance.

@@ -20,8 +20,10 @@ callers and tests together. Do not generate a new source tree from this table.
 | Access and coverage | `Types.h`, `Registers.h`, `Codec.h/.cpp`; `docs/reference/ess_rs_registers.json`, `ess_rs_operations.json` | `scripts/generate_ess_registers.py`, `check_ess_operations.py`; `test/codec_test.cpp`, `operations_inventory_test.py` |
 | Distribution / verification | `CMakeLists.txt`, `library.json`, `library.properties`, `platformio.ini`, `.github/workflows/verify.yml`, `scripts/verify.py` | `docs/verification.md`, `test/portability_consumer/`, `test/idf_consumer/`; installed/source consumer checks |
 
-The family filenames in the settings/owner rows are grouped for navigation;
-resolve their actual paths before assigning ownership. There is no existing
+Grouped header/source names inherit the ESS include/src directories or the
+explicit application/owner directory in that cell. Adjacent bare test filenames
+inherit `test/`; adjacent bare guide filenames inherit `docs/`. Resolve actual
+paths before assigning ownership. There is no existing
 `ReadApp.h`, `HomeApp.h`, `HomeConsole.cpp` or `position_app_test.cpp` to patch.
 Do not invent those as prerequisites. A small extraction is allowed when the
 actual code warrants it, with build registration and behavior retained.

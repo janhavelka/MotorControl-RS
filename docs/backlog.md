@@ -1,8 +1,11 @@
 # Implementation and qualification backlog
 
 Reaudited against current source on 23 October 2026. The
-[standalone promptset and finding map](prompts/standalone/README.md) organize the
-remaining work; preparation is complete, implementation/physical stages are not.
+[ESS software promptset](prompts/ess_software/README.md) owns the selected missing
+reads, setters, position interruption and 27 switch homing methods. The
+[broader standalone promptset and finding map](prompts/standalone/README.md)
+retain other application, source-ambiguity and physical work. Prompt preparation
+does not complete the implementation/physical stages.
 This page lists remaining work;
 completed work and historical test dispositions live in the
 [development archive](archive/README.md) and [changelog](../CHANGELOG.md).
