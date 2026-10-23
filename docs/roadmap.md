@@ -64,6 +64,13 @@ no independent shaft calibration, electrical timing or loaded-machine claim.
    and exact source/artifact evidence. Publication does not imply full ESS native
    coverage or close the independent qualification gates.
 
+The [Lichuan LC57BK-R / RC promptset](prompts/lichuan_lc57bk_rs485/README.md)
+now supplies a concrete second-profile research target, preserved manuals and
+12 delivery stages. Source collection/extraction is complete for the retained
+manuals; code implementation, exact-revision resolution and Lichuan physical
+qualification remain separate open milestones. Preserve ESS behavior while
+adding this profile to the same package.
+
 Other RS485 profiles require a concrete target and reviewed sources. CANopen
 belongs in a separate future library with the agreed motion vocabulary; no
 universal transport framework or speculative shared package is planned here.

@@ -64,3 +64,15 @@ Applied Motion SCL. See the [protocol review](08_serial_protocol_review.md),
 snapshots above remain unchanged. Downloading a manual does not add profile
 support. ESS-RS is the implemented profile; its current typed operations and
 remaining gaps are listed in the [API inventory](../ess_api_cli_coverage.md).
+
+## Lichuan LC57BK-R / RC RS485 candidate
+
+Collected on 2026-10-23: the exact-family 20-page user manual and 7-page
+operation manual, plus a preserved manufacturer product page. See the
+[source inventory](../vendor/lichuan_lc57bk_rs485/README.md),
+[separate hash manifest](lichuan_lc57bk_rs485_sources.json),
+[extracted engineering review](13_lichuan_lc57bk_rs485.md) and
+[implementation prompts](../prompts/lichuan_lc57bk_rs485/README.md).
+The 127 register rows, 21 frame examples and eight listing variants are
+research evidence; no Lichuan implementation or hardware qualification is implied.
+Existing ESS and serial-contrast snapshots remain unchanged.

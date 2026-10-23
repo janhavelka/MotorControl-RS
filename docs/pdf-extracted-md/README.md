@@ -13,3 +13,12 @@ misordered or absent. Always verify ambiguous content in the original PDF.
 - [Modbus serial-line specification](Modbus_Serial_Line_V1.02.md)
 
 Regenerate using `python scripts/prepare_references.py` from the project root.
+
+Lichuan LC57BK-R / RC research sources have their own preserved manifest and
+extract command, `python scripts/prepare_lichuan_references.py --check --extract`:
+
+- [LC57BK-R user manual, V1.1 filename, Chinese](Lichuan_LC57BK-R_User_Manual_V1.1_CN.md)
+- [LC57BK-R operation manual, Chinese](Lichuan_LC57BK-R_Operation_Manual_CN.md)
+
+See the [English engineering review](../reference/13_lichuan_lc57bk_rs485.md)
+for conflicting addresses, labels and encoder claims. Extraction does not resolve them.

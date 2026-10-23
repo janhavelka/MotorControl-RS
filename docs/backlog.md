@@ -147,6 +147,14 @@ functional evidence; independent shaft calibration remains absent.
   checkout; it is no longer an integration blocker.
 - [ ] Select actual motors and reviewed source/firmware before implementing
   further RS485 profiles, non-Modbus framing or mixed-protocol discovery.
+- [x] Prepare the [Lichuan LC57BK-R / RC RS485 source bundle and promptset](prompts/lichuan_lc57bk_rs485/README.md):
+  two exact-family manuals, 127 parameter rows, 21 audited frames and eight
+  listing variants. This completes research preparation, not profile code.
+- [ ] Implement the Lichuan profile in the existing MotorControl-RS package,
+  following the 12 stages and [LC-D01..LC-D15 evidence issues](reference/13_lichuan_lc57bk_rs485.md).
+  Keep status-address, encoder, sign, I/O and communication ambiguities explicit.
+- [ ] Establish and qualify an actual Lichuan model/firmware/fixture separately
+  from ESS; no Lichuan hardware test or availability is claimed by the listing.
 - [ ] Develop CANopen in a separate future library, initially the verified
   CL86-C subset, after obtaining firmware-matched manual/EDS and transport
   evidence. Preserve the common motion vocabulary; extract shared types only

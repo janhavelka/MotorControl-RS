@@ -1,0 +1,2393 @@
+{
+  "schema_version": 1,
+  "status": "RESEARCH TRANSCRIPTION; not generated implementation access policy",
+  "source": "LC-USER, physical PDF pages 6-10",
+  "register_count": 127,
+  "notes": [
+    "Original PA labels are retained even where narrative labels disagree. Use separately reviewed wire addresses.",
+    "name_and_description and range are source-table text; name_en is an editorial translation.",
+    "All blank defaults are null. RW is a source declaration, not readiness, safe probe suitability, persistence or a permissible bulk window.",
+    "Omitted addresses and the eighth word of each eight-address segment stride are not invented registers.",
+    "Each table row is one 16-bit register. Signedness, paired semantics and allowable transfer windows need separate review."
+  ],
+  "registers": [
+    {
+      "parameter": "PA_002",
+      "address": 2,
+      "name_and_description": "半流时间",
+      "range": "0~15000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x0002",
+      "name_en": "Half-current delay",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_003",
+      "address": 3,
+      "name_and_description": "半流比例",
+      "range": "0~100",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x0003",
+      "name_en": "Half-current ratio",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_006",
+      "address": 6,
+      "name_and_description": "电机参数自识别\n0:不自动识别电机，使用默认电流增益\n1:自动识别电机，自动配置电流增益",
+      "range": "0~1",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x0006",
+      "name_en": "Motor parameter self-identification",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_007",
+      "address": 7,
+      "name_and_description": "正方向电平",
+      "range": "0~1",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x0007",
+      "name_en": "Positive direction level",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_008",
+      "address": 8,
+      "name_and_description": "使能电平\n0:默认不使能\n1:默认使能",
+      "range": "0~1",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x0008",
+      "name_en": "Enable level",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D11"
+      ]
+    },
+    {
+      "parameter": "PA_009",
+      "address": 9,
+      "name_and_description": "电流环 Kp",
+      "range": "50~5000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x0009",
+      "name_en": "Current loop Kp",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_010",
+      "address": 10,
+      "name_and_description": "电流环 Ki",
+      "range": "1~500",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x000A",
+      "name_en": "Current loop Ki",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_011",
+      "address": 11,
+      "name_and_description": "位置环 Kp",
+      "range": "10~5000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x000B",
+      "name_en": "Position loop Kp",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_012",
+      "address": 12,
+      "name_and_description": "速度前馈 Kvff",
+      "range": "10~5000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x000C",
+      "name_en": "Velocity feedforward Kvff",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_013",
+      "address": 13,
+      "name_and_description": "速度环 Kp",
+      "range": "10~5000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x000D",
+      "name_en": "Velocity loop Kp",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_014",
+      "address": 14,
+      "name_and_description": "速度环 Ki",
+      "range": "10~5000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x000E",
+      "name_en": "Velocity loop Ki",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_015",
+      "address": 15,
+      "name_and_description": "加速度前馈 Kaff",
+      "range": "10~5000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x000F",
+      "name_en": "Acceleration feedforward Kaff",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_016",
+      "address": 16,
+      "name_and_description": "每圈脉冲数设置",
+      "range": "200~60000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x0010",
+      "name_en": "Command pulses per revolution",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D01"
+      ]
+    },
+    {
+      "parameter": "PA_017",
+      "address": 17,
+      "name_and_description": "开环电流\n设置开环模式输出电流和待机时输出电流",
+      "range": "1000~6000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x0011",
+      "name_en": "Open-loop current",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_018",
+      "address": 18,
+      "name_and_description": "闭环电流\n设置闭环模式输出峰值电流",
+      "range": "1000~6000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x0012",
+      "name_en": "Closed-loop current",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_019",
+      "address": 19,
+      "name_and_description": "码盘线数\n编码器分辨率 4096，对应每圈脉冲数 16384",
+      "range": "1000~30000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x0013",
+      "name_en": "Encoder line count",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D01"
+      ]
+    },
+    {
+      "parameter": "PA_020",
+      "address": 20,
+      "name_and_description": "位置输入 Fir 滤波时间",
+      "range": "1~512",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x0014",
+      "name_en": "Position-input FIR filter",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_021",
+      "address": 21,
+      "name_and_description": "控制模式\n0：开环模式\n1：闭环模式",
+      "range": "0~1",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x0015",
+      "name_en": "Open/closed-loop control mode",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_022",
+      "address": 22,
+      "name_and_description": "回零时间限制，单位（ms）",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x0016",
+      "name_en": "Homing timeout (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_023",
+      "address": 23,
+      "name_and_description": "上电自动回零\n0:上电不自动回零\n1:上电自动回零",
+      "range": "0~1",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x0017",
+      "name_en": "Power-on automatic homing",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_025",
+      "address": 25,
+      "name_and_description": "位置超差报警门限",
+      "range": "1~60000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x0019",
+      "name_en": "Position deviation alarm threshold",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_026",
+      "address": 26,
+      "name_and_description": "低速抗振系数",
+      "range": "0~1000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x001A",
+      "name_en": "Low-speed vibration suppression",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_027",
+      "address": 27,
+      "name_and_description": "到位门限值",
+      "range": "0~1000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x001B",
+      "name_en": "Position arrival threshold",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_028",
+      "address": 28,
+      "name_and_description": "抱闸延时设置",
+      "range": "0~3000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x001C",
+      "name_en": "Brake delay",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_029",
+      "address": 29,
+      "name_and_description": "释放抱闸延时设置",
+      "range": "0~3000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x001D",
+      "name_en": "Brake release delay",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_030",
+      "address": 30,
+      "name_and_description": "使能清故障\n0：使能信号不清除报警\n1：使能信号清除报警",
+      "range": "0~1",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6
+      ],
+      "address_hex": "0x001E",
+      "name_en": "Clear alarm on enable",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D11"
+      ]
+    },
+    {
+      "parameter": "PA_031",
+      "address": 31,
+      "name_and_description": "输入极性逻辑 OFF:常闭 ，ON：常开\nBit0:DI1 极性\nBit1:DI2 极性\nBit2:DI3 极性\nBit3:DI4 极性",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        6,
+        7
+      ],
+      "address_hex": "0x001F",
+      "name_en": "Input polarity mask",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D08"
+      ]
+    },
+    {
+      "parameter": "PA_032",
+      "address": 32,
+      "name_and_description": "输出极性逻辑 OFF:常开 ，ON：常闭\nBit0:DO1 极性\nBit1:DO2 极性",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        7
+      ],
+      "address_hex": "0x0020",
+      "name_en": "Output polarity mask",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D08"
+      ]
+    },
+    {
+      "parameter": "PA_033",
+      "address": 33,
+      "name_and_description": "DI1 输入滤波时间",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        7
+      ],
+      "address_hex": "0x0021",
+      "name_en": "DI1 filter time",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_034",
+      "address": 34,
+      "name_and_description": "DI1 功能选择\n32:位置段位触发;\n33:回零\n34:停止\n35:JOG+速度段触发\n36:JOG-速度段触发\n37:正限位\n38:负限位\n39:原点\n40:位置选择CMD0\n41:位置选择CMD1\n42:位置选择CMD2\n44:暂停\n45:电机释放信号",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        7
+      ],
+      "address_hex": "0x0022",
+      "name_en": "DI1 function",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D08"
+      ]
+    },
+    {
+      "parameter": "PA_035",
+      "address": 35,
+      "name_and_description": "DI2 输入滤波时间",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        7
+      ],
+      "address_hex": "0x0023",
+      "name_en": "DI2 filter time",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_036",
+      "address": 36,
+      "name_and_description": "DI2 功能选择\n具体参考 PA 034 说明",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        7
+      ],
+      "address_hex": "0x0024",
+      "name_en": "DI2 function",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D08"
+      ]
+    },
+    {
+      "parameter": "PA_037",
+      "address": 37,
+      "name_and_description": "_\nDI3 输入滤波时间",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        7
+      ],
+      "address_hex": "0x0025",
+      "name_en": "DI3 filter time",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_038",
+      "address": 38,
+      "name_and_description": "DI3 功能选择\n具体参考 PA 034 说明",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        7
+      ],
+      "address_hex": "0x0026",
+      "name_en": "DI3 function",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D08"
+      ]
+    },
+    {
+      "parameter": "PA_039",
+      "address": 39,
+      "name_and_description": "_\nDI4 输入滤波时间",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        7
+      ],
+      "address_hex": "0x0027",
+      "name_en": "DI4 filter time",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_040",
+      "address": 40,
+      "name_and_description": "DI4 功能选择\n具体参考 PA 034 说明",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        7
+      ],
+      "address_hex": "0x0028",
+      "name_en": "DI4 function",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D08"
+      ]
+    },
+    {
+      "parameter": "PA_047",
+      "address": 47,
+      "name_and_description": "_\nDO1 功能选择\n1:数字 IO 扩展\n2:故障输出（默认常闭）\n4:抱闸输出（默认常闭）\n8:到位输出（默认常闭）\n16:DI1 的扩展,跟随DI1 状态变化\n17:DI2 的扩展,跟随DI2 状态变化\n18:DI3 的扩展,跟随DI3 状态变化\n19:DI4 的扩展,跟随DI4 状态变化",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        7
+      ],
+      "address_hex": "0x002F",
+      "name_en": "DO1 function",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D08"
+      ]
+    },
+    {
+      "parameter": "PA_048",
+      "address": 48,
+      "name_and_description": "DO2 功能选择\n具体参考 PA 047 说明",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        7
+      ],
+      "address_hex": "0x0030",
+      "name_en": "DO2 function",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D08"
+      ]
+    },
+    {
+      "parameter": "PA_054",
+      "address": 54,
+      "name_and_description": "_\n485 通讯软件地址\n设置 Defaullt 档位驱动器地址",
+      "range": "1~255",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        7
+      ],
+      "address_hex": "0x0036",
+      "name_en": "Software RS485 address",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D06",
+        "LC-D12"
+      ]
+    },
+    {
+      "parameter": "PA_055",
+      "address": 768,
+      "name_and_description": "故障检测设置\nBit0: 过流检测\nBit1: 过压检测\nBit3: 缺相检测\nBit7: 位置超差检测\nBit13: 回零超时检测\nBit14: 回零错误检测",
+      "range": "1~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        7,
+        8
+      ],
+      "address_hex": "0x0300",
+      "name_en": "Fault-detection mask",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_056",
+      "address": 9216,
+      "name_and_description": "IO 数字扩展设置\n当DO 功能设为 1 时，通过此参数控制 DO 输出口，\nBit0:DO1\nBit1:DO2",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        8
+      ],
+      "address_hex": "0x2400",
+      "name_en": "Digital output extension",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_058",
+      "address": 9218,
+      "name_and_description": "运行控制字\n0x1m:触发第 m 段指令(m=8,触发 PA 60~PA 65)；\n_ _\n0x20:触发回零；\n0x21:当前位置设为零点；\n0x3m:触发第 m 段速度正转(m=8,触发JOG 速度)；\n0x5m:触发第 m 段速度反转(m=8,触发JOG 速度)；\n0x40:最高减速度急停；\n0x80:暂停，可以恢复继续运行；\n注：m 设置0~7，触发0~7 段位置或速度。",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        8
+      ],
+      "address_hex": "0x2402",
+      "name_en": "Run control word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D07"
+      ]
+    },
+    {
+      "parameter": "PA_059",
+      "address": 9217,
+      "name_and_description": "运行状态字\nBit0: 准备好\nBit1: 报警\nBit2: 指令完成\nBit3: 回零完成\nBit4: 速度到达\nBit5: 限位触发",
+      "range": "~",
+      "default": null,
+      "access": "R",
+      "pdf_pages": [
+        8
+      ],
+      "address_hex": "0x2401",
+      "name_en": "Run status word (table address; conflicts with narrative)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D02"
+      ]
+    },
+    {
+      "parameter": "PA_060",
+      "address": 9219,
+      "name_and_description": "位置模式\nBit7: OFF：绝对位置，ON:相对位置；",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        8
+      ],
+      "address_hex": "0x2403",
+      "name_en": "Position N mode",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_061",
+      "address": 9220,
+      "name_and_description": "位置N 低",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        8
+      ],
+      "address_hex": "0x2404",
+      "name_en": "Position N low word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_062",
+      "address": 9221,
+      "name_and_description": "位置N 高",
+      "range": "0~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        8
+      ],
+      "address_hex": "0x2405",
+      "name_en": "Position N high word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_063",
+      "address": 9222,
+      "name_and_description": "位置N 速度",
+      "range": "0~3000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        8
+      ],
+      "address_hex": "0x2406",
+      "name_en": "Position N speed",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_064",
+      "address": 9223,
+      "name_and_description": "位置N 加速时间",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        8
+      ],
+      "address_hex": "0x2407",
+      "name_en": "Position N acceleration time",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_065",
+      "address": 9224,
+      "name_and_description": "位置N 减速时间",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        8
+      ],
+      "address_hex": "0x2408",
+      "name_en": "Position N deceleration time",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_066",
+      "address": 9225,
+      "name_and_description": "Jog 速度",
+      "range": "0~3000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        8
+      ],
+      "address_hex": "0x2409",
+      "name_en": "Jog speed",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_067",
+      "address": 9226,
+      "name_and_description": "Jog 加速时间",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        8
+      ],
+      "address_hex": "0x240A",
+      "name_en": "Jog acceleration time",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_068",
+      "address": 9227,
+      "name_and_description": "Jog 减速时间",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        8
+      ],
+      "address_hex": "0x240B",
+      "name_en": "Jog deceleration time",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_069",
+      "address": 9228,
+      "name_and_description": "回零模式\n4:负方向原点回零(6:回零后移动到回零位置)；\n5:正反向原点回零(7:回零后移动到回零位置)；\n8:负限位回零(10:回零后移动到回零位置)；\n9:正限位回零(11:回零后移动到回零位置)；\n12:负限位+原点回零(14:回零后移动到回零位置)；\n13:正限位+原点回零(15:回零后移动到回零位置)；\n16:负方向Z 信号回零(18:回零后移动到回零位置)；\n17:正方向Z 信号回零(19:回零后移动到回零位置)；",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        8
+      ],
+      "address_hex": "0x240C",
+      "name_en": "Homing mode",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_070",
+      "address": 9229,
+      "name_and_description": "回零位置低",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        8
+      ],
+      "address_hex": "0x240D",
+      "name_en": "Homing offset low word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_071",
+      "address": 9230,
+      "name_and_description": "回零位置高",
+      "range": "0~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        8
+      ],
+      "address_hex": "0x240E",
+      "name_en": "Homing offset high word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_072",
+      "address": 9231,
+      "name_and_description": "回零高速速度，单位（转/分）",
+      "range": "0~3000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x240F",
+      "name_en": "Homing high speed (rpm)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_073",
+      "address": 9232,
+      "name_and_description": "回零低速速度，单位（转/分）",
+      "range": "0~3000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2410",
+      "name_en": "Homing low speed (rpm)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_074",
+      "address": 9233,
+      "name_and_description": "回零加速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2411",
+      "name_en": "Homing acceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_075",
+      "address": 9234,
+      "name_and_description": "回零减速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2412",
+      "name_en": "Homing deceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_076",
+      "address": 9235,
+      "name_and_description": "停止减速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2413",
+      "name_en": "Stop deceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_077",
+      "address": 9236,
+      "name_and_description": "急停减速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2414",
+      "name_en": "Emergency-stop deceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_078",
+      "address": 9728,
+      "name_and_description": "位置 0 模式\nBit7: OFF：绝对位置，ON:相对位置；\nBit8~Bit10: 设置跳转路径；\nBit15: ON：此段定位完成后跳转到下一段；\n具体参考 5.3.2 章节",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2600",
+      "name_en": "Segment 0 mode",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_079",
+      "address": 9729,
+      "name_and_description": "位置 0 低",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2601",
+      "name_en": "Segment 0 position low word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_080",
+      "address": 9730,
+      "name_and_description": "位置 0 高",
+      "range": "0~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2602",
+      "name_en": "Segment 0 position high word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_081",
+      "address": 9731,
+      "name_and_description": "位置 0 速度，单位（转/分）",
+      "range": "0~3000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2603",
+      "name_en": "Segment 0 speed (rpm)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_082",
+      "address": 9732,
+      "name_and_description": "位置 0 加速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2604",
+      "name_en": "Segment 0 acceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_083",
+      "address": 9733,
+      "name_and_description": "位置 0 减速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2605",
+      "name_en": "Segment 0 deceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_084",
+      "address": 9734,
+      "name_and_description": "位置 0 延时，单位（ms）",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2606",
+      "name_en": "Segment 0 delay (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_086",
+      "address": 9736,
+      "name_and_description": "位置 1 模式\n参考 PA 078 参数说明",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2608",
+      "name_en": "Segment 1 mode",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_087",
+      "address": 9737,
+      "name_and_description": "_\n位置 1 低",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2609",
+      "name_en": "Segment 1 position low word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_088",
+      "address": 9738,
+      "name_and_description": "位置 1 高",
+      "range": "0~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x260A",
+      "name_en": "Segment 1 position high word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_089",
+      "address": 9739,
+      "name_and_description": "位置 1 速度，单位（转/分）",
+      "range": "0~3000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x260B",
+      "name_en": "Segment 1 speed (rpm)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_090",
+      "address": 9740,
+      "name_and_description": "位置 1 加速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x260C",
+      "name_en": "Segment 1 acceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_091",
+      "address": 9741,
+      "name_and_description": "位置 1 减速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x260D",
+      "name_en": "Segment 1 deceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_093",
+      "address": 9742,
+      "name_and_description": "位置 1 延时，单位（ms）",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x260E",
+      "name_en": "Segment 1 delay (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_094",
+      "address": 9744,
+      "name_and_description": "位置 2 模式\n参考 PA 078 参数说明",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2610",
+      "name_en": "Segment 2 mode",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_095",
+      "address": 9745,
+      "name_and_description": "_\n位置 2 低",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2611",
+      "name_en": "Segment 2 position low word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_096",
+      "address": 9746,
+      "name_and_description": "位置 2 高",
+      "range": "0~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2612",
+      "name_en": "Segment 2 position high word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_097",
+      "address": 9747,
+      "name_and_description": "位置 2 速度，单位（转/分）",
+      "range": "0~3000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2613",
+      "name_en": "Segment 2 speed (rpm)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_098",
+      "address": 9748,
+      "name_and_description": "位置 2 加速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2614",
+      "name_en": "Segment 2 acceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_099",
+      "address": 9749,
+      "name_and_description": "位置 2 减速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2615",
+      "name_en": "Segment 2 deceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_101",
+      "address": 9750,
+      "name_and_description": "位置 2 延时，单位（ms）",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2616",
+      "name_en": "Segment 2 delay (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_102",
+      "address": 9752,
+      "name_and_description": "位置 3 模式\n参考 PA 078 参数说明",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2618",
+      "name_en": "Segment 3 mode",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_103",
+      "address": 9753,
+      "name_and_description": "_\n位置 3 低",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2619",
+      "name_en": "Segment 3 position low word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_104",
+      "address": 9754,
+      "name_and_description": "位置 3 高",
+      "range": "0~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x261A",
+      "name_en": "Segment 3 position high word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_105",
+      "address": 9755,
+      "name_and_description": "位置 3 速度，单位（转/分）",
+      "range": "0~3000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x261B",
+      "name_en": "Segment 3 speed (rpm)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_106",
+      "address": 9756,
+      "name_and_description": "位置 3 加速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x261C",
+      "name_en": "Segment 3 acceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_107",
+      "address": 9757,
+      "name_and_description": "位置 3 减速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x261D",
+      "name_en": "Segment 3 deceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_109",
+      "address": 9758,
+      "name_and_description": "位置 3 延时，单位（ms）",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x261E",
+      "name_en": "Segment 3 delay (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_110",
+      "address": 9760,
+      "name_and_description": "位置 4 模式\n参考 PA 078 参数说明",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2620",
+      "name_en": "Segment 4 mode",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_111",
+      "address": 9761,
+      "name_and_description": "_\n位置 4 低",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2621",
+      "name_en": "Segment 4 position low word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_112",
+      "address": 9762,
+      "name_and_description": "位置 4 高",
+      "range": "0~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        9
+      ],
+      "address_hex": "0x2622",
+      "name_en": "Segment 4 position high word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_113",
+      "address": 9763,
+      "name_and_description": "位置4 速度，单位（转/分）",
+      "range": "0~3000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x2623",
+      "name_en": "Segment 4 speed (rpm)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_114",
+      "address": 9764,
+      "name_and_description": "位置4 加速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x2624",
+      "name_en": "Segment 4 acceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_115",
+      "address": 9765,
+      "name_and_description": "位置4 减速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x2625",
+      "name_en": "Segment 4 deceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_117",
+      "address": 9766,
+      "name_and_description": "位置4 延时，单位（ms）",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x2626",
+      "name_en": "Segment 4 delay (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_118",
+      "address": 9768,
+      "name_and_description": "位置5 模式\n参考PA 078 参数说明",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x2628",
+      "name_en": "Segment 5 mode",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_119",
+      "address": 9769,
+      "name_and_description": "_\n位置5 低",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x2629",
+      "name_en": "Segment 5 position low word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_120",
+      "address": 9770,
+      "name_and_description": "位置5 高",
+      "range": "0~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x262A",
+      "name_en": "Segment 5 position high word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_121",
+      "address": 9771,
+      "name_and_description": "位置5 速度，单位（转/分）",
+      "range": "0~3000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x262B",
+      "name_en": "Segment 5 speed (rpm)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_122",
+      "address": 9772,
+      "name_and_description": "位置5 加速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x262C",
+      "name_en": "Segment 5 acceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_123",
+      "address": 9773,
+      "name_and_description": "位置5 减速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x262D",
+      "name_en": "Segment 5 deceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_125",
+      "address": 9774,
+      "name_and_description": "位置5 延时，单位（ms）",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x262E",
+      "name_en": "Segment 5 delay (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_126",
+      "address": 9776,
+      "name_and_description": "位置6 模式\n参考PA 078 参数说明",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x2630",
+      "name_en": "Segment 6 mode",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_127",
+      "address": 9777,
+      "name_and_description": "_\n位置6 低",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x2631",
+      "name_en": "Segment 6 position low word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_128",
+      "address": 9778,
+      "name_and_description": "位置6 高",
+      "range": "0~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x2632",
+      "name_en": "Segment 6 position high word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_129",
+      "address": 9779,
+      "name_and_description": "位置6 速度，单位（转/分）",
+      "range": "0~3000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x2633",
+      "name_en": "Segment 6 speed (rpm)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_130",
+      "address": 9780,
+      "name_and_description": "位置6 加速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x2634",
+      "name_en": "Segment 6 acceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_131",
+      "address": 9781,
+      "name_and_description": "位置6 减速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x2635",
+      "name_en": "Segment 6 deceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_133",
+      "address": 9782,
+      "name_and_description": "位置6 延时，单位（ms）",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x2636",
+      "name_en": "Segment 6 delay (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_134",
+      "address": 9784,
+      "name_and_description": "位置7 模式\n参考PA 078 参数说明",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x2638",
+      "name_en": "Segment 7 mode",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_135",
+      "address": 9785,
+      "name_and_description": "_\n位置7 低",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x2639",
+      "name_en": "Segment 7 position low word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_136",
+      "address": 9786,
+      "name_and_description": "位置7 高",
+      "range": "0~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x263A",
+      "name_en": "Segment 7 position high word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03",
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_137",
+      "address": 9787,
+      "name_and_description": "位置7 速度，单位（转/分）",
+      "range": "0~3000",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x263B",
+      "name_en": "Segment 7 speed (rpm)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_138",
+      "address": 9788,
+      "name_and_description": "位置7 加速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x263C",
+      "name_en": "Segment 7 acceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_139",
+      "address": 9789,
+      "name_and_description": "位置7 减速时间，单位（ms）",
+      "range": "1~32767",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x263D",
+      "name_en": "Segment 7 deceleration time (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_140",
+      "address": 9790,
+      "name_and_description": "位置7 延时，单位（ms）",
+      "range": "0~65535",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x263E",
+      "name_en": "Segment 7 delay (ms)",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D03"
+      ]
+    },
+    {
+      "parameter": "PA_141",
+      "address": 1008,
+      "name_and_description": "参数保存， 1:保存所有参数，会自动恢复为 0",
+      "range": "0~1",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x03F0",
+      "name_en": "Save parameters trigger",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D14"
+      ]
+    },
+    {
+      "parameter": "PA_142",
+      "address": 1009,
+      "name_and_description": "恢复默认参数， 1:恢复出厂值，会自动恢复为 0",
+      "range": "0~1",
+      "default": null,
+      "access": "RW",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x03F1",
+      "name_en": "Factory-restore trigger",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D14"
+      ]
+    },
+    {
+      "parameter": "PA_143",
+      "address": 779,
+      "name_and_description": "输入口状态 Bit0~Bit4 对应DI1~DI4",
+      "range": "~",
+      "default": null,
+      "access": "R",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x030B",
+      "name_en": "Input states",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D08"
+      ]
+    },
+    {
+      "parameter": "PA_144",
+      "address": 781,
+      "name_and_description": "输出口状态Bit0~Bit2 对应DO1~DO2",
+      "range": "~",
+      "default": null,
+      "access": "R",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x030D",
+      "name_en": "Output states",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D08"
+      ]
+    },
+    {
+      "parameter": "PA_145",
+      "address": 786,
+      "name_and_description": "位置给定L",
+      "range": "~",
+      "default": null,
+      "access": "R",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x0312",
+      "name_en": "Commanded position low word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_146",
+      "address": 787,
+      "name_and_description": "位置给定H",
+      "range": "~",
+      "default": null,
+      "access": "R",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x0313",
+      "name_en": "Commanded position high word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D04"
+      ]
+    },
+    {
+      "parameter": "PA_147",
+      "address": 788,
+      "name_and_description": "位置反馈L",
+      "range": "~",
+      "default": null,
+      "access": "R",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x0314",
+      "name_en": "Feedback position low word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D04",
+        "LC-D01"
+      ]
+    },
+    {
+      "parameter": "PA_148",
+      "address": 789,
+      "name_and_description": "位置反馈H",
+      "range": "~",
+      "default": null,
+      "access": "R",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x0315",
+      "name_en": "Feedback position high word",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": [
+        "LC-D04",
+        "LC-D01"
+      ]
+    },
+    {
+      "parameter": "PA_149",
+      "address": 791,
+      "name_and_description": "速度反馈",
+      "range": "~",
+      "default": null,
+      "access": "R",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x0317",
+      "name_en": "Signedness-unresolved speed feedback",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    },
+    {
+      "parameter": "PA_150",
+      "address": 793,
+      "name_and_description": "速度反馈绝对值",
+      "range": "~",
+      "default": null,
+      "access": "R",
+      "pdf_pages": [
+        10
+      ],
+      "address_hex": "0x0319",
+      "name_en": "Absolute speed feedback",
+      "source": "LC-USER",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issues": []
+    }
+  ]
+}

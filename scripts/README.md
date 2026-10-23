@@ -18,6 +18,7 @@ Missing checks fail. Verification opens no serial port and changes no drive.
 | `check_ess_operations.py` | Register/API/CLI coverage accounting; `--details` prints the full inventory |
 | `generate_ess_registers.py` | Generate register tables and documentation from the reviewed ledger; `--check` verifies |
 | `generate_version.py` | `sync` generates `Version.h` from `library.json`; `check` verifies |
+| `prepare_lichuan_references.py` | Offline `--check` of Lichuan research snapshots/ledgers; `--extract` regenerates search aids; no serial I/O |
 | `pio.cmd` | Windows wrapper for the installed PlatformIO toolchain |
 
 ## Finite bench tools

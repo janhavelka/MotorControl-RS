@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "collected_on": "2026-10-23",
+  "purpose": "Research and future implementation prompts; no Lichuan support or hardware qualification implied",
+  "references": [
+    {
+      "path": "vendor/lichuan_lc57bk_rs485/Lichuan_LC57BK-R_Operation_Manual_CN.pdf",
+      "url": "https://omo-oss-file110.thefastfile.com/portal-saas/pg2024121216272237966/cms/file/lc57bk-r 操作手册.pdf",
+      "resolved_url": "https://omo-oss-cdn.thefastfile.com/portal-saas/pg2024121216272237966/cms/file/lc57bk-r%20%E6%93%8D%E4%BD%9C%E6%89%8B%E5%86%8C.pdf?sign=1792773065-38adab1aefb7b1b47a5b8f4af9a7b278-0-3439cb065ad841b9c35fe25e00dd3811&Expires=1792773065&Signature=H6waWu~5g9cuUmpHOK10fBBxhGpYYEuIHDUocVBJjAuZ0WUeaNFRJMVHPcEBiJ2PYtADaHCvbYfZlLYHRoICvA8uGLcpRIN8H4LyjLTN20Cz7-9Fa5uWvtag05SIiWuQgooMYO6S5NQpKeEUZUf89Xwbf6vLVrU1HH9bSCNkBUkys3mLl9kpLdMa9gXe4e7Ofw19yUdZ-ojZGBOhwBlmHgNVi3X5ihPAd9l6WBWAPb0mNA~oYpxIM98HUiWDYS5wt1FPIkAEh5TQD7bRhg9bGtiHxV-brBVYtlq0i6y4QJfJlYfNnTizTLX40tnJS74vQdYcLNBkxk5Ie1XPE0dmOQ&Key-Pair-Id=KITUBNZ25ERQX",
+      "retrieved_at_utc": "2026-10-23T15:31:08.050507+00:00",
+      "bytes": 491130,
+      "pages": 7,
+      "sha256": "a81b453ea770148e6fcf2ac104b057f6f49a0703c4264c41ad9395de699ffaa7",
+      "format": "pdf",
+      "manufacturer": "Shenzhen Xinlichuan Electric Co., Ltd.",
+      "family": "LC57BK-R / RC (revision compatibility unresolved)",
+      "referer": "https://www.xlichuan.com/",
+      "discovery_url": "https://www.xlichuan.com/product-xq/189.html",
+      "text_extract": "pdf-extracted-md/Lichuan_LC57BK-R_Operation_Manual_CN.md",
+      "id": "LC-OP",
+      "revision": "No revision stated in the document",
+      "purpose": "Commissioning and command sequencing; explicit clear-before-position-start example",
+      "visually_reviewed_pdf_pages": [
+        6
+      ]
+    },
+    {
+      "path": "vendor/lichuan_lc57bk_rs485/Lichuan_LC57BK-R_User_Manual_V1.1_CN.pdf",
+      "url": "https://omo-oss-file110.thefastfile.com/portal-saas/pg2024121216272237966/cms/file/lc57bk-r一体机使用手册v1.1 20250517.pdf",
+      "resolved_url": "https://omo-oss-cdn.thefastfile.com/portal-saas/pg2024121216272237966/cms/file/lc57bk-r%E4%B8%80%E4%BD%93%E6%9C%BA%E4%BD%BF%E7%94%A8%E6%89%8B%E5%86%8Cv1.1%2020250517.pdf?sign=1792773068-aac237af1051fa396a3157270a3862ed-0-bdd6b308e507e20e78031bd8afb3c6b5&Expires=1792773068&Signature=QlcsWqs36kZp9Coioyjse0SurSofGwHUsFav8eG~M1q2l5gHdt8UX-PbvXXreevvDMemLDvg0UZNmX1mn-2eJcDdJBxGVCacDFGaB94YRajV8ZFNCehzGl0O3A~KURsgbz99EnWSriGTl~AnEwF5Zry~PMhEEorX0kBk8LgBjZjgdaPfJuZd9X9HJ3BcHhoqSxOVzpu46tnOD6tV728ITPrqyt9LxXIpuCTCh1PJg9XeTtMiLLp-EF7e8Kw4c9yP7v1ndleBkskyVAACQvNkpxSI3Io01tAJ1j1kXLObm9d3G2oYxq19Id8nSECtphZFxhYU5HnwkpHaNQAqcVPQOQ&Key-Pair-Id=KITUBNZ25ERQX",
+      "retrieved_at_utc": "2026-10-23T15:31:10.397084+00:00",
+      "bytes": 1044100,
+      "pages": 20,
+      "sha256": "c00878d81bcc97e83c5b0722b007a6ac5f60830b2f222ade85d5085ef346d910",
+      "format": "pdf",
+      "manufacturer": "Shenzhen Xinlichuan Electric Co., Ltd.",
+      "family": "LC57BK-R / RC (revision compatibility unresolved)",
+      "referer": "https://www.xlichuan.com/",
+      "discovery_url": "https://www.xlichuan.com/product-xq/189.html",
+      "text_extract": "pdf-extracted-md/Lichuan_LC57BK-R_User_Manual_V1.1_CN.md",
+      "id": "LC-USER",
+      "revision": "V1.1 / 20250517 in download filename; internal revision table blank",
+      "purpose": "Electrical/mechanical data, wiring, parameter table, functions and Modbus frames",
+      "visually_reviewed_pdf_pages": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        16,
+        17,
+        18,
+        19
+      ]
+    },
+    {
+      "id": "LC-PRODUCT",
+      "path": "vendor/lichuan_lc57bk_rs485/Lichuan_LC57BK-R_Product_Page_2026-10-23.html",
+      "format": "html",
+      "url": "https://www.xlichuan.com/product-xq/189.html",
+      "resolved_url": "https://www.xlichuan.com/product-xq/189.html",
+      "referer": "https://www.xlichuan.com/",
+      "retrieved_at_utc": "2026-10-23T15:29:35.732743+00:00",
+      "bytes": 467508,
+      "sha256": "f4852e45f46a52cb3cbf7480d068a9de35f1fdeaa4cb89a7e384f9c3dbc584d2",
+      "purpose": "Preserved manufacturer product page, model and encoder-claim discrepancies; not a protocol specification"
+    }
+  ],
+  "additional_sources": [
+    {
+      "id": "USER-LISTING",
+      "url": "https://www.aliexpress.com/item/1005008941303418.html",
+      "status": "Web fetch unavailable; four user-supplied screenshots reviewed in conversation on 2026-10-23",
+      "use": "Scope/model selection only; selected RS485, closed loop, 3.0 Nm, 8 mm shaft"
+    },
+    {
+      "id": "LC-SALES",
+      "url": "https://www.lichuanservo.com/sale-54466932-lichuan-open-loop-closed-loop-integrated-stepper-motors-driver-pulse-rs485-control-3-5n-m-2phase-nem.html",
+      "status": "Manufacturer sales page reviewed; conflicting generic text is not a model specification"
+    },
+    {
+      "id": "LC-POSTER",
+      "url": "https://www.lichuanservo.com/photo/lichuanservo/document/104375/Lichuan%20Integrated%20Servo%20Stepper%20Motors%20Driver%20High%20Accuracy%20Posters.pdf",
+      "status": "Optional selection poster: bounded download incomplete, not preserved as a valid PDF and not used for protocol claims"
+    },
+    {
+      "id": "LC-EN",
+      "url": "https://en.xlichuan.com/download_2.html",
+      "status": "Checked English download catalogue; no exact LC57BK-R English manual obtained"
+    }
+  ]
+}

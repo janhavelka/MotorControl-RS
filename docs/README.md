@@ -86,13 +86,17 @@ The subdirectories have distinct purposes:
 | [reports](reports/README.md) | Evidence supporting current limits and unresolved investigations |
 | [releases](releases/1.0.0.md) | Maintained release scope and qualification limits |
 | [archive](archive/README.md) | Finished instructions, dated implementation/audit handoffs and superseded plans |
-| [prompts](prompts/README.md) | Standalone ESS completion and qualification prompts, with source audit |
+| [prompts](prompts/README.md) | Standalone ESS completion and Lichuan RS485 profile prompts, with source evidence |
 
 - [Document inventory](reference/00_document_inventory.md), [implementation reference](reference/01_implementation_reference.md) and [source manifest](reference/sources.json).
 - [Register catalogue](reference/05_ess_register_catalog.md), [encoder/units](reference/06_encoder_units.md) and [timing audit](reference/09_timing_and_gap_audit.md).
 - [ESS function manual](vendor/Modbus-Series-Bus-Product-Function-Manual-V1.0_1_.pdf), [RS10/RS20 hardware manual](vendor/ESS23-RS1020_Series_Bus_Integrated_Motor_Hardware_Manual.pdf) and [RS20 datasheet](vendor/ESS23-RS20_Full_Datasheet.pdf).
 - [Searchable extracts](pdf-extracted-md/README.md): search aids; original PDF tables and diagrams remain authoritative.
 - [Reference software](vendor/software/README.md): vendor files retain their own licensing.
+- [Lichuan LC57BK-R / RC evidence](reference/13_lichuan_lc57bk_rs485.md),
+  [original manuals](vendor/lichuan_lc57bk_rs485/README.md) and
+  [12-stage implementation promptset](prompts/lichuan_lc57bk_rs485/README.md):
+  RS485 research only; this profile is not implemented or hardware-qualified.
 - [Development archive](archive/README.md): completed prompts, superseded drafts,
   implementation/audit reports, candidate artifacts and the historical bench ledger.
 

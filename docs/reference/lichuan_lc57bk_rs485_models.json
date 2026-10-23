@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "scope": "Eight RS485 variants in the user-supplied listing; P/PC pulse variants excluded",
+  "initial_candidate": "LC57BK-RC-102N300 (inferred from selected RS485 / closed-loop / 3.0 Nm option; exact nameplate unconfirmed)",
+  "models": [
+    {
+      "model": "LC57BK-R-56N100",
+      "loop": "open",
+      "interface": "RS485",
+      "listing_claims": {
+        "step_angle_degrees": 1.8,
+        "length_mm": 75.7,
+        "holding_torque_Nm": 1.0,
+        "current_A": 3,
+        "rotor_inertia_g_cm2": 300,
+        "mass_kg": 1.18,
+        "shaft_diameter_mm": 8,
+        "shaft_extension_mm": 21,
+        "encoder_PPR": null
+      },
+      "source": "USER-LISTING screenshot 2; not verified as exact delivered hardware",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "LC-D01",
+        "LC-D10"
+      ]
+    },
+    {
+      "model": "LC57BK-RC-56N100",
+      "loop": "closed",
+      "interface": "RS485",
+      "listing_claims": {
+        "step_angle_degrees": 1.8,
+        "length_mm": 75.7,
+        "holding_torque_Nm": 1.0,
+        "current_A": 3,
+        "rotor_inertia_g_cm2": 300,
+        "mass_kg": 1.18,
+        "shaft_diameter_mm": 8,
+        "shaft_extension_mm": 21,
+        "encoder_PPR": 1000
+      },
+      "source": "USER-LISTING screenshot 2; not verified as exact delivered hardware",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "LC-D01",
+        "LC-D10"
+      ]
+    },
+    {
+      "model": "LC57BK-R-82N220",
+      "loop": "open",
+      "interface": "RS485",
+      "listing_claims": {
+        "step_angle_degrees": 1.8,
+        "length_mm": 101.7,
+        "holding_torque_Nm": 2.2,
+        "current_A": 4,
+        "rotor_inertia_g_cm2": 520,
+        "mass_kg": 1.22,
+        "shaft_diameter_mm": 8,
+        "shaft_extension_mm": 21,
+        "encoder_PPR": null
+      },
+      "source": "USER-LISTING screenshot 2; not verified as exact delivered hardware",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "LC-D01",
+        "LC-D10",
+        "LC-D13"
+      ]
+    },
+    {
+      "model": "LC57BK-RC-82N220",
+      "loop": "closed",
+      "interface": "RS485",
+      "listing_claims": {
+        "step_angle_degrees": 1.8,
+        "length_mm": 101.7,
+        "holding_torque_Nm": 2.2,
+        "current_A": 4,
+        "rotor_inertia_g_cm2": 520,
+        "mass_kg": 1.22,
+        "shaft_diameter_mm": 8,
+        "shaft_extension_mm": 21,
+        "encoder_PPR": 1000
+      },
+      "source": "USER-LISTING screenshot 2; not verified as exact delivered hardware",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "LC-D01",
+        "LC-D10",
+        "LC-D13"
+      ]
+    },
+    {
+      "model": "LC57BK-R-102N300",
+      "loop": "open",
+      "interface": "RS485",
+      "listing_claims": {
+        "step_angle_degrees": 1.8,
+        "length_mm": 121.7,
+        "holding_torque_Nm": 3.0,
+        "current_A": 4,
+        "rotor_inertia_g_cm2": 720,
+        "mass_kg": 1.32,
+        "shaft_diameter_mm": 8,
+        "shaft_extension_mm": 21,
+        "encoder_PPR": null
+      },
+      "source": "USER-LISTING screenshot 2; not verified as exact delivered hardware",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "LC-D01",
+        "LC-D10"
+      ]
+    },
+    {
+      "model": "LC57BK-RC-102N300",
+      "loop": "closed",
+      "interface": "RS485",
+      "listing_claims": {
+        "step_angle_degrees": 1.8,
+        "length_mm": 121.7,
+        "holding_torque_Nm": 3.0,
+        "current_A": 4,
+        "rotor_inertia_g_cm2": 720,
+        "mass_kg": 1.32,
+        "shaft_diameter_mm": 8,
+        "shaft_extension_mm": 21,
+        "encoder_PPR": 1000
+      },
+      "source": "USER-LISTING screenshot 2; not verified as exact delivered hardware",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "LC-D01",
+        "LC-D10"
+      ]
+    },
+    {
+      "model": "LC57BK-R-112N350",
+      "loop": "open",
+      "interface": "RS485",
+      "listing_claims": {
+        "step_angle_degrees": 1.8,
+        "length_mm": 131.7,
+        "holding_torque_Nm": 3.5,
+        "current_A": 4,
+        "rotor_inertia_g_cm2": 800,
+        "mass_kg": 1.42,
+        "shaft_diameter_mm": 8,
+        "shaft_extension_mm": 21,
+        "encoder_PPR": null
+      },
+      "source": "USER-LISTING screenshot 2; not verified as exact delivered hardware",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "LC-D01",
+        "LC-D10"
+      ]
+    },
+    {
+      "model": "LC57BK-RC-112N350",
+      "loop": "closed",
+      "interface": "RS485",
+      "listing_claims": {
+        "step_angle_degrees": 1.8,
+        "length_mm": 131.7,
+        "holding_torque_Nm": 3.5,
+        "current_A": 4,
+        "rotor_inertia_g_cm2": 800,
+        "mass_kg": 1.42,
+        "shaft_diameter_mm": 8,
+        "shaft_extension_mm": 21,
+        "encoder_PPR": 1000
+      },
+      "source": "USER-LISTING screenshot 2; not verified as exact delivered hardware",
+      "implementation": "NOT_IMPLEMENTED",
+      "hardware": "NOT_TESTED",
+      "issue_ids": [
+        "LC-D01",
+        "LC-D10"
+      ]
+    }
+  ]
+}
