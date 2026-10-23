@@ -66,13 +66,12 @@ other core consumers.
 
 ## FieldCore boundary
 
-The relevant FieldCore owner/backend/binding sources were inspected read-only
-at commit `c591ecddcd28ad3965c89a60b37279aa7f9e9940`. Its existing owner remains
-appropriate, but its eight-byte TX capacity, unconditional matching-prefix echo
-stripping, fixed/suffix completion, untimed RX batches and measurement-only
-command/results contract require explicit adaptation before motor integration.
-The [handoff](fieldcore_handoff.md) is the current implementation plan and source
-map for those edits; the historical reviews below are supporting evidence.
+The FieldCore sources were rechecked read-only on 23 October 2026. RodTester
+already has a motor module, typed commands/results, 21-byte TX capacity,
+explicit RTU/echo policy and native runtime integration tests. Its Arduino
+backend still leaves RX closure timing unqualified. The
+[handoff](fieldcore_handoff.md) maps the current sources, dependency pin and
+remaining selected-target/physical gates; older reviews are dated evidence.
 
 Keep exact motion types and contexts in a FieldCore-owned device module, with
 its existing bus owner/backend executing work. Do not copy the standalone CLI,

@@ -209,12 +209,12 @@ The [implementation report](archive/reports/ess_release_18_2026-10-04.md) retain
 test/build counts for that image. Use the [verification guide](verification.md)
 for current checks; historical counts are not the present test inventory.
 
-FieldCore's current request/work/result and RS485 owner were inspected read-only.
-Serialized bounded work is compatible vocabulary. Its eight-byte transactions,
-borrowed RX observation, measurement payload and immediate active cancellation
-are not replacements for this profile's retained checked frame evidence, honest
-partial settings progress and physical TX settlement. No FieldCore, UART, MCU,
-console or scheduler type enters the installed profile API.
+FieldCore's RodTester now has typed motor results and 21-byte RTU transactions;
+the [handoff](fieldcore_handoff.md) records its current integration. Extending
+that consumer to tuning still requires the selected typed operation, retained
+checked frame evidence, honest partial settings progress and physical TX
+settlement. No FieldCore, UART, MCU, console or scheduler type enters the
+installed profile API.
 
 The [fresh 17/18 audit](archive/reports/ess_release_17_18_audit_2026-10-04.md) repeats
 all twenty native reads and input-filter stored restoration on the final image.

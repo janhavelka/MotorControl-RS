@@ -3,7 +3,8 @@
 The first release is **1.0.0**, with the bounded ESS subset described in
 [release scope](releases/1.0.0.md). Implementation, native validation and physical
 qualification are separate milestones. The [backlog](backlog.md) owns remaining
-work; [current reports](reports/README.md) and the [archive](archive/README.md)
+work, organized by the [standalone promptset](prompts/standalone/README.md);
+[current reports](reports/README.md) and the [archive](archive/README.md)
 retain successful and failed experiments.
 
 ## Delivered foundation
@@ -54,10 +55,11 @@ no independent shaft calibration, electrical timing or loaded-machine claim.
    independent shaft/electrical behavior; use actual fixtures for external I/O,
    restart/persistence, wire faults and loaded mechanics. The complete list and
    source reports are in the backlog.
-4. **Integrate FieldCore separately.** Its current owner/backend is not yet motor
-   ready. Follow the [file-by-file handoff](fieldcore_handoff.md), preserve its
-   other protocols and qualify real runtime delivery/load. FieldCore is read-only
-   in this session; the library and standalone owner already work independently.
+4. **Finish consumer qualification in FieldCore.** RodTester already has its motor
+   module, typed commands, RTU owner support and native application integration.
+   Its selected board/backend and physical product/load tests remain consumer
+   work; see the [current handoff](fieldcore_handoff.md). FieldCore is read-only
+   here, and its pinned release is distinct from standalone main.
 5. **Publish the scoped release.** Use the [verification workflow](verification.md)
    and exact source/artifact evidence. Publication does not imply full ESS native
    coverage or close the independent qualification gates.

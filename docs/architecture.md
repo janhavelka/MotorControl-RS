@@ -24,7 +24,7 @@ documented command set. Arduino, native ESP-IDF, desktop/native consumers and
 FieldCore are separate applications of the same library.
 
 The reference application demonstrates an RS485 transaction workflow, not a
-FieldCore product. Its future motor device is not defined here. MCU-specific
+FieldCore product. Its RodTester motor module lives in FieldCore-node. MCU-specific
 UART/DE capture and memory choices stay in example adapters; the application
 supplies board pins explicitly. Other platforms can use the same core and
 portable runner with their own callbacks. Other manufacturers add profiles
@@ -40,7 +40,8 @@ per-producer fairness, deadlines, urgent-stop capacity, retained results,
 cancellation and explicit recovery. The [runner](runner.md) and
 [ESP32-S3 adapter](esp32_probe.md) execute its transactions. Bounded discovery,
 commissioning and motion reuse that owner; no second UART engine is introduced.
-FieldCore integration remains separate work through its existing owner.
+FieldCore's existing RodTester integration uses its own owner; selected-target
+and physical qualification remain consumer work.
 
 The [source map](source_map.md) locates the implemented layers and
 their tests. Historical audit reports remain linked there as dated evidence.
@@ -121,7 +122,7 @@ recovery policy. Consumers may also use a profile codec directly.
 
 ## Ownership
 
-| Concern | Reusable library | Standalone or other application | Future FieldCore integration |
+| Concern | Reusable library | Standalone or other application | FieldCore integration |
 | --- | --- | --- | --- |
 | Axis intent, units, capabilities | Pure validation/conversion and common value types | Supplies scale, origin and limits | Module translates product settings |
 | Registers, framing, checksums and validation | Stateless per-profile codecs | Calls profile API | Device module calls profile API |
@@ -137,7 +138,7 @@ recovery policy. Consumers may also use a profile codec directly.
 flowchart TD
   Standalone[Standalone Arduino or ESP-IDF application] --> Axis[Common axis API and explicit units]
   Other[Other firmware or native consumer] --> Axis
-  FieldCore[Future FieldCore device module] --> Axis
+  FieldCore[FieldCore motor device module] --> Axis
   Axis --> Profile[Selected drive profile and caller-owned sequence]
   Native[Typed family command API] --> Profile
   Profile --> Codec[Stateless family codec]
@@ -477,24 +478,17 @@ reinterpret old words using a new word order or make another motor inherit them.
 
 ## FieldCore integration boundary
 
-A later FieldCore-owned motor device module should call the public axis/profile
-API and implement that repository's binding contract. `Rs485Task` remains the
-only physical bus owner. Status snapshots are passive, and borrowed RX bytes
-are consumed within the observation callback. Device wait periods release
-the bus for other modules. The library has no FieldCore dependency, service
-locator, task abstraction, health enum requirement or product settings type.
-FieldCore-specific naming and types are translated in its adapter. General
-library behavior and public API coverage must not be limited by its current
-measurement contracts or frame capacities.
+FieldCore's RodTester motor module calls the public axis/profile API through
+its existing RS485 owner. The [current handoff](fieldcore_handoff.md) maps its
+typed commands/results, 21-byte transactions, RTU/echo policy and native tests.
+Selected-target binding, qualified backend timing and physical product/load
+tests remain in FieldCore-node; its release pin is independent of main here.
 
-Current FieldCore is not ready for drop-in motor control. The
-[review](reference/02_ecosystem_review.md#fieldcore-integration-gaps) identifies
-the concrete work: FC06 echo handling, FC10 TX capacity, five-byte exception
-completion, serial formats, typed control requests/results, integer precision,
-retry policy and stop scheduling. Do not tunnel motion through `Measure` or
-reuse module `setEnabled` as drive enable. Integrate through the existing
-product composition, settings, CLI routing and health mechanisms when that
-work is requested.
+Status snapshots remain passive, and borrowed RX bytes are consumed within the
+observation callback. Device waits release the bus for other modules. The
+library has no FieldCore service, task, health or settings dependency. Keep
+sensor protocols intact; do not tunnel motion through Measure, equate module
+enable/cancel with physical drive enable/stop, or import sensor replay policy.
 
 ## Implementation stages and verification
 

@@ -1,10 +1,15 @@
 # Standalone runner: FieldCore and ESP32 review
 
+Current-status correction, 23 October 2026: the FieldCore eight-byte TX and
+missing motor-contract observations below describe older source. RodTester now
+has 21-byte RTU transactions and a typed motor module. See the
+[current handoff](../fieldcore_handoff.md) for remaining backend/physical gates.
+
 The standalone [runner](../runner.md), [bus owner](../bus_owner.md),
 [S3 adapter](../esp32_probe.md) and shared Arduino/native-IDF console are
 implemented. Typed reads, settings and motion use that same path. This review
 records the boundary decisions and their FieldCore implications; the
-[current handoff](../fieldcore_handoff.md) specifies the later FieldCore edits.
+[current handoff](../fieldcore_handoff.md) records present consumer status.
 
 The original review on 3 October 2026 used FieldCore commit
 `063ca063a50bcb8afb2b3b59f9af0f3f89bfc82f`; a later source pass used
@@ -32,7 +37,7 @@ DE/RE21 for this bench. Pins are explicit application inputs, not motor protocol
 constants. FieldCore product definitions and its other sensor protocols are not
 dependencies of the standalone examples.
 
-## What needs different treatment
+## Historical adaptation requirements
 
 | FieldCore source/behavior | Required motor treatment |
 | --- | --- |
@@ -45,7 +50,7 @@ dependencies of the standalone examples.
 | `DeviceRequestKind`: Probe/Measure/ReadLast; float readings | Add typed motor intent and exact integer/evidence results; do not tunnel writes through measurement |
 | Administrative cancellation/module enable and sensor retry policy | Keep these distinct from physical stop/enable; never replay an uncertain motor write |
 
-These are adaptation requirements, not a request to replace FieldCore's task
+These were adaptation requirements at the inspected commits, not a request to replace FieldCore's task
 or all serial completion rules. Its buffered UART can receive independently of
 the worker; a 5 ms worker interval alone does not prove byte loss. The missing
 piece is exposed timing/framing evidence and a bounded operation-service budget.

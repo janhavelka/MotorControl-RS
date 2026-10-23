@@ -152,5 +152,6 @@ Package name: `MotorControl-RS`. Namespace/include/CMake identity:
 [`janhavelka/MotorControl-RS`](https://github.com/janhavelka/MotorControl-RS).
 The [archived rename guide](docs/archive/reports/2026-10-11_repository_rename.md) records the completed rename and
 instructions for updating older clones.
-The [FieldCore handoff](docs/fieldcore_handoff.md) describes future integration;
+The [FieldCore handoff](docs/fieldcore_handoff.md) records RodTester's existing
+software integration and remaining consumer qualification;
 FieldCore is not a library dependency.

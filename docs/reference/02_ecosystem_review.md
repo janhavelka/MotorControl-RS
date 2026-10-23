@@ -8,8 +8,10 @@ This review does not qualify sibling or ESS hardware behavior.
 
 The relevant FieldCore owner/backend/binding contracts were rechecked read-only
 on 11 October 2026 at `479d9ff308d3852d92b1f7552f803b6c990a59f0`.
-The integration gaps below remain applicable; the
-[FieldCore handoff](../fieldcore_handoff.md) is the current change plan.
+The 23 October recheck supersedes the missing-module, eight-byte TX and
+measurement-only findings: RodTester now has motor integration. The
+[FieldCore handoff](../fieldcore_handoff.md) owns current status and remaining
+backend/physical gates; the findings below describe the older source.
 
 ## Source scope and provenance
 

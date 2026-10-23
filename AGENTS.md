@@ -175,8 +175,9 @@ native coverage, all motion modes or electrical timing qualification.
 ## Intended structure and architecture
 
 - This library targets RS485-controlled motors through independent drive
-  profiles. FieldCore is one future consumer; its motor device/product does
-  not exist yet. Only its RS485 owner/module/backend workflow is a reference.
+  profiles. FieldCore-node's RodTester already has a motor module and native
+  application integration. Its selected board/backend and physical qualification
+  remain consumer-owned work; inspect it read-only as a current reference.
   Do not import E2 sensor-bus, CO2control product, cloud, settings service or
   product composition requirements. Historical bench labels are not APIs.
 - Keep MCU-specific adapters and load fixtures outside the reusable core.
@@ -248,9 +249,10 @@ native coverage, all motion modes or electrical timing qualification.
   before TX; discovery never guesses writes, clears read-to-clear state, or
   treats an ambiguous responder as a confirmed model. Applications own bounded
   scans and bus scheduling; see the discovery contract.
-- Future FieldCore integration belongs in its device module and existing bus
-  owner. Its current FC06 echo stripping, eight-byte TX capacity and
-  measurement-only contracts need review before claiming motor compatibility.
+- FieldCore integration belongs in its device module and existing bus owner.
+  RodTester now has typed motor results, 21-byte TX storage and explicit RTU/echo
+  policy. Its Arduino backend still leaves RX closure timing unqualified;
+  selected-target and physical qualification remain separate consumer gates.
 - Establish supported register widths, signedness, scaling, word order,
   request limits, and exception behavior from the relevant vendor pages.
 - ESS FC03 permits at most 16 reviewed readable words; FC06 excludes paired

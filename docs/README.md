@@ -48,7 +48,7 @@ serial start, and unwired inputs cannot qualify switch-dependent homing.
 - [Architecture](architecture.md) and [source map](source_map.md): core/application/platform boundaries.
 - [Bus owner](bus_owner.md) and [RTU runner](runner.md): scheduling, checked transport, timing and retained results.
 - Contracts: [axis](axis_contract.md), [profile](profile_contract.md), [CLI](cli_contract.md), [discovery](discovery_contract.md).
-- [FieldCore handoff](fieldcore_handoff.md): a proposed future integration with its existing owner; no FieldCore motor device is implemented here.
+- [FieldCore handoff](fieldcore_handoff.md): existing RodTester motor integration, source map and remaining consumer qualification.
 - [Repository rename record](archive/reports/2026-10-11_repository_rename.md): completed migration and cache-preserving instructions for older clones.
 
 Applications own UART, DE, clocks, scheduling, retries and storage. The core
@@ -86,7 +86,7 @@ The subdirectories have distinct purposes:
 | [reports](reports/README.md) | Evidence supporting current limits and unresolved investigations |
 | [releases](releases/1.0.0.md) | Maintained release scope and qualification limits |
 | [archive](archive/README.md) | Finished instructions, dated implementation/audit handoffs and superseded plans |
-| [prompts](prompts/README.md) | Status of actionable promptsets; currently none |
+| [prompts](prompts/README.md) | Standalone ESS completion and qualification prompts, with source audit |
 
 - [Document inventory](reference/00_document_inventory.md), [implementation reference](reference/01_implementation_reference.md) and [source manifest](reference/sources.json).
 - [Register catalogue](reference/05_ess_register_catalog.md), [encoder/units](reference/06_encoder_units.md) and [timing audit](reference/09_timing_and_gap_audit.md).
@@ -96,8 +96,8 @@ The subdirectories have distinct purposes:
 - [Development archive](archive/README.md): completed prompts, superseded drafts,
   implementation/audit reports, candidate artifacts and the historical bench ledger.
 
-There are no active promptsets; [prompt status](prompts/README.md) points to the
-completed sequences. Archived reports preserve the versions, failed attempts
+The [standalone promptset](prompts/standalone/README.md) covers verified remaining
+library/application and qualification work. Archived reports preserve the versions, failed attempts
 and evidence from their dates;
 their navigation links follow the archive locations. Earlier version numbers
 were development checkpoints, not published releases.

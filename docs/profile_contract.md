@@ -17,7 +17,7 @@ prerequisites; they do not qualify switch-based methods.
 The [architecture](architecture.md) defines ownership and the three layers.
 The [CLI contract](cli_contract.md) provides console access to these same
 library operations. Framework choice does not change the profile contract:
-Arduino, ESP-IDF, native applications and a future FieldCore module use the
+Arduino, ESP-IDF, native applications and FieldCore's motor module use the
 same types, validation and sequencing.
 
 ## Profile identity and scope
@@ -318,11 +318,11 @@ Do not apply a cached value under a new configuration generation. Distinguish
 requested, staged, observed-active and observed-persistent values; update
 certainty only when the documented application evidence supports it.
 
-FieldCore can own the same contexts and events inside a future motor module;
+FieldCore owns the same contexts and events inside its RodTester motor module;
 the reusable profile does not become a bus owner or a scheduler. Current
-FieldCore transaction and device-module limitations are recorded in the current
-[integration handoff](fieldcore_handoff.md). No existing motor
-integration or deadline guarantee is claimed by this contract.
+FieldCore integration and remaining backend/physical gates are recorded in the
+[integration handoff](fieldcore_handoff.md). This contract alone does not
+qualify the consumer's physical timing or mechanism.
 
 ## Acceptance for a complete profile
 

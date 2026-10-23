@@ -1,5 +1,10 @@
 # Multi vendor serial motion feasibility
 
+Current-status correction, 23 October 2026: the FieldCore eight-byte TX and
+missing motor-contract observations below describe older source. RodTester now
+has 21-byte RTU transactions and a typed motor module. See the
+[current handoff](../fieldcore_handoff.md) for remaining backend/physical gates.
+
 Research date: 2026-10-02. The user adopted the general-library direction from
 this review. The [architecture](../architecture.md),
 [axis contract](../axis_contract.md) and [profile contract](../profile_contract.md)

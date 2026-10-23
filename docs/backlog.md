@@ -1,6 +1,9 @@
 # Implementation and qualification backlog
 
-Current as of the 12 October 2026 promptset completion audit. This page lists remaining work;
+Reaudited against current source on 23 October 2026. The
+[standalone promptset and finding map](prompts/standalone/README.md) organize the
+remaining work; preparation is complete, implementation/physical stages are not.
+This page lists remaining work;
 completed work and historical test dispositions live in the
 [development archive](archive/README.md) and [changelog](../CHANGELOG.md).
 The [release scope](releases/1.0.0.md) and checked
@@ -19,12 +22,14 @@ cache/child-result dependencies; communication/persistence must migrate together
 Host settings-validator extraction remains optional work requiring group-policy
 review. These are future refactors, not unfinished prompts from the completed set.
 
-- [ ] Implement the [FieldCore handoff](fieldcore_handoff.md) in a separately
-  authorized FieldCore step: typed motor results, adequate frame storage,
-  qualified RTU/echo handling, immutable deadlines, stop priority and retained
-  uncertainty. Test actual runtime delivery and existing sensor protocols.
-- [ ] Qualify that consumer under its own product load and mechanics. This
-  repository's standalone bench is not FieldCore integration evidence.
+- RodTester in FieldCore-node already implements the motor module, typed
+  commands/results, 21-byte TX capacity, RTU/echo policy, stop priority and
+  native runtime integration tests. The [handoff](fieldcore_handoff.md) records
+  the inspected sources and its separate v1.0.0 dependency pin.
+- Consumer-owned remaining work: selected board/backend binding (including
+  qualified physical RX timing), runtime/resource verification and actual
+  product/load/mechanism testing. These stay in FieldCore-node's RodTester
+  prompts; they are not missing standalone-library implementation.
 
 ## Native ESS coverage
 
@@ -103,10 +108,12 @@ functional evidence; independent shaft calibration remains absent.
   idle watermarks, echo source, turnaround and service/load tolerance. Decide
   the production capture CPU budget. Cache-off capture remains unsupported.
   [Timing contract](runner.md), [capture review](archive/reports/ess_release_04_2026-10-04.md).
-- [ ] Qualify the remaining physical frame shapes: five-byte exception replies
+- [ ] Complete physical frame/timing qualification for five-byte exception replies
   and FC10 windows 0x0024/2, 0x001D/3 and 0x0031/6 (13, 15 and 21 TX bytes).
   Keep each operation's normal prerequisites and fixture requirements; raw
-  writes are not a substitute. [Frame-size matrix](archive/reports/ess_release_29_2026-10-05.md#frame-size-qualification-matrix).
+  writes are not a substitute. The later
+  [0x0024/2 selective-update functional pass](archive/reports/2026-10-05_repeat_motion_timing.md)
+  does not close independent electrical timing. [Frame-size matrix](archive/reports/ess_release_29_2026-10-05.md#frame-size-qualification-matrix).
 - [ ] Resolve malformed F9/E5 responses and UART errors at mismatched host
   tuples using the missing raw error bitmap and wire measurements. Diagnostic
   recovery/restoration passing does not turn strict no-response experiments

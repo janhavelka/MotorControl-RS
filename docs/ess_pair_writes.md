@@ -116,11 +116,10 @@ limits and stored targets need wire-form evidence before typed setters.
 Single-word parameters have independent typed settings preparations,
 without implying that a complete pair-bearing record can be written.
 
-The current FieldCore `Rs485OwnerTransaction.h` still has eight TX bytes;
-`Rs485Task.cpp` retains request-prefix echo handling. Its bounded request/work/
-result ownership is a useful reference, but its current capacity cannot carry
-even the 13-byte `0x0024/2` request. This repository keeps its own checked codec,
-explicit response evidence and larger bounded requests. No FieldCore edit or
+FieldCore's RodTester now has 21-byte TX storage and an explicit RTU/echo policy,
+so its earlier eight-byte capacity blocker is resolved. The
+[current handoff](fieldcore_handoff.md) separates implemented consumer software
+from remaining backend/physical qualification. No FieldCore edit or physical
 motor-compatibility claim accompanies this review.
 
 ## Qualification and further experiments

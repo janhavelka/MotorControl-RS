@@ -1,16 +1,17 @@
 # Implementation prompts
 
-There are currently no unexecuted promptsets. The completed
-[maintainability sequence](../archive/prompts/maintainability/README.md) and
-[ESS delivery sequence](../archive/prompts/ess_release/README.md) are archived
-with their original requirements and handoffs. Do not dispatch them again as
-new work.
+The active [standalone ESS completion and qualification set](standalone/README.md)
+contains 13 bounded stages and a [source-backed audit](standalone/audit.md).
+Prepared on 23 October 2026; numbered implementation/physical stages have not
+been executed. Software gaps, vendor ambiguities and physical gates are labelled
+separately.
 
-Use the [backlog](../backlog.md) for open implementation and qualification gaps,
-the [roadmap](../roadmap.md) for release gates, and the
-[documentation index](../README.md) for current behavior. Root
-[AGENTS.md](../../AGENTS.md) remains the engineering entry point.
+RodTester integration already exists in FieldCore-node. Its selected board/
+backend and product qualification remain consumer work; see the
+[current handoff](../fieldcore_handoff.md).
 
-A future promptset belongs here only while it contains actionable work. Archive
-it after its bounded scope is implemented and verified; record any independent
-remaining obligations in the backlog.
+Completed [maintainability](../archive/prompts/maintainability/README.md) and
+[ESS delivery](../archive/prompts/ess_release/README.md) sequences remain archived.
+Do not dispatch them again. Use the [backlog](../backlog.md), [roadmap](../roadmap.md)
+and [documentation index](../README.md) alongside the active set. Archive future
+stages only when their bounded work is actually complete.

@@ -72,9 +72,8 @@ is needed here. The older CO2Control firmware is relevant only to the original
 bench firmware backup; its product features and other board pinouts are not
 motor-library requirements.
 
-Future FieldCore integration is for a motor device/product that does not yet
-exist. The useful reference is the RS485 workflow: one bus owner, bounded
-admission/results, physical TX completion, per-request validation and explicit
-motion uncertainty. Its task keeps other existing device protocols when later
-extended. See the [RS485 integration review](10_runner_platform_review.md).
+FieldCore now has a RodTester motor module and typed RTU integration through
+its existing owner. The [current handoff](../fieldcore_handoff.md) separates
+software already implemented from remaining backend/physical qualification.
+The original [RS485 review](10_runner_platform_review.md) is dated evidence.
 No E2 sensor-bus implementation or CO2control integration belongs in this repo.

@@ -132,9 +132,8 @@ be available for physical fixture tests; a missing switch or measurement is
 NOT RUN, not simulated physical proof. Current free-shaft availability alone
 provides none of the external-switch or collision fixtures.
 
-The current FieldCore RS485 sources were checked read-only: its sensor modules
-yield bounded transactions/waits and accept owner observations. This library
-keeps that workflow, its own larger requests, explicit write uncertainty and
-checked response provenance. FieldCore's eight-byte TX capacity, request-prefix
-echo removal and sensor retry/measurement policy do not qualify motor writes
-or carry the 21-byte homing request. No FieldCore types or edits are introduced.
+FieldCore's current RodTester integration has 21-byte TX storage, typed motor
+results and explicit RTU/echo policy. Capacity alone does not implement or
+qualify a homing method; its selected motor module must explicitly support the
+operation and retain checked evidence. See the [handoff](fieldcore_handoff.md)
+for current consumer scope. No FieldCore types or edits are introduced here.
