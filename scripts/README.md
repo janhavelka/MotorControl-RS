@@ -19,6 +19,7 @@ Missing checks fail. Verification opens no serial port and changes no drive.
 | `generate_ess_registers.py` | Generate register tables and documentation from the reviewed ledger; `--check` verifies |
 | `generate_version.py` | `sync` generates `Version.h` from `library.json`; `check` verifies |
 | `prepare_lichuan_references.py` | Offline `--check` of Lichuan research snapshots/ledgers; `--extract` regenerates search aids; no serial I/O |
+| `prepare_lichuan_tl57_references.py` | Separate TL57 research bundle checks using the same private source/frame validation helpers |
 | `pio.cmd` | Windows wrapper for the installed PlatformIO toolchain |
 
 ## Finite bench tools
@@ -83,6 +84,18 @@ python scripts/prepare_lichuan_tl57_references.py --check
 
 Optional `--extract` regenerates page-indexed search aids. `--download-missing`
 uses stable original URLs, checks pinned bytes before exclusive creation and
-never overwrites snapshots. The helper reuses byte/hash/CRC checks from
-`prepare_lichuan_references.py`; it performs no motor I/O and changes no runtime
-or CI registration. See the [TL57 inventory](../docs/vendor/lichuan_tl57_rs485/README.md).
+never overwrites snapshots. Both Lichuan checkers use
+`_lichuan_reference_tools.py` for snapshot integrity, ordered extract-page/text
+checks and published-frame shape/CRC/provenance checks. They use the pinned
+PyMuPDF version in `requirements-verification.txt`; line-ending and page-boundary
+whitespace differences are ignored. Neither checker performs motor I/O. The
+tooling regressions are registered with CTest; the two bundle checks remain
+standalone until their profile stages register them. See the
+[TL57 inventory](../docs/vendor/lichuan_tl57_rs485/README.md) and
+[promptset audit](../docs/reports/2026-10-23_lichuan_promptset_audit.md).
+
+Run the focused offline tooling regressions with:
+
+```sh
+python test/lichuan_reference_test.py
+```

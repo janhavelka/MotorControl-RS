@@ -21,6 +21,8 @@
       "revision": "No revision stated in the document",
       "purpose": "Commissioning and command sequencing; explicit clear-before-position-start example",
       "visually_reviewed_pdf_pages": [
+        3,
+        4,
         6
       ]
     },
@@ -51,6 +53,10 @@
         9,
         10,
         11,
+        12,
+        13,
+        14,
+        15,
         16,
         17,
         18,

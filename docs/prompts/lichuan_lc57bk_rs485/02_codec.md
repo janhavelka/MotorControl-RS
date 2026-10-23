@@ -12,10 +12,12 @@ Execute this stage under [the execution contract](execution_contract.md), after
    validators and checked parsers. Distinguish byte order inside a word from
    low-word-first position pairs. Enforce reviewed sparse windows and exclude
    reserved/unknown cells and unreviewed paired-half writes.
-3. Use the exact demonstrated FC10 windows 0x2600/6, 0x2409/3, 0x240C/7 and
-   0x2601/2 as evidence; a wider or repeated segment window needs an explicit
-   source decision. Do not convert the largest example into a device maximum.
-   Document any conservative host limit separately from vendor capability.
+3. Use the exact FC10 examples 0x2600/6, 0x2409/3, 0x240C/7 and 0x2601/2 as
+   fixtures, not a vendor-declared exclusive whitelist. Review additional bounded
+   windows against section 6.3 and contiguous RW rows, retaining pair integrity,
+   holes and side-effect boundaries. Distinguish table-derived access from
+   literal examples and from a conservative host limit. Do not infer a drive
+   maximum. Guard disputed 0x2403 writes and windows containing it under LC-D02.
 4. Preserve unicast-address policy and raw exception codes (documented 02/03/04).
    Reject the source's malformed exception example. Do not accept a normal 06
    frame as an exception or reverse the CRC because its captions are reversed.
@@ -31,7 +33,8 @@ exact lengths/byte counts, wrong CRC/echo, all exception codes, truncation,
 capacity/overlap, paired order, reserved holes, rejected windows and unchanged
 outputs/count-reset behavior. Keep invalid published bytes as a negative fixture.
 
-Test both profiles in one build, all public headers standalone, C++11/C++17
+Test ESS and Lichuan alongside every other already implemented profile in one build,
+all public headers standalone, C++11/C++17
 consumption, source/install packages, no-RTTI consumers and codec-only linking
 without catalogue strings. Add actual test registration and run the quick
 verifier plus exact-final-commit CI. Report hardware NOT RUN. Commit/push the

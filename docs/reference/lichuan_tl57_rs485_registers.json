@@ -6,7 +6,9 @@
     "Null means not established in this transcription, never a zero default.",
     "Merged cells in extracted_cells are unnormalized source aids; inspect original PDF.",
     "Per-word entries for signed pairs are not permission to write isolated halves.",
-    "Gaps are not registers. No addresses inferred for DI5/6 from conflicting serial examples."
+    "Gaps are not registers. No addresses inferred for DI5/6 from conflicting serial examples.",
+    "Documented defaults are source claims, not observations of a connected drive. Read active settings before motion.",
+    "pdf_pages locates the detailed table transcription; semantic_sources/default_sources identify supplementary tables. Structured definitions preserve printed conflicts and are not an access allowlist."
   ],
   "registers": [
     {
@@ -118,11 +120,18 @@
       "default": null,
       "value_range": null,
       "units": null,
-      "semantic_type": null,
+      "semantic_type": "unsigned_16",
       "access_evidence": "RO",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 10
+        }
+      ],
+      "definition": "status_bits"
     },
     {
       "parameter": "PA_005",
@@ -159,7 +168,10 @@
       "access_evidence": "RO",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [
+        "TL-D10"
+      ],
+      "definition": "alarm_codes"
     },
     {
       "parameter": "PA_006",
@@ -246,7 +258,13 @@
         "TL-D09"
       ],
       "pair_start": 8,
-      "pair_order": "high_word_first"
+      "pair_order": "high_word_first",
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 10
+        }
+      ]
     },
     {
       "parameter": "PA_009",
@@ -279,7 +297,13 @@
         "TL-D09"
       ],
       "pair_start": 8,
-      "pair_order": "high_word_first"
+      "pair_order": "high_word_first",
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 10
+        }
+      ]
     },
     {
       "parameter": "PA_00A",
@@ -305,7 +329,13 @@
       "access_evidence": "RO",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 10
+        }
+      ]
     },
     {
       "parameter": "PA_010",
@@ -344,7 +374,13 @@
       "default_source": {
         "source_id": "TL-USER",
         "pdf_page": 8
-      }
+      },
+      "default_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 8
+        }
+      ]
     },
     {
       "parameter": "PA_011",
@@ -381,7 +417,14 @@
       "default_source": {
         "source_id": "TL-USER",
         "pdf_page": 8
-      }
+      },
+      "default_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 8
+        }
+      ],
+      "definition": "input_functions"
     },
     {
       "parameter": "PA_012",
@@ -418,7 +461,14 @@
       "default_source": {
         "source_id": "TL-USER",
         "pdf_page": 8
-      }
+      },
+      "default_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 8
+        }
+      ],
+      "definition": "input_functions"
     },
     {
       "parameter": "PA_013",
@@ -455,7 +505,14 @@
       "default_source": {
         "source_id": "TL-USER",
         "pdf_page": 8
-      }
+      },
+      "default_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 8
+        }
+      ],
+      "definition": "input_functions"
     },
     {
       "parameter": "PA_014",
@@ -492,7 +549,14 @@
       "default_source": {
         "source_id": "TL-USER",
         "pdf_page": 8
-      }
+      },
+      "default_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 8
+        }
+      ],
+      "definition": "input_functions"
     },
     {
       "parameter": "PA_015",
@@ -529,7 +593,14 @@
       "default_source": {
         "source_id": "TL-USER",
         "pdf_page": 8
-      }
+      },
+      "default_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 8
+        }
+      ],
+      "definition": "input_functions"
     },
     {
       "parameter": "PA_01A",
@@ -552,7 +623,10 @@
       "name_en": "input_filter",
       "word_width_bits": 16,
       "default": 2,
-      "value_range": null,
+      "value_range": [
+        0,
+        1024
+      ],
       "units": null,
       "semantic_type": null,
       "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
@@ -562,7 +636,13 @@
       "default_source": {
         "source_id": "TL-USER",
         "pdf_page": 8
-      }
+      },
+      "default_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 8
+        }
+      ]
     },
     {
       "parameter": "PA_01B",
@@ -597,7 +677,13 @@
       "default_source": {
         "source_id": "TL-USER",
         "pdf_page": 8
-      }
+      },
+      "default_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 8
+        }
+      ]
     },
     {
       "parameter": "PA_01C",
@@ -632,7 +718,14 @@
       "default_source": {
         "source_id": "TL-USER",
         "pdf_page": 8
-      }
+      },
+      "default_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 8
+        }
+      ],
+      "definition": "output_functions"
     },
     {
       "parameter": "PA_01D",
@@ -667,7 +760,14 @@
       "default_source": {
         "source_id": "TL-USER",
         "pdf_page": 8
-      }
+      },
+      "default_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 8
+        }
+      ],
+      "definition": "output_functions"
     },
     {
       "parameter": "PA_01F",
@@ -702,7 +802,13 @@
       "default_source": {
         "source_id": "TL-USER",
         "pdf_page": 8
-      }
+      },
+      "default_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 8
+        }
+      ]
     },
     {
       "parameter": "PA_020",
@@ -761,7 +867,10 @@
       "name_en": "serial_format",
       "word_width_bits": 16,
       "default": null,
-      "value_range": null,
+      "value_range": [
+        0,
+        3
+      ],
       "units": null,
       "semantic_type": null,
       "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
@@ -775,7 +884,8 @@
         "1": "8N2",
         "2": "8E1",
         "3": "8O1"
-      }
+      },
+      "definition": "serial_format"
     },
     {
       "parameter": "PA_022",
@@ -799,7 +909,10 @@
       "name_en": "direction_inversion",
       "word_width_bits": 16,
       "default": null,
-      "value_range": null,
+      "value_range": [
+        0,
+        1
+      ],
       "units": null,
       "semantic_type": null,
       "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
@@ -864,7 +977,10 @@
       "name_en": "limit_stop_mode",
       "word_width_bits": 16,
       "default": null,
-      "value_range": null,
+      "value_range": [
+        0,
+        1
+      ],
       "units": null,
       "semantic_type": null,
       "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
@@ -894,7 +1010,10 @@
       "name_en": "soft_limit_enable",
       "word_width_bits": 16,
       "default": null,
-      "value_range": null,
+      "value_range": [
+        0,
+        1
+      ],
       "units": null,
       "semantic_type": null,
       "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
@@ -924,7 +1043,10 @@
       "name_en": "external_position_trigger_policy",
       "word_width_bits": 16,
       "default": 0,
-      "value_range": null,
+      "value_range": [
+        0,
+        1
+      ],
       "units": null,
       "semantic_type": null,
       "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
@@ -934,7 +1056,13 @@
       "default_source": {
         "source_id": "TL-USER",
         "pdf_page": 12
-      }
+      },
+      "default_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 12
+        }
+      ]
     },
     {
       "parameter": "PA_28",
@@ -958,7 +1086,10 @@
       "name_en": "software_baud",
       "word_width_bits": 16,
       "default": null,
-      "value_range": null,
+      "value_range": [
+        0,
+        3
+      ],
       "units": null,
       "semantic_type": null,
       "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
@@ -972,7 +1103,8 @@
         "1": 38400,
         "2": 19200,
         "3": 9600
-      }
+      },
+      "definition": "software_baud"
     },
     {
       "parameter": "PA_030",
@@ -1089,10 +1221,16 @@
       ],
       "units": "rpm",
       "semantic_type": "unsigned_16",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 10
+        }
+      ]
     },
     {
       "parameter": "PA_034",
@@ -1117,11 +1255,17 @@
         2000
       ],
       "units": "ms",
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 10
+        }
+      ]
     },
     {
       "parameter": "PA_035",
@@ -1146,11 +1290,17 @@
         2000
       ],
       "units": "ms",
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 10
+        }
+      ]
     },
     {
       "parameter": "PA_036",
@@ -1176,10 +1326,16 @@
       ],
       "units": "rpm",
       "semantic_type": "unsigned_16",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 10
+        }
+      ]
     },
     {
       "parameter": "PA_037",
@@ -1205,12 +1361,18 @@
       ],
       "units": "pulse",
       "semantic_type": "signed_32_bit_pair",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issue_ids": [],
       "pair_start": 55,
-      "pair_order": "high_word_first"
+      "pair_order": "high_word_first",
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 10
+        }
+      ]
     },
     {
       "parameter": "PA_038",
@@ -1236,12 +1398,18 @@
       ],
       "units": "pulse",
       "semantic_type": "signed_32_bit_pair",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issue_ids": [],
       "pair_start": 55,
-      "pair_order": "high_word_first"
+      "pair_order": "high_word_first",
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 10
+        }
+      ]
     },
     {
       "parameter": "PA_040",
@@ -1261,10 +1429,13 @@
       "name_en": "homing_method",
       "word_width_bits": 16,
       "default": null,
-      "value_range": null,
+      "value_range": [
+        17,
+        35
+      ],
       "units": null,
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issue_ids": [],
@@ -1274,7 +1445,21 @@
         24,
         29,
         35
-      ]
+      ],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 13
+        }
+      ],
+      "documented_values": [
+        17,
+        18,
+        24,
+        29,
+        35
+      ],
+      "range_note": "The detailed table prints 17..35, but the named methods are discrete; intermediate values are not established."
     },
     {
       "parameter": "PA_041",
@@ -1300,10 +1485,16 @@
       ],
       "units": "rpm",
       "semantic_type": "unsigned_16",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 13
+        }
+      ]
     },
     {
       "parameter": "PA_042",
@@ -1329,10 +1520,16 @@
       ],
       "units": "rpm",
       "semantic_type": "unsigned_16",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 14
+        }
+      ]
     },
     {
       "parameter": "PA_043",
@@ -1357,11 +1554,17 @@
         2000
       ],
       "units": "ms",
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "signed_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 14
+        }
+      ]
     },
     {
       "parameter": "PA_044",
@@ -1387,12 +1590,18 @@
       ],
       "units": "pulse",
       "semantic_type": "signed_32_bit_pair",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issue_ids": [],
       "pair_start": 68,
-      "pair_order": "high_word_first"
+      "pair_order": "high_word_first",
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 14
+        }
+      ]
     },
     {
       "parameter": "PA_045",
@@ -1418,12 +1627,18 @@
       ],
       "units": "pulse",
       "semantic_type": "signed_32_bit_pair",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issue_ids": [],
       "pair_start": 68,
-      "pair_order": "high_word_first"
+      "pair_order": "high_word_first",
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 14
+        }
+      ]
     },
     {
       "parameter": "PA_046",
@@ -1567,7 +1782,10 @@
       "name_en": "external_position_relative_absolute_mode",
       "word_width_bits": 16,
       "default": 0,
-      "value_range": null,
+      "value_range": [
+        0,
+        1
+      ],
       "units": null,
       "semantic_type": null,
       "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
@@ -1577,7 +1795,13 @@
       "default_source": {
         "source_id": "TL-USER",
         "pdf_page": 12
-      }
+      },
+      "default_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 12
+        }
+      ]
     },
     {
       "parameter": "PA_04E",
@@ -1597,16 +1821,26 @@
       "name_en": "control_word",
       "word_width_bits": 16,
       "default": null,
-      "value_range": null,
+      "value_range": [
+        0,
+        127
+      ],
       "units": null,
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issue_ids": [
         "TL-D05",
         "TL-D06"
-      ]
+      ],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 10
+        }
+      ],
+      "definition": "control_bits"
     },
     {
       "parameter": "PA_04F",
@@ -1635,7 +1869,8 @@
       "issue_ids": [
         "TL-D10",
         "TL-D11"
-      ]
+      ],
+      "definition": "auxiliary_commands"
     },
     {
       "parameter": "PA_050",
@@ -1665,12 +1900,18 @@
       ],
       "units": "pulse",
       "semantic_type": "signed_32_bit_pair",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issue_ids": [],
       "pair_start": 80,
-      "pair_order": "high_word_first"
+      "pair_order": "high_word_first",
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        }
+      ]
     },
     {
       "parameter": "PA_051",
@@ -1700,12 +1941,18 @@
       ],
       "units": "pulse",
       "semantic_type": "signed_32_bit_pair",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issue_ids": [],
       "pair_start": 80,
-      "pair_order": "high_word_first"
+      "pair_order": "high_word_first",
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        }
+      ]
     },
     {
       "parameter": "PA_052",
@@ -1735,10 +1982,16 @@
       ],
       "units": "rpm",
       "semantic_type": "unsigned_16",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        }
+      ]
     },
     {
       "parameter": "PA_053",
@@ -1767,11 +2020,17 @@
         2000
       ],
       "units": "ms",
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        }
+      ]
     },
     {
       "parameter": "PA_054",
@@ -1800,11 +2059,17 @@
         2000
       ],
       "units": "ms",
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        }
+      ]
     },
     {
       "parameter": "PA_056",
@@ -1834,12 +2099,18 @@
       ],
       "units": "pulse",
       "semantic_type": "signed_32_bit_pair",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issue_ids": [],
       "pair_start": 86,
-      "pair_order": "high_word_first"
+      "pair_order": "high_word_first",
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        }
+      ]
     },
     {
       "parameter": "PA_057",
@@ -1869,12 +2140,18 @@
       ],
       "units": "pulse",
       "semantic_type": "signed_32_bit_pair",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issue_ids": [],
       "pair_start": 86,
-      "pair_order": "high_word_first"
+      "pair_order": "high_word_first",
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        }
+      ]
     },
     {
       "parameter": "PA_058",
@@ -1904,10 +2181,16 @@
       ],
       "units": "rpm",
       "semantic_type": "unsigned_16",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        }
+      ]
     },
     {
       "parameter": "PA_059",
@@ -1936,11 +2219,17 @@
         2000
       ],
       "units": "ms",
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        }
+      ]
     },
     {
       "parameter": "PA_05A",
@@ -1969,11 +2258,17 @@
         2000
       ],
       "units": "ms",
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        }
+      ]
     },
     {
       "parameter": "PA_05C",
@@ -3948,12 +4243,18 @@
       ],
       "units": "pulse",
       "semantic_type": "signed_32_bit_pair",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issue_ids": [],
       "pair_start": 170,
-      "pair_order": "high_word_first"
+      "pair_order": "high_word_first",
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        }
+      ]
     },
     {
       "parameter": "PA_0AB",
@@ -3979,12 +4280,18 @@
       ],
       "units": "pulse",
       "semantic_type": "signed_32_bit_pair",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issue_ids": [],
       "pair_start": 170,
-      "pair_order": "high_word_first"
+      "pair_order": "high_word_first",
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        }
+      ]
     },
     {
       "parameter": "PA_0AC",
@@ -4010,10 +4317,16 @@
       ],
       "units": "rpm",
       "semantic_type": "unsigned_16",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        }
+      ]
     },
     {
       "parameter": "PA_0AD",
@@ -4038,11 +4351,17 @@
         2000
       ],
       "units": "ms",
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        }
+      ]
     },
     {
       "parameter": "PA_0AE",
@@ -4067,11 +4386,17 @@
         2000
       ],
       "units": "ms",
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        }
+      ]
     },
     {
       "parameter": "PA_0B0",
@@ -4101,10 +4426,16 @@
       ],
       "units": "rpm",
       "semantic_type": "signed_16",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 12
+        }
+      ]
     },
     {
       "parameter": "PA_0B1",
@@ -4133,11 +4464,17 @@
         2000
       ],
       "units": "ms",
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 12
+        }
+      ]
     },
     {
       "parameter": "PA_0B2",
@@ -4166,11 +4503,17 @@
         2000
       ],
       "units": "ms",
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 12
+        }
+      ]
     },
     {
       "parameter": "PA_0B3",
@@ -4200,10 +4543,16 @@
       ],
       "units": "rpm",
       "semantic_type": "signed_16",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 12
+        }
+      ]
     },
     {
       "parameter": "PA_0B4",
@@ -4232,11 +4581,17 @@
         2000
       ],
       "units": "ms",
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 12
+        }
+      ]
     },
     {
       "parameter": "PA_0B5",
@@ -4265,11 +4620,17 @@
         2000
       ],
       "units": "ms",
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 12
+        }
+      ]
     },
     {
       "parameter": "PA_0B6",
@@ -5474,10 +5835,16 @@
       ],
       "units": "rpm",
       "semantic_type": "signed_16",
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 13
+        }
+      ]
     },
     {
       "parameter": "PA_0DE",
@@ -5502,11 +5869,17 @@
         2000
       ],
       "units": "ms",
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 13
+        }
+      ]
     },
     {
       "parameter": "PA_0DF",
@@ -5531,11 +5904,17 @@
         2000
       ],
       "units": "ms",
-      "semantic_type": null,
-      "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
+      "semantic_type": "unsigned_16",
+      "access_evidence": "RW",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issue_ids": []
+      "issue_ids": [],
+      "semantic_sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 13
+        }
+      ]
     },
     {
       "parameter": "PA_100",
@@ -5559,7 +5938,10 @@
       "name_en": "open_closed_loop_mode_restart_required",
       "word_width_bits": 16,
       "default": null,
-      "value_range": null,
+      "value_range": [
+        1,
+        2
+      ],
       "units": null,
       "semantic_type": null,
       "access_evidence": "setting_or_command; exact access policy requires stage 01 review",
@@ -6363,5 +6745,185 @@
     254,
     255,
     264
-  ]
+  ],
+  "definitions": {
+    "status_bits": {
+      "sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        },
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 15
+        }
+      ],
+      "bits": {
+        "0": "in_position",
+        "1": "homing_complete",
+        "2": "motor_running",
+        "3": "fault",
+        "4": "motor_enabled",
+        "5": "positive_soft_limit",
+        "6": "negative_soft_limit"
+      }
+    },
+    "alarm_codes": {
+      "sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 15
+        }
+      ],
+      "values": {
+        "1": "overcurrent",
+        "2": "overvoltage",
+        "3": "undervoltage"
+      },
+      "note": "Other codes remain raw; LED counts 4/5 do not establish matching register codes."
+    },
+    "input_functions": {
+      "sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 8
+        },
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 16
+        }
+      ],
+      "values": {
+        "0": "unassigned",
+        "1": "origin",
+        "2": "positive_limit",
+        "3": "negative_limit",
+        "4": "release",
+        "5": "stop",
+        "6": "forced_emergency_stop",
+        "9": "positive_jog",
+        "10": "negative_jog",
+        "11": "homing_trigger",
+        "12": "position_path_trigger",
+        "13": "speed_path_trigger",
+        "14": "path_select_0",
+        "15": "path_select_1",
+        "16": "path_select_2",
+        "17": "path_select_3"
+      },
+      "printed_range": [
+        0,
+        17
+      ],
+      "note": "7/8 have no documented function. Do not interpret the continuous range as a function whitelist."
+    },
+    "output_functions": {
+      "sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 8
+        },
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 17
+        }
+      ],
+      "values": {
+        "0": "unassigned",
+        "1": "alarm",
+        "2": "motor_running",
+        "3": "homing_complete",
+        "4": "in_position",
+        "5": "brake_release",
+        "9": "forced_output_control_1",
+        "10": "forced_output_control_2",
+        "11": "forced_output_control_3"
+      },
+      "printed_range": [
+        0,
+        3
+      ],
+      "issue_ids": [
+        "TL-D04"
+      ],
+      "note": "p8 includes 9/10/11; p17 functions include 0..5 but prints range0..3. No forced-control bit for function11 is documented; this is source evidence, not an admitted enum."
+    },
+    "serial_format": {
+      "sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 17
+        }
+      ],
+      "values": {
+        "0": "8N1",
+        "1": "8N2",
+        "2": "8E1",
+        "3": "8O1"
+      }
+    },
+    "software_baud": {
+      "sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 9
+        },
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 17
+        }
+      ],
+      "values": {
+        "0": 115200,
+        "1": 38400,
+        "2": 19200,
+        "3": 9600
+      },
+      "note": "Selected only when SW5 is ON; activation/persistence still require their own contract."
+    },
+    "control_bits": {
+      "sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 10
+        },
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 11
+        },
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 19
+        }
+      ],
+      "bits": {
+        "0": "position_start",
+        "1": "absolute_if_1_relative_if_0",
+        "2": "interrupt_busy_if_1_ignore_if_0",
+        "3": "jog_active",
+        "4": "homing_start",
+        "5": "stop",
+        "6": "emergency_stop"
+      },
+      "note": "p10 explicitly requires no prior clear for position/home starts. Internal rearm and combined-bit priority are not specified; p15 describes a homing rising edge."
+    },
+    "auxiliary_commands": {
+      "sources": [
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 19
+        }
+      ],
+      "values": {
+        "0x0000": "inactive",
+        "0x0100": "factory_restore",
+        "0x0200": "save_parameters",
+        "0x0300": "clear_current_alarm",
+        "0x0400": "clear_current_position",
+        "0x0500": "enable",
+        "0x0600": "release"
+      },
+      "note": "Mutually selected command values, not combinable bits."
+    }
+  }
 }

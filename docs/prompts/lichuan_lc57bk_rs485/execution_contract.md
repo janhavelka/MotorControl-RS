@@ -16,7 +16,7 @@ substitute a TL-R, CL57R, CANopen or ESS manual for this exact family.
   FieldCore source read-only. FieldCore already has an ESS adapter; old claims
   that no motor adapter exists are stale. Do not edit that repository in this
   session or imply this promptset authorizes its integration.
-- Re-read concurrent standalone ESS work before touching common APIs or console
+- Re-read concurrent standalone ESS and TL57 profile work before touching common APIs or console
   code. Preserve its independent coverage/qualification ledger. Do not execute
   or mark those prompts complete as part of this family addition.
 - Use `profiles/lichuan_lc57bk_rs485/` and a corresponding explicit C++ namespace
@@ -61,7 +61,9 @@ Local cancellation is not a stop; an operation timeout is not a stopped motor.
 Keep common units, coordinate/reference generations and completion semantics
 consistent across profiles. Do not equate command pulses, motor steps, encoder
 lines/counts, shaft turns and load travel. Require explicit applicable scales and
-origin. Open-loop variants cannot claim measured encoder position. No implicit
+origin only where the selected coordinate operation requires one; relative
+displacement does not need an unrelated origin. Open-loop variants cannot claim
+measured encoder position. No implicit
 enable, homing, alarm clear, I/O reassignment, persistence or cycle start.
 
 ## Verification and delivery

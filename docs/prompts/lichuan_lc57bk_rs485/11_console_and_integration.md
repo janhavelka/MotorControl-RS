@@ -2,7 +2,7 @@
 
 Execute this stage under [the execution contract](execution_contract.md), after
 the independently implemented subsets of 02-10. Status: NOT STARTED. Reinspect
-concurrent standalone ESS changes before designing the actual dispatch seam.
+concurrent standalone ESS and TL57 changes before designing the actual dispatch seam.
 
 ## Work
 
@@ -14,8 +14,10 @@ concurrent standalone ESS changes before designing the actual dispatch seam.
    shared application code. No register encoding, unit conversion or special
    motion workaround belongs only in a console handler or HIL path.
 3. Use the existing owner/runner with a Lichuan validator. Keep one physical bus
-   owner, per-axis sequence reservations, fairness, priority stop and retained
-   results. A completion routes by the admitted profile/target generation,
+   owner with fairness, priority stop and retained results. Preserve application-
+   owned same-axis admission (currently in `ProbeApp.cpp`); the bus owner's
+   `SequenceId` correlates work and does not reserve an axis. A completion routes
+   by the admitted profile/target generation,
    never whichever profile the user selected afterward.
 4. Validate immutable serial tuples for all admitted work. Mixed addresses or
    manufacturers do not imply compatible baud/parity, protocol timing or probe
@@ -27,9 +29,11 @@ concurrent standalone ESS changes before designing the actual dispatch seam.
 6. Extend help, capability output, status decoding, runtime debug observation
    and bounded Python tooling. Passive traffic observation must copy owner data
    without consuming protocol bytes or blocking under console pressure.
-7. Inspect FieldCore read-only: its ESS contexts and current 21-byte transaction
-   buffer need separate integration work. Document this without importing its
-   types or changing its sensor protocols. Record current facts, not old handoffs.
+7. Inspect FieldCore read-only: its ESS contexts, current 21-byte TX/192-byte RX
+   transaction storage and supported serial tuples need separate integration
+   review. Its current 8N1/selected 9600..115200 policy does not admit LC57BK's
+   documented 4800 baud. Document this without importing its types or changing
+   its sensor protocols. Record current facts, not old handoffs.
 
 ## Verification and acceptance
 

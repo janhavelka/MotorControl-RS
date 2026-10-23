@@ -39,6 +39,8 @@ existing branch. This preparation does not dispatch implementation or hardware.
 Independently implementable work may continue when an unrelated operation is
 evidence-gated. A guard is not implementation completion. The per-stage handoff
 must enumerate implemented, unsupported, unresolved and hardware-tested behavior.
+See the [23 October correctness audit](../../reports/2026-10-23_lichuan_promptset_audit.md)
+for source-checked corrections; the implementation stages remain unstarted.
 
 ## Prepared artifacts
 

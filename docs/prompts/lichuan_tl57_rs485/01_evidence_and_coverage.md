@@ -14,8 +14,13 @@ tests and FieldCore boundary; do not implement motor behavior in this stage.
    manufacturer or exact-firmware evidence. Do not contact anyone automatically.
    Do not block independent codec/read work on unavailable hardware.
 4. Define conservative read/write windows, 100-word candidate FC03 ceiling,
-   demonstrated two-word FC10 windows, pair protection and 1..247 host unicast
-   policy. Explain which limits are host policy versus documented device limits.
+   pair protection and 1..247 host unicast policy. Review complete two-word FC10
+   windows from the documented writable H/L fields and general FC10 description
+   (TL-USER pp. 10-14, 18-22, 25), including repeated position slots. The published
+   examples are fixtures, not an exhaustive device allowlist: no new vendor reply
+   or hardware test is required merely because another documented pair lacks its
+   own worked frame. Record this derivation and keep gaps, access, count limits and
+   atomicity separate. Explain host restrictions versus documented device limits.
 5. Confirm an independent TL57 profile identity/namespace in this package. Map
    reusable RTU helpers, discovery hooks, explicit contexts, owner validators and
    common units. Record actual existing ESS/LC57BK implementations; no speculative

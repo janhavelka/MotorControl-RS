@@ -6,11 +6,17 @@ Execute this stage under [the execution contract](execution_contract.md), after
 ## Work
 
 1. Cover the remaining documented settings with typed read/candidate/staging
-   APIs in small coherent groups: current/half-current, direction, loop gains,
-   FIR/arrival/deviation, brake delays, power-on homing, loop mode, fault detection,
-   DI filter/functions/polarity, DO functions/polarity and digital outputs.
+   APIs in small coherent groups: current/half-current, motor self-identification,
+   direction, loop gains/feedforward, low-speed vibration suppression,
+   FIR/arrival/deviation, command subdivision, encoder lines, brake delays,
+   homing timeout/power-on homing, stop/emergency-stop time settings, loop mode,
+   fault detection, DI filter/functions/polarity, DO functions/polarity and digital
+   outputs. Account for every ledger row; prior read support is not setter coverage.
 2. Validate meaningful enumerations and reserved bits, model-specific applicability,
-   units/ranges and configuration-generation dependencies. A numeric 0..65535
+   units/ranges and configuration-generation dependencies. Where a source gives
+   only a native numeric setting, retain that native value; do not invent mA/ms
+   conversions from similar families. Subdivision, encoder and direction changes
+   invalidate dependent scales/origins. A numeric 0..65535
    table range is not evidence that every bit pattern is semantically valid.
 3. DI functions 32..42,44,45 and DO functions 1,2,4,8,16..19 are documented.
    **No-function zero is not established for this family.** Do not copy ESS's

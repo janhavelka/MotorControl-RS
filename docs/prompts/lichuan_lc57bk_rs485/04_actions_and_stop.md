@@ -22,8 +22,9 @@ independent acknowledged-action paths may remain useful without physical complet
    recovery or probe. If immediate enable/release behavior or input precedence
    is unresolved, guard that API and record the missing evidence.
 5. Setting current position zero (0x21) changes coordinates and invalidates
-   host reference/origin generations. Admit it only under documented stationary
-   prerequisites. Pause/resume belongs to stage 06 and must not be invented here.
+   host reference/origin generations. Require stationary admission as an explicit
+   host policy; the manual documents the command but does not specify an idle-only
+   device interlock. Pause/resume belongs to stage 06 and must not be invented here.
 
 ## Verification and acceptance
 

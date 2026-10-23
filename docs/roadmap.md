@@ -80,6 +80,10 @@ is complete; implementation, unresolved firmware semantics and physical
 qualification remain independent milestones. Either Lichuan family may be
 implemented first after reviewing actual landed common changes.
 
+Both sets have received a [source/code correctness audit](reports/2026-10-23_lichuan_promptset_audit.md).
+Its prompt and evidence corrections do not complete their implementation stages
+or physical qualification milestones.
+
 Other RS485 profiles require a concrete target and reviewed sources. CANopen
 belongs in a separate future library with the agreed motion vocabulary; no
 universal transport framework or speculative shared package is planned here.

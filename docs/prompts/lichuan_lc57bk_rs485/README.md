@@ -3,13 +3,17 @@
 Prepared 2026-10-23. **Source collection and prompt preparation complete.
 All implementation stages are NOT STARTED; Lichuan hardware is NOT TESTED.**
 
-Add the requested Lichuan backpack RS485 family as a second concrete profile
+Add the requested Lichuan backpack RS485 family as an independent concrete profile
 inside **MotorControl-RS**, preserving ESS behavior and the existing framework
 independent core. Start from the [engineering evidence review](../../reference/13_lichuan_lc57bk_rs485.md),
 [original manuals](../../vendor/lichuan_lc57bk_rs485/README.md), and
 [execution contract](execution_contract.md). These are required context for
 every numbered prompt. Dispatch one stage at a time, carrying its handoff into
 the next stage. Creating this promptset does not execute it.
+Shared discovery/dispatch gains an entry only when the corresponding code lands;
+do not assume this family is implemented before the separate TL57 promptset.
+See the [2026-10-23 correctness audit](../../reports/2026-10-23_lichuan_promptset_audit.md)
+for source/code comparisons and corrections.
 
 Scope: LC57BK-R and LC57BK-RC with suffixes 56N100, 82N220, 102N300 and 112N350.
 The listing's selected closed-loop 3.0 Nm option suggests **LC57BK-RC-102N300**
@@ -27,7 +31,7 @@ P/PC pulse variants, TL/CL/OL families, other manufacturers and CANopen are excl
 | 05 | [Units and finite position operations](05_finite_position.md) | 03-04; model scale, sign, completion and trigger sequencing |
 | 06 | [Jog, velocity and pause semantics](06_velocity_and_pause.md) | 04-05; bounded service/stop policy; no guessed resume |
 | 07 | [Native stored segments](07_segments.md) | 04-05; per-window write evidence and cycle control |
-| 08 | [Homing and coordinate changes](08_homing.md) | 03-05; method-specific encoder/switch/offset evidence |
+| 08 | [Homing and coordinate changes](08_homing.md) | 03-05; method-specific encoder/switch/homing-position evidence |
 | 09 | [I/O, protection and tuning settings](09_io_and_settings.md) | 02-03; unresolved no-function and masks remain guarded |
 | 10 | [Communication and persistence](10_commissioning_and_persistence.md) | 03-04,09; baud mapping, activation and restart evidence |
 | 11 | [Shared console and mixed-profile ownership](11_console_and_integration.md) | Implemented subsets of 02-10; preserve both framework paths and ESS |

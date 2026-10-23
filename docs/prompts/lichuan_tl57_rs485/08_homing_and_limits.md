@@ -13,12 +13,20 @@ Review TL-USER pp. 13-18 and its path diagrams, not just numeric method names.
 3. For 17/18/24/29 require the actual respective switch assignment/wiring state;
    never silently rewrite default limits or use polarity changes as setup. Preserve
    method 29's specific departure/return path rather than treating it as mirrored 24.
-4. Resolve homing repeat-start versus rising-edge wording before sequencing bit 4.
+4. Use the documented bit-4 start write (TL-USER p. 10 and TL-EX p. 11) without
+   inserting a speculative clear write. The p. 15 rising-edge wording does not
+   establish whether the drive self-clears; it need not contradict no-prior-clear
+   operation. Track repeated-start/busy-state behavior separately, and never
+   treat a lost acknowledgement as permission to send another start.
    Bound time/state transitions, handle stop/alarms/stale homed indications, and
    retain unknown execution after transmitted trigger loss.
 5. Expose signed positive/negative soft-limit pairs 0x0046..49 and enable 0x0025.
    Limits become effective only after homing per manual. Keep host limits independent;
    no readback or enabled flag proves a homed reference or correct physical scale.
+   Review complete two-word writes using the H/L setting tables and general FC10
+   contract. Missing worked frames alone do not make offset/soft-limit setters
+   unsupported. Retain signedness, stationary/reference prerequisites and partial
+   application evidence; never replace a pair write with isolated FC06 writes.
 
 Test method whitelist, prerequisites, signed offsets, reversed limits, partial pair
 updates, old homed bits, reference generation, stop at every phase and unknown

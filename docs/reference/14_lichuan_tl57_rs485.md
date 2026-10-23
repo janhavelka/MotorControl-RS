@@ -5,6 +5,8 @@ for [AliExpress item 1005008320426474](https://www.aliexpress.com/item/100500832
 **Research and prompt preparation only. No TL57-R profile implementation or
 hardware test is claimed.** Physical PDF page numbers below start at 1, not at
 the manuals' inconsistent printed page numbers.
+The [23 October audit](../reports/2026-10-23_lichuan_promptset_audit.md) records
+corrections against the originals and current source.
 
 ## Scope and profile decision
 
@@ -46,10 +48,15 @@ distinct 16-bit address rows** from TL-USER pp. 15-23, with source cells, Englis
 names, reviewed pair/range fields and a gap ledger through `0x0119`.
 It is not a C++ access allowlist: missing types, access semantics, default values,
 activation, tuning ranges and persistence remain unresolved, not zero.
+Supplementary `semantic_sources` retain the explicit types/access in pp. 10-14;
+`default_sources` retain the eleven I/O defaults on p. 8 and two external-path
+defaults on p. 12. Shared definitions preserve merged status/function/command
+tables rather than losing them in flattened row cells. These source defaults
+are not observations of active settings or authorization to restore them.
 The [six-model ledger](lichuan_tl57_rs485_models.json) separates listing claims
 from manufacturer values and actual hardware evidence.
 
-The [frame ledger](lichuan_tl57_rs485_vectors.json) records **52 distinct published
+The [frame ledger](lichuan_tl57_rs485_vectors.json) records **52 selected distinct published
 frames**, with independently calculated CRCs, shape dispositions and source pages.
 Three fail CRC; two of those also fail framing. Wire-valid frames can still be
 inapplicable or unsafe to use as an ordinary motion sequence. None is captured
@@ -109,7 +116,14 @@ FC10 start/count windows are `0x0037/2`, `0x0050/2`, `0x0056/2`, `0x005C/2` and
 `0x00B0/2`; these requests are 13 bytes. A six-word `0x0033/6` request would be
 21 bytes by framing arithmetic, but **is not demonstrated in these sources**.
 Do not invent a device-wide FC10 maximum or apply the ESS/LC57BK window set.
-Pair integrity and partial-application handling require explicit policy.
+The worked addresses are **not an exhaustive device restriction**. TL-USER's
+general FC10 description (p. 25), writable H/L field tables and repeated slot
+tables support review of same-shape complete pairs, including other documented
+position targets, homing offset and soft limits. Derive and enumerate those
+windows from the actual rows; a missing example alone is not missing device
+capability. This does not authorize gap-crossing blocks, arbitrary counts or
+atomic application. Any narrower implementation allowlist is host policy.
+Pair integrity and partial-application handling still require explicit policy.
 
 | Address(es) | Documented purpose | Required interpretation |
 | --- | --- | --- |
@@ -137,7 +151,10 @@ Control `0x004E`: bit 0 starts position, bit 1 selects absolute, bit 2 interrupt
 instead of ignoring a busy position command, bit 3 controls JOG, bit 4 starts
 homing, bit 5 stops, bit 6 emergency-stops. There is no documented command queue
 or pause/resume here. TL-USER p. 10 says start/home need no prior clear; p. 15 calls
-homing rising-edge triggered. Do not add LC57BK's clear-before-start sequence,
+homing rising-edge triggered. Those statements may describe an internally
+rearmed/self-clearing action; the internal mechanism is unspecified, not proven
+contradictory. Use the documented start write without adding a guessed pre-clear.
+Do not add LC57BK's clear-before-start sequence,
 blindly rewrite combined command bits, or retry a lost start acknowledgement.
 
 Auxiliary `0x004F`: `0100` factory restore, `0200` save, `0300` clear current
@@ -162,6 +179,11 @@ ordinary move/velocity/segment APIs or reinterpret it as a virtual-I/O register.
 A future explicit native operation would require resolved wiring, affected-function,
 interruption and restoration contracts; the initial generic API must report the
 external-trigger restriction. Direct position and documented JOG are independent.
+Before path configuration, the application must establish that the drive is
+stationary and the relevant external triggers remain inhibited for the full edit
+and readback interval. A momentarily inactive input is insufficient: a trigger
+can otherwise observe partially changed settings. The library must not silently
+disable inputs or promise that a configuration write prevents external motion.
 
 ## Evidence issues and implementation gates
 
@@ -171,7 +193,7 @@ external-trigger restriction. Direct position and documented JOG are independent
 | TL-D02 | Intro says 1..31; DIP table 1..15; software 0..254; setting activation/timing missing | Separate selectors, conservative unicast policy, explicit communication sequence and measured tuple transition |
 | TL-D03 | Bad status reply `01 03 04 00 01 AB F3`; bad alarm-read CRC `D4 0A` instead of calculated `94 0B`; malformed exception `01 06 04 10 00`; speed reads an extra word; bit 2/4 example encodes 0x11 | Reject malformed frames; retain calculated corrections as derived fixtures, never vendor/hardware evidence; reject unsupported windows |
 | TL-D04 | Five DI but TL-EX pp. 8-9 uses DI5/6; two DO but state bit 2, masks and function ranges include more; p. 17 DO range 0..3 contradicts functions 4/5/9/10/11 | No invented ports/registers; whitelist reviewed functions and preserve reserved/raw bits |
-| TL-D05 | Repeated-start without clear vs rising-edge homing; combined control-bit priority unspecified | No guessed rearm, automatic replay or read-modify-write of stale action bits; resolve per operation |
+| TL-D05 | No-prior-clear starts are documented; homing rising-edge wording leaves internal rearm unspecified; combined control-bit priority unspecified | Use the documented start write, without speculative pre-clear. Do not presume contradiction, replay uncertain starts or read-modify-write stale action bits; track repeated/busy behavior separately |
 | TL-D06 | Stop and emergency bits exist; ramp, torque retention, busy/stop ordering and JOG clearing details incomplete | Keep kinds distinct; no arbitrary deceleration/queue semantics claimed; stop success needs fresh evidence |
 | TL-D07 | Serial speed/path examples change input polarity | Ordinary API must not synthesize motion by changing polarity or silently removing limit assignments |
 | TL-D08 | Intro 15 paths vs tables 0..15; missing sixth word of position stride; DI trigger restrictions | Account for all 16 documented slots, preserve gaps, expose configuration versus triggering separately |
@@ -180,7 +202,7 @@ external-trigger restriction. Direct position and documented JOG are independent
 | TL-D11 | Save/restore and clear-position activation/readback/persistence boundaries missing | Explicit bounded operations with uncertainty; restore needs backup/restart control, not automatic recovery |
 | TL-D12 | Factory tuning ranges, units and access unspecified; `0x0100` restart effect; speed-node 2 text says node 1 | Account for each field; guard unresolved setters, do not infer register domains or change loop mode to invent encoder hardware |
 | TL-D13 | Listing 2.3 vs table 2.0 Nm; shaft options/current basis differ | Record actual model/options and applicable revision; no model alias or electrical default inferred |
-| TL-D14 | No FC10 maximum/atomicity, transport deadlines or inter-word feedback latch stated | Reviewed windows only; caller-owned timing, uncertain/partial result paths, no family guarantee from a passing bench example |
+| TL-D14 | No FC10 maximum/atomicity, transport deadlines or inter-word feedback latch stated | Review windows from field access/width and general FC10 rules, including homologous pairs; example addresses are not an exhaustive device limit. Caller-owned timing, uncertain/partial results, no family guarantee from a passing bench example |
 
 An issue blocks its dependent behavior, not unrelated codec, typed-read or
 documentation work. Complete native coverage requires an explicit disposition
@@ -188,24 +210,37 @@ for every field and operation, not treating this transcription as implemented.
 
 ## Current source and integration boundary
 
-At MotorControl-RS `540e640`, `src/Discovery.cpp` enumerates only ESS;
+At the audit baseline MotorControl-RS `e39c095`, `src/Discovery.cpp` enumerates only ESS;
 `include/MotorControlRS/profiles/ess_rs/Codec.h` deliberately restricts ESS
 register windows and paired writes. `src/rtu/Frame.h` owns private bounded byte/CRC
 helpers. `examples/common/RtuBusOwner.h` supplies copied profile validators and
 retained outcomes; extend profile selection while retaining the same bus owner.
+An owner sequence identifier does not reserve an axis: the application must
+prevent conflicting operations/configuration changes across a multi-frame
+sequence. The same responsibility applies to external-trigger inhibition.
 The codec, reads, action, position, segments, runner and console tests under
 `test/` are the concrete integration/verification locations to inspect per stage.
 
 FieldCore-node was inspected read-only at `da94ed5`: `Rs485MotorModule.cpp`
 uses ESS-specific contexts and preparation, with an application requirement for
-finite freshness. `Rs485OwnerTransaction.h` has 21-byte TX capacity. TL57's
+finite freshness. `Rs485OwnerTransaction.h` has 21-byte TX and 192-byte RX capacity. TL57's
 published 13-byte pair writes fit that capacity; hypothetical larger windows must
 not be admitted merely because the standalone runner has 256-byte frame storage.
-RX/result capacities and snapshot semantics need their own check. FieldCore's
+The candidate 100-word FC03 reply is 205 bytes and does not fit that RX buffer;
+93 words fit by framing arithmetic, which grants no access across gaps. Current
+FieldCore tuples admit only 8N1, not TL57's 8N2/8E1/8O1 options. Consumer bounds
+must reject unsupported frames/tuples before submission. RX/result capacities
+and snapshot semantics need their own check. FieldCore's
 finite-freshness requirement can remain stricter than core policy. Do not edit
 FieldCore here or claim current integration is already manufacturer-generic.
 
 The [12-stage promptset](../prompts/lichuan_tl57_rs485/README.md) is independently
 executable after evidence review; it need not wait for LC57BK implementation.
 Inspect whatever ESS/LC57BK/common changes have actually landed before each stage.
+Codec checks can reject wrong addresses/functions/counts and host profile/context
+mismatches; they cannot identify another manufacturer from identical valid RTU
+bytes. A valid minimal probe remains responsiveness evidence, not a model match.
+The common velocity contract is finite: any JOG-backed mapping needs explicit
+duration and stop handling, and continued application service; it cannot imply a
+drive-side timeout or complete while intentionally leaving JOG active.
 This preparation changes no motor code, firmware, transport settings or hardware.

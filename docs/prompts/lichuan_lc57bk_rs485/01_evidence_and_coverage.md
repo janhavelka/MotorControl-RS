@@ -20,12 +20,15 @@ manuals or confuse transcription with an implemented profile.
    mentioned only in prose, including PA_049 and pause/resume. Classify documented,
    unresolved, unsupported by serial, unimplemented and hardware-tested separately.
 4. Carry LC-D01..LC-D15 into that ledger. Decide the first implementable subset
-   from evidence, without guessing status 0x2401 versus 0x2403, signed position,
+   from evidence, without guessing status 0x2401 versus 0x2403 (including the
+   conflicting RW Position N mode at 0x2403), signed position,
    read maxima, no-function I/O or enable precedence. No hardware availability
    is required to complete this documentation/policy stage.
 5. Define the profile identifier/namespace, exact supported revision assumptions,
-   sparse access policy, explicit host unicast policy, allowable demonstrated
-   FC10 windows and capabilities. Document missing identity/probe semantics and
+   sparse access policy, explicit host unicast policy, allowable FC10 windows
+   and capabilities. Distinguish literal example windows, table-derived windows
+   reviewed against section 6.3, and conservative host limits; a missing example
+   is not by itself a device restriction. Document missing identity/probe semantics and
    API consequences. Do not publish runtime entries before their code exists.
 6. Register the new reference/ledger checks with repository verification using
    existing patterns. Keep downloaded vendor bytes out of core exports and basic

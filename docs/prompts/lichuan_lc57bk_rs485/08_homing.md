@@ -7,12 +7,15 @@ Execute this stage under [the execution contract](execution_contract.md), after
 
 1. Review LC-USER pp8-9,13-16 and LC-OP p6. Build a method table for 4..19
    distinguishing direction, home/limit/index prerequisites, approach/departure,
-   post-home offset travel and stop behavior. Preserve PA_068/PA_069 numbering
-   drift. No method may borrow ESS numbering or collision semantics.
+   post-home travel to the configured homing position and stop behavior. Preserve
+   PA_068/PA_069 numbering drift. No method may borrow ESS numbering or collision semantics.
 2. Implement typed parameter reads and the demonstrated 0x240C/7 preparation,
-   with a **23-byte request buffer**. Validate offset pair order/sign, both
-   speeds and time words before yielding writes. Zero offsets may be a usable
-   subset; nonzero/negative offsets need established representation.
+   with a **23-byte request buffer**. Validate the low/high homing-position pair,
+   both speeds and time words before yielding writes. The table documents a
+   nonnegative native range through 0x7FFFFFFF; a zero-only example does not
+   prohibit positive native values. Guard negative encoding and calibrated units
+   independently. Methods 6/7/10/11/14/15/18/19 add travel to that position after
+   finding home; do not equate zero detection with completion of that later travel.
 3. Use explicit 0x20 start and new homing-complete evidence, keeping ACK separate
    from reached origin. Apply the resolved status mapping and per-method
    capabilities. Stop/failure invalidates position confidence as appropriate.
@@ -27,8 +30,9 @@ Execute this stage under [the execution contract](execution_contract.md), after
 ## Verification and acceptance
 
 Test every method's admission table, exact 23-byte frame, capacity checks,
-offset limits, unresolved sign/index evidence, stale home-complete, partial
-configuration, timeout after start, stop interruption and coordinate invalidation.
+homing-position limits, method-specific final travel, unresolved sign/index evidence,
+stale home-complete, partial configuration, timeout after start, stop interruption
+and coordinate invalidation.
 Keep method-specific unqualified behavior explicit instead of placeholder APIs.
 
 Run focused homing/read/owner tests, quick verification and exact-commit CI.

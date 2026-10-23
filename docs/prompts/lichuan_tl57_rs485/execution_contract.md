@@ -31,7 +31,10 @@ Keep the core C++11, fixed-storage, allocation-free and independent of framework
 UART, GPIO, clocks, threads, logging, retries and persistence services. Pure codecs
 accept caller buffers/capacities; bounded contexts accept supplied events/time and
 yield work. Applications own bus arbitration, DE/RE, timing, storage, cache/freshness
-and health. Reuse private byte/CRC helpers only where actual code demonstrates
+and health. They also own conflicting-operation admission for each axis and
+external-trigger inhibition across multi-frame configuration; an owner sequence
+ID or bus lease cannot prevent an external input or another application operation.
+Reuse private byte/CRC helpers only where actual code demonstrates
 reuse. No universal transport framework or dynamic plugin registry is needed.
 
 Use ordinary typed public APIs for supported behavior. Runtime debug mode calls
@@ -44,7 +47,11 @@ The 203-word research ledger is not a generated access policy. For each operatio
 and field, record model/revision, address, width, signedness, scaling, word order,
 valid domains/reserved bits, read effects, write/activation/persistence behavior,
 transaction windows, prerequisites, outcome evidence, API/CLI and test coverage.
-Keep TL-D01..14 open until cited evidence resolves them. Do not turn undocumented
+Record TL-D01..14 dispositions against the actual sources; do not keep an issue
+open when the preserved manual already resolves it. Worked FC10 addresses are
+examples, not a device-wide exhaustive allowlist. Review homologous complete
+pairs from documented fields plus general FC10 semantics; narrower support is
+host policy, not missing drive capability. Do not turn undocumented
 gaps, unknown tuning ranges, conflicting DI5/6 examples or copied PA labels into
 registers. Implement independent proven behavior while dependent work stays guarded.
 

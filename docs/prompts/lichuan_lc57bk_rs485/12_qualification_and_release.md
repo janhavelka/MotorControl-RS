@@ -28,8 +28,10 @@ identified, available and authorized Lichuan fixture. The ESS bench is not that 
    No automatic writes, alarm clears, setup changes or probing by motion.
 3. Establish explicit command/stop prerequisites and a restoration plan. Run
    small finite position moves, prepared stop paths, repeated starts/rearm,
-   absolute/relative policies and negative motion only when its encoding is
-   actually qualified. Retain before/after settings and all uncertain outcomes.
+   absolute/relative policies and negative native wire values only when their
+   encoding is actually qualified. Moving toward a smaller nonnegative absolute
+   target is distinct from encoding a negative displacement. Retain before/after
+   settings and all uncertain outcomes.
 4. Qualify open-loop and closed-loop behavior independently. Measure encoder
    mapping and shaft displacement when claiming physical position accuracy.
    Software timestamps bound observations; electrical timing needs measurement.

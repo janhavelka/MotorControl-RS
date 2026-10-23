@@ -14,7 +14,8 @@ Execute this stage under [the execution contract](execution_contract.md), after
    not publish an encoder observation just because the response is syntactically valid.
 3. Resolve or explicitly guard run-status interpretation: p8 says 0x2401 while
    p11 says 0x2403. Raw reads of both do not prove either mapping. Expose ready,
-   alarm and completion fields only for a documented/qualified mapping. There
+   alarm and completion fields only for a documented/qualified mapping. Keep
+   dependent writes to the competing 0x2403 Position N mode guarded as well. There
    is no established RUNNING bit or complete native alarm-code register.
 4. Add the implemented profile to the local discovery inventory with truthful
    capabilities. Evaluate FC03 PA_016/one word as a candidate minimal probe,
@@ -30,8 +31,9 @@ Execute this stage under [the execution contract](execution_contract.md), after
 Test exact read plans, low/high assembly, raw-value retention, no publication on
 malformed/partial sequences, cancellation/deadlines, stale/wrong-generation
 events, unsupported fields, immutable buffers and correct capability results.
-Update the former one-profile discovery assertions without weakening them:
-both entries must have exact identities/capabilities; unsupported values stay
+Update discovery assertions against the actual landed inventory, without
+assuming LC57BK executes before TL57 or weakening checks: every implemented
+entry must have exact identities/capabilities; unsupported values stay
 unsupported; ESS wire output remains unchanged. Test ambiguous responders and
 scans with no writes or setting changes.
 

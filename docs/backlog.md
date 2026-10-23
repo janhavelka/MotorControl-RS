@@ -167,6 +167,9 @@ functional evidence; independent shaft calibration remains absent.
   path trigger restrictions and unresolved version/I/O/timing distinctions.
 - [ ] Identify and qualify an actual TL57 model/firmware/fixture; no TL57
   communication, motion, I/O, restart or persistence test has been performed.
+- [x] [Audit both Lichuan promptsets against original manuals and current code](reports/2026-10-23_lichuan_promptset_audit.md).
+  Corrected access guards, coordinate/trigger requirements, source-policy claims
+  and reference verification. Implementation and hardware milestones remain open.
 - [ ] Develop CANopen in a separate future library, initially the verified
   CL86-C subset, after obtaining firmware-matched manual/EDS and transport
   evidence. Preserve the common motion vocabulary; extract shared types only

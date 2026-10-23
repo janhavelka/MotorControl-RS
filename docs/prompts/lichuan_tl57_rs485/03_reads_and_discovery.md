@@ -4,7 +4,7 @@ Follow the [execution contract](execution_contract.md). Depends on stage 02.
 Inspect current reads, discovery inventory, cached console paths and tests.
 
 1. Add caller-owned bounded reads for raw version words 0x0001/2, status 0x0004,
-   alarms 0x0005, DI/DO0x0006/7, position 0x0008/9 and signed speed 0x000A. Add useful
+   alarms 0x0005, DI/DO 0x0006/7, position 0x0008/9 and signed speed 0x000A. Add useful
    configuration snapshots with source-reviewed windows and explicit provenance.
 2. Keep the reversed hardware/software labels unresolved. A minimal one-word
    version probe may establish responsiveness after read-effect review; it does

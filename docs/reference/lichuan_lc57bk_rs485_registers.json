@@ -791,8 +791,10 @@
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issues": [
-        "LC-D03"
-      ]
+        "LC-D03",
+        "LC-D02"
+      ],
+      "interpretation_note": "The table labels this RW Position N mode, but LC-USER p11 names the same address as run status. Guard writes to this address and dependent Position N setup until LC-D02 is resolved."
     },
     {
       "parameter": "PA_061",
@@ -978,7 +980,7 @@
         8
       ],
       "address_hex": "0x240D",
-      "name_en": "Homing offset low word",
+      "name_en": "Homing position low word",
       "source": "LC-USER",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
@@ -998,7 +1000,7 @@
         8
       ],
       "address_hex": "0x240E",
-      "name_en": "Homing offset high word",
+      "name_en": "Homing position high word",
       "source": "LC-USER",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
@@ -2293,7 +2295,8 @@
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issues": [
-        "LC-D04"
+        "LC-D04",
+        "LC-D09"
       ]
     },
     {
@@ -2312,7 +2315,8 @@
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issues": [
-        "LC-D04"
+        "LC-D04",
+        "LC-D09"
       ]
     },
     {
@@ -2370,7 +2374,9 @@
       "source": "LC-USER",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issues": []
+      "issues": [
+        "LC-D04"
+      ]
     },
     {
       "parameter": "PA_150",
@@ -2387,7 +2393,9 @@
       "source": "LC-USER",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issues": []
+      "issues": [
+        "LC-D04"
+      ]
     }
   ]
 }

@@ -10,8 +10,10 @@ Execute this stage under [the execution contract](execution_contract.md), after
    delay. Keep the unused stride word out of every bulk window.
 2. Preserve original PA-label differences while using reviewed wire addresses.
    Reconcile which FC03/FC06/FC10 forms are justified for each segment; the
-   segment0/6 and segment0 target/2 examples are not automatic proof for every
-   indexed window. Unresolved forms remain explicit before TX.
+   examples are fixtures, while section 6.3 and the repeated RW table can justify
+   additional bounded indexed windows. Record that derivation and tests instead
+   of requiring a literal example for each segment. Exclude holes, partial pairs
+   and unreviewed side effects; unresolved forms remain explicit before TX.
 3. Validate bit7 relative/absolute, bits8..10 jump destination and bit15 automatic
    transition. Keep reserved bits and incomplete signed target semantics guarded.
    Configuration/staging is separate from start and from EEPROM save.
