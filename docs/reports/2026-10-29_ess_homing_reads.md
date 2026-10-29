@@ -81,7 +81,7 @@ retaining qualification witnesses while invalidating only future confidence.
 Inventory's linked-record fixture changes from 202 to 203 because this adds
 the previously gap-only HOMING_AUXILIARY producing read; setter credit is unchanged.
 
-## Verification checkpoint
+## Verification
 
 - Native read writer: isolated `reads` 1/1 PASS.
 - Independent review: 11 registered focused read/velocity/home/app/console/parity/
@@ -125,11 +125,35 @@ The fresh settled `build/ess_software_03_verified_quick` passed all 81 tests and
 all consumers/package checks. Initial pre-hint `build/ess_software_03_quick`
 also passed but does not verify the later fix.
 
-Exact-implementation-commit hosted GCC/Clang/Arduino/IDF CI is pending at this
-implementation checkpoint; commit/run/terminal results will be recorded before
-completion. Local full Arduino/IDF firmware builds are NOT RUN; the existing
-shared local PlatformIO file-in-use issue from stage 02 was not retried or
-worked around. Hosted pinned firmware verification remains required.
+The final implementation commit is
+`ff3fae3ed7d1b49e1c6f390799ef8913193eaee3`, pushed on `main` with upstream
+synchronization confirmed. [CI run 40906912842](https://github.com/janhavelka/MotorControl-RS/actions/runs/40906912842)
+completed SUCCESS for that exact SHA. Initial API commit `8d35e51` and its run
+40905908843 are superseded as final proof by the hint-fix commit and this run.
+The later evidence-only documentation commit changes no verified implementation.
+
+Terminal commands:
+
+```text
+gh run view 40906912842 --repo janhavelka/MotorControl-RS --json headSha,status,conclusion,jobs,url
+gh run download 40906912842 --repo janhavelka/MotorControl-RS --dir build/ess_software_03_ci
+```
+
+| Final exact-commit job | Result / downloaded summary |
+| --- | --- |
+| native (gcc) | PASS, 81 tests plus packages/consumers |
+| native (clang) | PASS, 81 tests plus packages/consumers |
+| arduino | PASS, 81 tests plus all four pinned firmware environments |
+| idf | PASS, 81 tests plus pinned ESP-IDF 5.5.5 S3/S2/portable consumer matrix |
+
+Downloaded summaries/logs are under `build/ess_software_03_ci/` in `native-gcc`,
+`native-clang`, `arduino` and `native-idf`; final run state is retained in
+`build/ess_software_03_ci_status.json`. Push-triggered CI sufficed; no manual
+unchanged-suite dispatch was used. The confirmed hint correction justified fresh
+verification after the original API commit. Local full Arduino/IDF firmware
+builds are NOT RUN; the existing shared local PlatformIO file-in-use issue from
+stage 02 was not retried or worked around. Hosted jobs supply the passing pinned
+firmware evidence. No hardware qualification follows from any build.
 
 The inventory now has 51 producing rows, 201 implemented readable records,
 zero missing readable-record implementations, seven named gaps and unchanged

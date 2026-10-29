@@ -9,7 +9,7 @@ remain NOT STARTED.
 | --- | --- | --- | --- |
 | 01 | CONTRACTS COMPLETE | [Contract decisions and review](../../reports/2026-10-29_ess_software_contracts.md); no implementation | NOT RUN |
 | 02 | SOFTWARE COMPLETE | `6bede39`; [implementation/review/validation](../../reports/2026-10-29_ess_velocity_reads.md); 80-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
-| 03 | IN PROGRESS | [Implementation/source evidence](../../reports/2026-10-29_ess_homing_reads.md); 81-test quick/package PASS; firmware CI pending | NOT RUN: recorded bench USB absent |
+| 03 | SOFTWARE COMPLETE | `ff3fae3`; [implementation/source/verification](../../reports/2026-10-29_ess_homing_reads.md); 81-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 04 | NOT STARTED | - | NOT RUN |
 | 05 | NOT STARTED | - | NOT RUN |
 | 06 | NOT STARTED | - | NOT RUN |
@@ -152,7 +152,7 @@ NOT RUN for this documentation-only preparation, consistent with AGENTS policy.
   different connected ESP devices were not opened/flashed/commanded.
   Motion, sign/ramp and independent electrical/shaft qualification remain open.
 
-## Stage 03 implementation checkpoint (2026-10-29)
+## Stage 03 completed software (2026-10-29)
 
 - N02 has one producing FC03 `0x0030/7` read for six records/seven raw words,
   ordinary submit/copy/release, shared `home read` and strict host results.
@@ -171,7 +171,11 @@ NOT RUN for this documentation-only preparation, consistent with AGENTS policy.
 - `python scripts/verify.py --mode quick --build-dir build/ess_software_03_verified_quick`:
   81/81 tests, source/install consumers3/3 each, strict headers, linkage,
   package/reference checks PASS. Repository/generator/whitespace checks PASS.
-- Exact implementation commit and hosted firmware CI pending at this checkpoint.
+- Final implementation commit `ff3fae3ed7d1b49e1c6f390799ef8913193eaee3` pushed
+  and synchronized on `main`. [CI run 40906912842](https://github.com/janhavelka/MotorControl-RS/actions/runs/40906912842)
+  terminal SUCCESS was verified through `gh run view --json headSha,status,conclusion,jobs,url`.
+  Downloaded summaries: `build/ess_software_03_ci/`; GCC/Clang/Arduino/IDF each
+  PASS81 tests plus their package/pinned firmware matrices.
   Local full firmware builds NOT RUN; prior shared PIO package lock not retried.
   Physical NOT RUN: fresh enumeration still lacks recorded bench COM13/USB serial
   `3C:0F:02:CD:6B:98`. Other ESP devices were not opened/flashed/commanded.
@@ -181,5 +185,6 @@ NOT RUN for this documentation-only preparation, consistent with AGENTS policy.
   independently reviewed. Initial post-fix quick run used an incorrect direct-error
   fixture and FAILED1/81; retained in `build/ess_software_03_final_quick`. Correct
   reproduction and fresh settled `build/ess_software_03_verified_quick` PASS81/81.
-  Initial API commit `8d35e51` CI is superseded as final proof by the forthcoming
-  hint-fix commit; no old green run will be credited to the later source.
+  Initial API commit `8d35e51` CI is superseded as final proof by the final
+  hint-fix commit `ff3fae3` and PASS run40906912842. Older green runs are not
+  credited to the later source.
