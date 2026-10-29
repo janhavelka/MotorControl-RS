@@ -2424,11 +2424,13 @@ void testHomeReadGrammar() {
     send(c,"@10 home methods\n"); f.contains("\"methods\":["); assert(!f.homes);
 }
 void testParameterFamilyHelpAvailability() {
-    for (bool reads : {false, true}) for (bool motion : {false, true}) for (bool human : {false, true}) {
+    for (bool reads : {false, true}) for (bool motion : {false, true})
+        for (bool setter : {false, true}) for (bool human : {false, true}) {
         Fake f; auto h = f.host();
         h.startTypedRead = reads ? Fake::typedRead : nullptr;
         h.startVelocity = motion ? Fake::startVelocity : nullptr;
         h.startHome = motion ? Fake::startHome : nullptr;
+        h.startDriver = setter ? Fake::startDriver : nullptr;
         h.axis = motion ? Fake::axis : nullptr;
         // Help exercises both production text formats; no wire work is supplied.
         h.emitLine = [](void* context, const char* line, std::size_t length) {
@@ -2445,8 +2447,9 @@ void testParameterFamilyHelpAvailability() {
         const auto home = f.lines.back();
         assert(home.find("home methods") != std::string::npos);
         assert((home.find("home read") != std::string::npos) == reads);
+        assert((home.find("home auxiliary") != std::string::npos) == setter);
         assert((home.find("search_native") != std::string::npos) == motion);
-        if (human && reads && !motion) {
+        if (human && reads && !motion && !setter) {
             send(c,"help\n");
             f.contains("Read raw velocity parameters."); f.contains("Read raw homing parameters or list methods.");
         }

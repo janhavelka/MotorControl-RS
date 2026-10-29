@@ -90,6 +90,15 @@ bool copyReadResult(uint32_t operationId, MotorControlRS::ESS_RS::ReadContext& o
  * activation. Retained results require releaseOperation, including failures.
  */
 MotorControlRS::Status submitPositionStartSpeed(uint32_t native, uint32_t& operationId);
+/** Explicit selected-axis homing auxiliary choice (0..11 enumeration). Uses the
+ * same stopped/input/trigger admission, immutable prior/update/readback session
+ * and retained result contract as the start-speed setter. A possible write
+ * expires dependent home qualification/prepared work and current references;
+ * fixed host origins/scales and desired values remain. Reading back 7 does not
+ * qualify its active policy, zero offset, any method or a mechanical origin.
+ * No home, parameter staging, I/O reassignment, save, retry or rollback follows.
+ */
+MotorControlRS::Status submitHomingAuxiliary(MotorControlRS::ESS_RS::HomingAuxiliary choice, uint32_t& operationId);
 /** Copy the current/terminal settings context directly into caller storage.
  * kind=READ identifies an unfinished/failed prior read; UPDATE retains its prior
  * in prerequisites.previous. UPDATE_NOT_ADMITTED retains a checked prior read

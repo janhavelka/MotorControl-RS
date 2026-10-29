@@ -129,8 +129,8 @@ struct App {
         uint32_t configurationGeneration = 0;
         uint32_t driverEffects = 0;
         ESS::DriverContext driver;
-        bool positionStartSpeedSession = false, programmaticSettings = false;
-        uint16_t requestedStartSpeed = 0; ///< Frozen across prior read and update.
+        bool singleSettingSession = false, programmaticSettings = false;
+        uint16_t requestedSetting = 0; ///< Frozen across prior read and update.
         ESS::HomeContext home;
     } records[REQUEST_CAPACITY + 2]; // Dedicated monitor and urgent-stop frontend reservations.
     Probe::StateCache stateCache;
@@ -1240,9 +1240,12 @@ Probe::Action admitDriverStep(App& a, App::Record& record, const ESS::PreparedDr
     }
     return admissionResult(a.owner.admit(request, now, record.requestId));
 }
+bool singleSettingGroup(ESS::DriverGroup group) {
+    return group == ESS::DriverGroup::POSITION_START_SPEED || group == ESS::DriverGroup::HOMING_AUXILIARY;
+}
 // Reuse checked configuration and logical state; an unconnected terminal is
 // never silently reassigned. This policy permits only passive assignments.
-bool positionSettingPolicy(App& a, uint64_t now) {
+bool singleSettingPolicy(App& a, uint64_t now) {
     auto& p = a.driverPrerequisites;
     p.~DriverPrerequisites(); new (&p) ESS::DriverPrerequisites();
     const auto& target = a.axis.target;
@@ -1276,9 +1279,12 @@ bool positionSettingPolicy(App& a, uint64_t now) {
     p.inputsPermit = p.externalTriggerInhibitedQualified = passive;
     return a.axis.generation && p.stationaryQualified && passive;
 }
-Probe::Action startPositionStartSpeed(App& a, uint32_t commandId, uint8_t address, ESS::DriverKind kind,
+Probe::Action startSingleSetting(App& a, uint32_t commandId, uint8_t address, ESS::DriverKind kind,
                                      const ESS::DriverRequest& candidate, uint32_t& operationId) {
-    if (kind != ESS::DriverKind::UPDATE || candidate.fields != 1 || candidate.positionStartSpeed > 3000)
+    const bool position = candidate.group == ESS::DriverGroup::POSITION_START_SPEED;
+    const uint16_t value = position ? candidate.positionStartSpeed : static_cast<uint16_t>(candidate.homingAuxiliary);
+    if (!singleSettingGroup(candidate.group) || kind != ESS::DriverKind::UPDATE || candidate.fields != 1 ||
+        value > (position ? 3000 : 11))
         return Probe::Action::INVALID;
     if (!platformReady || address != a.axis.target.address || !ESS::isValidAddress(address)) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned() ||
@@ -1295,17 +1301,18 @@ Probe::Action startPositionStartSpeed(App& a, uint32_t commandId, uint8_t addres
         if (!a.records[i].operationId) { record = &a.records[i]; break; }
     if (!record) return Probe::Action::RESULTS_FULL;
     const uint64_t now = uart.sample();
-    if (!positionSettingPolicy(a, now)) return Probe::Action::UNAVAILABLE;
+    if (!singleSettingPolicy(a, now)) return Probe::Action::UNAVAILABLE;
     const auto checked = ESS::prepareDriverRead(record->driver, a.axis.target, a.nextOperationId,
-        a.axis.generation, now, now + 3000000, ESS::DriverGroup::POSITION_START_SPEED);
+        a.axis.generation, now, now + 3000000, candidate.group);
     if (!checked) return Probe::driverAdmissionStatus(checked);
     record->driver.request.positionStartSpeed = candidate.positionStartSpeed;
+    record->driver.request.homingAuxiliary = candidate.homingAuxiliary;
     ESS::PreparedDriver work;
     if (!ESS::nextDriver(record->driver, now, work)) { clearRecord(*record); return Probe::Action::FAILED; }
     const auto admitted = admitDriverStep(a, *record, work, now);
     if (admitted != Probe::Action::OK) { clearRecord(*record); return admitted; }
-    record->kind = App::OperationKind::DRIVER; record->positionStartSpeedSession = true;
-    record->requestedStartSpeed = candidate.positionStartSpeed; record->axisReserved = true;
+    record->kind = App::OperationKind::DRIVER; record->singleSettingSession = true;
+    record->requestedSetting = value; record->axisReserved = true;
     record->serialTuple = a.serial.active; record->serialGeneration = a.serial.generation;
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
     record->configurationGeneration = a.axis.generation; record->deadlineUs = record->driver.deadlineUs;
@@ -1313,20 +1320,22 @@ Probe::Action startPositionStartSpeed(App& a, uint32_t commandId, uint8_t addres
 }
 // Continue the same reserved operation. Scratch storage keeps the complete prior
 // evidence outside the output being reinitialized, without a large stack copy.
-void continuePositionStartSpeed(App& a, App::Record& record, uint64_t now) {
+void continueSingleSetting(App& a, App::Record& record, uint64_t now) {
     auto& c = record.driver;
-    if (!record.positionStartSpeedSession || c.kind != ESS::DriverKind::READ || c.state != ReadState::SUCCEEDED) return;
+    if (!record.singleSettingSession || c.kind != ESS::DriverKind::READ || c.state != ReadState::SUCCEEDED) return;
     MotorControlRS::Status status;
     if (record.cancelContinuation || record.configurationGeneration != a.axis.generation ||
         c.target.generation != a.bindingGeneration || record.serialGeneration != a.serial.generation)
         status = MotorControlRS::Status(MotorControlRS::Err::INVALID_CONFIG, 0, "setting binding changed during prior read");
-    else if (!positionSettingPolicy(a, now))
-        status = MotorControlRS::Status(MotorControlRS::Err::INVALID_CONFIG, 0, "position setting prerequisites expired");
+    else if (!singleSettingPolicy(a, now))
+        status = MotorControlRS::Status(MotorControlRS::Err::INVALID_CONFIG, 0, "single-setting prerequisites expired");
     else {
         status = ESS::getDriver(c, a.driverPrerequisites.previous);
         ESS::DriverRequest request;
         request.configurationGeneration = record.configurationGeneration;
-        if (status) status = ESS::preparePositionStartSpeed(request, record.requestedStartSpeed);
+        if (status) status = c.group == ESS::DriverGroup::POSITION_START_SPEED ?
+            ESS::preparePositionStartSpeed(request, record.requestedSetting) :
+            ESS::prepareHomingAuxiliary(request, static_cast<ESS::HomingAuxiliary>(record.requestedSetting));
         if (status) status = ESS::prepareDriverSettings(c, c.target, record.operationId, request,
             a.driverPrerequisites, now, record.deadlineUs);
     }
@@ -1340,8 +1349,8 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
                          const ESS::DriverRequest& supplied, uint32_t& operationId) {
     using namespace MotorControlRS;
     App& a = *static_cast<App*>(context);
-    if (supplied.group == ESS::DriverGroup::POSITION_START_SPEED)
-        return startPositionStartSpeed(a, commandId, address, kind, supplied, operationId);
+    if (singleSettingGroup(supplied.group))
+        return startSingleSetting(a, commandId, address, kind, supplied, operationId);
     if (a.owner.commissioningOwned() || a.discovery.owned) return Probe::Action::BUSY;
     if (supplied.group > ESS::DriverGroup::COLLISION) return Probe::Action::INVALID;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
@@ -1510,8 +1519,8 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
 // historical contexts or silently promotes stored codes into active settings.
 void invalidateDriverAssumptions(App& a, uint8_t address, uint32_t changed, uint64_t now, const App::Record* changing = nullptr,
                                 ESS::DriverGroup group = ESS::DriverGroup::DRIVE) {
-    if (group == ESS::DriverGroup::POSITION_START_SPEED) {
-        // A speed setting changes no coordinate interpretation or fixed zero.
+    if (singleSettingGroup(group)) {
+        // Storing a start speed or future homing policy proves no counter change.
         // Keep historical snapshots, but expire their generation and all future
         // prepared work. Local bit 0 must never be interpreted as DIRECTION.
         if (address == a.axis.target.address) {
@@ -1563,7 +1572,7 @@ void driverEffects(App& a, App::Record& record, uint32_t effects, uint64_t now) 
     if (!changed) return;
     record.driverEffects |= changed;
     invalidateDriverAssumptions(a, record.address, changed, now, &record, record.driver.group);
-    if (record.positionStartSpeedSession) record.configurationGeneration = a.axis.generation;
+    if (record.singleSettingSession) record.configurationGeneration = a.axis.generation;
 }
 uint32_t driverConfigEffects(const ESS::RawConfig& config, const ESS::DriverObservation& driver) {
     uint16_t effects = 0;
@@ -1669,7 +1678,7 @@ void reconcileConfigRead(App& a, App::Record& record, uint64_t now) {
 }
 void reconcileDriverRead(App& a, App::Record& record, uint64_t now) {
     if (record.kind != App::OperationKind::DRIVER || record.driver.kind != ESS::DriverKind::READ ||
-        record.positionStartSpeedSession ||
+        record.singleSettingSession ||
         segmentGroup(record.driver.group) || record.address != a.axis.target.address ||
         record.configurationGeneration != a.axis.generation || record.driver.target.generation != a.bindingGeneration) return;
     const bool tuning = ESS::isTuningGroup(record.driver.group);
@@ -1870,7 +1879,7 @@ void updateActionReservation(App& a, App::Record& record) {
     case App::OperationKind::DRIVER: {
         driverEffects(a, record, record.driver.effects, nowUs());
         record.axisReserved = false;
-        if (record.positionStartSpeedSession) return; // Single-field history is not a DRIVE cache or motion profile.
+        if (record.singleSettingSession) return; // Single-field history is not a DRIVE cache or motion profile.
         const bool segment = segmentGroup(record.driver.group);
         const bool tuning = ESS::isTuningGroup(record.driver.group);
         auto& cache = tuning ? tuningCache(a, record.driver.group) : segment ? a.segmentSettings : record.driver.group == ESS::DriverGroup::IO ? a.ioSettings : record.driver.group == ESS::DriverGroup::CONTROL_SETTINGS ? a.controlSettings : a.driverSettings;
@@ -1990,7 +1999,7 @@ void advanceActions(App& a, uint64_t now) {
             updateActionReservation(a, record);
         }
         if (!sequenced(record) || terminal(a, record)) continue;
-        if (record.positionStartSpeedSession && (record.configurationGeneration != a.axis.generation ||
+        if (record.singleSettingSession && (record.configurationGeneration != a.axis.generation ||
             record.driver.target.generation != a.bindingGeneration || record.serialGeneration != a.serial.generation)) {
             record.cancelContinuation = true;
             if (record.requestId.owner) a.owner.cancelUnsent(record.requestId, now);
@@ -2070,7 +2079,7 @@ void advanceActions(App& a, uint64_t now) {
                 }
             }
             a.owner.release(record.requestId); record.requestId = Rtu::RequestId();
-            continuePositionStartSpeed(a, record, now);
+            continueSingleSetting(a, record, now);
             reconcileDriverRead(a, record, now);
         }
         if (!terminal(a, record)) {
@@ -2795,6 +2804,17 @@ MotorControlRS::Status submitPositionStartSpeed(uint32_t native, uint32_t& opera
     const auto admitted = startDriver(app, 0, app->axis.target.address, ESS::DriverKind::UPDATE, request, operationId);
     if (admitted != Probe::Action::OK)
         return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted), "position start-speed setting not admitted");
+    findRecord(*app, operationId)->programmaticSettings = true; return Ok();
+}
+MotorControlRS::Status submitHomingAuxiliary(MotorControlRS::ESS_RS::HomingAuxiliary choice, uint32_t& operationId) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    ESS::DriverRequest request;
+    const Status checked = ESS::prepareHomingAuxiliary(request, choice);
+    if (!checked) return checked;
+    const auto admitted = startDriver(app, 0, app->axis.target.address, ESS::DriverKind::UPDATE, request, operationId);
+    if (admitted != Probe::Action::OK)
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted), "homing auxiliary setting not admitted");
     findRecord(*app, operationId)->programmaticSettings = true; return Ok();
 }
 bool copySettingsResult(uint32_t operationId, MotorControlRS::ESS_RS::DriverContext& output) {

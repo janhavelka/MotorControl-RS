@@ -201,6 +201,33 @@ def position_start_speed_terminal(request_id):
     return item
 
 
+def homing_auxiliary_terminal(request_id, choice=7):
+    """Independent auxiliary FC06/FC03 vectors for all twelve enumerated choices."""
+    vectors = (
+        ("01060030000089C5", "0103020000B844"),
+        ("0106003000014805", "01030200017984"),
+        ("0106003000020804", "01030200023985"),
+        ("010600300003C9C4", "0103020003F845"),
+        ("0106003000048806", "0103020004B987"),
+        ("01060030000549C6", "01030200057847"),
+        ("01060030000609C7", "01030200063846"),
+        ("010600300007C807", "0103020007F986"),
+        ("0106003000088803", "0103020008B982"),
+        ("01060030000949C3", "01030200097842"),
+        ("01060030000A09C2", "010302000A3843"),
+        ("01060030000BC802", "010302000BF983"))
+    item = driver_terminal(request_id, True)
+    item.update(type="home-auxiliary", command="home-auxiliary", driver_group="homing_auxiliary",
+                echo_readback_policy=False, settlement="checked_ack_readback", requested_choice=choice,
+                active_policy_qualified=False, prior=dict(operation_id=request_id + 100,
+                    raw=65535, known_fields=0, raw_hex="010302FFFFB9F4",
+                    attempted_us=700, earliest_us=800, latest_us=810, delivered_us=820))
+    item["progress"] = [[1, 0x30, 65535, choice, True, True, choice, False, 0, "acknowledged"]]
+    for row, raw in zip(item["evidence"], vectors[choice]):
+        row[1] = 0x30; row[5] = raw; row[6] = len(raw) // 2
+    return item
+
+
 def typed_terminal(request_id, kind):
     """Literal independently reviewed windows/vectors, not firmware helpers."""
     fixtures = (
@@ -654,7 +681,7 @@ def operation_transcript(record, mutate=None, mutate_live=False):
     terminal = copy.deepcopy(record)
     terminal.update(id=2, command_id=2, operation_id=102)
     command = terminal["command"]
-    wire_command = {"velocity-read": "velocity", "home-read": "home", "motion-profile-start-speed": "motion-profile"}.get(command,
+    wire_command = {"velocity-read": "velocity", "home-read": "home", "motion-profile-start-speed": "motion-profile", "home-auxiliary": "home"}.get(command,
         "read" if command in bench.TYPED_READS else "move" if command in bench.MOVE_COMMANDS else command)
 
     def handler(request_id, requested, args):
@@ -686,7 +713,7 @@ def check_fixture_routes(record, *, live_command=None):
     port = Serial()
     console = bench.Console(port, clock=clock, sleeper=clock.sleep)
     terminal = dict(copy.deepcopy(record), id=2, command_id=2, operation_id=102)
-    if terminal.get("driver_group") == "position_start_speed" and terminal["prior"]["operation_id"]:
+    if terminal.get("driver_group") in ("position_start_speed", "homing_auxiliary") and terminal["prior"]["operation_id"]:
         terminal["prior"]["operation_id"] = 102
     if live_command is not None:
         terminal.update(command=live_command, type="read" if live_command in bench.TYPED_READS else live_command)
@@ -737,6 +764,7 @@ class Framing(unittest.TestCase):
         yield home_terminal(2), dict(home_args=self.HOME_ARGS)
         yield driver_terminal(2), dict(driver_args=("read",))
         yield position_start_speed_terminal(2), dict(host_args=("3000",))
+        yield homing_auxiliary_terminal(2), dict(host_args=("7",))
 
     def test_all_operation_families_keep_live_retained_and_historical_routing(self):
         for terminal, arguments in self.routing_fixtures():
@@ -1354,6 +1382,64 @@ class Framing(unittest.TestCase):
             with self.assertRaises(bench.BenchError): bench.Console._check_driver(broken, 1, None, "position_start_speed")
         with self.assertRaises(bench.BenchError):
             bench.Console._check_driver(terminal, 1, ("2999",), "position_start_speed")
+
+    def test_homing_auxiliary_all_choices_and_one_attempt(self):
+        for choice in range(12):
+            with self.subTest(choice=choice):
+                terminal = homing_auxiliary_terminal(2, choice)
+                bench.Console._check_driver(terminal, 1, (str(choice),), "homing_auxiliary")
+                console = self.session(operation_transcript(terminal))
+                result = console.set_homing_auxiliary(choice)
+                self.assertEqual(result["requested_choice"], choice)
+                self.assertEqual(result["prior"]["raw"], 65535)
+                self.assertEqual(result["progress"][0][6], choice)
+                self.assertFalse(result["active_policy_qualified"])
+                self.assertEqual(self.port.writes, [b"@1 version\n",
+                    f"@2 home auxiliary {choice}\n".encode("ascii"), b"@3 release 102\n"])
+                self.assertFalse(console.operations)
+
+    def test_homing_auxiliary_exact_choice_grammar_before_traffic(self):
+        console = self.session(operation_transcript(homing_auxiliary_terminal(2)))
+        for invalid in (-1, 12, 65535, 2**32, True, 7.5, "7", None):
+            with self.assertRaises(ValueError): console.set_homing_auxiliary(invalid)
+        for invalid in (None, (), ("-1",), ("7.5",), ("12",), ("65535",), ("7", "extra"), ("?",), (7,)):
+            with self.assertRaises(ValueError): console.begin("home-auxiliary", host_args=invalid)
+        with self.assertRaises(ValueError):
+            console.begin("home-auxiliary", host_args=("7",), address=2)
+        self.assertEqual(self.port.writes, [b"@1 version\n"])
+        handle = console.begin("home-auxiliary", host_args=("7",))
+        self.assertEqual(console.wait(handle)["prior"]["raw"], 65535)
+        retained = console.command("result", operation_id=102)
+        self.assertEqual(retained["progress"][0][6], 7)
+        console.command("release", operation_id=102)
+        self.assertEqual(len(self.port.writes), 4)
+
+    def test_homing_auxiliary_strict_evidence_and_qualification_boundary(self):
+        terminal = homing_auxiliary_terminal(2)
+        changes = [lambda t: t.update(active_policy_qualified=True),
+                   lambda t: t.update(active_policy_qualified=0),
+                   lambda t: t.update(active_settings_known=True),
+                   lambda t: t.update(echo_readback_policy=True),
+                   lambda t: t.update(requested_choice=12),
+                   lambda t: t.update(requested_choice=65535),
+                   lambda t: t.update(requested_choice=True),
+                   lambda t: t["prior"].update(raw=7),
+                   lambda t: t["prior"].update(known_fields=1),
+                   lambda t: t["prior"].update(operation_id=103),
+                   lambda t: t["prior"].update(raw_hex="0103020007F986"),
+                   lambda t: t["prior"].update(delivered_us=1001),
+                   lambda t: t["progress"][0].__setitem__(2, 7),
+                   lambda t: t["progress"][0].__setitem__(1, 0x31),
+                   lambda t: t["progress"][0].__setitem__(7, True),
+                   lambda t: t.update(outcome="update_not_admitted", ok=False, state="failed", status="INVALID_CONFIG")]
+        for change in changes:
+            broken = copy.deepcopy(terminal); change(broken)
+            with self.assertRaises(bench.BenchError):
+                bench.Console._check_driver(broken, 1, None, "homing_auxiliary")
+        with self.assertRaises(bench.BenchError):
+            bench.Console._check_driver(terminal, 1, ("6",), "homing_auxiliary")
+        with self.assertRaises(bench.BenchError):
+            bench.Console._check_driver(terminal, 1, None, "position_start_speed")
 
     def test_driver_read_update_and_retained_inspection_correlation(self):
         for update in (False, True):

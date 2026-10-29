@@ -339,7 +339,7 @@ bool hint(Writer& writer, const Value& report) {
         if (!command.begin) command = key("help");
         if (command.end - command.begin >= 5 && !std::memcmp(command.begin, "move-", 5)) command = key("move");
         if (command.end - command.begin >= 5 && !std::memcmp(command.begin, "read-", 5)) command = key("read");
-        if (equal(command, "home-read")) command = key("home");
+        if (equal(command, "home-read") || equal(command, "home-auxiliary")) command = key("home");
         if (equal(command, "velocity-read")) command = key("velocity");
         if (equal(command, "motion-profile-start-speed")) command = key("motion-profile");
         return writer.text("Hint: help ") && writer.string(command) && writer.text(" shows syntax and prerequisites.\n");
@@ -703,18 +703,23 @@ bool driveReport(Writer& writer, const Value& report) {
         namedSetting(writer, "External position mode", element(raw, 6), known & 64, "relative", "absolute") &&
         writer.text("Active behavior and signed limit interpretation remain unconfirmed.\n") && motionDetails(writer, report);
 }
-bool startSpeedReport(Writer& writer, const Value& report) {
+bool singleSettingReport(Writer& writer, const Value& report, bool auxiliary) {
+    const char* subject = auxiliary ? "Homing auxiliary setting" : "Position start-speed setting";
     if (equal(member(report, "result"), "accepted"))
-        return writer.text("Position start-speed setting accepted") && operationNumber(writer, report) && writer.text(".\n");
+        return writer.text(subject) && writer.text(" accepted") && operationNumber(writer, report) && writer.text(".\n");
     const bool complete = equal(member(report, "ok"), "true");
     const Value progress = element(member(report, "progress"), 0);
     const Value prior = member(report, "prior");
-    return writer.text(complete ? "Position start-speed stored readback confirmed" : "Position start-speed setting not confirmed") &&
+    return writer.text(complete && !auxiliary ? "Position start-speed" : subject) &&
+        writer.text(complete ? " stored readback confirmed" : " not confirmed") &&
         operationNumber(writer, report) && writer.text(".\n") &&
-        setting(writer, "Requested start speed", member(report, "requested_native"), " native") &&
-        setting(writer, "Prior start speed", equal(member(prior, "operation_id"), "0") ? Value() : member(prior, "raw"), " native") &&
-        setting(writer, "Readback", equal(element(progress, 5), "true") ? element(progress, 6) : Value(), " native") &&
-        writer.text("Physical scaling, active behavior and persistence remain unqualified. Refresh motion evidence before a move.\n") &&
+        setting(writer, auxiliary ? "Requested auxiliary choice" : "Requested start speed",
+            member(report, auxiliary ? "requested_choice" : "requested_native"), auxiliary ? "" : " native") &&
+        setting(writer, auxiliary ? "Prior auxiliary choice" : "Prior start speed",
+            equal(member(prior, "operation_id"), "0") ? Value() : member(prior, "raw"), auxiliary ? "" : " native") &&
+        setting(writer, "Readback", equal(element(progress, 5), "true") ? element(progress, 6) : Value(), auxiliary ? "" : " native") &&
+        writer.text(auxiliary ? "Stored choice only. Active policy, offset interpretation and homing readiness remain unqualified.\n" :
+            "Physical scaling, active behavior and persistence remain unqualified. Refresh motion evidence before a move.\n") &&
         (complete || conciseFailure(writer, report)) && motionDetails(writer, report);
 }
 } // namespace
@@ -738,8 +743,9 @@ bool renderHuman(const char* json, char* output, std::size_t capacity) noexcept 
     const bool profile = equal(command, "motion-profile");
     const bool drive = equal(command, "driver") || equal(member(report, "driver_group"), "drive");
     const bool startSpeed = equal(command, "motion-profile-start-speed") || equal(member(report, "driver_group"), "position_start_speed");
-    if (settings || configuration || profile || drive || startSpeed) {
-        const bool rendered = startSpeed ? startSpeedReport(writer, report) : settings ? motorSettingsReport(writer, report) : configuration ? readConfigReport(writer, report) :
+    const bool auxiliary = equal(command, "home-auxiliary") || equal(member(report, "driver_group"), "homing_auxiliary");
+    if (settings || configuration || profile || drive || startSpeed || auxiliary) {
+        const bool rendered = (startSpeed || auxiliary) ? singleSettingReport(writer, report, auxiliary) : settings ? motorSettingsReport(writer, report) : configuration ? readConfigReport(writer, report) :
             profile ? profileReport(writer, report) : driveReport(writer, report);
         if (!rendered) { output[0] = '\0'; return false; }
         writer.finish(); return true;

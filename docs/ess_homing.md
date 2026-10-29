@@ -120,34 +120,86 @@ between current feedback observations still invalidate coordinate confidence.
 Generation exhaustion cancels further homing work and prevents reference
 publication; any accepted write and its uncertainty remain retained.
 
-## Planned auxiliary setting and switch-method integration (not implemented)
+<a id="planned-auxiliary-setting-and-switch-method-integration-not-implemented"></a>
 
-The [stage 01 review](reports/2026-10-29_ess_software_contracts.md) fixes these
-contracts for stages 03/05/08-12. Existing support remains 33/34/35 only.
+## Explicit auxiliary setting
 
-The six-record/seven-word parameter snapshot uses the planned
-[parameter-read API](ess_reads.md#planned-parameter-reads-stage-01-decision-not-implemented).
-The auxiliary setter instead reuses `DriverContext` with a one-field
-`DriverGroup::HOMING_AUXILIARY`, group-local bit 0 and named
-`DriverRequest::homingAuxiliary`. The planned
-`prepareHomingAuxiliary(DriverRequest&, HomingAuxiliary)` selector validates all
-twelve enumerated choices 0..11; no bitwise combinations or extra values are
-accepted. Use FC03 `0x0030/1` for the prior, FC06 `0x0030` for the update and a
-separate one-word readback. Its seven-byte read replies fit `DriverEvidence`;
-do not force the nineteen-byte family snapshot into that buffer.
+`prepareHomingAuxiliary(DriverRequest&, HomingAuxiliary)` selects
+`DriverGroup::HOMING_AUXILIARY`, local bit0 and `DriverRequest::homingAuxiliary`.
+It accepts all twelve scalar choices0..11 and rejects invalid casts/mixed
+nonempty selections without changing the request. These are enumerated choices,
+not independent flags. The ESS-RS function manual physical p72 documents one RW
+`0x0030` word, default0, and the following meanings after homing completion:
 
-Use the same explicit group admission/evidence policy as the planned
-[start-speed setter](ess_position.md#planned-start-speed-setting-and-interruption-not-implemented):
-fresh exact prior, stopped state, independent interfering-input/trigger policy,
-confirmed write reply, readback and possible effects. The application wrapper
-`submitHomingAuxiliary(choice, id)` and `home auxiliary <0..11>` share the bounded
-prior-read/update session, `copySettingsResult` and terminal `releaseOperation`.
-A possibly applied auxiliary write invalidates home qualification and unsent
-dependent home work even if readback fails. It does not itself prove an immediate
-coordinate change. No home trigger, input reassignment or EEPROM save follows.
-Setting/readback of 7 never establishes its qualified active policy. Execution
-remains independently qualified auxiliary 7 and zero offset; other setters do
-not implement their coordinate/offset policies as motion.
+| Choice | Offset motion | Resulting coordinate (vendor terms) |
+| --- | --- | --- |
+| 0 | Run offset | Offset value |
+| 1 | Run offset | Zero |
+| 2 | Run offset | Negative offset value |
+| 3 | Run offset | Actual value |
+| 4 | Run offset | Actual value plus offset |
+| 5 | Run offset | Actual value minus offset |
+| 6 | Do not run offset | Offset value |
+| 7 | Do not run offset | Zero |
+| 8 | Do not run offset | Negative offset value |
+| 9 | Do not run offset | Actual value |
+| 10 | Do not run offset | Actual value plus offset |
+| 11 | Do not run offset | Actual value minus offset |
+
+The table does not establish write activation timing or an immediate counter
+change. Physical p73 does not resolve offset order/sign/scale or the sampling
+instant of its term actual value. Selecting a stored policy implements no new
+coordinate policy as motion. `prepareHome` still requires independently
+qualified active auxiliary7, qualified zero offset, exact native parameters and
+methods33/34/35. A stored/readback7 never grants any of those qualifications.
+
+Use `prepareDriverRead`/`getDriver` for prior FC03 `0x0030/1`; the update uses
+`prepareDriverSettings`/`nextDriver`/`advanceDriver` for FC06 `0x0030` and separate
+FC03 readback. `raw[0]` preserves even an unknown prior word; local
+`knownFields` bit0 means known choice0..11. Seven-byte read replies fit the
+existing15-byte `DriverEvidence` buffer. The separate six-record/seven-word
+family snapshot remains in [ReadContext](ess_reads.md), with19-byte evidence.
+No seven-word write or broader FC10 window is admitted.
+
+The setter requires matching target/configuration/prior provenance, qualified
+fresh stopped/alarm-free state, `inputsPermit` and independent external-trigger
+inhibition with matching target/generation/times. The immutable write budget is
+capped by these witnesses. `allowEchoReadback` is rejected for this group:
+missing/unconfirmed ACK, partial TX, cancel or failed readback retains its
+possible effects and never starts replay, rollback, home or save.
+
+`submitHomingAuxiliary(choice, id)` and `home auxiliary <0..11>` share the ordinary
+selected-axis prior-read/update session, `copySettingsResult` and terminal
+`releaseOperation`. One frozen candidate, reserved axis/result and unchanged
+three-second deadline cover all transactions. Invalid casts, stale binding,
+running/unqualified required state, full results and conflicting work reject
+before traffic. The standalone policy uses checked configuration, stopped state,
+zero-speed feedback and inactive logical inputs; assignments0..3 are passive,
+and nonzero assignments also require declared unconnected wiring. This declares
+no input disabled and changes no assignment or polarity. Active home policy is
+not a prerequisite for selecting a stored choice.
+
+Failed prior reads retain READ context without a write. A successful prior whose
+update admission fails retains its checked frame with `UPDATE_NOT_ADMITTED`.
+Updates retain prior observation in `prerequisites.previous`, write execution/
+echo and independent readback separately. Results are copied into caller storage
+without a large transient context and remain owned until explicit terminal
+release. Missing/released/wrong-kind IDs leave output unchanged; programmatic
+results need no console and are never recycled as successful human commands.
+The Python `Console.set_homing_auxiliary` performs one attempt and explicit
+result release; `begin`/`wait` can keep the application result retained.
+
+As soon as TX may apply, advance the axis generation and expire dependent home
+qualification/prepared work, current references and readiness. Fixed host
+origins/scales, desired values and historical observations/results remain.
+New parameter reads can revoke mismatching qualification but never grant or
+refresh it. No home trigger, `0x0031/6` parameter staging, persistent save,
+input reassignment, automatic repair or rollback follows this setter.
+
+## Planned switch-method integration (not implemented)
+
+The remaining [stage01 decisions](reports/2026-10-29_ess_software_contracts.md)
+cover stages08-12; existing execution support remains33/34/35 only.
 
 Stage 08 will expose ordinary application `installHomeQualification`,
 `inspectHomeQualification`, `revokeHomeQualification`, `submitHome` and

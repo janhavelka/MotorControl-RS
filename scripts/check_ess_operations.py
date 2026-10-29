@@ -85,8 +85,9 @@ def check_cli_route(command, metadata, operation_kind):
         valid = len(tail) == 1 and tail[0] in {"identity", "config", "state"}
         effects = {"READ"}
     elif root in {"velocity", "home"}:
-        valid = tail == ["read"] or not tail
-        effects = {"READ"} if tail == ["read"] else {"WRITE", "ACTION"}
+        auxiliary = root == "home" and tail == ["auxiliary", "CHOICE"]
+        valid = tail == ["read"] or not tail or auxiliary
+        effects = {"READ"} if tail == ["read"] else {"WRITE"} if auxiliary else {"WRITE", "ACTION"}
     elif root == "discover":
         valid = not tail or tail in [["inspect"], ["cancel"], ["restore"], ["finish"]]
         # Session inspection/control are mapped in the separate host surface.
@@ -235,6 +236,11 @@ def check(inventory, ledger):
             for command in commands:
                 if not isinstance(command, str):
                     raise ValueError("invalid CLI command: " + op_id)
+                # Homing execution stages 0x0031/6; only this separate route
+                # writes auxiliary 0x0030. A family name alone is not coverage.
+                if kind == "WRITE" and ("HOMING_AUXILIARY" in linked or command == "home auxiliary CHOICE"):
+                    if linked != ["HOMING_AUXILIARY"] or command != "home auxiliary CHOICE":
+                        raise ValueError("homing auxiliary requires its exact producing route: " + op_id)
                 check_cli_route(command, metadata, kind)
         api = operation.get("api", {})
         keys(api, "header symbols", "api")

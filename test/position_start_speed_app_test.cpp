@@ -89,7 +89,7 @@ void baseline() {
     command("@2 read state\n"); const auto state = app->latestOperationId;
     readReply(state, words({0, 1})); readReply(state, words({0, 0})); readReply(state, words({0, 0, 0}));
     pump(); assert(view(state).typedRead->state == ReadState::SUCCEEDED && releaseOperation(state));
-    assert(positionSettingPolicy(*app, hardware.time));
+    assert(singleSettingPolicy(*app, hardware.time));
 }
 ESS::DriverContext setting(uint32_t id) {
     ESS::DriverContext result; assert(copySettingsResult(id, result)); return result;

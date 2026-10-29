@@ -1,9 +1,10 @@
 # Execution progress
 
-Prepared 2026-10-23; updated 2026-10-29 for stages 01-04 execution. The preparation
+Prepared 2026-10-23; updated 2026-10-29 for stages 01-05 execution. The preparation
 record below is historical. Stage 01 delivered contracts only; stage 02 implements
 velocity parameter reads. Stage 03 adds homing parameter reads; stage 04 adds
-position start-speed setting. Stages 05-15 remain NOT STARTED.
+position start-speed setting. Stage05 adds homing auxiliary configuration;
+stages06-15 remain NOT STARTED.
 
 | Stage | Stage status | Commit / evidence | Physical evidence |
 | --- | --- | --- | --- |
@@ -11,7 +12,7 @@ position start-speed setting. Stages 05-15 remain NOT STARTED.
 | 02 | SOFTWARE COMPLETE | `6bede39`; [implementation/review/validation](../../reports/2026-10-29_ess_velocity_reads.md); 80-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 03 | SOFTWARE COMPLETE | `ff3fae3`; [implementation/source/verification](../../reports/2026-10-29_ess_homing_reads.md); 81-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 04 | SOFTWARE COMPLETE | [Implementation and verification](../../reports/2026-10-29_ess_position_start_speed.md); `ef38513`; 83-test final quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
-| 05 | NOT STARTED | - | NOT RUN |
+| 05 | IN PROGRESS | [Implementation and verification](../../reports/2026-10-29_ess_homing_auxiliary.md); 85-test quick/package PASS; exact-commit CI pending | NOT RUN: recorded bench USB absent |
 | 06 | NOT STARTED | - | NOT RUN |
 | 07 | NOT STARTED | - | NOT RUN |
 | 08 | NOT STARTED | - | NOT RUN |
@@ -227,3 +228,19 @@ Arduino4/4 and IDF S3 app/core-S3/core-S2/portable-S2 checks PASS. Artifacts:
 `build/ess_software_04_ci/`. No earlier green run is credited to this change.
 Local full firmware NOT RUN. Physical NOT RUN: fresh enumeration still lacks
 the recorded bench USB identity; other devices were not opened or flashed.
+
+## Stage 05 implementation checkpoint (2026-10-29)
+
+N07 implements all twelve stored auxiliary choices with a one-field
+`DriverContext` prior-read/FC06/readback path, ordinary app submit/copy/release,
+shared `home auxiliary` and strict Python results. The seven-word family read
+remains in `ReadContext`. Possible effects expire dependent home qualification/
+prepared work; matching7 never grants active policy or zero-offset qualification.
+No method, input assignment, persistence action or write window is enabled.
+[Source/review/fixes/verification](../../reports/2026-10-29_ess_homing_auxiliary.md).
+Lead focused15/15, independent review7/7, writer3/3, host271/parity14+6+6,
+inventory32 and fresh quick85/85 plus package/consumers PASS. The independent
+review's existing position-result wording regression was fixed without changing
+its assertions. Only N07 closes: five named gaps and18 guarded pairs remain.
+Exact implementation-commit CI pending. Physical NOT RUN: recorded bench USB
+identity absent in fresh enumeration; other devices were not opened/flashed.

@@ -61,7 +61,7 @@ class Coverage(unittest.TestCase):
         self.assertEqual((summary["records"], summary["reserved"], summary["unresolved_access"], summary["named_choices"]),
                          (221, 16, 2, 135))
         self.assertEqual(sum(count for state, count in summary["read"].items() if state in operations.IMPLEMENTATION), 201)
-        self.assertEqual(summary["write"]["NOT_IMPLEMENTED"], 1)
+        self.assertEqual(summary["write"].get("NOT_IMPLEMENTED", 0), 0)
         self.assertEqual(summary["write"]["UNSUPPORTED"], 18)
         self.assertEqual(summary["action"]["IN_PROGRESS"], 2)
         linked = {record for group in INVENTORY["operations"] for record in group["records"]}
@@ -82,8 +82,8 @@ class Coverage(unittest.TestCase):
             "SoftLimitEnable.AFTER_HOMING", "OverLimitStop.FREE_PARKING", "OverLimitStop.EMERGENCY_STOP",
             "PvTriggerMode.LEVEL", "PvTriggerMode.RISING_EDGE", "PositionMode.RELATIVE", "PositionMode.ABSOLUTE", "HomingMethod.METHOD_33", "HomingMethod.METHOD_34",
             "HomingMethod.METHOD_35", "MotionCommandBit.START_HOMING",
-            "ControlAlgorithm.OPEN_LOOP", "ControlAlgorithm.ALGORITHM_1"} | {e["name"] + "." + v["name"] for e in LEDGER["enums"] if e["name"] in ("InputFunction", "OutputFunction", "InputBit", "OutputBit", "BaudRateCode", "SerialFormatCode", "MotionStatusBit", "AlarmCode") for v in e["values"] if not (e["name"] == "OutputFunction" and v["value"] == 11)})
-        self.assertEqual(result["summary"]["choice_implementation"], {"NOT_IMPLEMENTED": 52, "IMPLEMENTED": 81, "UNSUPPORTED": 1, "NOT_APPLICABLE": 1})
+            "ControlAlgorithm.OPEN_LOOP", "ControlAlgorithm.ALGORITHM_1"} | {e["name"] + "." + v["name"] for e in LEDGER["enums"] if e["name"] in ("InputFunction", "OutputFunction", "InputBit", "OutputBit", "BaudRateCode", "SerialFormatCode", "MotionStatusBit", "AlarmCode", "HomingAuxiliary") for v in e["values"] if not (e["name"] == "OutputFunction" and v["value"] == 11)})
+        self.assertEqual(result["summary"]["choice_implementation"], {"NOT_IMPLEMENTED": 40, "IMPLEMENTED": 93, "UNSUPPORTED": 1, "NOT_APPLICABLE": 1})
         for record in result["records"]:
             if record["id"] in ("AUXILIARY_COMMAND", "MOTION_COMMAND"):
                 self.assertEqual(record["obligations"]["write"], "IN_PROGRESS")
@@ -93,8 +93,8 @@ class Coverage(unittest.TestCase):
         result = operations.check(INVENTORY, LEDGER)
         choices = {row["id"]: row["disposition"] for row in result["named_choices"]}
         for choice, disposition in choices.items():
-            if choice.startswith("HomingAuxiliary.") or (choice.startswith("HomingMethod.") and
-                    choice not in {"HomingMethod.METHOD_33", "HomingMethod.METHOD_34", "HomingMethod.METHOD_35"}):
+            if choice.startswith("HomingMethod.") and choice not in {
+                    "HomingMethod.METHOD_33", "HomingMethod.METHOD_34", "HomingMethod.METHOD_35"}:
                 self.assertEqual(disposition, operations.DEFAULT)
         offset = next(row for row in result["records"] if row["id"] == "HOMING_OFFSET")
         self.assertEqual(offset["obligations"]["write"], "IN_PROGRESS")
@@ -268,12 +268,12 @@ class Coverage(unittest.TestCase):
         for name in read["records"]:
             self.assertEqual(records[name]["obligations"]["read"], "IMPLEMENTED")
             self.assertEqual(records[name]["read_operations"], ["homing_parameter_read"])
-        self.assertEqual(records["HOMING_AUXILIARY"]["obligations"]["write"], "NOT_IMPLEMENTED")
+        self.assertEqual(records["HOMING_AUXILIARY"]["obligations"]["write"], "IMPLEMENTED")
         self.assertEqual(records["HOMING_OFFSET"]["obligations"]["write"], "IN_PROGRESS")
         choices = {row["id"]: row for row in result["named_choices"]}
         self.assertEqual(choices["HomingMethod.METHOD_24"]["disposition"], operations.DEFAULT)
-        self.assertEqual(choices["HomingAuxiliary.KEEP_POSITION_SET_ZERO"]["disposition"], operations.DEFAULT)
-        self.assertIn("homing_auxiliary_write", {gap["id"] for gap in INVENTORY["gaps"]})
+        self.assertEqual(choices["HomingAuxiliary.KEEP_POSITION_SET_ZERO"]["coverage_kind"], "WRITE")
+        self.assertNotIn("homing_auxiliary_write", {gap["id"] for gap in INVENTORY["gaps"]})
         self.assertEqual(result["summary"]["read"].get("NOT_IMPLEMENTED", 0), 0)
         for route in ("home", "home methods", "home inspect", "home read extra", "read home"):
             self.rejected(lambda value: next(row for row in value["operations"]
@@ -316,7 +316,23 @@ class Coverage(unittest.TestCase):
         self.assertEqual(gap["disposition"], "PARTIAL")
         self.assertEqual(set(gap["records"]), set(restored["records"]))
         self.assertIn("volatile original snapshot", gap["reason"])
-        self.assertEqual(result["summary"]["named_gaps"], 6)
+        self.assertEqual(result["summary"]["named_gaps"], 5)
+
+    def test_auxiliary_choices_close_only_stored_setting_coverage(self):
+        result = operations.check(INVENTORY, LEDGER)
+        choices = [row for row in result["named_choices"] if row["id"].startswith("HomingAuxiliary.")]
+        self.assertEqual({row["value"] for row in choices}, set(range(12)))
+        for row in choices:
+            self.assertEqual(row["coverage_kind"], "WRITE")
+            self.assertEqual(row["disposition"], dict(implementation="IMPLEMENTED", cli="REACHABLE", native="PASS", hardware="NOT_RUN"))
+        for home in INVENTORY["operations"]:
+            if "prepareHome" in home.get("api", {}).get("symbols", []):
+                self.assertTrue(all(not choice.startswith("HomingAuxiliary.") for choice in home.get("choices", [])))
+        def setter(value):
+            return next(row for row in value["operations"] if row["id"] == "homing_auxiliary_write")
+        for route in ("home", "home read", "home auxiliary", "home auxiliary 7 extra", "home methods"):
+            self.rejected(lambda value: setter(value).update(cli_commands=[route]))
+        self.rejected(lambda value: setter(value).update(choices=["HomingAuxiliary.MISSING"]))
 
     def test_profile_snapshot_inspection_and_forget_do_not_produce_device_coverage(self):
         restored = lambda value: next(row for row in value["operations"] if row["id"] == "position_profile_restore")

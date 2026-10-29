@@ -38,6 +38,7 @@
     "DRIVER_MODEL",
     "ENCODER_RESOLUTION",
     "EXTERNAL_POSITION_MODE",
+    "HOMING_AUXILIARY",
     "HOMING_METHOD",
     "HOMING_OFFSET",
     "HOMING_QUERY_SPEED",
@@ -2661,6 +2662,58 @@
         "reason": "No new-image physical start-speed or activation evidence."
       },
       "reason": "Explicit native0..3000 FC06 update through the ordinary reserved prior-read/update/readback session. Stored state, effects and uncertainty are retained separately; no motion, save, replay, rollback or widened0021/5 window."
+    },
+    {
+      "id": "homing_auxiliary_write",
+      "kind": "WRITE",
+      "records": [
+        "HOMING_AUXILIARY"
+      ],
+      "choices": [
+        "HomingAuxiliary.MOVE_OFFSET_SET_OFFSET",
+        "HomingAuxiliary.MOVE_OFFSET_SET_ZERO",
+        "HomingAuxiliary.MOVE_OFFSET_SET_NEGATIVE_OFFSET",
+        "HomingAuxiliary.MOVE_OFFSET_KEEP_ACTUAL",
+        "HomingAuxiliary.MOVE_OFFSET_ADD_OFFSET",
+        "HomingAuxiliary.MOVE_OFFSET_SUBTRACT_OFFSET",
+        "HomingAuxiliary.KEEP_POSITION_SET_OFFSET",
+        "HomingAuxiliary.KEEP_POSITION_SET_ZERO",
+        "HomingAuxiliary.KEEP_POSITION_SET_NEGATIVE_OFFSET",
+        "HomingAuxiliary.KEEP_POSITION_KEEP_ACTUAL",
+        "HomingAuxiliary.KEEP_POSITION_ADD_OFFSET",
+        "HomingAuxiliary.KEEP_POSITION_SUBTRACT_OFFSET"
+      ],
+      "api": {
+        "header": "include/MotorControlRS/profiles/ess_rs/DriverSettings.h",
+        "symbols": [
+          "prepareHomingAuxiliary",
+          "prepareDriverRead",
+          "getDriver",
+          "prepareDriverSettings",
+          "nextDriver",
+          "advanceDriver"
+        ]
+      },
+      "cli_commands": [
+        "home auxiliary CHOICE"
+      ],
+      "implementation": "IMPLEMENTED",
+      "cli": "REACHABLE",
+      "native": {
+        "state": "PASS",
+        "evidence": [
+          "test/driver_settings_test.cpp",
+          "test/homing_auxiliary_app_test.cpp",
+          "test/bench_probe_test.py",
+          "test/driver_console_parity_test.py"
+        ]
+      },
+      "hardware": {
+        "state": "NOT_RUN",
+        "evidence": [],
+        "reason": "Stored policy write/readback is not active-policy, offset or physical homing qualification."
+      },
+      "reason": "All12 source-supported scalar choices through explicit reserved prior-read/FC06/readback session. Confirmed ACK required; no home trigger, staging, input reassignment, save, replay or rollback. Possible effects revoke dependent qualification; matching7 never qualifies activepolicy."
     }
   ],
   "coverage_notes": [
@@ -2700,18 +2753,6 @@
       "owner": "09/11",
       "disposition": "PARTIAL",
       "reason": "The public typed0021/5 builder accepts valid caller-supplied profiles, but the application/CLI exposes only restoration of its volatile original snapshot. General native parameter candidates and archived restoration after host restart require a bounded checked staging operation; no arbitrary CLI setter or archive import exists. Existing restricted restoration and finite-move staging do not close this obligation."
-    },
-    {
-      "id": "homing_auxiliary_write",
-      "records": [
-        "HOMING_AUXILIARY"
-      ],
-      "kinds": [
-        "WRITE"
-      ],
-      "owner": "14",
-      "disposition": "NOT_IMPLEMENTED",
-      "reason": "Homing requires independently qualified existing active auxiliary7; no typed setter exists."
     },
     {
       "id": "homing_methods_remaining",
@@ -3058,7 +3099,8 @@
         "prepareDriverSettings",
         "prepareInputFunction",
         "prepareOutputFunction",
-        "preparePositionStartSpeed"
+        "preparePositionStartSpeed",
+        "prepareHomingAuxiliary"
       ],
       "classification": "DEVICE_OPERATION",
       "reason": "Whole-candidate driver/I/O settings and checked retained readback; no implicit assignments.",
@@ -3066,6 +3108,7 @@
         "driver",
         "io",
         "motion-profile",
+        "home",
         "profile",
         "result"
       ]

@@ -34,12 +34,12 @@ remain NOT RUN. Raw DIP interpretation remains unresolved; reading a writable
 setting still creates no setter credit. The documented auxiliary INVALID value
 is explicitly no-operation metadata, not a missing command to implement.
 
-The checked inventory retains 221 records/242 words, 135 choices, 52 producing
-operation rows and six named gaps. It accounts for 201 implemented reads and
-zero missing readable-record implementations; 171 implemented writes, one missing write, three partial
+The checked inventory retains 221 records/242 words, 135 choices, 53 producing
+operation rows and five named gaps. It accounts for 201 implemented reads and
+zero missing readable-record implementations; 172 implemented writes, zero missing writes, three partial
 write registers and 18 guarded pair writes. Sixteen reserved records and two
-unspecified-access records remain visible. Choice totals are 81 implemented
-(including twelve decoders), 52 unimplemented/unresolved, one unsupported and
+unspecified-access records remain visible. Choice totals are 93 implemented
+(including twelve decoders), 40 unimplemented/unresolved, one unsupported and
 one no-operation value. These counts are implementation accounting, not full
 device or physical qualification.
 
@@ -76,6 +76,7 @@ the installed core performs no UART, clock, retry, queue, heap or logging work.
 | Remembered intent and subdivision | `speed`, `accel`, `decel`, `subdivision [INTEGER|options]` | Speed/ramps are host intent until a move; subdivision uses the typed driver setter/readback |
 | Velocity parameters | `velocity read [address]` | ESS `Reads.h` producing single-window read, copied raw observation and ordinary application submit/copy/release API |
 | Velocity | `velocity` | Common target preparation and ESS velocity sequence; unresolved acceleration mapping rejected |
+| Homing auxiliary | `home auxiliary CHOICE` | One-field checked prior/FC06/readback API, all twelve stored choices; active-policy qualification remains independent |
 | Homing parameters | `home read [address]` | ESS `Reads.h` single seven-word read, raw result, explicit interpretation/support and ordinary application submit/copy/release |
 | Homing | `home methods`, `home ...` | ESS method descriptors and homing sequence; only methods 33-35 implemented |
 | Driver and optional I/O | `driver read|set`, `io read|set` | ESS whole-candidate driver preparation and checked readback |
@@ -173,7 +174,6 @@ The remaining gaps are tracked by feature, independently of hardware evidence:
 | --- | --- | --- |
 | Position | Native ignore-versus-interrupt position command | Fixed noninterrupting triggers are implemented; bit 3 has no typed option or CLI route. Priority stop does not implement position interruption. |
 | Position | Arbitrary native five-word profile candidates and archived restoration | Typed builder exists, but CLI restoration accepts only the volatile original snapshot; finite-move staging is not standalone parameter access |
-| Homing | Native auxiliary setter | Existing homing requires independently qualified active auxiliary 7 |
 | Homing | Remaining homing trajectories | Three methods implemented, 27 unimplemented, five unresolved; I/O configuration does not implement a switch trajectory |
 | Homing | Nonzero homing offset and additional paired-write forms | Zero-only reviewed staging does not resolve offset order, signedness or units |
 | Settings | Limit and stored-position paired setters | Reviewed write restrictions stay in the source denominator; no split FC06 workaround |

@@ -77,7 +77,7 @@ const Entry COMMANDS[] = {
     {"segment", Command::SEGMENT, "segment position|speed|start INDEX read [address] | segment position|speed|start INDEX set FIELD INTEGER [FIELD INTEGER ...] [address]", "indexed_stored_records_only_external_execution", true, "Read or update stored segment settings; this does not execute a segment."},
     {"control", Command::CONTROL, "control read [address] | control set algorithm|encoder-resolution|maximum-effective-current|closed-maximum-current|closed-base-current|open-maximum-current|lock-current|lock-delay INTEGER [field integer ...] [address]; algorithm open-loop|algorithm-1", "stopped_native_control_settings_and_checked_readback", true, "Read or update supported control settings while the drive is stopped."},
     {"tuning", Command::TUNING, "tuning filters|current-loop|la|collision read [address] | tuning GROUP set FIELD INTEGER [FIELD INTEGER ...] [address]; filters: input-filter pulse-low-pass deviation-threshold arrival-window arrival-time pulse-mean; current-loop: multiplier kp ki kc; la: kp1 kv1 node1 kp2 kv2 node2 kvf position-ki; collision: threshold current", "qualified_stopped_native_tuning_and_checked_readback", true, "Read or update named filter, current-loop, LA or collision parameters."},
-    {"home", Command::HOME, "home methods | home read [address] | home method search_native return_native ramp_native zero [address]", "checked_parameter_read_or_qualified_homing", true, "Read native homing parameters, list methods or request qualified homing."},
+    {"home", Command::HOME, "home methods | home read [address] | home auxiliary <0..11> | home method search_native return_native ramp_native zero [address]", "checked_parameter_read_auxiliary_setting_or_qualified_homing", true, "Read homing parameters, select auxiliary configuration, list methods or request qualified homing."},
     {"enable", Command::ENABLE, "enable [address]", "request_enable_then_observe_flags", true, "Request motor enable and observe the resulting flags."},
     {"motor-release", Command::MOTOR_RELEASE, "motor-release [address]", "request_release_then_observe_flags", true, "Request motor release and observe the resulting flags."},
     {"alarm-clear", Command::ALARM_CLEAR, "alarm-clear [address]", "request_clear_resettable_alarm_then_observe_flags", true, "Request alarm clearing and check the drive flags."},
@@ -548,6 +548,7 @@ HelpText helpText(const Entry& entry, const Host& host) {
     const bool reads = host.startTypedRead && host.snapshot;
     if (entry.command == Command::HOME) {
         const bool motion = host.startHome && host.snapshot && host.axis;
+        const bool setter = host.startDriver && host.snapshot;
         text.bus = reads || motion;
         if (reads && !motion) {
             text.syntax = "home methods | home read [address]";
@@ -561,6 +562,20 @@ HelpText helpText(const Entry& entry, const Host& host) {
             text.syntax = "home methods";
             text.description = "List documented homing methods.";
             text.effect = "local_method_inventory";
+        }
+        if (setter) {
+            text.bus = true;
+            text.syntax = reads && motion ? entry.syntax : reads ? "home methods | home read [address] | home auxiliary <0..11>" :
+                motion ? "home methods | home auxiliary <0..11> | home method search_native return_native ramp_native zero [address]" :
+                "home methods | home auxiliary <0..11>";
+            text.description = reads && motion ? entry.description : reads ? "Read homing parameters, select auxiliary configuration or list methods." :
+                motion ? "Select auxiliary configuration, list methods or request qualified homing." :
+                "Select auxiliary configuration or list methods.";
+            text.effect = "explicit_auxiliary_setting_with_independent_active_policy";
+        } else if (reads && motion) {
+            text.syntax = "home methods | home read [address] | home method search_native return_native ramp_native zero [address]";
+            text.description = "Read native homing parameters, list methods or request qualified homing.";
+            text.effect = "checked_parameter_read_or_qualified_homing";
         }
     } else if (entry.command == Command::VELOCITY) {
         const bool motion = host.startVelocity && host.snapshot && host.axis;
@@ -800,7 +815,7 @@ void Console::error(uint32_t id, const char* command, const char* reason) noexce
 
 void Console::action(uint32_t id, const char* command, Action result, uint8_t address, uint32_t operationId) noexcept {
     const bool typed = std::strcmp(command, "read-identity") == 0 || std::strcmp(command, "read-config") == 0 || std::strcmp(command, "read-state") == 0 || std::strcmp(command, "velocity-read") == 0 || std::strcmp(command, "home-read") == 0;
-    const bool motor = std::strcmp(command, "motion-profile-start-speed") == 0 || std::strcmp(command, "enable") == 0 || std::strcmp(command, "motor-release") == 0 || std::strcmp(command, "alarm-clear") == 0 || std::strcmp(command, "position-clear") == 0 || std::strcmp(command, "stop") == 0 || std::strncmp(command, "move-", 5) == 0 || std::strcmp(command, "velocity") == 0 || std::strcmp(command, "driver") == 0 || (std::strcmp(command, "io") == 0 || std::strcmp(command, "segment") == 0 || std::strcmp(command, "control") == 0 || std::strcmp(command, "tuning") == 0);
+    const bool motor = std::strcmp(command, "home-auxiliary") == 0 || std::strcmp(command, "motion-profile-start-speed") == 0 || std::strcmp(command, "enable") == 0 || std::strcmp(command, "motor-release") == 0 || std::strcmp(command, "alarm-clear") == 0 || std::strcmp(command, "position-clear") == 0 || std::strcmp(command, "stop") == 0 || std::strncmp(command, "move-", 5) == 0 || std::strcmp(command, "velocity") == 0 || std::strcmp(command, "driver") == 0 || (std::strcmp(command, "io") == 0 || std::strcmp(command, "segment") == 0 || std::strcmp(command, "control") == 0 || std::strcmp(command, "tuning") == 0);
     std::snprintf(output_, sizeof(output_),
         "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":%s,\"result\":\"%s\",\"address\":%u,\"operation_id\":%lu%s}",
         static_cast<unsigned long>(id), command, boolean(result == Action::OK),
@@ -1310,6 +1325,24 @@ void Console::dispatch() noexcept {
     if (entry->command == Command::HOME) {
         if (outputPending()) { ++inputDropped_; return; }
         const std::size_t args = first + 1;
+        if (count > args && std::strcmp(tokens[args], "auxiliary") == 0) {
+            const char* command = "home-auxiliary";
+            if (!host_.startDriver || !host_.snapshot) { error(id, command, "unavailable"); return; }
+            uint32_t choice = 0; Ess::DriverRequest request;
+            if (count != args + 2 || !number(tokens[args + 1], choice) || choice > 11 ||
+                !Ess::prepareHomingAuxiliary(request, static_cast<Ess::HomingAuxiliary>(choice))) {
+                error(id, command, "invalid_arguments"); return;
+            }
+            Snapshot snapshot; host_.snapshot(host_.context, snapshot);
+            uint32_t operationId = 0;
+            const bool available = availableSlot() != OUTSTANDING_CAPACITY;
+            if (available) beginWork();
+            const Action result = available ? host_.startDriver(host_.context, id, snapshot.address,
+                Ess::DriverKind::UPDATE, request, operationId) : Action::BUSY;
+            if (result == Action::OK) track(id, operationId);
+            action(id, command, result, snapshot.address, result == Action::OK ? operationId : 0);
+            return;
+        }
         if (count == args + 1 && std::strcmp(tokens[args], "methods") == 0) {
             std::size_t used = 0;
             const bool fits = HomeConsole::formatMethods(output_, sizeof(output_), used, id);
@@ -2288,7 +2321,8 @@ bool Console::formatDriver(uint32_t id, uint32_t commandId, uint32_t operationId
     const bool control = c.group == Ess::DriverGroup::CONTROL_SETTINGS;
     const bool tuning = Ess::isTuningGroup(c.group);
     const bool position = c.group == Ess::DriverGroup::POSITION_START_SPEED;
-    const char* command = position ? "motion-profile-start-speed" : tuning ? "tuning" : control ? "control" : segment ? "segment" : io ? "io" : "driver";
+    const bool auxiliary = c.group == Ess::DriverGroup::HOMING_AUXILIARY;
+    const char* command = auxiliary ? "home-auxiliary" : position ? "motion-profile-start-speed" : tuning ? "tuning" : control ? "control" : segment ? "segment" : io ? "io" : "driver";
     const uint64_t stationaryUntil = Ess::driverWriteDeadline(c);
     if (!append(output_, sizeof(output_), used,
         "{\"type\":\"%s\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"command_id\":%lu,\"operation_id\":%lu,\"driver\":true,\"driver_kind\":\"%s\",\"ok\":%s,\"state\":\"%s\",\"outcome\":\"%s\",\"status\":\"%s\",\"detail\":%ld,\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"started_us\":%llu,\"deadline_us\":%llu,\"stationary_valid_until_us\":%llu,\"serviced_us\":%llu,\"completed_steps\":%u,\"fields\":%u,\"effects\":%u,\"uncertain\":%s,\"atomic\":false,\"active_settings_known\":false,\"progress_columns\":[\"field\",\"register\",\"previous\",\"requested\",\"acknowledged\",\"readback_known\",\"readback\",\"active_known\",\"active\",\"execution\"],\"progress\":[",
@@ -2324,7 +2358,7 @@ bool Console::formatDriver(uint32_t id, uint32_t commandId, uint32_t operationId
     }
     if (!append(output_, sizeof(output_), used, "],\"observation\":")) return false;
     if (c.kind == Ess::DriverKind::READ && Ess::getDriver(c, driverView_)) {
-        if (position) {
+        if (position || auxiliary) {
             if (!append(output_, sizeof(output_), used, "{\"raw\":[%u],\"known_fields\":%u}", driverView_.raw[0], driverView_.knownFields)) return false;
         } else if (io) {
             const auto& v = driverView_;
@@ -2362,18 +2396,21 @@ bool Console::formatDriver(uint32_t id, uint32_t commandId, uint32_t operationId
             static_cast<unsigned long>(v.positiveBits), static_cast<unsigned long>(v.negativeBits))) return false;
         }
     } else if (!append(output_, sizeof(output_), used, "null")) return false;
-    if (position) {
+    if (position || auxiliary) {
+        if (!append(output_, sizeof(output_), used, auxiliary ? ",\"requested_choice\":%u,\"active_policy_qualified\":false" :
+            ",\"requested_native\":%u,\"physical_scaling_known\":false",
+            auxiliary ? static_cast<uint16_t>(c.request.homingAuxiliary) : c.request.positionStartSpeed)) return false;
         const auto& prior = c.prerequisites.previous;
         const auto& e = prior.provenance[0];
         char raw[Ess::DRIVER_MAX_REPLY_BYTES * 2 + 1]; hex(e.raw, e.length, raw, sizeof(raw));
         if (!append(output_, sizeof(output_), used,
-            ",\"requested_native\":%u,\"physical_scaling_known\":false,\"prior\":{\"operation_id\":%lu,\"raw\":%u,\"known_fields\":%u,\"raw_hex\":\"%s\",\"attempted_us\":%llu,\"earliest_us\":%llu,\"latest_us\":%llu,\"delivered_us\":%llu}",
-            c.request.positionStartSpeed, static_cast<unsigned long>(prior.operationId), prior.raw[0], prior.knownFields, raw,
+            ",\"prior\":{\"operation_id\":%lu,\"raw\":%u,\"known_fields\":%u,\"raw_hex\":\"%s\",\"attempted_us\":%llu,\"earliest_us\":%llu,\"latest_us\":%llu,\"delivered_us\":%llu}",
+            static_cast<unsigned long>(prior.operationId), prior.raw[0], prior.knownFields, raw,
             static_cast<unsigned long long>(e.attemptedUs), static_cast<unsigned long long>(e.earliestUs),
             static_cast<unsigned long long>(e.latestUs), static_cast<unsigned long long>(e.deliveredUs))) return false;
     }
     if (!append(output_, sizeof(output_), used, ",\"driver_group\":\"%s\",\"echo_readback_policy\":%s,\"settlement\":\"%s\"}",
-        position ? "position_start_speed" : tuning ? tuningName(c.group) : control ? "control_settings" : segment ? (c.group == Ess::DriverGroup::POSITION_SEGMENT ? "position_segment" : c.group == Ess::DriverGroup::SPEED_SEGMENT ? "speed_segment" : "segment_start_speed") : io ? "io" : "drive", boolean(c.prerequisites.allowEchoReadback), io || segment || control || tuning ? "stored_readback" : "checked_ack_readback")) return false;
+        auxiliary ? "homing_auxiliary" : position ? "position_start_speed" : tuning ? tuningName(c.group) : control ? "control_settings" : segment ? (c.group == Ess::DriverGroup::POSITION_SEGMENT ? "position_segment" : c.group == Ess::DriverGroup::SPEED_SEGMENT ? "speed_segment" : "segment_start_speed") : io ? "io" : "drive", boolean(c.prerequisites.allowEchoReadback), io || segment || control || tuning ? "stored_readback" : "checked_ack_readback")) return false;
     // Index belongs to the retained request context, separately from host correlation.
     if (segment) {
         used -= 1;

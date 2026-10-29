@@ -149,3 +149,7 @@ checked prior/update/readback engine. Native 0..3000 and input/trigger
 prerequisites are documented in [position start speed](ess_position.md#native-position-start-speed-setting).
 Its effects expire motion readiness without changing coordinate interpretation;
 it rejects the optional unconfirmed-echo/readback policy.
+
+`DriverGroup::HOMING_AUXILIARY` likewise uses local bit0 and single-word
+prior/update/readback; [homing auxiliary](ess_homing.md#explicit-auxiliary-setting)
+documents all twelve scalar choices and its independent active-policy boundary.

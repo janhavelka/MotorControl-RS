@@ -92,3 +92,41 @@ if len(sys.argv) > 2:
         seen.add(name)
     assert seen == expected, (seen, expected)
     print(f"PASS: {len(seen)} actual app/console start-speed terminals accepted by Python")
+
+if len(sys.argv) > 3:
+    expected = {"success", "prior_exception", "readback_mismatch", "lost_ack", "cancelled", "changed_generation"}
+    output = subprocess.check_output([sys.argv[3], "--auxiliary-fixtures"], text=True, timeout=20)
+    seen = set()
+    for line in output.splitlines():
+        fixture = json.loads(line, object_pairs_hook=unique_object)
+        name, record = fixture["case"], fixture["record"]
+        assert name in expected and name not in seen, name
+        assert len(json.dumps(record, separators=(",", ":"))) < MAX_LINE
+        Console._check_driver(record, 1, ("7",), "homing_auxiliary")
+        check_fixture_routes(record)
+        for mutate in (lambda r: r.update(active_policy_qualified=True),
+                       lambda r: r.update(echo_readback_policy=True),
+                       lambda r: r.update(requested_choice=12),
+                       lambda r: r["evidence"][0].__setitem__(1, 0x31),
+                       lambda r: r.update(driver_group="drive")):
+            broken = copy.deepcopy(record); mutate(broken)
+            try:
+                Console._check_driver(broken, 1, ("7",), "homing_auxiliary")
+            except BenchError:
+                pass
+            else:
+                raise AssertionError((name, "malformed auxiliary evidence accepted"))
+        if record["driver_kind"] == "update":
+            for mutate in (lambda r: r["prior"].update(raw_hex="00"),
+                           lambda r: r["prior"].update(raw=7),
+                           lambda r: r["prior"].update(operation_id=0)):
+                broken = copy.deepcopy(record); mutate(broken)
+                try:
+                    Console._check_driver(broken, 1, None, "homing_auxiliary")
+                except BenchError:
+                    pass
+                else:
+                    raise AssertionError((name, "missing prior provenance accepted"))
+        seen.add(name)
+    assert seen == expected, (seen, expected)
+    print(f"PASS: {len(seen)} actual app/console auxiliary terminals accepted by Python")

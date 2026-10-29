@@ -45,7 +45,7 @@ def check_inventory(root, listing, build):
     native.update({name: name+"_test" for name in
                    ("codec_independent", "probe_app_load", "idf_move_app",
                     "idf_simple_motion_app", "idf_control_app", "idf_velocity_app", "idf_home_app",
-                    "idf_position_start_speed_app")})
+                    "idf_position_start_speed_app", "idf_homing_auxiliary_app")})
     native["units_preview"] = "units_preview"
     for name, binary in native.items():
         command = by_name.get(name, {}).get("command", [])
@@ -77,7 +77,8 @@ def check_inventory(root, listing, build):
             python_command(registered, path)
             expected = [str((build / (target+suffix)).resolve())]
             if path.name == "driver_console_parity_test.py":
-                expected.append(str((build / ("position_start_speed_app_test"+suffix)).resolve()))
+                expected.extend(str((build / (binary+suffix)).resolve()) for binary in
+                    ("position_start_speed_app_test", "homing_auxiliary_app_test"))
             if [str(Path(arg).resolve()) for arg in registered["command"][2:]] != expected:
                 raise RuntimeError(f"wrong console fixture: {path.name}")
         else:

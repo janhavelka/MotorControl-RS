@@ -36,7 +36,7 @@ review. These are future refactors, not unfinished prompts from the completed se
 
 ## Native ESS coverage
 
-The inventory still has **six named native-family gaps and 18 guarded paired
+The inventory still has **five named native-family gaps and 18 guarded paired
 setters**. Their exact membership and source restrictions are maintained in
 [API coverage](ess_api_cli_coverage.md) and [paired writes](ess_pair_writes.md);
 the register catalogue alone is not semantic command coverage.
@@ -208,3 +208,8 @@ prior-read/FC06/readback API and `motion-profile start-speed` route. Only N04's
 write gap closes; physical scaling, activation and persistence remain unqualified.
 The profile window/restore stays `0x0021/5`; archived candidate import is separate.
 See [stage 04 evidence](reports/2026-10-29_ess_position_start_speed.md).
+
+Homing auxiliary configuration (N07) now has its explicit twelve-choice typed
+prior/FC06/readback API and ordinary `home auxiliary` route. Stored selection,
+active policy and physical homing remain separate. No method support, nonzero
+offset or write window is enabled. [Stage05 evidence](reports/2026-10-29_ess_homing_auxiliary.md).

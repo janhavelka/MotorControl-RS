@@ -283,3 +283,14 @@ A possible write expires readiness; fresh configuration/state/profile evidence
 must rebuild the native start-speed relationship before a move. Desired speed
 is never adjusted. Profile restore still excludes this word; see
 [position setting and restoration limits](ess_position.md#native-position-start-speed-setting).
+
+## Homing auxiliary configuration
+
+`home auxiliary CHOICE` explicitly selects one stored auxiliary choice0..11 for
+the selected axis. It uses prior FC03, confirmed FC06 echo and separate readback
+through `submitHomingAuxiliary`, with the normal retained result/cancel/release
+commands. Required stopped/configuration/input evidence is checked before traffic.
+Invalid/extra tokens reject without work. This does not start home, stage its
+parameters, change I/O or save. Readback7 is stored observation, never active
+policy qualification; home still requires independently qualified7/zero-offset
+and native parameter meanings. See [all twelve choices and API contract](ess_homing.md#explicit-auxiliary-setting).

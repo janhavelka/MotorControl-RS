@@ -4,6 +4,12 @@
 
 ### Added
 
+- Explicit homing auxiliary setting for all twelve native choices, with retained
+  prior read, checked FC06 echo and independent readback. Ordinary app API,
+  `home auxiliary` and strict host results share the bounded settings session.
+  Possible effects expire qualification; readback7 does not qualify active home
+  policy, zero offset or additional methods. No motion, I/O change or save.
+
 - Explicit native position start-speed setter (0..3000), retained prior read,
   checked FC06 echo, independent readback and possible-write invalidation. Ordinary
   app API and shared `motion-profile start-speed` use one bounded session; fixed

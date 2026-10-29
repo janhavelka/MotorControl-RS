@@ -61,6 +61,11 @@ It returns checked prior/echo/readback evidence and explicitly releases the resu
 `begin`/`wait` can retain the device result for inspection; neither path retries
 an uncertain write or qualifies physical speed/activation.
 
+`bench_probe.Console.set_homing_auxiliary(choice)` selects one stored choice0..11
+through the ordinary `home auxiliary` operation and returns checked prior/echo/
+readback evidence before explicit release. `begin`/`wait` support retained results.
+No home, active-policy qualification, save or uncertain-write replay follows.
+
 ## Reference preparation
 
 `prepare_references.py` downloads the nine references listed in the source

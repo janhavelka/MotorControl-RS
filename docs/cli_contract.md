@@ -30,7 +30,7 @@ application code are shared; adapters supply terminal I/O, UART/capture,
 startup and time. Equivalent Arduino/ESP-IDF builds expose the same operations.
 Capabilities distinguish unavailable callbacks, unimplemented features,
 unresolved semantics and physical qualification. Detailed help, menu descriptions
-and error usage for velocity/home families reflect read and motion callbacks
+and error usage for velocity/home families reflect read, setting and motion callbacks
 independently. Human parameter results name unresolved interpretations; numeric
 JSON resolution codes remain unchanged.
 
@@ -62,6 +62,7 @@ guides define complete arguments and prerequisites.
 | `velocity` | [Finite velocity](ess_velocity.md) with explicit duration and stop policy |
 | `enable`, `motor-release`, `alarm-clear`, `position-clear`, `stop normal\|fast` | Explicit [drive actions](ess_actions.md) |
 | `home read [address]` | One checked seven-word native parameter read; canonical `home-read`, no writes or qualification |
+| `home auxiliary CHOICE` | Explicit stored auxiliary choice0..11; canonical `home-auxiliary`, prior/echo/readback and independent active qualification |
 | `home methods`, `home ...` | Method inventory and qualified [homing](ess_homing.md) |
 | `driver`, `io`, `segment`, `control`, `tuning` | Typed reads/whole-candidate updates; [driver](ess_driver_settings.md), [I/O](ess_io.md), [segments](ess_segments.md), [control](ess_control_settings.md), [tuning](ess_tuning.md) |
 | `motion-profile read\|inspect\|restore\|forget` / `motion-profile start-speed NATIVE` | Retained position-parameter snapshot and explicit restoration |
@@ -190,7 +191,7 @@ are counted. Debug mode uses the same production operation path.
 
 ## ESS completion routes and remaining plans
 
-Stages 02, 03 and 04 are implemented. Other rows remain stage 01 plans;
+Stages 02, 03, 04 and 05 are implemented. Other rows remain stage 01 plans;
 help/grammar and coverage change only when their producing routes exist.
 
 | Stage | Planned command | Ordinary application path |

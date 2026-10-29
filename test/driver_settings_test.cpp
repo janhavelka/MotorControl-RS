@@ -562,6 +562,158 @@ void testPositionStartSpeedCancellationAndTiming() {
     assert(Ess::advanceDriver(delayedAck, e, 9000) && delayedAck.outcome == Ess::DriverOutcome::DEADLINE);
     assert(delayedAck.progress[0].acknowledged && delayedAck.uncertain && work(delayedAck).kind == Ess::ActionWork::DONE);
 }
+Ess::DriverRequest auxiliaryRequest(uint16_t raw = 7) {
+    Ess::DriverRequest r; r.configurationGeneration = 17;
+    assert(Ess::prepareHomingAuxiliary(r, static_cast<Ess::HomingAuxiliary>(raw))); return r;
+}
+Ess::DriverObservation auxiliarySnapshot(uint16_t raw = 0xFFFF) {
+    Ess::DriverContext c;
+    assert(Ess::prepareDriverRead(c, target(), 11, 17, 100, 1000, Ess::DriverGroup::HOMING_AUXILIARY));
+    const uint8_t request[] = {1, 3, 0, 0x30, 0, 1, 0x84, 0x05};
+    const auto pending = work(c);
+    assert(!pending.write && pending.reg == 0x0030 && pending.count == 1 && pending.length == sizeof(request));
+    assert(!std::memcmp(pending.bytes, request, sizeof(request)));
+    auto response = reply({raw}); supply(c, response); response.assign(response.size(), 0);
+    Ess::DriverObservation observed; assert(Ess::getDriver(c, observed));
+    assert(observed.raw[0] == raw && observed.knownFields == (raw <= 11 ? 1u : 0u));
+    assert(observed.provenance[0].reg == 0x0030 && observed.provenance[0].count == 1 && observed.provenance[0].length == 7);
+    assert(c.completedSteps == 1 && work(c).kind == Ess::ActionWork::DONE);
+    return observed;
+}
+Ess::DriverPrerequisites auxiliaryPrerequisites() {
+    auto p = positionStartPrerequisites(); p.previous = auxiliarySnapshot(); return p;
+}
+Ess::DriverContext auxiliaryUpdate(uint16_t raw = 7, uint64_t deadline = 9000) {
+    Ess::DriverContext c;
+    assert(Ess::prepareDriverSettings(c, target(), 12, auxiliaryRequest(raw), auxiliaryPrerequisites(), 200, deadline));
+    return c;
+}
+void testHomingAuxiliaryChoicesAndAdmission() {
+    // Original ESS-RS physical p72: these are complete scalar choices, not flags.
+    const Ess::HomingAuxiliary choices[] = {
+        Ess::HomingAuxiliary::MOVE_OFFSET_SET_OFFSET, Ess::HomingAuxiliary::MOVE_OFFSET_SET_ZERO,
+        Ess::HomingAuxiliary::MOVE_OFFSET_SET_NEGATIVE_OFFSET, Ess::HomingAuxiliary::MOVE_OFFSET_KEEP_ACTUAL,
+        Ess::HomingAuxiliary::MOVE_OFFSET_ADD_OFFSET, Ess::HomingAuxiliary::MOVE_OFFSET_SUBTRACT_OFFSET,
+        Ess::HomingAuxiliary::KEEP_POSITION_SET_OFFSET, Ess::HomingAuxiliary::KEEP_POSITION_SET_ZERO,
+        Ess::HomingAuxiliary::KEEP_POSITION_SET_NEGATIVE_OFFSET, Ess::HomingAuxiliary::KEEP_POSITION_KEEP_ACTUAL,
+        Ess::HomingAuxiliary::KEEP_POSITION_ADD_OFFSET, Ess::HomingAuxiliary::KEEP_POSITION_SUBTRACT_OFFSET
+    };
+    Ess::DriverRequest r; r.configurationGeneration = 17;
+    for (unsigned i = 0; i < 12; ++i) {
+        assert(static_cast<unsigned>(choices[i]) == i && Ess::prepareHomingAuxiliary(r, choices[i]));
+        assert(r.group == Ess::DriverGroup::HOMING_AUXILIARY && r.fields == 1 && r.homingAuxiliary == choices[i] && r.configurationGeneration == 17);
+        auto c = auxiliaryUpdate(static_cast<uint16_t>(i)); const auto pending = work(c);
+        auto expected = std::vector<uint8_t>{1, 6, 0, 0x30, 0, static_cast<uint8_t>(i)}; crc(expected);
+        assert(pending.length == 8 && pending.write && pending.count == 1 && pending.reg == 0x0030);
+        assert(!std::memcmp(pending.bytes, expected.data(), expected.size()));
+        supply(c, expected); assert(c.progress[0].previous == 0xFFFF && c.progress[0].requested == i && c.progress[0].acknowledged);
+        const auto readback = work(c); assert(!readback.write && readback.reg == 0x0030 && readback.count == 1);
+        auto returned = reply({static_cast<uint16_t>(i)}); supply(c, returned);
+        expected.assign(expected.size(), 0); returned.assign(returned.size(), 0);
+        assert(c.state == ReadState::SUCCEEDED && c.effects == 1 && !c.uncertain && c.completedSteps == 2);
+        assert(c.progress[0].readbackKnown && c.progress[0].readback == i && !c.progress[0].activeKnown);
+        assert(c.prerequisites.previous.raw[0] == 0xFFFF && c.prerequisites.previous.provenance[0].raw[3] == 0xFF);
+        assert(c.observations[0].raw[3] == 0x30 && c.observations[1].raw[4] == i && work(c).kind == Ess::ActionWork::DONE);
+    }
+    const Saved<Ess::DriverRequest> selected(r);
+    for (uint16_t invalid : {uint16_t(12), uint16_t(0xFFFF)}) {
+        assert(!Ess::prepareHomingAuxiliary(r, static_cast<Ess::HomingAuxiliary>(invalid))); selected.check(r);
+        auto bad = auxiliaryRequest(); bad.homingAuxiliary = static_cast<Ess::HomingAuxiliary>(invalid);
+        checkUnchangedReject(bad, auxiliaryPrerequisites());
+    }
+    auto mixed = positionStartRequest(); const Saved<Ess::DriverRequest> mixedSaved(mixed);
+    assert(!Ess::prepareHomingAuxiliary(mixed, choices[7])); mixedSaved.check(mixed);
+    r.fields = 3; const Saved<Ess::DriverRequest> extra(r);
+    assert(!Ess::prepareHomingAuxiliary(r, choices[7])); extra.check(r);
+    r = auxiliaryRequest();
+    assert(static_cast<uint32_t>(Ess::driverFieldAt(0, r.group)) == 1 && static_cast<uint32_t>(Ess::driverFieldAt(1, r.group)) == 0);
+    for (uint16_t raw : {uint16_t(0), uint16_t(11), uint16_t(12), uint16_t(0xFFFF)}) auxiliarySnapshot(raw);
+    auto p = auxiliaryPrerequisites(); p.allowEchoReadback = true; checkUnchangedReject(r, p);
+    p = auxiliaryPrerequisites(); p.inputsPermit = false; checkUnchangedReject(r, p);
+    p = auxiliaryPrerequisites(); p.stationaryQualified = false; checkUnchangedReject(r, p);
+    p = auxiliaryPrerequisites(); p.rawMotion = 4; checkUnchangedReject(r, p);
+    p = auxiliaryPrerequisites(); p.externalTriggerInhibitedQualified = false; checkUnchangedReject(r, p);
+    p = auxiliaryPrerequisites(); p.triggerConfigurationGeneration++; checkUnchangedReject(r, p);
+    p = auxiliaryPrerequisites(); p.triggerTarget.generation++; checkUnchangedReject(r, p);
+    p = auxiliaryPrerequisites(); p.previous.target.address++; checkUnchangedReject(r, p);
+    p = auxiliaryPrerequisites(); p.previous.configurationGeneration++; checkUnchangedReject(r, p);
+    p = auxiliaryPrerequisites(); p.previous.raw[0]--; checkUnchangedReject(r, p);
+    Ess::DriverContext c; c.operationId = 987; const Saved<Ess::DriverContext> unchanged(c);
+    auto badTarget = target(); badTarget.generation = 0;
+    assert(!Ess::prepareDriverSettings(c, badTarget, 12, r, auxiliaryPrerequisites(), 200, 9000)); unchanged.check(c);
+}
+void testHomingAuxiliaryErrorsAndTiming() {
+    const uint8_t write[] = {1, 6, 0, 0x30, 0, 7, 0xC8, 0x07};
+    for (unsigned fault = 0; fault < 9; ++fault) {
+        auto c = auxiliaryUpdate(); auto response = std::vector<uint8_t>(write, write + 6);
+        switch (fault) {
+        case 0: response[0] = 2; crc(response); break;
+        case 1: response[1] = 16; crc(response); break;
+        case 2: response[3] = 0x31; crc(response); break;
+        case 3: response[5] = 6; crc(response); break;
+        case 4: crc(response); response.pop_back(); break;
+        case 5: crc(response); response.push_back(0); break;
+        case 6: crc(response); response.back() ^= 1; break;
+        case 7: response = {1, 0x86, 3}; crc(response); break;
+        default: crc(response); break;
+        }
+        auto e = frame(c, response.data(), response.size(), 220); if (fault == 8) e.responseConfirmed = false;
+        assert(Ess::advanceDriver(c, e, 222));
+        assert(c.state == ReadState::FAILED && c.effects == 1 && !c.progress[0].acknowledged && !c.progress[0].readbackKnown);
+        assert(c.progress[0].execution == (fault == 7 ? ActionExecution::REJECTED : ActionExecution::UNKNOWN));
+        assert(c.uncertain == (fault != 7) && work(c).kind == Ess::ActionWork::DONE);
+    }
+    for (unsigned fault = 0; fault < 8; ++fault) {
+        auto c = auxiliaryUpdate(); supply(c, std::vector<uint8_t>(write, write + sizeof(write)));
+        auto response = std::vector<uint8_t>{1, 3, 2, 0, 7};
+        switch (fault) {
+        case 0: response[0] = 2; crc(response); break;
+        case 1: response[1] = 4; crc(response); break;
+        case 2: response[2] = 4; crc(response); break;
+        case 3: crc(response); response.pop_back(); break;
+        case 4: crc(response); response.push_back(0); break;
+        case 5: crc(response); response.back() ^= 1; break;
+        case 6: response = {1, 0x83, 3}; crc(response); break;
+        default: response = reply({6}); break;
+        }
+        supply(c, response);
+        assert(c.state == ReadState::FAILED && c.effects == 1 && c.uncertain && c.progress[0].acknowledged);
+        assert(c.progress[0].readbackKnown == (fault == 7));
+        assert(c.outcome == (fault == 7 ? Ess::DriverOutcome::READBACK_MISMATCH : Ess::DriverOutcome::REPLY_ERROR));
+        assert(work(c).kind == Ess::ActionWork::DONE);
+    }
+    auto c = auxiliaryUpdate(); const Saved<Ess::DriverContext> retained(c);
+    for (unsigned changed = 0; changed < 5; ++changed) {
+        auto e = frame(c, write, sizeof(write), 220);
+        if (changed == 0) e.transport.target.id++; else if (changed == 1) e.transport.target.address++;
+        else if (changed == 2) e.transport.target.generation++; else if (changed == 3) e.transport.operationId++;
+        else e.transport.step++;
+        assert(!Ess::advanceDriver(c, e, 222)); retained.check(c);
+    }
+    for (ReadEventKind kind : {ReadEventKind::CANCEL, ReadEventKind::TRANSPORT_FAILURE, ReadEventKind::DEADLINE})
+        for (std::size_t accepted : {std::size_t(0), std::size_t(3), std::size_t(8)}) {
+            auto failed = auxiliaryUpdate(7, 300); auto e = local(failed, kind);
+            e.transport.txAccepted = accepted; e.txComplete = accepted == 8; e.transport.executionUnknown = accepted != 0;
+            assert(Ess::advanceDriver(failed, e, kind == ReadEventKind::DEADLINE ? 300 : 220));
+            assert(failed.state == ReadState::FAILED && failed.effects == (accepted ? 1u : 0u) && failed.uncertain == (accepted != 0));
+            const Saved<Ess::DriverContext> finished(failed);
+            assert(!Ess::advanceDriver(failed, frame(failed, write, sizeof(write), 220), 301)); finished.check(failed);
+            assert(work(failed).kind == Ess::ActionWork::DONE);
+        }
+    auto p = auxiliaryPrerequisites(); p.maxAgeUs = 200; p.triggerEarliestUs = p.triggerLatestUs = 90;
+    assert(Ess::prepareDriverSettings(c, target(), 12, auxiliaryRequest(), p, 200, 9000));
+    assert(Ess::driverWriteDeadline(c) == 290 && c.deadlineUs == 9000);
+    Ess::PreparedDriver rejected; rejected.reg = 987; const Saved<Ess::PreparedDriver> pending(rejected);
+    assert(!Ess::nextDriver(c, 290, rejected)); pending.check(rejected);
+    auto ontime = auxiliaryUpdate(7, 300); supply(ontime, std::vector<uint8_t>(write, write + sizeof(write)));
+    const auto response = reply({7}); auto e = frame(ontime, response.data(), response.size(), 299);
+    assert(Ess::advanceDriver(ontime, e, 9000) && ontime.state == ReadState::SUCCEEDED && ontime.deadlineUs == 300);
+    auto late = auxiliaryUpdate(7, 300); supply(late, std::vector<uint8_t>(write, write + sizeof(write)));
+    e = frame(late, response.data(), response.size(), 300);
+    assert(Ess::advanceDriver(late, e, 9000) && late.outcome == Ess::DriverOutcome::DEADLINE && late.uncertain);
+    auto delayed = auxiliaryUpdate(7, 300); e = frame(delayed, write, sizeof(write), 220);
+    assert(Ess::advanceDriver(delayed, e, 9000) && delayed.outcome == Ess::DriverOutcome::DEADLINE && delayed.uncertain);
+}
 } // namespace
 static void testOptionalAgePolicy() {
     auto p = prerequisites(); p.maxAgeUs = 0;
@@ -590,4 +742,5 @@ int main() {
     testPositionStartSpeedSelectionAndAdmission();
     testPositionStartSpeedEvidenceAndErrors();
     testPositionStartSpeedCancellationAndTiming();
+    testHomingAuxiliaryChoicesAndAdmission(); testHomingAuxiliaryErrorsAndTiming();
 }

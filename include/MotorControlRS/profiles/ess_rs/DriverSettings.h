@@ -13,7 +13,7 @@ constexpr uint8_t DRIVER_READ_STEPS = 4;
 constexpr uint8_t DRIVER_MAX_STEPS = 18;
 constexpr std::size_t DRIVER_MAX_REPLY_BYTES = 15;
 enum class DriverGroup : uint8_t { DRIVE, IO, POSITION_SEGMENT, SPEED_SEGMENT, SEGMENT_START_SPEED, CONTROL_SETTINGS,
-    FILTERS, CURRENT_LOOP, LA, COLLISION, POSITION_START_SPEED };
+    FILTERS, CURRENT_LOOP, LA, COLLISION, POSITION_START_SPEED, HOMING_AUXILIARY };
 enum class DriverField : uint32_t {
     DIRECTION = 1, SUBDIVISION = 2, WORD_ORDER = 4, SOFT_LIMIT_ENABLE = 8,
     OVER_LIMIT_STOP = 16, INTERRUPTION = 32, POSITION_MODE = 64,
@@ -56,6 +56,7 @@ struct DriverRequest {
     uint32_t fields = 0;
     uint32_t configurationGeneration = 0;
     uint16_t positionStartSpeed = 0; ///< POSITION_START_SPEED local bit 0; native 0..3000, physical scaling unresolved.
+    HomingAuxiliary homingAuxiliary = HomingAuxiliary::KEEP_POSITION_SET_ZERO; ///< HOMING_AUXILIARY local bit 0; enumerated choices 0..11, never flags.
     DefaultDirection direction = DefaultDirection::NORMAL;
     uint16_t subdivision = 400;
     WordOrder wordOrder = WordOrder::HIGH_WORD_FIRST;
@@ -98,8 +99,9 @@ struct DriverEvidence {
  * direction, subdivision, word-order, soft-enable, over-limit, PV trigger,
  * external position mode, input polarity, four input functions, output polarity,
  * two output functions and custom-output mask. DRIVE and IO populate separate
- * groups. POSITION_START_SPEED uses raw[0] and local knownFields bit 0 for
- * native 0..3000; unknown prior words remain readable. knownFields means
+ * groups. POSITION_START_SPEED and HOMING_AUXILIARY use raw[0] and local
+ * knownFields bit 0 for native 0..3000 and choices 0..11 respectively;
+ * unknown prior words remain readable. knownFields means
  * resolved legal codes/native domain, never active settings or physical units.
  * Limits assemble unsigned bits only; signed meaning/native scale are unresolved. */
 struct DriverObservation {
@@ -151,8 +153,8 @@ struct DriverPrerequisites {
      * readback. It never becomes an acknowledgement or proves activation. */
     bool allowEchoReadback = false;
     /** Independent qualification that external execution cannot occur during
-     * this segment or position-start-speed update. POSITION_START_SPEED also
-     * requires inputsPermit; qualifiedSegment applies only to segment groups.
+     * this segment, position-start-speed or homing-auxiliary update. The latter
+     * two also require inputsPermit; qualifiedSegment applies only to segments.
      * No input is silently disabled. */
     bool externalTriggerInhibitedQualified = false;
     ReadTarget triggerTarget;
@@ -252,7 +254,7 @@ Status getDriver(const DriverContext&, DriverObservation&) noexcept;
  * logical writable index. Segment groups use local indices 0..2 (shared start
  * speed only 0). Tuning groups use local bits 0..count-1, interpreted with their
  * group rather than the named global DriverField values. POSITION_START_SPEED
- * uses only local bit 0. An out-of-range index
+ * and HOMING_AUXILIARY use only local bit 0. An out-of-range index
  * returns the empty field. */
 DriverField driverFieldAt(uint8_t index, DriverGroup group = DriverGroup::DRIVE) noexcept;
 /** Select the single POSITION_START_SPEED native word (0..3000) before narrowing.
@@ -262,6 +264,15 @@ DriverField driverFieldAt(uint8_t index, DriverGroup group = DriverGroup::DRIVE)
  * prepareDriverRead/getDriver and prepareDriverSettings/nextDriver/advanceDriver.
  */
 Status preparePositionStartSpeed(DriverRequest&, uint32_t native) noexcept;
+/** Select one homing auxiliary choice 0..11, not a flag mask. Accepts an empty
+ * request or its existing one-field selection; invalid casts/mixed selections
+ * preserve request, including configurationGeneration. Execute via the checked
+ * driver prior-read/update/readback engine (FC03 0x0030/1, FC06 0x0030, FC03).
+ * Requires fresh stopped/input/trigger policy and a confirmed write reply.
+ * Stored readback does not qualify active policy, offset interpretation or any
+ * homing execution. No motion, save, replay or rollback is implied.
+ */
+Status prepareHomingAuxiliary(DriverRequest&, HomingAuxiliary) noexcept;
 /** These setters select the same checked update engine; UNDEFINED explicitly
  * assigns function zero. Bounds/choices fail without changing the request. */
 Status prepareInputFunction(DriverRequest&, uint8_t terminal, InputFunction) noexcept;
