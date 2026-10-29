@@ -228,7 +228,7 @@ selects absolute mode. Preserve legacy values `0x0001`/`0x0005`; the derived
 explicit interrupt values are `0x0009`/`0x000D`. No wire queue is documented.
 
 `PositionCommand::interruption` is a profile-specific `PositionInterruption`
-choice, default `IGNORE`. The checked `buildStartPosition(address, relative,
+choice: `IGNORE` (default) or `INTERRUPT_CURRENT`. The checked `buildStartPosition(address, relative,
 interruption, out, capacity)` overload also exposes that wire choice. The core
 copies it into `MoveContext`; the old builder and ordinary observed preparations
 retain their current behavior. The implemented core subset is limited:

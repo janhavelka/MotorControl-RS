@@ -1902,7 +1902,7 @@ void updateActionReservation(App& a, App::Record& record) {
     using namespace MotorControlRS;
     if (!terminal(a, record)) return;
     record.motionUnresolved = (record.kind == App::OperationKind::MOVE &&
-        (record.move.uncertain || record.move.interruption == ESS::PositionInterruption::INTERRUPT) &&
+        (record.move.uncertain || record.move.interruption == ESS::PositionInterruption::INTERRUPT_CURRENT) &&
         (record.move.triggerEvidence.txAccepted || record.move.triggerEvidence.executionUnknown)) ||
         (record.kind == App::OperationKind::VELOCITY && (record.velocity.uncertain || record.velocity.needsStop) && record.velocity.triggerEvidence.txAccepted) ||
         (record.kind == App::OperationKind::HOME && record.home.uncertain && record.home.triggerEvidence.txAccepted);

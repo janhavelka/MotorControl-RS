@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: MIT
+// Xtensa SDK headers define this register macro before or after public headers.
+// The typed intent must compile without changing the SDK macro or include order.
+#define INTERRUPT 226
 #include <MotorControlRS/profiles/ess_rs/Position.h>
+static_assert(INTERRUPT == 226, "Public headers must preserve SDK macros");
+static_assert(static_cast<uint8_t>(MotorControlRS::ESS_RS::PositionInterruption::INTERRUPT_CURRENT) == 1,
+              "Macro-safe intent preserves its value");
 #include <cassert>
 #include <cstring>
 #include <limits>
@@ -36,7 +42,7 @@ E::PositionCommand command(bool relative = true, E::WordOrder order = E::WordOrd
     c.target.id = 7; c.target.address = 1; c.target.generation = 4;
     c.subdivision = 1000; c.speedRpm = 60; c.accelerationTime = 100; c.decelerationTime = 120;
     c.wordOrder = order; c.setup = MoveSetup::USE_STORED;
-    c.interruption = E::PositionInterruption::INTERRUPT; c.configurationGeneration = 9;
+    c.interruption = E::PositionInterruption::INTERRUPT_CURRENT; c.configurationGeneration = 9;
     c.stored.target = c.target; c.stored.configurationGeneration = 9;
     c.stored.originalOperationId = originalId; c.stored.subdivision = 1000;
     c.stored.wordOrder = order; c.stored.relative = relative; c.stored.qualified = true;
@@ -75,7 +81,7 @@ void noMoreWork(const E::MoveContext& c) {
 }
 void rawFramesAndBounds() {
     for (bool relative : {false, true}) {
-        for (E::PositionInterruption intent : {E::PositionInterruption::IGNORE, E::PositionInterruption::INTERRUPT}) {
+        for (E::PositionInterruption intent : {E::PositionInterruption::IGNORE, E::PositionInterruption::INTERRUPT_CURRENT}) {
             const uint8_t* expected = intent == E::PositionInterruption::IGNORE ?
                 (relative ? relativeIgnore : absoluteIgnore) : (relative ? relativeInterrupt : absoluteInterrupt);
             uint8_t bytes[10]; std::memset(bytes, 0xA7, sizeof(bytes));
@@ -107,7 +113,7 @@ void admittedNativeSnapshot() {
         for (E::WordOrder order : {E::WordOrder::HIGH_WORD_FIRST, E::WordOrder::LOW_WORD_FIRST}) {
             auto intent = command(relative, order); auto c = prepare(intent);
             const Saved<E::StoredPositionQualification> stored(c.stored);
-            assert(c.admission == E::MoveAdmission::NATIVE_INTENT && c.interruption == E::PositionInterruption::INTERRUPT);
+            assert(c.admission == E::MoveAdmission::NATIVE_INTENT && c.interruption == E::PositionInterruption::INTERRUPT_CURRENT);
             assert(c.stored.originalOperationId == originalId && c.operationId == replacementId);
             assert(c.request.position.relative == relative && c.request.position.configurationGeneration == 9);
             assert(!c.prepared.endpointKnown && !c.prepared.displacementKnown && !c.reference.nativeKnown);

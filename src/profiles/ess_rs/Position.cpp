@@ -30,7 +30,7 @@ std::size_t requestLength(const MoveContext& c) {
     return staging(c) && c.setupCount > 1 ? 9 + 2 * c.setupCount : READ_REQUEST_LEN;
 }
 uint64_t readinessDeadline(const MoveContext& c) {
-    if (c.interruption == PositionInterruption::INTERRUPT)
+    if (c.interruption == PositionInterruption::INTERRUPT_CURRENT)
         return evidenceAgeDeadline(c.stored.qualifiedUs, c.stored.maximumAgeUs);
     return evidenceAgeDeadline(c.prerequisites.observedUs, c.prerequisites.maximumAgeUs);
 }
@@ -81,7 +81,7 @@ uint16_t observationCount(const MoveContext& c) {
 uint16_t startValue(bool relative, PositionInterruption interruption) {
     return static_cast<uint16_t>(MotionCommandBit::START_POSITION) |
         (relative ? 0 : static_cast<uint16_t>(MotionCommandBit::ABSOLUTE_POSITION)) |
-        (interruption == PositionInterruption::INTERRUPT ?
+        (interruption == PositionInterruption::INTERRUPT_CURRENT ?
             static_cast<uint16_t>(MotionCommandBit::INTERRUPT_POSITION) : 0);
 }
 } // namespace
@@ -135,7 +135,7 @@ std::size_t buildStartPosition(uint8_t address, bool relative, uint8_t* out, std
 }
 std::size_t buildStartPosition(uint8_t address, bool relative, PositionInterruption interruption,
                                uint8_t* out, std::size_t capacity) noexcept {
-    if (interruption > PositionInterruption::INTERRUPT) return 0;
+    if (interruption > PositionInterruption::INTERRUPT_CURRENT) return 0;
     return buildWriteSingleRegister(address, Registers::MOTION_COMMAND, startValue(relative, interruption), out, capacity);
 }
 
@@ -146,8 +146,8 @@ static Status prepareNative(MoveContext& output, const PositionCommand& command,
     if (!id) return invalid(MoveError::INVALID_OPERATION, "zero move id");
     if (deadline <= now) return invalid(MoveError::INVALID_DEADLINE, "expired move deadline");
     if (command.setup > MoveSetup::USE_STORED) return invalid(MoveError::INVALID_OPTIONS, "invalid move setup policy");
-    if (command.interruption > PositionInterruption::INTERRUPT ||
-        (command.interruption == PositionInterruption::INTERRUPT && command.setup != MoveSetup::USE_STORED))
+    if (command.interruption > PositionInterruption::INTERRUPT_CURRENT ||
+        (command.interruption == PositionInterruption::INTERRUPT_CURRENT && command.setup != MoveSetup::USE_STORED))
         return invalid(MoveError::INVALID_OPTIONS, "position interruption requires native stored-profile setup");
     if (!command.speedRpm || command.speedRpm > 3000 || command.accelerationTime > 2000 ||
         command.decelerationTime > 2000 || (relative && !bits))
@@ -168,7 +168,7 @@ static Status prepareNative(MoveContext& output, const PositionCommand& command,
     const Status access = validateWriteMultipleRegistersRequest(command.target.address,
         Registers::POSITION_ACCELERATION_TIME, prepared.words, 5);
     if (!access) return access;
-    if (command.interruption == PositionInterruption::INTERRUPT) {
+    if (command.interruption == PositionInterruption::INTERRUPT_CURRENT) {
         const StoredPositionQualification& stored = command.stored;
         if (!command.configurationGeneration || !stored.originalOperationId || stored.originalOperationId == id ||
             !sameTarget(command.target, stored.target) ||

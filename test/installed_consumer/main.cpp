@@ -78,7 +78,7 @@ int main() {
     // A fixture-supplied active profile qualifies a native stored retrigger.
     // Production callers retain this independently of new command intent.
     desired.setup = MoveSetup::USE_STORED;
-    desired.interruption = PositionInterruption::INTERRUPT;
+    desired.interruption = PositionInterruption::INTERRUPT_CURRENT;
     desired.configurationGeneration = 3;
     StoredPositionQualification& stored = desired.stored;
     stored.target = target; stored.configurationGeneration = 3;
@@ -92,7 +92,7 @@ int main() {
         !nextMove(replacement, 100, nativeWork) || nativeWork.length != 8 ||
         nativeWork.value != 9 || nativeWork.deadlineUs != 1100 ||
         replacement.stored.originalOperationId != 12 || replacement.prepared.endpointKnown ||
-        buildStartPosition(1, true, PositionInterruption::INTERRUPT, rawStart, sizeof(rawStart)) != 8)
+        buildStartPosition(1, true, PositionInterruption::INTERRUPT_CURRENT, rawStart, sizeof(rawStart)) != 8)
         return 110;
     const uint8_t interruptAck[] = {1,6,0,0x27,0,9,0xF9,0xC7};
     ActionEvent interruptEvent; interruptEvent.transport.target = target;

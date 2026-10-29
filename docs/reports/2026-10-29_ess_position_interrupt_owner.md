@@ -103,6 +103,19 @@ links and package export/install. Package SHA-256:
 Local full firmware is NOT RUN; supported hosted firmware matrix and exact-commit
 CI remain pending at this checkpoint. No older green commit verifies this change.
 
+Initial implementation `b5df9788da0e9c487e6e15c06aea1e8b7bcade41`,
+[run40951397458](https://github.com/janhavelka/MotorControl-RS/actions/runs/40951397458),
+passed GCC/Clang but failed the firmware jobs: Xtensa `specreg.h` defines
+`INTERRUPT` as226, which expanded the new enum member in real SDK consumers.
+The corrected unreleased name is `PositionInterruption::INTERRUPT_CURRENT`;
+value1, IGNORE0, all legacy signatures and wire values remain unchanged. No SDK
+macro is undefined and no conditional alias depends on include order. The core
+fixture defines the actual macro before the public header, verifies it survives
+unchanged and exercises the renamed intent. The reviewer independently checks
+both include orders. Focused6/6 and document/inventory checks pass after correction;
+fresh final quick/package and exact-commit firmware CI are pending. Initial logs
+remain under `build/ess_software_07_ci/initial-idf/` and `initial-arduino/`.
+
 ## Physical disposition
 
 Fresh `python -m serial.tools.list_ports -v` enumeration found COM11, COM12 and

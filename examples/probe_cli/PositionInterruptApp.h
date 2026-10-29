@@ -87,7 +87,7 @@ Probe::Action admitPositionInterrupt(App& a, uint32_t commandId, uint32_t origin
         original->serialGeneration != a.serial.generation || !writeResponseConfirmed) return Probe::Action::UNAVAILABLE;
     const uint64_t now = uart.sample();
     if (!storedPositionCurrent(a, original->storedPosition, now)) return Probe::Action::UNAVAILABLE;
-    if (supplied.interruption != ESS::PositionInterruption::INTERRUPT || supplied.setup != MoveSetup::USE_STORED ||
+    if (supplied.interruption != ESS::PositionInterruption::INTERRUPT_CURRENT || supplied.setup != MoveSetup::USE_STORED ||
         supplied.limits.maximumRpm != old.prerequisites.limits.maximumRpm ||
         supplied.limits.maximumCommandRate != old.prerequisites.limits.maximumCommandRate ||
         supplied.limits.minimumRampTime != old.prerequisites.limits.minimumRampTime) return Probe::Action::INVALID;
@@ -126,7 +126,7 @@ Probe::Action startPositionInterrupt(void* context, uint32_t commandId, uint32_t
     command.limits = original->move.prerequisites.limits;
     command.accelerationTime = stored.profile.accelerationTime;
     command.decelerationTime = stored.profile.decelerationTime; command.speedRpm = stored.profile.speed;
-    command.interruption = ESS::PositionInterruption::INTERRUPT; command.setup = MotorControlRS::MoveSetup::USE_STORED;
+    command.interruption = ESS::PositionInterruption::INTERRUPT_CURRENT; command.setup = MotorControlRS::MoveSetup::USE_STORED;
     return admitPositionInterrupt(a, commandId, originalId, command, stored.profile.targetBits, stored.relative, operationId);
 }
 bool settlePositionInterrupt(App& a, App::Record& record, uint64_t now) {
@@ -153,7 +153,7 @@ bool settlePositionInterrupt(App& a, App::Record& record, uint64_t now) {
 void cancelInvalidPositionInterrupts(App& a, uint64_t now) {
     for (auto& record : a.records) {
         if (record.kind != App::OperationKind::MOVE || terminal(a, record) ||
-            record.move.interruption != ESS::PositionInterruption::INTERRUPT || !record.requestId.owner ||
+            record.move.interruption != ESS::PositionInterruption::INTERRUPT_CURRENT || !record.requestId.owner ||
             a.owner.txAccepted(record.requestId)) continue;
         if (record.cancelContinuation || record.serialGeneration != a.serial.generation ||
             !storedPositionCurrent(a, record.move.stored, now) || pendingStop(a, record.address)) {

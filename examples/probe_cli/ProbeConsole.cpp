@@ -2073,7 +2073,7 @@ void Console::dispatch() noexcept {
             if (view.moveContext) {
                 --used;
                 if (!append(output_, sizeof(output_), used, ",\"position_interrupt\":%s",
-                    boolean(view.moveContext->interruption == Ess::PositionInterruption::INTERRUPT)) ||
+                    boolean(view.moveContext->interruption == Ess::PositionInterruption::INTERRUPT_CURRENT)) ||
                     (view.moveRelation.originalOperationId && !moveRelation(output_, sizeof(output_), used, view.moveRelation)) ||
                     !append(output_, sizeof(output_), used, "}")) { error(id, "result", "output_full"); return; }
             }
@@ -2660,7 +2660,7 @@ bool Console::reportMove(uint32_t id, uint32_t operationId, const Ess::MoveConte
 
 bool Console::formatMove(uint32_t id, uint32_t commandId, uint32_t operationId,
                          const Ess::MoveContext& c, bool inspection, bool interruptedByStop, const MoveRelation& relation) noexcept {
-    if (c.interruption == Ess::PositionInterruption::INTERRUPT)
+    if (c.interruption == Ess::PositionInterruption::INTERRUPT_CURRENT)
         return formatPositionInterrupt(id, commandId, operationId, c, inspection, interruptedByStop, relation);
     std::size_t used = 0;
     const bool ok = c.state == Core::ActionState::SUCCEEDED && c.completion == Core::ActionCompletion::OBSERVED;

@@ -33,9 +33,9 @@ struct PositionProfile {
     uint16_t startSpeed = 0, accelerationTime = 0, decelerationTime = 0, speed = 0;
     uint32_t targetBits = 0;
 };
-/** Serial positioning bit 3. INTERRUPT starts the stored motion even if the
+/** Serial positioning bit 3. INTERRUPT_CURRENT starts the stored motion even if the
  * previous motion finished before TX; it is not an only-if-busy command. */
-enum class PositionInterruption : uint8_t { IGNORE, INTERRUPT };
+enum class PositionInterruption : uint8_t { IGNORE, INTERRUPT_CURRENT };
 /** Independently established active stored profile and native interpretation.
  * Readback or the incoming candidate alone cannot establish this qualification.
  * qualified includes start-speed compatibility, native coordinate/sign/bounds
@@ -113,7 +113,7 @@ enum class MoveAdmission : uint8_t { OBSERVED_STATE, NATIVE_INTENT };
 struct MoveContext {
     MoveAdmission admission = MoveAdmission::OBSERVED_STATE;
     PositionInterruption interruption = PositionInterruption::IGNORE;
-    StoredPositionQualification stored; ///< Independent immutable witness for native INTERRUPT only; no stationary baseline.
+    StoredPositionQualification stored; ///< Independent immutable witness for native INTERRUPT_CURRENT only; no stationary baseline.
     ReadTarget target;
     uint32_t operationId = 0;
     MoveRequest request;
@@ -176,7 +176,7 @@ struct PreparedMove {
  * motion or preexisting arrival flag to this operation.
  * Use typed state reads for feedback, or prepareMove* for observed completion.
  *
- * INTERRUPT admits only USE_STORED with an independently qualified stored
+ * INTERRUPT_CURRENT admits only USE_STORED with an independently qualified stored
  * witness matching target/configuration/subdivision/order, coordinate mode and
  * every requested profile/target word. No setup writes or new target staging
  * are supported. The nonzero original ID must differ from this operation ID.
@@ -194,7 +194,7 @@ struct PositionCommand {
     uint16_t accelerationTime = 0, decelerationTime = 0, speedRpm = 0;
     MoveSetup setup = MoveSetup::WRITE_ALL;
     PositionInterruption interruption = PositionInterruption::IGNORE;
-    uint32_t configurationGeneration = 0; ///< Nonzero and matched to stored for INTERRUPT; unused by legacy IGNORE.
+    uint32_t configurationGeneration = 0; ///< Nonzero and matched to stored for INTERRUPT_CURRENT; unused by legacy IGNORE.
     StoredPositionQualification stored;
     Status prepareRelative(MoveContext&, uint32_t operationId, uint32_t targetBits,
                            uint64_t nowUs, uint64_t deadlineUs) const noexcept;
@@ -239,7 +239,7 @@ Status nextMove(const MoveContext&, uint64_t nowUs, PreparedMove&) noexcept;
  * truncates TX or retries setup/trigger. Wrong envelopes leave state unchanged.
  * A write deadline may expire before the retained operation deadline, reporting
  * READINESS. The caller must honor yielded deadlines through queue/setup/TX.
- * Native INTERRUPT uses copied stored qualification age instead of stationary
+ * Native INTERRUPT_CURRENT uses copied stored qualification age instead of stationary
  * readiness, and ends ACKNOWLEDGED/NOT_OBSERVED without polling. IDs/generations
  * reject mismatched event envelopes, not bit-identical stale wire replies;
  * responseConfirmed still requires the owner's transport/echo qualification.

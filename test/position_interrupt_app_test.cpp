@@ -125,7 +125,7 @@ ESS::PositionCommand candidate(bool relative = true) {
     ESS::PositionCommand c; c.target=app->axis.target; c.configurationGeneration=app->axis.generation;
     c.subdivision=1000; c.wordOrder=app->configuration.wordOrder;
     c.accelerationTime=c.decelerationTime=100; c.speedRpm=60;
-    c.setup=MoveSetup::USE_STORED; c.interruption=ESS::PositionInterruption::INTERRUPT;
+    c.setup=MoveSetup::USE_STORED; c.interruption=ESS::PositionInterruption::INTERRUPT_CURRENT;
     // This intentionally provides no qualification: the ordinary application
     // must obtain its independent original-operation witness itself.
     return c;

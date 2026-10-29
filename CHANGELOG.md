@@ -11,6 +11,8 @@
   console/host route reserve independent original/replacement results, settle
   old owner traffic and preserve urgent-stop priority. Results remain ACK-only;
   no active setup writes or completion attribution is claimed. N05 remains PARTIAL.
+  The explicit intent is `PositionInterruption::INTERRUPT_CURRENT`, avoiding the
+  Xtensa SDK's `INTERRUPT` macro without changing SDK state or wire values.
 
 - Explicit homing auxiliary setting for all twelve native choices, with retained
   prior read, checked FC06 echo and independent readback. Ordinary app API,

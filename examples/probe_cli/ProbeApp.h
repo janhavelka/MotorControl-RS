@@ -73,7 +73,7 @@ bool releaseMove(uint32_t operationId);
  * owner. Original must be an active acknowledged programmatic observed move,
  * with native unwrapped steps and no consumed reference/soft-limit dependence.
  * Simple-motion parent/child IDs are unsupported. command must request
- * INTERRUPT/USE_STORED and exactly match the independently retained original
+ * INTERRUPT_CURRENT/USE_STORED and exactly match the independently retained original
  * qualification. Its .stored field is ignored: this application supplies that
  * witness, never the new candidate. Rejection preserves operationId and old work.
  * A separate ordinary result is reserved before superseding old observation;
