@@ -1,7 +1,7 @@
 # ESS software completion
 
-Prepared 2026-10-23. **Stage 01 contracts and stages 02-06 software completed
-2026-10-29; stage07 integration is under final verification. Stages08-15 are
+Prepared 2026-10-23. **Stage 01 contracts and stages 02-07 software completed
+2026-10-29; stage07 delivers the bounded stored-profile interrupt route. Stages08-15 are
 NOT STARTED.** See the [source decisions](../../reports/2026-10-29_ess_software_contracts.md)
 and [progress](progress.md). Contracts do not implement the features. Read the
 [verified audit](audit.md), [execution contract](execution_contract.md),

@@ -1,7 +1,8 @@
 # ESS stored-position interruption through the owner
 
-Date: 2026-10-29. Software stage07, bounded N05 subset. Implementation, independent
-review and integrated local verification pass; exact-commit CI is pending.
+Date: 2026-10-29. Software stage07 COMPLETE for the bounded N05 subset.
+Implementation, independent review, integrated local verification and all four
+exact-commit CI jobs PASS for `14da3adda90b983497c36a0c9c159129b74f163a`.
 Physical interruption remains NOT RUN. Broader N05 remains PARTIAL.
 
 ## Source and scope
@@ -87,21 +88,28 @@ ACK, partial enqueue/physical drain, unsent invalidation and stop through each
 replacement phase. Original/replacement/stop evidence remains independent.
 Converted/reference/soft-limit and simple-session rejection is explicit.
 
-Lead rebuilt focused checks pass4/4; independent reviewer checks pass9/9.
-Host tests pass286, including actual Arduino/IDF formatter parity through live,
+Lead focused checks pass 6/6 after the SDK correction; independent review passes 9/9.
+Host tests pass 286, including actual Arduino/IDF formatter parity through live,
 retained and historical routes. Both real formatter executables are mandatory
 arguments in CTest and verifier inventory, with negative registration checks.
-Inventory checker and
-33 negative inventory tests pass: 54 producing operations, 94 implemented choices,
+Inventory checker and 33 negative inventory tests pass: 54 producing operations, 94 implemented choices,
 39 unimplemented/unresolved choices, five named gaps and 18 guarded pairs.
 The dedicated stored-interrupt row does not remove broader N05 PARTIAL.
-`python scripts/verify.py --mode quick --build-dir build/ess_software_07_quick`
-PASS: 88/88 registered suites, source and installed consumers3/3 each, standalone
+`python scripts/verify.py --mode quick --build-dir build/ess_software_07_final_quick`
+PASS: 88/88 registered suites, source and installed consumers 3/3 each, standalone
 C++11/C++17 headers, codec linkage, generators, offline reference hashes, local
 links and package export/install. Package SHA-256:
-`4514abe7bcfe3f91e90c11cd0e5c05fcd0579bb2acd8cb4a796a979503b16ac5`.
-Local full firmware is NOT RUN; supported hosted firmware matrix and exact-commit
-CI remain pending at this checkpoint. No older green commit verifies this change.
+`a6f49f2d5317a5b5113309b0ec84f5d97aa2c12782b231ed5423991f20b3f780`.
+Local full firmware is NOT RUN; hosted firmware provides the required matrix.
+Final implementation `14da3adda90b983497c36a0c9c159129b74f163a`,
+[run40952509782](https://github.com/janhavelka/MotorControl-RS/actions/runs/40952509782),
+completed SUCCESS for all four jobs: GCC, Clang, Arduino and native ESP-IDF.
+Terminal run JSON verifies the exact SHA. Downloaded artifact summaries each
+report PASS, 88 registered suites and no failed checks. Arduino's four configured
+builds and IDF app/core-S3/core-S2/portable-S2 all pass. Evidence is retained in
+`build/ess_software_07_ci/run-final.json` and `artifacts/`. The subsequent
+documentation-only evidence commit changes no tested code/build input and uses
+local document/reference/inventory checks under the repository policy.
 
 Initial implementation `b5df9788da0e9c487e6e15c06aea1e8b7bcade41`,
 [run40951397458](https://github.com/janhavelka/MotorControl-RS/actions/runs/40951397458),
@@ -112,8 +120,8 @@ value1, IGNORE0, all legacy signatures and wire values remain unchanged. No SDK
 macro is undefined and no conditional alias depends on include order. The core
 fixture defines the actual macro before the public header, verifies it survives
 unchanged and exercises the renamed intent. The reviewer independently checks
-both include orders. Focused6/6 and document/inventory checks pass after correction;
-fresh final quick/package and exact-commit firmware CI are pending. Initial logs
+both include orders. Focused 6/6, fresh final quick/package, document/inventory
+checks and exact-commit firmware CI pass after correction. Initial logs
 remain under `build/ess_software_07_ci/initial-idf/` and `initial-arduino/`.
 
 ## Physical disposition

@@ -4,8 +4,8 @@ Prepared 2026-10-23; updated 2026-10-29 for stages 01-07 execution. The preparat
 record below is historical. Stage 01 delivered contracts only; stage 02 implements
 velocity parameter reads. Stage 03 adds homing parameter reads; stage 04 adds
 position start-speed setting. Stage05 adds homing auxiliary configuration;
-stage06 delivers the native stored-profile interruption core. Stage07 integration
-is under final verification. Stages08-15 remain NOT STARTED; broader N05 remains
+stage06 delivers the native stored-profile interruption core. Stage07 delivers
+its bounded owner/application/console integration. Stages08-15 remain NOT STARTED; broader N05 remains
 PARTIAL pending active staging and completion-attribution evidence.
 
 | Stage | Stage status | Commit / evidence | Physical evidence |
@@ -16,7 +16,7 @@ PARTIAL pending active staging and completion-attribution evidence.
 | 04 | SOFTWARE COMPLETE | [Implementation and verification](../../reports/2026-10-29_ess_position_start_speed.md); `ef38513`; 83-test final quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 05 | SOFTWARE COMPLETE | [Implementation and verification](../../reports/2026-10-29_ess_homing_auxiliary.md); `88f8b9c`; 85-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 06 | SOFTWARE COMPLETE | `db65b1b`; [core subset, review and verification](../../reports/2026-10-29_ess_position_interrupt_core.md); 86-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: core-only delivery |
-| 07 | IN PROGRESS | [Owner/application integration and verification](../../reports/2026-10-29_ess_position_interrupt_owner.md); 88-test quick/package and independent review PASS; final CI pending | NOT RUN: recorded bench USB absent |
+| 07 | SOFTWARE COMPLETE | `14da3ad`; [owner/application integration and verification](../../reports/2026-10-29_ess_position_interrupt_owner.md); 88-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 08 | NOT STARTED | - | NOT RUN |
 | 09 | NOT STARTED | - | NOT RUN |
 | 10 | NOT STARTED | - | NOT RUN |
@@ -277,8 +277,9 @@ NOT RUN (bench USB absent), with no physical scaling/active-policy qualification
 ## Stage 06 native position interruption core (2026-10-29)
 
 SOFTWARE COMPLETE for the restricted core subset. `PositionCommand` and the
-raw builder expose typed IGNORE/INTERRUPT while preserving default1/5 triggers.
-Native INTERRUPT emits9/13 only with USE_STORED and an exact independent stored
+raw builder expose typed IGNORE/INTERRUPT_CURRENT while preserving default1/5 triggers.
+The explicit name changed from initial INTERRUPT during stage07 SDK verification.
+Native INTERRUPT_CURRENT emits9/13 only with USE_STORED and an exact independent stored
 profile/target/configuration witness. Copied age caps the immutable trigger
 budget; no profile writes or completion observations occur. Results distinguish
 ACKNOWLEDGED/NOT_OBSERVED from unknown transmitted execution. Original evidence
@@ -302,3 +303,44 @@ Broader active new-target staging and completion attribution remain unresolved;
 N05 stays PARTIAL, with five named gaps and18 guarded pairs unchanged. Local full
 firmware and physical interruption NOT RUN; hosted firmware builds do not qualify
 shaft/electrical behavior. No sibling, board or vendor snapshot was changed.
+
+## Stage 07 stored-position interruption integration (2026-10-29)
+
+SOFTWARE COMPLETE for the initial native stored-profile subset. Ordinary
+`submitPositionInterrupt` and `position interrupt ORIGINAL_ID` share one bounded
+admission/owner path. The app retains independent original/replacement results,
+reserves before cancelling the old observer, settles its in-flight transaction,
+and preserves urgent-stop capacity/priority. Known completion or failed old
+settlement cancels unsent replacement. Possible motion survives ACK-only terminal
+publication and result release until checked observed stop. No active staging,
+new target, stale arrival attribution, automatic replay or second scheduler.
+`copyMoveResult` exposes exact programmatic context/relation; console/host results
+distinguish native ACK-only intent from observed movement.
+
+Read-only review and independent owner/host fixtures PASS, including pressure,
+result conservation, late/malformed/lost replies, partial TX, deadline/cancel and
+stop phases. Review fixes preserve admission checks across owner pressure and
+accept legitimate unsuperseded no-TX expiry. Historical programmatic results with
+`command_id:0` are supported without weakening console correlation. Initial firmware CI exposed
+the Xtensa `INTERRUPT` macro collision; the explicit enum is now
+`PositionInterruption::INTERRUPT_CURRENT`, with macro-before/after-header checks,
+unchanged values/defaults and wire behavior.
+
+Implementation `b5df978` plus correction
+`14da3adda90b983497c36a0c9c159129b74f163a` are pushed and synchronized.
+Focused 6/6, independent 9/9, host 286 tests with both real frontend formatters,
+fresh final quick 88/88 and source/installed consumers 3/3 each PASS.
+[CI run40952509782](https://github.com/janhavelka/MotorControl-RS/actions/runs/40952509782)
+verifies the exact final implementation SHA: GCC, Clang, Arduino 4/4 and IDF
+app/core-S3/core-S2/portable-S2 all PASS. Evidence:
+`build/ess_software_07_final_quick/`, `build/ess_software_07_ci/`, and the
+[delivery report](../../reports/2026-10-29_ess_position_interrupt_owner.md).
+
+N05 stays PARTIAL: arbitrary new-target/profile replacement still needs exact
+active-register consumption/staging-isolation evidence, and observed completion
+still needs attributable replacement/reference evidence. Inventory: 54 producing
+operations, 94 implemented choices, five named gaps and 18 guarded pairs.
+Stages08-15 remain NOT STARTED. Physical interruption and short bench regression
+are NOT RUN: recorded COM13/USB identity is absent. No other board, sibling or
+vendor snapshot was modified; local full firmware is NOT RUN, with the required
+firmware matrix supplied by CI.

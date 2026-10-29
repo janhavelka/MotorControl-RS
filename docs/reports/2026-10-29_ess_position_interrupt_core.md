@@ -5,6 +5,11 @@ application/console integration remains stage07; broader N05 remains PARTIAL.
 Five named gaps and 18 guarded paired setters remain. Physical interruption,
 shaft behavior and electrical timing are NOT RUN/UNQUALIFIED.
 
+Later stage07 [integration and SDK verification](2026-10-29_ess_position_interrupt_owner.md)
+renamed the initial `INTERRUPT` enum member to `INTERRUPT_CURRENT` to avoid the
+Xtensa register macro. Its value, wire frames and behavior are unchanged; names
+below describe the original stage06 commit.
+
 ## Baseline and source
 
 - Started from clean synchronized main
