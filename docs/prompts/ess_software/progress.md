@@ -7,7 +7,7 @@ velocity parameter reads. Stages 03-15 remain NOT STARTED.
 | Stage | Stage status | Commit / evidence | Physical evidence |
 | --- | --- | --- | --- |
 | 01 | CONTRACTS COMPLETE | [Contract decisions and review](../../reports/2026-10-29_ess_software_contracts.md); no implementation | NOT RUN |
-| 02 | IN PROGRESS | [Implementation and review](../../reports/2026-10-29_ess_velocity_reads.md); 80-test quick/package PASS, firmware CI pending | NOT RUN: recorded bench USB absent |
+| 02 | SOFTWARE COMPLETE | `6bede39`; [implementation/review/validation](../../reports/2026-10-29_ess_velocity_reads.md); 80-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 03 | NOT STARTED | - | NOT RUN |
 | 04 | NOT STARTED | - | NOT RUN |
 | 05 | NOT STARTED | - | NOT RUN |
@@ -121,7 +121,7 @@ count changed. Full compilation, remote CI dispatch/wait and physical tests were
 NOT RUN for this documentation-only preparation, consistent with AGENTS policy.
 
 
-## Stage 02 implementation checkpoint (2026-10-29)
+## Stage 02 completed software (2026-10-29)
 
 - N01 now has one producing FC03 `0x001D/3` core sequence, copied raw result,
   explicit configuration generation, ordinary submit/copy/release and shared
@@ -137,7 +137,16 @@ NOT RUN for this documentation-only preparation, consistent with AGENTS policy.
   build/ess_software_02_quick`: all80 registered tests, source/install consumers
   3/3 each, strict headers/linkage/package checks PASS. Repository/reference,
   generator and 30 inventory tests PASS; `git diff --check` PASS.
-- Pinned firmware builds/terminal exact-implementation-commit CI pending at this
-  checkpoint. No physical test: recorded COM13/USB serial `3C:0F:02:CD:6B:98`
-  absent; different connected ESP devices were not opened/flashed/commanded.
+- Exact final implementation commit `6bede39712d14dcde206f74e93d33d493af18bc3`
+  pushed/synchronized on `main`. [CI run 40902403009](https://github.com/janhavelka/MotorControl-RS/actions/runs/40902403009)
+  terminal SUCCESS verified with `gh run view --json headSha,status,conclusion,jobs,url`;
+  GCC, Clang, Arduino and pinned IDF jobs each PASS with 80 tests and their
+  package/firmware matrices. Downloaded summaries/logs: `build/ess_software_02_ci/`.
+- Local managed PIO6.1.19 first log reports all four builds SUCCESS, but its
+  PowerShell invocation returned nonzero on stderr; the explicit confirmation
+  FAILED during package installation with a framework file-in-use error. Logs
+  and exact limits are in the report; hosted Arduino is the passing firmware
+  evidence. Native IDF was not run locally. No cache deletion/check bypass.
+- No physical test: recorded COM13/USB serial `3C:0F:02:CD:6B:98` absent;
+  different connected ESP devices were not opened/flashed/commanded.
   Motion, sign/ramp and independent electrical/shaft qualification remain open.

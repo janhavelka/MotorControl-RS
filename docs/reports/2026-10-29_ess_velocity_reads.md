@@ -93,9 +93,42 @@ Integrated verification passed:
 - Core ZIP SHA-256:
   `04d6cc056ceed71e6446493683a27550c4755d542ddeb4ccd76c682718454ef5`.
 
-Pinned local Arduino builds and exact-commit hosted GCC/Clang/Arduino/IDF CI are
-pending at this implementation checkpoint. Terminal results and the exact
-implementation commit will be recorded in progress before completion.
+The exact final implementation commit is
+`6bede39712d14dcde206f74e93d33d493af18bc3`, pushed on `main` with upstream
+synchronization confirmed. Push-triggered [CI run 40902403009](https://github.com/janhavelka/MotorControl-RS/actions/runs/40902403009)
+completed SUCCESS. Terminal verification:
+
+```text
+gh run view 40902403009 --repo janhavelka/MotorControl-RS --json headSha,status,conclusion,jobs,url
+gh run download 40902403009 --repo janhavelka/MotorControl-RS --dir build/ess_software_02_ci
+```
+
+| Exact-commit job | Result / downloaded summary |
+| --- | --- |
+| native (gcc) | PASS, 80 tests plus package/consumer checks |
+| native (clang) | PASS, 80 tests plus package/consumer checks |
+| arduino | PASS, 80 tests plus all four pinned firmware environments |
+| idf | PASS, 80 tests plus pinned ESP-IDF 5.5.5 S3/S2/portable consumer matrix |
+
+Local downloaded summaries/logs are under `build/ess_software_02_ci/` in
+`native-gcc`, `native-clang`, `arduino`, `native-idf`; terminal state is also
+retained in `build/ess_software_02_ci_status.json`. No manual dispatch or repeated
+unchanged suite was needed. The later evidence-only documentation commit does
+not change the implementation verified by that run.
+
+Local managed PlatformIO 6.1.19 command:
+`scripts/pio.cmd run -e bench_s3_units -e bench_s3_probe -e bench_s3_load_poll -e bench_s3_load_timer`.
+Its first log `build/ess_software_02_arduino.log` reports all four environments
+SUCCESS, but PowerShell returned nonzero after treating an image-size stderr
+diagnostic as NativeCommandError; that local invocation is not credited as an
+unqualified passing process. A deliberate exit-code confirmation failed in
+package installation with WinError 32 (framework `esp32-hal-uart.c` in use),
+then WinError 145/183, retained in
+`build/ess_software_02_arduino_confirm.log`. No shared-cache deletion or forced
+repair was attempted. The local repeat is FAILED due to that environment issue;
+its cause/locking process is not established. Hosted Arduino provides the
+passing exact-commit firmware evidence. Native IDF was verified in hosted CI,
+not run locally. No code/check was weakened to bypass the local failure.
 
 ## Physical evidence
 

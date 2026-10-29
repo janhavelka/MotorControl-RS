@@ -42,8 +42,8 @@ setters**. Their exact membership and source restrictions are maintained in
 the register catalogue alone is not semantic command coverage.
 
 [Stage 01 contracts](reports/2026-10-29_ess_software_contracts.md) were completed
-on 29 October 2026; no implementation/physical obligation was closed. Stages
-02 now implements velocity reads; 03 can reuse the read sequencer, 04/05 the setting sequencer, and 08-12 the
+on 29 October 2026; no implementation/physical obligation was closed. Stage
+02 now implements velocity reads; stage 03 can reuse the read sequencer, 04/05 the setting sequencer, and 08-12 the
 reviewed homing qualification/observation contract. N05's first implementable
 subset is native stored-profile start-or-interrupt with ACK-only result and no
 active setup writes. Arbitrary replacement still needs active-register
