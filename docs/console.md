@@ -280,8 +280,10 @@ requires checked stopped/configuration/input evidence; invalid or extra tokens
 produce no traffic. Inspect/release its retained operation ID normally. It does
 not start motion, save parameters or qualify physical scaling/active behavior.
 A possible write expires readiness; fresh configuration/state/profile evidence
-must rebuild the native start-speed relationship before a move. Desired speed
-is never adjusted. Profile restore still excludes this word; see
+must rebuild live evidence before a move. After a possible start-speed change,
+firmware must also install an independently qualified, raw-word/binding-matched
+`PositionStartSpeedRelation`; fresh reads alone do not establish the relation.
+Its minimum compatible move speed is checked without adjusting desired speed. Profile restore still excludes this word; see
 [position setting and restoration limits](ess_position.md#native-position-start-speed-setting).
 
 ## Homing auxiliary configuration

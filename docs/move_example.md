@@ -193,3 +193,11 @@ observations. The interactive `moveby`/`moveto` path can also confirm a short
 move using two exact final-position reports under its explicit session coordinate
 convention. An old arrival flag or an arbitrary position change is insufficient.
 Polling belongs to the upper firmware and does not independently measure shaft motion.
+
+After using `submitPositionStartSpeed`, fresh checked configuration/state/profile
+reads alone cannot qualify the changed start-speed relationship. Supply an
+independently established `PositionStartSpeedRelation` through
+`installPositionStartSpeedRelation` before resuming moves. The installer checks
+binding, configuration, exact raw word and original qualification age; its
+minimum remains in the existing move-request RPM units. See the
+[position relation contract](ess_position.md#native-position-start-speed-setting).

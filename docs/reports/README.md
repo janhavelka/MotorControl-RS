@@ -7,6 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [Independent settings audit, prompts04/05](2026-10-29_ess_settings_audit.md) | Fresh parallel code/source/test review; fixes queued-state admission, contradictory-prior invalidation, start-speed relation qualification, exact coverage routes and partial-host help. |
 | [ESS homing auxiliary configuration](2026-10-29_ess_homing_auxiliary.md) | Explicit twelve-choice stored setter with independent readback, ordinary API/console and qualification invalidation; physical NOT RUN. |
 | [ESS position start-speed setting](2026-10-29_ess_position_start_speed.md) | Explicit native word setting, retained prior/echo/readback, ordinary API/console and readiness invalidation; physical NOT RUN. |
 | [Independent velocity/homing read audit](2026-10-29_ess_reads_audit.md) | Fresh parallel code/source/test review of prompts 02/03; fixes callback-specific help, human unresolved-state display and policy wording; physical NOT RUN. |

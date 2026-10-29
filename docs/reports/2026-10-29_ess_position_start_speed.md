@@ -1,5 +1,10 @@
 # Explicit native position start speed — 29 October 2026
 
+Later same-day evidence: the [fresh independent settings audit](2026-10-29_ess_settings_audit.md)
+corrects admission/qualification gaps in this implementation. This report retains
+its original commit/check evidence; use the audit and maintained guides for the
+current behavior and final correction verification.
+
 N04 software implementation adds a typed native `0x0020` setting through the
 existing DriverContext engine and ordinary selected-axis application/console.
 Local integrated verification and exact implementation-commit CI are complete.

@@ -236,11 +236,13 @@ def check(inventory, ledger):
             for command in commands:
                 if not isinstance(command, str):
                     raise ValueError("invalid CLI command: " + op_id)
-                # Homing execution stages 0x0031/6; only this separate route
-                # writes auxiliary 0x0030. A family name alone is not coverage.
-                if kind == "WRITE" and ("HOMING_AUXILIARY" in linked or command == "home auxiliary CHOICE"):
-                    if linked != ["HOMING_AUXILIARY"] or command != "home auxiliary CHOICE":
-                        raise ValueError("homing auxiliary requires its exact producing route: " + op_id)
+                # Profile restore excludes 0x0020; homing staging excludes
+                # 0x0030. Only the separate scalar routes produce these writes.
+                for record, route in (("POSITION_START_SPEED", "motion-profile start-speed NATIVE"),
+                                      ("HOMING_AUXILIARY", "home auxiliary CHOICE")):
+                    if kind == "WRITE" and (record in linked or command == route):
+                        if linked != [record] or command != route:
+                            raise ValueError("single-field setting requires its exact producing route: " + op_id)
                 check_cli_route(command, metadata, kind)
         api = operation.get("api", {})
         keys(api, "header symbols", "api")

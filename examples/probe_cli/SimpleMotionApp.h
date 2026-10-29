@@ -347,8 +347,14 @@ void serviceSimpleMotion(App& a, uint64_t now) {
     if (!v.speedRpm) {
         finishSimpleMotion(a, Status(Err::ILLEGAL_VALUE, 0, "zero positioning speed"), "Speed is zero; set speed above zero before requesting movement"); return;
     }
-    if (v.speedRpm < a.motionProfile.view.current[0]) {
+    uint16_t minimumRpm = 0;
+    if (!positionStartingSpeed(a, now, minimumRpm)) {
+        finishSimpleMotion(a, Status(Err::INVALID_CONFIG, 0, "start-speed relationship unqualified"),
+            "Starting-speed relationship is unqualified; no move was admitted"); return;
+    }
+    if (v.speedRpm < minimumRpm) {
         finishSimpleMotion(a, Status(Err::ILLEGAL_VALUE, 0, "speed below drive starting speed"),
+            a.positionStartSpeedRelationRequired ? "Requested speed is below the independently qualified minimum" :
             "Requested speed is below the drive starting speed; see settings"); return;
     }
     MoveRequest request; request.position = s.position; request.position.configurationGeneration = a.axis.generation;

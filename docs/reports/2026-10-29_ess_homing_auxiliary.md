@@ -1,5 +1,10 @@
 # Explicit homing auxiliary configuration — 29 October 2026
 
+Later same-day evidence: the [fresh independent settings audit](2026-10-29_ess_settings_audit.md)
+corrects admission/qualification gaps in this implementation. This report retains
+its original commit/check evidence; use the audit and maintained guides for the
+current behavior and final correction verification.
+
 N07 adds the twelve-choice stored `0x0030` setter through the existing checked
 settings engine and ordinary application/console. Source, implementation and
 qualification remain separate. Local integrated verification and exact implementation-commit CI are complete;

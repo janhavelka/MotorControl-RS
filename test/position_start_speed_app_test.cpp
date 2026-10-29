@@ -297,8 +297,34 @@ void testCompatibleMoveAndHumanTerminal() {
     for (unsigned i = 0; i < 25000 && !app->owner.txAccepted(request); ++i) step();
     assert(app->owner.txAccepted(request)); schedule(words({30, 100, 100, 60, 0, 7}));
     for (unsigned i = 0; i < 25000 && app->motionProfile.view.pending; ++i) step();
-    assert(app->motionProfile.view.ok && moveBy(Rational(10), PositionUnit::STEPS, move, 60));
-    assert(view(move).moveContext->prerequisites.startSpeedKnown && view(move).moveContext->prerequisites.startSpeed == 30);
+    assert(app->motionProfile.view.ok);
+    const auto beforeQualification = hardware.writes;
+    assert(!moveBy(Rational(10), PositionUnit::STEPS, move, 60) && move == 77 && hardware.writes == beforeQualification);
+    // This independent fixture witness establishes a relation to the existing
+    // move-request units; the raw30 profile read cannot establish it itself.
+    MotorControlRSExample::PositionStartSpeedRelation relation;
+    relation.target = app->axis.target; relation.configurationGeneration = app->axis.generation;
+    relation.rawStartSpeed = 30; relation.minimumPositionSpeedRpm = 60; relation.qualifiedUs = hardware.time;
+    for (unsigned invalid = 0; invalid < 9; ++invalid) {
+        auto rejected = relation;
+        if (invalid == 0) ++rejected.target.id;
+        else if (invalid == 1) ++rejected.target.address;
+        else if (invalid == 2) ++rejected.target.generation;
+        else if (invalid == 3) ++rejected.configurationGeneration;
+        else if (invalid == 4) rejected.rawStartSpeed = 31;
+        else if (invalid == 5) rejected.rawStartSpeed = 3001;
+        else if (invalid == 6) rejected.minimumPositionSpeedRpm = 0;
+        else if (invalid == 7) rejected.minimumPositionSpeedRpm = 3001;
+        else rejected.qualifiedUs = hardware.time + 1000000;
+        assert(!installPositionStartSpeedRelation(rejected) && hardware.writes == beforeQualification);
+    }
+    assert(installPositionStartSpeedRelation(relation) && hardware.writes == beforeQualification);
+    auto wrongReplacement = relation; wrongReplacement.rawStartSpeed = 31; wrongReplacement.minimumPositionSpeedRpm = 1;
+    assert(!installPositionStartSpeedRelation(wrongReplacement)); // A rejection preserves the installed witness.
+    assert(!moveBy(Rational(10), PositionUnit::STEPS, move, 50) && move == 77 && hardware.writes == beforeQualification);
+    assert(moveBy(Rational(10), PositionUnit::STEPS, move, 60));
+    assert(view(move).moveContext->prerequisites.startSpeedKnown && view(move).moveContext->prerequisites.startSpeed == 60);
+    assert(!installPositionStartSpeedRelation(relation)); // An admitted move owns the axis. No witness replacement.
     waitTx(move);
     const auto staged = crc({1, 16, 0, 0x21, 0, 5, 10, 0, 100, 0, 100, 0, 60, 0, 0, 0, 10});
     assert(hardware.tx == staged); const auto writes = hardware.writes;
@@ -316,6 +342,50 @@ void testCompatibleMoveAndHumanTerminal() {
     assert(Serial.output.find("Physical scaling, active behavior and persistence remain unqualified") != std::string::npos);
     assert(Serial.output.find(" rpm") == std::string::npos && releaseOperation(human));
 }
+void readPositionProfile(uint16_t startSpeed) {
+    Probe::MotionProfileView profile;
+    assert(motionProfileCommand(app, Probe::MotionProfileCommand::SNAPSHOT, profile) == Probe::Action::OK);
+    const auto request = app->motionProfile.request;
+    for (unsigned i = 0; i < 25000 && !app->owner.txAccepted(request); ++i) step();
+    assert(app->owner.txAccepted(request)); schedule(words({startSpeed, 100, 100, 60, 0, 7}));
+    for (unsigned i = 0; i < 25000 && app->motionProfile.view.pending; ++i) step();
+    assert(app->motionProfile.view.ok);
+}
+void testProfileReadsCannotResurrectARevokedRelation() {
+    fresh(); baseline(); readPositionProfile(30);
+    MotorControlRSExample::PositionStartSpeedRelation relation;
+    relation.target = app->axis.target; relation.configurationGeneration = app->axis.generation;
+    relation.rawStartSpeed = 30; relation.minimumPositionSpeedRpm = 60; relation.qualifiedUs = hardware.time;
+    assert(installPositionStartSpeedRelation(relation));
+    readPositionProfile(31); readPositionProfile(30);
+    assert(app->motionProfile.view.current[0] == 30 && app->motionProfile.view.ok);
+    const auto writes = hardware.writes; uint32_t move = 77;
+    assert(!moveBy(Rational(10), PositionUnit::STEPS, move, 60) && move == 77 && hardware.writes == writes);
+}
+
+void testPositionRelationKeepsItsOriginalAge() {
+    fresh(1000); baseline(); const auto id = submit(30);
+    const auto write30 = crc({1, 6, 0, 0x20, 0, 30});
+    settingReply(id, READ_START, words({30})); settingReply(id, write30, write30);
+    settingReply(id, READ_START, words({30})); pump(); assert(releaseOperation(id));
+    advanceHardware(hardware.time + 1500000); baseline();
+    readPositionProfile(30); advanceHardware(hardware.time + 500000);
+    MotorControlRSExample::PositionStartSpeedRelation relation;
+    relation.target = app->axis.target; relation.configurationGeneration = app->axis.generation;
+    relation.rawStartSpeed = 30; relation.minimumPositionSpeedRpm = 60;
+    relation.qualifiedUs = hardware.time - 500000;
+    assert(installPositionStartSpeedRelation(relation));
+    auto expired = relation; expired.qualifiedUs = hardware.time - 1000001;
+    assert(!installPositionStartSpeedRelation(expired));
+    baseline(); readPositionProfile(30); // New matching observations cannot renew qualification time.
+    const auto writes = hardware.writes;
+    advanceHardware(relation.qualifiedUs + 1000001);
+    assert(MotorControlRS::evidenceAgeValid(app->motionProfile.view.closureEarliestUs, hardware.time, app->observationAgeUs()));
+    assert(Probe::fresh(app->stateCache.blocks[0], app->axis.target, hardware.time, app->observationAgeUs()));
+    uint32_t move = 77;
+    assert(!moveBy(Rational(10), PositionUnit::STEPS, move, 60) && move == 77 && hardware.writes == writes);
+}
+
 void testPriorCompletionCannotRenewOrRequalifySession() {
     for (unsigned scenario = 0; scenario < 3; ++scenario) {
         fresh(scenario == 1 ? 1000 : 0); baseline();
@@ -349,7 +419,7 @@ void testPriorCompletionCannotRenewOrRequalifySession() {
         assert(releaseOperation(id));
     }
 }
-void testLegacyRestoreSettlesOnlyItsFiveWrittenWords() {
+void testLegacyRestoreSettlesOnlyItsFiveWrittenWords(bool emitFixture = false) {
     fresh(); baseline();
     const auto profileReply = [](const std::vector<uint8_t>& expected, const std::vector<uint8_t>& response) {
         const auto phase = app->motionProfile.view.phase; const auto request = app->motionProfile.request;
@@ -375,10 +445,102 @@ void testLegacyRestoreSettlesOnlyItsFiveWrittenWords() {
     assert(restored.original[0] == 30 && restored.current[0] == 3000 &&
         !std::memcmp(restored.original + 1, restored.current + 1, 5 * sizeof(uint16_t)));
     assert(hardware.writes == before + 2); // Restore never writes 0x0020 or triggers movement.
+    if (emitFixture) {
+        command("@43 motion-profile inspect\n");
+        const auto begin = Serial.output.find("{\"type\":\"reply\""); assert(begin != std::string::npos);
+        const auto end = Serial.output.find('\n', begin); assert(end != std::string::npos);
+        const auto record = Serial.output.substr(begin, end - begin);
+        assert(record.find("\"id\":43") != std::string::npos && record.find("\"command\":\"motion-profile\"") != std::string::npos);
+        std::printf("{\"case\":\"changed_start\",\"record\":%s}\n", record.c_str());
+    }
     command("@42 motion-profile forget\n");
     assert(!app->motionProfile.view.saved && !app->motionProfile.view.restoreUnsettled && hardware.writes == before + 2);
     assert(setting(id).progress[0].requested == 3000 && releaseOperation(id));
 }
+void testContradictoryPriorCannotLeavePositionReady() {
+    for (const uint16_t prior : {uint16_t(30), uint16_t(3000), uint16_t(0xFFFF)}) {
+        fresh(); baseline();
+        Probe::MotionProfileView profile;
+        assert(motionProfileCommand(app, Probe::MotionProfileCommand::SNAPSHOT, profile) == Probe::Action::OK);
+        const auto request = app->motionProfile.request;
+        for (unsigned i = 0; i < 25000 && !app->owner.txAccepted(request); ++i) step();
+        assert(app->owner.txAccepted(request)); schedule(words({30, 100, 100, 60, 0, 7}));
+        for (unsigned i = 0; i < 25000 && app->motionProfile.view.pending; ++i) step();
+        assert(app->motionProfile.view.ok);
+        const auto generation = app->axis.generation, writes = hardware.writes;
+        const auto id = submit(); settingReply(id, READ_START, words({prior}));
+        assert(setting(id).kind == ESS::DriverKind::UPDATE && !app->owner.txAccepted(findRecord(*app, id)->requestId));
+        assert(cancel(app, id) == Probe::Action::OK); pump();
+        const auto result = setting(id);
+        assert(result.outcome == ESS::DriverOutcome::CANCELLED && !result.effects && !result.uncertain &&
+            result.progress[0].execution == ActionExecution::NOT_TRANSMITTED);
+        assert(result.prerequisites.previous.raw[0] == prior && app->axis.generation == generation && hardware.writes == writes + 1);
+        uint32_t move = 0;
+        if (prior == 30) {
+            assert(app->motionProfile.view.ok && moveBy(Rational(10), PositionUnit::STEPS, move, 60));
+            assert(cancel(app, move) == Probe::Action::OK); pump(); assert(releaseMove(move));
+        } else {
+            assert(!app->motionProfile.view.ok && !moveBy(Rational(10), PositionUnit::STEPS, move, 60) && !move);
+        }
+        assert(hardware.writes == writes + 1 && releaseOperation(id));
+    }
+}
+
+void testNewerStateBlocksQueuedSettingWrite() {
+    // A normal read can queue ahead of the setting write. New checked facts
+    // must still prevent an unsent write, even without coordinate knowledge.
+    for (unsigned scenario = 0; scenario < 5; ++scenario) {
+        fresh(); baseline();
+        assert(!coordinateKnowledge(*app));
+        const auto generation = app->axis.generation;
+        const auto configuration = app->configuration.operationId;
+        app->homePrerequisites.auxiliaryQualified = app->homePrerequisites.zeroOffsetQualified = true;
+        const auto id = submit(); const auto deadline = setting(id).deadlineUs;
+        command("@90 read state\n"); const auto state = app->latestOperationId;
+        assert(state != id && view(state).typedRead && view(state).pending);
+        const auto ownerTurn = []() { advanceHardware(hardware.time + 10); app->owner.service(uart.sample()); };
+        const auto ownerReply = [&](uint32_t operation, const std::vector<uint8_t>& response) {
+            const auto request = findRecord(*app, operation)->requestId;
+            for (unsigned i = 0; i < 25000 && !app->owner.txAccepted(request); ++i) ownerTurn();
+            assert(app->owner.txAccepted(request)); schedule(response);
+            for (unsigned i = 0; i < 25000 && !app->owner.result(request); ++i) ownerTurn();
+            assert(app->owner.result(request));
+        };
+        ownerReply(id, words({30}));
+        const unsigned badBlock = scenario < 3 ? 0 : scenario == 3 ? 1 : 2;
+        // Harvest only the independent read until its selected block is queued.
+        // The setting's successful prior remains unharvested until that point.
+        for (unsigned block = 0; block < badBlock; ++block) {
+            ownerReply(state, block == 0 ? words({0, 1}) : words({0, 0}));
+            advanceReads(*app, hardware.time);
+        }
+        advanceActions(*app, hardware.time);
+        assert(setting(id).kind == ESS::DriverKind::UPDATE && !setting(id).effects);
+        assert(!app->owner.txAccepted(findRecord(*app, id)->requestId));
+        const auto writes = hardware.writes;
+        const auto bad = scenario == 0 ? words({0, 5}) : scenario == 1 ? words({1, 1}) :
+            scenario == 2 ? words({0, 0x21}) : scenario == 3 ? words({1, 0}) : words({0, 0, 1});
+        ownerReply(state, bad);
+        // The owner has the new checked read, but no setting byte has left TX.
+        assert(!app->owner.txAccepted(findRecord(*app, id)->requestId));
+        serviceApplication();
+        for (unsigned i = 0; i < 100 && view(id).pending; ++i) step();
+        const auto result = setting(id);
+        assert(result.state == ReadState::FAILED && result.outcome == ESS::DriverOutcome::CANCELLED);
+        assert(!result.effects && !result.uncertain && result.deadlineUs == deadline);
+        assert(result.progress[0].execution == ActionExecution::NOT_TRANSMITTED &&
+            !result.progress[0].acknowledged && !result.progress[0].readbackKnown);
+        assert(result.prerequisites.previous.raw[0] == 30 && result.prerequisites.previous.provenance[0].status);
+        assert(app->axis.generation == generation && app->configuration.operationId == configuration);
+        assert(app->homePrerequisites.auxiliaryQualified && app->homePrerequisites.zeroOffsetQualified);
+        assert(hardware.writes == writes + 1); // The checked state read, no FC06.
+        if (view(state).pending) assert(cancel(app, state) == Probe::Action::OK);
+        const auto finalWrites = hardware.writes; pump(1000);
+        assert(hardware.writes == finalWrites && releaseOperation(id));
+        assert(releaseOperation(state));
+    }
+}
+
 void terminalFixtures() {
     for (const char* name : {"success", "prior_exception", "readback_mismatch", "lost_ack", "cancelled", "changed_generation"}) {
         fresh(); baseline(); command("@30 motion-profile start-speed 3000\n"); const auto id = app->latestOperationId;
@@ -409,10 +571,15 @@ void terminalFixtures() {
 }
 } // namespace
 int main(int argc, char** argv) {
+    if (argc == 2 && !std::strcmp(argv[1], "--profile-restore-fixture")) { testLegacyRestoreSettlesOnlyItsFiveWrittenWords(true); return 0; }
     if (argc == 2 && !std::strcmp(argv[1], "--start-speed-fixtures")) { terminalFixtures(); return 0; }
+    testContradictoryPriorCannotLeavePositionReady();
+    testNewerStateBlocksQueuedSettingWrite();
     testAdmissionAndCapacity(); testSuccessEvidenceAndEffects();
     testFailuresAndChangedConfiguration(); testConsoleAndRefreshedMoveRelationship();
-    testCompatibleMoveAndHumanTerminal(); testPriorCompletionCannotRenewOrRequalifySession();
+    testCompatibleMoveAndHumanTerminal(); testProfileReadsCannotResurrectARevokedRelation();
+    testPositionRelationKeepsItsOriginalAge();
+    testPriorCompletionCannotRenewOrRequalifySession();
     testLegacyRestoreSettlesOnlyItsFiveWrittenWords();
     if (app) { app->~App(); std::free(app); app = nullptr; }
 }

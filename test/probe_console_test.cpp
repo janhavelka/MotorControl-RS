@@ -2456,6 +2456,42 @@ void testParameterFamilyHelpAvailability() {
         assert(!f.typedReads && !f.velocities && !f.homes);
     }
 }
+void testMotionProfileHelpAvailability() {
+    for (bool profile : {false, true}) for (bool setter : {false, true}) {
+        Fake f; auto h = f.host();
+        h.startDriver = setter ? Fake::startDriver : nullptr;
+        if (profile) h.motionProfile = [](void*, Probe::MotionProfileCommand, Probe::MotionProfileView&) {
+            assert(false); return Probe::Action::FAILED; // Help never executes the operation.
+        };
+        h.emitLine = [](void* context, const char* line, std::size_t length) {
+            static_cast<Fake*>(context)->lines.emplace_back(line, length); return true;
+        };
+        Probe::Console c(h, Probe::Format::HUMAN);
+        send(c, "help motion-profile\n");
+        const auto help = f.lines.back();
+        if (!profile && !setter) assert(help.find("unavailable") != std::string::npos);
+        else {
+            assert((help.find("motion-profile read") != std::string::npos) == profile);
+            assert((help.find("motion-profile inspect") != std::string::npos) == profile);
+            assert((help.find("motion-profile start-speed 30") != std::string::npos) == setter);
+        }
+        assert(!f.drivers);
+    }
+}
+void testSetterCapabilities() {
+    for (bool setter : {false, true}) for (bool snapshot : {false, true}) {
+        Fake f; auto h = f.host();
+        h.startDriver = setter ? Fake::startDriver : nullptr;
+        if (!snapshot) h.snapshot = nullptr;
+        Probe::Console c(h, Probe::Format::JSON);
+        send(c, "@1 caps\n");
+        f.contains(setter && snapshot ? "\"position_start_speed_write\":true" : "\"position_start_speed_write\":false");
+        f.contains(setter && snapshot ? "\"homing_auxiliary_write\":true" : "\"homing_auxiliary_write\":false");
+        f.contains("\"unimplemented\":[\"switch_homing\"]");
+        f.contains("\"home\":false"); f.contains("\"home_physical_qualified\":false");
+        assert(!f.drivers && !f.homes);
+    }
+}
 void testVelocityReadGrammar() {
     Fake f; auto h = f.host(); h.startTypedRead = Fake::typedRead;
     Probe::Console c(h,Probe::Format::JSON);
@@ -2486,7 +2522,7 @@ int main(int argc, char** argv) {
     }
     if (argc == 2 && std::strcmp(argv[1], "--home-fixtures") == 0) { homeFixtures(); return 0; }
     if (argc == 2 && std::strcmp(argv[1], "--io-fixtures") == 0) { driverFixtures(true); return 0; }
-    testParameterFamilyHelpAvailability(); testHomeReadGrammar(); homeReadFixtures(); testVelocityReadGrammar(); velocityReadFixtures();
+    testSetterCapabilities(); testMotionProfileHelpAvailability(); testParameterFamilyHelpAvailability(); testHomeReadGrammar(); homeReadFixtures(); testVelocityReadGrammar(); velocityReadFixtures();
     testDebugTranslationAndOutputIsolation();
     testSimpleMotionGrammarAndReports();
     testIndependentLocalHooksAndRemovedAliases();

@@ -90,6 +90,27 @@ bool copyReadResult(uint32_t operationId, MotorControlRS::ESS_RS::ReadContext& o
  * activation. Retained results require releaseOperation, including failures.
  */
 MotorControlRS::Status submitPositionStartSpeed(uint32_t native, uint32_t& operationId);
+/** Independently qualified relation between an exact stored start-speed word
+ * and the minimum compatible speed in the existing move request's RPM units.
+ * No conversion formula or physical calibration is inferred. qualifiedUs is
+ * the original application-monotonic qualification time, never readback time.
+ * ApplicationOptions::observationMaxAgeMs also bounds this witness (zero keeps
+ * it until invalidation). Target/configuration and raw-word matching always apply.
+ */
+struct PositionStartSpeedRelation {
+    MotorControlRS::ReadTarget target;
+    uint32_t configurationGeneration = 0;
+    uint16_t rawStartSpeed = 0; ///< Exact observed native word, 0..3000.
+    uint16_t minimumPositionSpeedRpm = 0; ///< Qualified minimum legal move request, 1..3000; zero is invalid.
+    uint64_t qualifiedUs = 0;
+};
+/** Install caller qualification from the service task while idle, against a
+ * fresh matching full position-profile read. Rejection preserves the previous
+ * witness; no bus traffic or motion occurs. A possible start-speed write or a
+ * contradictory observation revokes it. Fresh reads alone never recreate it.
+ * Required after a possible start-speed change before ordinary moves resume.
+ */
+MotorControlRS::Status installPositionStartSpeedRelation(const PositionStartSpeedRelation&);
 /** Explicit selected-axis homing auxiliary choice (0..11 enumeration). Uses the
  * same stopped/input/trigger admission, immutable prior/update/readback session
  * and retained result contract as the start-speed setter. A possible write

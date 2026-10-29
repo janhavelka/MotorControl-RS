@@ -30,6 +30,15 @@
 
 ### Fixed
 
+- Setting sessions cancel unsent FC06 work when newer checked state/input/feedback
+  contradicts admission; contradictory priors revoke stale readiness even without
+  a write. Changed start speed requires an explicit, generation-bound application
+  relation witness; fresh reads cannot fabricate or renew qualification.
+- Start-speed coverage requires its exact producing route; setter-only profile
+  help shows only callable examples, and capabilities no longer list delivered
+  setters as unimplemented. Strict host restore validation now checks exactly
+  the five written words while preserving both start observations.
+
 - Velocity/home help and error usage now expose parameter reads and motion only
   when their respective callbacks exist. Human read results name unresolved
   interpretation states and distinguish numeric policy checks from drive limits;

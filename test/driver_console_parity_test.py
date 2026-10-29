@@ -6,8 +6,8 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from bench_probe import BenchError, Console, MAX_LINE, unique_object
-from bench_probe_test import check_fixture_routes
+from bench_probe import BenchError, Console, MAX_LINE, unique_object, wire_crc
+from bench_probe_test import Clock, Serial, check_fixture_routes, encoded
 
 expected = {"read", "unknown_read", "full_update", "partial_lost_ack", "cancelled",
             "readback_mismatch", "deadline", "wrong_echo", "late_delivery", "unqualified",
@@ -130,3 +130,46 @@ if len(sys.argv) > 3:
         seen.add(name)
     assert seen == expected, (seen, expected)
     print(f"PASS: {len(seen)} actual app/console auxiliary terminals accepted by Python")
+
+# This regression consumes the real snapshot -> setter -> restore inspection,
+# including its checked full readback and independently retained five-word write.
+if len(sys.argv) > 2:
+    output = subprocess.check_output([sys.argv[2], "--profile-restore-fixture"], text=True, timeout=20)
+    fixture = json.loads(output, object_pairs_hook=unique_object)
+    assert fixture["case"] == "changed_start"
+    record = fixture["record"]
+    assert record["original"][0] == 30 and record["current"][0] == 3000
+    assert record["original"][1:] == record["current"][1:] and record["restored"]
+
+    def profile_session(response):
+        clock = Clock()
+        def handler(request_id, command, args):
+            if command != "motion-profile": return Serial.normal(request_id, command, args)
+            assert args == ["inspect"]
+            return encoded(dict(response, id=request_id))
+        console = Console(Serial(handler), clock=clock, sleeper=clock.sleep)
+        console.identify()
+        return console
+
+    profile_session(record).command("motion-profile", host_args=("inspect",))
+    changed = copy.deepcopy(record)
+    console = profile_session(changed)
+    console.command("motion-profile", host_args=("inspect",))
+    changed["original"][0] = 31
+    try:
+        console.command("motion-profile", host_args=("inspect",))
+    except BenchError:
+        pass
+    else:
+        raise AssertionError("changed immutable start-speed snapshot accepted")
+    changed = copy.deepcopy(record)
+    changed["current"][1] += 1
+    raw = bytes((1, 3, 12)) + b"".join(word.to_bytes(2, "big") for word in changed["current"])
+    changed["rx_hex"] = (raw + wire_crc(raw).to_bytes(2, "little")).hex()
+    try:
+        profile_session(changed).command("motion-profile", host_args=("inspect",))
+    except BenchError:
+        pass
+    else:
+        raise AssertionError("mismatching written profile word accepted")
+    print("PASS: actual changed-start five-word restoration accepted by Python")

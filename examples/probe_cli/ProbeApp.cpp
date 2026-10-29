@@ -193,6 +193,8 @@ struct App {
     uint16_t rememberedMoveWords[5] = {};
     uint32_t rememberedMoveGeneration = 0, rememberedMoveBinding = 0, rememberedMoveSerial = 0;
     ESS::MovePrerequisites movePrerequisites; // Supplied commissioning evidence; false until verified.
+    bool positionStartSpeedRelationRequired = false; // Preserve the pre-setting startup policy; never reset by reads/recovery.
+    PositionStartSpeedRelation positionStartSpeedRelation;
     ESS::HomePrerequisites homePrerequisites; // Explicit method/active-auxiliary/native/reference qualification.
     ESS::VelocityPrerequisites velocityPrerequisites; // Independent commissioning evidence, initially unqualified.
     ESS::VelocityParametersObservation velocityParameters; // Checked observation, never desired/staged values.
@@ -926,6 +928,15 @@ Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
         prerequisites.rawAlarm = motion.value.rawAlarm; prerequisites.rawMotion = motion.value.rawMotion;
         prerequisites.observedUs = motion.observedEarliestUs;
     }
+    if (a.positionStartSpeedRelationRequired) {
+        uint16_t minimumRpm = 0;
+        if (!positionStartingSpeed(a, now, minimumRpm)) return Probe::Action::UNAVAILABLE;
+        prerequisites.startSpeedKnown = true; prerequisites.startSpeed = minimumRpm;
+        prerequisites.observedUs = std::min(prerequisites.observedUs, a.positionStartSpeedRelation.qualifiedUs);
+        const auto relationAge = a.observationAgeUs();
+        if (relationAge && (!prerequisites.maximumAgeUs || relationAge < prerequisites.maximumAgeUs))
+            prerequisites.maximumAgeUs = relationAge;
+    }
     prerequisites.wordOrderKnown = a.configuration.wordOrderKnown;
     prerequisites.wordOrder = a.configuration.wordOrder;
     prerequisites.subdivision = a.configuration.raw.subdivision;
@@ -1320,9 +1331,29 @@ Probe::Action startSingleSetting(App& a, uint32_t commandId, uint8_t address, ES
 }
 // Continue the same reserved operation. Scratch storage keeps the complete prior
 // evidence outside the output being reinitialized, without a large stack copy.
+void reconcileSingleSettingPrior(App& a, const App::Record& record) {
+    const auto& c = record.driver;
+    if (record.serialGeneration != a.serial.generation ||
+        !Probe::sameTarget(c.target, a.axis.target) || c.configurationGeneration != a.axis.generation ||
+        !ESS::getDriver(c, a.driverObserved)) return;
+    const uint16_t raw = a.driverObserved.raw[0];
+    if (c.group == ESS::DriverGroup::POSITION_START_SPEED) {
+        if (raw > 3000 ||
+            (motionProfileBound(a) && raw != a.motionProfile.view.current[0]) ||
+            (a.positionStartSpeedRelation.target.id && raw != a.positionStartSpeedRelation.rawStartSpeed)) {
+            revokePositionStartSpeedRelation(a);
+            a.motionProfile.view.ok = false;
+            a.rememberedMoveGeneration = 0;
+        }
+    } else if (a.homePrerequisites.auxiliaryQualified && raw != static_cast<uint16_t>(a.homePrerequisites.auxiliary)) {
+        a.homePrerequisites.auxiliaryQualified = false;
+        a.homePrerequisites.referenceSemanticsQualified = a.homePrerequisites.readinessQualified = false;
+    }
+}
 void continueSingleSetting(App& a, App::Record& record, uint64_t now) {
     auto& c = record.driver;
     if (!record.singleSettingSession || c.kind != ESS::DriverKind::READ || c.state != ReadState::SUCCEEDED) return;
+    reconcileSingleSettingPrior(a, record);
     MotorControlRS::Status status;
     if (record.cancelContinuation || record.configurationGeneration != a.axis.generation ||
         c.target.generation != a.bindingGeneration || record.serialGeneration != a.serial.generation)
@@ -1524,6 +1555,9 @@ void invalidateDriverAssumptions(App& a, uint8_t address, uint32_t changed, uint
         // Keep historical snapshots, but expire their generation and all future
         // prepared work. Local bit 0 must never be interpreted as DIRECTION.
         if (address == a.axis.target.address) {
+            if (group == ESS::DriverGroup::POSITION_START_SPEED) {
+                revokePositionStartSpeedRelation(a);
+            }
             a.axis.generation = !a.axis.generation || a.axis.generation == UINT32_MAX ? 0 : a.axis.generation + 1;
             a.coordinateReference = MotorControlRS::AxisReference();
             a.configuration.operationId = 0;
@@ -1999,6 +2033,14 @@ void advanceActions(App& a, uint64_t now) {
             updateActionReservation(a, record);
         }
         if (!sequenced(record) || terminal(a, record)) continue;
+        // Reads queued ahead of this write may contradict its admitted stopped/
+        // input policy. Settle an unsent cancellation before the owner can TX.
+        // Once any write byte is accepted, preserve its outcome and readback.
+        if (record.singleSettingSession && record.driver.kind == ESS::DriverKind::UPDATE && record.driver.step == 0 &&
+            (!record.requestId.owner || !a.owner.txAccepted(record.requestId)) && !singleSettingPolicy(a, now)) {
+            record.cancelContinuation = true;
+            if (record.requestId.owner) a.owner.cancelUnsent(record.requestId, now);
+        }
         if (record.singleSettingSession && (record.configurationGeneration != a.axis.generation ||
             record.driver.target.generation != a.bindingGeneration || record.serialGeneration != a.serial.generation)) {
             record.cancelContinuation = true;
@@ -2816,6 +2858,28 @@ MotorControlRS::Status submitHomingAuxiliary(MotorControlRS::ESS_RS::HomingAuxil
     if (admitted != Probe::Action::OK)
         return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted), "homing auxiliary setting not admitted");
     findRecord(*app, operationId)->programmaticSettings = true; return Ok();
+}
+MotorControlRS::Status installPositionStartSpeedRelation(const PositionStartSpeedRelation& relation) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    App& a = *app;
+    if (a.owner.active() || a.owner.pending() || a.owner.recovering() || a.owner.configurationOwned() ||
+        a.owner.commissioningOwned() || a.discovery.owned || a.serial.configuring ||
+        axisReserved(a) || reading(a) || acting(a))
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(Probe::Action::BUSY), "start-speed qualification requires idle application");
+    const uint64_t now = uart.sample();
+    const auto& profile = a.motionProfile.view;
+    if (!relation.target.id || !Probe::sameTarget(relation.target, a.axis.target) ||
+        !a.axis.generation || relation.configurationGeneration != a.axis.generation ||
+        relation.rawStartSpeed > 3000 || !relation.minimumPositionSpeedRpm || relation.minimumPositionSpeedRpm > 3000 ||
+        relation.qualifiedUs > now || !evidenceAgeValid(relation.qualifiedUs, now, a.observationAgeUs()) ||
+        !motionProfileBound(a) || !profile.ok || profile.pending || !profile.closureQualified ||
+        !evidenceAgeValid(profile.closureEarliestUs, now, a.observationAgeUs()) ||
+        relation.rawStartSpeed != profile.current[0])
+        return Status(Err::INVALID_CONFIG, 0, "start-speed relation requires exact current binding, raw word and qualification age");
+    a.positionStartSpeedRelation = relation;
+    a.positionStartSpeedRelationRequired = true;
+    return Ok();
 }
 bool copySettingsResult(uint32_t operationId, MotorControlRS::ESS_RS::DriverContext& output) {
     if (!app || !operationId) return false;

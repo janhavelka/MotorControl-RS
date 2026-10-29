@@ -179,9 +179,41 @@ also require declared unconnected wiring. No assignment or polarity changes.
 Pending profile transfers, motion, unsettled restores and full retained-result
 storage reject before traffic. Programmatic results require explicit terminal
 `releaseOperation` and are not recycled as human-command successes. A new
-configuration/state/I/O/profile transfer must rebuild the existing native
-command-word relationship after a possible write. ACK or single-word readback
-alone cannot grant readiness; no physical RPM conversion is established.
+configuration/state/I/O/profile transfer must rebuild live evidence after a
+possible write. Fresh stored reads alone cannot qualify the changed start-speed
+relationship. Firmware must also supply independent qualification through
+`installPositionStartSpeedRelation(const PositionStartSpeedRelation&)`.
+No physical RPM conversion is inferred by the library.
+The relation retains exact `target`, `configurationGeneration`, `rawStartSpeed`
+(0..3000), `minimumPositionSpeedRpm` (1..3000 in the existing move-request units)
+and original monotonic `qualifiedUs`. Install it from the service task while
+idle, after a checked matching full profile read. Invalid/stale/busy installs
+preserve the previous witness and generate no traffic. Its minimum is supplied
+by independent evidence, not computed from the raw word. A requested speed below
+that minimum rejects; the selected speed is never adjusted. This applies to both
+advanced/programmatic and simple console moves, including cached prerequisites.
+
+`ApplicationOptions::observationMaxAgeMs` also bounds the original qualification
+age; new reads cannot renew it. The admitted move's write budget includes that
+original timestamp. Possible start-speed writes and contradictory prior/full
+profile observations revoke the relation. Matching reads, recovery, rebinding or
+restoring the five-word profile never recreate it. Explicit reinstallation is
+required. A contradicted prior invalidates stale profile/readiness even when
+its following write is cancelled before TX; no write effect or generation bump
+is fabricated for the observation itself.
+
+The standalone's existing startup native-word policy is retained before a start
+word has been changed or contradicted in that application session. That policy
+is an existing assumption, not universal physical qualification or persistent
+proof across host restarts. Firmware may install an explicit relation from the
+start; this setter adds no conversion formula, physical calibration or automatic
+qualification command.
+
+A newer checked state/I/O/feedback observation can also invalidate the setting's
+live stopped/input policy while FC06 waits in the owner queue. The app cancels
+an unsent write before dispatch; after any accepted write bytes it retains the
+original execution/effects and separate readback without replay or rollback.
+
 Restore compares exactly the five words it writes. The observed current and
 original start-speed words remain visible separately; a deliberately changed
 start word does not prevent settlement of the five-word restoration.

@@ -304,13 +304,16 @@ class Coverage(unittest.TestCase):
         setter = next(row for row in INVENTORY["operations"] if row["id"] == "position_start_speed_write")
         self.assertEqual(setter["cli_commands"], ["motion-profile start-speed NATIVE"])
         self.assertEqual(setter["hardware"]["state"], "NOT_RUN")
-        for route in ("motion-profile inspect", "motion-profile forget", "motion-profile start-speed",
+        for route in ("motion-profile restore", "driver set", "home",
+                      "motion-profile inspect", "motion-profile forget", "motion-profile start-speed",
                       "motion-profile start-speed INTEGER extra", "motion-profile start-speed garbage"):
             self.rejected(lambda value: next(row for row in value["operations"]
                 if row["id"] == "position_start_speed_write").update(cli_commands=[route]))
         restored = next(row for row in INVENTORY["operations"] if row["id"] == "position_profile_restore")
         self.assertNotIn("POSITION_START_SPEED", restored["records"])
         self.assertEqual(restored["cli_commands"], ["motion-profile restore"])
+        self.rejected(lambda value: next(row for row in value["operations"]
+            if row["id"] == "position_profile_restore").update(cli_commands=["motion-profile start-speed NATIVE"]))
         gap = next(row for row in INVENTORY["gaps"] if row["id"] == "position_profile_candidate_staging")
         self.assertEqual(gap["owner"], "09/11")
         self.assertEqual(gap["disposition"], "PARTIAL")

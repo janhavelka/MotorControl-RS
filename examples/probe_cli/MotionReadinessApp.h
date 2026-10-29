@@ -13,6 +13,25 @@ bool motionProfileEndpoint(const App& a) { return motionProfileEndpoint(a, a.mot
 bool motionProfileBound(const App& a) {
     return motionProfileEndpoint(a) && a.motionProfile.view.generation == a.axis.generation;
 }
+void revokePositionStartSpeedRelation(App& a) {
+    a.positionStartSpeedRelationRequired = true;
+    a.positionStartSpeedRelation = PositionStartSpeedRelation();
+    a.movePrerequisites.startSpeedKnown = a.movePrerequisites.readinessQualified = false;
+}
+bool positionStartingSpeed(const App& a, uint64_t now, uint16_t& minimumRpm) {
+    const auto& profile = a.motionProfile.view;
+    if (!a.positionStartSpeedRelationRequired) {
+        minimumRpm = profile.current[0]; return true; // Existing startup native-word policy.
+    }
+    const auto& relation = a.positionStartSpeedRelation;
+    if (!Probe::sameTarget(relation.target, a.axis.target) ||
+        relation.configurationGeneration != a.axis.generation || !a.axis.generation ||
+        !motionProfileBound(a) || !profile.ok || profile.pending || !profile.closureQualified ||
+        !MotorControlRS::evidenceAgeValid(profile.closureEarliestUs, now, a.observationAgeUs()) ||
+        relation.rawStartSpeed != profile.current[0] || relation.qualifiedUs > now ||
+        !MotorControlRS::evidenceAgeValid(relation.qualifiedUs, now, a.observationAgeUs())) return false;
+    minimumRpm = relation.minimumPositionSpeedRpm; return true;
+}
 bool motionProfileStationary(const App& a, uint64_t now) {
     const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
     return Probe::fresh(motion, a.axis.target, now, a.observationAgeUs()) && !motion.value.rawAlarm &&
@@ -45,9 +64,11 @@ bool moveRequirements(const App& a, const MotorControlRS::MoveRequest& request,
     const auto& raw = a.configuration.raw;
     const auto& io = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
     const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+    uint16_t minimumRpm = 0;
     if (!Probe::fresh(io, a.axis.target, now, a.observationAgeUs()) || io.value.unknownInputBits ||
         raw.softLimitEnable != 0 || !a.configuration.wordOrderKnown || motion.value.released ||
-        profile.current[0] > request.speedRpm || profile.current[1] > 2000 || profile.current[2] > 2000)
+        !positionStartingSpeed(a, now, minimumRpm) || minimumRpm > request.speedRpm ||
+        profile.current[1] > 2000 || profile.current[2] > 2000)
         return false;
     // Unconnected wiring does not establish inactive assignments. Preserve them
     // and require the checked logical input report for each assigned input.
@@ -66,7 +87,7 @@ bool moveRequirements(const App& a, const MotorControlRS::MoveRequest& request,
     out.accelerationTime = profile.current[1];
     out.decelerationTime = profile.current[2];
     out.startSpeedKnown = true;
-    out.startSpeed = profile.current[0];
+    out.startSpeed = minimumRpm;
     out.maximumAgeUs = a.observationAgeUs();
     return true;
 }

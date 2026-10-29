@@ -189,6 +189,13 @@ results need no console and are never recycled as successful human commands.
 The Python `Console.set_homing_auxiliary` performs one attempt and explicit
 result release; `begin`/`wait` can keep the application result retained.
 
+Checked prior observations already revoke contradictory auxiliary/readiness/
+reference qualification even if the following write is cancelled before TX.
+That observation creates no write effect, counter change or generation bump.
+Newer checked state/input/feedback evidence also cancels a queued FC06 when its
+required stopped/input policy no longer holds. First-byte effects and already
+transmitted outcomes are still retained without replay.
+
 As soon as TX may apply, advance the axis generation and expire dependent home
 qualification/prepared work, current references and readiness. Fixed host
 origins/scales, desired values and historical observations/results remain.

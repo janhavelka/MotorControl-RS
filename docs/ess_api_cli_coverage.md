@@ -225,3 +225,9 @@ are useful conventions. This console intentionally retains non-consuming
 result inspection, explicit release and motor-write uncertainty independently
 of FieldCore's sensor result/trace consumption and recovery policies. No
 FieldCore types or sensor replay policy enter the reusable core.
+
+After a possible start-speed change, ordinary moves additionally require the
+callable application `installPositionStartSpeedRelation` and a fresh matching
+full profile. Independent minimum-speed qualification is distinct from raw
+stored observation and does not add a producing register route or coverage
+credit. [Position relation contract](ess_position.md#native-position-start-speed-setting).

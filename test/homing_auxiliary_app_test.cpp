@@ -172,7 +172,7 @@ void testAllChoicesAndPossibleEffects() {
         const auto units = app->axis.units; app->coordinateReference.nativeKnown = true;
         app->homePrerequisites.auxiliaryQualified = app->homePrerequisites.zeroOffsetQualified =
             app->homePrerequisites.readinessQualified = true;
-        const auto id = submit(raw); settingReply(id, READ_AUX, UNKNOWN_AUX);
+        const auto id = submit(raw); settingReply(id, READ_AUX, words({7}));
         assert(app->axis.generation == generation && app->homePrerequisites.auxiliaryQualified);
         const auto write = writeChoice(raw); waitTx(id, write); pump();
         assert(app->axis.generation == generation + 1 && !app->homePrerequisites.auxiliaryQualified &&
@@ -182,7 +182,7 @@ void testAllChoicesAndPossibleEffects() {
         assert(!app->configuration.operationId && !std::memcmp(&app->configuration.raw, &config.raw, sizeof(config.raw)));
         settingReply(id, write, write); settingReply(id, READ_AUX, words({raw})); pump();
         const auto result = setting(id);
-        assert(result.configurationGeneration == generation && result.prerequisites.previous.raw[0] == 0xFFFF && result.progress[0].requested == raw);
+        assert(result.configurationGeneration == generation && result.prerequisites.previous.raw[0] == 7 && result.progress[0].requested == raw);
         assert(result.state == ReadState::SUCCEEDED && !result.progress[0].activeKnown && !result.uncertain && result.effects == 1);
         assert(hardware.writes == count + 3 && app->simple.desired.speedRpm == desired.speedRpm &&
             app->simple.desired.acceleration == desired.acceleration && app->simple.desired.deceleration == desired.deceleration);
@@ -308,6 +308,86 @@ void testPriorCompletionCannotRenewSession() {
         assert(hardware.writes == writes + 1 && hardware.tx == READ_AUX && !app->owner.active() && !app->owner.pending() && releaseOperation(id));
     }
 }
+void testContradictoryPriorRevokesOnlyDependentHomeQualification() {
+    for (const uint16_t prior : {uint16_t(7), uint16_t(0), uint16_t(0xFFFF)}) {
+        fresh(); baseline();
+        auto& p = app->homePrerequisites;
+        p.target = app->axis.target; p.configurationGeneration = app->axis.generation;
+        p.auxiliary = ESS::HomingAuxiliary::KEEP_POSITION_SET_ZERO;
+        p.auxiliaryQualified = p.referenceSemanticsQualified = p.readinessQualified =
+            p.zeroOffsetQualified = p.nativeRatesQualified = p.nativeRampQualified = true;
+        p.qualifiedSearchSpeed = 60; p.qualifiedReturnSpeed = 30; p.qualifiedRampTime = 100;
+        const auto generation = app->axis.generation, writes = hardware.writes;
+        const auto id = submit(); settingReply(id, READ_AUX, words({prior}));
+        assert(setting(id).kind == ESS::DriverKind::UPDATE && !app->owner.txAccepted(findRecord(*app, id)->requestId));
+        assert(cancel(app, id) == Probe::Action::OK); pump();
+        const auto result = setting(id);
+        assert(result.outcome == ESS::DriverOutcome::CANCELLED && !result.effects && !result.uncertain &&
+            result.progress[0].execution == ActionExecution::NOT_TRANSMITTED);
+        assert(result.prerequisites.previous.raw[0] == prior && app->axis.generation == generation && hardware.writes == writes + 1);
+        assert(p.auxiliaryQualified == (prior == 7) && p.referenceSemanticsQualified == (prior == 7) &&
+            p.readinessQualified == (prior == 7));
+        assert(p.zeroOffsetQualified && p.nativeRatesQualified && p.nativeRampQualified &&
+            p.qualifiedSearchSpeed == 60 && p.qualifiedReturnSpeed == 30 && p.qualifiedRampTime == 100);
+        assert(releaseOperation(id));
+    }
+}
+
+void testNewerStateBlocksQueuedSettingWrite() {
+    // A normal read can queue ahead of the setting write. New checked facts
+    // must still prevent an unsent write, even without coordinate knowledge.
+    for (unsigned scenario = 0; scenario < 5; ++scenario) {
+        fresh(); baseline();
+        assert(!coordinateKnowledge(*app));
+        const auto generation = app->axis.generation;
+        const auto configuration = app->configuration.operationId;
+        app->homePrerequisites.auxiliaryQualified = app->homePrerequisites.zeroOffsetQualified = true;
+        const auto id = submit(); const auto deadline = setting(id).deadlineUs;
+        command("@90 read state\n"); const auto state = app->latestOperationId;
+        assert(state != id && view(state).typedRead && view(state).pending);
+        const auto ownerTurn = []() { advanceHardware(hardware.time + 10); app->owner.service(uart.sample()); };
+        const auto ownerReply = [&](uint32_t operation, const std::vector<uint8_t>& response) {
+            const auto request = findRecord(*app, operation)->requestId;
+            for (unsigned i = 0; i < 25000 && !app->owner.txAccepted(request); ++i) ownerTurn();
+            assert(app->owner.txAccepted(request)); schedule(response);
+            for (unsigned i = 0; i < 25000 && !app->owner.result(request); ++i) ownerTurn();
+            assert(app->owner.result(request));
+        };
+        ownerReply(id, words({7}));
+        const unsigned badBlock = scenario < 3 ? 0 : scenario == 3 ? 1 : 2;
+        // Harvest only the independent read until its selected block is queued.
+        // The setting's successful prior remains unharvested until that point.
+        for (unsigned block = 0; block < badBlock; ++block) {
+            ownerReply(state, block == 0 ? words({0, 1}) : words({0, 0}));
+            advanceReads(*app, hardware.time);
+        }
+        advanceActions(*app, hardware.time);
+        assert(setting(id).kind == ESS::DriverKind::UPDATE && !setting(id).effects);
+        assert(!app->owner.txAccepted(findRecord(*app, id)->requestId));
+        const auto writes = hardware.writes;
+        const auto bad = scenario == 0 ? words({0, 5}) : scenario == 1 ? words({1, 1}) :
+            scenario == 2 ? words({0, 0x21}) : scenario == 3 ? words({1, 0}) : words({0, 0, 1});
+        ownerReply(state, bad);
+        // The owner has the new checked read, but no setting byte has left TX.
+        assert(!app->owner.txAccepted(findRecord(*app, id)->requestId));
+        serviceApplication();
+        for (unsigned i = 0; i < 100 && view(id).pending; ++i) step();
+        const auto result = setting(id);
+        assert(result.state == ReadState::FAILED && result.outcome == ESS::DriverOutcome::CANCELLED);
+        assert(!result.effects && !result.uncertain && result.deadlineUs == deadline);
+        assert(result.progress[0].execution == ActionExecution::NOT_TRANSMITTED &&
+            !result.progress[0].acknowledged && !result.progress[0].readbackKnown);
+        assert(result.prerequisites.previous.raw[0] == 7 && result.prerequisites.previous.provenance[0].status);
+        assert(app->axis.generation == generation && app->configuration.operationId == configuration);
+        assert(app->homePrerequisites.auxiliaryQualified && app->homePrerequisites.zeroOffsetQualified);
+        assert(hardware.writes == writes + 1); // The checked state read, no FC06.
+        if (view(state).pending) assert(cancel(app, state) == Probe::Action::OK);
+        const auto finalWrites = hardware.writes; pump(1000);
+        assert(hardware.writes == finalWrites && releaseOperation(id));
+        assert(releaseOperation(state));
+    }
+}
+
 void terminalFixtures() {
     for (const char* name : {"success", "prior_exception", "readback_mismatch", "lost_ack", "cancelled", "changed_generation"}) {
         fresh(); baseline(); command("@30 home auxiliary 7\n"); const auto id = app->latestOperationId; assert(view(id).pending);
@@ -334,6 +414,8 @@ void terminalFixtures() {
 } // namespace
 int main(int argc, char** argv) {
     if (argc == 2 && !std::strcmp(argv[1], "--auxiliary-fixtures")) { terminalFixtures(); return 0; }
+    testContradictoryPriorRevokesOnlyDependentHomeQualification();
+    testNewerStateBlocksQueuedSettingWrite();
     testAdmissionAndCapacity(); testAllChoicesAndPossibleEffects(); testFailuresAndChangedConfiguration();
     testConsoleAndHomeQualificationBoundary(); testPriorCompletionCannotRenewSession();
     if (app) { app->~App(); std::free(app); app = nullptr; }

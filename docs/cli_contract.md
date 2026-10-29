@@ -32,7 +32,9 @@ Capabilities distinguish unavailable callbacks, unimplemented features,
 unresolved semantics and physical qualification. Detailed help, menu descriptions
 and error usage for velocity/home families reflect read, setting and motion callbacks
 independently. Human parameter results name unresolved interpretations; numeric
-JSON resolution codes remain unchanged.
+JSON resolution codes remain unchanged. Setter capability booleans reflect
+their actual driver/snapshot callbacks; delivered setters are not reported in
+the unimplemented list.
 
 Input/output use fixed capacities and bounded service work. Reject truncated
 input, excess tokens, trailing junk, numeric overflow, unsupported units and

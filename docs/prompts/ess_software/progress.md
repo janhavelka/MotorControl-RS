@@ -250,3 +250,17 @@ Arduino4/4 and IDF S3 app/core-S3/core-S2/portable-S2 PASS. Artifacts:
 `build/ess_software_05_ci/`; local full firmware NOT RUN. No prior green
 commit is credited to this change. Physical NOT RUN: recorded bench USB identity
 absent in fresh enumeration; other devices were not opened/flashed/commanded.
+
+## Fresh independent audit of stages04/05 (2026-10-29)
+
+IN PROGRESS: [fresh audit findings and correction evidence](../../reports/2026-10-29_ess_settings_audit.md).
+Original prompts04/05 and actual combined source/diff were re-read from base
+`49702c5` by parallel core/source, app/owner and surface/host/test reviewers.
+Confirmed corrections cover newer-state cancellation of unsent writes, negative
+reconciliation of contradictory priors, independent start-speed relation
+qualification after changes, exact producing coverage routes, five-word host
+restore validation, partial-host help examples and stale capability labels.
+No read/write/method/paired-window coverage totals change. Final focused 23/23,
+host 274 cases, inventory 32 and fresh quick 85/85 plus source/installed consumers
+3/3 each and package checks PASS. Exact correction-commit CI is pending;
+physical NOT RUN (bench USB absent).

@@ -366,8 +366,9 @@ def traffic_record(sequence=1, kind="TX", mode="decoded"):
             words=[20202] if rx else [],function_name="read_registers",register_names=["DRIVER_MODEL"]) if mode=="decoded" else None)
 
 
-def motion_profile_reply(request_id, action="inspect", restored=False, pending=False):
+def motion_profile_reply(request_id, action="inspect", restored=False, pending=False, current_start=30):
     words = [30, 50, 50, 60, 0, 5000]
+    current = [current_start, *words[1:]]
     def frame(prefix):
         return (prefix + bench.wire_crc(prefix).to_bytes(2, "little")).hex()
     read_tx = frame(bytes((1, 3, 0, 0x20, 0, 6)))
@@ -375,8 +376,8 @@ def motion_profile_reply(request_id, action="inspect", restored=False, pending=F
     data = reply(request_id, "motion-profile", request=action, result="accepted",
         pending=pending, saved=True, restored=restored and not pending, session_ok=not pending,
         phase=(2 if pending else 3) if restored else 1, address=1, configuration_generation=3, serial_generation=1,
-        original=list(words), current=list(words), tx_hex=write_tx if restored and pending else read_tx,
-        rx_hex="" if pending else frame(bytes((1, 3, 12)) + b"".join(x.to_bytes(2, "big") for x in words)),
+        original=list(words), current=list(current), tx_hex=write_tx if restored and pending else read_tx,
+        rx_hex="" if pending else frame(bytes((1, 3, 12)) + b"".join(x.to_bytes(2, "big") for x in current)),
         tx_accepted=0 if pending else 8, tx_complete=not pending, closure_qualified=not pending,
         closure_earliest_us=0 if pending else 3000, closure_latest_us=0 if pending else 3200,
         delivered_us=0 if pending else 3300, deadline_us=10000, execution_unknown=False, error="none",
@@ -2452,6 +2453,63 @@ class Framing(unittest.TestCase):
                 with self.assertRaises(bench.BenchError): console.command("motion-profile", host_args=("inspect",))
                 self.assertFalse(console.synchronized)
 
+    def test_motion_profile_restores_only_its_five_words(self):
+        def with_payload(item):
+            raw = bytes((1, 3, 12)) + b"".join(word.to_bytes(2, "big") for word in item["current"])
+            item["rx_hex"] = (raw + bench.wire_crc(raw).to_bytes(2, "little")).hex()
+            return item
+
+        for stationary in (False, True):
+            item = motion_profile_reply(0, restored=True, current_start=3000)
+            if stationary:
+                item.update(session_ok=False, restored=False, error="stationary_required", restore_unsettled=True)
+            def handler(i, command, args):
+                if command != "motion-profile": return Serial.normal(i, command, args)
+                return encoded(dict(item, id=i))
+            console = self.session(handler)
+            result = console.command("motion-profile", host_args=("inspect",))
+            self.assertEqual(result["original"][0], 30)
+            self.assertEqual(result["current"][0], 3000)
+            self.assertEqual(result["current"][1:], result["original"][1:])
+            self.assertEqual(result["restored"], not stationary)
+            # A valid FC03 payload still cannot settle a mismatching written word.
+            item["current"][1] += 1
+            with_payload(item)
+            with self.assertRaises(bench.BenchError):
+                console.command("motion-profile", host_args=("inspect",))
+
+    def test_motion_profile_keeps_all_six_original_words_immutable(self):
+        item = motion_profile_reply(0, restored=True, current_start=3000)
+        def handler(i, command, args):
+            if command != "motion-profile": return Serial.normal(i, command, args)
+            return encoded(dict(item, id=i))
+        console = self.session(handler)
+        console.command("motion-profile", host_args=("inspect",))
+        item["original"][0] = 31  # An excluded write word is still immutable snapshot history.
+        with self.assertRaises(bench.BenchError):
+            console.command("motion-profile", host_args=("inspect",))
+
+    def test_motion_profile_unknown_restore_rejects_mismatching_written_readback(self):
+        item = motion_profile_reply(0, restored=True, pending=True)
+        item.update(pending=False, error="transaction", execution_unknown=True, restore_unsettled=True,
+            tx_accepted=19, tx_complete=True, delivered_us=2000, write_tx_hex=item["tx_hex"],
+            write_tx_accepted=19, write_tx_complete=True, write_delivered_us=2000, write_execution_unknown=True)
+        original_write = copy.deepcopy(item)
+        def handler(i, command, args):
+            if command != "motion-profile": return Serial.normal(i, command, args)
+            return encoded(dict(item, id=i))
+        console = self.session(handler)
+        console.command("motion-profile", host_args=("inspect",))
+        item = motion_profile_reply(0, restored=True, current_start=3000)
+        for key, value in original_write.items():
+            if key.startswith("write_"): item[key] = copy.deepcopy(value)
+        item.update(execution_unknown=True, restore_unsettled=False)
+        item["current"][2] += 1
+        raw = bytes((1, 3, 12)) + b"".join(word.to_bytes(2, "big") for word in item["current"])
+        item["rx_hex"] = (raw + bench.wire_crc(raw).to_bytes(2, "little")).hex()
+        with self.assertRaises(bench.BenchError):
+            console.command("motion-profile", host_args=("inspect",))
+
     def test_motion_profile_grammar_rejects_before_transmission(self):
         console = self.session()
         before = len(self.port.writes)
@@ -2474,7 +2532,7 @@ class Framing(unittest.TestCase):
                 if action in ("forget", "restore"): item.update(ok=False, result="busy")
                 stage = 1
             else:
-                item = motion_profile_reply(i, action, restored=True)
+                item = motion_profile_reply(i, action, restored=True, current_start=3000)
                 for key in attempt:
                     if key.startswith("write_"): item[key] = copy.deepcopy(attempt[key])
                 item.update(deadline_us=20000, execution_unknown=True, restore_unsettled=stage < 4,
@@ -2506,6 +2564,8 @@ class Framing(unittest.TestCase):
         self.assertTrue(stationary["restore_unsettled"])
         console.command("motion-profile", host_args=("read",))
         settled = console.command("motion-profile", host_args=("inspect",))
+        self.assertEqual(settled["original"][0], 30)
+        self.assertEqual(settled["current"][0], 3000)
         self.assertTrue(settled["session_ok"])
         self.assertTrue(settled["restored"])
         self.assertFalse(settled["restore_unsettled"])

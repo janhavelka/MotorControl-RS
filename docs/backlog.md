@@ -213,3 +213,9 @@ Homing auxiliary configuration (N07) now has its explicit twelve-choice typed
 prior/FC06/readback API and ordinary `home auxiliary` route. Stored selection,
 active policy and physical homing remain separate. No method support, nonzero
 offset or write window is enabled. [Stage05 evidence](reports/2026-10-29_ess_homing_auxiliary.md).
+
+The [fresh independent settings audit](reports/2026-10-29_ess_settings_audit.md)
+corrects prompts04/05 admission and qualification boundaries: newer observations
+cancel unsent settings; contradictory priors revoke stale readiness; changed
+start speed needs explicit independent relation evidence. Register/method
+coverage counts do not change, and physical qualification remains separate.

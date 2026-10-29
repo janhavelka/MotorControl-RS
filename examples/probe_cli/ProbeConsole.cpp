@@ -505,7 +505,7 @@ const char* helpGroup(Command command) {
     default: return "Diagnostics";
     }
 }
-const char* helpExample(Command command) {
+const char* helpExample(Command command, const Host& host) {
     switch(command) {
     case Command::HELP: return "help moveby\n  @1 status  (machine-readable JSON)";
     case Command::MOVE_BY: return "moveby 100\n  moveby 36 deg";
@@ -526,7 +526,11 @@ const char* helpExample(Command command) {
     case Command::CANCEL: return "cancel 12  (local cancellation; use stop for the motor)";
     case Command::HOST: return "host\n  host caps";
     case Command::DISCOVER: return "discover addresses 1 1\n  discover inspect";
-    case Command::MOTION_PROFILE: return "motion-profile read\n  motion-profile inspect";
+    case Command::MOTION_PROFILE:
+        if (!host.motionProfile) return "motion-profile start-speed 30";
+        return host.startDriver && host.snapshot ?
+            "motion-profile read\n  motion-profile inspect\n  motion-profile start-speed 30" :
+            "motion-profile read\n  motion-profile inspect";
     case Command::MONITOR: return "monitor 500 10\n  monitor off";
     case Command::PROFILE: return "profile list";
     case Command::AXIS: return "axis config";
@@ -1941,7 +1945,7 @@ void Console::dispatch() noexcept {
                 if (described->command == Command::STOP)
                     fits=fits && append(output_,sizeof(output_),used,
                         "\nFast stop uses reserved priority after the current bus transaction settles.\nIt requires working RS485 communication; it is not a hardwired emergency-stop circuit.");
-                if (const char* example=helpExample(described->command))
+                if (const char* example=helpExample(described->command, host_))
                     fits=fits && append(output_,sizeof(output_),used,"\nExamples:\n  %s",example);
                 fits=fits && append(output_,sizeof(output_),used,"\nArguments in [brackets] are optional. Use @ID before the command for full JSON evidence.");
             } else {
@@ -2002,8 +2006,9 @@ void Console::dispatch() noexcept {
             boolean(callable(Command::ENABLE) || callable(Command::MOVE) || (host_.startVelocity && host_.snapshot && host_.axis) || callable(Command::DRIVER) || (host_.startHome && host_.snapshot && host_.axis) || callable(Command::COMMUNICATION) || callable(Command::PERSISTENCE) || callable(Command::MOTION_PROFILE)),
             boolean(host_.startMove && host_.snapshot && host_.axis), boolean(snapshot.writeResponseConfirmed), boolean(snapshot.axisReserved), callable(Command::ENABLE) ? "[\"enable\",\"release\",\"clear_alarm\",\"clear_position\",\"stop_normal\",\"stop_fast\"]" : "[]", boolean(host_.startVelocity && host_.snapshot && host_.axis), boolean(host_.startDriver && host_.snapshot), boolean(host_.startHome && host_.snapshot && host_.axis), boolean(host_.startDriver && host_.snapshot), boolean(host_.startDriver && host_.snapshot), boolean(host_.startDriver && host_.snapshot), boolean(host_.persistence != nullptr));
         std::size_t used=std::strlen(output_);if(used) --used;
-        if(!append(output_,sizeof(output_),used,",\"discovery\":%s,\"discovery_profiles\":%u,\"discovery_nonchanging\":true,\"discovery_max_tuples\":%u,\"discovery_max_results\":%u,\"discovery_model_mapping\":\"unresolved\",\"discovery_manufacturer_confirmation\":false,\"capability_scope\":\"implemented_application_routes\",\"unsupported\":[\"torque_motion\",\"current_motion\",\"serial_segment_start\"],\"unresolved\":[\"nonzero_home_offset\",\"paired_native_settings\",\"physical_acceleration_mapping\"],\"unimplemented\":[\"position_start_speed_write\",\"switch_homing\",\"homing_auxiliary_write\"],\"coverage_inventory\":\"docs/reference/ess_rs_operations.json\"}",
-            boolean(host_.discovery!=nullptr),static_cast<unsigned>(MotorControlRS::discoveryProfileCount()),DISCOVERY_MAX_TUPLES,DISCOVERY_MAX_RESULTS)) {
+        if(!append(output_,sizeof(output_),used,",\"discovery\":%s,\"discovery_profiles\":%u,\"discovery_nonchanging\":true,\"discovery_max_tuples\":%u,\"discovery_max_results\":%u,\"discovery_model_mapping\":\"unresolved\",\"discovery_manufacturer_confirmation\":false,\"capability_scope\":\"implemented_application_routes\",\"unsupported\":[\"torque_motion\",\"current_motion\",\"serial_segment_start\"],\"unresolved\":[\"nonzero_home_offset\",\"paired_native_settings\",\"physical_acceleration_mapping\"],\"position_start_speed_write\":%s,\"homing_auxiliary_write\":%s,\"unimplemented\":[\"switch_homing\"],\"coverage_inventory\":\"docs/reference/ess_rs_operations.json\"}",
+            boolean(host_.discovery!=nullptr),static_cast<unsigned>(MotorControlRS::discoveryProfileCount()),DISCOVERY_MAX_TUPLES,DISCOVERY_MAX_RESULTS,
+            boolean(host_.startDriver && host_.snapshot), boolean(host_.startDriver && host_.snapshot))) {
             error(id,"caps","output_capacity");return;
         }
         emit(); return;

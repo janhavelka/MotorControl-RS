@@ -1764,10 +1764,10 @@ class Console:
                     rx[:3] == bytes((address, 3, 12)) and wire_crc(rx) == 0 and
                     item["current"] == [int.from_bytes(rx[i:i+2], "big") for i in range(3, 15, 2)],
                     "successful snapshot lacks checked FC03 payload")
-            require(not item["restored"] or item["current"] == item["original"], "restoration differs from original")
+            require(not item["restored"] or item["current"][1:] == item["original"][1:], "restoration differs from original")
             if item["error"] == "stationary_required":
                 require(phase == 3 and not item["session_ok"] and not item["restored"] and item["restore_unsettled"] and
-                        item["current"] == item["original"], "stationary refusal lacks matching readback/interlock")
+                        item["current"][1:] == item["original"][1:], "stationary refusal lacks matching readback/interlock")
         old = self.motion_profile
         if old and old["saved"] and not forgotten:
             require(item["saved"] and item["original"] == old["original"] and item["address"] == old["address"] and
@@ -1779,7 +1779,7 @@ class Console:
             require(not (item["ok"] and action == "read") or phase == 3,
                     "unsettled restoration bypassed read-only reconciliation")
             require(item["restore_unsettled"] or (item["session_ok"] and phase == 3 and
-                    item["current"] == item["original"] and item["closure_earliest_us"] >= old["write_delivered_us"]),
+                    item["current"][1:] == item["original"][1:] and item["closure_earliest_us"] >= old["write_delivered_us"]),
                     "restoration interlock cleared without fresh matching readback")
         if old and (old["write_tx_hex"] or (old["phase"] == 2 and old["pending"])) and not forgotten and not (item["ok"] and action == "restore"):
             require(all(item[key] == old[key] for key in write_context), "immutable restoration context changed")
