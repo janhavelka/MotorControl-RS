@@ -6,7 +6,7 @@ velocity parameter reads. Stage 03 adds homing parameter reads; stage 04 adds
 position start-speed setting. Stage05 adds homing auxiliary configuration;
 stage06 delivers the native stored-profile interruption core. Stage07 delivers
 its bounded owner/application/console integration. Stage08 implements shared
-homing qualification/observation and is awaiting final verification. Stages09-15
+homing qualification/observation with final verification complete. Stages09-15
 remain NOT STARTED; N08 stays PARTIAL and broader N05 remains PARTIAL pending
 active staging and completion-attribution evidence.
 
@@ -19,7 +19,7 @@ active staging and completion-attribution evidence.
 | 05 | SOFTWARE COMPLETE | [Implementation and verification](../../reports/2026-10-29_ess_homing_auxiliary.md); `88f8b9c`; 85-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 06 | SOFTWARE COMPLETE | `db65b1b`; [core subset, review and verification](../../reports/2026-10-29_ess_position_interrupt_core.md); 86-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: core-only delivery |
 | 07 | SOFTWARE COMPLETE | `14da3ad`; [owner/application integration and verification](../../reports/2026-10-29_ess_position_interrupt_owner.md); 88-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
-| 08 | IN PROGRESS | [Shared homing qualification/observation](../../reports/2026-10-29_ess_homing_foundation.md); independent reviews and fresh88-test quick/package PASS, exact-commit CI pending | NOT RUN: recorded bench USB absent |
+| 08 | SOFTWARE COMPLETE | `77f9886`; [shared homing qualification/observation](../../reports/2026-10-29_ess_homing_foundation.md); fresh88-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 09 | NOT STARTED | - | NOT RUN |
 | 10 | NOT STARTED | - | NOT RUN |
 | 11 | NOT STARTED | - | NOT RUN |
@@ -346,3 +346,32 @@ Stages08-15 remain NOT STARTED. Physical interruption and short bench regression
 are NOT RUN: recorded COM13/USB identity is absent. No other board, sibling or
 vendor snapshot was modified; local full firmware is NOT RUN, with the required
 firmware matrix supplied by CI.
+
+## Stage08 homing qualification foundation (2026-10-29)
+
+SOFTWARE COMPLETE at `77f98863a3c6e6c49df0418526cc6589ca43b6dd`.
+Public install/inspect/revoke/submit/copy APIs use the ordinary owner and retained
+results; checked CONFIG/MOTION/IO/HOMING_PARAMETERS bind supplied facts without
+renewing caller age. Combined three-word observations retain logical levels,
+while explicit revoke/stop/cancel preserve settled effects and prevent reference
+publication even when final zero is in flight and the future slot is consumed.
+Methods33/34/35 regress;27 switch methods remain unimplemented and N08 PARTIAL.
+
+Source/observation and owner/stop read-only reviews PASS. The delegated fixture
+writer owned only `test/home_app_test.cpp`. Review fixed newer checked state/IO
+contradictions being hidden by own-staging invalidation before trigger; actual
+queued-read and final-zero revocation regressions pass on both frontends.
+Independent source C++11 compilation, owner4/4 and app/parity3/3 passed.
+Lead fresh quick88/88, package export/install and source/installed consumers3/3
+each PASS. Evidence: `build/ess_software_08_final_quick/` and the
+[stage08 report](../../reports/2026-10-29_ess_homing_foundation.md).
+
+[CI run40957760288](https://github.com/janhavelka/MotorControl-RS/actions/runs/40957760288)
+verified the exact implementation SHA: GCC, Clang, Arduino4/4 and native-IDF
+app/core-S3/core-S2/portable-S2 all PASS. Downloaded terminal run/summary artifacts
+are in `build/ess_software_08_ci/`; no failed checks. The subsequent documentation
+checkpoint changes no tested code/build input and uses local document/reference/
+inventory verification. Local full firmware and physical homing/bench regression
+are NOT RUN; recorded COM13/USB identity remains absent. No alternate board,
+FieldCore source or original reference was changed. Next is stage09, methods1/2/17;
+stages09-15 remain NOT STARTED and method18/collision/nonzero-offset guards remain.

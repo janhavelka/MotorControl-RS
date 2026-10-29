@@ -1,8 +1,8 @@
 # ESS software stage08: homing qualification and observation
 
-Stage08 implements the shared N08 prerequisite on synchronized `main`, starting
-at `4234c6b`. Final verification and exact-commit CI are recorded below after
-completion. Methods33/34/35 remain the only executable methods; 27 switch
+Stage08 is SOFTWARE COMPLETE on synchronized `main`, starting at `4234c6b` and
+delivered in `77f98863a3c6e6c49df0418526cc6589ca43b6dd`. Final verification and
+exact-commit CI passed. Methods33/34/35 remain the only executable methods;27 switch
 methods await stages09-12 and N08 stays PARTIAL. Physical checks are NOT RUN.
 
 ## Delivered contract
@@ -88,9 +88,20 @@ both PASS:88/88 registered suites, strict source/installed consumers, standalone
 public headers and core package export/install. Document/reference/inventory and
 whitespace checks PASS; inventory remains54 producing operations,94 implemented
 choices, five named gaps and18 guarded pairs, with144 classified public functions.
-Exact final-commit GCC/Clang/Arduino/IDF CI remains pending at this checkpoint;
-no older green commit is claimed as verification. Local full firmware is NOT RUN;
-the existing hosted jobs provide the required supported firmware matrix.
+Local package SHA-256:
+`dcc2713e29540e4f9301dc856506fd858d5c3e75e3325cd69d3a0f23c16bc4df`.
+Local full firmware is NOT RUN; the existing hosted jobs provide the required
+supported firmware matrix.
+
+[Run40957760288](https://github.com/janhavelka/MotorControl-RS/actions/runs/40957760288)
+completed SUCCESS for exact implementation
+`77f98863a3c6e6c49df0418526cc6589ca43b6dd`: GCC, Clang, Arduino and native ESP-IDF
+all pass. Downloaded summaries each report PASS,88 suites and zero failed checks.
+Arduino builds all four configured environments; IDF covers app, core-S3, core-S2
+and portable-S2. Terminal JSON and artifacts are retained under
+`build/ess_software_08_ci/run-final.json` and `artifacts/`.
+The following documentation-only evidence checkpoint changes no tested code/build
+input and uses local document/reference/inventory checks under repository policy.
 
 ## Physical evidence and remaining work
 
