@@ -101,8 +101,17 @@ PASS: **86/86** registered suites, source and installed consumers **3/3 each**,
 strict standalone C++11/C++17 headers, codec-only linkage, reference/generator/
 inventory checks and package export/install. Local package SHA-256:
 `678daae07a4653d6c67b4e1d81523d955f2010447ff8085d834a70f6e2297054`.
-Exact implementation CI is pending; local full firmware is NOT RUN. Hosted
-GCC/Clang and Arduino/IDF matrix results will be recorded against the new commit.
+Implementation commit `db65b1bf670e09d4d67ad7b25347f008504d02c8` was pushed
+and synchronized. [CI run40946096898](https://github.com/janhavelka/MotorControl-RS/actions/runs/40946096898)
+completed **SUCCESS** for that exact SHA; terminal `gh run view` JSON verified
+all four jobs (GCC, Clang, Arduino and native ESP-IDF). Downloaded artifact
+summaries independently show PASS and86 suites each, source/installed consumers
+and package checks. Arduino's four configured builds and IDF app/core-S3/core-S2/
+portable-S2 builds all PASS. Evidence is retained in
+`build/ess_software_06_ci/run-final.json` and its `artifacts/` directory.
+Local full firmware is NOT RUN; hosted builds provide the required matrix.
+The subsequent documentation-only status commit changes no tested code/build
+inputs and uses local document/inventory checks under the repository policy.
 
 No board was flashed and no physical test was attempted: this stage delivers
 core behavior before the ordinary owner/application route in stage07. Existing

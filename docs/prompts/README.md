@@ -6,8 +6,8 @@ homing-auxiliary setters, serial position interruption and 27 switch homing
 methods. It includes a source audit, exhaustive method matrix, concrete agent
 assignments, acceptance cases and implementation progress. Prepared on
 23 October 2026. Stage 01's [contract decisions](../reports/2026-10-29_ess_software_contracts.md)
-were completed on 29 October; stages 02-05 software is complete and stage06
-is IN PROGRESS. Stages07-15 remain NOT STARTED. Initial
+were completed on 29 October; stages02-06 software is complete, including the
+restricted interrupt core subset. Stages07-15 remain NOT STARTED. Initial
 interruption is a restricted native stored-profile subset; broader N05 retains
 its staging/attribution evidence gate. See the [live progress](ess_software/progress.md)
 for delivered behavior and its separate physical evidence.

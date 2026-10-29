@@ -4,7 +4,8 @@ Prepared 2026-10-23; updated 2026-10-29 for stages 01-06 execution. The preparat
 record below is historical. Stage 01 delivered contracts only; stage 02 implements
 velocity parameter reads. Stage 03 adds homing parameter reads; stage 04 adds
 position start-speed setting. Stage05 adds homing auxiliary configuration;
-stage06 is IN PROGRESS and stages07-15 remain NOT STARTED.
+stage06 delivers the native stored-profile interruption core. Stages07-15 remain
+NOT STARTED; N05 remains PARTIAL until its separate integration/evidence work.
 
 | Stage | Stage status | Commit / evidence | Physical evidence |
 | --- | --- | --- | --- |
@@ -13,7 +14,7 @@ stage06 is IN PROGRESS and stages07-15 remain NOT STARTED.
 | 03 | SOFTWARE COMPLETE | `ff3fae3`; [implementation/source/verification](../../reports/2026-10-29_ess_homing_reads.md); 81-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 04 | SOFTWARE COMPLETE | [Implementation and verification](../../reports/2026-10-29_ess_position_start_speed.md); `ef38513`; 83-test final quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 05 | SOFTWARE COMPLETE | [Implementation and verification](../../reports/2026-10-29_ess_homing_auxiliary.md); `88f8b9c`; 85-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
-| 06 | IN PROGRESS | [Core contract, review and verification](../../reports/2026-10-29_ess_position_interrupt_core.md); 86-test quick/package PASS, exact-commit CI pending | NOT RUN: core-only delivery |
+| 06 | SOFTWARE COMPLETE | `db65b1b`; [core subset, review and verification](../../reports/2026-10-29_ess_position_interrupt_core.md); 86-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: core-only delivery |
 | 07 | NOT STARTED | - | NOT RUN |
 | 08 | NOT STARTED | - | NOT RUN |
 | 09 | NOT STARTED | - | NOT RUN |
@@ -271,3 +272,32 @@ Arduino 4/4 and IDF app/core-S3/core-S2/portable-S2 builds PASS. Artifacts:
 `build/audit45_ci/`. No remaining confirmed in-scope software gap; no earlier
 green run credited to the corrections. Local full firmware NOT RUN; physical
 NOT RUN (bench USB absent), with no physical scaling/active-policy qualification.
+
+## Stage 06 native position interruption core (2026-10-29)
+
+SOFTWARE COMPLETE for the restricted core subset. `PositionCommand` and the
+raw builder expose typed IGNORE/INTERRUPT while preserving default1/5 triggers.
+Native INTERRUPT emits9/13 only with USE_STORED and an exact independent stored
+profile/target/configuration witness. Copied age caps the immutable trigger
+budget; no profile writes or completion observations occur. Results distinguish
+ACKNOWLEDGED/NOT_OBSERVED from unknown transmitted execution. Original evidence
+remains independent. Observed stationary admission is unchanged.
+
+Read-only reviewer and independent wire/evidence fixture author inspected actual
+code, callers, current FieldCore and original PDF pages. Final review PASS;
+raw start-word domain and qualification timestamp documentation findings are
+resolved. Focused4/4, fresh quick86/86, source and installed consumers3/3 each,
+headers/package/reference/inventory checks PASS. Implementation
+`db65b1bf670e09d4d67ad7b25347f008504d02c8` has all four terminal CI jobs PASS in
+[run40946096898](https://github.com/janhavelka/MotorControl-RS/actions/runs/40946096898):
+GCC, Clang, Arduino4/4 and IDF app/core-S3/core-S2/portable-S2.
+Local evidence: `build/ess_software_06_quick/` and `build/ess_software_06_ci/`.
+See the [report](../../reports/2026-10-29_ess_position_interrupt_core.md) for source
+hash, exact admission/evidence limits and tested handoff.
+
+Stage07 owns the ordinary owner/API/console route, independently retained
+original/replacement/stop results and stop priority. It remains NOT STARTED.
+Broader active new-target staging and completion attribution remain unresolved;
+N05 stays PARTIAL, with five named gaps and18 guarded pairs unchanged. Local full
+firmware and physical interruption NOT RUN; hosted firmware builds do not qualify
+shaft/electrical behavior. No sibling, board or vendor snapshot was changed.
