@@ -168,10 +168,18 @@ NOT RUN for this documentation-only preparation, consistent with AGENTS policy.
 - Reviewer isolated focused11/11 PASS; lead focused9/9 PASS; native read1/1,
   Python266, old15/new7 home parity and inventory31 tests PASS. Both home
   application frontends run all existing and new scenarios.
-- `python scripts/verify.py --mode quick --build-dir build/ess_software_03_quick`:
+- `python scripts/verify.py --mode quick --build-dir build/ess_software_03_verified_quick`:
   81/81 tests, source/install consumers3/3 each, strict headers, linkage,
   package/reference checks PASS. Repository/generator/whitespace checks PASS.
 - Exact implementation commit and hosted firmware CI pending at this checkpoint.
   Local full firmware builds NOT RUN; prior shared PIO package lock not retried.
   Physical NOT RUN: fresh enumeration still lacks recorded bench COM13/USB serial
   `3C:0F:02:CD:6B:98`. Other ESP devices were not opened/flashed/commanded.
+
+- Final human admission-refusal review fixed internal `home-read`/`velocity-read`
+  names in help hints; renderer and actual two-frontend refusal tests PASS6/6,
+  independently reviewed. Initial post-fix quick run used an incorrect direct-error
+  fixture and FAILED1/81; retained in `build/ess_software_03_final_quick`. Correct
+  reproduction and fresh settled `build/ess_software_03_verified_quick` PASS81/81.
+  Initial API commit `8d35e51` CI is superseded as final proof by the forthcoming
+  hint-fix commit; no old green run will be credited to the later source.

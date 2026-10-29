@@ -358,6 +358,8 @@ void parameterReadConsoleFailureAndCapacity() {
         command(std::string(invalid)+"\n");
         assert(Serial.output.find("\"ok\":false") != std::string::npos && !hardware.writes);
     }
+    command("home read 2\n"); // Real admission refusal must name the callable family in human help.
+    assert(Serial.output.find("Hint: help home shows syntax") != std::string::npos && !hardware.writes);
     command("@8 home read\n"); const auto id = app->latestOperationId;
     assert(Serial.output.find("\"command\":\"home-read\"") != std::string::npos);
     command("@9 result "+std::to_string(id)+"\n"); assert(Serial.output.find("\"read_kind\":\"homing_parameters\"") != std::string::npos);

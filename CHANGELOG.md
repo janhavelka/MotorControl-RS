@@ -18,6 +18,9 @@
 
 ### Fixed
 
+- Human parameter-read errors point to the callable `help home` or `help velocity`
+  family instead of the internal JSON command names.
+
 - Live host terminals now reject the conflicting kind flags already rejected by
   retained inspection; malformed move kinds raise the ordinary protocol error.
 - Host settings groups reject non-string selectors with the normal protocol

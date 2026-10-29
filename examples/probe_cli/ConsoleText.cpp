@@ -311,6 +311,8 @@ bool hint(Writer& writer, const Value& report) {
         if (!command.begin) command = key("help");
         if (command.end - command.begin >= 5 && !std::memcmp(command.begin, "move-", 5)) command = key("move");
         if (command.end - command.begin >= 5 && !std::memcmp(command.begin, "read-", 5)) command = key("read");
+        if (equal(command, "home-read")) command = key("home");
+        if (equal(command, "velocity-read")) command = key("velocity");
         return writer.text("Hint: help ") && writer.string(command) && writer.text(" shows syntax and prerequisites.\n");
     }
     return true;

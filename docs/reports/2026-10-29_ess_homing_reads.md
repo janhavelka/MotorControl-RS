@@ -74,8 +74,8 @@ vendor bytes, generated register types and access/write policy are unchanged.
 The lead owned API/application/console/inventory/integration/Git. One writer
 owned `reads_test.cpp`; a separate writer owned the Python host/parity slice.
 The read-only reviewer checked source/raw interpretation, buffer bounds,
-final code/host/inventory diff and executing acceptance. No new code blocker
-was found. Particular reviewed boundaries were unknown versus unresolved method
+final code/host/inventory diff and executing acceptance. No unresolved code blocker
+remains. Particular reviewed boundaries were unknown versus unresolved method
 presentation, read-only help/capabilities, single-step generation checks and
 retaining qualification witnesses while invalidating only future confidence.
 Inventory's linked-record fixture changes from 202 to 203 because this adds
@@ -104,12 +104,26 @@ Integrated local verification PASS:
 - `python scripts/check_ess_operations.py` and
   `python test/operations_inventory_test.py`: 51 producing rows/seven gaps and
   31 negative/accounting tests PASS.
-- `python scripts/verify.py --mode quick --build-dir build/ess_software_03_quick`:
+- `python scripts/verify.py --mode quick --build-dir build/ess_software_03_verified_quick`:
   all 81 registered tests PASS; source/install consumers each 3/3 PASS;
   C++11/C++17/no-RTTI headers, codec-only linkage, reference hashes, package export
   and exact-version consumption PASS. Logs/commands:
-  `build/ess_software_03_quick/summary.json`.
-- Local core ZIP SHA-256: `8683e15418aa19dab9b331129626ee53f6155ca48d2572ab804daab219c7e195`.
+  `build/ess_software_03_verified_quick/summary.json`.
+- Local core ZIP SHA-256: `89edb511b985999b0c14f57798504446ad46d6154ed4a3eeadfc2d57074cf3ce`.
+
+A final human-console review found that admission refusals named the internal
+JSON command in their hint (`help home-read`/`help velocity-read`). The formatter
+now maps those names to callable `help home`/`help velocity`. Renderer tests
+cover both; an actual `home read 2` refusal on both app frontends verifies the
+hint with zero TX. Independent review and all six focused hint/app/parity tests
+PASS. The first regression incorrectly expected the generic Hint from malformed
+`home read x`, whose direct human error formatter already uses correct Help.
+Changing the test to the actual admission-refusal reproduction retains the
+specific hint assertion. `build/ess_software_03_final_quick` captured this old
+fixture and FAILED 1/81; that result is retained, not credited as success.
+The fresh settled `build/ess_software_03_verified_quick` passed all 81 tests and
+all consumers/package checks. Initial pre-hint `build/ess_software_03_quick`
+also passed but does not verify the later fix.
 
 Exact-implementation-commit hosted GCC/Clang/Arduino/IDF CI is pending at this
 implementation checkpoint; commit/run/terminal results will be recorded before

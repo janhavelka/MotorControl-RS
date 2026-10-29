@@ -285,7 +285,17 @@ void roundedMotion() {
     contains(output,"Rounded native target: 0");
     contains(output,"No new motion command was sent.");
 }
+void parameterReadHints() {
+    char output[1024];
+    assert(renderHuman("{\"command\":\"home-read\",\"ok\":false,\"error\":\"invalid_arguments\"}",output,sizeof(output)));
+    contains(output,"Hint: help home shows syntax and prerequisites.");
+    assert(!std::strstr(output,"help home-read"));
+    assert(renderHuman("{\"command\":\"velocity-read\",\"ok\":false,\"error\":\"invalid_arguments\"}",output,sizeof(output)));
+    contains(output,"Hint: help velocity shows syntax and prerequisites.");
+    assert(!std::strstr(output,"help velocity-read"));
+}
 int main() {
+    parameterReadHints();
     roundedMotion();
     statusAndAdmission();
     evidenceAndHints();
