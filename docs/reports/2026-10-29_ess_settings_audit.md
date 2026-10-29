@@ -3,8 +3,8 @@
 Audit base: `49702c5`. The complete original prompts04/05, shared execution/
 verification contracts and actual combined diff `a8f05ad..49702c5` were reviewed
 afresh. Earlier reports/summaries were not accepted as proof. Corrections and
-regressions below are in scope. Local integrated verification is complete;
-exact correction-commit CI is pending.
+regressions below are in scope. Local integrated verification and exact
+correction-commit CI are complete. No confirmed in-scope software gap remains.
 
 ## Review assignments and source
 
@@ -92,10 +92,18 @@ Implementation completeness is separate from active-policy and physical evidence
   Package SHA-256:
   `2ebbd4eda6094ef1fbd10bc145ad359c84aa71773313388b756e1d39062540fc`.
   All 15 verifier checks exited zero; `git diff --check` PASS.
-- Exact final correction-commit GCC/Clang/Arduino/IDF CI: PENDING.
-  No older green commit is credited to these changes.
+- Final implementation commit `ba78fe7bb166d85a057d445704b35436af043723`
+  was pushed and synchronized. [CI run 40925887975](https://github.com/janhavelka/MotorControl-RS/actions/runs/40925887975)
+  is terminal SUCCESS, verified through
+  `gh run view --json headSha,status,conclusion,jobs,url` with exact head SHA.
+  Downloaded GCC/Clang/Arduino/IDF summaries each PASS 85 suites and every
+  applicable package/consumer check. Arduino 4/4 environments PASS; pinned
+  ESP-IDF 5.5.5 app/core-S3/core-S2/portable-S2 checks PASS. Artifacts and terminal
+  JSON: `build/audit45_ci/` and `build/audit45_ci_status.json`.
+  No older green commit is credited to these changes. A following evidence-only
+  documentation commit records these results without changing implementation.
 - Physical NOT RUN: fresh USB enumeration still lacks recorded COM13 /
   `3C:0F:02:CD:6B:98`; other ESP devices were not opened/flashed/commanded.
   Motor activation, shaft/electrical timing and physical start-speed/coordinate/
   offset qualification remain unmeasured. Local full firmware builds NOT RUN;
-  hosted pinned builds will supply separate compile evidence.
+  hosted pinned builds provide separate compile evidence.

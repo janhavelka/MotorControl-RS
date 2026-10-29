@@ -253,7 +253,7 @@ absent in fresh enumeration; other devices were not opened/flashed/commanded.
 
 ## Fresh independent audit of stages04/05 (2026-10-29)
 
-IN PROGRESS: [fresh audit findings and correction evidence](../../reports/2026-10-29_ess_settings_audit.md).
+COMPLETE: [fresh audit findings and correction evidence](../../reports/2026-10-29_ess_settings_audit.md).
 Original prompts04/05 and actual combined source/diff were re-read from base
 `49702c5` by parallel core/source, app/owner and surface/host/test reviewers.
 Confirmed corrections cover newer-state cancellation of unsent writes, negative
@@ -262,5 +262,12 @@ qualification after changes, exact producing coverage routes, five-word host
 restore validation, partial-host help examples and stale capability labels.
 No read/write/method/paired-window coverage totals change. Final focused 23/23,
 host 274 cases, inventory 32 and fresh quick 85/85 plus source/installed consumers
-3/3 each and package checks PASS. Exact correction-commit CI is pending;
-physical NOT RUN (bench USB absent).
+3/3 each and package checks PASS. Independent core harness 131,393 cases PASS.
+Final implementation commit `ba78fe7bb166d85a057d445704b35436af043723`
+was pushed and synchronized. [CI run 40925887975](https://github.com/janhavelka/MotorControl-RS/actions/runs/40925887975)
+terminal SUCCESS verified through exact head SHA/job JSON. Downloaded GCC,
+Clang, Arduino and IDF summaries each PASS 85 suites plus package/consumers;
+Arduino 4/4 and IDF app/core-S3/core-S2/portable-S2 builds PASS. Artifacts:
+`build/audit45_ci/`. No remaining confirmed in-scope software gap; no earlier
+green run credited to the corrections. Local full firmware NOT RUN; physical
+NOT RUN (bench USB absent), with no physical scaling/active-policy qualification.
