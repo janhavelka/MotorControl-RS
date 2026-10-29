@@ -388,6 +388,13 @@ See the [audit report](../../reports/2026-10-29_ess_06_08_audit.md).
 
 Independent final reviews and host/parity reruns PASS. Fresh final quick88/88,
 package export/install and source/installed consumers3/3 each PASS at
-`build/audit_060708_final_quick/`. Exact implementation CI is pending. Physical tests remain
-NOT RUN because the recorded bench USB identity is absent. N05/N08 stay PARTIAL;
+`build/audit_060708_final_quick/`. Correction commit
+`70791727a502f7c8dc0536c0496ea236e5f4df60` passes exact-commit
+[CI run40961146445](https://github.com/janhavelka/MotorControl-RS/actions/runs/40961146445):
+GCC, Clang, Arduino4/4 and IDF app/core-S3/core-S2/portable-S2. All downloaded
+summaries PASS88 suites with zero failed checks; artifacts are under
+`build/audit_060708_ci/`. No confirmed in-scope software finding remains.
+The documentation-only evidence checkpoint uses local consistency checks.
+Local full firmware is NOT RUN; CI supplies the firmware matrix. Physical tests
+remain NOT RUN because the recorded bench USB identity is absent. N05/N08 stay PARTIAL;
 the delivered subsets and remaining method/source limits do not change.
