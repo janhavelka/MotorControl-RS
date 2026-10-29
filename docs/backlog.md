@@ -59,6 +59,10 @@ subset. Method28's exchanged branch drawings are recorded in the method guide.
   bounded FC03 `0x0030/7`, independent method membership/support, application API
   and `home read`. Offset interpretation and physical qualification remain open.
   [Stage 03 evidence](reports/2026-10-29_ess_homing_reads.md).
+- The [fresh independent 02/03 audit](reports/2026-10-29_ess_reads_audit.md) checks
+  implementation and edge cases separately from physical qualification. Its
+  corrections clarify numeric-policy flags and human/partial-host presentation;
+  read/write/method coverage totals do not change.
 - [ ] Implement remaining standalone native staging, including
   restoring an arbitrary archived position profile without starting motion.
   Host reset loses the RAM backup; never replay a move as restoration.

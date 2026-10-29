@@ -29,7 +29,10 @@ The command inventory drives dispatch and help. Parsing, formatting and
 application code are shared; adapters supply terminal I/O, UART/capture,
 startup and time. Equivalent Arduino/ESP-IDF builds expose the same operations.
 Capabilities distinguish unavailable callbacks, unimplemented features,
-unresolved semantics and physical qualification.
+unresolved semantics and physical qualification. Detailed help, menu descriptions
+and error usage for velocity/home families reflect read and motion callbacks
+independently. Human parameter results name unresolved interpretations; numeric
+JSON resolution codes remain unchanged.
 
 Input/output use fixed capacities and bounded service work. Reject truncated
 input, excess tokens, trailing junk, numeric overflow, unsupported units and

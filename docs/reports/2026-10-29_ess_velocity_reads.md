@@ -1,5 +1,10 @@
 # ESS velocity parameter reads
 
+Later source/implementation clarification: the [fresh independent audit](2026-10-29_ess_reads_audit.md)
+defines InRange flags as library numeric-policy comparisons, not verified drive
+limits. It also corrects callback-specific help and human unresolved-state output.
+The dated verification below remains evidence for its original commit.
+
 Stage 02 implements N01 `velocity_parameter_reads`. Software and physical
 evidence are separate. The base was synchronized `main` at
 `aac7ad7`; FieldCore was inspected read-only at

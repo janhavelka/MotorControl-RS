@@ -131,8 +131,10 @@ normal reply is eleven bytes and the exception reply five. No writes are yielded
 complete successful read. Wrong kind, pending and failed reads preserve output.
 The observation owns copied provenance and retains `rawSpeed`,
 `rawAccelerationTime` and `rawDecelerationTime` as unsigned 16-bit wire words,
-including unknown/out-of-range values. `accelerationTimeInRange` and
-`decelerationTimeInRange` report only the documented native range 0..2000.
+including unknown/out-of-policy values. `accelerationTimeInRange` and
+`decelerationTimeInRange` compare the raw words with the library's conservative
+numeric admission bounds 0..2000. These flags do not verify drive limits,
+physical conversion, readiness or qualification.
 `speedSignedResolution` remains SIGNED_ENCODING_UNRESOLVED;
 `speedScaleResolution` and `rampScaleResolution` remain SCALE_UNRESOLVED.
 
@@ -140,8 +142,10 @@ The original function manual physical pages 17/18/70 label speed r/min and
 ramps ms but do not settle the raw-to-physical mapping: page 70 has a malformed
 speed range and defaults `120 (5r/min)` and `50 (100ms)`. Neither those defaults
 nor an observed word resolves signed encoding, physical speed or ramp scaling.
-This observation does not change velocity request units, desired/staged values,
-readiness prerequisites or physical qualification.
+This observation changes neither velocity request units nor desired/staged
+values or admission requirements. It never grants or renews readiness or
+physical qualification; contradictory checked words can revoke dependent future
+qualification as described below.
 
 The ordinary application exports `submitVelocityParameterRead(id)`,
 `copyReadResult(id, ReadContext&)` and terminal-only `releaseOperation(id)` in
@@ -165,7 +169,7 @@ previous observation. The core getter does not decide application freshness.
 
 The Python host accepts `Console.command("velocity-read", ...)`; the bounded
 campaign is `typed-read --kind velocity_parameters`. It checks raw words against
-the retained reply, the exact request window, native range flags and unresolved
+the retained reply, the exact request window, numeric-policy flags and unresolved
 interpretations, including inspection/release and immutable historical results.
 
 ## Native homing parameter read
@@ -195,8 +199,10 @@ This reports software implementation, not readiness or physical qualification.
 Unknown codes, including `0xFFFC..0xFFFF`, remain successful raw observations;
 negative semantic collision enums do not establish their wire encoding.
 
-`searchSpeedInRange`, `returnSpeedInRange` and `rampTimeInRange` describe native
-ranges 5..3000, 5..300 and 30..2000 respectively. Physical speed/ramp scaling
+`searchSpeedInRange`, `returnSpeedInRange` and `rampTimeInRange` compare raw words
+with the library's conservative numeric admission bounds 5..3000, 5..300 and
+30..2000 respectively. They do not verify drive limits, physical conversion,
+readiness or qualification. Physical speed/ramp scaling
 stays SCALE_UNRESOLVED. Offset word order, signed encoding and scale stay
 WORD_ORDER_UNRESOLVED, SIGNED_ENCODING_UNRESOLVED and SCALE_UNRESOLVED even
 when both raw words are zero. No signed offset is assembled or calibrated
@@ -204,7 +210,8 @@ mechanical origin inferred. Reading WORD_ORDER does not establish its
 applicability to the homing offset.
 
 The original function manual physical pages 19/20/72/73 establish these records,
-positive method membership and native ranges; page 30 omits `0x0035/0x0036`
+positive method membership and numerically listed ranges with unresolved scaling;
+page 30 omits `0x0035/0x0036`
 from its configurable-word-order list. Conflicting default annotations remain
 unresolved. Existing homing execution still stages exactly FC10 `0x0031/6`
 with zero offset and requires independent qualification. This read adds no
@@ -232,6 +239,15 @@ The Python host's `Console.command("home-read", ...)` emits `home read`; its
 bounded campaign is `typed-read --kind homing_parameters`. It validates exact
 window/count, every raw word against RX, method membership/support, native flags,
 unresolved offset/rate interpretation and immutable retained results.
+
+## Human parameter results and help
+
+Human parameter-read results spell out unresolved scale, signed encoding and
+offset word-order applicability. They identify range flags as numeric library
+policy checks and state that raw zero offset establishes no calibrated origin.
+JSON retains its numeric resolution codes and existing keys. Family help lists
+only the read or motion routes supported by the supplied application callbacks;
+method inventory remains available without a transport.
 
 ## State observations and application health
 

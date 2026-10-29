@@ -7,6 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [Independent velocity/homing read audit](2026-10-29_ess_reads_audit.md) | Fresh parallel code/source/test review of prompts 02/03; fixes callback-specific help, human unresolved-state display and policy wording; physical NOT RUN. |
 | [ESS homing parameter reads](2026-10-29_ess_homing_reads.md) | Six-record/seven-word typed raw observation, ordinary API/console/host integration; no new homing support or offset interpretation; physical checks NOT RUN. |
 | [ESS velocity parameter reads](2026-10-29_ess_velocity_reads.md) | Single-window typed raw observation, ordinary API/console/host integration and independent tests; physical checks NOT RUN on the absent recorded bench device. |
 | [ESS software stage 01 contracts](2026-10-29_ess_software_contracts.md) | Settles planned reads/settings, restricted interruption and homing qualification/observation; all feature implementation and physical gates remain separate. |

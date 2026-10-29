@@ -78,9 +78,10 @@ enum class ReadResolution : uint8_t {
 };
 
 /** One checked JOG parameter window, not desired/staged velocity or readiness.
- * Raw words survive unknown/out-of-range values. The source supports unsigned
- * native ramp range 0..2000 only; its annotated defaults do not establish a
- * physical conversion. Speed signed encoding and scaling remain unresolved.
+ * Raw words survive unknown/out-of-policy values. The InRange flags compare ramp
+ * words with the library's conservative numeric admission bounds 0..2000, not
+ * verified drive limits or a physical conversion. The source's annotated defaults
+ * leave speed signed encoding and speed/ramp scaling unresolved.
  * configurationGeneration is the caller's admitted snapshot, even if historical.
  * Provenance owns its bytes; no RX buffer or caller pointer is retained. */
 struct VelocityParametersObservation {
@@ -99,8 +100,9 @@ struct VelocityParametersObservation {
  * methodKnown before using the typed codes; methodSupport describes software
  * implementation only, never mechanical/firmware qualification. Negative method
  * wire encoding is unresolved, so 0xFFFC..0xFFFF remain unknown raw codes.
- * Range flags refer only to native words (search 5..3000, return 5..300,
- * ramp 30..2000). No physical speed/ramp conversion is established.
+ * InRange flags compare words with the library's conservative numeric admission
+ * bounds (search 5..3000, return 5..300, ramp 30..2000). They establish neither
+ * verified drive limits nor physical speed/ramp conversion or qualification.
  * Offset words remain in address order; WORD_ORDER applicability, sign and scale
  * are unresolved even when both words are zero. Zero proves no calibrated origin.
  * Provenance owns its bytes; configurationGeneration is the admitted snapshot. */

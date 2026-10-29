@@ -397,5 +397,43 @@ void parameterReadConsoleAndCapacity() {
     for (auto kept : retained) assert(copyReadResult(kept,copy) && copy.state == ReadState::SUCCEEDED);
     for (auto kept : retained) assert(releaseOperation(kept));
 }
+void parameterReadHumanTerminal() {
+    const std::vector<uint8_t> unknownReply = {1,3,6,0xFF,0xFF,7,0xD0,7,0xD1,0xE3,0x8F};
+    for (const bool unknown : {false, true}) {
+        fresh();
+        const auto desired = app->simple.desired;
+        const auto generation = app->axis.generation;
+        command("velocity read\n");
+        const auto id = app->latestOperationId;
+        assert(id && view(id).pending && view(id).typedRead && !findRecord(*app,id)->programmaticRead);
+        parameterReply(id, unknown ? unknownReply : PARAMETER_REPLY);
+        pump(1000); // Drain the real asynchronous human terminal before another command can recycle it.
+        assert(Serial.output.find("[OK] velocity-read") != std::string::npos);
+        assert(Serial.output.find(unknown ? "Speed (raw): 65535" : "Speed (raw): 60") != std::string::npos);
+        assert(Serial.output.find(unknown ? "Raw acceleration time: 2000" : "Raw acceleration time: 50") != std::string::npos);
+        assert(Serial.output.find(unknown ? "Raw deceleration time: 2001" : "Raw deceleration time: 100") != std::string::npos);
+        assert(Serial.output.find("Acceleration word within numeric policy: yes") != std::string::npos);
+        assert(Serial.output.find(unknown ? "Deceleration word within numeric policy: no" :
+            "Deceleration word within numeric policy: yes") != std::string::npos);
+        for (const char* text : {"Speed signed resolution: unresolved signed encoding",
+            "Speed scale resolution: unresolved scale", "Ramp scale resolution: unresolved scale",
+            "Range flags use library numeric policy bounds; drive limits remain unqualified."})
+            assert(Serial.output.find(text) != std::string::npos);
+        ESS::ReadContext retained;
+        assert(copyReadResult(id,retained) && retained.state == ReadState::SUCCEEDED);
+        assert(hardware.writes == 1 && hardware.tx[1] == 3 && !app->owner.pending() && !axisReserved(*app,1));
+        const auto& p = app->velocityPrerequisites;
+        assert(!p.nativeRpmVerified && !p.negativeTwosComplementVerified && !p.configuredRampVerified &&
+            !p.serialInputsPermit && !p.readinessQualified && p.observedUs == 0);
+        assert(app->axis.generation == generation && !app->axis.originKnown && !app->coordinateReference.nativeKnown);
+        const auto& current = app->simple.desired;
+        assert(current.speedRpm == desired.speedRpm && current.acceleration == desired.acceleration &&
+            current.deceleration == desired.deceleration && current.accelerationKnown == desired.accelerationKnown &&
+            current.decelerationKnown == desired.decelerationKnown && current.setup == desired.setup &&
+            current.scaleKnown == desired.scaleKnown && current.stepsPerTurn.numerator == desired.stepsPerTurn.numerator &&
+            current.stepsPerTurn.denominator == desired.stepsPerTurn.denominator);
+        assert(releaseOperation(id));
+    }
+}
 } // namespace
-int main() { parameterReadApplicationPath(); parameterReadQualificationAndHistoricalResults(); parameterReadConsoleAndCapacity(); gatesAndParity(); externalStopAndLocalCancel(); pressureAndPhysicalCancellation(); delayedEvidenceAndRecovery(); urgentPressureDefersWithinOriginalDeadline(); normalStopAllowsFullConfiguredRamp(); lostStartNeverReplays(); }
+int main() { parameterReadApplicationPath(); parameterReadQualificationAndHistoricalResults(); parameterReadConsoleAndCapacity(); parameterReadHumanTerminal(); gatesAndParity(); externalStopAndLocalCancel(); pressureAndPhysicalCancellation(); delayedEvidenceAndRecovery(); urgentPressureDefersWithinOriginalDeadline(); normalStopAllowsFullConfiguredRamp(); lostStartNeverReplays(); }

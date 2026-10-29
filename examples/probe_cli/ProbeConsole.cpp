@@ -534,6 +534,51 @@ const char* helpExample(Command command) {
     default: return nullptr;
     }
 }
+struct HelpText {
+    const char* syntax;
+    const char* description;
+    const char* effect;
+    bool bus;
+};
+// A family can expose parameter reads independently of motion. Keep detailed
+// help, the human menu and error usage consistent with those actual callbacks.
+HelpText helpText(const Entry& entry, const Host& host) {
+    HelpText text{entry.syntax, entry.description, entry.effect, entry.bus};
+    const bool reads = host.startTypedRead && host.snapshot;
+    if (entry.command == Command::HOME) {
+        const bool motion = host.startHome && host.snapshot && host.axis;
+        text.bus = reads || motion;
+        if (reads && !motion) {
+            text.syntax = "home methods | home read [address]";
+            text.description = "Read raw homing parameters or list methods.";
+            text.effect = "checked_parameter_read_and_method_inventory";
+        } else if (motion && !reads) {
+            text.syntax = "home methods | home method search_native return_native ramp_native zero [address]";
+            text.description = "List homing methods or request qualified homing.";
+            text.effect = "qualified_homing_with_fresh_completion_and_zero_evidence";
+        } else if (!reads && !motion) {
+            text.syntax = "home methods";
+            text.description = "List documented homing methods.";
+            text.effect = "local_method_inventory";
+        }
+    } else if (entry.command == Command::VELOCITY) {
+        const bool motion = host.startVelocity && host.snapshot && host.axis;
+        text.bus = reads || motion;
+        if (reads && !motion) {
+            text.syntax = "velocity read [address]";
+            text.description = "Read raw velocity parameters.";
+            text.effect = "checked_parameter_read";
+        } else if (motion && !reads) {
+            text.syntax = "velocity value rpm|steps/s|fullsteps/s|counts/s|turns/s|deg/s|rad/s|mm/s native|motor|load duration_ms configured normal|fast [round mode error [approx error]] [address]";
+            text.description = "Request finite velocity with an explicit stop policy.";
+            text.effect = "finite_serial_velocity_with_explicit_stop";
+        }
+    } else if (entry.command == Command::STATS) {
+        if (!host.snapshot) text.syntax = "stats reset";
+        else if (!host.resetStats) text.syntax = "stats";
+    }
+    return text;
+}
 bool helpEffect(char* output,std::size_t capacity,std::size_t& used,const char* effect) {
     for (const char* p=effect;*p;++p) {
         if (used+1>=capacity) return false;
@@ -953,7 +998,7 @@ void Console::dispatch() noexcept {
     }
     if (outstanding(id)) { error(id, "input", "duplicate_id"); return; }
     const Entry* entry = find(tokens[first]);
-    if (entry) { syntax_=entry->syntax; helpCommand_=entry->name; }
+    if (entry) { syntax_=helpText(*entry, host_).syntax; helpCommand_=entry->name; }
     const char* capability = tokens[first];
     if (std::strcmp(capability, "jog") == 0 || std::strcmp(capability, "torque") == 0 ||
         std::strcmp(capability, "current") == 0 || std::strcmp(capability, "velocity-update") == 0) {
@@ -1825,14 +1870,12 @@ void Console::dispatch() noexcept {
         error(id, entry->name, "unavailable"); return;
     }
     if (entry->command == Command::HELP) {
-        const char* helpSyntax=described?(described->command==Command::HOME && !(host_.startHome && host_.snapshot && host_.axis)?(host_.startTypedRead && host_.snapshot ? "home methods | home read [address]" : "home methods"):
-            described->command==Command::STATS && !host_.snapshot?"stats reset":
-            described->command==Command::STATS && !host_.resetStats?"stats":described->syntax):nullptr;
+        const HelpText details = described ? helpText(*described, host_) : HelpText{nullptr, nullptr, nullptr, false};
         if (outputFormat_ == Format::HUMAN) {
             std::size_t used=0; bool fits=true;
             if (described) {
-                fits=append(output_,sizeof(output_),used,"%s\nUsage: %s\n",described->name,helpSyntax) &&
-                    append(output_,sizeof(output_),used,"%s",described->description);
+                fits=append(output_,sizeof(output_),used,"%s\nUsage: %s\n",described->name,details.syntax) &&
+                    append(output_,sizeof(output_),used,"%s",details.description);
                 if (described->command == Command::STOP)
                     fits=fits && append(output_,sizeof(output_),used,
                         "\nFast stop uses reserved priority after the current bus transaction settles.\nIt requires working RS485 communication; it is not a hardwired emergency-stop circuit.");
@@ -1848,7 +1891,7 @@ void Console::dispatch() noexcept {
                         if (!callable(item.command) || std::strcmp(helpGroup(item.command),group)) continue;
                         if (!heading) { fits=fits && append(output_,sizeof(output_),used,"\n[%s]\n",group); heading=true; }
                         fits=fits && append(output_,sizeof(output_),used,"  %-16s ",item.name) &&
-                            append(output_,sizeof(output_),used,"%s",item.description) && append(output_,sizeof(output_),used,"\n");
+                            append(output_,sizeof(output_),used,"%s",helpText(item, host_).description) && append(output_,sizeof(output_),used,"\n");
                     }
                 }
                 if (host_.simpleMotion)
@@ -1862,9 +1905,7 @@ void Console::dispatch() noexcept {
         if (described) {
             std::snprintf(output_, sizeof(output_),
                 "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"help\",\"ok\":true,\"syntax\":\"%s\",\"effect\":\"%s\",\"bus_traffic\":%s}",
-                static_cast<unsigned long>(id), helpSyntax,
-                described->effect, boolean(described->bus &&
-                    (described->command != Command::HOME || (host_.startHome && host_.snapshot && host_.axis) || (host_.startTypedRead && host_.snapshot))));
+                static_cast<unsigned long>(id), details.syntax, details.effect, boolean(details.bus));
         } else {
             const int prefix = std::snprintf(output_, sizeof(output_),
                 "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"help\",\"ok\":true,\"commands\":[", static_cast<unsigned long>(id));

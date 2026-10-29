@@ -188,3 +188,17 @@ NOT RUN for this documentation-only preparation, consistent with AGENTS policy.
   Initial API commit `8d35e51` CI is superseded as final proof by the final
   hint-fix commit `ff3fae3` and PASS run40906912842. Older green runs are not
   credited to the later source.
+
+## Fresh independent audit of stages 02/03 (2026-10-29)
+
+IN PROGRESS: [audit findings and verification](../../reports/2026-10-29_ess_reads_audit.md).
+The full original prompts/contracts and actual combined code/diff were reviewed
+from base `af06eac` by three parallel core/source, app/owner and surface/test
+reviewers. Confirmed presentation/wording gaps are fixed: callback-aware family
+help/usage/menu, meaningful human unresolved-state output and numeric-policy/
+readiness wording. No core/owner runtime defect, new API, write window or method
+support change was found or introduced. Focused15/15 and the independently
+rebuilt65,776-case harness PASS. Fresh `build/audit_02_03_quick` PASS81/81,
+source/install consumers3/3 each, strict headers/linkage/package checks PASS.
+Final correction commit and exact-commit CI pending.
+Physical NOT RUN: recorded USB bench still absent.

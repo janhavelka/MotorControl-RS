@@ -2423,6 +2423,36 @@ void testHomeReadGrammar() {
     send(c,"@9 caps\n"); f.contains("\"homing_parameters\":true"); f.contains("\"home\":false"); f.contains("\"writes\":false");
     send(c,"@10 home methods\n"); f.contains("\"methods\":["); assert(!f.homes);
 }
+void testParameterFamilyHelpAvailability() {
+    for (bool reads : {false, true}) for (bool motion : {false, true}) for (bool human : {false, true}) {
+        Fake f; auto h = f.host();
+        h.startTypedRead = reads ? Fake::typedRead : nullptr;
+        h.startVelocity = motion ? Fake::startVelocity : nullptr;
+        h.startHome = motion ? Fake::startHome : nullptr;
+        h.axis = motion ? Fake::axis : nullptr;
+        // Help exercises both production text formats; no wire work is supplied.
+        h.emitLine = [](void* context, const char* line, std::size_t length) {
+            static_cast<Fake*>(context)->lines.emplace_back(line, length); return true;
+        };
+        Probe::Console c(h, human ? Probe::Format::HUMAN : Probe::Format::JSON);
+        send(c, human ? "help velocity\n" : "@1 help velocity\n");
+        const auto velocity = f.lines.back();
+        if (reads || motion) {
+            assert((velocity.find("velocity read") != std::string::npos) == reads);
+            assert((velocity.find("velocity value") != std::string::npos) == motion);
+        } else assert(velocity.find("unavailable") != std::string::npos);
+        send(c, human ? "help home\n" : "@2 help home\n");
+        const auto home = f.lines.back();
+        assert(home.find("home methods") != std::string::npos);
+        assert((home.find("home read") != std::string::npos) == reads);
+        assert((home.find("search_native") != std::string::npos) == motion);
+        if (human && reads && !motion) {
+            send(c,"help\n");
+            f.contains("Read raw velocity parameters."); f.contains("Read raw homing parameters or list methods.");
+        }
+        assert(!f.typedReads && !f.velocities && !f.homes);
+    }
+}
 void testVelocityReadGrammar() {
     Fake f; auto h = f.host(); h.startTypedRead = Fake::typedRead;
     Probe::Console c(h,Probe::Format::JSON);
@@ -2453,7 +2483,7 @@ int main(int argc, char** argv) {
     }
     if (argc == 2 && std::strcmp(argv[1], "--home-fixtures") == 0) { homeFixtures(); return 0; }
     if (argc == 2 && std::strcmp(argv[1], "--io-fixtures") == 0) { driverFixtures(true); return 0; }
-    testHomeReadGrammar(); homeReadFixtures(); testVelocityReadGrammar(); velocityReadFixtures();
+    testParameterFamilyHelpAvailability(); testHomeReadGrammar(); homeReadFixtures(); testVelocityReadGrammar(); velocityReadFixtures();
     testDebugTranslationAndOutputIsolation();
     testSimpleMotionGrammarAndReports();
     testIndependentLocalHooksAndRemovedAliases();

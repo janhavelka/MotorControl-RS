@@ -18,6 +18,11 @@
 
 ### Fixed
 
+- Velocity/home help and error usage now expose parameter reads and motion only
+  when their respective callbacks exist. Human read results name unresolved
+  interpretation states and distinguish numeric policy checks from drive limits;
+  raw zero offset remains separate from a calibrated origin.
+
 - Human parameter-read errors point to the callable `help home` or `help velocity`
   family instead of the internal JSON command names.
 

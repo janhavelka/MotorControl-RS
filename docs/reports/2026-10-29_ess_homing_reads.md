@@ -1,5 +1,10 @@
 # ESS homing parameter reads
 
+Later source/implementation clarification: the [fresh independent audit](2026-10-29_ess_reads_audit.md)
+defines InRange flags as library numeric-policy comparisons, not verified drive
+limits. It also corrects callback-specific help and human unresolved-state output.
+The dated verification below remains evidence for its original commit.
+
 Stage 03 implements N02 `homing_parameter_reads` on the stage 02 read contract.
 Base: synchronized `main` at `780aa44`. FieldCore was inspected read-only at
 `5ad9292dc8481cf08be9a61f662495a6474d1da0`. Software/build evidence and

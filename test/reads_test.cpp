@@ -427,7 +427,7 @@ void testStatePartialFailureAndConfigurationCorrelation() {
     assert(!advanceRead(context,stale,230));unchanged.check(context);
 }
 // Function manual physical p70: one contiguous JOG window. Distinct words catch
-// ordering mistakes. Ramp 0..2000 is a native range, not a physical conversion;
+// ordering mistakes. Ramp 0..2000 is the numeric library policy, not a drive limit;
 // the malformed speed range/default annotation does not settle speed encoding.
 const uint8_t VELOCITY_PARAMETERS[] = {1,3,6,0,60,0,50,0,100,0xD1,0x54};
 const uint8_t VELOCITY_UNKNOWN[] = {1,3,6,0xFF,0xFF,7,0xD0,7,0xD1,0xE3,0x8F};

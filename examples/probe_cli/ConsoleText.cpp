@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "ConsoleText.h"
+#include <MotorControlRS/profiles/ess_rs/Reads.h>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -184,6 +185,11 @@ bool label(Writer& writer, const Value& key) {
         {"tx_hex", "TX bytes"}, {"rx_hex", "RX bytes"}, {"raw_hex", "Bytes"},
         {"operation_id", "Operation"}, {"native_rpm", "Speed (rpm)"},
         {"raw_position", "Position (raw)"}, {"raw_speed", "Speed (raw)"},
+        {"acceleration_time_in_range", "Acceleration word within numeric policy"},
+        {"deceleration_time_in_range", "Deceleration word within numeric policy"},
+        {"search_speed_in_range", "Search speed word within numeric policy"},
+        {"return_speed_in_range", "Return speed word within numeric policy"},
+        {"ramp_time_in_range", "Ramp word within numeric policy"},
         {"setup_execution", "Setup execution"}, {"interrupted_by_stop", "Interrupted by stop"}
     };
     for (const auto& entry : names) if (equal(key, entry.key)) return writer.text(entry.label);
@@ -216,6 +222,19 @@ bool bytes(Writer& writer, const Value& value) {
     return true;
 }
 bool field(Writer&, const Value&, const Value&, unsigned);
+bool unsignedValue(const Value&, uint32_t&);
+const char* parameterResolution(const Value& name, const Value& value) {
+    using Resolution = MotorControlRS::ESS_RS::ReadResolution;
+    uint32_t code = 0;
+    if (!unsignedValue(value, code)) return nullptr;
+    if (equal(name, "speed_scale_resolution") || equal(name, "ramp_scale_resolution") || equal(name, "offset_scale_resolution"))
+        return code == static_cast<uint32_t>(Resolution::SCALE_UNRESOLVED) ? "unresolved scale" : nullptr;
+    if (equal(name, "speed_signed_resolution") || equal(name, "offset_signed_resolution"))
+        return code == static_cast<uint32_t>(Resolution::SIGNED_ENCODING_UNRESOLVED) ? "unresolved signed encoding" : nullptr;
+    if (equal(name, "offset_word_order_resolution"))
+        return code == static_cast<uint32_t>(Resolution::WORD_ORDER_UNRESOLVED) ? "unresolved word-order applicability" : nullptr;
+    return nullptr;
+}
 bool contents(Writer& writer, const Value& value, unsigned level) {
     Reader reader(value.begin + 1, value.end - 1);
     if (value.kind == Kind::OBJECT) {
@@ -251,7 +270,14 @@ bool field(Writer& writer, const Value& name, const Value& value, unsigned level
     if (value.kind == Kind::OBJECT || (value.kind == Kind::ARRAY && !flatArray(value))) {
         ok = ok && writer.character('\n');
         if (!ok) { writer.size = start; return false; }
-        return contents(writer, value, level + 1);
+        if (!contents(writer, value, level + 1)) return false;
+        if (equal(name, "velocity_parameters") || equal(name, "homing_parameters")) {
+            if (!writer.indent(level + 1) ||
+                !writer.text("Range flags use library numeric policy bounds; drive limits remain unqualified.\n")) return false;
+            if (equal(name, "homing_parameters") && (!writer.indent(level + 1) ||
+                !writer.text("Raw zero offset does not establish a calibrated origin.\n"))) return false;
+        }
+        return true;
     }
     ok = ok && writer.character(' ');
     if (value.kind == Kind::ARRAY) {
@@ -266,6 +292,8 @@ bool field(Writer& writer, const Value& name, const Value& value, unsigned level
         if (first) ok = ok && writer.text("(none)");
     } else if (equal(name, "raw_hex") || equal(name, "tx_hex") || equal(name, "rx_hex")) {
         ok = ok && bytes(writer, value);
+    } else if (const char* resolution = parameterResolution(name, value)) {
+        ok = ok && writer.text(resolution);
     } else ok = ok && writer.scalar(value);
     ok = ok && writer.character('\n');
     if (!ok) writer.size = start;
