@@ -4,6 +4,19 @@ Execute the [shared contract](execution_contract.md) and
 [verification rules](verification.md). Requirement: shared prerequisite for N08.
 Prerequisites: 03,05 and 01's reviewed observation contract.
 
+Implement the [stage 01 lifecycle and observation decisions](../../ess_homing.md#planned-auxiliary-setting-and-switch-method-integration-not-implemented).
+Keep caller qualification age separate from refreshed MOTION/IO times. Explicit
+revocation cancels unsent work and prevents new reference publication, while
+own-staging single-use clearing is not revocation of the immutable admitted
+context. Missing sampled I/O edges do not fail an otherwise satisfied qualified
+status/zero completion contract; missing required status transitions still do.
+Export normal install/inspect/revoke/submit/result access from ProbeApp.h;
+private test injection and anonymous Host callbacks are insufficient.
+Include revocation with the future slot already consumed and final zero reply in
+flight: copied core revocation disposition must prevent reference publication,
+conserve settled evidence and take cancellation precedence over new success.
+Keep expected physical limit-input activation distinct from soft-limit faults.
+
 ## Inspect and assign
 
 Read `HomePrerequisites`, `HomeContext`, `prepareHome/nextHome/advanceHome`,

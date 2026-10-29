@@ -1,7 +1,8 @@
 # ESS software completion
 
-Prepared 2026-10-23. **All 15 stages are NOT STARTED.** This is an executable
-implementation plan; preparing it does not implement the features. Read the
+Prepared 2026-10-23. **Stage 01 contracts completed 2026-10-29; stages 02-15
+are NOT STARTED.** See the [source decisions](../../reports/2026-10-29_ess_software_contracts.md)
+and [progress](progress.md). Contracts do not implement the features. Read the
 [verified audit](audit.md), [execution contract](execution_contract.md),
 [source map](source_map.md) and [verification rules](verification.md).
 
@@ -50,6 +51,11 @@ reviewer and delegate independent implementation/tests after contracts are fixed
 | [13](13_integration_faults.md) | Cross-operation faults, result conservation and CLI/tool parity | 02-12, or explicit partial dispositions |
 | [14](14_portability.md) | Installed/source consumers, supported builds and resource bounds | 13 |
 | [15](15_final_audit.md) | Independent final review, fixes and truthful coverage closeout | 14; disposition of every stage |
+
+Stage 01 restricts initial interruption to native stored-profile start-or-interrupt,
+ACK-only, without active setup writes. Broader N05 remains evidence-gated and
+must stay PARTIAL after that subset; do not claim whole-set completion from its
+delivery. Reads, setters and supported homing can proceed independently.
 
 The default order limits overlapping edits. Dependencies are technical, not an
 instruction to stall independent work: if bit-3 semantics block 06, finish reads,

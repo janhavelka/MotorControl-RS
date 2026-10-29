@@ -62,9 +62,22 @@ Several `c)` captions incorrectly say the origin is inactive while depicting
 it active. Method 18 labels the figures “negative limit” despite a positive
 heading/prose; that discrepancy remains unresolved.
 
+The original-page recheck on 29 October 2026 identifies the inactive-caption/
+active-drawing conflicts precisely: method 8 p40, 10 p43, 13 p48, 14 p50,
+26 p61, 29 p65 and 30 p67. Method 28 has a separate discrepancy: the p63(a)
+prose describes direct origin acquisition, while its drawing shows the far-side
+negative-limit reversal. The p64 drawing following (b) shows direct acquisition,
+while (b)'s prose describes limit reversal. The two drawings appear exchanged.
+Both paths end at the negative low-speed origin rising edge. Preserve both
+spatial branches in source-derived tests; do not use the a/b letters as reliable
+path identifiers or generalize this interpretation to unresolved method 18.
+See the [stage 01 source review](reports/2026-10-29_ess_software_contracts.md).
+
 The implemented subset is 33, 34 and 35, with zero offset and auxiliary value 7.
-Methods requiring external switches remain unimplemented until their complete
-edge/return sequencing and verified input prerequisites are provided. Method 18
+Methods requiring external switches remain unimplemented. Their planned
+[admission and observation contract](ess_homing.md#planned-auxiliary-setting-and-switch-method-integration-not-implemented)
+keeps trajectories in the drive and sampled evidence in the host; it does not
+require a host reconstruction of every physical edge. Method 18
 and the four collision methods report unresolved source semantics separately.
 Unwired or disabled optional external inputs do not exclude 33–35. Internal Z
 is a motor capability requiring qualification, not an external input terminal.

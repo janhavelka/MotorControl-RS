@@ -20,7 +20,10 @@ read-only reviewer for coordinate/offset effects and qualification boundaries.
    active-state limitation without inventing a bitmask abstraction.
 2. Validate target/configuration, fresh required state and operation capacity
    before work. Read prior value, validate the write reply and obtain separate
-   readback using the real typed read path. Keep stored observation, requested
+   readback using the one-field HOMING_AUXILIARY DriverContext path selected in
+   stage 01 (FC03 0x0030/1, seven-byte reply). Keep the seven-word family snapshot
+   in ReadContext; do not force it into DriverEvidence's 15-byte buffer.
+   Keep stored observation, requested
    choice and independently qualified active policy distinct.
 3. Add an ordinary app operation and shared CLI presentation through that API.
    Configuration selection is explicit; starting home must never silently

@@ -120,6 +120,121 @@ only the eight-byte FC06 start for the drive's already stored target/profile;
 it does not stage parameters or observe the result. These lower-level routes
 are API-only. The CLI continues to use `prepareMove*`.
 
+## Planned start-speed setting and interruption (not implemented)
+
+These are the [stage 01 decisions](reports/2026-10-29_ess_software_contracts.md),
+not additions to the current callable API or qualified bench scope.
+
+The start-speed setter will use `DriverContext`, a one-field
+`DriverGroup::POSITION_START_SPEED`, group-local selection bit 0 and a named
+`DriverRequest::positionStartSpeed` value. A planned
+`preparePositionStartSpeed(DriverRequest&, uint32_t native)` selector validates
+0..3000 before narrowing. This is a native word domain from function p70;
+the conflicting default `30 (60 r/min)` does not establish a physical conversion.
+Use the existing `prepareDriverRead`/`getDriver` prior observation and
+`prepareDriverSettings`/`nextDriver`/`advanceDriver` update engine. The read is
+FC03 `0x0020/1`, the write FC06 `0x0020`, then a separate single-word readback.
+This does not widen the position-profile write `0x0021/5`.
+
+Require exact target/configuration, prior observation, current stopped/alarm-free
+state, and explicitly qualified interfering-input/trigger policy before the
+write. Unknown prior raw values stay evidence rather than becoming legal
+candidates. The new group must explicitly validate its own range, selection,
+register, input policy and effects; it must not fall through DRIVE's direction
+handling or tuning-group ranges. Retain prior value, write transmission/confirmed
+echo and readback separately. Do not enable the optional unconfirmed-echo/readback
+policy for this group. An uncertain write is never replayed or rolled back.
+
+As soon as the write may have applied, invalidate dependent position readiness,
+stored-profile matching and prepared unsent moves, preserving historical results.
+Parameter changes do not establish a new coordinate zero: preserve the fixed
+host origin where its existing interpretation remains valid, while expiring the
+current readiness/reference witness and advancing the applicable generation.
+Matching readback establishes stored state only. A later move must re-establish
+the start-speed relationship; the setter does not silently lower/raise its speed.
+The existing six-word motion-profile snapshot remains historical evidence under
+its original binding; a generation change makes its applicability stale. Legacy
+`motion-profile restore` still writes only `0x0021/5` and cannot restore `0x0020`.
+Restoring start speed requires its explicit setter and renewed prerequisites,
+not a hidden combined restore or a widened FC10 window.
+
+The planned `submitPositionStartSpeed(native, id)` app wrapper and
+`motion-profile start-speed <native>` route perform a bounded prior-read then
+update session through the same engine, with one frozen candidate, axis
+reservation and immutable deadline. The successful update retains its prior in
+`DriverPrerequisites`; a failed prior read ends the session without a write and
+retains that read context. `copySettingsResult(id, DriverContext&)` exposes the
+current/terminal context (`kind` distinguishes prior-read from update), and
+`releaseOperation` releases only a terminal result. Caller-owned result storage
+must accommodate the full context without a large transient MCU-stack copy.
+
+For interruption, function p16 defines serial `0x0027` bit 3 as 0 = ignore a new
+position command while moving, 1 = interrupt and execute it immediately. This
+is independent of external PV trigger mode. Bit 0 starts positioning and bit 2
+selects absolute mode. Preserve legacy values `0x0001`/`0x0005`; the derived
+explicit interrupt values are `0x0009`/`0x000D`. No wire queue is documented.
+
+Plan a profile-specific typed `PositionInterruption` choice, default `IGNORE`,
+on `PositionCommand` and a checked `buildStartPosition` overload. It is copied
+into `MoveContext`; the old builder and ordinary observed preparations retain
+their current behavior. Initial active replacement is deliberately limited:
+
+| Request while an owned position operation may be moving | Planned disposition |
+| --- | --- |
+| `WRITE_ALL` or `VERIFY_AND_UPDATE` | Reject before any profile/target write: active staging effects are unresolved |
+| Native `USE_STORED`, exact qualified stored-profile match | One explicit interrupt trigger; terminal ACKNOWLEDGED, completion NOT_OBSERVED |
+| Changed target/profile supplied with `USE_STORED` | Reject; start-only does not stage the supplied values |
+| Observed/generic replacement, wrapped angle or moving reference-dependent endpoint | Reject before TX; no attributable replacement-completion contract is established |
+
+The stored witness must match exact target, configuration, word order, target
+bits and native profile values; the application retains its provenance and
+qualification independently of incoming intent. Readback alone does not prove
+activation or absence of an unseen reset. Relative retriggering retains native
+displacement intent but no known absolute endpoint; an old endpoint or moving
+sample cannot supply a stationary baseline. Absolute retriggering retains native
+target intent but still cannot claim a newly observed arrival.
+
+Stage 07 will expose `submitPositionInterrupt(originalId, command, targetBits,
+relative, replacementId)` and `position interrupt <original-id>` through the
+same owner path. The console constructs only the exact retained stored candidate;
+it accepts no implicit new target or setup policy. Admit at most one pending
+replacement for the same owned position operation/target, after its trigger is
+confirmed and it remains active. Reject pre-trigger/uncertain originals, another
+motion kind, duplicates, stale generations and an already pending stop. Reserve
+an additional ordinary result before changing the original continuation. Preserve
+the original slot and dedicated urgent-stop reservation; never borrow either.
+
+Settle an in-flight frame before replacing its continuation. If the original
+completes during that settlement, retain a cancelled/no-TX replacement and require
+a deliberate new submission; do not turn it into an idle start. An admitted
+urgent stop cancels an unsent replacement, or settles its transmitted uncertainty
+before stopping. Retain original, replacement and stop results independently.
+ACK-only terminal publication does not release the application's possible-motion
+interlock; explicit checked stop/reconciliation is required before conflicting
+ordinary work. Local cancellation/recovery is not that stop.
+
+This rejects a completion race known to the host, not every physical race. Bit 3
+is not an atomic only-if-busy command. The original motion can finish between
+the last sample and the trigger, making the same write an ordinary new start.
+The native caller must explicitly accept that start-or-interrupt meaning; the
+ACK proves neither that interruption occurred nor that the old move was running.
+
+The planned `copyMoveResult(id, MoveContext&, MoveRelation&)` app function copies
+the exact pending/terminal context and small application-owned relation metadata:
+original ID, replacement ID and whether local observation was superseded by
+replacement. It checks MOVE kind and programmatic ownership, leaves both outputs
+unchanged on rejection, and does not consume/recycle either record. Relation
+metadata identifies the host handoff, not proof of physical interruption.
+Both IDs remain independently inspectable; `moveProgress` remains a compact
+projection and must not report an ACK-only replacement as observed success.
+Urgent stop keeps its independent result; no later result overwrites the old one.
+
+Broader new-target replacement needs evidence of when the drive consumes target/
+profile writes and a supported coordinate/completion attribution contract.
+Function p16's ordinary staging example and p25's pre-motion stop-ramp rule do
+not provide it. The restricted subset leaves N05 **PARTIAL** after delivery;
+the bit-3 route alone must not close the full gap or the whole software set.
+
 ## Observation-aware preparation
 
 Here “fresh” means correctly bound, checked and not invalidated; age is checked

@@ -109,6 +109,107 @@ between current feedback observations still invalidate coordinate confidence.
 Generation exhaustion cancels further homing work and prevents reference
 publication; any accepted write and its uncertainty remain retained.
 
+## Planned auxiliary setting and switch-method integration (not implemented)
+
+The [stage 01 review](reports/2026-10-29_ess_software_contracts.md) fixes these
+contracts for stages 03/05/08-12. Existing support remains 33/34/35 only.
+
+The six-record/seven-word parameter snapshot uses the planned
+[parameter-read API](ess_reads.md#planned-parameter-reads-stage-01-decision-not-implemented).
+The auxiliary setter instead reuses `DriverContext` with a one-field
+`DriverGroup::HOMING_AUXILIARY`, group-local bit 0 and named
+`DriverRequest::homingAuxiliary`. The planned
+`prepareHomingAuxiliary(DriverRequest&, HomingAuxiliary)` selector validates all
+twelve enumerated choices 0..11; no bitwise combinations or extra values are
+accepted. Use FC03 `0x0030/1` for the prior, FC06 `0x0030` for the update and a
+separate one-word readback. Its seven-byte read replies fit `DriverEvidence`;
+do not force the nineteen-byte family snapshot into that buffer.
+
+Use the same explicit group admission/evidence policy as the planned
+[start-speed setter](ess_position.md#planned-start-speed-setting-and-interruption-not-implemented):
+fresh exact prior, stopped state, independent interfering-input/trigger policy,
+confirmed write reply, readback and possible effects. The application wrapper
+`submitHomingAuxiliary(choice, id)` and `home auxiliary <0..11>` share the bounded
+prior-read/update session, `copySettingsResult` and terminal `releaseOperation`.
+A possibly applied auxiliary write invalidates home qualification and unsent
+dependent home work even if readback fails. It does not itself prove an immediate
+coordinate change. No home trigger, input reassignment or EEPROM save follows.
+Setting/readback of 7 never establishes its qualified active policy. Execution
+remains independently qualified auxiliary 7 and zero offset; other setters do
+not implement their coordinate/offset policies as motion.
+
+Stage 08 will expose ordinary application `installHomeQualification`,
+`inspectHomeQualification`, `revokeHomeQualification`, `submitHome` and
+`copyHomeResult(id, HomeContext&)`, using one copied retained qualification and
+the existing `startHome`/owner path. Extend `HomePrerequisites` only for the
+concrete missing evidence. Keep exact target/binding/configuration, method,
+native search/return/ramp, zero-offset, active auxiliary, direction/mechanics,
+required wiring/index and coordinate correspondence. No qualifier may be filled
+from the requested method or from a successful write/readback. Copy/inspect
+functions are passive; wrong IDs leave output unchanged. Programmatic results
+use the same terminal-only `releaseOperation` and cannot be console-recycled.
+
+Caller qualification age must be retained separately from live observation age.
+New MOTION/IO/parameter reads must not refresh its original timestamp or expiry.
+Preserve the existing zero-disables-age-expiry convention, with exact generations
+and operation deadlines still required; when ages are enabled, cap setup/trigger
+deadlines by every applicable admitted evidence bound. Reinstallation of the
+same old evidence does not make it new.
+
+| Qualification operation | Planned lifecycle |
+| --- | --- |
+| Install/replace | Copy and validate while no pending/active HOME depends on the slot; otherwise reject unchanged |
+| Inspect | Return the retained evidence, its binding and validity; no I/O or renewal |
+| Explicit revoke | Clear future admission; cancel unsent dependent continuation after settling any in-flight transaction; retain frozen context, outcomes and possible motion; publish no new reference from revoked work |
+| Own accepted home staging | Preserve the existing single-use clearing of future qualification and expected generation transition; this is not explicit revocation of the admitted context |
+| Unrelated configuration/rebind change | Invalidate future admission and unsent dependent work; preserve already transmitted effects |
+
+Revocation must search pending/active HOME records even when own staging already
+emptied the future-qualification slot. Plan a narrow core `revokeHome(HomeContext&)`
+transition recording a copied revoked-admission disposition, independent of the
+immutable prerequisite snapshot. It forbids further yielded work and reference
+publication without performing I/O. Settle and validate any in-flight reply,
+retain its raw/effect evidence, then terminate CANCELLED with revocation taking
+precedence over success, including the final status/zero-read race.
+`getHomeReference` must reject that copied disposition even if completion evidence
+arrived concurrently; guarding only the live app cache is insufficient.
+Already-terminal historical results are not rewritten by a later revoke. Tests
+must cover an empty future slot and final ZERO_CHECK in flight, with evidence
+conserved and no reference obtainable from the revoked result.
+
+Actual `ConfigObservation` supplies functions/polarity, `StateBlock::IO` supplies
+live logical levels and `MOTION` supplies readiness. A current parameter read
+supplies stored auxiliary/method/rate/offset facts; it does not qualify them.
+All observations must match the admitted binding/configuration and retain their
+separate acquisition intervals. Require functions 1/2/3 for origin/positive/
+negative limit, known polarity and declared wiring for the method's inputs.
+INPUT_STATUS is already logical valid/invalid; never invert it again. Preserve
+unrelated assigned stops/limits and reject unresolved interference. An initially
+inactive origin does not distinguish its two spatial sides: qualification must
+cover both admitted regions, including the appropriate limit for assisted methods.
+
+The 27 methods retain the [3 + 8 + 8 + 8 partition](prompts/ess_software/homing_matrix.md).
+The drive executes each trajectory. Host I/O samples support admission and
+diagnostics; they cannot prove every edge, reversal, Z passage or physical travel.
+Do not add a host trajectory controller or require a complete sampled edge trace.
+Moving methods retain fresh post-trigger RUNNING and HOMED-low, followed by
+stopped/in-position HOMED-high and checked zero words. A missed required status
+transition remains unobserved; a missed I/O edge alone is not failure when the
+qualified status/zero completion contract is met. Fault, release and motion-status
+soft-limit flags retain bounded failure. Required physical limit-input activation
+is normal in the documented homing branches, not a blanket fault; retain it as
+sampled trajectory evidence and distinguish a contradictory observation.
+Method 35 keeps its nonmoving rule: fresh admission HOMED-low may supply the low
+baseline, and observed RUNNING fails. Reference publication still needs the
+separate qualified command-coordinate relation and current unrevoked admission.
+
+Reuse `0x0031/6` staging and one `0x0027=0x0010` trigger, immutable deadline and
+finite poll budget. Any added I/O sampling must audit step tokens, `step < 2`
+assumptions, counter overflow, evidence buffers and total poll work. Stage 08
+must deliver its real install/submit/result path and regress 33/34/35 before
+stages 09-12 change support flags. Physical switches are not needed for native
+software tests, but no test fixture or build qualifies physical motion.
+
 ## Console and finite host scenarios
 
 The command calls the public preparation/execution API:

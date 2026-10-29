@@ -4,6 +4,13 @@ Execute the [shared contract](execution_contract.md) and
 [verification rules](verification.md). Requirement: core portion of N05
 `position_interrupt`. Prerequisite: 01's source-reviewed bit-3 contract.
 
+Stage 01 settled the [initial native stored-profile subset](../../ess_position.md#planned-start-speed-setting-and-interruption-not-implemented).
+Follow that setup/admission matrix: active WRITE_ALL/VERIFY_AND_UPDATE, changed
+stored candidates and observed/reference-dependent replacement reject before
+TX. Native stored retrigger is ACK-only and accepts the physical finish-before-TX
+race; bit 3 is not an only-if-busy operation. Broader N05 stays PARTIAL after
+this subset, pending staging-consumption and completion-attribution evidence.
+
 ## Inspect and assign
 
 Read position builders, `PositionCommand`, observed `MovePrerequisites`,
@@ -41,9 +48,10 @@ read-only reviewer specifically for interruption attribution and stale state.
    effects already possible, replacement trigger admission and required retained
    results. The core does not allocate a queue, own transport, flush UART bytes,
    stop the motor on local cancel or infer application ownership.
-5. Implement and document the complete core unit, including real consumers/tests
-   of every added declaration. Keep N05 overall and its CLI coverage open until
-   07 delivers the ordinary owner/application route. Do not expose a placeholder
+5. Implement and document the bounded core unit, including real consumers/tests
+   of every added declaration. Keep route coverage open until 07 delivers the
+   ordinary owner/application path; broader N05 remains PARTIAL under stage 01's
+   disposition. Do not expose a placeholder
    console command that reports success before that route exists.
 
 ## Acceptance

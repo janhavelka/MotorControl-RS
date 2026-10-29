@@ -1,8 +1,9 @@
 # Source map and adopted practices
 
 Paths below are relative to the repository root unless explicitly marked as
-siblings. Symbols describe current code; future names are design choices to be
-settled in stage 01, not claims that an API already exists. Read implementations,
+siblings. Symbols describe current code; planned names were settled in the
+[stage 01 decisions](../../reports/2026-10-29_ess_software_contracts.md), not added
+as callable APIs. Read implementations,
 callers and tests together. Do not generate a new source tree from this table.
 
 ## Implementation homes

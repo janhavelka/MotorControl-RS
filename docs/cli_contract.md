@@ -183,6 +183,54 @@ detail. `debug raw|decoded` copies owner traffic without consuming protocol
 bytes or blocking transactions under output pressure. Dropped observations
 are counted. Debug mode uses the same production operation path.
 
+## Planned ESS completion routes (not implemented)
+
+Stage 01 fixes these spellings for the later implementation stages. Existing
+help/grammar and operation coverage stay unchanged until the routes exist.
+
+| Stage | Planned command | Ordinary application path |
+| --- | --- | --- |
+| 02 | `velocity read` | `submitVelocityParameterRead` -> shared typed read owner |
+| 03 | `home read` | `submitHomingParameterRead` -> shared typed read owner |
+| 04 | `motion-profile start-speed <native>` | `submitPositionStartSpeed` -> bounded prior-read/settings update |
+| 05 | `home auxiliary <0..11>` | `submitHomingAuxiliary` -> bounded prior-read/settings update |
+| 07 | `position interrupt <original-id>` | `submitPositionInterrupt` -> exact retained native stored-profile start-or-interrupt |
+| 08-12 | Existing `home <method> ... zero` | Public `submitHome` -> current owner, using independently installed qualification |
+
+These initial new read/setting routes use the selected axis. They do not accept
+an address that would silently acquire the selected axis's configuration
+generation. Explicit idle binding remains the way to select another target.
+Invalid/extra tokens and invalid candidates reject before traffic. Parameter
+reads are explicit transfers, whereas `copyReadResult`, `copySettingsResult`,
+`copyHomeResult` and retained `result` inspection are passive. The setters
+validate admission, reserve the axis/result, obtain prior evidence and execute
+the existing setting engine within one unchanged deadline. Read failure emits
+no write. Results expose read versus update phase and preserve prior/echo/readback.
+
+The application header will expose these wrappers and terminal-only
+`releaseOperation`; anonymous `Host` callbacks alone do not provide a callable
+firmware API. Programmatic records retain ownership independently of the console
+and are never recycled as delivered human-command successes. Both frontends
+and host parsers use the same operations and outcome semantics.
+Generalizing the current `programmaticMove` ownership flag must preserve exact
+kind checks in `moveProgress`/`releaseMove` and all new copy functions; another
+operation family's ID cannot be accepted as a move/read/setting/home result.
+
+Interrupt is the restricted [native contract](ess_position.md#planned-start-speed-setting-and-interruption-not-implemented),
+with no changed target or silent staging. It accepts that a drive finishing
+before TX may execute a new stored start; ACK does not certify an interruption
+or arrival. Preserve original/replacement/stop result IDs and reserved stop
+capacity. No observed move or wrapped-coordinate replacement is implied.
+Programmatic `copyMoveResult` returns the exact MoveContext and original/
+replacement relation metadata; both IDs and the separate stop result remain
+inspectable. The relation describes host ownership, not physical interruption.
+
+Home qualification is supplied through the ordinary application install/inspect/
+revoke API with the [documented lifecycle](ess_homing.md#planned-auxiliary-setting-and-switch-method-integration-not-implemented).
+There is no all-true CLI qualification switch, inferred fixture or hidden test
+backend. Extend `home methods` and retained result presentation only alongside
+actual method implementations.
+
 ## Verification and qualification
 
 Native console/application tests cover help parity, strict parsing, direct API

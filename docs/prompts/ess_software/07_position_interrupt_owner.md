@@ -1,8 +1,17 @@
 # 07 - Integrate interruption with owner, application and console
 
 Execute the [shared contract](execution_contract.md) and
-[verification rules](verification.md). Requirement: complete N05
+[verification rules](verification.md). Requirement: initial bounded N05 integration,
 `position_interrupt`. Prerequisite: 06's implemented core contract.
+
+Stage 01 limits this first integration to the
+[native stored-profile contract](../../ess_position.md#planned-start-speed-setting-and-interruption-not-implemented)
+and `position interrupt <original-id>`. Preserve N05 as PARTIAL even after that
+usable subset lands; arbitrary new-target/profile replacement and attributable
+observed completion still need exact missing evidence. Test rejection during
+pre-trigger staging, and distinguish a host-known completion race from the
+unavoidable drive finish-before-TX race. An ACK-only terminal does not clear the
+possible-motion interlock or permit competing ordinary motion automatically.
 
 ## Inspect and assign
 
@@ -39,7 +48,8 @@ reviewer for transaction lifetime, pressure and outcome conservation.
    or result expiry that discards uncertainty.
 6. Update public/application docs, protocol-3 grammar/help and affected host
    parsers. Extend the ledger's real producing API/CLI route and negative route
-   checks. Close N05 only when the full ordinary path and outcomes are tested.
+   checks. Record the delivered subset and keep the broader N05 gap PARTIAL;
+   never close it merely because a bit-3 route and ACK-only outcome now exist.
 
 ## Acceptance
 

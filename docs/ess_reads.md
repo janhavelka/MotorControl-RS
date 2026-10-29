@@ -117,6 +117,56 @@ The [identity/configuration audit](archive/reports/ess_release_05_audit_2026-10-
 independently rechecks these contracts and repeats native, installed-package,
 build and read-only bench verification.
 
+## Planned parameter reads (stage 01 decision, not implemented)
+
+The [29 October contract review](reports/2026-10-29_ess_software_contracts.md)
+selects the existing `ReadContext`/`nextRead`/`advanceRead` sequence for two new
+read kinds. These names and routes are planned; they are not callable yet.
+
+| Planned kind / preparation / getter | One FC03 window | Raw observation | Normal reply |
+| --- | --- | --- | --- |
+| `VELOCITY_PARAMETERS`, `prepareVelocityParameters`, `getVelocityParameters` | `0x001D/3` | `VelocityParametersObservation`: speed, acceleration time, deceleration time | 11 bytes |
+| `HOMING_PARAMETERS`, `prepareHomingParameters`, `getHomingParameters` | `0x0030/7` | `HomingParametersObservation`: auxiliary, method, search speed, return speed, ramp, offset words at `0x0035` and `0x0036` | 19 bytes |
+
+Both preparations take an explicit nonzero configuration generation in addition
+to the existing exact `ReadTarget`, operation, tuple, time and deadline. Retain
+it in context and observation: binding generation, configuration generation and
+`configOperationId` are different identities. All raw fields are `uint16_t`,
+including the two separate offset words. Preserve copied per-window provenance.
+Decode known auxiliary choices 0..11 and documented positive method IDs with
+separate known/support indicators. Unknown or out-of-range words are successful
+raw observations. Do not cast `0xFFFC..0xFFFF` into resolved collision methods,
+assemble a signed offset, infer offset word-order applicability, or convert
+speed/ramp words into physical units. Source contradictions remain visible.
+
+The eight-byte requests, one step each and 11/19-byte replies fit the existing
+five-step/37-byte read storage. Change the private `words()` helper to receive
+the actual output capacity and verify the decoded count; its present hardcoded
+five-word capacity cannot decode seven words. Audit all kind switches, local
+arrays, retained formatters and owner expectations. Do not use the separate
+15-byte `DriverEvidence` to carry the seven-word snapshot. FC03's reviewed
+16-word limit and all write windows remain unchanged.
+
+Publish each complete family only after its one checked step succeeds. Failed
+getters preserve output. Preserve current closure-versus-delivery deadline rules,
+correlation rejection and copied failure evidence. A result keeps its admitted
+generation even if it becomes historical; current-cache promotion additionally
+requires the still-current target/configuration and newer observation identity.
+Check this at publication, including single-step completion, not only before a
+continuation. Reads never renew supplied qualification, modify desired motion
+parameters or establish active settings. A changed checked parameter observation
+invalidates dependent qualification instead of silently restoring it.
+
+Planned standalone wrappers are `submitVelocityParameterRead` and
+`submitHomingParameterRead`, with `copyReadResult(id, ReadContext&)` and shared
+terminal-only `releaseOperation(id)`. They use the same `startTypedRead`/owner
+path as planned `velocity read` and `home read`. Initially these app routes use
+the selected axis only; another target requires explicit idle binding. The core
+accepts any correctly bound caller target. Copying a result may inspect pending
+or failed state; a missing/wrong-kind ID leaves output unchanged. Programmatic
+results are not recycled by human console output. Neither submission nor result
+inspection needs a console or grants motion readiness.
+
 ## State observations and application health
 
 `prepareState` snapshots the same target, operation, immutable deadline and

@@ -4,6 +4,11 @@ Execute the [shared contract](execution_contract.md) and
 [verification rules](verification.md), including stage 08's observation contract.
 Requirement: N08 subset **11,12,13,14,27,28,29,30**. Prerequisite: 11.
 
+Preserve the [stage 01 source discrepancies](../../ess_homing_methods.md): method
+28's a/b drawings on physical pp63-64 appear exchanged relative to the prose.
+Derive direct and far-side branch fixtures by their spatial trajectory, not the
+letter alone. Record the identified c-caption conflicts independently.
+
 ## Inspect and assign
 
 Read original physical PDF pages 44-50 and 61-67, including every initial-location
