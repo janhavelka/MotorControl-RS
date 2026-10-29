@@ -2,8 +2,7 @@
 
 N04 software implementation adds a typed native `0x0020` setting through the
 existing DriverContext engine and ordinary selected-axis application/console.
-Local integrated verification is complete; exact implementation-commit CI is
-pending below.
+Local integrated verification and exact implementation-commit CI are complete.
 Physical start-speed, activation and persistence evidence is NOT RUN.
 
 ## Source and scope
@@ -105,9 +104,21 @@ staging; native3000/selected60 rejects without traffic or clamping.
   `e9ae81ba7059e6a3dd7bbae54a1d5517cc49b87d6e7013036f4df1c887db871a`.
   Earlier checkpoint `build/ess_software_04_quick` also PASS83 but is not the
   final proof for the later restore/presentation corrections.
-- Exact-commit hosted GCC/Clang and supported pinned Arduino/IDF firmware
-  matrix: PENDING. Local full firmware builds NOT RUN; hosted CI will supply
-  the firmware evidence. No earlier green commit is credited to this change.
+- Final implementation commit `ef38513b93704278c0bc87dcfec10695a038e999` was
+  committed/pushed on `main`, with clean worktree and upstream0/0.
+  [CI run40916185331](https://github.com/janhavelka/MotorControl-RS/actions/runs/40916185331)
+  reports terminal SUCCESS for GCC, Clang, Arduino and native ESP-IDF.
+  Terminal state and exact head SHA were verified using
+  `gh run view --json headSha,status,conclusion,jobs,url`. Downloaded summaries/logs:
+  `build/ess_software_04_ci/` (`native-gcc`, `native-clang`, `arduino`,
+  `native-idf`); all four summaries PASS83 tests plus package/consumer checks.
+  Hosted GCC package SHA-256:
+  `6a6883797b3b9bcc7ac46f7a4472af804a346af94d4d74010163cbb575ec1954`.
+  Arduino `16-arduino-builds.log` confirms4/4: bench_s3_units, bench_s3_probe,
+  bench_s3_load_poll and bench_s3_load_timer. IDF summary confirms S3 app,
+  S3/S2 core and portable-S2 checks all exit0, on the pinned5.5.5 environment.
+  Local full firmware builds NOT RUN; hosted jobs supply passing build evidence.
+  No earlier green commit is credited to this implementation.
 - Physical NOT RUN: fresh `python -m serial.tools.list_ports -v` lists COM11,
   COM12 and COM15 with different USB serial IDs. Recorded COM13 /
   `3C:0F:02:CD:6B:98` remains absent. No other device was opened, flashed or

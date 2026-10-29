@@ -10,7 +10,7 @@ position start-speed setting. Stages 05-15 remain NOT STARTED.
 | 01 | CONTRACTS COMPLETE | [Contract decisions and review](../../reports/2026-10-29_ess_software_contracts.md); no implementation | NOT RUN |
 | 02 | SOFTWARE COMPLETE | `6bede39`; [implementation/review/validation](../../reports/2026-10-29_ess_velocity_reads.md); 80-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 03 | SOFTWARE COMPLETE | `ff3fae3`; [implementation/source/verification](../../reports/2026-10-29_ess_homing_reads.md); 81-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
-| 04 | IN PROGRESS | [Implementation and verification](../../reports/2026-10-29_ess_position_start_speed.md); 83-test final quick/package PASS; exact-commit CI pending | NOT RUN: recorded bench USB absent |
+| 04 | SOFTWARE COMPLETE | [Implementation and verification](../../reports/2026-10-29_ess_position_start_speed.md); `ef38513`; 83-test final quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 05 | NOT STARTED | - | NOT RUN |
 | 06 | NOT STARTED | - | NOT RUN |
 | 07 | NOT STARTED | - | NOT RUN |
@@ -208,7 +208,7 @@ package/pinned firmware checks. Artifacts: `build/audit_02_03_ci/`. No remaining
 confirmed 02/03 gap; no prior green run credited to the corrections.
 Physical NOT RUN: recorded USB bench still absent.
 
-## Stage 04 implementation checkpoint (2026-10-29)
+## Stage 04 completed software (2026-10-29)
 
 N04's producing native0..3000 prior-read/FC06/readback path, ordinary API/console,
 strict host results and dedicated readiness invalidation are implemented.
@@ -219,5 +219,11 @@ and avoiding an unsettled-restore deadlock after an explicit setter.
 [Source, independent reviews, fixes and verification](../../reports/2026-10-29_ess_position_start_speed.md).
 Lead focused15/15 and final quick83/83 plus packages PASS. Independent core/app
 and source review runs PASS; Python268, parity14+6 and inventory31 PASS.
-Exact implementation-commit GCC/Clang/Arduino/IDF CI pending. Physical NOT RUN:
-fresh enumeration still lacks the recorded bench USB identity.
+Final implementation commit `ef38513b93704278c0bc87dcfec10695a038e999` was
+pushed and synchronized. [CI run40916185331](https://github.com/janhavelka/MotorControl-RS/actions/runs/40916185331)
+terminal SUCCESS verified through exact head SHA/job JSON. All four downloaded
+GCC/Clang/Arduino/IDF summaries PASS83 tests and package/consumer checks;
+Arduino4/4 and IDF S3 app/core-S3/core-S2/portable-S2 checks PASS. Artifacts:
+`build/ess_software_04_ci/`. No earlier green run is credited to this change.
+Local full firmware NOT RUN. Physical NOT RUN: fresh enumeration still lacks
+the recorded bench USB identity; other devices were not opened or flashed.
