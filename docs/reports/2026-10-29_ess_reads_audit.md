@@ -92,10 +92,29 @@ Fresh integrated local verification PASS:
 - Final correction diff was independently reviewed again; no remaining confirmed
   source/core/app/surface finding. No failed check was hidden or weakened.
 
-Exact-commit hosted firmware verification is pending at this correction
-checkpoint. The final correction commit and terminal CI results will be recorded
-before completion. Prior completed prompt runs are historical evidence and do
-not verify the audit corrections.
+Final correction commit: `be8b8e329f3aab2fcb3ec2c22f0ce205a0347f0d`, pushed
+and synchronized on `main`. [CI run 40911437371](https://github.com/janhavelka/MotorControl-RS/actions/runs/40911437371)
+completed SUCCESS for that exact SHA. Terminal verification/download:
+
+```text
+gh run view 40911437371 --repo janhavelka/MotorControl-RS --json headSha,status,conclusion,jobs,url
+gh run download 40911437371 --repo janhavelka/MotorControl-RS --dir build/audit_02_03_ci
+```
+
+| Exact-commit job | Result / downloaded evidence |
+| --- | --- |
+| native (gcc) | PASS, 81 tests and package/consumer checks |
+| native (clang) | PASS, 81 tests and package/consumer checks |
+| arduino | PASS, 81 tests and all four pinned firmware environments |
+| idf | PASS, 81 tests and pinned ESP-IDF 5.5.5 S3/S2/portable consumer matrix |
+
+Downloaded summaries/logs are under `build/audit_02_03_ci/` (`native-gcc`,
+`native-clang`, `arduino`, `native-idf`); terminal state is also retained in
+`build/audit_02_03_ci_status.json`. Prior prompt runs were not used as proof of
+these corrections. Push-triggered CI sufficed; no unchanged-suite dispatch or
+check bypass was needed. The later evidence-only documentation commit changes
+no verified implementation. No confirmed gap within prompts02/03 remains open;
+physical and unresolved source qualification retain the limits below.
 
 ## Physical limits
 

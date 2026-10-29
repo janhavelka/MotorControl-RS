@@ -191,7 +191,7 @@ NOT RUN for this documentation-only preparation, consistent with AGENTS policy.
 
 ## Fresh independent audit of stages 02/03 (2026-10-29)
 
-IN PROGRESS: [audit findings and verification](../../reports/2026-10-29_ess_reads_audit.md).
+COMPLETE: [audit findings and verification](../../reports/2026-10-29_ess_reads_audit.md).
 The full original prompts/contracts and actual combined code/diff were reviewed
 from base `af06eac` by three parallel core/source, app/owner and surface/test
 reviewers. Confirmed presentation/wording gaps are fixed: callback-aware family
@@ -200,5 +200,10 @@ readiness wording. No core/owner runtime defect, new API, write window or method
 support change was found or introduced. Focused15/15 and the independently
 rebuilt65,776-case harness PASS. Fresh `build/audit_02_03_quick` PASS81/81,
 source/install consumers3/3 each, strict headers/linkage/package checks PASS.
-Final correction commit and exact-commit CI pending.
+Final correction commit `be8b8e329f3aab2fcb3ec2c22f0ce205a0347f0d` pushed
+and synchronized. [CI run 40911437371](https://github.com/janhavelka/MotorControl-RS/actions/runs/40911437371)
+terminal SUCCESS verified through `gh run view --json headSha,status,conclusion,jobs,url`;
+GCC/Clang/Arduino/IDF downloaded summaries each PASS81 tests plus applicable
+package/pinned firmware checks. Artifacts: `build/audit_02_03_ci/`. No remaining
+confirmed 02/03 gap; no prior green run credited to the corrections.
 Physical NOT RUN: recorded USB bench still absent.
