@@ -1,13 +1,13 @@
 # Execution progress
 
-Prepared 2026-10-23; updated 2026-10-29 for stage 01 execution. The preparation
-record below is historical and was not stage 01. Stages 02-15 remain NOT STARTED;
-stage 01 delivers contracts only, with no feature implementation or hardware test.
+Prepared 2026-10-23; updated 2026-10-29 for stages 01/02 execution. The preparation
+record below is historical. Stage 01 delivered contracts only; stage 02 implements
+velocity parameter reads. Stages 03-15 remain NOT STARTED.
 
 | Stage | Stage status | Commit / evidence | Physical evidence |
 | --- | --- | --- | --- |
 | 01 | CONTRACTS COMPLETE | [Contract decisions and review](../../reports/2026-10-29_ess_software_contracts.md); no implementation | NOT RUN |
-| 02 | NOT STARTED | - | NOT RUN |
+| 02 | IN PROGRESS | [Implementation and review](../../reports/2026-10-29_ess_velocity_reads.md); 80-test quick/package PASS, firmware CI pending | NOT RUN: recorded bench USB absent |
 | 03 | NOT STARTED | - | NOT RUN |
 | 04 | NOT STARTED | - | NOT RUN |
 | 05 | NOT STARTED | - | NOT RUN |
@@ -120,3 +120,24 @@ No library/application implementation, method support flag or operation coverage
 count changed. Full compilation, remote CI dispatch/wait and physical tests were
 NOT RUN for this documentation-only preparation, consistent with AGENTS policy.
 
+
+## Stage 02 implementation checkpoint (2026-10-29)
+
+- N01 now has one producing FC03 `0x001D/3` core sequence, copied raw result,
+  explicit configuration generation, ordinary submit/copy/release and shared
+  `velocity read`. Only its three read obligations close; eight named gaps and
+  18 paired guards remain. [Source/review/verification details](../../reports/2026-10-29_ess_velocity_reads.md).
+- Lead owns API, application/CLI, metadata, integration and Git. One writer owned
+  `reads_test.cpp` and then the independent host slice; a read-only reviewer
+  checked original PDF pages 17/18/70, wire vectors, final diff and executing
+  focused evidence. All concrete findings were fixed and covered.
+- Focused 8/8 checks PASS; strict Python host 259 tests PASS. Added identical
+  new/read and existing finite velocity/stop cases on both platform adapters.
+- Quick verifier `python scripts/verify.py --mode quick --build-dir
+  build/ess_software_02_quick`: all80 registered tests, source/install consumers
+  3/3 each, strict headers/linkage/package checks PASS. Repository/reference,
+  generator and 30 inventory tests PASS; `git diff --check` PASS.
+- Pinned firmware builds/terminal exact-implementation-commit CI pending at this
+  checkpoint. No physical test: recorded COM13/USB serial `3C:0F:02:CD:6B:98`
+  absent; different connected ESP devices were not opened/flashed/commanded.
+  Motion, sign/ramp and independent electrical/shaft qualification remain open.

@@ -25,3 +25,17 @@ for line in output.splitlines():
     seen.add(name)
 assert seen == expected, (seen, expected)
 print(f"PASS: {len(seen)} actual core/console velocity terminals accepted by Python")
+
+expected_reads = {"success", "unknown", "exception", "cancelled", "deadline"}
+output = subprocess.check_output([sys.argv[1], "--velocity-read-fixtures"], text=True, timeout=10)
+seen_reads = set()
+for line in output.splitlines():
+    fixture = json.loads(line, object_pairs_hook=unique_object)
+    name, record = fixture["case"], fixture["record"]
+    assert name in expected_reads and name not in seen_reads, name
+    assert len(json.dumps(record, separators=(",", ":"))) <= MAX_LINE
+    Console._check_typed_read(record, "velocity_parameters", 1)
+    check_fixture_routes(record, live_command="velocity-read")
+    seen_reads.add(name)
+assert seen_reads == expected_reads, (seen_reads, expected_reads)
+print(f"PASS: {len(seen_reads)} actual core/console velocity-parameter read terminals accepted by Python")

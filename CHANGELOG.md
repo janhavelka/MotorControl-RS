@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- Typed non-changing JOG speed/ramp read with raw words, explicit unresolved
+  interpretation, admitted configuration generation and copied evidence. Shared
+  `velocity read` and ordinary application submit/copy/release use the same owner;
+  reads do not stage motion or renew qualification. Native tests cover both
+  frontends; the Python host validates live and retained results.
+
 ### Fixed
 
 - Live host terminals now reject the conflicting kind flags already rejected by

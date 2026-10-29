@@ -27,7 +27,7 @@ maintenance documented in the changelog.
 | Packages | CMake source/install consumers and PlatformIO; C++11, plus C++17 with RTTI disabled |
 
 Typed native coverage is partial. The [API/CLI inventory](docs/ess_api_cli_coverage.md)
-lists nine named gaps and 18 guarded paired setters. Current settings do not
+lists eight named gaps and 18 guarded paired setters. Current settings do not
 provide torque/current motion; stored segments require external triggers.
 Other manufacturers and CANopen are not implemented.
 

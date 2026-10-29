@@ -3,8 +3,14 @@
 // Qualification below belongs solely to this fake fixture, never the real bench.
 #include "../examples/probe_cli/ProbeApp.cpp"
 #include "fakes/esp32_uart/UsbConsoleFixture.h"
+#if MOTORCONTROLRS_TEST_IDF
+#include "fakes/esp32_uart/FakeUsb.h"
+#include "../examples/probe_idf/main/IdfPlatform.cpp"
+#include "../examples/common/BoardPins.h"
+#else
 #include "../examples/probe_cli/ArduinoPlatform.cpp"
 #include "../examples/probe_cli/main.cpp"
+#endif
 #include <cassert>
 #include <cstdlib>
 #include <cstdio>
@@ -17,12 +23,13 @@ void fresh() {
     if (app) { app->~App(); std::free(app); app = nullptr; }
     uart.~Esp32S3Uart(); new (&uart) Esp32S3Uart;
     resetHardware(); resetUsbConsole(); platformReady = false; writeResponseConfirmed = false;
-    setup();
+    assert(beginApplication({Board::kRs485TxPin, Board::kRs485RxPin, Board::kRs485DeRePin,
+        Board::kRs485DeReActiveHigh}, Board::kRs485ReceiverDisabledDuringTransmit));
     assert(app && uart.ready() && app->owner.valid() && hardware.writes == 0);
     hardware.txCharacterUs = 87;
     assert(uart.startCapture(20, timing().holdUs));
 }
-void step(uint32_t us = 10) { advanceHardware(hardware.time + us); loop(); }
+void step(uint32_t us = 10) { advanceHardware(hardware.time + us); serviceApplication(); }
 void pump(unsigned count = 64) { for (unsigned i = 0; i < count; ++i) step(); }
 Probe::ResultView view(uint32_t operation) {
     Probe::ResultView result;
@@ -155,7 +162,7 @@ void gatesAndParity() {
         const auto due = view(id).velocityContext->stopDueUs;
         // A settled wait yields stop on the immutable finite boundary.
         assert(!findRecord(*app,id)->requestId.owner);
-        advanceHardware(due); loop();
+        advanceHardware(due); serviceApplication();
         assert(nowUs() >= due && view(id).velocityContext->deadlineUs > due);
         velocityStep(id); assert(hardware.tx[5] == 0 && hardware.tx[4] == 1);
         velocityStep(id, registers(1,{0,1}));
@@ -207,7 +214,7 @@ void delayedEvidenceAndRecovery() {
     fresh(); qualify(); const auto id=admitVelocity(); velocityStep(id); velocityStep(id); waitTx(id);
     const auto due=view(id).velocityContext->stopDueUs;
     scheduleReply(hardware.writeStarted+8*87+1000,registers(1,{0,4}));
-    advanceHardware(due+100000); loop(); // Beyond the declared 50-ms normal-stop service interval.
+    advanceHardware(due+100000); serviceApplication(); // Beyond the declared 50-ms normal-stop service interval.
     const auto& context=*view(id).velocityContext;
     assert(context.runningObserved && context.serviceMissed && context.needsStop);
     assert(context.phase == ESS::VelocityPhase::STOPPING && context.stopDueUs == due);
@@ -239,15 +246,15 @@ void urgentPressureDefersWithinOriginalDeadline() {
         for (unsigned i=0;i<25000 && !app->owner.result(reserved);++i) step();
         assert(app->owner.result(reserved));
         const uint64_t deadline=view(id).velocityContext->deadlineUs;
-        advanceHardware(view(id).velocityContext->stopDueUs); loop();
+        advanceHardware(view(id).velocityContext->stopDueUs); serviceApplication();
         assert(view(id).pending && view(id).velocityContext->phase == ESS::VelocityPhase::STOPPING);
         assert(!findRecord(*app,id)->requestId.owner && !app->owner.needsRecovery());
         if (releaseReserved) {
-            assert(app->owner.release(reserved)); loop();
+            assert(app->owner.release(reserved)); serviceApplication();
             velocityStep(id); velocityStep(id,registers(1,{0,1}));
             assert(!view(id).pending && !view(id).velocityContext->needsStop);
         } else {
-            advanceHardware(deadline); loop();
+            advanceHardware(deadline); serviceApplication();
             assert(!view(id).pending && view(id).velocityContext->needsStop && hardware.writes == 4);
             assert(view(id).velocityContext->stop.outcome == ActionOutcome::DEADLINE);
         }
@@ -258,7 +265,7 @@ void normalStopAllowsFullConfiguredRamp() {
     fresh(); qualify(); app->velocityPrerequisites.decelerationTime = 2000;
     const auto id = admitVelocity();
     velocityStep(id); velocityStep(id); velocityStep(id, registers(1,{0,4}));
-    advanceHardware(view(id).velocityContext->stopDueUs); loop();
+    advanceHardware(view(id).velocityContext->stopDueUs); serviceApplication();
     velocityStep(id); // One stop write after the finite running interval.
     const auto stopAck = view(id).velocityContext->stop.writeEvidence.deliveredUs;
     const auto writes = hardware.writes;
@@ -283,5 +290,112 @@ void lostStartNeverReplays() {
     pump(2000); assert(findRecord(*app,id)->delivered);
     assert(host(app).release(app,id) == Probe::Action::OK && axisReserved(*app,1));
 }
+const std::vector<uint8_t> PARAMETER_REPLY = {1,3,6,0,0x3C,0,0x32,0,0x64,0xD1,0x54};
+uint32_t parameterRead() {
+    uint32_t id = 0; assert(submitVelocityParameterRead(id));
+    assert(id && view(id).typedRead && view(id).pending); return id;
+}
+void parameterReply(uint32_t id, const std::vector<uint8_t>& bytes = PARAMETER_REPLY) {
+    waitTx(id);
+    const std::vector<uint8_t> expected = {1,3,0,0x1D,0,3,0x95,0xCD};
+    assert(hardware.tx == expected);
+    scheduleReply(std::max(hardware.writeStarted + 8*87 + 1000, hardware.time + 1000), bytes);
+    for (unsigned i=0;i<25000 && view(id).pending;++i) step();
+    assert(!view(id).pending); pump();
+}
+void parameterReadApplicationPath() {
+    fresh(); uint32_t unchanged = 77;
+    ESS::ReadContext copied; copied.operationId = 999;
+    assert(!copyReadResult(0, copied) && copied.operationId == 999);
+    app->discovery.owned = true;
+    assert(!submitVelocityParameterRead(unchanged) && unchanged == 77 && !hardware.writes);
+    app->discovery.owned = false;
+    assert(typedRead(app,1,2,ESS::ReadKind::VELOCITY_PARAMETERS,unchanged) == Probe::Action::INVALID);
+    assert(unchanged == 77 && !hardware.writes);
+    const auto generation = app->axis.generation;
+    const auto id = parameterRead();
+    assert(copyReadResult(id,copied) && copied.state == ReadState::ACTIVE);
+    assert(!releaseOperation(id));
+    ESS::VelocityParametersObservation result; result.rawSpeed = 999;
+    assert(!ESS::getVelocityParameters(copied,result) && result.rawSpeed == 999);
+    parameterReply(id);
+    assert(copyReadResult(id,copied) && ESS::getVelocityParameters(copied,result));
+    assert(result.rawSpeed == 60 && result.rawAccelerationTime == 50 && result.rawDecelerationTime == 100);
+    assert(result.configurationGeneration == generation && copied.completedSteps == 1 && hardware.writes == 1);
+    assert(!app->velocityPrerequisites.nativeRpmVerified && !app->velocityPrerequisites.configuredRampVerified &&
+        !app->velocityPrerequisites.readinessQualified);
+    assert(app->velocityParameters.operationId == id);
+    command("status\n"); pump(1000); // Human text must not recycle an API result.
+    assert(copyReadResult(id,copied) && copied.state == ReadState::SUCCEEDED);
+    assert(releaseOperation(id));
+    copied.operationId = 999;
+    assert(!copyReadResult(id,copied) && copied.operationId == 999 && !releaseOperation(id));
+    const auto again = parameterRead(); parameterReply(again);
+    assert(hardware.writes == 2 && again != id); // A cache cannot substitute for a new transfer.
+    assert(releaseOperation(again));
+    qualify(); command("@30 velocity 30 rpm native 200 configured normal\n");
+    const auto motion = app->latestOperationId;
+    assert(!copyReadResult(motion,copied) && copied.operationId == 999);
+    assert(cancel(app,motion) == Probe::Action::OK); pump(1000); assert(releaseOperation(motion));
+}
+void parameterReadQualificationAndHistoricalResults() {
+    fresh(); qualify();
+    app->velocityPrerequisites.accelerationTime = 50;
+    const auto desired = app->simple.desired;
+    const auto id = parameterRead(); parameterReply(id);
+    assert(app->velocityPrerequisites.configuredRampVerified && app->velocityPrerequisites.readinessQualified);
+    const auto observedUs = app->velocityPrerequisites.observedUs;
+    const auto changed = parameterRead();
+    parameterReply(changed,{1,3,6,0xFF,0xFF,7,0xD0,7,0xD1,0xE3,0x8F});
+    assert(!app->velocityPrerequisites.configuredRampVerified && !app->velocityPrerequisites.readinessQualified);
+    assert(app->velocityPrerequisites.accelerationTime == 50 && app->velocityPrerequisites.decelerationTime == 100 &&
+        app->velocityPrerequisites.observedUs == observedUs);
+    assert(app->simple.desired.speedRpm == desired.speedRpm); // Observed JOG speed is not desired position speed.
+    for (unsigned stale = 0; stale < 3; ++stale) {
+        fresh(); const auto historical = parameterRead();
+        const auto generation = app->axis.generation;
+        if (stale == 0) ++app->axis.generation;
+        else if (stale == 1) ++app->bindingGeneration;
+        else { app->velocityParameters.operationId = historical + 1; app->velocityParameters.rawSpeed = 321; }
+        parameterReply(historical);
+        ESS::ReadContext copy; ESS::VelocityParametersObservation out;
+        assert(copyReadResult(historical,copy) && ESS::getVelocityParameters(copy,out));
+        assert(out.configurationGeneration == generation && out.rawSpeed == 60);
+        assert(app->velocityParameters.operationId == (stale == 2 ? historical + 1 : 0));
+        if (stale == 2) assert(app->velocityParameters.rawSpeed == 321);
+    }
+}
+void parameterReadConsoleAndCapacity() {
+    fresh();
+    for (const char* invalid : {"@1 velocity read extra", "@2 velocity read 1 extra", "@3 velocity read 0",
+        "@4 velocity read 248", "@5 velocity read -1", "@6 velocity read 2", "@7 velocity reads"}) {
+        command(std::string(invalid)+"\n");
+        assert(Serial.output.find("\"ok\":false") != std::string::npos && !hardware.writes);
+    }
+    command("@8 velocity read\n");
+    assert(Serial.output.find("\"command\":\"velocity-read\"") != std::string::npos &&
+        Serial.output.find("\"read_kind\":\"velocity_parameters\"") != std::string::npos);
+    const auto id = app->latestOperationId;
+    command("@9 result "+std::to_string(id)+"\n");
+    assert(Serial.output.find("\"read_kind\":\"velocity_parameters\"") != std::string::npos);
+    parameterReply(id);
+    assert(Serial.output.find("\"raw_acceleration_time\":50") != std::string::npos);
+    command("@10 result "+std::to_string(id)+"\n");
+    assert(Serial.output.find("\"configuration_generation\":") != std::string::npos);
+    assert(releaseOperation(id));
+    command("@11 result "+std::to_string(id)+"\n");
+    assert(Serial.output.find("\"ok\":false") != std::string::npos);
+    fresh(); const auto cancelled = parameterRead();
+    assert(cancel(app,cancelled) == Probe::Action::OK); pump(1000);
+    ESS::ReadContext copy;
+    assert(copyReadResult(cancelled,copy) && copy.outcome == ReadOutcome::CANCELLED && !hardware.writes);
+    assert(releaseOperation(cancelled));
+    fresh(); uint32_t retained[REQUEST_CAPACITY] = {};
+    for (auto& kept : retained) { kept = parameterRead(); parameterReply(kept); }
+    uint32_t untouched = 77;
+    assert(!submitVelocityParameterRead(untouched) && untouched == 77 && hardware.writes == REQUEST_CAPACITY);
+    for (auto kept : retained) assert(copyReadResult(kept,copy) && copy.state == ReadState::SUCCEEDED);
+    for (auto kept : retained) assert(releaseOperation(kept));
+}
 } // namespace
-int main() { gatesAndParity(); externalStopAndLocalCancel(); pressureAndPhysicalCancellation(); delayedEvidenceAndRecovery(); urgentPressureDefersWithinOriginalDeadline(); normalStopAllowsFullConfiguredRamp(); lostStartNeverReplays(); }
+int main() { parameterReadApplicationPath(); parameterReadQualificationAndHistoricalResults(); parameterReadConsoleAndCapacity(); gatesAndParity(); externalStopAndLocalCancel(); pressureAndPhysicalCancellation(); delayedEvidenceAndRecovery(); urgentPressureDefersWithinOriginalDeadline(); normalStopAllowsFullConfiguredRamp(); lostStartNeverReplays(); }

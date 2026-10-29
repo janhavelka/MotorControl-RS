@@ -2,6 +2,7 @@
 #pragma once
 #include "../common/Esp32S3Uart.h"
 #include <MotorControlRS/profiles/ess_rs/Position.h>
+#include <MotorControlRS/profiles/ess_rs/Reads.h>
 
 namespace MotorControlRSExample {
 /** Age-only expiry is opt-in. Zero keeps checked observations until invalidated
@@ -66,4 +67,15 @@ struct MoveProgress {
 bool moveProgress(uint32_t operationId, MoveProgress&);
 /// Explicitly free a completed programmatic move result; does not stop the motor.
 bool releaseMove(uint32_t operationId);
+/** Submit one non-changing velocity-parameter read for the selected axis through
+ * the normal owner. Call from the service task; rejection preserves operationId.
+ * No console is needed. Result storage remains reserved until explicit release;
+ * reading does not stage parameters or establish motion qualification. */
+MotorControlRS::Status submitVelocityParameterRead(uint32_t& operationId);
+/** Copy pending, failed or completed typed-read state, including owned evidence.
+ * Historical target/configuration generations remain those admitted. Missing,
+ * released or wrong-kind IDs preserve output. No traffic or result consumption. */
+bool copyReadResult(uint32_t operationId, MotorControlRS::ESS_RS::ReadContext& output);
+/// Release any terminal ordinary operation after service has retained its result; no motor stop.
+bool releaseOperation(uint32_t operationId);
 }

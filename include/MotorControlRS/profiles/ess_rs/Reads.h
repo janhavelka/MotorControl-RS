@@ -13,7 +13,7 @@ constexpr std::size_t READ_MAX_STEPS = 5;
 constexpr std::size_t READ_MAX_REPLY_BYTES = 37;
 constexpr std::size_t READ_INPUT_COUNT = 4;
 constexpr std::size_t STATE_BLOCK_COUNT = 3;
-enum class ReadKind : uint8_t { IDENTITY, CONFIG, STATE };
+enum class ReadKind : uint8_t { IDENTITY, CONFIG, STATE, VELOCITY_PARAMETERS };
 enum class StateBlock : uint8_t { MOTION, IO, FEEDBACK };
 
 /** Copied wire provenance for each consumed step, including a failing reply.
@@ -41,6 +41,7 @@ struct ReadStepObservation {
 struct ReadContext {
     ReadTarget target;
     uint32_t operationId = 0;
+    uint32_t configurationGeneration = 0; ///< Parameter-read admission generation; distinct from target binding.
     ReadKind kind = ReadKind::IDENTITY;
     ReadState state = ReadState::EMPTY;
     ReadOutcome outcome = ReadOutcome::NONE;
@@ -73,6 +74,23 @@ enum class ReadResolution : uint8_t {
     VERSION_MAPPING_UNRESOLVED, DIP_MAPPING_UNRESOLVED,
     SCALE_UNRESOLVED, ZERO_ENCODER_SCALE, SIGNED_ENCODING_UNRESOLVED,
     UNIT_UNSPECIFIED, WORD_ORDER_UNRESOLVED, ALGORITHM_UNRESOLVED
+};
+
+/** One checked JOG parameter window, not desired/staged velocity or readiness.
+ * Raw words survive unknown/out-of-range values. The source supports unsigned
+ * native ramp range 0..2000 only; its annotated defaults do not establish a
+ * physical conversion. Speed signed encoding and scaling remain unresolved.
+ * configurationGeneration is the caller's admitted snapshot, even if historical.
+ * Provenance owns its bytes; no RX buffer or caller pointer is retained. */
+struct VelocityParametersObservation {
+    ReadTarget target;
+    uint32_t operationId = 0, configurationGeneration = 0;
+    uint16_t rawSpeed = 0, rawAccelerationTime = 0, rawDecelerationTime = 0;
+    bool accelerationTimeInRange = false, decelerationTimeInRange = false;
+    ReadResolution speedSignedResolution = ReadResolution::SIGNED_ENCODING_UNRESOLVED;
+    ReadResolution speedScaleResolution = ReadResolution::SCALE_UNRESOLVED;
+    ReadResolution rampScaleResolution = ReadResolution::SCALE_UNRESOLVED;
+    ReadStepObservation provenance;
 };
 
 /** The raw codes are evidence, not a guessed model or firmware interpretation. */
@@ -180,6 +198,12 @@ Status prepareConfig(ReadContext& output, const ReadTarget& target, uint32_t ope
                      uint64_t nowUs, uint64_t deadlineUs,
                      const ActiveSerialTuple& activeSerial = ActiveSerialTuple(),
                      const InputWiring* wiring = nullptr) noexcept;
+/** One FC03 0x001D/3 step with immutable deadline and explicit nonzero
+ * configuration generation. Same target/tuple/time rules as prepareIdentity;
+ * rejected preparation preserves output. Performs no writes or qualification. */
+Status prepareVelocityParameters(ReadContext& output, const ReadTarget& target, uint32_t operationId,
+                                 uint32_t configurationGeneration, uint64_t nowUs, uint64_t deadlineUs,
+                                 const ActiveSerialTuple& activeSerial = ActiveSerialTuple()) noexcept;
 /** Supplied configuration is copied only if its exact target/generation matches.
  * Unknown configuration leaves pair/source decoding explicitly unresolved. No
  * state field in these three reviewed windows is consuming/read-to-clear. */
@@ -200,6 +224,9 @@ Status advanceRead(ReadContext&, const ReadEvent&, uint64_t nowUs) noexcept;
  * is unchanged on any error, partial result or wrong operation kind. */
 Status getIdentity(const ReadContext&, IdentityObservation& output) noexcept;
 Status getConfig(const ReadContext&, ConfigObservation& output) noexcept;
+/** Publishes only the complete successful velocity-parameter read. Unknown raw
+ * values succeed; wrong kind, incomplete or failed reads preserve output. */
+Status getVelocityParameters(const ReadContext&, VelocityParametersObservation& output) noexcept;
 /** Publish one successful block even if a later block failed. No output change
  * for an absent/failed block or wrong kind. Index corresponds to StateBlock. */
 Status getStateBlock(const ReadContext&, uint8_t block, StateObservation& output) noexcept;

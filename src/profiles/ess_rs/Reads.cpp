@@ -19,8 +19,18 @@ bool validTuple(const ActiveSerialTuple& tuple) {
         tuple.parity >= SerialParity::NONE && tuple.parity <= SerialParity::ODD &&
         (tuple.stopBits == 1 || tuple.stopBits == 2));
 }
-uint8_t steps(ReadKind kind) { return kind == ReadKind::IDENTITY ? 1 : kind == ReadKind::STATE ? 3 : 5; }
+uint8_t steps(ReadKind kind) {
+    switch (kind) {
+    case ReadKind::IDENTITY: case ReadKind::VELOCITY_PARAMETERS: return 1;
+    case ReadKind::STATE: return 3;
+    case ReadKind::CONFIG: return 5;
+    }
+    return 0;
+}
 bool window(ReadKind kind, uint8_t step, uint16_t& first, uint16_t& count) {
+    if (kind == ReadKind::VELOCITY_PARAMETERS && step == 0) {
+        first = Registers::JOG_SPEED; count = 3; return true;
+    }
     if (kind == ReadKind::IDENTITY && step == 0) {
         first = Registers::DRIVER_MODEL; count = 4; return true;
     }
@@ -71,17 +81,20 @@ Status publishable(const ReadContext& context, ReadKind kind) {
         return invalid(ReadError::NOT_COMPLETE, "read observation is incomplete");
     return Ok();
 }
-Status words(const ReadContext& context, uint8_t step, uint16_t* output) {
+Status words(const ReadContext& context, uint8_t step, uint16_t* output, std::size_t capacity) {
     const ReadStepObservation& observation = context.observations[step];
     std::size_t count = 0;
-    return parseRegisters(observation.raw, observation.length, context.target.address,
-        observation.count, output, 5, count);
+    const Status status = parseRegisters(observation.raw, observation.length, context.target.address,
+        observation.count, output, capacity, count);
+    if (!status) return status;
+    return count == observation.count ? Ok() : invalid(ReadError::INVALID_STATE, "decoded read count mismatch");
 }
 } // namespace
 
 ReadCapabilities readCapabilities() noexcept {
     ReadCapabilities result;
     result.probe = result.identity = result.config = result.state = true;
+    result.velocityParameters = true;
     result.maxSteps = READ_MAX_STEPS; result.maxReplyBytes = READ_MAX_REPLY_BYTES;
     return result;
 }
@@ -112,6 +125,19 @@ Status prepareState(ReadContext& output, const ReadTarget& target, uint32_t oper
         prepared.stateWordOrderKnown = config->wordOrderKnown; prepared.stateWordOrder = config->wordOrder;
         prepared.stateAlgorithmKnown = config->algorithmKnown; prepared.stateAlgorithm = config->algorithm;
     }
+    output = prepared;
+    return Ok();
+}
+Status prepareVelocityParameters(ReadContext& output, const ReadTarget& target, uint32_t operationId,
+                                 uint32_t configurationGeneration, uint64_t nowUs, uint64_t deadlineUs,
+                                 const ActiveSerialTuple& activeSerial) noexcept {
+    if (!configurationGeneration)
+        return invalid(ReadError::INVALID_CONFIGURATION, "zero configuration generation");
+    ReadContext prepared;
+    const Status status = prepare(prepared, ReadKind::VELOCITY_PARAMETERS, target, operationId,
+        nowUs, deadlineUs, activeSerial, nullptr);
+    if (!status) return status;
+    prepared.configurationGeneration = configurationGeneration;
     output = prepared;
     return Ok();
 }
@@ -191,7 +217,7 @@ Status advanceRead(ReadContext& context, const ReadEvent& event, uint64_t nowUs)
 Status getIdentity(const ReadContext& context, IdentityObservation& output) noexcept {
     const Status ready = publishable(context, ReadKind::IDENTITY); if (!ready) return ready;
     uint16_t values[5] = {};
-    const Status parsed = words(context, 0, values); if (!parsed) return parsed;
+    const Status parsed = words(context, 0, values, 5); if (!parsed) return parsed;
     IdentityObservation identity;
     identity.target = context.target; identity.operationId = context.operationId;
     identity.rawModel = values[0]; identity.rawVersion = values[1];
@@ -211,7 +237,7 @@ Status getConfig(const ReadContext& context, ConfigObservation& output) noexcept
     config.activeSerial = context.activeSerial;
     uint16_t values[5] = {};
     for (uint8_t step = 0; step < READ_MAX_STEPS; ++step) {
-        const Status parsed = words(context, step, values); if (!parsed) return parsed;
+        const Status parsed = words(context, step, values, 5); if (!parsed) return parsed;
         config.provenance[step] = context.observations[step];
         switch (step) {
         case 0: config.raw.direction = values[0]; config.raw.subdivision = values[1]; break;
@@ -257,7 +283,7 @@ Status getStateBlock(const ReadContext& context, uint8_t block, StateObservation
     if (block >= STATE_BLOCK_COUNT || block >= context.completedSteps)
         return invalid(ReadError::NOT_COMPLETE, "state block is unavailable");
     uint16_t values[5] = {};
-    const Status parsed = words(context, block, values); if (!parsed) return parsed;
+    const Status parsed = words(context, block, values, 5); if (!parsed) return parsed;
     StateObservation state;
     state.target = context.target; state.operationId = context.operationId;
     state.configOperationId = context.configOperationId; state.block = static_cast<StateBlock>(block);
@@ -294,6 +320,19 @@ Status getStateBlock(const ReadContext& context, uint8_t block, StateObservation
         }
     }
     output = state;
+    return Ok();
+}
+Status getVelocityParameters(const ReadContext& context, VelocityParametersObservation& output) noexcept {
+    const Status ready = publishable(context, ReadKind::VELOCITY_PARAMETERS); if (!ready) return ready;
+    uint16_t values[3] = {};
+    const Status parsed = words(context, 0, values, 3); if (!parsed) return parsed;
+    VelocityParametersObservation result;
+    result.target = context.target; result.operationId = context.operationId;
+    result.configurationGeneration = context.configurationGeneration;
+    result.rawSpeed = values[0]; result.rawAccelerationTime = values[1]; result.rawDecelerationTime = values[2];
+    result.accelerationTimeInRange = values[1] <= 2000; result.decelerationTimeInRange = values[2] <= 2000;
+    result.provenance = context.observations[0];
+    output = result;
     return Ok();
 }
 }} // namespace MotorControlRS::ESS_RS

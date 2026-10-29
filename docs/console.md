@@ -34,6 +34,7 @@ after success or a read-only preparation rejection. Actual enable, alarm, encodi
 
 | Command | Meaning |
 | --- | --- |
+| `velocity read` | Read raw JOG speed and acceleration/deceleration words; speed/sign/ramp scaling remain unresolved. |
 | `settings` | Read actual drive settings; also show choices for the next move. |
 | `subdivision` | Read the drive's subdivision and related settings. |
 | `subdivision options` | Show the documented range and useful example values. |

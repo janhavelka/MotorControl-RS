@@ -1,5 +1,12 @@
 # Finite ESS serial velocity
 
+`velocity read [address]` reads JOG speed and both native ramp words through
+`prepareVelocityParameters` / `getVelocityParameters` and the normal read owner.
+It preserves raw words and unresolved speed/ramp scaling without staging or
+starting motion. Programmatic submission, copied results and release are described
+in [typed reads](ess_reads.md#native-velocity-parameter-read). Motion qualification
+remains independent.
+
 Signed serial velocity uses the installed core in
 `VelocityOperation.h` and `profiles/ess_rs/Velocity.h`. It reuses `Axis.cpp` exact
 factor cancellation and quantization, checked ESS codecs and the existing
@@ -107,5 +114,5 @@ it does not resolve these firmware semantics.
 
 See [implementation/evidence](archive/reports/ess_release_11_2026-10-04.md) and the
 [fresh independent audit](archive/reports/ess_release_11_audit_2026-10-04.md). The native
-console emits ten actual public-operation outcomes for a registered Python
+console emits ten actual public-operation velocity outcomes and five parameter-read outcomes for a registered Python
 parity check; synthetic terminal records do not substitute for that path.

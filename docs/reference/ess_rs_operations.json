@@ -44,6 +44,9 @@
     "INPUT_X1_FUNCTION",
     "INPUT_X2_FUNCTION",
     "INPUT_X3_FUNCTION",
+    "JOG_ACCELERATION_TIME",
+    "JOG_DECELERATION_TIME",
+    "JOG_SPEED",
     "LA_POSITION_KI",
     "LA_SPEED_FEEDFORWARD_KVF",
     "LA_SPEED_KP1",
@@ -771,6 +774,46 @@
         "reason": "No retained exact-image physical zero-clear/counter-effect scenario. Native tests cover the explicit zero-only command and fresh readback; current production admission uses operation prerequisites, not an analyzer gate."
       },
       "reason": "Explicit zero-only auxiliary clear followed by new checked current-position pair zero observation; nonzero setters reject before traffic. Current-position read coverage remains under read_state. Clear never establishes homing or host origin, and accepted or uncertain execution invalidates dependent coordinate confidence."
+    },
+    {
+      "id": "velocity_parameter_read",
+      "kind": "READ",
+      "records": [
+        "JOG_SPEED",
+        "JOG_ACCELERATION_TIME",
+        "JOG_DECELERATION_TIME"
+      ],
+      "api": {
+        "header": "include/MotorControlRS/profiles/ess_rs/Reads.h",
+        "symbols": [
+          "prepareVelocityParameters",
+          "nextRead",
+          "advanceRead",
+          "getVelocityParameters"
+        ]
+      },
+      "cli_commands": [
+        "velocity read"
+      ],
+      "implementation": "IMPLEMENTED",
+      "cli": "REACHABLE",
+      "native": {
+        "state": "PASS",
+        "evidence": [
+          "test/reads_test.cpp",
+          "test/velocity_app_test.cpp",
+          "test/probe_console_test.cpp",
+          "test/velocity_console_parity_test.py",
+          "test/bench_probe_test.py",
+          "test/installed_consumer/main.cpp"
+        ]
+      },
+      "hardware": {
+        "state": "NOT_RUN",
+        "evidence": [],
+        "reason": "New typed producing route has no hardware read evidence yet. No velocity/sign/ramp conversion or motion qualification inferred."
+      },
+      "reason": "One checked non-changing FC03 0x001D/3 read preserves raw words, independent native ramp range flags, unresolved speed/ramp scaling, admitted configuration generation and copied evidence. Shared ordinary application and console result paths do not stage or qualify motion."
     },
     {
       "api": {
@@ -2586,20 +2629,6 @@
       "reason": "No typed start-speed setter or CLI write; profile restore writes0021/5 only."
     },
     {
-      "id": "velocity_parameter_reads",
-      "records": [
-        "JOG_SPEED",
-        "JOG_ACCELERATION_TIME",
-        "JOG_DECELERATION_TIME"
-      ],
-      "kinds": [
-        "READ"
-      ],
-      "owner": "11",
-      "disposition": "NOT_IMPLEMENTED",
-      "reason": "Finite velocity stages supplied qualified words; no standalone typed read of this parameter family."
-    },
-    {
       "id": "homing_parameter_reads",
       "records": [
         "HOMING_AUXILIARY",
@@ -3105,7 +3134,8 @@
         "status",
         "health",
         "result",
-        "profile"
+        "profile",
+        "velocity"
       ]
     },
     {
@@ -3113,7 +3143,8 @@
       "symbols": [
         "getConfig",
         "getIdentity",
-        "getStateBlock"
+        "getStateBlock",
+        "getVelocityParameters"
       ],
       "classification": "OBSERVATION",
       "reason": "Typed nonchanging reads, bounded progression and retained observations.",
@@ -3122,7 +3153,8 @@
         "status",
         "health",
         "result",
-        "profile"
+        "profile",
+        "velocity"
       ]
     },
     {
@@ -3130,7 +3162,8 @@
       "symbols": [
         "prepareConfig",
         "prepareIdentity",
-        "prepareState"
+        "prepareState",
+        "prepareVelocityParameters"
       ],
       "classification": "DEVICE_OPERATION",
       "reason": "Typed nonchanging reads, bounded progression and retained observations.",
@@ -3139,7 +3172,8 @@
         "status",
         "health",
         "result",
-        "profile"
+        "profile",
+        "velocity"
       ]
     },
     {
@@ -3154,7 +3188,8 @@
         "status",
         "health",
         "result",
-        "profile"
+        "profile",
+        "velocity"
       ]
     },
     {

@@ -47,6 +47,9 @@ See [scenario bounds and cleanup](../docs/bench_scenarios.md),
 [motion checks](../docs/functional_bench.md) and
 [the repeat-motion comparison](../docs/archive/reports/2026-10-05_repeat_motion_timing.md).
 Uncertain writes are never automatically replayed.
+`bench_probe.py typed-read --kind velocity_parameters` performs one checked raw
+JOG-parameter read plus retained inspection/release; it does not stage or start
+velocity. See [typed reads](../docs/ess_reads.md#native-velocity-parameter-read).
 
 ## Reference preparation
 

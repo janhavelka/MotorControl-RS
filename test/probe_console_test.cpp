@@ -2190,6 +2190,12 @@ void testIndependentLocalHooksAndRemovedAliases() {
     send(typedOnly, "help read\n"); local.contains("read identity|config|state [address]");
     send(typedOnly, "health\n"); local.contains("unavailable");
     send(typedOnly, "read state 1\n"); assert(local.typedReads == 1);
+    typedHost.snapshot = Fake::snapshot;
+    Probe::Console readOnly(typedHost, Probe::Format::JSON);
+    send(readOnly, "caps\n"); local.contains("\"velocity_parameters\":true");
+    local.contains("\"writes\":false"); local.contains("\"velocity\":false");
+    send(readOnly, "velocity read 1\n");
+    assert(local.typedReads == 2 && local.typedKind == Ess::ReadKind::VELOCITY_PARAMETERS && !local.velocities);
 
     minimal.resetStats = Fake::reset;
     Probe::Console counters(minimal, Probe::Format::JSON);
@@ -2332,7 +2338,55 @@ void testSimpleMotionGrammarAndReports() {
     f.contains("\"profile_evidence\":{"); f.contains("\"tx_hex\":\"0103\"");
     f.contains("\"rx_hex\":\"018302\""); f.contains("\"error\":\"transaction\"");
 }
+void velocityReadFixtures(bool print = false) {
+    using namespace MotorControlRS;
+    const uint8_t normal[] = {1,3,6,0,0x3C,0,0x32,0,0x64,0xD1,0x54};
+    const uint8_t unknown[] = {1,3,6,0xFF,0xFF,7,0xD0,7,0xD1,0xE3,0x8F};
+    const uint8_t exception[] = {1,0x83,2,0xC0,0xF1};
+    for (const char* name : {"success","unknown","exception","cancelled","deadline"}) {
+        ReadTarget target; target.id = target.address = 1; target.generation = 9;
+        Ess::ReadContext c;
+        assert(Ess::prepareVelocityParameters(c,target,100,3,100,1000));
+        ReadEvent event; event.target = target; event.operationId = 100;
+        event.frame = !std::strcmp(name,"unknown") ? unknown : !std::strcmp(name,"exception") ? exception : normal;
+        event.length = !std::strcmp(name,"exception") ? sizeof(exception) : sizeof(normal);
+        event.qualified = true; event.earliestUs = 200; event.latestUs = 220; event.txAccepted = 8;
+        uint64_t delivered = 230;
+        if (!std::strcmp(name,"cancelled") || !std::strcmp(name,"deadline")) {
+            event.kind = !std::strcmp(name,"cancelled") ? ReadEventKind::CANCEL : ReadEventKind::DEADLINE;
+            event.frame = nullptr; event.length = 0; event.qualified = false;
+            event.earliestUs = event.latestUs = 0; event.txAccepted = 0;
+            if (event.kind == ReadEventKind::DEADLINE) delivered = 1000;
+        }
+        assert(Ess::advanceRead(c,event,delivered));
+        Fake f; auto h = f.host(false,true); h.startTypedRead = Fake::typedRead;
+        Probe::Console console(h,Probe::Format::JSON);
+        send(console,"@2 velocity read 1\n");
+        assert(f.typedReads == 1 && f.typedKind == Ess::ReadKind::VELOCITY_PARAMETERS && f.velocities == 0);
+        f.contains("\"command\":\"velocity-read\""); f.contains("\"read_kind\":\"velocity_parameters\"");
+        assert(console.reportRead(2,100,c));
+        f.contains("\"configuration_generation\":3");
+        assert(!console.reportRead(2,100,c));
+        f.view.typedRead = &c; f.view.commandId = 2; f.view.operationId = 100; f.view.address = 1;
+        send(console,"@1 result 100\n");
+        assert(f.lines.back().find("\"read_kind\":\"velocity_parameters\"") != std::string::npos);
+        if (print) std::printf("{\"case\":\"%s\",\"record\":%s}\n",name,f.lines.back().c_str());
+    }
+}
+void testVelocityReadGrammar() {
+    Fake f; auto h = f.host(); h.startTypedRead = Fake::typedRead;
+    Probe::Console c(h,Probe::Format::JSON);
+    for (const char* invalid : {"@1 velocity read 0\n","@2 velocity read 248\n","@3 velocity read x\n",
+        "@4 velocity read 1 extra\n","@5 velocity read -1\n"}) {
+        send(c,invalid); f.contains("\"ok\":false"); assert(!f.typedReads && !f.velocities);
+    }
+    send(c,"@6 velocity read\n"); assert(f.typedReads == 1 && f.address == f.data.address);
+    f.probeAction = Probe::Action::BUSY;
+    send(c,"@7 velocity read 1\n"); f.contains("\"result\":\"busy\""); assert(f.typedReads == 2 && !f.velocities);
+    send(c,"@8 help velocity\n"); f.contains("velocity read [address]");
+}
 int main(int argc, char** argv) {
+    if (argc == 2 && !std::strcmp(argv[1],"--velocity-read-fixtures")) { velocityReadFixtures(true); return 0; }
     if (argc == 2 && !std::strcmp(argv[1], "--home-boundary-fixtures")) {
         testHomeFirstErrorOrder(true); testMaximumHomeOutputAndRetention(true); return 0;
     }
@@ -2348,6 +2402,7 @@ int main(int argc, char** argv) {
     }
     if (argc == 2 && std::strcmp(argv[1], "--home-fixtures") == 0) { homeFixtures(); return 0; }
     if (argc == 2 && std::strcmp(argv[1], "--io-fixtures") == 0) { driverFixtures(true); return 0; }
+    testVelocityReadGrammar(); velocityReadFixtures();
     testDebugTranslationAndOutputIsolation();
     testSimpleMotionGrammarAndReports();
     testIndependentLocalHooksAndRemovedAliases();

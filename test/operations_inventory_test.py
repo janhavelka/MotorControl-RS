@@ -237,6 +237,26 @@ class Coverage(unittest.TestCase):
         self.rejected(lambda value: value["operations"][0]["api"].update(symbols=["missingDeclaration"]))
         self.rejected(lambda value: value["operations"][0]["api"].update(header="examples/common/RtuBusOwner.h"))
 
+    def test_velocity_read_closes_only_three_read_obligations(self):
+        result = operations.check(INVENTORY, LEDGER)
+        records = {row["id"]: row for row in result["records"]}
+        read = next(row for row in INVENTORY["operations"] if row["id"] == "velocity_parameter_read")
+        self.assertEqual(read["cli_commands"], ["velocity read"])
+        self.assertEqual(read["api"]["symbols"], ["prepareVelocityParameters", "nextRead", "advanceRead", "getVelocityParameters"])
+        self.assertEqual(read["hardware"]["state"], "NOT_RUN")
+        for name in ("JOG_SPEED", "JOG_ACCELERATION_TIME", "JOG_DECELERATION_TIME"):
+            self.assertEqual(records[name]["obligations"]["read"], "IMPLEMENTED")
+            self.assertEqual(records[name]["read_operations"], ["velocity_parameter_read"])
+            self.assertEqual(records[name]["write_operations"], ["velocity_parameters"])
+        self.assertNotIn("velocity_parameter_reads", {gap["id"] for gap in INVENTORY["gaps"]})
+        self.assertIn("homing_parameter_reads", {gap["id"] for gap in INVENTORY["gaps"]})
+        for route in ("velocity", "velocity inspect", "velocity read extra", "read velocity"):
+            self.rejected(lambda value: next(row for row in value["operations"]
+                if row["id"] == "velocity_parameter_read").update(cli_commands=[route]))
+        for kind in ("WRITE", "ACTION"):
+            with self.assertRaisesRegex(ValueError, "invalid operation CLI prefix"):
+                operations.check_cli_route("velocity read", operations.console_commands(), kind)
+
     def test_reachability_requires_a_real_producing_route(self):
         for command in ("missing-command", "missing", "profile other identity",
                         "tuning filters start", "driver read extra",
@@ -264,7 +284,7 @@ class Coverage(unittest.TestCase):
         self.assertEqual(gap["disposition"], "PARTIAL")
         self.assertEqual(set(gap["records"]), set(restored["records"]))
         self.assertIn("volatile original snapshot", gap["reason"])
-        self.assertEqual(result["summary"]["named_gaps"], 9)
+        self.assertEqual(result["summary"]["named_gaps"], 8)
 
     def test_profile_snapshot_inspection_and_forget_do_not_produce_device_coverage(self):
         restored = lambda value: next(row for row in value["operations"] if row["id"] == "position_profile_restore")

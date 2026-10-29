@@ -426,9 +426,176 @@ void testStatePartialFailureAndConfigurationCorrelation() {
     ReadEvent stale=frame(context,MOTION_REPLY,sizeof(MOTION_REPLY));++stale.target.generation;
     assert(!advanceRead(context,stale,230));unchanged.check(context);
 }
+// Function manual physical p70: one contiguous JOG window. Distinct words catch
+// ordering mistakes. Ramp 0..2000 is a native range, not a physical conversion;
+// the malformed speed range/default annotation does not settle speed encoding.
+const uint8_t VELOCITY_PARAMETERS[] = {1,3,6,0,60,0,50,0,100,0xD1,0x54};
+const uint8_t VELOCITY_UNKNOWN[] = {1,3,6,0xFF,0xFF,7,0xD0,7,0xD1,0xE3,0x8F};
+const uint8_t VELOCITY_BOUNDARY[] = {1,3,6,0,0,0,0,7,0xD0,0x22,0xD9};
+const uint8_t VELOCITY_MAX_RAW[] = {1,3,6,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x20,0xFA};
+const uint8_t VELOCITY_ANNOTATED_DEFAULT[] = {1,3,6,0,120,0,50,0,50,0xA1,0x65};
+ReadContext velocityParameters(uint64_t deadline = 1000) {
+    ReadContext c;
+    assert(prepareVelocityParameters(c,target(),12,23,100,deadline,active()));
+    return c;
+}
+void testVelocityParameterWindowAndOwnedObservation() {
+    ReadContext c = velocityParameters(); PreparedRead request;
+    const uint8_t expected[] = {1,3,0,0x1D,0,3,0x95,0xCD};
+    assert(nextRead(c,100,request));
+    assert(c.kind == ReadKind::VELOCITY_PARAMETERS && c.configurationGeneration == 23);
+    assert(request.first == 0x001D && request.count == 3 && request.length == 8);
+    assert(request.bytes[1] == 3 && std::memcmp(request.bytes,expected,sizeof(expected)) == 0);
+    assert(request.target.id == 7 && request.target.address == 1 && request.target.generation == 9);
+    assert(request.operationId == 12 && request.step == 0 && request.deadlineUs == 1000);
+    assert(expectedReadRegistersLen(request.count) == 11 && isReadRangeValid(0x001D,3));
+    const Saved<ReadContext> prepared(c); PreparedRead repeated;
+    assert(nextRead(c,150,repeated)); prepared.check(c);
+    assert(std::memcmp(repeated.bytes,expected,sizeof(expected)) == 0);
+    VelocityParametersObservation out; out.rawSpeed = 0xA55A;
+    const Saved<VelocityParametersObservation> unchanged(out);
+    assert(!getVelocityParameters(c,out)); unchanged.check(out);
+    uint8_t borrowed[sizeof(VELOCITY_PARAMETERS)];
+    std::memcpy(borrowed,VELOCITY_PARAMETERS,sizeof(borrowed));
+    assert(advanceRead(c,frame(c,borrowed,sizeof(borrowed)),230));
+    std::memset(borrowed,0,sizeof(borrowed));
+    assert(c.state == ReadState::SUCCEEDED && c.outcome == ReadOutcome::SUCCESS && c.completedSteps == 1);
+    assert(c.step == 1 && getVelocityParameters(c,out));
+    assert(out.target.id == 7 && out.target.address == 1 && out.target.generation == 9);
+    assert(out.operationId == 12 && out.configurationGeneration == 23 && c.configOperationId == 0);
+    assert(out.rawSpeed == 60 && out.rawAccelerationTime == 50 && out.rawDecelerationTime == 100);
+    assert(out.accelerationTimeInRange && out.decelerationTimeInRange);
+    assert(out.speedSignedResolution == ReadResolution::SIGNED_ENCODING_UNRESOLVED);
+    assert(out.speedScaleResolution == ReadResolution::SCALE_UNRESOLVED);
+    assert(out.rampScaleResolution == ReadResolution::SCALE_UNRESOLVED);
+    assert(out.provenance.first == 0x001D && out.provenance.count == 3 && out.provenance.length == 11);
+    assert(out.provenance.qualified && out.provenance.txAccepted == 8 && !out.provenance.executionUnknown);
+    assert(out.provenance.earliestUs == 200 && out.provenance.latestUs == 220 && out.provenance.deliveredUs == 230);
+    assert(std::memcmp(out.provenance.raw,VELOCITY_PARAMETERS,sizeof(VELOCITY_PARAMETERS)) == 0);
+    std::memset(c.observations[0].raw,0,sizeof(c.observations[0].raw));
+    assert(std::memcmp(out.provenance.raw,VELOCITY_PARAMETERS,sizeof(VELOCITY_PARAMETERS)) == 0);
+    const Saved<PreparedRead> noWork(request);
+    assert(!nextRead(c,240,request)); noWork.check(request); // No second read or write.
+}
+void testVelocityParameterUnknownAndNativeBoundaryWords() {
+    struct RawCase { const uint8_t* reply; uint16_t speed, acceleration, deceleration; bool accelerationInRange, decelerationInRange; };
+    const RawCase cases[] = {
+        {VELOCITY_UNKNOWN,0xFFFF,2000,2001,true,false},
+        {VELOCITY_BOUNDARY,0,0,2000,true,true},
+        {VELOCITY_MAX_RAW,0xFFFF,0xFFFF,0xFFFF,false,false},
+        {VELOCITY_ANNOTATED_DEFAULT,120,50,50,true,true}
+    };
+    for (const auto& raw : cases) {
+        ReadContext c = velocityParameters();
+        assert(advanceRead(c,frame(c,raw.reply,11),230));
+        VelocityParametersObservation out; assert(getVelocityParameters(c,out));
+        assert(out.rawSpeed == raw.speed && out.rawAccelerationTime == raw.acceleration && out.rawDecelerationTime == raw.deceleration);
+        assert(out.accelerationTimeInRange == raw.accelerationInRange && out.decelerationTimeInRange == raw.decelerationInRange);
+        assert(out.speedSignedResolution == ReadResolution::SIGNED_ENCODING_UNRESOLVED);
+        assert(out.speedScaleResolution == ReadResolution::SCALE_UNRESOLVED);
+        assert(out.rampScaleResolution == ReadResolution::SCALE_UNRESOLVED);
+        assert(c.outcome == ReadOutcome::SUCCESS); // Unknown raw values are observations, not motion permission.
+    }
+}
+void testVelocityParameterPreparationAndGetterPreservation() {
+    ReadContext output = velocityParameters(); const Saved<ReadContext> unchanged(output);
+    for (unsigned i = 0; i < 7; ++i) {
+        ReadTarget selected = target();
+        if (i == 0) selected.id = 0;
+        else if (i == 1) selected.address = 0;
+        else if (i == 2) selected.address = 248;
+        else if (i == 3) selected.generation = 0;
+        assert(!prepareVelocityParameters(output,selected,i == 4 ? 0 : 12,
+            i == 5 ? 0 : 23,100,i == 6 ? 100 : 1000,active()));
+        unchanged.check(output);
+    }
+    ActiveSerialTuple bad = active(); bad.stopBits = 3;
+    assert(!prepareVelocityParameters(output,target(),12,23,100,1000,bad)); unchanged.check(output);
+    assert(!prepareVelocityParameters(output,target(),12,23,100,99)); unchanged.check(output);
+    VelocityParametersObservation prior; prior.rawSpeed = 0xA55A;
+    const Saved<VelocityParametersObservation> saved(prior);
+    ReadContext wrong = identity();
+    assert(advanceRead(wrong,frame(wrong,IDENTITY,sizeof(IDENTITY)),230));
+    assert(!getVelocityParameters(wrong,prior)); saved.check(prior);
+    assert(!getVelocityParameters(output,prior)); saved.check(prior);
+    assert(prepareVelocityParameters(output,target(),12,std::numeric_limits<uint32_t>::max(),100,1000));
+    assert(advanceRead(output,frame(output,VELOCITY_PARAMETERS,sizeof(VELOCITY_PARAMETERS)),230));
+    assert(getVelocityParameters(output,prior) && prior.configurationGeneration == std::numeric_limits<uint32_t>::max());
+    ConfigObservation configOutput; configOutput.raw.subdivision = 0xA55A;
+    const Saved<ConfigObservation> savedConfig(configOutput);
+    assert(!getConfig(output,configOutput)); savedConfig.check(configOutput);
+}
+void testVelocityParameterMalformedRepliesAndException() {
+    const uint8_t wrongAddress[] = {2,3,6,0,60,0,50,0,100,0xC5,0xA4};
+    const uint8_t wrongFunction[] = {1,4,6,0,60,0,50,0,100,0x90,0xB2};
+    const uint8_t shortCount[] = {1,3,4,0,60,0,50,0xBB,0xEA};
+    const uint8_t longCount[] = {1,3,8,0,60,0,50,0,100,0,1,0xD0,0x0F};
+    const uint8_t exception[] = {1,0x83,2,0xC0,0xF1};
+    uint8_t badCount[11]; std::memcpy(badCount,VELOCITY_PARAMETERS,sizeof(badCount));
+    badCount[2] = 4; seal(badCount,sizeof(badCount));
+    uint8_t badCrc[11]; std::memcpy(badCrc,VELOCITY_PARAMETERS,sizeof(badCrc)); badCrc[10] ^= 1;
+    struct Rejected { const uint8_t* frame; std::size_t length; FrameError error; };
+    const Rejected cases[] = {
+        {wrongAddress,sizeof(wrongAddress),FrameError::ADDRESS},
+        {wrongFunction,sizeof(wrongFunction),FrameError::FUNCTION},
+        {shortCount,sizeof(shortCount),FrameError::LENGTH},
+        {longCount,sizeof(longCount),FrameError::LENGTH},
+        {badCount,sizeof(badCount),FrameError::BYTE_COUNT},
+        {badCrc,sizeof(badCrc),FrameError::CRC},
+        {VELOCITY_PARAMETERS,sizeof(VELOCITY_PARAMETERS)-1,FrameError::LENGTH},
+        {VELOCITY_PARAMETERS,0,FrameError::LENGTH},
+        {exception,sizeof(exception),FrameError::EXCEPTION}
+    };
+    for (const auto& rejected : cases) {
+        ReadContext c = velocityParameters();
+        VelocityParametersObservation prior; prior.rawSpeed = 0xA55A;
+        const Saved<VelocityParametersObservation> saved(prior);
+        assert(advanceRead(c,frame(c,rejected.frame,rejected.length),230));
+        assert(c.state == ReadState::FAILED && c.outcome == ReadOutcome::REPLY_ERROR && c.completedSteps == 0);
+        assert(c.observations[0].frameError == rejected.error);
+        assert(c.observations[0].receivedLength == rejected.length && c.observations[0].length == rejected.length);
+        assert(std::memcmp(c.observations[0].raw,rejected.frame,rejected.length) == 0);
+        if (rejected.error == FrameError::EXCEPTION) assert(c.status.code == Err::EXCEPTION && c.status.detail == 2);
+        assert(!getVelocityParameters(c,prior)); saved.check(prior);
+        PreparedRead noReplay; const Saved<PreparedRead> unchanged(noReplay);
+        assert(!nextRead(c,240,noReplay)); unchanged.check(noReplay);
+    }
+}
+void testVelocityParameterCorrelationDeadlineAndCancellation() {
+    for (unsigned i = 0; i < 5; ++i) {
+        ReadContext c = velocityParameters(); const Saved<ReadContext> unchanged(c);
+        ReadEvent stale = frame(c,VELOCITY_PARAMETERS,sizeof(VELOCITY_PARAMETERS));
+        if (i == 0) ++stale.target.id;
+        else if (i == 1) ++stale.target.address;
+        else if (i == 2) ++stale.target.generation;
+        else if (i == 3) ++stale.operationId;
+        else ++stale.step;
+        assert(!advanceRead(c,stale,230)); unchanged.check(c);
+    }
+    ReadContext c = velocityParameters(); PreparedRead request;
+    request.first = 0xA55A; const Saved<PreparedRead> noRequest(request);
+    assert(!nextRead(c,1000,request)); noRequest.check(request);
+    assert(advanceRead(c,frame(c,VELOCITY_PARAMETERS,sizeof(VELOCITY_PARAMETERS),980,1000),5000));
+    VelocityParametersObservation out; assert(getVelocityParameters(c,out));
+    assert(out.provenance.latestUs == 1000 && out.provenance.deliveredUs == 5000 && c.deadlineUs == 1000);
+    for (unsigned i = 0; i < 5; ++i) {
+        c = velocityParameters(); ReadEvent event = frame(c,VELOCITY_PARAMETERS,sizeof(VELOCITY_PARAMETERS),980,1001);
+        if (i == 1) { event.qualified = false; event.earliestUs = event.latestUs = 0; }
+        else if (i >= 2) event = control(c,i == 2 ? ReadEventKind::DEADLINE : i == 3 ? ReadEventKind::CANCEL : ReadEventKind::TRANSPORT_FAILURE);
+        const Saved<VelocityParametersObservation> preserved(out);
+        assert(advanceRead(c,event,i == 3 || i == 4 ? 230 : 1001));
+        assert(c.state == ReadState::FAILED && c.completedSteps == 0 && c.deadlineUs == 1000);
+        assert(c.outcome == (i == 1 ? ReadOutcome::TIMING_UNQUALIFIED : i == 3 ? ReadOutcome::CANCELLED :
+            i == 4 ? ReadOutcome::TRANSPORT_ERROR : ReadOutcome::DEADLINE));
+        assert(!getVelocityParameters(c,out)); preserved.check(out);
+        assert(!nextRead(c,1100,request)); noRequest.check(request);
+        const Saved<ReadContext> terminal(c);
+        assert(!advanceRead(c,frame(c,VELOCITY_PARAMETERS,sizeof(VELOCITY_PARAMETERS)),1200)); terminal.check(c);
+    }
+}
 void testCapabilitiesAndFixedStorage() {
     const ReadCapabilities caps = readCapabilities();
-    assert(caps.probe && caps.identity && caps.config && caps.state && caps.maxSteps == 5 && caps.maxReplyBytes <= 37);
+    assert(caps.probe && caps.identity && caps.config && caps.state && caps.velocityParameters && caps.maxSteps == 5 && caps.maxReplyBytes <= 37);
     static_assert(READ_MAX_STEPS == 5 && READ_INPUT_COUNT == 4 && READ_MAX_REPLY_BYTES == 37, "Reviewed read bounds");
     static_assert(sizeof(ReadContext) < 2048 && sizeof(ConfigObservation) < 2048, "Fixed bounded read storage");
 }
@@ -442,4 +609,7 @@ int main() {
     testCapabilitiesAndFixedStorage();
     testStateWindowsBitfieldsAndAbsentFeedback();testStateConfiguredPairsAndUnknownAlarms();
     testStatePartialFailureAndConfigurationCorrelation();
+    testVelocityParameterWindowAndOwnedObservation(); testVelocityParameterUnknownAndNativeBoundaryWords();
+    testVelocityParameterPreparationAndGetterPreservation(); testVelocityParameterMalformedRepliesAndException();
+    testVelocityParameterCorrelationDeadlineAndCancellation();
 }

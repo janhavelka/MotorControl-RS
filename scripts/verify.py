@@ -44,7 +44,7 @@ def check_inventory(root, listing, build):
     native = {p.stem[:-5]: p.stem for p in (root / "test").glob("*_test.cpp")}
     native.update({name: name+"_test" for name in
                    ("codec_independent", "probe_app_load", "idf_move_app",
-                    "idf_simple_motion_app", "idf_control_app")})
+                    "idf_simple_motion_app", "idf_control_app", "idf_velocity_app")})
     native["units_preview"] = "units_preview"
     for name, binary in native.items():
         command = by_name.get(name, {}).get("command", [])

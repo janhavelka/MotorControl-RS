@@ -81,6 +81,9 @@ def check_cli_route(command, metadata, operation_kind):
     elif root == "read":
         valid = len(tail) == 1 and tail[0] in {"identity", "config", "state"}
         effects = {"READ"}
+    elif root == "velocity":
+        valid = tail == ["read"] or not tail
+        effects = {"READ"} if tail == ["read"] else {"WRITE", "ACTION"}
     elif root == "discover":
         valid = not tail or tail in [["inspect"], ["cancel"], ["restore"], ["finish"]]
         # Session inspection/control are mapped in the separate host surface.

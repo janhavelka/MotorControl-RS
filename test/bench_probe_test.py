@@ -191,6 +191,8 @@ def typed_terminal(request_id, kind):
     fixtures = (
         ((0, 4), "0103000000044409", "0103084EEA12340001A58103E3"),
     ) if kind == "identity" else (
+        ((0x1D, 3), "0103001D000395CD", "010306003C00320064D154"),
+    ) if kind == "velocity_parameters" else (
         ((6, 2), "010300060002240A", "010304000080115BFF"),
         ((8, 2), "01030008000245C9", "010304A5F5000388CC"),
         ((10, 3), "0103000A000325C9", "01030612345678FFFF03E2"),
@@ -208,12 +210,18 @@ def typed_terminal(request_id, kind):
                           latest_us=2050 + index * 1000, delivered_us=2100 + index * 1000,
                           tx=tx, rx=rx, received_length=len(rx) // 2, tx_accepted=8,
                           execution_unknown=False, transport_detail=1))
-    result = reply(request_id, "read-" + kind, type="read", command_id=request_id,
+    command = "velocity-read" if kind == "velocity_parameters" else "read-" + kind
+    result = reply(request_id, command, type="read", command_id=request_id,
                    operation_id=request_id + 100, read_kind=kind, state="succeeded", outcome="success",
                    status="OK", detail=0, target=1, address=1, generation=9, started_us=1000,
                    deadline_us=20000, serviced_us=steps[-1]["delivered_us"], completed_steps=len(steps),
                    active_serial=dict(known=True, baud=115200, data_bits=8, parity=1, stop_bits=1), steps=steps)
-    if kind == "identity":
+    if kind == "velocity_parameters":
+        result["configuration_generation"] = 3
+        result[kind] = dict(raw_speed=60, raw_acceleration_time=50, raw_deceleration_time=100,
+                            acceleration_time_in_range=True, deceleration_time_in_range=True,
+                            speed_signed_resolution=7, speed_scale_resolution=5, ramp_scale_resolution=5)
+    elif kind == "identity":
         result[kind] = dict(raw_model=0x4EEA, raw_version=0x1234, raw_active_node=1, raw_dip=0xA581,
                             active_node_known=True, active_node=1, model_resolution=2, version_resolution=3,
                             dip_resolution=4, dip_issues=320, model="mapping_unresolved", firmware="mapping_unresolved",
@@ -273,13 +281,13 @@ class TypedSerial:
         self.admission_only = admission_only
 
     def __call__(self, request_id, command, args):
-        if command == "read" or (command == "read" and args and args[0] == "state"):
-            kind = "state" if command == "health" else args[0]
+        if command == "read" or (command == "velocity" and args and args[0] == "read"):
+            kind = "velocity_parameters" if command == "velocity" else args[0]
             terminal = typed_terminal(request_id, kind)
             if self.mutate:
                 self.mutate(terminal)
             self.retained[terminal["operation_id"]] = terminal
-            accepted = reply(request_id, "read-" + kind, result="accepted", address=1,
+            accepted = reply(request_id, terminal["command"], result="accepted", address=1,
                              operation_id=request_id + 100, read_kind=kind)
             return encoded(accepted) + (b"" if self.admission_only else encoded(terminal))
         if command == "result":
@@ -621,7 +629,7 @@ def operation_transcript(record, mutate=None, mutate_live=False):
     terminal = copy.deepcopy(record)
     terminal.update(id=2, command_id=2, operation_id=102)
     command = terminal["command"]
-    wire_command = "read" if command in bench.TYPED_READS else "move" if command in bench.MOVE_COMMANDS else command
+    wire_command = "velocity" if command == "velocity-read" else "read" if command in bench.TYPED_READS else "move" if command in bench.MOVE_COMMANDS else command
 
     def handler(request_id, requested, args):
         if requested == wire_command:
@@ -653,7 +661,7 @@ def check_fixture_routes(record, *, live_command=None):
     console = bench.Console(port, clock=clock, sleeper=clock.sleep)
     terminal = dict(copy.deepcopy(record), id=2, command_id=2, operation_id=102)
     if live_command is not None:
-        terminal.update(command=live_command, type=live_command)
+        terminal.update(command=live_command, type="read" if live_command in bench.TYPED_READS else live_command)
     original = bench.Command(console, 2, terminal["command"], 0, 1,
                              terminal.get("address"), None, 102)
     original.accepted = True
@@ -673,7 +681,7 @@ def check_fixture_routes(record, *, live_command=None):
     # Real failed terminals must not slip through the permissive raw failure
     # validator after their only family selector disappears.
     stripped = dict(copy.deepcopy(terminal), type="reply", id=5, command="result")
-    for key in ("driver", "home", "velocity"):
+    for key in ("driver", "home", "velocity", "read_kind"):
         stripped.pop(key, None)
     query = bench.Command(console, 5, "result", 0, 1, None, None, 102)
     console.pending[5] = query
@@ -691,7 +699,7 @@ class Framing(unittest.TestCase):
     def routing_fixtures(self):
         for command in ("probe", "capture-read", "recover"):
             yield json.loads(Serial.normal(2, command, []).splitlines()[1]), {}
-        for kind in ("identity", "config", "state"):
+        for kind in bench.TYPED_WINDOWS:
             yield typed_terminal(2, kind), {}
         for command in bench.ACTION_COMMANDS:
             policy = "normal" if command == "stop" else None
@@ -3038,6 +3046,93 @@ class Framing(unittest.TestCase):
         terminal = console.command("read-state", address=1, timeout_s=0.1)
         self.assertEqual(terminal["command"], "read-state")
         self.assertEqual(self.port.writes[-2:], [b"@2 read state 1\n", b"@3 release 102\n"])
+
+    def test_velocity_parameter_read_uses_family_wire_command_and_retains_result(self):
+        handler = TypedSerial()
+        console = self.session(handler, fragment=1)
+        handle = console.begin("velocity-read", address=1, timeout_s=.1)
+        terminal = console.wait(handle)
+        self.assertEqual((terminal["command"], terminal["read_kind"]), ("velocity-read", "velocity_parameters"))
+        self.assertEqual(terminal["steps"][0]["tx"], "0103001D000395CD")
+        self.assertEqual(self.port.writes[-1], b"@2 velocity read 1\n")
+        self.assertIs(console.operations[102], handle)
+        inspected = console.command("result", operation_id=102, timeout_s=.1)
+        self.assertEqual(inspected["velocity_parameters"], terminal["velocity_parameters"])
+        self.assertEqual(inspected["steps"], terminal["steps"])
+        console.command("release", operation_id=102, timeout_s=.1)
+        self.assertFalse(console.operations)
+        self.assertFalse(handler.retained)
+        self.port.handler = lambda i, command, args: encoded(reply(i, command, ok=False, result="invalid"))
+        stale = console.command("result", operation_id=102, timeout_s=.1)
+        self.assertFalse(stale["ok"])
+        self.assertEqual(sum(line.split()[1] == b"velocity" for line in self.port.writes), 1)
+
+    def test_velocity_parameter_pending_inspection_checks_kind(self):
+        for kind in ("velocity_parameters", "state", None, [], True):
+            with self.subTest(kind=kind):
+                console = self.session(TypedSerial(admission_only=True))
+                console.begin("velocity-read", timeout_s=.1)
+                self.port.handler = lambda i, command, args: encoded(reply(i, command,
+                    result="pending", operation_id=102, command_id=2, recovery=False,
+                    capture_read=False, read_kind=kind))
+                if kind == "velocity_parameters":
+                    self.assertEqual(console.command("result", operation_id=102, timeout_s=.1)["result"], "pending")
+                else:
+                    self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), "kind")
+
+    def test_velocity_parameter_raw_and_resolution_evidence_cannot_be_fabricated(self):
+        mutations = (
+            lambda r: r.update(configuration_generation=0),
+            lambda r: r.update(configuration_generation=True),
+            lambda r: r["velocity_parameters"].update(raw_speed=-1),
+            lambda r: r["velocity_parameters"].update(raw_speed=True),
+            lambda r: r["velocity_parameters"].update(raw_acceleration_time=51),
+            lambda r: r["velocity_parameters"].update(raw_deceleration_time=65536),
+            lambda r: r["velocity_parameters"].update(acceleration_time_in_range=False),
+            lambda r: r["velocity_parameters"].update(deceleration_time_in_range=1),
+            lambda r: r["velocity_parameters"].update(speed_signed_resolution=0),
+            lambda r: r["velocity_parameters"].update(speed_scale_resolution=0),
+            lambda r: r["velocity_parameters"].update(ramp_scale_resolution=0),
+            lambda r: r["steps"][0].update(count=2),
+            lambda r: r["steps"][0].update(tx="0103002000030401"),
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate):
+                console = self.session(TypedSerial(mutate))
+                self.failed(lambda: console.command("velocity-read", timeout_s=.1), "typed-read")
+                self.assertEqual(self.port.writes, [b"@1 version\n", b"@2 velocity read\n"])
+
+    def test_velocity_parameter_unknown_words_and_delayed_closure_remain_raw(self):
+        def unknown(r):
+            r["steps"][0]["rx"] = "010306FFFF07D007D1E38F"
+            r["velocity_parameters"].update(raw_speed=65535, raw_acceleration_time=2000,
+                raw_deceleration_time=2001, deceleration_time_in_range=False)
+            r["serviced_us"] = r["steps"][0]["delivered_us"] = r["deadline_us"] + 5000
+        console = self.session(TypedSerial(unknown))
+        result = console.command("velocity-read", timeout_s=.1)
+        self.assertTrue(result["ok"])
+        self.assertGreater(result["serviced_us"], result["deadline_us"])
+        self.assertEqual(result["velocity_parameters"]["raw_speed"], 65535)
+        self.assertFalse(result["velocity_parameters"]["deceleration_time_in_range"])
+
+    def test_velocity_parameter_retained_generation_is_immutable(self):
+        handler = TypedSerial()
+        console = self.session(handler)
+        handle = console.begin("velocity-read", timeout_s=.1)
+        original = console.wait(handle)
+        handler.retained[102] = {**original, "configuration_generation": 4}
+        self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), "immutable")
+        self.assertIs(handle.terminal, original)
+
+    def test_velocity_parameter_campaign_selects_only_the_read_and_explicit_release(self):
+        parsed = bench.arguments(["--port", "FAKE", "--log", "unused", "typed-read", "--kind", "velocity_parameters"])
+        self.assertEqual(parsed.kind, "velocity_parameters")
+        console = self.session(TypedSerial())
+        bench.typed_read_campaign(console, kind="velocity_parameters", timeout_s=.1, address=1)
+        self.assertEqual(sum(b"velocity read" in line for line in self.port.writes), 1)
+        self.assertEqual(sum(line.split()[1] == b"result" for line in self.port.writes), 1)
+        self.assertEqual(sum(line.split()[1] == b"release" for line in self.port.writes), 1)
+        self.assertFalse(console.operations)
 
     def test_state_decoder_rejects_fabricated_polarity_units_and_unknown_bits(self):
         mutations = (lambda r: r["state_blocks"][0].update(enabled=True),

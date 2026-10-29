@@ -47,6 +47,7 @@ struct ReadCapabilities {
     bool identity = false;
     bool config = false;
     bool state = false;
+    bool velocityParameters = false;
     uint8_t maxSteps = 0;
     uint8_t maxReplyBytes = 0;
 };
@@ -84,7 +85,7 @@ enum class ReadError : int32_t {
     NONE, INVALID_TARGET, INVALID_OPERATION, INVALID_DEADLINE, INVALID_TUPLE,
     INVALID_WIRING, INVALID_STATE, WRONG_CORRELATION, INVALID_EVENT,
     CLOCK_ERROR, DEADLINE_EXPIRED, TRANSPORT_FAILURE, CANCELLED,
-    TIMING_UNQUALIFIED, NOT_COMPLETE, WRONG_KIND
+    TIMING_UNQUALIFIED, NOT_COMPLETE, WRONG_KIND, INVALID_CONFIGURATION
 };
 
 } // namespace MotorControlRS

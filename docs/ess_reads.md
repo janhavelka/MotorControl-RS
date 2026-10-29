@@ -117,55 +117,79 @@ The [identity/configuration audit](archive/reports/ess_release_05_audit_2026-10-
 independently rechecks these contracts and repeats native, installed-package,
 build and read-only bench verification.
 
-## Planned parameter reads (stage 01 decision, not implemented)
+## Native velocity parameter read
+
+`prepareVelocityParameters(context, target, operationId, configurationGeneration,
+nowUs, deadlineUs, activeSerial)` prepares one non-changing FC03 request at
+`0x001D`, count 3. `nextRead`/`advanceRead` use the existing exact target,
+operation, step, binding generation and immutable deadline contract. The
+configuration generation must also be nonzero and is copied separately from
+binding generation and `configOperationId`. The request is eight bytes; the
+normal reply is eleven bytes and the exception reply five. No writes are yielded.
+
+`getVelocityParameters` publishes `VelocityParametersObservation` only after the
+complete successful read. Wrong kind, pending and failed reads preserve output.
+The observation owns copied provenance and retains `rawSpeed`,
+`rawAccelerationTime` and `rawDecelerationTime` as unsigned 16-bit wire words,
+including unknown/out-of-range values. `accelerationTimeInRange` and
+`decelerationTimeInRange` report only the documented native range 0..2000.
+`speedSignedResolution` remains SIGNED_ENCODING_UNRESOLVED;
+`speedScaleResolution` and `rampScaleResolution` remain SCALE_UNRESOLVED.
+
+The original function manual physical pages 17/18/70 label speed r/min and
+ramps ms but do not settle the raw-to-physical mapping: page 70 has a malformed
+speed range and defaults `120 (5r/min)` and `50 (100ms)`. Neither those defaults
+nor an observed word resolves signed encoding, physical speed or ramp scaling.
+This observation does not change velocity request units, desired/staged values,
+readiness prerequisites or physical qualification.
+
+The ordinary application exports `submitVelocityParameterRead(id)`,
+`copyReadResult(id, ReadContext&)` and terminal-only `releaseOperation(id)` in
+`examples/probe_cli/ProbeApp.h`. Call these from the service task. Submission
+uses the selected axis and the same owner as `velocity read [address]`; another
+address requires explicit idle binding. Rejection preserves the output ID.
+Copying pending, failed or completed state is passive; a missing/released or
+wrong-kind ID preserves output. Service retains programmatic results until
+explicit release; human console output does not recycle them. The shared command
+uses canonical `velocity-read`, `read_kind=velocity_parameters` and terminal
+`type=read`; JSON inspection retains the admitted `configuration_generation`.
+
+Every explicit submission makes a new transfer. Successful raw history survives
+later generation changes, while current-observation promotion requires the still
+current target/binding/configuration, serial generation and newer operation ID,
+checked even for this single-step completion. Changed checked words invalidate
+dependent future application qualification without renewing qualification or
+copying observations into requested/staged values. Already admitted operations
+retain their own immutable parameters and outcomes. A failed read preserves the
+previous observation. The core getter does not decide application freshness.
+
+The Python host accepts `Console.command("velocity-read", ...)`; the bounded
+campaign is `typed-read --kind velocity_parameters`. It checks raw words against
+the retained reply, the exact request window, native range flags and unresolved
+interpretations, including inspection/release and immutable historical results.
+
+## Planned homing parameter read (not implemented)
 
 The [29 October contract review](reports/2026-10-29_ess_software_contracts.md)
-selects the existing `ReadContext`/`nextRead`/`advanceRead` sequence for two new
-read kinds. These names and routes are planned; they are not callable yet.
+selects the same sequencer for a future `HOMING_PARAMETERS` read kind,
+`prepareHomingParameters` and `getHomingParameters`. Its one FC03 `0x0030/7`
+window has a 19-byte reply and proposed `HomingParametersObservation`: auxiliary,
+method, search speed, return speed, ramp and separate offset words at
+`0x0035`/`0x0036`. These names remain planned, not callable declarations.
 
-| Planned kind / preparation / getter | One FC03 window | Raw observation | Normal reply |
-| --- | --- | --- | --- |
-| `VELOCITY_PARAMETERS`, `prepareVelocityParameters`, `getVelocityParameters` | `0x001D/3` | `VelocityParametersObservation`: speed, acceleration time, deceleration time | 11 bytes |
-| `HOMING_PARAMETERS`, `prepareHomingParameters`, `getHomingParameters` | `0x0030/7` | `HomingParametersObservation`: auxiliary, method, search speed, return speed, ramp, offset words at `0x0035` and `0x0036` | 19 bytes |
+The private decoder now receives the actual output capacity and verifies count;
+this future seven-word read must supply seven-word storage. It fits the existing
+five-step/37-byte provenance without widening FC03 or any write window. It must
+retain explicit nonzero configuration generation, all raw words, known/support
+indicators for auxiliary/method codes and copied per-window provenance. Unknown
+codes are successful raw observations; collision encodings, signed offset,
+word-order applicability and physical speed/ramp conversion remain unresolved.
 
-Both preparations take an explicit nonzero configuration generation in addition
-to the existing exact `ReadTarget`, operation, tuple, time and deadline. Retain
-it in context and observation: binding generation, configuration generation and
-`configOperationId` are different identities. All raw fields are `uint16_t`,
-including the two separate offset words. Preserve copied per-window provenance.
-Decode known auxiliary choices 0..11 and documented positive method IDs with
-separate known/support indicators. Unknown or out-of-range words are successful
-raw observations. Do not cast `0xFFFC..0xFFFF` into resolved collision methods,
-assemble a signed offset, infer offset word-order applicability, or convert
-speed/ramp words into physical units. Source contradictions remain visible.
-
-The eight-byte requests, one step each and 11/19-byte replies fit the existing
-five-step/37-byte read storage. Change the private `words()` helper to receive
-the actual output capacity and verify the decoded count; its present hardcoded
-five-word capacity cannot decode seven words. Audit all kind switches, local
-arrays, retained formatters and owner expectations. Do not use the separate
-15-byte `DriverEvidence` to carry the seven-word snapshot. FC03's reviewed
-16-word limit and all write windows remain unchanged.
-
-Publish each complete family only after its one checked step succeeds. Failed
-getters preserve output. Preserve current closure-versus-delivery deadline rules,
-correlation rejection and copied failure evidence. A result keeps its admitted
-generation even if it becomes historical; current-cache promotion additionally
-requires the still-current target/configuration and newer observation identity.
-Check this at publication, including single-step completion, not only before a
-continuation. Reads never renew supplied qualification, modify desired motion
-parameters or establish active settings. A changed checked parameter observation
-invalidates dependent qualification instead of silently restoring it.
-
-Planned standalone wrappers are `submitVelocityParameterRead` and
-`submitHomingParameterRead`, with `copyReadResult(id, ReadContext&)` and shared
-terminal-only `releaseOperation(id)`. They use the same `startTypedRead`/owner
-path as planned `velocity read` and `home read`. Initially these app routes use
-the selected axis only; another target requires explicit idle binding. The core
-accepts any correctly bound caller target. Copying a result may inspect pending
-or failed state; a missing/wrong-kind ID leaves output unchanged. Programmatic
-results are not recycled by human console output. Neither submission nor result
-inspection needs a console or grants motion readiness.
+The planned `submitHomingParameterRead`/`home read` route uses the same selected
+axis, admission, copied result and explicit release contract as velocity reads.
+No observation renews qualification or establishes active settings. A current
+changed observation invalidates dependent qualification. Implementing velocity
+reads does not close the homing read obligation.
 
 ## State observations and application health
 

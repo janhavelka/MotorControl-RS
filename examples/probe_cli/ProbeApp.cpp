@@ -116,7 +116,7 @@ struct App {
         uint64_t deliveredUs = 0;
         uint64_t deadlineUs = 0;
         bool observed = false, delivered = false, captureRead = false, interactive = false;
-        bool monitored = false, simpleChild = false;
+        bool monitored = false, simpleChild = false, programmaticRead = false;
         bool cancelContinuation = false; ///< Cancel the operation after its current frame settles.
         ESS::ReadContext read;
         bool axisReserved = false, effectsInvalidated = false, interruptedByStop = false;
@@ -193,6 +193,7 @@ struct App {
     ESS::MovePrerequisites movePrerequisites; // Supplied commissioning evidence; false until verified.
     ESS::HomePrerequisites homePrerequisites; // Explicit method/active-auxiliary/native/reference qualification.
     ESS::VelocityPrerequisites velocityPrerequisites; // Independent commissioning evidence, initially unqualified.
+    ESS::VelocityParametersObservation velocityParameters; // Checked observation, never desired/staged values.
     uint32_t bindingGeneration = 1;
     uint8_t actionConflicts[32] = {}; ///< Physical address conflicts survive result release and host recovery.
     uint8_t knownTargets[32] = {}; ///< Checked physical addresses, independent of the latest passive observation.
@@ -628,6 +629,8 @@ Probe::Action startTypedRead(void* context, uint32_t commandId, uint8_t address,
     const uint64_t sampled = uart.sample();
     if (a.owner.needsRecovery() || uart.needsRecovery()) return Probe::Action::RECOVERY_REQUIRED;
     if (!a.nextOperationId) return Probe::Action::IDS_EXHAUSTED;
+    if (kind == ESS::ReadKind::VELOCITY_PARAMETERS && address != a.axis.target.address)
+        return Probe::Action::INVALID;
     App::Record* record = nullptr;
     if (monitored) {
         if (!a.records[REQUEST_CAPACITY].operationId) record = &a.records[REQUEST_CAPACITY];
@@ -640,11 +643,14 @@ Probe::Action startTypedRead(void* context, uint32_t commandId, uint8_t address,
         &a.configuration : nullptr;
     const auto prepared = kind == ESS::ReadKind::IDENTITY ?
         ESS::prepareIdentity(record->read, target, a.nextOperationId, sampled, sampled + REQUEST_US, serial) :
-        kind == ESS::ReadKind::STATE ?
+        kind == ESS::ReadKind::VELOCITY_PARAMETERS ?
+        ESS::prepareVelocityParameters(record->read, target, a.nextOperationId, a.axis.generation,
+            sampled, sampled + REQUEST_US, serial) : kind == ESS::ReadKind::STATE ?
         ESS::prepareState(record->read, target, a.nextOperationId, sampled, sampled + REQUEST_US, serial, configuration) :
         ESS::prepareConfig(record->read, target, a.nextOperationId, sampled, sampled + REQUEST_US, serial,
             address == a.axis.target.address ? a.inputWiring : nullptr);
-    if (!prepared || (kind != ESS::ReadKind::IDENTITY && kind != ESS::ReadKind::CONFIG && kind != ESS::ReadKind::STATE)) {
+    if (!prepared || (kind != ESS::ReadKind::IDENTITY && kind != ESS::ReadKind::CONFIG &&
+        kind != ESS::ReadKind::STATE && kind != ESS::ReadKind::VELOCITY_PARAMETERS)) {
         clearRecord(*record); return Probe::Action::INVALID;
     }
     const auto admitted = admitStep(a, *record, sampled);
@@ -1585,6 +1591,30 @@ MotorControlRS::ReadEvent readEvent(const App::Record& record, ReadEventKind kin
     event.operationId = record.operationId; event.step = record.read.step; event.kind = kind;
     return event;
 }
+void reconcileVelocityParameters(App& a, const App::Record& record) {
+    if (record.serialGeneration != a.serial.generation || record.read.target.generation != a.bindingGeneration) return;
+    if (record.read.kind == ESS::ReadKind::VELOCITY_PARAMETERS &&
+        Probe::sameTarget(record.read.target, a.axis.target) &&
+        record.read.configurationGeneration == a.axis.generation &&
+        record.operationId > a.velocityParameters.operationId) {
+        ESS::VelocityParametersObservation observed;
+        if (ESS::getVelocityParameters(record.read, observed)) {
+            const auto& prior = a.velocityParameters;
+            auto& qualification = a.velocityPrerequisites;
+            const bool same = prior.operationId && Probe::sameTarget(prior.target, observed.target) &&
+                prior.configurationGeneration == observed.configurationGeneration;
+            const bool rampChanged = (same && (prior.rawAccelerationTime != observed.rawAccelerationTime ||
+                prior.rawDecelerationTime != observed.rawDecelerationTime)) ||
+                (qualification.configuredRampVerified &&
+                 (qualification.accelerationTime != observed.rawAccelerationTime ||
+                  qualification.decelerationTime != observed.rawDecelerationTime));
+            if (rampChanged) qualification.configuredRampVerified = false;
+            if (rampChanged || (same && prior.rawSpeed != observed.rawSpeed))
+                qualification.readinessQualified = false;
+            a.velocityParameters = observed;
+        }
+    }
+}
 // Consume one retained transaction per operation per loop. Intermediate evidence
 // is copied into the public context before its owner slot is explicitly released.
 // The frontend record reserves terminal storage across the gaps between steps.
@@ -1612,6 +1642,7 @@ void advanceReads(App& a, uint64_t sampled) {
             }
             observeCommunication(a, *result);
             reconcileConfigRead(a, record, sampled);
+            reconcileVelocityParameters(a, record);
             if (record.read.kind == ESS::ReadKind::STATE && record.configurationGeneration == a.axis.generation) {
                 const auto& previous = a.stateCache.blocks[static_cast<uint8_t>(block)];
                 const auto& reference = a.coordinateReference;
@@ -2339,7 +2370,7 @@ void recycleInteractiveResults(void* context) {
     // JSON/API results and failures remain explicitly retained.
     if (a.outputCount || a.console.outputPending()) return;
     for (auto& r : a.records) {
-        if (!r.interactive || !r.delivered || r.simpleChild || r.axisReserved || r.motionUnresolved) continue;
+        if (!r.interactive || !r.delivered || r.simpleChild || r.programmaticRead || r.axisReserved || r.motionUnresolved) continue;
         bool success = false;
         switch (r.kind) {
         case App::OperationKind::EMPTY: break;
@@ -2445,7 +2476,8 @@ void deliver(App& a) {
                     }
                 }
             }
-            if (!record.simpleChild && !a.console.reportRead(record.commandId, record.operationId, record.read, &record.serialTuple, record.serialGeneration)) continue;
+            if (!record.simpleChild && !record.programmaticRead &&
+                !a.console.reportRead(record.commandId, record.operationId, record.read, &record.serialTuple, record.serialGeneration)) continue;
             record.delivered = true; record.deliveredUs = nowUs(); continue;
         }
         }
@@ -2566,6 +2598,26 @@ bool releaseMove(uint32_t operationId) {
     if (!app || !operationId) return false;
     const auto* record = findRecord(*app, operationId);
     return record && record->programmaticMove && release(app, operationId) == Probe::Action::OK;
+}
+MotorControlRS::Status submitVelocityParameterRead(uint32_t& operationId) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    const auto admitted = typedRead(app, 0, app->axis.target.address, ESS::ReadKind::VELOCITY_PARAMETERS, operationId);
+    if (admitted != Probe::Action::OK)
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted), "velocity parameter read not admitted");
+    findRecord(*app, operationId)->programmaticRead = true;
+    return Ok();
+}
+bool copyReadResult(uint32_t operationId, MotorControlRS::ESS_RS::ReadContext& output) {
+    if (!app || !operationId) return false;
+    const auto* record = findRecord(*app, operationId);
+    if (!record || record->kind != App::OperationKind::TYPED_READ || record->monitored) return false;
+    output = record->read; return true;
+}
+bool releaseOperation(uint32_t operationId) {
+    if (!app || !operationId) return false;
+    const auto* record = findRecord(*app, operationId);
+    return record && terminal(*app, *record) && release(app, operationId) == Probe::Action::OK;
 }
 void serviceApplication() {
     if (!app) { Platform::idle(10); return; }

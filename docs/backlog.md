@@ -36,21 +36,25 @@ review. These are future refactors, not unfinished prompts from the completed se
 
 ## Native ESS coverage
 
-The inventory still has **nine named native-family gaps and 18 guarded paired
+The inventory still has **eight named native-family gaps and 18 guarded paired
 setters**. Their exact membership and source restrictions are maintained in
 [API coverage](ess_api_cli_coverage.md) and [paired writes](ess_pair_writes.md);
 the register catalogue alone is not semantic command coverage.
 
 [Stage 01 contracts](reports/2026-10-29_ess_software_contracts.md) were completed
 on 29 October 2026; no implementation/physical obligation was closed. Stages
-02/03 can reuse the read sequencer, 04/05 the setting sequencer, and 08-12 the
+02 now implements velocity reads; 03 can reuse the read sequencer, 04/05 the setting sequencer, and 08-12 the
 reviewed homing qualification/observation contract. N05's first implementable
 subset is native stored-profile start-or-interrupt with ACK-only result and no
 active setup writes. Arbitrary replacement still needs active-register
 consumption and completion-attribution evidence; keep N05 PARTIAL after that
 subset. Method28's exchanged branch drawings are recorded in the method guide.
 
-- [ ] Implement supported missing native parameter reads/staging, including
+- [x] Implement native velocity-parameter reads (N01): one checked FC03 `0x001D/3`,
+  copied raw result, application API and `velocity read`; physical read evidence
+  NOT RUN because the recorded bench USB device is absent. See the
+  [stage 02 report](reports/2026-10-29_ess_velocity_reads.md).
+- [ ] Implement remaining supported native parameter reads/staging, including
   restoring an arbitrary archived position profile without starting motion.
   Host reset loses the RAM backup; never replay a move as restoration.
   [Evidence](archive/reports/ess_release_23_2026-10-05.md).

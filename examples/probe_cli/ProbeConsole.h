@@ -445,6 +445,7 @@ private:
     MotorControlRS::ESS_RS::IdentityObservation identityView_;
     MotorControlRS::ESS_RS::ConfigObservation configView_;
     MotorControlRS::ESS_RS::StateObservation stateView_;
+    MotorControlRS::ESS_RS::VelocityParametersObservation velocityParametersView_;
     MotorControlRS::ESS_RS::DriverObservation driverView_;
     std::size_t length_ = 0;
     uint32_t nextId_ = 1;

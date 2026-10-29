@@ -38,6 +38,19 @@ int main() {
     using namespace MotorControlRS;
     using namespace MotorControlRS::ESS_RS;
     ReadTarget target; target.id = 1; target.address = 1; target.generation = 2;
+    ReadContext velocityRead; PreparedRead velocityWork;
+    if (!readCapabilities().velocityParameters ||
+        !prepareVelocityParameters(velocityRead, target, 17, 3, 100, 1000) ||
+        !nextRead(velocityRead, 100, velocityWork) || velocityWork.first != 0x001D ||
+        velocityWork.count != 3 || velocityWork.length != 8) return 106;
+    const uint8_t velocityReply[] = {1,3,6,0,0x3C,0,0x32,0,0x64,0xD1,0x54};
+    ReadEvent velocityEvent; velocityEvent.target = target; velocityEvent.operationId = 17;
+    velocityEvent.frame = velocityReply; velocityEvent.length = sizeof(velocityReply);
+    velocityEvent.qualified = true; velocityEvent.earliestUs = 200; velocityEvent.latestUs = 220;
+    VelocityParametersObservation velocityParameters;
+    if (!advanceRead(velocityRead, velocityEvent, 230) || !getVelocityParameters(velocityRead, velocityParameters) ||
+        velocityParameters.configurationGeneration != 3 || velocityParameters.rawSpeed != 60 ||
+        velocityParameters.rawAccelerationTime != 50 || velocityParameters.rawDecelerationTime != 100) return 107;
     PositionCommand desired;
     desired.subdivision = 1000; desired.target = target; desired.speedRpm = 60;
     desired.accelerationTime = desired.decelerationTime = 100;

@@ -55,6 +55,7 @@ guides define complete arguments and prerequisites.
 | `moveby`, `moveto`, `speed`, `accel`, `decel`, `motion`, `stepsperturn` | Simple finite positioning and host intent; [console guide](console.md) |
 | `axis config`, `axis origin`, `prepare` | Pure host coordinates and [target preview](axis_preparation.md) |
 | `move relative\|absolute\|angle` | Detailed [finite moves](ess_position.md) with explicit frame/setup/rounding |
+| `velocity read [address]` | One checked native JOG-parameter read; canonical `velocity-read`, no writes or qualification |
 | `velocity` | [Finite velocity](ess_velocity.md) with explicit duration and stop policy |
 | `enable`, `motor-release`, `alarm-clear`, `position-clear`, `stop normal\|fast` | Explicit [drive actions](ess_actions.md) |
 | `home methods`, `home ...` | Method inventory and qualified [homing](ess_homing.md) |

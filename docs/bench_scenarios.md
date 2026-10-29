@@ -38,7 +38,7 @@ supplied image's hash; console version does not attest the flashed image.
 | `actions` | One explicit initially-enabled stationary release/enable cycle | Ends enabled; initial released state refuses before an action write |
 | `stop` | `--stop-policy normal\|direct`; one finite 250-increment move | Require new RUNNING report, interrupted move result, stop and standstill, then restore original profile |
 | `angle` | Explicit `--arguments` matching public wrapped-angle grammar; optional stop policy | Existing coordinate/firmware gates; one stop and profile restoration only after qualified standstill |
-| `velocity` | Explicit public `--arguments`, finite duration and stop policy; timeout must include duration | Existing sign/ramp/stop gates; hardware execution remains unqualified. Standalone native-parameter reads/backup remain a named coverage gap |
+| `velocity` | Explicit public `--arguments`, finite duration and stop policy; timeout must include duration | Existing sign/ramp/stop gates; hardware execution remains unqualified. Typed raw parameter reads are available separately; these do not qualify velocity execution |
 | `homing-prerequisites` | One caps/wiring/I/O check | No homing execution; method-specific admission still required. Existing explicit finite `bench_probe.py home` campaign remains available behind its gates |
 | `discovery` | `--discovery` with existing bounded candidate/budget grammar; default selected ESS/current tuple | Require COMPLETE, retained findings and actual original host tuple/selection after restoration; incomplete scan fails without implicit recovery |
 | `persistence-plan` | Explicit `--persistence-kind save\|factory-restore` | Local plan; no nonvolatile write or durability claim |
@@ -112,3 +112,12 @@ imports, missing native parameter APIs, switch-dependent methods, unsupported
 pair writes and restart/persistence fixtures remain the named owning gaps in
 [the coverage matrix](ess_api_cli_coverage.md). Functional reports do not become
 independent physical shaft or electrical measurements.
+
+The explicit read-only velocity-parameter campaign uses the same normal owner:
+
+```sh
+python scripts/bench_probe.py --port COM13 --log build/bench/velocity-read-new.jsonl typed-read --kind velocity_parameters
+```
+
+Confirm the actual bench device first. This reads the three JOG words, inspects
+and releases the result, with no staging, start, save or automatic qualification.

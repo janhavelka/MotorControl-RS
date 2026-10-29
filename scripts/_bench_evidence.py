@@ -19,7 +19,8 @@ HOST_BAUDS = (9600, 19200, 38400, 115200)
 
 TYPED_WINDOWS = {"identity": ((0x0000, 4),),
                  "config": ((0x0010, 2), (0x0013, 3), (0x0017, 3), (0x0040, 5), (0x0100, 2)),
-                 "state": ((0x0006, 2), (0x0008, 2), (0x000A, 3))}
+                 "state": ((0x0006, 2), (0x0008, 2), (0x000A, 3)),
+                 "velocity_parameters": ((0x001D, 3),)}
 
 
 class BenchError(RuntimeError):
@@ -208,6 +209,8 @@ def check_typed_read(item: dict, kind: str, address: int | None) -> None:
             and (address is None or item["address"] == address), "address does not match acceptance")
     require(operation_id(item.get("target")) and operation_id(item.get("generation")),
             "target or generation is invalid")
+    if kind == "velocity_parameters":
+        require(operation_id(item.get("configuration_generation")), "configuration generation is invalid")
     check_counts(item, ("started_us", "deadline_us", "serviced_us", "completed_steps"), "typed-read")
     require(item["started_us"] < item["deadline_us"] and item["serviced_us"] >= item["started_us"],
             "absolute time budget is inconsistent")
@@ -310,6 +313,18 @@ def check_typed_read(item: dict, kind: str, address: int | None) -> None:
     if kind == "state":
         return
     require(isinstance(decoded, dict), "successful operation lacks decoded observation")
+    if kind == "velocity_parameters":
+        for key, value in zip(("raw_speed", "raw_acceleration_time", "raw_deceleration_time"), decoded_words):
+            require(type(decoded.get(key)) is int and decoded[key] == value,
+                    "velocity parameters differ from retained RX")
+        for key, value in (("acceleration_time_in_range", decoded_words[1] <= 2000),
+                           ("deceleration_time_in_range", decoded_words[2] <= 2000)):
+            require(type(decoded.get(key)) is bool and decoded[key] == value,
+                    "velocity native ramp range is inconsistent")
+        for key, value in (("speed_signed_resolution", 7), ("speed_scale_resolution", 5), ("ramp_scale_resolution", 5)):
+            require(type(decoded.get(key)) is int and decoded[key] == value,
+                    "velocity parameters claim unsupported interpretation")
+        return
     if kind == "identity":
         keys = ("raw_model", "raw_version", "raw_active_node", "raw_dip")
         for key, value in zip(keys, decoded_words):
