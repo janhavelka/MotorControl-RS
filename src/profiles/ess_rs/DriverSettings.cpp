@@ -37,6 +37,7 @@ bool aliasesContext(const DriverContext& context, const void* input, std::size_t
 }
 bool segmentGroup(DriverGroup group) { return group >= DriverGroup::POSITION_SEGMENT && group <= DriverGroup::SEGMENT_START_SPEED; }
 uint8_t readSteps(DriverGroup group) {
+    if (group == DriverGroup::POSITION_START_SPEED) return 1;
     if (isTuningGroup(group)) return tuningFieldCount(group) > 4 ? 2 : 1;
     if (segmentGroup(group)) return 1;
     if (group == DriverGroup::CONTROL_SETTINGS) return 2;
@@ -44,6 +45,7 @@ uint8_t readSteps(DriverGroup group) {
     return DRIVER_READ_STEPS;
 }
 uint32_t allowedFields(DriverGroup group) {
+    if (group == DriverGroup::POSITION_START_SPEED) return 1;
     if (isTuningGroup(group)) return (1u << tuningFieldCount(group)) - 1;
     if (group == DriverGroup::CONTROL_SETTINGS) return CONTROL_MASK;
     if (segmentGroup(group)) {
@@ -59,6 +61,7 @@ bool allowsEchoReadback(const DriverContext& c) {
         c.prerequisites.allowEchoReadback;
 }
 uint32_t bit(uint8_t index, DriverGroup group = DriverGroup::DRIVE) {
+    if (group == DriverGroup::POSITION_START_SPEED) return index == 0 ? 1 : 0;
     if (isTuningGroup(group)) return index < tuningFieldCount(group) ? 1u << index : 0;
     if (group == DriverGroup::CONTROL_SETTINGS) return index < 8 ? 1u << (23 + index) : 0;
     if (segmentGroup(group)) return group == DriverGroup::SEGMENT_START_SPEED ?
@@ -74,6 +77,7 @@ const RegisterDescriptor* segmentRegister(DriverGroup group, uint8_t record, uin
     return group == DriverGroup::SEGMENT_START_SPEED && index == 0 ? segmentStartSpeedRegister(record) : nullptr;
 }
 uint16_t fieldRegister(const DriverRequest& r, uint8_t index) {
+    if (r.group == DriverGroup::POSITION_START_SPEED) return index == 0 ? Registers::POSITION_START_SPEED : 0;
     if (isTuningGroup(r.group)) {
         TuningParameterInfo info;
         return tuningParameterInfo(tuningParameter(r.group,index),info) && info.accessReviewed ? info.reg : 0;
@@ -95,6 +99,7 @@ bool legalControl(uint8_t index, uint16_t value) {
     return index < 8 && value <= maxima[index] && (index != 0 || value >= 1);
 }
 uint16_t requested(const DriverRequest& request, uint8_t index) {
+    if (request.group == DriverGroup::POSITION_START_SPEED) return index == 0 ? request.positionStartSpeed : 0;
     if (isTuningGroup(request.group)) return request.tuningValues[index];
     if (request.group == DriverGroup::CONTROL_SETTINGS) {
         switch (index) {
@@ -129,6 +134,10 @@ uint16_t requested(const DriverRequest& request, uint8_t index) {
     }
 }
 bool readWindow(DriverGroup group, uint8_t step, uint16_t& reg, uint16_t& count, uint8_t record = 1) {
+    if (group == DriverGroup::POSITION_START_SPEED) {
+        if (step) return false;
+        reg = Registers::POSITION_START_SPEED; count = 1; return true;
+    }
     if (isTuningGroup(group)) {
         const uint8_t first = static_cast<uint8_t>(step * 4), total = tuningFieldCount(group);
         TuningParameterInfo info;
@@ -183,7 +192,7 @@ uint64_t stationaryDeadline(const DriverContext& c) {
         const uint64_t ioUntil = evidenceAgeDeadline(p.ioEarliestUs, p.maxAgeUs);
         if (ioUntil < deadline) deadline = ioUntil;
     }
-    if (segmentGroup(c.group)) {
+    if (segmentGroup(c.group) || c.group == DriverGroup::POSITION_START_SPEED) {
         const uint64_t triggerUntil = evidenceAgeDeadline(p.triggerEarliestUs, p.maxAgeUs);
         if (triggerUntil < deadline) deadline = triggerUntil;
     }
@@ -230,6 +239,11 @@ Status decode(const DriverEvidence* evidence, const ReadTarget& target, DriverGr
             target.address, count, data[i], 5, decoded);
         if (!status) return status;
         out.provenance[i] = evidence[i];
+    }
+    if (group == DriverGroup::POSITION_START_SPEED) {
+        out.raw[0] = data[0][0];
+        if (out.raw[0] <= 3000) out.knownFields = 1;
+        return Ok();
     }
     if (isTuningGroup(group)) {
         for (uint8_t i = 0; i < tuningFieldCount(group); ++i) {
@@ -309,7 +323,8 @@ Status validatePriorSettingsAndStandstill(const ReadTarget& target, const Driver
         std::memcmp(checked.positiveWords, previous.positiveWords, sizeof(checked.positiveWords)) ||
         std::memcmp(checked.negativeWords, previous.negativeWords, sizeof(checked.negativeWords)))
         return invalid(DriverError::STALE_SETTINGS, "previous settings disagree with checked raw provenance");
-    if (!prerequisites.stationaryQualified || (request.group == DriverGroup::DRIVE && !prerequisites.inputsPermit) ||
+    if (!prerequisites.stationaryQualified ||
+        ((request.group == DriverGroup::DRIVE || request.group == DriverGroup::POSITION_START_SPEED) && !prerequisites.inputsPermit) ||
         !sameTarget(prerequisites.stationaryTarget, target) ||
         prerequisites.stationaryEarliestUs > prerequisites.stationaryLatestUs ||
         prerequisites.stationaryLatestUs > nowUs ||
@@ -466,7 +481,7 @@ Status prepareDriverRead(DriverContext& output, const ReadTarget& target, uint32
                          uint32_t configurationGeneration, uint64_t nowUs, uint64_t deadlineUs, DriverGroup group, uint8_t segmentIndex) noexcept {
     const Status status = validateIdentity(target, operationId, configurationGeneration, nowUs, deadlineUs);
     if (!status) return status;
-    if (group > DriverGroup::COLLISION) return invalid(DriverError::INVALID_CANDIDATE, "invalid driver group");
+    if (group > DriverGroup::POSITION_START_SPEED) return invalid(DriverError::INVALID_CANDIDATE, "invalid driver group");
     if (segmentGroup(group) && (!segmentIndex || segmentIndex > 16)) return invalid(DriverError::SEGMENT_INDEX, "segment index must be 1..16");
     for (uint8_t i = 0; i < readSteps(group); ++i) {
         uint16_t reg = 0, count = 0; readWindow(group, i, reg, count, segmentIndex);
@@ -487,11 +502,14 @@ Status prepareDriverSettings(DriverContext& output, const ReadTarget& target, ui
     const bool segment = segmentGroup(request.group);
     const bool control = request.group == DriverGroup::CONTROL_SETTINGS;
     const bool tuning = isTuningGroup(request.group);
+    const bool position = request.group == DriverGroup::POSITION_START_SPEED;
     const uint32_t allowed = allowedFields(request.group);
-    if (request.group > DriverGroup::COLLISION || !request.fields || (request.fields & ~allowed))
+    if (request.group > DriverGroup::POSITION_START_SPEED || !request.fields || (request.fields & ~allowed))
         return invalid(DriverError::INVALID_CANDIDATE, "invalid or empty driver-settings selection");
-    if (request.group == DriverGroup::DRIVE && prerequisites.allowEchoReadback)
+    if ((request.group == DriverGroup::DRIVE || position) && prerequisites.allowEchoReadback)
         return invalid(DriverError::INVALID_CANDIDATE, "echo/readback policy requires IO or inhibited segment settings");
+    if (position && request.positionStartSpeed > 3000)
+        return invalid(DriverError::INVALID_CANDIDATE, "position start speed must be a native word in 0..3000");
     if (segment && (!request.segmentIndex || request.segmentIndex > 16)) return invalid(DriverError::SEGMENT_INDEX, "segment index must be 1..16");
     if (segment && (request.fields & (1u << 22)))
         return Status(Err::UNSUPPORTED, static_cast<int32_t>(DriverError::PAIR_WRITE_UNSUPPORTED), "stored pulse pair has no reviewed FC10 window");
@@ -513,13 +531,13 @@ Status prepareDriverSettings(DriverContext& output, const ReadTarget& target, ui
             "software-limit pair has no reviewed FC10 window; split writes are unavailable");
     for (uint8_t i = 0; i < DRIVER_FIELD_COUNT; ++i) {
         if (!(request.fields & bit(i, request.group))) continue;
-        if (!segment && !control && !tuning && (i == 13 || i == 14) && requested(request, i) == 11)
+        if (!segment && !control && !tuning && !position && (i == 13 || i == 14) && requested(request, i) == 11)
             return Status(Err::UNSUPPORTED, static_cast<int32_t>(DriverError::OUTPUT_FUNCTION_UNRESOLVED), "custom output 2 has no resolved ESS terminal mapping");
         TuningParameterInfo tuningInfo;
         if (tuning && (!tuningParameterInfo(tuningParameter(request.group,i),tuningInfo) || !tuningInfo.accessReviewed ||
             requested(request,i) < tuningInfo.minimum || requested(request,i) > tuningInfo.maximum))
             return invalid(DriverError::INVALID_CANDIDATE, "tuning native value out of range");
-        if ((!segment && !control && !tuning && !legal(i, requested(request, i))) || (control && !legalControl(i, requested(request, i))))
+        if ((!segment && !control && !tuning && !position && !legal(i, requested(request, i))) || (control && !legalControl(i, requested(request, i))))
             return invalid(DriverError::INVALID_CANDIDATE, "illegal driver-setting enum or native range");
         const Status wire = validateWriteSingleRegisterRequest(target.address, fieldRegister(request, i), requested(request, i));
         if (!wire) return wire;
@@ -531,6 +549,12 @@ Status prepareDriverSettings(DriverContext& output, const ReadTarget& target, ui
     // Preserve admission precedence: common evidence, then each group's policy.
     const Status prior = validatePriorSettingsAndStandstill(target, request, prerequisites, nowUs);
     if (!prior) return prior;
+    if (position && (!prerequisites.externalTriggerInhibitedQualified ||
+        !sameTarget(prerequisites.triggerTarget, target) ||
+        prerequisites.triggerConfigurationGeneration != request.configurationGeneration ||
+        prerequisites.triggerEarliestUs > prerequisites.triggerLatestUs || prerequisites.triggerLatestUs > nowUs ||
+        !evidenceAgeValid(prerequisites.triggerEarliestUs, nowUs, prerequisites.maxAgeUs)))
+        return invalid(DriverError::TRIGGER_POLICY_REQUIRED, "fresh position-setting trigger inhibition required");
     if (segment) {
         const Status trigger = validateStoredTriggerPolicy(target, request, prerequisites, nowUs);
         if (!trigger) return trigger;
@@ -710,7 +734,14 @@ Status getDriver(const DriverContext& c, DriverObservation& output) noexcept {
     output = observation; return Ok();
 }
 DriverField driverFieldAt(uint8_t index, DriverGroup group) noexcept {
-    return static_cast<DriverField>(index < DRIVER_FIELD_COUNT && group <= DriverGroup::COLLISION ? bit(index, group) : 0);
+    return static_cast<DriverField>(index < DRIVER_FIELD_COUNT && group <= DriverGroup::POSITION_START_SPEED ? bit(index, group) : 0);
+}
+Status preparePositionStartSpeed(DriverRequest& request, uint32_t native) noexcept {
+    if (native > 3000 || (request.fields &&
+        (request.group != DriverGroup::POSITION_START_SPEED || request.fields != 1)))
+        return invalid(DriverError::INVALID_CANDIDATE, "invalid position start-speed value or mixed selection");
+    request.group = DriverGroup::POSITION_START_SPEED; request.fields = 1;
+    request.positionStartSpeed = static_cast<uint16_t>(native); return Ok();
 }
 Status prepareInputFunction(DriverRequest& request, uint8_t terminal, InputFunction function) noexcept {
     if (terminal >= 4 || !legal(8 + terminal, static_cast<uint16_t>(function)))

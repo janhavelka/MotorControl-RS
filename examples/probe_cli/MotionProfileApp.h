@@ -194,7 +194,9 @@ void serviceMotionProfile(App& a, App::MotionProfileState& session, uint64_t now
     }
     view.pending = false;
     if (view.phase == Probe::MotionProfilePhase::READBACK &&
-        std::memcmp(view.original, view.current, sizeof(view.original))) {
+        // Restore owns only 0x0021/5. An independently selected start speed is
+        // still displayed, but cannot prevent settlement of these five words.
+        std::memcmp(view.original + 1, view.current + 1, sizeof(view.original) - sizeof(view.original[0]))) {
         view.error = "readback_mismatch";
         return;
     }

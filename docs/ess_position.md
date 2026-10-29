@@ -120,14 +120,16 @@ only the eight-byte FC06 start for the drive's already stored target/profile;
 it does not stage parameters or observe the result. These lower-level routes
 are API-only. The CLI continues to use `prepareMove*`.
 
-## Planned start-speed setting and interruption (not implemented)
+<a id="planned-start-speed-setting-and-interruption-not-implemented"></a>
 
-These are the [stage 01 decisions](reports/2026-10-29_ess_software_contracts.md),
-not additions to the current callable API or qualified bench scope.
+## Native position start-speed setting
 
-The start-speed setter will use `DriverContext`, a one-field
+The start-speed setting is implemented. Physical scaling, activation and
+persistence remain unqualified; interruption below remains planned.
+
+The start-speed setter uses `DriverContext`, a one-field
 `DriverGroup::POSITION_START_SPEED`, group-local selection bit 0 and a named
-`DriverRequest::positionStartSpeed` value. A planned
+`DriverRequest::positionStartSpeed` value. The
 `preparePositionStartSpeed(DriverRequest&, uint32_t native)` selector validates
 0..3000 before narrowing. This is a native word domain from function p70;
 the conflicting default `30 (60 r/min)` does not establish a physical conversion.
@@ -139,11 +141,10 @@ This does not widen the position-profile write `0x0021/5`.
 Require exact target/configuration, prior observation, current stopped/alarm-free
 state, and explicitly qualified interfering-input/trigger policy before the
 write. Unknown prior raw values stay evidence rather than becoming legal
-candidates. The new group must explicitly validate its own range, selection,
-register, input policy and effects; it must not fall through DRIVE's direction
-handling or tuning-group ranges. Retain prior value, write transmission/confirmed
-echo and readback separately. Do not enable the optional unconfirmed-echo/readback
-policy for this group. An uncertain write is never replayed or rolled back.
+candidates. The group explicitly validates its own range, selection,
+register, input policy and effects, separately from DRIVE and tuning groups. Retain prior value, write transmission/confirmed
+echo and readback separately. This group rejects the optional unconfirmed-echo/readback
+policy. An uncertain write is never replayed or rolled back.
 
 As soon as the write may have applied, invalidate dependent position readiness,
 stored-profile matching and prepared unsent moves, preserving historical results.
@@ -158,15 +159,34 @@ its original binding; a generation change makes its applicability stale. Legacy
 Restoring start speed requires its explicit setter and renewed prerequisites,
 not a hidden combined restore or a widened FC10 window.
 
-The planned `submitPositionStartSpeed(native, id)` app wrapper and
+The `submitPositionStartSpeed(native, id)` app wrapper and
 `motion-profile start-speed <native>` route perform a bounded prior-read then
 update session through the same engine, with one frozen candidate, axis
 reservation and immutable deadline. The successful update retains its prior in
 `DriverPrerequisites`; a failed prior read ends the session without a write and
-retains that read context. `copySettingsResult(id, DriverContext&)` exposes the
+retains that read context. If the prior read succeeds but changed prerequisites
+or an expired budget reject the update, `UPDATE_NOT_ADMITTED` retains its
+successful frame and separate admission status without inventing a transport
+failure. No write follows it. `copySettingsResult(id, DriverContext&)` exposes the
 current/terminal context (`kind` distinguishes prior-read from update), and
 `releaseOperation` releases only a terminal result. Caller-owned result storage
 must accommodate the full context without a large transient MCU-stack copy.
+
+The ordinary standalone session uses an immutable three-second deadline and
+requires checked configuration, stopped state, zero-speed feedback and inactive
+logical inputs. Passive input assignments 0..3 are accepted; nonzero assignments
+also require declared unconnected wiring. No assignment or polarity changes.
+Pending profile transfers, motion, unsettled restores and full retained-result
+storage reject before traffic. Programmatic results require explicit terminal
+`releaseOperation` and are not recycled as human-command successes. A new
+configuration/state/I/O/profile transfer must rebuild the existing native
+command-word relationship after a possible write. ACK or single-word readback
+alone cannot grant readiness; no physical RPM conversion is established.
+Restore compares exactly the five words it writes. The observed current and
+original start-speed words remain visible separately; a deliberately changed
+start word does not prevent settlement of the five-word restoration.
+
+## Planned position interruption (not implemented)
 
 For interruption, function p16 defines serial `0x0027` bit 3 as 0 = ignore a new
 position command while moving, 1 = interrupt and execute it immediately. This

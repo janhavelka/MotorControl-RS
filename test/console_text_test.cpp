@@ -135,7 +135,8 @@ void conciseSettings() {
     contains(output, "Reason: TIMEOUT");
     assert(!std::strstr(output, "Microstep / subdivision"));
     assert(renderHuman("{\"command\":\"motion-profile\",\"ok\":true,\"session_ok\":true,\"saved\":true,\"current\":[30,100,200,60,1,2]}", output, sizeof(output)));
-    contains(output, "Starting speed: 30 rpm");
+    contains(output, "Starting speed: 30 native (physical scaling unresolved)");
+    assert(!std::strstr(output, "Starting speed: 30 rpm"));
     contains(output, "Acceleration ramp time: 100 ms");
     contains(output, "Deceleration ramp time: 200 ms");
     contains(output, "Positioning speed: 60 rpm");

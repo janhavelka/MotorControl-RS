@@ -341,6 +341,7 @@ bool hint(Writer& writer, const Value& report) {
         if (command.end - command.begin >= 5 && !std::memcmp(command.begin, "read-", 5)) command = key("read");
         if (equal(command, "home-read")) command = key("home");
         if (equal(command, "velocity-read")) command = key("velocity");
+        if (equal(command, "motion-profile-start-speed")) command = key("motion-profile");
         return writer.text("Hint: help ") && writer.string(command) && writer.text(" shows syntax and prerequisites.\n");
     }
     return true;
@@ -585,7 +586,7 @@ bool configSettings(Writer& writer, const Value& raw, const Value& known, bool f
 bool profileSettings(Writer& writer, const Value& words, const Value& order, bool orderKnown) {
     static const char* const labels[] = {"Starting speed", "Acceleration ramp time", "Deceleration ramp time", "Positioning speed"};
     for (unsigned i = 0; i < 4; ++i)
-        if (!setting(writer, labels[i], element(words, i), i == 0 || i == 3 ? " rpm" : " ms")) return false;
+        if (!setting(writer, labels[i], element(words, i), i == 0 ? " native (physical scaling unresolved)" : i == 3 ? " rpm" : " ms")) return false;
     uint32_t first = 0, second = 0, wordOrder = 0;
     if (orderKnown && unsignedValue(order, wordOrder) && wordOrder <= 1 &&
         unsignedValue(element(words, 4), first) && first <= UINT16_MAX &&
@@ -626,7 +627,7 @@ bool profileReport(Writer& writer, const Value& report) {
         equal(member(report, "ok"), "false") || equal(member(report, "session_ok"), "false"))
         return writer.text("Position profile is not confirmed.\n") && conciseFailure(writer, report) && writer.text("Details: @1 motion-profile inspect\n");
     if (!equal(member(report, "saved"), "true")) return writer.text("No position profile snapshot. Use settings to read motor settings.\n");
-    return writer.text(equal(member(report, "restored"), "true") ? "Position profile restored and read back.\n" : "Position profile (last readback)\n") &&
+    return writer.text(equal(member(report, "restored"), "true") ? "Position profile restored and read back (five words; start speed excluded).\n" : "Position profile (last readback)\n") &&
         profileSettings(writer, member(report, "current"), Value(), false) && writer.text("Details: @1 motion-profile inspect\n");
 }
 bool motorSettingsReport(Writer& writer, const Value& report) {
@@ -702,6 +703,20 @@ bool driveReport(Writer& writer, const Value& report) {
         namedSetting(writer, "External position mode", element(raw, 6), known & 64, "relative", "absolute") &&
         writer.text("Active behavior and signed limit interpretation remain unconfirmed.\n") && motionDetails(writer, report);
 }
+bool startSpeedReport(Writer& writer, const Value& report) {
+    if (equal(member(report, "result"), "accepted"))
+        return writer.text("Position start-speed setting accepted") && operationNumber(writer, report) && writer.text(".\n");
+    const bool complete = equal(member(report, "ok"), "true");
+    const Value progress = element(member(report, "progress"), 0);
+    const Value prior = member(report, "prior");
+    return writer.text(complete ? "Position start-speed stored readback confirmed" : "Position start-speed setting not confirmed") &&
+        operationNumber(writer, report) && writer.text(".\n") &&
+        setting(writer, "Requested start speed", member(report, "requested_native"), " native") &&
+        setting(writer, "Prior start speed", equal(member(prior, "operation_id"), "0") ? Value() : member(prior, "raw"), " native") &&
+        setting(writer, "Readback", equal(element(progress, 5), "true") ? element(progress, 6) : Value(), " native") &&
+        writer.text("Physical scaling, active behavior and persistence remain unqualified. Refresh motion evidence before a move.\n") &&
+        (complete || conciseFailure(writer, report)) && motionDetails(writer, report);
+}
 } // namespace
 
 bool renderHuman(const char* json, char* output, std::size_t capacity) noexcept {
@@ -722,8 +737,9 @@ bool renderHuman(const char* json, char* output, std::size_t capacity) noexcept 
     const bool configuration = equal(command, "read-config") || equal(member(report, "read_kind"), "config");
     const bool profile = equal(command, "motion-profile");
     const bool drive = equal(command, "driver") || equal(member(report, "driver_group"), "drive");
-    if (settings || configuration || profile || drive) {
-        const bool rendered = settings ? motorSettingsReport(writer, report) : configuration ? readConfigReport(writer, report) :
+    const bool startSpeed = equal(command, "motion-profile-start-speed") || equal(member(report, "driver_group"), "position_start_speed");
+    if (settings || configuration || profile || drive || startSpeed) {
+        const bool rendered = startSpeed ? startSpeedReport(writer, report) : settings ? motorSettingsReport(writer, report) : configuration ? readConfigReport(writer, report) :
             profile ? profileReport(writer, report) : driveReport(writer, report);
         if (!rendered) { output[0] = '\0'; return false; }
         writer.finish(); return true;

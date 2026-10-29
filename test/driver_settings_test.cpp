@@ -361,6 +361,207 @@ void testUnconfirmedReadEvidence() {
     assert(Ess::advanceDriver(c, e, c.servicedUs + 4));
     assert(c.outcome == Ess::DriverOutcome::REPLY_ERROR && c.status.code == Err::CRC_ERROR && c.uncertain);
 }
+Ess::DriverRequest positionStartRequest(uint32_t native = 3000) {
+    Ess::DriverRequest r; r.configurationGeneration = 17;
+    assert(Ess::preparePositionStartSpeed(r, native)); return r;
+}
+Ess::DriverObservation positionStartSnapshot(uint16_t raw = 0xFFFF) {
+    Ess::DriverContext c;
+    assert(Ess::prepareDriverRead(c, target(), 11, 17, 100, 1000, Ess::DriverGroup::POSITION_START_SPEED));
+    const uint8_t expected[] = {1, 3, 0, 0x20, 0, 1, 0x85, 0xC0};
+    const auto pending = work(c);
+    assert(!pending.write && pending.reg == 0x0020 && pending.count == 1 && pending.length == sizeof(expected));
+    assert(!std::memcmp(pending.bytes, expected, sizeof(expected)));
+    auto bytes = reply({raw}); supply(c, bytes);
+    bytes.assign(bytes.size(), 0); // The producing read owns its returned evidence.
+    Ess::DriverObservation value; assert(Ess::getDriver(c, value));
+    assert(value.raw[0] == raw && value.knownFields == (raw <= 3000 ? 1u : 0u));
+    assert(value.provenance[0].reg == 0x0020 && value.provenance[0].count == 1 && value.provenance[0].length == 7);
+    assert(c.completedSteps == 1 && work(c).kind == Ess::ActionWork::DONE);
+    return value;
+}
+Ess::DriverPrerequisites positionStartPrerequisites() {
+    Ess::DriverPrerequisites p; p.configurationGeneration = 17; p.previous = positionStartSnapshot();
+    p.stationaryQualified = p.inputsPermit = p.externalTriggerInhibitedQualified = true;
+    p.stationaryTarget = p.triggerTarget = target(); p.triggerConfigurationGeneration = 17;
+    p.stationaryEarliestUs = p.triggerEarliestUs = 110;
+    p.stationaryLatestUs = p.triggerLatestUs = 120; p.maxAgeUs = 10000;
+    return p;
+}
+Ess::DriverContext positionStartUpdate(uint64_t deadline = 9000) {
+    Ess::DriverContext c;
+    assert(Ess::prepareDriverSettings(c, target(), 12, positionStartRequest(), positionStartPrerequisites(), 200, deadline));
+    return c;
+}
+void testPositionStartSpeedSelectionAndAdmission() {
+    // ESS-RS function manual physical p70: one RW word, native domain 0..3000.
+    // Its conflicting default 30 (60 r/min) supplies no physical scaling here.
+    Ess::DriverRequest r; r.configurationGeneration = 17;
+    for (uint32_t native : {0u, 1u, 2999u, 3000u}) {
+        assert(Ess::preparePositionStartSpeed(r, native));
+        assert(r.group == Ess::DriverGroup::POSITION_START_SPEED && r.fields == 1 &&
+            r.positionStartSpeed == native && r.configurationGeneration == 17);
+    }
+    const Saved<Ess::DriverRequest> saved(r);
+    for (uint32_t native : {3001u, 65535u, 65536u, UINT32_MAX}) {
+        assert(!Ess::preparePositionStartSpeed(r, native)); saved.check(r);
+    }
+    auto mixed = request(); const Saved<Ess::DriverRequest> retained(mixed);
+    assert(!Ess::preparePositionStartSpeed(mixed, 1)); retained.check(mixed);
+    r.fields = 3; const Saved<Ess::DriverRequest> extra(r);
+    assert(!Ess::preparePositionStartSpeed(r, 1)); extra.check(r);
+    r = positionStartRequest();
+    assert(static_cast<uint32_t>(Ess::driverFieldAt(0, r.group)) == 1);
+    assert(static_cast<uint32_t>(Ess::driverFieldAt(1, r.group)) == 0);
+    for (uint16_t raw : {uint16_t(0), uint16_t(3000), uint16_t(3001), uint16_t(0xFFFF)}) positionStartSnapshot(raw);
+
+    auto p = positionStartPrerequisites();
+    for (uint16_t native : {uint16_t(0), uint16_t(3000)}) {
+        r = positionStartRequest(native); Ess::DriverContext c;
+        assert(Ess::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+        assert(c.fieldCount == 1 && c.progress[0].selected && c.progress[0].previous == 0xFFFF);
+        assert(work(c).reg == 0x0020 && work(c).write && work(c).value == native && work(c).count == 1);
+    }
+    r = positionStartRequest();
+    for (uint16_t bad : {uint16_t(3001), uint16_t(0xFFFF)}) {
+        r.positionStartSpeed = bad; checkUnchangedReject(r, p);
+    }
+    r = positionStartRequest(); r.fields = 3; checkUnchangedReject(r, p);
+    r = positionStartRequest(); r.group = static_cast<Ess::DriverGroup>(255); checkUnchangedReject(r, p);
+    r = positionStartRequest();
+    p.allowEchoReadback = true; checkUnchangedReject(r, p); p.allowEchoReadback = false;
+    p.previous.configurationGeneration++; checkUnchangedReject(r, p); p.previous.configurationGeneration--;
+    p.previous.target.generation++; checkUnchangedReject(r, p); p.previous.target.generation--;
+    p.previous.raw[0]--; checkUnchangedReject(r, p); p.previous.raw[0]++;
+    p.inputsPermit = false; checkUnchangedReject(r, p); p.inputsPermit = true;
+    p.stationaryQualified = false; checkUnchangedReject(r, p); p.stationaryQualified = true;
+    p.rawMotion = 4; checkUnchangedReject(r, p); p.rawMotion = 0;
+    p.rawAlarm = 1; checkUnchangedReject(r, p); p.rawAlarm = 0;
+    p.externalTriggerInhibitedQualified = false; checkUnchangedReject(r, p); p.externalTriggerInhibitedQualified = true;
+    p.triggerTarget.address++; checkUnchangedReject(r, p); p.triggerTarget.address--;
+    p.triggerConfigurationGeneration++; checkUnchangedReject(r, p); p.triggerConfigurationGeneration--;
+    p.triggerLatestUs = 201; checkUnchangedReject(r, p); p.triggerLatestUs = 120;
+    p.triggerEarliestUs = 121; checkUnchangedReject(r, p); p.triggerEarliestUs = 110;
+    p.maxAgeUs = 200; p.triggerEarliestUs = 0; checkUnchangedReject(r, p);
+
+    Ess::DriverContext c; c.operationId = 999; const Saved<Ess::DriverContext> old(c);
+    auto t = target(); t.address = 0;
+    assert(!Ess::prepareDriverSettings(c, t, 12, r, positionStartPrerequisites(), 200, 9000)); old.check(c);
+    assert(!Ess::prepareDriverRead(c, target(), 12, 17, 100, 1000, static_cast<Ess::DriverGroup>(255))); old.check(c);
+}
+void testPositionStartSpeedEvidenceAndErrors() {
+    const uint8_t write[] = {1, 6, 0, 0x20, 0x0B, 0xB8, 0x8F, 0x42};
+    const uint8_t read[] = {1, 3, 0, 0x20, 0, 1, 0x85, 0xC0};
+    auto c = positionStartUpdate(); const auto pending = work(c);
+    assert(pending.length == sizeof(write) && !std::memcmp(pending.bytes, write, sizeof(write)));
+    auto response = std::vector<uint8_t>(write, write + sizeof(write)); supply(c, response);
+    response.assign(response.size(), 0);
+    assert(c.progress[0].acknowledged && c.progress[0].execution == ActionExecution::ACKNOWLEDGED && c.uncertain);
+    const auto readback = work(c);
+    assert(!readback.write && readback.length == sizeof(read) && !std::memcmp(readback.bytes, read, sizeof(read)));
+    assert(!std::memcmp(c.observations[0].raw, write, sizeof(write)));
+    auto stored = reply({3000}); supply(c, stored); stored.assign(stored.size(), 0);
+    assert(c.state == ReadState::SUCCEEDED && c.completedSteps == 2 && c.effects == 1 && !c.uncertain);
+    assert(c.prerequisites.previous.raw[0] == 0xFFFF && c.request.positionStartSpeed == 3000);
+    assert(c.progress[0].readbackKnown && c.progress[0].readback == 3000 && !c.progress[0].activeKnown);
+    assert(c.observations[0].write && !c.observations[1].write && c.observations[1].reg == 0x0020);
+    assert(c.prerequisites.previous.provenance[0].raw[3] == 0xFF && c.observations[1].raw[3] == 0x0B);
+    assert(work(c).kind == Ess::ActionWork::DONE && !work(c).length);
+    Ess::DriverObservation output = positionStartSnapshot(123); const Saved<Ess::DriverObservation> saved(output);
+    assert(!Ess::getDriver(c, output)); saved.check(output); // An update is not a producing prior read.
+
+    for (unsigned fault = 0; fault < 8; ++fault) {
+        auto failed = positionStartUpdate(); auto bytes = std::vector<uint8_t>(write, write + 6);
+        switch (fault) {
+        case 0: bytes[0] = 2; crc(bytes); break;
+        case 1: bytes[1] = 16; crc(bytes); break;
+        case 2: bytes[3] = 0x21; crc(bytes); break;
+        case 3: bytes[5]++; crc(bytes); break;
+        case 4: crc(bytes); bytes.pop_back(); break;
+        case 5: crc(bytes); bytes.push_back(0); break;
+        case 6: crc(bytes); bytes.back() ^= 1; break;
+        default: bytes = {1, 0x86, 3}; crc(bytes); break;
+        }
+        supply(failed, bytes);
+        assert(failed.state == ReadState::FAILED && failed.outcome == Ess::DriverOutcome::REPLY_ERROR);
+        assert(failed.effects == 1 && !failed.progress[0].acknowledged && !failed.progress[0].readbackKnown);
+        assert(failed.progress[0].execution == (fault == 7 ? ActionExecution::REJECTED : ActionExecution::UNKNOWN));
+        assert(failed.uncertain == (fault != 7) && work(failed).kind == Ess::ActionWork::DONE);
+    }
+    for (unsigned fault = 0; fault < 8; ++fault) {
+        auto failed = positionStartUpdate(); supply(failed, std::vector<uint8_t>(write, write + sizeof(write)));
+        auto bytes = std::vector<uint8_t>{1, 3, 2, 0x0B, 0xB8};
+        switch (fault) {
+        case 0: bytes[0] = 2; crc(bytes); break;
+        case 1: bytes[1] = 4; crc(bytes); break;
+        case 2: bytes[2] = 4; crc(bytes); break;
+        case 3: crc(bytes); bytes.pop_back(); break;
+        case 4: crc(bytes); bytes.push_back(0); break;
+        case 5: crc(bytes); bytes.back() ^= 1; break;
+        case 6: bytes = {1, 0x83, 3}; crc(bytes); break;
+        default: bytes = reply({2999}); break;
+        }
+        supply(failed, bytes);
+        assert(failed.state == ReadState::FAILED && failed.effects == 1 && failed.uncertain);
+        assert(failed.progress[0].acknowledged && failed.progress[0].readbackKnown == (fault == 7));
+        assert(failed.outcome == (fault == 7 ? Ess::DriverOutcome::READBACK_MISMATCH : Ess::DriverOutcome::REPLY_ERROR));
+        assert(work(failed).kind == Ess::ActionWork::DONE);
+    }
+    auto unconfirmed = positionStartUpdate(); auto e = frame(unconfirmed, write, sizeof(write), 220);
+    e.responseConfirmed = false;
+    assert(Ess::advanceDriver(unconfirmed, e, 222));
+    assert(unconfirmed.outcome == Ess::DriverOutcome::UNCONFIRMED_RESPONSE && unconfirmed.uncertain && unconfirmed.effects == 1);
+    assert(work(unconfirmed).kind == Ess::ActionWork::DONE);
+}
+void testPositionStartSpeedCancellationAndTiming() {
+    const uint8_t write[] = {1, 6, 0, 0x20, 0x0B, 0xB8, 0x8F, 0x42};
+    auto c = positionStartUpdate(); const Saved<Ess::DriverContext> retained(c);
+    for (unsigned field = 0; field < 5; ++field) {
+        auto e = frame(c, write, sizeof(write), 220);
+        if (field == 0) e.transport.target.id++;
+        else if (field == 1) e.transport.target.address++;
+        else if (field == 2) e.transport.target.generation++;
+        else if (field == 3) e.transport.operationId++;
+        else e.transport.step++;
+        assert(!Ess::advanceDriver(c, e, 222)); retained.check(c);
+    }
+    for (ReadEventKind kind : {ReadEventKind::CANCEL, ReadEventKind::TRANSPORT_FAILURE, ReadEventKind::DEADLINE}) {
+        for (std::size_t accepted : {std::size_t(0), std::size_t(3), std::size_t(8)}) {
+            auto failed = positionStartUpdate(300); auto e = local(failed, kind);
+            e.transport.txAccepted = accepted; e.txComplete = accepted == 8;
+            e.transport.executionUnknown = accepted != 0;
+            assert(Ess::advanceDriver(failed, e, kind == ReadEventKind::DEADLINE ? 300 : 220));
+            assert(failed.state == ReadState::FAILED && failed.effects == (accepted ? 1u : 0u) && failed.uncertain == (accepted != 0));
+            assert(!failed.progress[0].acknowledged && !failed.progress[0].readbackKnown);
+            const Saved<Ess::DriverContext> terminal(failed);
+            assert(!Ess::advanceDriver(failed, frame(failed, write, sizeof(write), 220), 301)); terminal.check(failed);
+            assert(work(failed).kind == Ess::ActionWork::DONE);
+        }
+    }
+    auto cancelledReadback = positionStartUpdate(); supply(cancelledReadback, std::vector<uint8_t>(write, write + sizeof(write)));
+    assert(Ess::advanceDriver(cancelledReadback, local(cancelledReadback, ReadEventKind::CANCEL), 230));
+    assert(cancelledReadback.effects == 1 && cancelledReadback.uncertain && cancelledReadback.progress[0].acknowledged);
+
+    auto p = positionStartPrerequisites(); p.maxAgeUs = 200; p.triggerEarliestUs = p.triggerLatestUs = 90;
+    assert(Ess::prepareDriverSettings(c, target(), 12, positionStartRequest(), p, 200, 9000));
+    assert(Ess::driverWriteDeadline(c) == 290 && c.deadlineUs == 9000);
+    Ess::PreparedDriver rejected; rejected.reg = 123; const Saved<Ess::PreparedDriver> pending(rejected);
+    assert(!Ess::nextDriver(c, 290, rejected)); pending.check(rejected);
+    auto e = frame(c, write, sizeof(write), 290);
+    assert(Ess::advanceDriver(c, e, 292) && c.outcome == Ess::DriverOutcome::DEADLINE && c.uncertain);
+    assert(c.deadlineUs == 9000 && !c.progress[0].acknowledged);
+
+    auto ontime = positionStartUpdate(300); supply(ontime, std::vector<uint8_t>(write, write + sizeof(write)));
+    auto bytes = reply({3000}); e = frame(ontime, bytes.data(), bytes.size(), 299);
+    assert(Ess::advanceDriver(ontime, e, 9000) && ontime.state == ReadState::SUCCEEDED && !ontime.uncertain);
+    assert(ontime.deadlineUs == 300 && ontime.observations[1].latestUs == 300 && ontime.observations[1].deliveredUs == 9000);
+    auto late = positionStartUpdate(300); supply(late, std::vector<uint8_t>(write, write + sizeof(write)));
+    e = frame(late, bytes.data(), bytes.size(), 300);
+    assert(Ess::advanceDriver(late, e, 9000) && late.outcome == Ess::DriverOutcome::DEADLINE && late.uncertain);
+    auto delayedAck = positionStartUpdate(300); e = frame(delayedAck, write, sizeof(write), 220);
+    assert(Ess::advanceDriver(delayedAck, e, 9000) && delayedAck.outcome == Ess::DriverOutcome::DEADLINE);
+    assert(delayedAck.progress[0].acknowledged && delayedAck.uncertain && work(delayedAck).kind == Ess::ActionWork::DONE);
+}
 } // namespace
 static void testOptionalAgePolicy() {
     auto p = prerequisites(); p.maxAgeUs = 0;
@@ -386,4 +587,7 @@ int main() {
     testReadAndPairOrder(); testWholeCandidateAndPrerequisites(); testLimitDependencies();
     testProgressNoRollbackAndCopiedStorage(); testFaultsCancellationAndExpiry();
     testUnconfirmedReadEvidence();
+    testPositionStartSpeedSelectionAndAdmission();
+    testPositionStartSpeedEvidenceAndErrors();
+    testPositionStartSpeedCancellationAndTiming();
 }

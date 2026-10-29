@@ -143,3 +143,9 @@ DRIVE group retains its four read windows and seven writable fields; I/O has
 three gap-safe read windows and at most nine writes plus nine readbacks.
 Field/effect masks are 32 bits; the DRIVE and I/O groups use logical raw indices
 0..15, and copied reply capacity is 15 bytes. See [I/O API/lifetime and effects](ess_io.md).
+
+The one-field `DriverGroup::POSITION_START_SPEED` uses local bit0 and the same
+checked prior/update/readback engine. Native 0..3000 and input/trigger
+prerequisites are documented in [position start speed](ess_position.md#native-position-start-speed-setting).
+Its effects expire motion readiness without changing coordinate interpretation;
+it rejects the optional unconfirmed-echo/readback policy.

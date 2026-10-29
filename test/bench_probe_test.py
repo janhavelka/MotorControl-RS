@@ -186,6 +186,21 @@ def driver_terminal(request_id, update=False):
                      positive_bits=65538, negative_bits=196612, signed_limits="unresolved", native_scale="unresolved"))
 
 
+def position_start_speed_terminal(request_id):
+    """Independent FC03 prior FFFF, FC06 3000 and FC03 3000 vectors."""
+    item = driver_terminal(request_id, True)
+    item.update(type="motion-profile-start-speed", command="motion-profile-start-speed",
+                driver_group="position_start_speed", echo_readback_policy=False,
+                settlement="checked_ack_readback", requested_native=3000, physical_scaling_known=False,
+                prior=dict(operation_id=request_id + 100, raw=65535, known_fields=0,
+                           raw_hex="010302FFFFB9F4", attempted_us=700, earliest_us=800,
+                           latest_us=810, delivered_us=820))
+    item["progress"] = [[1, 0x20, 65535, 3000, True, True, 3000, False, 0, "acknowledged"]]
+    for row, raw in zip(item["evidence"], ("010600200BB88F42", "0103020BB8BF06")):
+        row[1] = 0x20; row[5] = raw; row[6] = len(raw) // 2
+    return item
+
+
 def typed_terminal(request_id, kind):
     """Literal independently reviewed windows/vectors, not firmware helpers."""
     fixtures = (
@@ -639,7 +654,7 @@ def operation_transcript(record, mutate=None, mutate_live=False):
     terminal = copy.deepcopy(record)
     terminal.update(id=2, command_id=2, operation_id=102)
     command = terminal["command"]
-    wire_command = {"velocity-read": "velocity", "home-read": "home"}.get(command,
+    wire_command = {"velocity-read": "velocity", "home-read": "home", "motion-profile-start-speed": "motion-profile"}.get(command,
         "read" if command in bench.TYPED_READS else "move" if command in bench.MOVE_COMMANDS else command)
 
     def handler(request_id, requested, args):
@@ -671,6 +686,8 @@ def check_fixture_routes(record, *, live_command=None):
     port = Serial()
     console = bench.Console(port, clock=clock, sleeper=clock.sleep)
     terminal = dict(copy.deepcopy(record), id=2, command_id=2, operation_id=102)
+    if terminal.get("driver_group") == "position_start_speed" and terminal["prior"]["operation_id"]:
+        terminal["prior"]["operation_id"] = 102
     if live_command is not None:
         terminal.update(command=live_command, type="read" if live_command in bench.TYPED_READS else live_command)
     original = bench.Command(console, 2, terminal["command"], 0, 1,
@@ -719,6 +736,7 @@ class Framing(unittest.TestCase):
         yield velocity_terminal(2), dict(velocity_args=self.VELOCITY_ARGS)
         yield home_terminal(2), dict(home_args=self.HOME_ARGS)
         yield driver_terminal(2), dict(driver_args=("read",))
+        yield position_start_speed_terminal(2), dict(host_args=("3000",))
 
     def test_all_operation_families_keep_live_retained_and_historical_routing(self):
         for terminal, arguments in self.routing_fixtures():
@@ -1296,6 +1314,46 @@ class Framing(unittest.TestCase):
         self.assertEqual(len(self.port.writes), 1)
         self.assertEqual(bench.driver_arguments(("set", "positive-limit", "9223372036854775807", "negative-limit", "-9223372036854775808")),
                          {"positive-limit": 2**63 - 1, "negative-limit": -2**63})
+
+    def test_position_start_speed_exact_grammar_and_one_attempt(self):
+        terminal = position_start_speed_terminal(2)
+        console = self.session(operation_transcript(terminal))
+        self.assertEqual(bench.position_start_speed_arguments(("0",)), 0)
+        self.assertEqual(bench.position_start_speed_arguments(("3000",)), 3000)
+        for invalid in (-1, 3001, 65535, 2**32, True, 0.5, "30", None):
+            with self.assertRaises(ValueError): console.set_position_start_speed(invalid)
+        for invalid in (None, (), ("-1",), ("0.5",), ("3001",), ("30", "extra"), ("٣٠",), (30,)):
+            with self.assertRaises(ValueError): console.begin("motion-profile-start-speed", host_args=invalid)
+        with self.assertRaises(ValueError):
+            console.begin("motion-profile-start-speed", host_args=("3000",), address=2)
+        self.assertEqual(len(self.port.writes), 1)
+        handle = console.begin("motion-profile-start-speed", host_args=("3000",))
+        self.assertEqual(console.wait(handle)["prior"]["raw"], 65535)
+        self.assertEqual(self.port.writes[-1], b"@2 motion-profile start-speed 3000\n")
+        result = console.command("result", operation_id=102)
+        self.assertEqual(result["progress"][0][6], 3000)
+        console.command("release", operation_id=102)
+        self.assertEqual(len(self.port.writes), 4)
+        self.assertFalse(console.operations)
+        console = self.session(operation_transcript(position_start_speed_terminal(2)))
+        self.assertTrue(console.set_position_start_speed(3000)["ok"])
+        self.assertEqual(self.port.writes, [b"@1 version\n", b"@2 motion-profile start-speed 3000\n", b"@3 release 102\n"])
+
+    def test_position_start_speed_strict_prior_and_interpretation(self):
+        terminal = position_start_speed_terminal(2)
+        bench.Console._check_driver(terminal, 1, ("3000",), "position_start_speed")
+        changes = [lambda t: t.update(physical_scaling_known=True), lambda t: t.update(echo_readback_policy=True),
+                   lambda t: t.update(requested_native=3001), lambda t: t["prior"].update(raw=1),
+                   lambda t: t["prior"].update(known_fields=1), lambda t: t["prior"].update(operation_id=103),
+                   lambda t: t["prior"].update(raw_hex="01030200017984"),
+                   lambda t: t["prior"].update(delivered_us=1001),
+                   lambda t: t["progress"][0].__setitem__(2, 1), lambda t: t["progress"][0].__setitem__(1, 0x10),
+                   lambda t: t.update(outcome="update_not_admitted", ok=False, state="failed", status="INVALID_CONFIG")]
+        for change in changes:
+            broken = copy.deepcopy(terminal); change(broken)
+            with self.assertRaises(bench.BenchError): bench.Console._check_driver(broken, 1, None, "position_start_speed")
+        with self.assertRaises(bench.BenchError):
+            bench.Console._check_driver(terminal, 1, ("2999",), "position_start_speed")
 
     def test_driver_read_update_and_retained_inspection_correlation(self):
         for update in (False, True):

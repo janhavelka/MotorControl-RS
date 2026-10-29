@@ -55,7 +55,7 @@ const Entry COMMANDS[] = {
     {"stepsperturn", Command::STEPS_PER_TURN, "stepsperturn POSITIVE_NUMBER", "host_command_scale_only_no_motor_settings", false, "Declare command steps per motor turn for angle conversion."},
     {"discover", Command::DISCOVER, "discover [profile ess_rs|manufacturer stepperonline] [addresses FIRST LAST] [tuple BAUD FORMAT] [query-ms 1..5000] [overall-ms 1..60000] [requests 1..256] [results 1..8] [identity] | discover inspect|cancel|restore|finish; max4 distinct tuples,128bytes,20tokens; defaults selected endpoint/current tuple,query500ms,overall5000ms,requests16,results8,no identity,no retries", "bounded_nonchanging_queries_retained_findings_host_restoration", true, "Find responding drives within explicit address, serial and time limits."},
     {"debug", Command::DEBUG, "debug [off|raw|decoded]", "observe_regular_operations_and_cached_diagnostics", false, "Show diagnostics; select raw or decoded traffic while ordinary commands run."},
-    {"motion-profile", Command::MOTION_PROFILE, "motion-profile read|inspect|restore|forget", "snapshot_position_parameters_restore_or_explicitly_release_snapshot", true, "Read, inspect or restore saved position parameters; forget releases the snapshot."},
+    {"motion-profile", Command::MOTION_PROFILE, "motion-profile read|inspect|restore|forget | motion-profile start-speed <native>", "snapshot_restore_or_explicit_native_start_speed_setting", true, "Read, inspect or restore position parameters; explicitly set native start speed; forget releases the snapshot."},
     {"help", Command::HELP, "help [command]", "show_callable_commands", false, "Show all commands once, or detailed syntax for one command."},
     {"version", Command::VERSION, "version", "show_build", false, "Show the firmware version and console protocol."},
     {"config", Command::CONFIG, "config", "show_host_settings", false, "Show the selected address and host communication settings."},
@@ -174,6 +174,7 @@ const char* driverOutcome(Ess::DriverOutcome outcome) {
     case Ess::DriverOutcome::TIMING_UNQUALIFIED: return "timing_unqualified";
     case Ess::DriverOutcome::UNCONFIRMED_RESPONSE: return "unconfirmed_response";
     case Ess::DriverOutcome::READBACK_MISMATCH: return "readback_mismatch";
+    case Ess::DriverOutcome::UPDATE_NOT_ADMITTED: return "update_not_admitted";
     } return "unknown";
 }
 
@@ -573,6 +574,17 @@ HelpText helpText(const Entry& entry, const Host& host) {
             text.description = "Request finite velocity with an explicit stop policy.";
             text.effect = "finite_serial_velocity_with_explicit_stop";
         }
+    } else if (entry.command == Command::MOTION_PROFILE) {
+        const bool setter = host.startDriver && host.snapshot;
+        if (!setter) {
+            text.syntax = "motion-profile read|inspect|restore|forget";
+            text.description = "Read, inspect or restore position parameters; forget releases the snapshot.";
+            text.effect = "snapshot_position_parameters_restore_or_explicitly_release_snapshot";
+        } else if (!host.motionProfile) {
+            text.syntax = "motion-profile start-speed <native>";
+            text.description = "Explicitly set the native position start-speed word.";
+            text.effect = "explicit_native_start_speed_setting";
+        }
     } else if (entry.command == Command::STATS) {
         if (!host.snapshot) text.syntax = "stats reset";
         else if (!host.resetStats) text.syntax = "stats";
@@ -788,7 +800,7 @@ void Console::error(uint32_t id, const char* command, const char* reason) noexce
 
 void Console::action(uint32_t id, const char* command, Action result, uint8_t address, uint32_t operationId) noexcept {
     const bool typed = std::strcmp(command, "read-identity") == 0 || std::strcmp(command, "read-config") == 0 || std::strcmp(command, "read-state") == 0 || std::strcmp(command, "velocity-read") == 0 || std::strcmp(command, "home-read") == 0;
-    const bool motor = std::strcmp(command, "enable") == 0 || std::strcmp(command, "motor-release") == 0 || std::strcmp(command, "alarm-clear") == 0 || std::strcmp(command, "position-clear") == 0 || std::strcmp(command, "stop") == 0 || std::strncmp(command, "move-", 5) == 0 || std::strcmp(command, "velocity") == 0 || std::strcmp(command, "driver") == 0 || (std::strcmp(command, "io") == 0 || std::strcmp(command, "segment") == 0 || std::strcmp(command, "control") == 0 || std::strcmp(command, "tuning") == 0);
+    const bool motor = std::strcmp(command, "motion-profile-start-speed") == 0 || std::strcmp(command, "enable") == 0 || std::strcmp(command, "motor-release") == 0 || std::strcmp(command, "alarm-clear") == 0 || std::strcmp(command, "position-clear") == 0 || std::strcmp(command, "stop") == 0 || std::strncmp(command, "move-", 5) == 0 || std::strcmp(command, "velocity") == 0 || std::strcmp(command, "driver") == 0 || (std::strcmp(command, "io") == 0 || std::strcmp(command, "segment") == 0 || std::strcmp(command, "control") == 0 || std::strcmp(command, "tuning") == 0);
     std::snprintf(output_, sizeof(output_),
         "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":%s,\"result\":\"%s\",\"address\":%u,\"operation_id\":%lu%s}",
         static_cast<unsigned long>(id), command, boolean(result == Action::OK),
@@ -1108,6 +1120,23 @@ void Console::dispatch() noexcept {
     }
     if (entry->command == Command::MOTION_PROFILE) {
         if (outputPending()) { ++inputDropped_; return; }
+        if (count >= first + 2 && !std::strcmp(tokens[first + 1], "start-speed")) {
+            const char* command = "motion-profile-start-speed";
+            if (!host_.startDriver || !host_.snapshot) { error(id, command, "unavailable"); return; }
+            uint32_t native = 0;
+            Ess::DriverRequest request;
+            if (count != first + 3 || !number(tokens[first + 2], native) ||
+                !Ess::preparePositionStartSpeed(request, native)) { error(id, command, "invalid_arguments"); return; }
+            Snapshot snapshot; host_.snapshot(host_.context, snapshot);
+            uint32_t operationId = 0;
+            const bool available = availableSlot() != OUTSTANDING_CAPACITY;
+            if (available) beginWork();
+            const Action result = available ? host_.startDriver(host_.context, id, snapshot.address,
+                Ess::DriverKind::UPDATE, request, operationId) : Action::BUSY;
+            if (result == Action::OK) track(id, operationId);
+            action(id, command, result, snapshot.address, result == Action::OK ? operationId : 0);
+            return;
+        }
         if (!host_.motionProfile) { error(id, "motion-profile", "unavailable"); return; }
         if (count != first + 2) { error(id, "motion-profile", "invalid_arguments"); return; }
         MotionProfileCommand command;
@@ -1838,7 +1867,7 @@ void Console::dispatch() noexcept {
         case Command::USEADDR: return host_.selectTarget != nullptr;
         case Command::WIRING: return host_.wiring != nullptr;
         case Command::DEBUG: return host_.debug && host_.snapshot;
-        case Command::MOTION_PROFILE: return host_.motionProfile != nullptr;
+        case Command::MOTION_PROFILE: return host_.motionProfile || (host_.startDriver && host_.snapshot);
         case Command::COMMUNICATION: return host_.communication != nullptr;
         case Command::PERSISTENCE: return host_.persistence != nullptr;
         case Command::DISCOVER: return host_.discovery != nullptr;
@@ -2258,7 +2287,8 @@ bool Console::formatDriver(uint32_t id, uint32_t commandId, uint32_t operationId
     const bool segment = c.group >= Ess::DriverGroup::POSITION_SEGMENT && c.group <= Ess::DriverGroup::SEGMENT_START_SPEED;
     const bool control = c.group == Ess::DriverGroup::CONTROL_SETTINGS;
     const bool tuning = Ess::isTuningGroup(c.group);
-    const char* command = tuning ? "tuning" : control ? "control" : segment ? "segment" : io ? "io" : "driver";
+    const bool position = c.group == Ess::DriverGroup::POSITION_START_SPEED;
+    const char* command = position ? "motion-profile-start-speed" : tuning ? "tuning" : control ? "control" : segment ? "segment" : io ? "io" : "driver";
     const uint64_t stationaryUntil = Ess::driverWriteDeadline(c);
     if (!append(output_, sizeof(output_), used,
         "{\"type\":\"%s\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"command_id\":%lu,\"operation_id\":%lu,\"driver\":true,\"driver_kind\":\"%s\",\"ok\":%s,\"state\":\"%s\",\"outcome\":\"%s\",\"status\":\"%s\",\"detail\":%ld,\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"started_us\":%llu,\"deadline_us\":%llu,\"stationary_valid_until_us\":%llu,\"serviced_us\":%llu,\"completed_steps\":%u,\"fields\":%u,\"effects\":%u,\"uncertain\":%s,\"atomic\":false,\"active_settings_known\":false,\"progress_columns\":[\"field\",\"register\",\"previous\",\"requested\",\"acknowledged\",\"readback_known\",\"readback\",\"active_known\",\"active\",\"execution\"],\"progress\":[",
@@ -2294,7 +2324,9 @@ bool Console::formatDriver(uint32_t id, uint32_t commandId, uint32_t operationId
     }
     if (!append(output_, sizeof(output_), used, "],\"observation\":")) return false;
     if (c.kind == Ess::DriverKind::READ && Ess::getDriver(c, driverView_)) {
-        if (io) {
+        if (position) {
+            if (!append(output_, sizeof(output_), used, "{\"raw\":[%u],\"known_fields\":%u}", driverView_.raw[0], driverView_.knownFields)) return false;
+        } else if (io) {
             const auto& v = driverView_;
             if (!append(output_, sizeof(output_), used, "{\"raw\":[%u,%u,%u,%u,%u,%u,%u,%u,%u],\"known_fields\":%u,\"unknown_input_polarity_bits\":%u,\"unknown_output_polarity_bits\":%u,\"unknown_custom_output_bits\":%u}",
                 v.raw[7], v.raw[8], v.raw[9], v.raw[10], v.raw[11], v.raw[12], v.raw[13], v.raw[14], v.raw[15], v.knownFields,
@@ -2330,8 +2362,18 @@ bool Console::formatDriver(uint32_t id, uint32_t commandId, uint32_t operationId
             static_cast<unsigned long>(v.positiveBits), static_cast<unsigned long>(v.negativeBits))) return false;
         }
     } else if (!append(output_, sizeof(output_), used, "null")) return false;
+    if (position) {
+        const auto& prior = c.prerequisites.previous;
+        const auto& e = prior.provenance[0];
+        char raw[Ess::DRIVER_MAX_REPLY_BYTES * 2 + 1]; hex(e.raw, e.length, raw, sizeof(raw));
+        if (!append(output_, sizeof(output_), used,
+            ",\"requested_native\":%u,\"physical_scaling_known\":false,\"prior\":{\"operation_id\":%lu,\"raw\":%u,\"known_fields\":%u,\"raw_hex\":\"%s\",\"attempted_us\":%llu,\"earliest_us\":%llu,\"latest_us\":%llu,\"delivered_us\":%llu}",
+            c.request.positionStartSpeed, static_cast<unsigned long>(prior.operationId), prior.raw[0], prior.knownFields, raw,
+            static_cast<unsigned long long>(e.attemptedUs), static_cast<unsigned long long>(e.earliestUs),
+            static_cast<unsigned long long>(e.latestUs), static_cast<unsigned long long>(e.deliveredUs))) return false;
+    }
     if (!append(output_, sizeof(output_), used, ",\"driver_group\":\"%s\",\"echo_readback_policy\":%s,\"settlement\":\"%s\"}",
-        tuning ? tuningName(c.group) : control ? "control_settings" : segment ? (c.group == Ess::DriverGroup::POSITION_SEGMENT ? "position_segment" : c.group == Ess::DriverGroup::SPEED_SEGMENT ? "speed_segment" : "segment_start_speed") : io ? "io" : "drive", boolean(c.prerequisites.allowEchoReadback), io || segment || control || tuning ? "stored_readback" : "checked_ack_readback")) return false;
+        position ? "position_start_speed" : tuning ? tuningName(c.group) : control ? "control_settings" : segment ? (c.group == Ess::DriverGroup::POSITION_SEGMENT ? "position_segment" : c.group == Ess::DriverGroup::SPEED_SEGMENT ? "speed_segment" : "segment_start_speed") : io ? "io" : "drive", boolean(c.prerequisites.allowEchoReadback), io || segment || control || tuning ? "stored_readback" : "checked_ack_readback")) return false;
     // Index belongs to the retained request context, separately from host correlation.
     if (segment) {
         used -= 1;

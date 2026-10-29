@@ -44,7 +44,8 @@ def check_inventory(root, listing, build):
     native = {p.stem[:-5]: p.stem for p in (root / "test").glob("*_test.cpp")}
     native.update({name: name+"_test" for name in
                    ("codec_independent", "probe_app_load", "idf_move_app",
-                    "idf_simple_motion_app", "idf_control_app", "idf_velocity_app", "idf_home_app")})
+                    "idf_simple_motion_app", "idf_control_app", "idf_velocity_app", "idf_home_app",
+                    "idf_position_start_speed_app")})
     native["units_preview"] = "units_preview"
     for name, binary in native.items():
         command = by_name.get(name, {}).get("command", [])
@@ -74,7 +75,10 @@ def check_inventory(root, listing, build):
         elif path.name.endswith("_console_parity_test.py") or path.name == "discovery_harness_test.py":
             target = "discovery_console_test" if path.name == "discovery_harness_test.py" else "probe_console_test"
             python_command(registered, path)
-            if len(registered["command"]) != 3 or Path(registered["command"][2]).resolve() != (build / (target+suffix)).resolve():
+            expected = [str((build / (target+suffix)).resolve())]
+            if path.name == "driver_console_parity_test.py":
+                expected.append(str((build / ("position_start_speed_app_test"+suffix)).resolve()))
+            if [str(Path(arg).resolve()) for arg in registered["command"][2:]] != expected:
                 raise RuntimeError(f"wrong console fixture: {path.name}")
         else:
             python_command(registered, path, [])

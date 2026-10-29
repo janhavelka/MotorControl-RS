@@ -4,6 +4,12 @@
 
 ### Added
 
+- Explicit native position start-speed setter (0..3000), retained prior read,
+  checked FC06 echo, independent readback and possible-write invalidation. Ordinary
+  app API and shared `motion-profile start-speed` use one bounded session; fixed
+  origins/desired values survive, while fresh motion evidence is required. No
+  motion, persistence, replay, rollback or profile-window expansion.
+
 - Typed seven-word homing-parameter read, ordinary application submit/copy/release
   and shared `home read` with strict host inspection. Preserves unknown codes and
   both raw offset words; known method membership is separate from existing

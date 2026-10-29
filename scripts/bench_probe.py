@@ -37,7 +37,7 @@ MAX_LINE = 8192
 MAX_INPUT = 32768
 MAX_TRAFFIC_INPUT = 1048576  # Independent finite diagnostic budget per command/drain.
 COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "health", "memory", "stats", "load",
-                      "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "communication", "persistence", "motion-profile", "debug",
+                      "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "communication", "persistence", "motion-profile", "motion-profile-start-speed", "debug",
                       "read-identity", "read-config", "read-state", "velocity-read", "home-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list"})
 MAX_COMMANDS = 11  # Eight ordinary operations, recovery, reserved stop and local query.
 MAX_OPERATIONS = 10  # Eight ordinary operations, one recovery and one reserved stop.
@@ -300,6 +300,15 @@ DRIVER_EVIDENCE_COLUMNS = ["step", "register", "count", "write", "event", "raw_h
 
 
 SEGMENT_GROUPS = {"position": "position_segment", "speed": "speed_segment", "start": "segment_start_speed"}
+
+
+def position_start_speed_arguments(arguments: tuple[str, ...]) -> int:
+    """One native 0..3000 word; selected-axis command, without unit conversion."""
+    if (not isinstance(arguments, tuple) or len(arguments) != 1 or
+            type(arguments[0]) is not str or re.fullmatch(r"[0-9]{1,10}", arguments[0]) is None or
+            int(arguments[0]) > 3000):
+        raise ValueError("position start speed requires one native integer within 0..3000")
+    return int(arguments[0])
 
 
 def segment_arguments(arguments: tuple[str, ...]) -> tuple[str, int, dict]:
@@ -649,9 +658,10 @@ class Console:
 
         group = item.get("driver_group", "drive")
         require(type(group) is str, "group differs from command")
+        position = group == "position_start_speed"
         segment = group in SEGMENT_GROUPS.values()
         tuning = group in TUNING_FIELDS
-        require(group in ("drive", "io", "control_settings", *SEGMENT_GROUPS.values(), *TUNING_FIELDS) and (expected_group is None or group == expected_group or expected_group == "segment" and segment or expected_group == "tuning" and tuning), "group differs from command")
+        require(group in ("drive", "io", "control_settings", "position_start_speed", *SEGMENT_GROUPS.values(), *TUNING_FIELDS) and (expected_group is None or group == expected_group or expected_group == "segment" and segment or expected_group == "tuning" and tuning), "group differs from command")
         if segment:
             require(integer(item.get("segment_index"), 16) and item["segment_index"] >= 1, "record index differs")
             require(item.get("execution_path") == "external_input" and item.get("storage_capacity") == 16 and item.get("maximum_input_selections") == 8, "invented segment execution")
@@ -670,6 +680,8 @@ class Console:
         registers = TUNING_REGISTERS[group] if tuning else CONTROL_REGISTERS if control else IO_REGISTERS if io else DRIVER_REGISTERS
         masks = tuple(1 << (index + (23 if control else 9 if io else 0)) for index in range(len(names)))
         windows = TUNING_WINDOWS[group] if tuning else CONTROL_WINDOWS if control else IO_WINDOWS if io else ((0x10, 2), (0x17, 3), (0x37, 4), (0x50, 2))
+        if position:
+            names, registers, windows, masks = ("native",), (0x20,), ((0x20, 1),), (1,)
         if segment:
             record_index = item["segment_index"]
             if group == "position_segment":
@@ -684,7 +696,7 @@ class Console:
                 base = 0x130 + record_index - 1
                 names, registers, windows, masks = ("value",), (base,), ((base, 1),), (1 << 21,)
         by_field = dict(zip(masks, zip(names, registers)))
-        read_steps, update_steps, raw_limit = len(windows), 2 * len(names), 15 if stored else 13
+        read_steps, update_steps, raw_limit = len(windows), 2 * len(names), 15 if stored or position else 13
         echo_policy = item.get("echo_readback_policy", False)
         require(type(echo_policy) is bool and (stored or not echo_policy), "echo readback policy differs")
         if stored:
@@ -695,6 +707,7 @@ class Console:
 
         def legal(field, value):
             name = by_field[field][0]
+            if position: return value <= 3000
             if segment: return value <= (180 if name == "value" else 3000 if name == "speed" else 2000)
             if tuning:
                 minimum, maximum = TUNING_RANGES[group][names.index(name)]
@@ -718,11 +731,22 @@ class Console:
                 item["started_us"] < item["stationary_valid_until_us"] <= item["deadline_us"] and
                 item["completed_steps"] <= update_steps and item["fields"] & ~sum(masks) == 0 and item["effects"] & ~item["fields"] == 0, "budget or field mask differs")
         require(type(item.get("uncertain")) is bool and item.get("atomic") is False and item.get("active_settings_known") is False, "activation/rollback claim is invalid")
+        transition_refused = position and item.get("driver_kind") == "read" and item.get("outcome") == "update_not_admitted"
+        outcomes = {"reply_error", "transport_error", "cancelled", "deadline", "timing_unqualified", "unconfirmed_response", "readback_mismatch"}
+        if transition_refused:
+            outcomes.add("update_not_admitted")
         require(item.get("state") == ("succeeded" if item["ok"] else "failed") and
-                item.get("outcome") in ({"success"} if item["ok"] else {"reply_error", "transport_error", "cancelled", "deadline", "timing_unqualified", "unconfirmed_response", "readback_mismatch"}) and
+                item.get("outcome") in ({"success"} if item["ok"] else outcomes) and
                 item.get("status") in {"OK", "INVALID_CONFIG", "ILLEGAL_VALUE", "UNSUPPORTED", "CRC_ERROR", "FRAME_ERROR", "EXCEPTION"} and
                 (item["ok"] == (item["status"] == "OK")) and type(item.get("detail")) is int, "terminal result differs")
-        parsed = None if arguments is None else driver_arguments(arguments, group)
+        if position:
+            requested = item.get("requested_native")
+            require(integer(requested, 3000) and item.get("physical_scaling_known") is False, "position start-speed meaning differs")
+            if arguments is not None:
+                require(position_start_speed_arguments(arguments) == requested, "position start-speed candidate changed")
+            parsed = {"native": requested} if item["driver_kind"] == "update" else {}
+        else:
+            parsed = None if arguments is None else driver_arguments(arguments, group)
         if parsed is not None:
             require(all(k in names for k in parsed), "unavailable field was admitted")
             mask = sum(masks[names.index(k)] for k in parsed)
@@ -814,7 +838,12 @@ class Console:
                         e["delivered_us"] < item["deadline_us"], "sequence continued after failure or without causal budget")
             successful_steps += good
         require(item["completed_steps"] == successful_steps and len(steps) <= total and
-                (item["ok"] or item["completed_steps"] < total), "completed progress contradicts terminal state")
+                (item["ok"] or item["completed_steps"] < total or transition_refused), "completed progress contradicts terminal state")
+        if transition_refused:
+            require(item["ok"] is False and item["status"] == "INVALID_CONFIG" and
+                    item["completed_steps"] == len(steps) == 1 and successful_steps == 1 and
+                    item["fields"] == item["effects"] == 0 and not fields and not item["uncertain"],
+                    "update refusal lacks a complete checked prior read without writes")
         if item["ok"]:
             require(not item["uncertain"] and item["detail"] == 0 and item["completed_steps"] == len(steps) == (read_steps if item["driver_kind"] == "read" else 2 * len(fields)) and
                     all(e["qualified"] and (e["response_confirmed"] or (stored and echo_policy and e["write"])) and e["status"] == "OK" and e["latest_us"] <= item["deadline_us"] for e, raw in steps), "success lacks complete checked evidence")
@@ -825,7 +854,10 @@ class Console:
             v = item.get("observation")
             require(isinstance(v, dict), "complete read observation is missing")
             words = [[int.from_bytes(raw[i:i+2], "big") for i in range(3, len(raw) - 2, 2)] for e, raw in steps]
-            if io:
+            if position:
+                values = words[0]
+                require(v.get("raw") == values and v.get("known_fields") == (1 if values[0] <= 3000 else 0), "position start-speed raw observation differs")
+            elif io:
                 values = words[0] + words[1] + words[2]
                 require(v.get("raw") == values and not any(k in v for k in ("positive_words", "negative_words", "pair_known", "positive_bits", "negative_bits", "signed_limits", "native_scale")), "IO observation invents drive limits")
                 known = sum(mask for mask, value in zip(masks, values) if legal(mask, value))
@@ -854,7 +886,7 @@ class Console:
             else:
                 require(v.get("signed_limits") == "unresolved" and v.get("native_scale") == "unresolved", "limit resolution was fabricated")
                 values = [words[0][0], words[0][1], words[1][2], words[1][1], words[1][0], words[3][1], words[3][0]]
-            if not stored:
+            if not stored and not position:
                 require(v.get("raw") == values and v.get("positive_words") == words[2][:2] and v.get("negative_words") == words[2][2:], "observation differs from raw replies")
                 known = sum(1 << i for i, value in enumerate(values) if (400 <= value <= 51200 if i == 1 else value <= 1))
                 require(v.get("known_fields") == known, "unknown enums were normalized")
@@ -864,7 +896,22 @@ class Console:
                     require(v.get("positive_bits") == pair(words[2][:2]) and v.get("negative_bits") == pair(words[2][2:]), "paired bits differ")
                 else: require(v.get("positive_bits") == v.get("negative_bits") == 0, "unknown word order was decoded")
         else: require(item.get("observation") is None, "partial update publishes a whole observation")
-        if not item["ok"]:
+        if position:
+            prior = item.get("prior")
+            require(isinstance(prior, dict) and all(integer(prior.get(k)) for k in
+                ("operation_id", "raw", "known_fields", "attempted_us", "earliest_us", "latest_us", "delivered_us")), "position prior evidence is missing")
+            require(integer(prior["raw"], 65535) and type(prior.get("raw_hex")) is str, "position prior word is invalid")
+            if item["driver_kind"] == "update":
+                require(prior["operation_id"] == item["operation_id"] and prior["known_fields"] == (1 if prior["raw"] <= 3000 else 0), "position prior correlation differs")
+                require(re.fullmatch(r"[0-9a-fA-F]{14}", prior["raw_hex"]) is not None, "position prior frame differs")
+                raw_prior = bytes.fromhex(prior["raw_hex"])
+                require(raw_prior[:3] == bytes((item["address"], 3, 2)) and wire_crc(raw_prior) == 0 and
+                    int.from_bytes(raw_prior[3:5], "big") == prior["raw"], "position prior checked word differs")
+                require(prior["attempted_us"] <= prior["earliest_us"] <= prior["latest_us"] <= prior["delivered_us"] <= item["started_us"], "position prior time differs")
+                require(all(p["previous"] == prior["raw"] for p in fields.values()), "position previous word changed")
+            else:
+                require(all(prior[k] == 0 for k in prior if k != "raw_hex") and prior["raw_hex"] == "", "unfinished prior read invents a published baseline")
+        if not item["ok"] and not transition_refused:
             require(bool(steps), "failure lacks terminal evidence")
             e, raw = steps[-1]
             deadline = item["stationary_valid_until_us"] if e["write"] else item["deadline_us"]
@@ -2053,7 +2100,7 @@ class Console:
         if (type(driver) is not bool or
                 (driver and (velocity or move_kind is not None or action_kind is not None
                              or recovery or capture_read or read_kind is not None)) or
-                (original is not None and driver != (original.command in ("driver", "io", "segment", "control", "tuning")))):
+                (original is not None and driver != (original.command in ("driver", "io", "segment", "control", "tuning", "motion-profile-start-speed")))):
             raise BenchError("result driver kind does not match retained operation")
         if (type(velocity) is not bool or
                 (velocity and (move_kind is not None or action_kind is not None
@@ -2096,9 +2143,12 @@ class Console:
                     expected_group = "drive"
                 elif original.command == "control":
                     expected_group = "control_settings"
+                elif original.command == "motion-profile-start-speed":
+                    expected_group = "position_start_speed"
                 else:
                     expected_group = original.command  # io, segment or tuning
-            self._check_driver(item, address, original.driver_args if original else None, expected_group)
+            arguments = original.host_args if original and original.command == "motion-profile-start-speed" else original.driver_args if original else None
+            self._check_driver(item, address, arguments, expected_group)
         elif velocity:
             self._check_velocity(item, address, original.velocity_args if original else None)
         elif move_kind is not None:
@@ -2139,7 +2189,7 @@ class Console:
         if self.clock() >= handle.deadline:
             raise BenchError("command response deadline expired; command was not replayed")
         self.emit("reply", response=item)
-        asynchronous = handle.command in (*READ_COMMANDS, *ACTION_COMMANDS, "recover", *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home")
+        asynchronous = handle.command in (*READ_COMMANDS, *ACTION_COMMANDS, "recover", *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home", "motion-profile-start-speed")
         if asynchronous:
             if item.get("type") == "reply" and not handle.accepted:
                 if not item["ok"]:
@@ -2148,7 +2198,7 @@ class Console:
                     return
                 if item.get("result") != "accepted":
                     raise BenchError(f"{handle.command} acceptance is not explicit")
-                if handle.command in (*READ_COMMANDS, *ACTION_COMMANDS, *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home"):
+                if handle.command in (*READ_COMMANDS, *ACTION_COMMANDS, *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home", "motion-profile-start-speed"):
                     address = item.get("address")
                     if (type(address) is not int or not 1 <= address <= 247
                             or (handle.address is not None and address != handle.address)):
@@ -2172,7 +2222,7 @@ class Console:
                 return
             expected_type = {"probe": "probe", "capture-read": "capture_read", "recover": "recovery",
                              **dict.fromkeys(TYPED_READS, "read"),
-                             **dict.fromkeys(ACTION_COMMANDS, "action"), **dict.fromkeys(MOVE_COMMANDS, "move"), "velocity": "velocity", "driver": "driver", "io": "io", "segment": "segment", "control": "control", "tuning": "tuning", "home": "home"}[handle.command]
+                             **dict.fromkeys(ACTION_COMMANDS, "action"), **dict.fromkeys(MOVE_COMMANDS, "move"), "velocity": "velocity", "driver": "driver", "io": "io", "segment": "segment", "control": "control", "tuning": "tuning", "home": "home", "motion-profile-start-speed": "motion-profile-start-speed"}[handle.command]
             if item.get("type") != expected_type or not handle.accepted:
                 raise BenchError(f"{handle.command} response sequence is invalid")
             if (not self._operation_id(item.get("operation_id"))
@@ -2283,6 +2333,8 @@ class Console:
             debug_arguments(host_args)
         elif command == "motion-profile":
             motion_profile_arguments(host_args)
+        elif command == "motion-profile-start-speed":
+            position_start_speed_arguments(host_args)
         elif command == "wiring":
             host_args = () if host_args is None else host_args
             wiring_arguments(host_args)
@@ -2392,6 +2444,7 @@ class Console:
             wire_command = "read " + TYPED_READS[command] if command in TYPED_READS else command
             if command == "velocity-read": wire_command = "velocity read"
             if command == "home-read": wire_command = "home read"
+            if command == "motion-profile-start-speed": wire_command = "motion-profile start-speed"
             if command == "profile-list": wire_command = "profile list"
             if command in MOVE_COMMANDS: wire_command = "move " + command[5:]
             payload = f"@{request_id} {wire_command}{suffix}\n".encode("ascii")
@@ -2469,6 +2522,16 @@ class Console:
         handle = self.begin(command, timeout_s=timeout_s, address=address, load=load,
                             operation_id=operation_id, monitor=monitor, host_args=host_args, stop_policy=stop_policy, move_args=move_args, velocity_args=velocity_args, driver_args=driver_args, home_args=home_args)
         return self.wait(handle, release=True)
+
+    def set_position_start_speed(self, native: int, *, timeout_s: float = 3.0) -> dict:
+        """One explicit selected-axis native setting attempt; retain evidence in
+        the returned terminal and explicitly release its application result.
+        No motion, physical-unit conversion, save, retry or rollback is implied.
+        Use begin/wait without release when continued device retention is needed.
+        """
+        if type(native) is not int or not 0 <= native <= 3000:
+            raise ValueError("position start speed must be a native integer within 0..3000")
+        return self.command("motion-profile-start-speed", host_args=(str(native),), timeout_s=timeout_s)
 
     def identify(self, *, timeout_s: float = 3.0) -> dict:
         response = self.command("version", timeout_s=timeout_s)

@@ -55,6 +55,12 @@ velocity. See [typed reads](../docs/ess_reads.md#native-velocity-parameter-read)
 records as seven raw words with retained inspection/release. It does not stage
 homing, assemble an offset, establish an origin or renew qualification.
 
+`bench_probe.Console.set_position_start_speed(native)` performs one explicit
+selected-axis native0..3000 setting attempt through `motion-profile start-speed`.
+It returns checked prior/echo/readback evidence and explicitly releases the result.
+`begin`/`wait` can retain the device result for inspection; neither path retries
+an uncertain write or qualifies physical speed/activation.
+
 ## Reference preparation
 
 `prepare_references.py` downloads the nine references listed in the source

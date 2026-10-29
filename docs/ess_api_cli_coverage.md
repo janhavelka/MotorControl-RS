@@ -34,9 +34,9 @@ remain NOT RUN. Raw DIP interpretation remains unresolved; reading a writable
 setting still creates no setter credit. The documented auxiliary INVALID value
 is explicitly no-operation metadata, not a missing command to implement.
 
-The checked inventory retains 221 records/242 words, 135 choices, 51 producing
-operation rows and seven named gaps. It accounts for 201 implemented reads and
-zero missing readable-record implementations; 170 implemented writes, two missing writes, three partial
+The checked inventory retains 221 records/242 words, 135 choices, 52 producing
+operation rows and six named gaps. It accounts for 201 implemented reads and
+zero missing readable-record implementations; 171 implemented writes, one missing write, three partial
 write registers and 18 guarded pair writes. Sixteen reserved records and two
 unspecified-access records remain visible. Choice totals are 81 implemented
 (including twelve decoders), 52 unimplemented/unresolved, one unsupported and
@@ -46,7 +46,7 @@ device or physical qualification.
 | Public role | Existing callable surface | Console relationship |
 | --- | --- | --- |
 | Typed device operations | ESS read/action/move/velocity/home/settings/communication/persistence preparations; common wrappers reuse ESS preparations | Producing common/profile routes call these functions through one application owner |
-| Typed position profile | `buildReadPositionProfile`, `parsePositionProfile`, `buildWritePositionProfile` | `motion-profile read/inspect/restore/forget` manage an original six-word snapshot; restore writes only `0x0021/5`, excluding observed start speed; arbitrary candidate/archive staging remains a named gap; forget is local release |
+| Typed position profile | `buildReadPositionProfile`, `parsePositionProfile`, `buildWritePositionProfile` | `motion-profile read/inspect/restore/forget` and `start-speed NATIVE` manage an original six-word snapshot; explicit start-speed uses its single-word settings operation; restore writes only `0x0021/5`; arbitrary candidate/archive staging remains a named gap; forget is local release |
 | Sequencers | `next*`, `advance*`, `serviceVelocity`, settings write deadline and persistence verification | Cooperatively executed by the owner; inspecting a context is not a second device operation |
 | Observations | Checked `getIdentity/getConfig/getStateBlock/getVelocityParameters/getHomingParameters`, settings observations, `checkProbe`, `getHomeReference` | Terminal/result/status formatting uses retained evidence; reads and cached inspection remain separate |
 | Host configuration | `validateAxisConfig/configureAxis/setAxisOrigin/invalidateAxisReference`; explicitly assumed bench units | Axis commands change host interpretation, with idle/reference/generation rules; no implicit device write |
@@ -172,7 +172,6 @@ The remaining gaps are tracked by feature, independently of hardware evidence:
 | Area | Open obligation | Actual boundary |
 | --- | --- | --- |
 | Position | Native ignore-versus-interrupt position command | Fixed noninterrupting triggers are implemented; bit 3 has no typed option or CLI route. Priority stop does not implement position interruption. |
-| Position | Native positioning start-speed setter | Profile snapshot reads start speed; restoration never writes it |
 | Position | Arbitrary native five-word profile candidates and archived restoration | Typed builder exists, but CLI restoration accepts only the volatile original snapshot; finite-move staging is not standalone parameter access |
 | Homing | Native auxiliary setter | Existing homing requires independently qualified active auxiliary 7 |
 | Homing | Remaining homing trajectories | Three methods implemented, 27 unimplemented, five unresolved; I/O configuration does not implement a switch trajectory |

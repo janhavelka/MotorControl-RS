@@ -64,7 +64,7 @@ guides define complete arguments and prerequisites.
 | `home read [address]` | One checked seven-word native parameter read; canonical `home-read`, no writes or qualification |
 | `home methods`, `home ...` | Method inventory and qualified [homing](ess_homing.md) |
 | `driver`, `io`, `segment`, `control`, `tuning` | Typed reads/whole-candidate updates; [driver](ess_driver_settings.md), [I/O](ess_io.md), [segments](ess_segments.md), [control](ess_control_settings.md), [tuning](ess_tuning.md) |
-| `motion-profile read\|inspect\|restore\|forget` | Retained position-parameter snapshot and explicit restoration |
+| `motion-profile read\|inspect\|restore\|forget` / `motion-profile start-speed NATIVE` | Retained position-parameter snapshot and explicit restoration |
 | `communication ...`, `persistence ...` | Explicit [drive communication](ess_communication.md) and [save/restore](ess_persistence.md) workflows |
 | `discover ...` | Bounded non-changing [scan](ess_discovery.md) |
 | `monitor [off\|INTERVAL_MS COUNT]` | Inspect or enable finite state polling; `off` cancels its local continuation |
@@ -188,10 +188,10 @@ detail. `debug raw|decoded` copies owner traffic without consuming protocol
 bytes or blocking transactions under output pressure. Dropped observations
 are counted. Debug mode uses the same production operation path.
 
-## Planned ESS completion routes (not implemented)
+## ESS completion routes and remaining plans
 
-Stage 01 fixes these spellings for the later implementation stages. Existing
-help/grammar and operation coverage stay unchanged until the routes exist.
+Stages 02, 03 and 04 are implemented. Other rows remain stage 01 plans;
+help/grammar and coverage change only when their producing routes exist.
 
 | Stage | Planned command | Ordinary application path |
 | --- | --- | --- |
@@ -212,7 +212,7 @@ validate admission, reserve the axis/result, obtain prior evidence and execute
 the existing setting engine within one unchanged deadline. Read failure emits
 no write. Results expose read versus update phase and preserve prior/echo/readback.
 
-The application header will expose these wrappers and terminal-only
+The application header exposes the implemented wrappers and terminal-only
 `releaseOperation`; anonymous `Host` callbacks alone do not provide a callable
 firmware API. Programmatic records retain ownership independently of the console
 and are never recycled as delivered human-command successes. Both frontends
@@ -221,7 +221,7 @@ Generalizing the current `programmaticMove` ownership flag must preserve exact
 kind checks in `moveProgress`/`releaseMove` and all new copy functions; another
 operation family's ID cannot be accepted as a move/read/setting/home result.
 
-Interrupt is the restricted [native contract](ess_position.md#planned-start-speed-setting-and-interruption-not-implemented),
+Interrupt is the restricted [native contract](ess_position.md#planned-position-interruption-not-implemented),
 with no changed target or silent staging. It accepts that a drive finishing
 before TX may execute a new stored start; ACK does not certify an interruption
 or arrival. Preserve original/replacement/stop result IDs and reserved stop

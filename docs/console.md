@@ -270,3 +270,16 @@ Normal stop allows up to three seconds of bounded status observation so the docu
 writes, with the reason shown. There is no silent slowdown. Use `speed 200`
 with subdivision 51200, or explicitly select a lower subdivision for higher rpm.
 Both ramps must be 100..2000 ms. See [shared policy and evidence](ess_position.md#default-position-operating-limits).
+
+## Native position start speed
+
+`motion-profile start-speed NATIVE` explicitly sets the selected axis's native
+0..3000 start-speed word. It reads the prior word, checks FC06 echo and obtains
+separate readback through the same callable application operation. Admission
+requires checked stopped/configuration/input evidence; invalid or extra tokens
+produce no traffic. Inspect/release its retained operation ID normally. It does
+not start motion, save parameters or qualify physical scaling/active behavior.
+A possible write expires readiness; fresh configuration/state/profile evidence
+must rebuild the native start-speed relationship before a move. Desired speed
+is never adjusted. Profile restore still excludes this word; see
+[position setting and restoration limits](ess_position.md#native-position-start-speed-setting).

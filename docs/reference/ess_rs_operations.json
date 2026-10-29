@@ -140,6 +140,7 @@
     "POSITION_SEGMENT_16_PULSES",
     "POSITION_SEGMENT_16_SPEED",
     "POSITION_SPEED",
+    "POSITION_START_SPEED",
     "POSITIVE_SOFT_LIMIT",
     "PULSE_LOW_PASS_FILTER",
     "PULSE_MEAN_FILTER",
@@ -2624,6 +2625,42 @@
         "reason": "Historical ordinary-firmware checked snapshot and exact restoration; no new-image or independent electrical/motion credit."
       },
       "reason": "Restricted whole-profile restoration via production owner: only the retained original0021/5 snapshot can be supplied. Arbitrary candidates or archived values cannot be staged through this CLI; see position_profile_candidate_staging. Observed start-speed0020 is never written. Matching stored readback does not prove persistence."
+    },
+    {
+      "id": "position_start_speed_write",
+      "kind": "WRITE",
+      "records": [
+        "POSITION_START_SPEED"
+      ],
+      "api": {
+        "header": "include/MotorControlRS/profiles/ess_rs/DriverSettings.h",
+        "symbols": [
+          "preparePositionStartSpeed",
+          "prepareDriverRead",
+          "getDriver",
+          "prepareDriverSettings",
+          "nextDriver",
+          "advanceDriver"
+        ]
+      },
+      "cli_commands": [
+        "motion-profile start-speed NATIVE"
+      ],
+      "implementation": "IMPLEMENTED",
+      "cli": "REACHABLE",
+      "native": {
+        "state": "PASS",
+        "evidence": [
+          "test/driver_settings_test.cpp",
+          "test/position_start_speed_app_test.cpp"
+        ]
+      },
+      "hardware": {
+        "state": "NOT_RUN",
+        "evidence": [],
+        "reason": "No new-image physical start-speed or activation evidence."
+      },
+      "reason": "Explicit native0..3000 FC06 update through the ordinary reserved prior-read/update/readback session. Stored state, effects and uncertainty are retained separately; no motion, save, replay, rollback or widened0021/5 window."
     }
   ],
   "coverage_notes": [
@@ -2663,18 +2700,6 @@
       "owner": "09/11",
       "disposition": "PARTIAL",
       "reason": "The public typed0021/5 builder accepts valid caller-supplied profiles, but the application/CLI exposes only restoration of its volatile original snapshot. General native parameter candidates and archived restoration after host restart require a bounded checked staging operation; no arbitrary CLI setter or archive import exists. Existing restricted restoration and finite-move staging do not close this obligation."
-    },
-    {
-      "id": "position_start_speed_write",
-      "records": [
-        "POSITION_START_SPEED"
-      ],
-      "kinds": [
-        "WRITE"
-      ],
-      "owner": "09/11",
-      "disposition": "NOT_IMPLEMENTED",
-      "reason": "No typed start-speed setter or CLI write; profile restore writes0021/5 only."
     },
     {
       "id": "homing_auxiliary_write",
@@ -3032,13 +3057,15 @@
         "prepareDriverRead",
         "prepareDriverSettings",
         "prepareInputFunction",
-        "prepareOutputFunction"
+        "prepareOutputFunction",
+        "preparePositionStartSpeed"
       ],
       "classification": "DEVICE_OPERATION",
       "reason": "Whole-candidate driver/I/O settings and checked retained readback; no implicit assignments.",
       "cli_topics": [
         "driver",
         "io",
+        "motion-profile",
         "profile",
         "result"
       ]

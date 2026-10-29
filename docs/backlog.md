@@ -36,15 +36,15 @@ review. These are future refactors, not unfinished prompts from the completed se
 
 ## Native ESS coverage
 
-The inventory still has **seven named native-family gaps and 18 guarded paired
+The inventory still has **six named native-family gaps and 18 guarded paired
 setters**. Their exact membership and source restrictions are maintained in
 [API coverage](ess_api_cli_coverage.md) and [paired writes](ess_pair_writes.md);
 the register catalogue alone is not semantic command coverage.
 
 [Stage 01 contracts](reports/2026-10-29_ess_software_contracts.md) were completed
 on 29 October 2026; no implementation/physical obligation was closed. Stage
-02 implements velocity reads and stage 03 implements homing reads. Stages 04/05
-reuse the setting sequencer, and 08-12 the reviewed homing qualification/observation
+02 implements velocity reads and stage 03 implements homing reads. Stage 04 implements the position start-speed setter; stage 05
+reuses the setting sequencer, and 08-12 the reviewed homing qualification/observation
 contract. N05's first implementable
 subset is native stored-profile start-or-interrupt with ACK-only result and no
 active setup writes. Arbitrary replacement still needs active-register
@@ -63,6 +63,9 @@ subset. Method28's exchanged branch drawings are recorded in the method guide.
   implementation and edge cases separately from physical qualification. Its
   corrections clarify numeric-policy flags and human/partial-host presentation;
   read/write/method coverage totals do not change.
+- [x] Implement native position start-speed setter (N04): explicit prior read,
+  FC06 echo and separate readback; fresh post-effect motion evidence is required.
+  Physical start-speed/activation checks remain NOT RUN.
 - [ ] Implement remaining standalone native staging, including
   restoring an arbitrary archived position profile without starting motion.
   Host reset loses the RAM backup; never replay a move as restoration.
@@ -199,3 +202,9 @@ functional evidence; independent shaft calibration remains absent.
 - [ ] Treat queued paths, online updates, blending, advanced ramps and
   coordinated axes as explicit capabilities with their own device and bus
   guarantees, not approximations of current finite position commands.
+
+Native position start-speed software is implemented through the ordinary
+prior-read/FC06/readback API and `motion-profile start-speed` route. Only N04's
+write gap closes; physical scaling, activation and persistence remain unqualified.
+The profile window/restore stays `0x0021/5`; archived candidate import is separate.
+See [stage 04 evidence](reports/2026-10-29_ess_position_start_speed.md).

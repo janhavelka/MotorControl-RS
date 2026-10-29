@@ -3,6 +3,7 @@
 #include "../common/Esp32S3Uart.h"
 #include <MotorControlRS/profiles/ess_rs/Position.h>
 #include <MotorControlRS/profiles/ess_rs/Reads.h>
+#include <MotorControlRS/profiles/ess_rs/DriverSettings.h>
 
 namespace MotorControlRSExample {
 /** Age-only expiry is opt-in. Zero keeps checked observations until invalidated
@@ -80,6 +81,22 @@ MotorControlRS::Status submitHomingParameterRead(uint32_t& operationId);
  * Historical target/configuration generations remain those admitted. Missing,
  * released or wrong-kind IDs preserve output. No traffic or result consumption. */
 bool copyReadResult(uint32_t operationId, MotorControlRS::ESS_RS::ReadContext& output);
+/** Explicit selected-axis native start-speed setting (0..3000). Requires checked
+ * configuration, stopped state, feedback and passive input/trigger policy before
+ * any traffic. One reserved result owns prior FC03, FC06 and separate readback
+ * under one immutable deadline. No motion, save, retry or rollback. Call from
+ * the service task; rejection preserves ID. Possible writes expire readiness,
+ * not the fixed host origin. Readback proves stored state, not physical RPM or
+ * activation. Retained results require releaseOperation, including failures.
+ */
+MotorControlRS::Status submitPositionStartSpeed(uint32_t native, uint32_t& operationId);
+/** Copy the current/terminal settings context directly into caller storage.
+ * kind=READ identifies an unfinished/failed prior read; UPDATE retains its prior
+ * in prerequisites.previous. UPDATE_NOT_ADMITTED retains a checked prior read
+ * when changed prerequisites/deadline prevent the update. No write follows it.
+ * Missing/released/wrong-kind IDs preserve output.
+ * No large temporary copy, traffic or result consumption. */
+bool copySettingsResult(uint32_t operationId, MotorControlRS::ESS_RS::DriverContext& output);
 /// Release any terminal ordinary operation after service has retained its result; no motor stop.
 bool releaseOperation(uint32_t operationId);
 }

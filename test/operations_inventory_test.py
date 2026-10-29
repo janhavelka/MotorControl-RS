@@ -61,7 +61,7 @@ class Coverage(unittest.TestCase):
         self.assertEqual((summary["records"], summary["reserved"], summary["unresolved_access"], summary["named_choices"]),
                          (221, 16, 2, 135))
         self.assertEqual(sum(count for state, count in summary["read"].items() if state in operations.IMPLEMENTATION), 201)
-        self.assertEqual(summary["write"]["NOT_IMPLEMENTED"], 2)
+        self.assertEqual(summary["write"]["NOT_IMPLEMENTED"], 1)
         self.assertEqual(summary["write"]["UNSUPPORTED"], 18)
         self.assertEqual(summary["action"]["IN_PROGRESS"], 2)
         linked = {record for group in INVENTORY["operations"] for record in group["records"]}
@@ -295,12 +295,19 @@ class Coverage(unittest.TestCase):
         self.rejected(lambda value: update(value).update(cli_commands=["driver set invented garbage"]))
         self.rejected(lambda value: update(value).update(cli_commands=["driver set invented INTEGER"]))
 
-    def test_position_profile_read_restore_do_not_claim_start_speed_write(self):
+    def test_only_explicit_start_speed_route_claims_its_write(self):
         result = operations.check(INVENTORY, LEDGER)
         rows = {row["id"]: row for row in result["records"]}
         self.assertEqual(rows["POSITION_START_SPEED"]["obligations"]["read"], "IMPLEMENTED")
-        self.assertEqual(rows["POSITION_START_SPEED"]["obligations"]["write"], "NOT_IMPLEMENTED")
-        self.assertEqual(rows["POSITION_START_SPEED"]["gaps"], ["position_start_speed_write"])
+        self.assertEqual(rows["POSITION_START_SPEED"]["obligations"]["write"], "IMPLEMENTED")
+        self.assertEqual(rows["POSITION_START_SPEED"].get("gaps", []), [])
+        setter = next(row for row in INVENTORY["operations"] if row["id"] == "position_start_speed_write")
+        self.assertEqual(setter["cli_commands"], ["motion-profile start-speed NATIVE"])
+        self.assertEqual(setter["hardware"]["state"], "NOT_RUN")
+        for route in ("motion-profile inspect", "motion-profile forget", "motion-profile start-speed",
+                      "motion-profile start-speed INTEGER extra", "motion-profile start-speed garbage"):
+            self.rejected(lambda value: next(row for row in value["operations"]
+                if row["id"] == "position_start_speed_write").update(cli_commands=[route]))
         restored = next(row for row in INVENTORY["operations"] if row["id"] == "position_profile_restore")
         self.assertNotIn("POSITION_START_SPEED", restored["records"])
         self.assertEqual(restored["cli_commands"], ["motion-profile restore"])
@@ -309,7 +316,7 @@ class Coverage(unittest.TestCase):
         self.assertEqual(gap["disposition"], "PARTIAL")
         self.assertEqual(set(gap["records"]), set(restored["records"]))
         self.assertIn("volatile original snapshot", gap["reason"])
-        self.assertEqual(result["summary"]["named_gaps"], 7)
+        self.assertEqual(result["summary"]["named_gaps"], 6)
 
     def test_profile_snapshot_inspection_and_forget_do_not_produce_device_coverage(self):
         restored = lambda value: next(row for row in value["operations"] if row["id"] == "position_profile_restore")

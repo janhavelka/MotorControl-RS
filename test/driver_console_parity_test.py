@@ -54,3 +54,41 @@ for line in output.splitlines():
                 raise AssertionError((name, "successful evidence disguised as failure", outcome))
 assert seen == expected, (seen, expected)
 print(f"PASS: {len(seen)} actual core/console driver terminals accepted by Python")
+
+if len(sys.argv) > 2:
+    expected = {"success", "prior_exception", "readback_mismatch", "lost_ack", "cancelled", "changed_generation"}
+    output = subprocess.check_output([sys.argv[2], "--start-speed-fixtures"], text=True, timeout=20)
+    seen = set()
+    for line in output.splitlines():
+        fixture = json.loads(line, object_pairs_hook=unique_object)
+        name, record = fixture["case"], fixture["record"]
+        assert name in expected and name not in seen, name
+        assert len(json.dumps(record, separators=(",", ":"))) < MAX_LINE
+        Console._check_driver(record, 1, ("3000",), "position_start_speed")
+        check_fixture_routes(record)
+        for mutate in (lambda r: r.update(physical_scaling_known=True),
+                       lambda r: r.update(echo_readback_policy=True),
+                       lambda r: r.update(requested_native=3001),
+                       lambda r: r["evidence"][0].__setitem__(1, 0x21),
+                       lambda r: r.update(driver_group="drive")):
+            broken = copy.deepcopy(record); mutate(broken)
+            try:
+                Console._check_driver(broken, 1, ("3000",), "position_start_speed")
+            except BenchError:
+                pass
+            else:
+                raise AssertionError((name, "malformed start-speed evidence accepted"))
+        if record["driver_kind"] == "update":
+            for mutate in (lambda r: r["prior"].update(raw_hex="00"),
+                           lambda r: r["prior"].update(raw=1),
+                           lambda r: r["prior"].update(operation_id=0)):
+                broken = copy.deepcopy(record); mutate(broken)
+                try:
+                    Console._check_driver(broken, 1, None, "position_start_speed")
+                except BenchError:
+                    pass
+                else:
+                    raise AssertionError((name, "missing prior provenance accepted"))
+        seen.add(name)
+    assert seen == expected, (seen, expected)
+    print(f"PASS: {len(seen)} actual app/console start-speed terminals accepted by Python")

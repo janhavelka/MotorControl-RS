@@ -13,7 +13,7 @@ constexpr uint8_t DRIVER_READ_STEPS = 4;
 constexpr uint8_t DRIVER_MAX_STEPS = 18;
 constexpr std::size_t DRIVER_MAX_REPLY_BYTES = 15;
 enum class DriverGroup : uint8_t { DRIVE, IO, POSITION_SEGMENT, SPEED_SEGMENT, SEGMENT_START_SPEED, CONTROL_SETTINGS,
-    FILTERS, CURRENT_LOOP, LA, COLLISION };
+    FILTERS, CURRENT_LOOP, LA, COLLISION, POSITION_START_SPEED };
 enum class DriverField : uint32_t {
     DIRECTION = 1, SUBDIVISION = 2, WORD_ORDER = 4, SOFT_LIMIT_ENABLE = 8,
     OVER_LIMIT_STOP = 16, INTERRUPTION = 32, POSITION_MODE = 64,
@@ -32,7 +32,8 @@ enum class DriverField : uint32_t {
 enum class DriverKind : uint8_t { READ, UPDATE };
 enum class DriverOutcome : uint8_t {
     NONE, SUCCESS, REPLY_ERROR, TRANSPORT_ERROR, CANCELLED, DEADLINE,
-    TIMING_UNQUALIFIED, UNCONFIRMED_RESPONSE, READBACK_MISMATCH
+    TIMING_UNQUALIFIED, UNCONFIRMED_RESPONSE, READBACK_MISMATCH,
+    UPDATE_NOT_ADMITTED ///< Application prior-read/update session retained the read, but rejected update admission; no write.
 };
 enum class DriverError : int32_t {
     INVALID_TARGET, INVALID_OPERATION, INVALID_DEADLINE, INVALID_STATE,
@@ -54,6 +55,7 @@ struct DriverRequest {
     DriverGroup group = DriverGroup::DRIVE;
     uint32_t fields = 0;
     uint32_t configurationGeneration = 0;
+    uint16_t positionStartSpeed = 0; ///< POSITION_START_SPEED local bit 0; native 0..3000, physical scaling unresolved.
     DefaultDirection direction = DefaultDirection::NORMAL;
     uint16_t subdivision = 400;
     WordOrder wordOrder = WordOrder::HIGH_WORD_FIRST;
@@ -96,7 +98,9 @@ struct DriverEvidence {
  * direction, subdivision, word-order, soft-enable, over-limit, PV trigger,
  * external position mode, input polarity, four input functions, output polarity,
  * two output functions and custom-output mask. DRIVE and IO populate separate
- * groups. knownFields means resolved legal codes, never active settings.
+ * groups. POSITION_START_SPEED uses raw[0] and local knownFields bit 0 for
+ * native 0..3000; unknown prior words remain readable. knownFields means
+ * resolved legal codes/native domain, never active settings or physical units.
  * Limits assemble unsigned bits only; signed meaning/native scale are unresolved. */
 struct DriverObservation {
     DriverGroup group = DriverGroup::DRIVE;
@@ -147,7 +151,9 @@ struct DriverPrerequisites {
      * readback. It never becomes an acknowledgement or proves activation. */
     bool allowEchoReadback = false;
     /** Independent qualification that external execution cannot occur during
-     * this exact segment candidate. No input is silently disabled. */
+     * this segment or position-start-speed update. POSITION_START_SPEED also
+     * requires inputsPermit; qualifiedSegment applies only to segment groups.
+     * No input is silently disabled. */
     bool externalTriggerInhibitedQualified = false;
     ReadTarget triggerTarget;
     uint32_t triggerConfigurationGeneration = 0;
@@ -245,9 +251,17 @@ Status getDriver(const DriverContext&, DriverObservation&) noexcept;
 /** Logical raw/progress indices 0..6 are DRIVE, 7..15 are IO; pairs have no
  * logical writable index. Segment groups use local indices 0..2 (shared start
  * speed only 0). Tuning groups use local bits 0..count-1, interpreted with their
- * group rather than the named global DriverField values. An out-of-range index
+ * group rather than the named global DriverField values. POSITION_START_SPEED
+ * uses only local bit 0. An out-of-range index
  * returns the empty field. */
 DriverField driverFieldAt(uint8_t index, DriverGroup group = DriverGroup::DRIVE) noexcept;
+/** Select the single POSITION_START_SPEED native word (0..3000) before narrowing.
+ * Accepts an empty request or an existing selection of this same field; other
+ * selections and invalid values preserve request. Retains configurationGeneration.
+ * Does not qualify physical RPM, activation or persistence. Execute through
+ * prepareDriverRead/getDriver and prepareDriverSettings/nextDriver/advanceDriver.
+ */
+Status preparePositionStartSpeed(DriverRequest&, uint32_t native) noexcept;
 /** These setters select the same checked update engine; UNDEFINED explicitly
  * assigns function zero. Bounds/choices fail without changing the request. */
 Status prepareInputFunction(DriverRequest&, uint8_t terminal, InputFunction) noexcept;
