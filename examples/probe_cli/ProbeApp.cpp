@@ -135,6 +135,7 @@ struct App {
         bool singleSettingSession = false, programmaticSettings = false;
         uint16_t requestedSetting = 0; ///< Frozen across prior read and update.
         ESS::HomeContext home;
+        bool programmaticHome = false;
     } records[REQUEST_CAPACITY + 2]; // Dedicated monitor and urgent-stop frontend reservations.
     Probe::StateCache stateCache;
     Probe::MonitorSnapshot monitorState;
@@ -334,6 +335,7 @@ void invalidateAxis(App& a, const App::Record* changing = nullptr, uint64_t samp
          (record.kind == App::OperationKind::DRIVER && record.driver.kind == ESS::DriverKind::UPDATE) ||
          (record.kind == App::OperationKind::TYPED_READ && record.read.kind == ESS::ReadKind::STATE)) && !terminal(a, record)) {
         record.cancelContinuation = true;
+        if (record.kind == App::OperationKind::HOME) ESS::revokeHome(record.home);
         if (record.requestId.owner) a.owner.cancelUnsent(record.requestId, sampled);
     }
 }
@@ -834,6 +836,7 @@ Probe::Action startAction(void* context, uint32_t commandId, uint8_t address,
             if (&interrupted == record || !sequenced(interrupted) || interrupted.address != address ||
                 terminal(a, interrupted)) continue;
             interrupted.cancelContinuation = true;
+            if (interrupted.kind == App::OperationKind::HOME) ESS::revokeHome(interrupted.home);
             interrupted.interruptedByStop = true;
             if (interrupted.requestId.owner) a.owner.cancelUnsent(interrupted.requestId, now);
         }
@@ -1073,6 +1076,82 @@ Probe::Action admitHomeStep(App& a, App::Record& record, const ESS::PreparedHome
     }
     return admissionResult(a.owner.admit(request, now, record.requestId));
 }
+// Enrich a copy with real observations. Never modify or renew supplied facts.
+bool homeReadiness(const App& a, ESS::HomePrerequisites& p, uint64_t now) {
+    using MotorControlRS::evidenceAgeValid;
+    const auto& config = a.configuration;
+    const auto& parameters = a.homingParameters;
+    if (!a.axis.generation || p.configurationGeneration != a.axis.generation ||
+        !Probe::sameTarget(p.target, a.axis.target) || !config.operationId ||
+        !Probe::sameTarget(config.target, p.target) || config.unknownPolarityBits ||
+        !parameters.operationId || parameters.configurationGeneration != p.configurationGeneration ||
+        !Probe::sameTarget(parameters.target, p.target) ||
+        parameters.rawAuxiliary != static_cast<uint16_t>(p.auxiliary) ||
+        parameters.rawMethod != static_cast<uint16_t>(p.qualifiedMethod) ||
+        parameters.rawSearchSpeed != p.qualifiedSearchSpeed || parameters.rawReturnSpeed != p.qualifiedReturnSpeed ||
+        parameters.rawRampTime != p.qualifiedRampTime || parameters.rawOffsetWords[0] || parameters.rawOffsetWords[1] ||
+        p.inputPolarity != config.raw.inputPolarity) return false;
+    for (uint8_t i = 0; i < 4; ++i)
+        if (!config.inputFunctionKnown[i] || p.inputFunctions[i] != config.raw.inputFunctions[i] ||
+            p.inputWiring[i] != config.wiring[i] || p.inputWiring[i] != a.inputWiring[i]) return false;
+    p.readbackObservedUs = now;
+    auto checked = [&](const ESS::ReadStepObservation& e) {
+        p.readbackObservedUs = std::min(p.readbackObservedUs, e.attemptedUs);
+        return e.qualified && e.status && e.attemptedUs <= e.earliestUs && e.earliestUs <= e.latestUs &&
+            e.latestUs <= now && evidenceAgeValid(e.attemptedUs, now, p.maximumAgeUs);
+    };
+    for (const auto& e : config.provenance) if (!checked(e)) return false;
+    if (!checked(parameters.provenance)) return false;
+    const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+    const auto& io = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
+    if (!Probe::current(motion, p.target) || !Probe::current(io, p.target) ||
+        motion.value.configOperationId != config.operationId || io.value.configOperationId != config.operationId ||
+        !evidenceAgeValid(motion.observedEarliestUs, now, p.maximumAgeUs) ||
+        !evidenceAgeValid(io.observedEarliestUs, now, p.maximumAgeUs) ||
+        motion.value.unknownMotionBits || io.value.unknownInputBits || motion.value.rawAlarm ||
+        (motion.value.rawMotion & 0x7C)) return false;
+    p.observedUs = motion.observedEarliestUs; p.ioObservedUs = io.observedEarliestUs;
+    p.rawAlarm = motion.value.rawAlarm; p.rawMotion = motion.value.rawMotion;
+    p.rawInputs = io.value.rawInputs; p.observeInputs = true;
+    return ESS::checkHomeQualification(p, now).isOk();
+}
+void revokeActiveHomes(App& a, uint64_t now) {
+    for (auto& r : a.records) if (r.kind == App::OperationKind::HOME && r.home.state == MotorControlRS::ActionState::ACTIVE) {
+        ESS::revokeHome(r.home); r.cancelContinuation = true;
+        if (r.requestId.owner) a.owner.cancelUnsent(r.requestId, now);
+    }
+}
+// Run before owner dispatch and before consuming completions. Our own staging
+// invalidates live caches and consumes the future slot, not the admitted facts.
+void cancelInvalidHomes(App& a, uint64_t now) {
+    for (auto& r : a.records) if (r.kind == App::OperationKind::HOME && r.home.state == MotorControlRS::ActionState::ACTIVE) {
+        bool invalid = r.cancelContinuation || r.home.qualificationRevoked || !a.axis.generation ||
+            r.configurationGeneration != a.axis.generation || r.home.target.generation != a.bindingGeneration ||
+            r.serialGeneration != a.serial.generation;
+        if (!invalid && !r.effectsInvalidated && (!r.requestId.owner || !a.owner.txAccepted(r.requestId))) {
+            auto p = r.home.prerequisites;
+            invalid = !homeReadiness(a, p, now);
+        }
+        // Own staging invalidates older snapshots; it cannot hide a later
+        // independently checked contradiction. Do not renew admitted ages or
+        // require ordinary reads to witness trajectory edges.
+        const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+        if (!invalid && Probe::current(motion, r.home.target) && motion.observedEarliestUs > r.home.startedUs) {
+            const bool runningForbidden = r.home.step < 2 || r.home.request.method == ESS::HomingMethod::METHOD_35;
+            invalid = motion.value.unknownMotionBits || motion.value.rawAlarm ||
+                (motion.value.rawMotion & (runningForbidden ? 0x7C : 0x78));
+        }
+        const auto& io = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
+        if (!invalid && Probe::current(io, r.home.target) && io.observedEarliestUs > r.home.startedUs) {
+            auto p = r.home.prerequisites; p.rawInputs = io.value.rawInputs;
+            invalid = io.value.unknownInputBits || !ESS::checkHomeQualification(p, r.home.startedUs);
+        }
+        if (invalid) {
+            ESS::revokeHome(r.home); r.cancelContinuation = true;
+            if (r.requestId.owner) a.owner.cancelUnsent(r.requestId, now);
+        }
+    }
+}
 Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
                         const ESS::HomeRequest& supplied, uint32_t& operationId) {
     using namespace MotorControlRS;
@@ -1098,12 +1177,7 @@ Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
     if (!record) return Probe::Action::RESULTS_FULL;
     const uint64_t now = uart.sample();
     auto prerequisites = a.homePrerequisites;
-    const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
-    if (!Probe::fresh(motion, a.axis.target, now, prerequisites.maximumAgeUs)) prerequisites.readinessQualified = false;
-    else {
-        prerequisites.rawAlarm = motion.value.rawAlarm; prerequisites.rawMotion = motion.value.rawMotion;
-        prerequisites.observedUs = motion.observedEarliestUs;
-    }
+    if (!homeReadiness(a, prerequisites, now)) return Probe::Action::UNAVAILABLE;
     ESS::HomeRequest request = supplied;
     if (!request.configurationGeneration) request.configurationGeneration = a.axis.generation;
     const uint64_t deadline = now + 3000000;
@@ -1821,6 +1895,17 @@ void reconcileHomingParameters(App& a, const App::Record& record) {
     if (offsetChanged) p.zeroOffsetQualified = false;
     if (auxiliaryChanged || methodChanged || offsetChanged) p.referenceSemanticsQualified = false;
     if (auxiliaryChanged || methodChanged || ratesChanged || rampChanged || offsetChanged) p.readinessQualified = false;
+    for (auto& active : a.records) if (active.kind == App::OperationKind::HOME &&
+        active.home.state == MotorControlRS::ActionState::ACTIVE) {
+        const auto& admitted = active.home.prerequisites;
+        if (observed.rawAuxiliary != static_cast<uint16_t>(admitted.auxiliary) ||
+            observed.rawMethod != static_cast<uint16_t>(admitted.qualifiedMethod) ||
+            observed.rawSearchSpeed != admitted.qualifiedSearchSpeed || observed.rawReturnSpeed != admitted.qualifiedReturnSpeed ||
+            observed.rawRampTime != admitted.qualifiedRampTime || observed.rawOffsetWords[0] || observed.rawOffsetWords[1]) {
+            ESS::revokeHome(active.home); active.cancelContinuation = true;
+            if (active.requestId.owner) a.owner.cancelUnsent(active.requestId, nowUs());
+        }
+    }
     a.homingParameters = observed;
 }
 // Consume one retained transaction per operation per loop. Intermediate evidence
@@ -2030,6 +2115,7 @@ bool invalidatesMotion(const App::Record& record) {
     return false;
 }
 void advanceActions(App& a, uint64_t now) {
+    cancelInvalidHomes(a, now);
     for (auto& record : a.records) {
         if (record.discoveryStop && a.discovery.owned) {
             if (now < record.deadlineUs) continue;
@@ -2349,7 +2435,11 @@ Probe::Action cancel(void* context, uint32_t operationId) {
             }
         }
         record->cancelContinuation = true;
-        if (record->requestId.owner) a.owner.cancel(record->requestId, uart.sample());
+        if (record->kind == App::OperationKind::HOME) ESS::revokeHome(record->home);
+        if (record->requestId.owner) {
+            if (record->kind == App::OperationKind::HOME) a.owner.cancelUnsent(record->requestId, uart.sample());
+            else a.owner.cancel(record->requestId, uart.sample());
+        }
         else {
             advanceOperation(*record, actionEvent(*record, ReadEventKind::CANCEL), nowUs());
             updateActionReservation(a, *record);
@@ -2602,6 +2692,12 @@ Probe::Host host(App* a) {
     h.startTypedRead = typedRead;
     h.beginInteractiveWork = recycleInteractiveResults;
     h.startAction = startAction; h.startMove = startMove; h.startVelocity = startVelocity; h.startDriver = startDriver; h.startHome = startHome;
+    h.inspectHomeQualification = [](void* context, ESS::HomePrerequisites& output, bool& valid) {
+        const auto& a = *static_cast<App*>(context);
+        if (!a.homePrerequisites.target.id) return false;
+        auto checked = a.homePrerequisites;
+        valid = homeReadiness(a, checked, nowUs()); output = a.homePrerequisites; return true;
+    };
     h.startPositionInterrupt = startPositionInterrupt;
     h.simpleMotion = simpleMotion;
     h.monitor = monitor; h.motionProfile = motionProfileCommand; h.debug = debugCommand;
@@ -2621,7 +2717,7 @@ void recycleInteractiveResults(void* context) {
     // JSON/API results and failures remain explicitly retained.
     if (a.outputCount || a.console.outputPending()) return;
     for (auto& r : a.records) {
-        if (!r.interactive || !r.delivered || r.simpleChild || r.programmaticRead || r.programmaticSettings ||
+        if (!r.interactive || !r.delivered || r.simpleChild || r.programmaticRead || r.programmaticSettings || r.programmaticHome ||
             r.moveRelation.originalOperationId || r.axisReserved || r.motionUnresolved) continue;
         bool success = false;
         switch (r.kind) {
@@ -2655,7 +2751,7 @@ void deliver(App& a) {
         case App::OperationKind::EMPTY: continue;
         case App::OperationKind::TRANSACTION: break;
         case App::OperationKind::HOME: {
-            if (!a.console.reportHome(record.commandId, record.operationId, record.home, record.interruptedByStop, &record.serialTuple, record.serialGeneration)) continue;
+            if (!record.programmaticHome && !a.console.reportHome(record.commandId, record.operationId, record.home, record.interruptedByStop, &record.serialTuple, record.serialGeneration)) continue;
             record.delivered = true; record.deliveredUs = nowUs(); continue;
         }
         case App::OperationKind::DRIVER: {
@@ -2945,6 +3041,53 @@ bool copySettingsResult(uint32_t operationId, MotorControlRS::ESS_RS::DriverCont
     if (!record || record->kind != App::OperationKind::DRIVER) return false;
     output = record->driver; return true;
 }
+MotorControlRS::Status installHomeQualification(const ESS::HomePrerequisites& supplied) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    App& a = *app;
+    if (a.owner.active() || a.owner.pending() || a.owner.recovering() || a.owner.configurationOwned() ||
+        a.owner.commissioningOwned() || a.discovery.owned || a.serial.configuring || a.serial.blocked ||
+        axisReserved(a) || reading(a) || acting(a))
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(Probe::Action::BUSY), "home qualification requires idle application");
+    auto checked = supplied;
+    if (!homeReadiness(a, checked, uart.sample()))
+        return Status(Err::INVALID_CONFIG, 0, "home qualification requires exact supplied facts and checked configuration/state/parameters");
+    // Retain supplied timestamps/facts exactly; live observations are refreshed
+    // only into the immutable admitted copy at submit time.
+    a.homePrerequisites = supplied;
+    return Ok();
+}
+bool inspectHomeQualification(ESS::HomePrerequisites& output, bool& valid) {
+    if (!app || !app->homePrerequisites.target.id) return false;
+    auto checked = app->homePrerequisites;
+    valid = homeReadiness(*app, checked, nowUs());
+    output = app->homePrerequisites; return true;
+}
+MotorControlRS::Status revokeHomeQualification() {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    app->homePrerequisites = ESS::HomePrerequisites();
+    revokeActiveHomes(*app, uart.sample());
+    // Historical completed contexts remain immutable; a retained current
+    // reference is no longer usable after its external qualification is revoked.
+    app->coordinateReference.nativeKnown = false;
+    return Ok();
+}
+MotorControlRS::Status submitHome(const ESS::HomeRequest& request, uint32_t& operationId) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    const auto result = startHome(app, 0, app->axis.target.address, request, operationId);
+    if (result != Probe::Action::OK)
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(result), "home not admitted");
+    findRecord(*app, operationId)->programmaticHome = true;
+    return Ok();
+}
+bool copyHomeResult(uint32_t operationId, ESS::HomeContext& output) {
+    if (!app || !operationId) return false;
+    const auto* record = findRecord(*app, operationId);
+    if (!record || record->kind != App::OperationKind::HOME || !record->programmaticHome) return false;
+    output = record->home; return true;
+}
 bool releaseOperation(uint32_t operationId) {
     if (!app || !operationId) return false;
     const auto* record = findRecord(*app, operationId);
@@ -2971,6 +3114,7 @@ void serviceApplication() {
         loadFixture.serviced(sampled, a.owner.active());
 #endif
         cancelInvalidPositionInterrupts(a, sampled);
+        cancelInvalidHomes(a, sampled);
         a.owner.service(sampled, recoveryReady);
         if (hadDE && !a.runner.transmitEnabled()) a.recoveryGuardUntilUs = nowUs() + RECOVER_US;
 #if MOTORCONTROLRS_LOAD_FIXTURE

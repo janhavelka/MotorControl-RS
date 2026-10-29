@@ -32,7 +32,7 @@ enum class HomeError : int32_t {
     DEADLINE_EXPIRED, TRANSPORT_FAILURE, CANCELLED, TIMING_UNQUALIFIED,
     UNCONFIRMED_RESPONSE, DRIVE_FAULT, OBSERVATION_LIMIT, ZERO_NOT_OBSERVED,
     NOT_COMPLETE, REFERENCE_UNQUALIFIED, STALE_REFERENCE, UNEXPECTED_ACTIVITY,
-    QUALIFICATION_MISMATCH
+    QUALIFICATION_MISMATCH, QUALIFICATION_REVOKED
 };
 /** Native qualified parameter words; no physical-rate/ramp formula is inferred.
  * Only offset zero is implemented. Method 35 establishes the current mechanical
@@ -66,6 +66,16 @@ struct HomePrerequisites {
     uint8_t availableInputs = 0;
     uint16_t rawAlarm = 0, rawMotion = 0;
     uint64_t observedUs = 0, maximumAgeUs = 0; ///< Zero disables age expiry, not evidence or operation deadlines.
+    /** Supplied fixture facts have their own age; refreshing register reads does
+     * not renew them. Zero maximum age disables expiry, not future-time checks. */
+    uint64_t qualifiedUs = 0, qualificationMaximumAgeUs = 0;
+    /** Optional checked logical-input observation. Standalone application homes
+     * enable this and bind these assignments to real configuration readback. */
+    bool observeInputs = false;
+    uint16_t inputFunctions[4] = {}, inputPolarity = 0;
+    InputWiring inputWiring[4] = {};
+    uint16_t rawInputs = 0;
+    uint64_t ioObservedUs = 0, readbackObservedUs = 0;
 };
 enum class HomePhase : uint8_t { STAGING, TRIGGER, OBSERVING, ZERO_CHECK };
 /** Caller-owned state, read-only between calls. One axis reservation spans
@@ -86,6 +96,8 @@ struct HomeContext {
     HomePhase phase = HomePhase::STAGING;
     bool stagingApplied = false, uncertain = false, runningObserved = false;
     bool homedLowObserved = false, observationKnown = false;
+    bool qualificationRevoked = false, inputsObserved = false;
+    uint16_t rawInputs = 0;
     uint16_t words[6] = {}, rawAlarm = 0, rawMotion = 0, rawPositionWords[2] = {};
     uint64_t startedUs = 0, deadlineUs = 0, servicedUs = 0, eligibleUs = 0;
     uint64_t completionObservedUs = 0; ///< Eligibility of the completing status read, not reply closure/delivery.
@@ -106,6 +118,14 @@ struct PreparedHome {
     bool write = false;
     uint64_t deadlineUs = 0, eligibleUs = 0;
 };
+/** Check exact supplied qualification and, when enabled, checked logical input
+ * mapping/levels. Documented future methods may be qualified without enabling
+ * execution. This never supplies missing mechanical or index facts. */
+Status checkHomeQualification(const HomePrerequisites&, uint64_t nowUs) noexcept;
+/** Revoke active admission without discarding in-flight evidence. nextHome
+ * yields no further work; advanceHome settles the current event as CANCELLED.
+ * Terminal historical results are unchanged. This does not stop the drive. */
+Status revokeHome(HomeContext&) noexcept;
 /** Rejection leaves output unchanged and yields no traffic. Writes are capped
  * by the admitted readiness age. Reviewed staging is exactly 0x0031/6 with
  * zero offset; no subset, split pair, negative mode or collision alias is used. */

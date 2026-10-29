@@ -55,6 +55,9 @@ std::vector<uint8_t> reply(const Ess::HomeContext& c, uint16_t flags = 1, uint16
     else if (c.phase == Ess::HomePhase::ZERO_CHECK) b = {1, 3, 4, 0, 0, 0, 0};
     else b = {1, 3, 4, static_cast<uint8_t>(alarm >> 8), static_cast<uint8_t>(alarm),
         static_cast<uint8_t>(flags >> 8), static_cast<uint8_t>(flags)};
+    if (c.step >= 2 && c.phase != Ess::HomePhase::ZERO_CHECK && c.prerequisites.observeInputs) {
+        b[2] = 6; b.push_back(0); b.push_back(0);
+    }
     crc(b); return b;
 }
 void consume(Ess::HomeContext& c, uint16_t flags = 1, uint16_t alarm = 0) {
@@ -374,6 +377,49 @@ static void testOptionalAgePolicy() {
     assert(Ess::nextHome(c, deadline, work) && work.kind == Ess::ActionWork::DONE && !work.length);
 }
 int main() {
+    // Independent fixture age cannot be renewed by fresh motion observations.
+    auto p = prerequisites(); p.qualifiedUs = 50; p.qualificationMaximumAgeUs = 100;
+    p.observeInputs = true; p.ioObservedUs = 75; p.readbackObservedUs = 60;
+    assert(Ess::checkHomeQualification(p, 149));
+    assert(!Ess::checkHomeQualification(p, 150));
+    Ess::HomeContext admitted;
+    assert(Ess::prepareHome(admitted, axis(), 12, request(), p, 100, 10000, options()));
+    Ess::PreparedHome work; assert(Ess::nextHome(admitted, 100, work) && work.deadlineUs == 150);
+    p.qualificationMaximumAgeUs = 0; p.qualifiedUs = 101;
+    assert(!Ess::checkHomeQualification(p, 100));
+    p.qualifiedUs = 50; p.inputFunctions[0] = 2; p.inputWiring[0] = InputWiring::CONNECTED; p.availableInputs = 2;
+    p.qualifiedMethod = Ess::HomingMethod::METHOD_2; p.rawInputs = 1; p.inputPolarity = 1;
+    assert(Ess::checkHomeQualification(p, 100)); // Required physical limit is not a soft-limit fault; no second inversion.
+    p.inputWiring[0] = InputWiring::UNCONNECTED; assert(!Ess::checkHomeQualification(p, 100));
+    p.inputWiring[0] = InputWiring::CONNECTED; p.inputFunctions[0] = 3; assert(!Ess::checkHomeQualification(p, 100));
+    p.inputFunctions[0] = 2; p.inputPolarity = 16; assert(!Ess::checkHomeQualification(p, 100));
+    // Every phase retains the settled event while revocation wins over success.
+    for (unsigned phase = 0; phase < 4; ++phase) {
+        p = prerequisites(); p.observeInputs = true; p.ioObservedUs = p.readbackObservedUs = 80;
+        Ess::HomeContext c;
+        assert(Ess::prepareHome(c, axis(), 12, request(), p, 100, 10000, options()));
+        if (phase >= 1) consume(c);
+        if (phase >= 2) consume(c);
+        if (phase >= 3) {
+            assert(Ess::nextHome(c, c.eligibleUs, work) && work.reg == 6 && work.count == 3);
+            const uint8_t expected[] = {1,3,0,6,0,3,0xE5,0xCA};
+            assert(work.length == sizeof(expected) && std::memcmp(work.bytes, expected, sizeof(expected)) == 0);
+            consume(c, 3); assert(c.inputsObserved && c.phase == Ess::HomePhase::ZERO_CHECK);
+        }
+        const auto bytes = reply(c, 3); const uint64_t at = c.eligibleUs + 20;
+        auto e = frame(c, bytes, at);
+        assert(Ess::revokeHome(c)); assert(Ess::revokeHome(c));
+        const Saved<Ess::PreparedHome> saved(work);
+        assert(!Ess::nextHome(c, at, work)); saved.check(work);
+        assert(Ess::advanceHome(c, e, at + 20));
+        assert(c.outcome == ActionOutcome::CANCELLED && c.qualificationRevoked && c.failureEvidence.status);
+        assert(c.completion == ActionCompletion::NOT_OBSERVED && c.uncertain);
+        if (phase == 3) assert(c.zeroEvidence.length == 9 && c.zeroEvidence.responseConfirmed);
+        AxisReference reference; reference.nativePosition = 123;
+        assert(!Ess::getHomeReference(c, at + 20, 0, reference) && reference.nativePosition == 123);
+        const Saved<Ess::HomeContext> retained(c); assert(Ess::revokeHome(c)); retained.check(c);
+        done(c);
+    }
     testOptionalAgePolicy();
     testDescriptorsAndNoTraffic(); testPreparationAndBounds(); testExactQualificationCannotBeReused(); testExactWireAndReference();
     testCorrelatedTransitions(); testFailuresAndEnvelopes(); testReadinessAndDelayedEvidence();

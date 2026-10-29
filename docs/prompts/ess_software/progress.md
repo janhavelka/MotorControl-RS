@@ -1,12 +1,14 @@
 # Execution progress
 
-Prepared 2026-10-23; updated 2026-10-29 for stages 01-07 execution. The preparation
+Prepared 2026-10-23; updated 2026-10-29 for stages 01-08 execution. The preparation
 record below is historical. Stage 01 delivered contracts only; stage 02 implements
 velocity parameter reads. Stage 03 adds homing parameter reads; stage 04 adds
 position start-speed setting. Stage05 adds homing auxiliary configuration;
 stage06 delivers the native stored-profile interruption core. Stage07 delivers
-its bounded owner/application/console integration. Stages08-15 remain NOT STARTED; broader N05 remains
-PARTIAL pending active staging and completion-attribution evidence.
+its bounded owner/application/console integration. Stage08 implements shared
+homing qualification/observation and is awaiting final verification. Stages09-15
+remain NOT STARTED; N08 stays PARTIAL and broader N05 remains PARTIAL pending
+active staging and completion-attribution evidence.
 
 | Stage | Stage status | Commit / evidence | Physical evidence |
 | --- | --- | --- | --- |
@@ -17,7 +19,7 @@ PARTIAL pending active staging and completion-attribution evidence.
 | 05 | SOFTWARE COMPLETE | [Implementation and verification](../../reports/2026-10-29_ess_homing_auxiliary.md); `88f8b9c`; 85-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 06 | SOFTWARE COMPLETE | `db65b1b`; [core subset, review and verification](../../reports/2026-10-29_ess_position_interrupt_core.md); 86-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: core-only delivery |
 | 07 | SOFTWARE COMPLETE | `14da3ad`; [owner/application integration and verification](../../reports/2026-10-29_ess_position_interrupt_owner.md); 88-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
-| 08 | NOT STARTED | - | NOT RUN |
+| 08 | IN PROGRESS | [Shared homing qualification/observation](../../reports/2026-10-29_ess_homing_foundation.md); independent reviews and fresh88-test quick/package PASS, exact-commit CI pending | NOT RUN: recorded bench USB absent |
 | 09 | NOT STARTED | - | NOT RUN |
 | 10 | NOT STARTED | - | NOT RUN |
 | 11 | NOT STARTED | - | NOT RUN |

@@ -275,7 +275,7 @@ class Coverage(unittest.TestCase):
         self.assertEqual(choices["HomingAuxiliary.KEEP_POSITION_SET_ZERO"]["coverage_kind"], "WRITE")
         self.assertNotIn("homing_auxiliary_write", {gap["id"] for gap in INVENTORY["gaps"]})
         self.assertEqual(result["summary"]["read"].get("NOT_IMPLEMENTED", 0), 0)
-        for route in ("home", "home methods", "home inspect", "home read extra", "read home"):
+        for route in ("home", "home methods", "home qualification", "home inspect", "home read extra", "read home"):
             self.rejected(lambda value: next(row for row in value["operations"]
                 if row["id"] == "homing_parameter_read").update(cli_commands=[route]))
         for kind in ("WRITE", "ACTION"):
@@ -333,7 +333,7 @@ class Coverage(unittest.TestCase):
                 self.assertTrue(all(not choice.startswith("HomingAuxiliary.") for choice in home.get("choices", [])))
         def setter(value):
             return next(row for row in value["operations"] if row["id"] == "homing_auxiliary_write")
-        for route in ("home", "home read", "home auxiliary", "home auxiliary 7 extra", "home methods"):
+        for route in ("home", "home read", "home auxiliary", "home auxiliary 7 extra", "home methods", "home qualification"):
             self.rejected(lambda value: setter(value).update(cli_commands=[route]))
         self.rejected(lambda value: setter(value).update(choices=["HomingAuxiliary.MISSING"]))
 

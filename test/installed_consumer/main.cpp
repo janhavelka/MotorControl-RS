@@ -234,6 +234,8 @@ int main() {
     if (!MotorControlRS::prepareHome(home, axis, 12, homeRequest, homePrerequisites, 2400, 100000)) return 35;
     PreparedHome homeWork;
     if (!nextHome(home, 2400, homeWork) || homeWork.length != 21 || homeWork.reg != 0x31) return 36;
+    if (!checkHomeQualification(homePrerequisites, 2400) || !revokeHome(home) ||
+        !home.qualificationRevoked || nextHome(home, 2400, homeWork)) return 36;
     DriverRequest io; io.group = DriverGroup::IO;
     if (!prepareInputFunction(io, 0, InputFunction::UNDEFINED) || !prepareOutputFunction(io, 1, OutputFunction::UNDEFINED)) return 37;
     if (!prepareDriverRead(driver, target, 13, axis.generation, 2500, 100000, DriverGroup::IO) ||

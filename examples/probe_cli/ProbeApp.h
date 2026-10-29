@@ -5,6 +5,7 @@
 #include <MotorControlRS/profiles/ess_rs/Position.h>
 #include <MotorControlRS/profiles/ess_rs/Reads.h>
 #include <MotorControlRS/profiles/ess_rs/DriverSettings.h>
+#include <MotorControlRS/profiles/ess_rs/Homing.h>
 
 namespace MotorControlRSExample {
 /** Age-only expiry is opt-in. Zero keeps checked observations until invalidated
@@ -147,6 +148,26 @@ MotorControlRS::Status submitHomingAuxiliary(MotorControlRS::ESS_RS::HomingAuxil
  * Missing/released/wrong-kind IDs preserve output.
  * No large temporary copy, traffic or result consumption. */
 bool copySettingsResult(uint32_t operationId, MotorControlRS::ESS_RS::DriverContext& output);
+/** Install exact externally supplied fixture/method/native-word qualification
+ * against current checked CONFIG, MOTION, IO and HOMING_PARAMETERS reads.
+ * Call from the service task while idle. Stored method/rates/ramp must already
+ * match; reads never supply mechanical, index or reference qualification.
+ * Replacement during an active home rejects without changing its snapshot. */
+MotorControlRS::Status installHomeQualification(const MotorControlRS::ESS_RS::HomePrerequisites&);
+/** Passive future-slot inspection. Absent returns false and preserves outputs.
+ * valid includes current binding, independent ages and checked live readback.
+ * Own staging consumes this slot; copyHomeResult retains the admitted snapshot. */
+bool inspectHomeQualification(MotorControlRS::ESS_RS::HomePrerequisites& output, bool& valid);
+/** Clear future qualification and revoke every active home, including after
+ * single-use consumption. Unsent work is cancelled; transmitted work settles
+ * with its evidence intact. No physical stop or automatic replay occurs. */
+MotorControlRS::Status revokeHomeQualification();
+/** Ordinary selected-axis home route. Zero generation selects current config;
+ * nonzero is checked. Rejection preserves operationId. Results are retained
+ * until releaseOperation; the console uses the same admission/owner path. */
+MotorControlRS::Status submitHome(const MotorControlRS::ESS_RS::HomeRequest&, uint32_t& operationId);
+/// Copy pending/terminal programmatic home evidence. Wrong/missing IDs preserve output.
+bool copyHomeResult(uint32_t operationId, MotorControlRS::ESS_RS::HomeContext& output);
 /// Release any terminal ordinary operation after service has retained its result; no motor stop.
 bool releaseOperation(uint32_t operationId);
 }

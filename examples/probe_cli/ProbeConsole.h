@@ -325,6 +325,7 @@ struct Host {
     /** Finite homing through the public profile API; native words are copied. */
     Action (*startHome)(void*, uint32_t commandId, uint8_t address,
                        const MotorControlRS::ESS_RS::HomeRequest&, uint32_t& operationId) = nullptr;
+    bool (*inspectHomeQualification)(void*, MotorControlRS::ESS_RS::HomePrerequisites&, bool& valid) = nullptr;
     Action (*recover)(void*, uint32_t commandId, uint32_t& operationId) = nullptr;
     void (*resetStats)(void*) = nullptr;
     Action (*load)(void*, const LoadSettings* requested, LoadSnapshot&) = nullptr;

@@ -1238,7 +1238,7 @@
         ],
         "reason": "Physical homing/reference/return need independent electrical/source timing, active auxiliary7, native rate/ramp/zero semantics and method/index/mechanics qualification. No switch fixture or I/O reassignment is provided."
       },
-      "reason": "Explicit start after checked staging, new homed transitions and stopped/arrival plus zero read. Cancellation/timeout cannot prove reference; stop uses existing urgent path.",
+      "reason": "Ordinary submitHome/copyHomeResult and home route consume public install/inspect/revoke qualification bound to checked CONFIG/MOTION/IO/HOMING_PARAMETERS. Explicit start after checked staging, qualified transitions and stopped/arrival plus zero. Copied revokeHome cancels before new reference publication while retaining settled zero/effects; stop uses existing urgent path. No new method support.",
       "choices": [
         "MotionCommandBit.START_HOMING"
       ]
@@ -2803,7 +2803,7 @@
       ],
       "owner": "14",
       "disposition": "PARTIAL",
-      "reason": "Three methods33/34/35 implemented;27 switch-based methods unimplemented and five collision/diagram methods unresolved. Prompt15 did not implement these trajectories.",
+      "reason": "Three methods33/34/35 implemented;27 switch-based methods unimplemented and five collision/diagram methods unresolved. ESS software stage08 adds public qualification lifecycle and bounded logical-input observation only; N08 remains PARTIAL and stage09-12 trajectories are not implemented.",
       "choices": [
         "HomingMethod.COLLISION_MINUS_4",
         "HomingMethod.COLLISION_MINUS_3",
@@ -3155,7 +3155,8 @@
       "header": "include/MotorControlRS/profiles/ess_rs/Homing.h",
       "symbols": [
         "advanceHome",
-        "nextHome"
+        "nextHome",
+        "revokeHome"
       ],
       "classification": "SEQUENCER",
       "reason": "Method metadata and bounded33/34/35 subset; other source methods remain gaps.",
@@ -3180,7 +3181,8 @@
       "header": "include/MotorControlRS/profiles/ess_rs/Homing.h",
       "symbols": [
         "homeMethod",
-        "homeMethodAt"
+        "homeMethodAt",
+        "checkHomeQualification"
       ],
       "classification": "METADATA",
       "reason": "Method metadata and bounded33/34/35 subset; other source methods remain gaps.",

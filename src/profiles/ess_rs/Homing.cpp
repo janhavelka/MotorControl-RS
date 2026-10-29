@@ -8,6 +8,8 @@ namespace {
 constexpr uint16_t RUNNING = static_cast<uint16_t>(MotionStatusBit::RUNNING);
 constexpr uint16_t HOMED = static_cast<uint16_t>(MotionStatusBit::HOMING_COMPLETE);
 constexpr uint16_t ARRIVED = static_cast<uint16_t>(MotionStatusBit::IN_POSITION);
+static_assert(ACTION_MAX_POLLS + 2 < 256, "home setup/trigger/poll/zero step must fit uint8_t");
+static_assert(ACTION_MAX_REPLY_BYTES >= 11, "combined home alarm/motion/input reply must fit evidence");
 constexpr uint16_t FAULTS = static_cast<uint16_t>(MotionStatusBit::ALARM) |
     static_cast<uint16_t>(MotionStatusBit::RELEASED) |
     static_cast<uint16_t>(MotionStatusBit::POSITIVE_SOFT_LIMIT) |
@@ -61,10 +63,37 @@ Status failed(HomeError reason, const char* message) {
 bool sameTarget(const ReadTarget& a, const ReadTarget& b) {
     return a.id == b.id && a.address == b.address && a.generation == b.generation;
 }
+Status inputReadiness(const HomePrerequisites& p, uint16_t inputs) {
+    if (p.inputPolarity & ~uint16_t(15) || inputs & ~uint16_t(15))
+        return invalid(HomeError::INPUT_REQUIRED, "unknown input polarity or logical level bits");
+    const auto* method = homeMethod(p.qualifiedMethod);
+    uint8_t available = 0;
+    for (uint8_t i = 0; i < 4; ++i) {
+        const uint16_t function = p.inputFunctions[i];
+        if (function > 3 || p.inputWiring[i] > InputWiring::CONNECTED)
+            return invalid(HomeError::INPUT_REQUIRED, "unqualified interfering input assignment or wiring");
+        const uint8_t role = function ? uint8_t(1u << (function - 1)) : 0;
+        if (role && p.inputWiring[i] == InputWiring::CONNECTED) available |= role;
+        // INPUT_STATUS already represents logical validity. Physical limit
+        // activation required by a trajectory is not a soft-limit fault.
+        if ((inputs & (1u << i)) && role && !(method->requiredInputs & role))
+            return invalid(HomeError::INPUT_REQUIRED, "unexpected active assigned input");
+    }
+    if (available != p.availableInputs || (available & method->requiredInputs) != method->requiredInputs)
+        return invalid(HomeError::INPUT_REQUIRED, "required input function and declared wiring do not match qualification");
+    return Ok();
+}
 uint64_t stepDeadline(const HomeContext& c) {
     const auto& p = c.prerequisites;
-    const uint64_t ageEnd = evidenceAgeDeadline(p.observedUs, p.maximumAgeUs);
-    return c.step < 2 && ageEnd < c.deadlineUs ? ageEnd : c.deadlineUs;
+    uint64_t end = c.deadlineUs;
+    if (c.step < 2) {
+        const uint64_t ends[] = {evidenceAgeDeadline(p.observedUs, p.maximumAgeUs),
+            evidenceAgeDeadline(p.qualifiedUs, p.qualificationMaximumAgeUs),
+            p.observeInputs ? evidenceAgeDeadline(p.ioObservedUs, p.maximumAgeUs) : UINT64_MAX,
+            p.observeInputs ? evidenceAgeDeadline(p.readbackObservedUs, p.maximumAgeUs) : UINT64_MAX};
+        for (auto ageEnd : ends) if (ageEnd < end) end = ageEnd;
+    }
+    return end;
 }
 Status expired(const HomeContext& c) {
     return stepDeadline(c) < c.deadlineUs ? failed(HomeError::READINESS, "home readiness expired before write completion") :
@@ -97,6 +126,35 @@ const HomeMethodDescriptor* homeMethodAt(uint8_t index) noexcept {
 const HomeMethodDescriptor* homeMethod(HomingMethod method) noexcept {
     for (const auto& descriptor : METHODS) if (descriptor.method == method) return &descriptor;
     return nullptr;
+}
+
+Status checkHomeQualification(const HomePrerequisites& p, uint64_t nowUs) noexcept {
+    if (!p.target.id || !p.target.generation || !isValidAddress(p.target.address) || !p.configurationGeneration)
+        return invalid(HomeError::INVALID_TARGET, "invalid qualification binding");
+    const auto* method = homeMethod(p.qualifiedMethod);
+    if (!method) return invalid(HomeError::INVALID_METHOD, "undocumented home method");
+    if (method->support == HomeSupport::UNRESOLVED)
+        return Status(Err::UNSUPPORTED, static_cast<int32_t>(HomeError::METHOD_UNRESOLVED), method->reason);
+    if (!p.zeroOffsetQualified) return invalid(HomeError::UNRESOLVED_OFFSET, "zero offset must be qualified");
+    if (!p.auxiliaryQualified || p.auxiliary != HomingAuxiliary::KEEP_POSITION_SET_ZERO)
+        return invalid(HomeError::AUXILIARY_REQUIRED, "existing active auxiliary 7 must be qualified");
+    if (p.qualifiedSearchSpeed < 5 || p.qualifiedSearchSpeed > 3000 || p.qualifiedReturnSpeed < 5 ||
+        p.qualifiedReturnSpeed > 300 || p.qualifiedRampTime < 30 || p.qualifiedRampTime > 2000)
+        return invalid(HomeError::INVALID_PARAMETERS, "qualified native words exceed admitted bounds");
+    if (!p.nativeRatesQualified) return invalid(HomeError::UNRESOLVED_RATES, "native rates are unqualified");
+    if (!p.nativeRampQualified) return invalid(HomeError::UNRESOLVED_RAMP, "native ramp is unqualified");
+    if (!p.inputsQualified || (p.availableInputs & method->requiredInputs) != method->requiredInputs)
+        return invalid(HomeError::INPUT_REQUIRED, "required input qualification is absent");
+    if (method->requiresIndex && !p.indexQualified) return invalid(HomeError::INDEX_REQUIRED, "index qualification is absent");
+    if (!p.methodQualified || !p.readinessQualified || !evidenceAgeValid(p.qualifiedUs, nowUs, p.qualificationMaximumAgeUs))
+        return invalid(HomeError::READINESS, "fixture qualification is absent or expired");
+    return p.observeInputs ? inputReadiness(p, p.rawInputs) : Ok();
+}
+
+Status revokeHome(HomeContext& c) noexcept {
+    if (c.state == ActionState::EMPTY) return invalid(HomeError::INVALID_STATE, "home is empty");
+    if (c.state == ActionState::ACTIVE) c.qualificationRevoked = true;
+    return Ok();
 }
 
 Status prepareHome(HomeContext& output, const AxisConfig& axis, uint32_t id,
@@ -133,6 +191,11 @@ Status prepareHome(HomeContext& output, const AxisConfig& axis, uint32_t id,
         return invalid(HomeError::INPUT_REQUIRED, "existing inputs and interfering assignments must be qualified");
     if (method->requiresIndex && !p.indexQualified)
         return invalid(HomeError::INDEX_REQUIRED, "qualified closed-loop motor Z index is required");
+    const Status qualification = checkHomeQualification(p, nowUs);
+    if (!qualification) return qualification;
+    if (p.observeInputs && (!evidenceAgeValid(p.ioObservedUs, nowUs, p.maximumAgeUs) ||
+        !evidenceAgeValid(p.readbackObservedUs, nowUs, p.maximumAgeUs)))
+        return invalid(HomeError::READINESS, "input or configuration readback is stale");
     if (!p.methodQualified || !p.readinessQualified || !evidenceAgeValid(p.observedUs, nowUs, p.maximumAgeUs) ||
         p.rawAlarm || (p.rawMotion & (FAULTS | RUNNING)))
         return invalid(HomeError::READINESS, "fresh enabled stationary alarm-free qualified home readiness is required");
@@ -156,6 +219,7 @@ Status nextHome(const HomeContext& c, uint64_t nowUs, PreparedHome& output) noex
     next.target = c.target; next.operationId = c.operationId; next.step = c.step;
     next.deadlineUs = stepDeadline(c); next.eligibleUs = c.eligibleUs;
     if (c.state != ActionState::ACTIVE) { output = next; return Ok(); }
+    if (c.qualificationRevoked) return failed(HomeError::QUALIFICATION_REVOKED, "home admission revoked");
     if (nowUs >= next.deadlineUs) return expired(c);
     if (nowUs < c.eligibleUs) { next.kind = ActionWork::WAIT; output = next; return Ok(); }
     next.kind = ActionWork::TRANSACTION; next.write = c.step < 2;
@@ -167,8 +231,8 @@ Status nextHome(const HomeContext& c, uint64_t nowUs, PreparedHome& output) noex
         next.length = buildWriteSingleRegister(c.target.address, next.reg, next.value, next.bytes, sizeof(next.bytes));
     } else {
         next.function = 3; next.reg = c.phase == HomePhase::ZERO_CHECK ? Registers::CURRENT_POSITION : Registers::ERROR_CODE;
-        next.count = 2;
-        next.length = buildReadRegisters(c.target.address, next.reg, 2, next.bytes, sizeof(next.bytes));
+        next.count = c.phase != HomePhase::ZERO_CHECK && c.prerequisites.observeInputs ? 3 : 2;
+        next.length = buildReadRegisters(c.target.address, next.reg, next.count, next.bytes, sizeof(next.bytes));
     }
     if (!next.length) return invalid(HomeError::INVALID_STATE, "invalid home frame");
     output = next; return Ok();
@@ -194,13 +258,14 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
         return invalid(HomeError::INVALID_EVENT, "invalid local home event envelope");
     ActionEvidence evidence;
     Detail::copyActionEvidence(evidence, supplied, c.step, nowUs);
-    uint16_t words[2] = {}; std::size_t count = 0;
+    uint16_t words[3] = {}; std::size_t count = 0;
+    const uint16_t expectedWords = c.phase != HomePhase::ZERO_CHECK && c.prerequisites.observeInputs ? 3 : 2;
     if (event.kind == ReadEventKind::FRAME) {
         if (c.step == 0) evidence.status = parseWriteMultipleRegisters(event.frame, event.length, c.target.address,
             Registers::HOMING_METHOD, 6, &evidence.frameError);
         else if (c.step == 1) evidence.status = parseWriteSingleRegister(event.frame, event.length, c.target.address,
             Registers::MOTION_COMMAND, 16, &evidence.frameError);
-        else evidence.status = parseRegisters(event.frame, event.length, c.target.address, 2, words, 2, count, &evidence.frameError);
+        else evidence.status = parseRegisters(event.frame, event.length, c.target.address, expectedWords, words, 3, count, &evidence.frameError);
     } else if (event.kind == ReadEventKind::CANCEL) evidence.status = failed(HomeError::CANCELLED, "home locally cancelled");
     else if (event.kind == ReadEventKind::DEADLINE) evidence.status = expired(c);
     else evidence.status = failed(HomeError::TRANSPORT_FAILURE, "home transport failed");
@@ -208,8 +273,23 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
         c.stagingEvidence = evidence; c.setupExecution = execution(evidence);
         c.stagingApplied = c.setupExecution == ActionExecution::ACKNOWLEDGED;
     } else if (c.step == 1) { c.triggerEvidence = evidence; c.execution = execution(evidence); }
+    else if (c.phase == HomePhase::ZERO_CHECK) {
+        c.zeroEvidence = evidence;
+        if (event.kind == ReadEventKind::FRAME && evidence.status) {
+            c.rawPositionWords[0] = words[0]; c.rawPositionWords[1] = words[1];
+        }
+    } else if (c.qualificationRevoked) {
+        c.lastObservation = evidence;
+        // Retain the settled observation, without promoting it to a completion.
+        if (event.kind == ReadEventKind::FRAME && evidence.status && event.qualified && supplied.responseConfirmed) {
+            c.observationKnown = true; c.rawAlarm = words[0]; c.rawMotion = words[1];
+            if (c.prerequisites.observeInputs) { c.inputsObserved = true; c.rawInputs = words[2]; }
+        }
+    }
     c.servicedUs = nowUs;
-    if (event.kind == ReadEventKind::CANCEL) finish(c, ActionOutcome::CANCELLED, evidence.status);
+    if (c.qualificationRevoked) finish(c, ActionOutcome::CANCELLED,
+        failed(HomeError::QUALIFICATION_REVOKED, "home admission revoked; settled effects retained"));
+    else if (event.kind == ReadEventKind::CANCEL) finish(c, ActionOutcome::CANCELLED, evidence.status);
     else if (event.kind == ReadEventKind::DEADLINE) finish(c, ActionOutcome::DEADLINE, evidence.status);
     else if (event.kind == ReadEventKind::TRANSPORT_FAILURE) finish(c, ActionOutcome::TRANSPORT_ERROR, evidence.status);
     else if (!event.qualified) finish(c, ActionOutcome::TIMING_UNQUALIFIED,
@@ -231,8 +311,11 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
     } else {
         ++c.polls; c.lastObservation = evidence; c.observationKnown = true;
         c.rawAlarm = words[0]; c.rawMotion = words[1];
+        if (c.prerequisites.observeInputs) { c.inputsObserved = true; c.rawInputs = words[2]; }
         if (words[0] || (words[1] & FAULTS)) finish(c, ActionOutcome::REPLY_ERROR,
             failed(HomeError::DRIVE_FAULT, "drive alarm, release or limit interrupted home"));
+        else if (c.prerequisites.observeInputs && !inputReadiness(c.prerequisites, words[2]))
+            finish(c, ActionOutcome::REPLY_ERROR, failed(HomeError::INPUT_REQUIRED, "logical inputs contradict qualified mapping"));
         else if (c.request.method == HomingMethod::METHOD_35 && (words[1] & RUNNING))
             finish(c, ActionOutcome::REPLY_ERROR,
                 failed(HomeError::UNEXPECTED_ACTIVITY, "running report contradicts nonmoving home method35"));
@@ -265,6 +348,7 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
 }
 
 Status getHomeReference(const HomeContext& c, uint64_t nowUs, uint64_t maximumAgeUs, AxisReference& output) noexcept {
+    if (c.qualificationRevoked) return invalid(HomeError::QUALIFICATION_REVOKED, "home admission revoked");
     if (c.state != ActionState::SUCCEEDED || c.completion != ActionCompletion::OBSERVED)
         return invalid(HomeError::NOT_COMPLETE, "home completion is not established");
     if (!c.prerequisites.referenceSemanticsQualified)

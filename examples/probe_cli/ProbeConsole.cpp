@@ -583,6 +583,8 @@ HelpText helpText(const Entry& entry, const Host& host) {
             text.description = "Read native homing parameters, list methods or request qualified homing.";
             text.effect = "checked_parameter_read_or_qualified_homing";
         }
+        if (host.inspectHomeQualification && reads && motion && setter)
+            text.syntax = "home methods | home qualification | home read [address] | home auxiliary <0..11> | home method search_native return_native ramp_native zero [address]";
     } else if (entry.command == Command::VELOCITY) {
         const bool motion = host.startVelocity && host.snapshot && host.axis;
         text.bus = reads || motion;
@@ -1337,6 +1339,23 @@ void Console::dispatch() noexcept {
     if (entry->command == Command::HOME) {
         if (outputPending()) { ++inputDropped_; return; }
         const std::size_t args = first + 1;
+        if (count > args && std::strcmp(tokens[args], "qualification") == 0) {
+            if (count != args + 1) { error(id, "home", "invalid_arguments"); return; }
+            if (!host_.inspectHomeQualification) { error(id, "home", "unavailable"); return; }
+            Ess::HomePrerequisites p; bool valid = false;
+            const bool present = host_.inspectHomeQualification(host_.context, p, valid);
+            std::size_t used = 0;
+            const bool fits = append(output_, sizeof(output_), used,
+                "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"home-qualification\",\"ok\":true,\"present\":%s,\"valid\":%s,\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"method\":%d,\"native_parameters\":[%u,%u,%u],\"qualified_us\":%llu,\"qualification_maximum_age_us\":%llu,\"maximum_age_us\":%llu,\"available_inputs\":%u,\"index_qualified\":%s,\"reference_semantics_qualified\":%s}",
+                static_cast<unsigned long>(id), boolean(present), boolean(present && valid),
+                static_cast<unsigned long>(p.target.id), p.target.address, static_cast<unsigned long>(p.target.generation),
+                static_cast<unsigned long>(p.configurationGeneration), static_cast<int>(p.qualifiedMethod),
+                p.qualifiedSearchSpeed, p.qualifiedReturnSpeed, p.qualifiedRampTime,
+                static_cast<unsigned long long>(p.qualifiedUs), static_cast<unsigned long long>(p.qualificationMaximumAgeUs),
+                static_cast<unsigned long long>(p.maximumAgeUs), p.availableInputs, boolean(p.indexQualified), boolean(p.referenceSemanticsQualified));
+            if (!fits) { error(id, "home", "output_full"); return; }
+            emit(); return;
+        }
         if (count > args && std::strcmp(tokens[args], "auxiliary") == 0) {
             const char* command = "home-auxiliary";
             if (!host_.startDriver || !host_.snapshot) { error(id, command, "unavailable"); return; }

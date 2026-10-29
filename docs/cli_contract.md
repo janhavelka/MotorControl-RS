@@ -65,7 +65,7 @@ guides define complete arguments and prerequisites.
 | `enable`, `motor-release`, `alarm-clear`, `position-clear`, `stop normal\|fast` | Explicit [drive actions](ess_actions.md) |
 | `home read [address]` | One checked seven-word native parameter read; canonical `home-read`, no writes or qualification |
 | `home auxiliary CHOICE` | Explicit stored auxiliary choice0..11; canonical `home-auxiliary`, prior/echo/readback and independent active qualification |
-| `home methods`, `home ...` | Method inventory and qualified [homing](ess_homing.md) |
+| `home methods`, `home qualification`, `home ...` | Method inventory, passive qualification inspection and qualified [homing](ess_homing.md) |
 | `driver`, `io`, `segment`, `control`, `tuning` | Typed reads/whole-candidate updates; [driver](ess_driver_settings.md), [I/O](ess_io.md), [segments](ess_segments.md), [control](ess_control_settings.md), [tuning](ess_tuning.md) |
 | `motion-profile read\|inspect\|restore\|forget` / `motion-profile start-speed NATIVE` | Retained position-parameter snapshot and explicit restoration |
 | `communication ...`, `persistence ...` | Explicit [drive communication](ess_communication.md) and [save/restore](ess_persistence.md) workflows |
@@ -252,6 +252,11 @@ revoke API with the [documented lifecycle](ess_homing.md#planned-auxiliary-setti
 There is no all-true CLI qualification switch, inferred fixture or hidden test
 backend. Extend `home methods` and retained result presentation only alongside
 actual method implementations.
+`home qualification` inspects the future slot without installing facts or
+renewing age. Programmatic `submitHome`/`copyHomeResult` and console home use
+the same owner route. Protocol3 retains independent fixture/live ages, logical
+inputs and copied revocation; a settled final-zero reply cannot override a
+revoked admission. Methods33/34/35 remain the complete implemented subset.
 
 ## Verification and qualification
 

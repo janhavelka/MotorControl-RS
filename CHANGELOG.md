@@ -4,6 +4,13 @@
 
 ### Added
 
+- Public application homing qualification install/inspect/revoke and retained
+  submit/result APIs, with checked configuration, logical inputs and parameter
+  readback. Independent fixture age, bounded combined status/input observations
+  and copied revocation preserve final-zero evidence while preventing a revoked
+  reference. `home qualification` is passive inspection; methods33/34/35 remain
+  the implemented subset and physical homing remains unqualified.
+
 - Typed serial position interruption in the core: exact independently qualified
   native stored-profile retrigger, copied binding/age evidence and one checked
   bit-3 trigger. Default starts and stationary observed moves are unchanged.

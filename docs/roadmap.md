@@ -135,3 +135,10 @@ corrects prompts04/05 admission and qualification boundaries: newer observations
 cancel unsent settings; contradictory priors revoke stale readiness; changed
 start speed needs explicit independent relation evidence. Register/method
 coverage counts do not change, and physical qualification remains separate.
+
+Stage08 delivers [ordinary homing qualification and shared observation](reports/2026-10-29_ess_homing_foundation.md):
+independent caller/live ages, exact checked configuration/native parameters,
+logical-input diagnostics and copied revocation that prevents reference publication
+after cancellation. Methods33/34/35 regress through both application frontends.
+The 27 switch methods remain unimplemented for stages09-12, so N08 stays PARTIAL.
+Physical homing and the absent recorded-bench regression remain NOT RUN.

@@ -49,7 +49,9 @@ stored-profile start-or-interrupt core with ACK-only result and no active setup
 writes. [Stage 07](reports/2026-10-29_ess_position_interrupt_owner.md) delivers
 the ordinary application/console/host route, independent result reservations
 and stop arbitration. Physical interruption remains NOT RUN.
-Stages 08-12 retain the reviewed homing qualification/observation contract.
+Stage08 implements the shared homing qualification/observation contract through
+public application APIs and checked live reads, including final-zero revocation.
+The 27 switch methods remain for stages09-12; N08 remains PARTIAL.
 Arbitrary replacement still needs active-register
 consumption and completion-attribution evidence; keep N05 PARTIAL after that
 subset. Method28's exchanged branch drawings are recorded in the method guide.
@@ -79,6 +81,11 @@ subset. Method28's exchanged branch drawings are recorded in the method guide.
   conflicting limit diagram and negative collision encoding. Internal-index
   methods 33/34 and current-position method 35 already have bounded software.
   [Method dispositions](ess_homing_methods.md).
+- [x] Deliver the shared N08 qualification foundation: exact externally supplied
+  install/inspect/revoke, ordinary submit/result ownership, independent ages,
+  actual logical input observations and cancellation precedence over final zero.
+  [Stage08 evidence](reports/2026-10-29_ess_homing_foundation.md); no new method or
+  physical qualification is claimed.
 - [ ] Resolve shared-start 1: native 0-to-1 write read back 0 on the bench.
   Preserve that FAIL/uncertain result; no retry or assumed FC06 semantics.
   [Stored-record evidence](archive/reports/ess_release_16_2026-10-04.md).

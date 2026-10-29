@@ -47,7 +47,15 @@ bool formatResult(char* output, std::size_t capacity, std::size_t& used,
         homeEvidence(output, capacity, used, c.lastObservation) && append(output, capacity, used, ",\"completion_evidence\":") &&
         homeEvidence(output, capacity, used, c.completionEvidence) && append(output, capacity, used, ",\"zero_evidence\":") &&
         homeEvidence(output, capacity, used, c.zeroEvidence) && append(output, capacity, used, ",\"failure_evidence\":") &&
-        homeEvidence(output, capacity, used, c.failureEvidence) && append(output, capacity, used, "}");
+        homeEvidence(output, capacity, used, c.failureEvidence) && append(output, capacity, used,
+            ",\"qualification_revoked\":%s,\"inputs_observed\":%s,\"raw_inputs\":%u,\"qualification\":{\"qualified_us\":%llu,\"maximum_age_us\":%llu,\"observe_inputs\":%s,\"io_observed_us\":%llu,\"readback_observed_us\":%llu,\"raw_inputs\":%u,\"input_functions\":[%u,%u,%u,%u],\"input_polarity\":%u,\"input_wiring\":[%u,%u,%u,%u],\"available_inputs\":%u}}",
+            boolean(c.qualificationRevoked), boolean(c.inputsObserved), c.rawInputs,
+            static_cast<unsigned long long>(c.prerequisites.qualifiedUs), static_cast<unsigned long long>(c.prerequisites.qualificationMaximumAgeUs),
+            boolean(c.prerequisites.observeInputs), static_cast<unsigned long long>(c.prerequisites.ioObservedUs),
+            static_cast<unsigned long long>(c.prerequisites.readbackObservedUs), c.prerequisites.rawInputs,
+            c.prerequisites.inputFunctions[0], c.prerequisites.inputFunctions[1], c.prerequisites.inputFunctions[2], c.prerequisites.inputFunctions[3], c.prerequisites.inputPolarity,
+            static_cast<unsigned>(c.prerequisites.inputWiring[0]), static_cast<unsigned>(c.prerequisites.inputWiring[1]),
+            static_cast<unsigned>(c.prerequisites.inputWiring[2]), static_cast<unsigned>(c.prerequisites.inputWiring[3]), c.prerequisites.availableInputs);
 }
 bool formatMethods(char* output, std::size_t capacity, std::size_t& used, uint32_t id) noexcept {
     used = 0;

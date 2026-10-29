@@ -1560,6 +1560,41 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
     qualified = p.get("qualified_parameters")
     require(isinstance(qualified, list) and len(qualified) == 4 and all(type(v) is int for v in qualified) and
             qualified == words[:4], "method/rate/ramp differs from exact qualified configuration")
+    # Older protocol-3 records used only the two-word observation window.
+    # New records retain fixture age independently of refreshed readback.
+    q = item.get("qualification")
+    observe_inputs = False
+    revoked = item.get("qualification_revoked", False)
+    write_cap = min(item["deadline_us"], evidence_age_deadline(p["observed_us"], p["maximum_age_us"]))
+    if q is not None:
+        require(isinstance(q, dict) and type(q.get("observe_inputs")) is bool and
+                type(revoked) is bool and type(item.get("inputs_observed")) is bool and
+                uint(item.get("raw_inputs"), 65535), "qualification schema is invalid")
+        observe_inputs = q["observe_inputs"]
+        require(all(uint(q.get(k)) for k in ("qualified_us", "maximum_age_us", "io_observed_us", "readback_observed_us")) and
+                evidence_age_valid(q["qualified_us"], item["started_us"], q["maximum_age_us"]), "fixture age is invalid")
+        write_cap = min(write_cap, evidence_age_deadline(q["qualified_us"], q["maximum_age_us"]))
+        if observe_inputs:
+            require(all(evidence_age_valid(q[k], item["started_us"], p["maximum_age_us"])
+                        for k in ("io_observed_us", "readback_observed_us")), "live input/readback age is invalid")
+            write_cap = min(write_cap, *(evidence_age_deadline(q[k], p["maximum_age_us"])
+                                        for k in ("io_observed_us", "readback_observed_us")))
+            require(uint(q.get("input_polarity"), 15) and uint(q.get("raw_inputs"), 15) and
+                    uint(q.get("available_inputs"), 7), "input binding is invalid")
+            functions, wiring = q.get("input_functions"), q.get("input_wiring")
+            require(isinstance(functions, list) and len(functions) == 4 and all(uint(v, 3) for v in functions) and
+                    isinstance(wiring, list) and len(wiring) == 4 and all(uint(v, 2) for v in wiring), "input configuration is invalid")
+            available = 0
+            for function, wire in zip(functions, wiring):
+                if function and wire == 2: available |= 1 << (function - 1)
+            require(available == q["available_inputs"] and
+                    not any(function and q["raw_inputs"] & (1 << i) for i, function in enumerate(functions)),
+                    "input qualification contradicts implemented no-switch method")
+        require(not revoked or (not item["ok"] and item["outcome"] == "cancelled" and item.get("detail") == 33),
+                "revocation did not prevent success")
+    else:
+        require(not revoked, "revocation lacks copied qualification")
+    status_length, status_bytes = (11, 6) if observe_inputs else (9, 4)
     require(item.get("evidence_columns") == HOME_EVIDENCE_COLUMNS, "evidence schema is invalid")
     evidence = {}
     for name in ("staging_evidence", "trigger_evidence", "activity_evidence", "low_evidence", "last_observation", "completion_evidence", "zero_evidence", "failure_evidence"):
@@ -1587,6 +1622,11 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
             require(e["event"] == 0 and item["started_us"] <= e["earliest_us"] <= e["latest_us"] <= e["delivered_us"], name + " invalid timing")
         else: require(e["earliest_us"] == e["latest_us"] == 0, name + " unqualified bounds")
         if e["status"] == "OK": require(e["detail"] == e["frame_error"] == 0, name + " OK retains errors")
+        if e["delivered_us"] and e["status"] == "OK" and e["event"] == 0 and e["step"] >= 2:
+            is_zero = name == "zero_evidence" or (name == "failure_evidence" and item["phase"] == 3)
+            require(len(raw) == (9 if is_zero else status_length) and
+                    raw[:3] == bytes((item["address"], 3, 4 if is_zero else status_bytes)) and wire_crc(raw) == 0,
+                    name + " differs from admitted observation window")
         evidence[name] = (e, raw)
     def checked(name, prefix):
         e, raw = evidence[name]
@@ -1607,13 +1647,13 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
                     1 <= raw[2] <= 7 and raw[2] == e["detail"] and wire_crc(raw) == 0, field + " lacks documented exception")
         else: require(e["tx_accepted"] > 0 or e["execution_unknown"], field + " lacks uncertainty")
         if e["qualified"] and e["status"] == "OK":
-            late = e["latest_us"] > min(item["deadline_us"], evidence_age_deadline(p["observed_us"], p["maximum_age_us"]))
-            require(not late or (not item["ok"] and item["outcome"] == "deadline" and item["failure_evidence"] == item[name]), "write exceeds readiness without retained deadline")
+            late = e["latest_us"] > write_cap
+            require(not late or (not item["ok"] and (item["outcome"] == "deadline" or revoked) and item["failure_evidence"] == item[name]), "write exceeds readiness without retained deadline")
     require(item["staging_applied"] == (item["setup_execution"] == "acknowledged"), "staging application differs")
     stage, _ = evidence["staging_evidence"]
     trigger, _ = evidence["trigger_evidence"]
     if trigger["tx_accepted"] or trigger["execution_unknown"]:
-        cap = min(item["deadline_us"], evidence_age_deadline(p["observed_us"], p["maximum_age_us"]))
+        cap = write_cap
         require(item["setup_execution"] == "acknowledged" and stage["latest_us"] <= cap and stage["delivered_us"] < cap and
                 stage["delivered_us"] <= (trigger["earliest_us"] if trigger["qualified"] else trigger["delivered_us"]),
                 "trigger precedes checked in-budget staging")
@@ -1623,26 +1663,30 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
     if item["ok"]:
         require(item["setup_execution"] == item["execution"] == "acknowledged" and item["homed_low_observed"] and item["observation_known"], "completion lacks fresh transition")
         comp, raw = evidence["completion_evidence"]
-        require(len(raw) == 9 and checked("completion_evidence", raw[:-2]) and raw[:3] == bytes((item["address"], 3, 4)) and
+        require(len(raw) == status_length and checked("completion_evidence", raw[:-2]) and raw[:3] == bytes((item["address"], 3, status_bytes)) and
                 raw[3:5] == b"\0\0" and int.from_bytes(raw[5:7], "big") & 0x7F == 3 and
                 evidence["trigger_evidence"][0]["delivered_us"] < comp["earliest_us"] and comp["latest_us"] <= item["deadline_us"], "completion lacks stopped homed FC03")
         require(comp["step"] == item["polls"] + 1 and comp["step"] >= 2 and item["phase"] == 3 and
                 item["raw_alarm"] == 0 and item["raw_motion"] == int.from_bytes(raw[5:7], "big") and
                 item["last_observation"] == item["completion_evidence"] and
                 evidence["zero_evidence"][0]["step"] == comp["step"] + 1, "completion/zero tokens or decoded outputs differ")
+        if observe_inputs:
+            require(item["inputs_observed"] and item["raw_inputs"] == int.from_bytes(raw[7:9], "big") and item["raw_inputs"] <= 15 and
+                    not any(function and item["raw_inputs"] & (1 << i) for i, function in enumerate(q["input_functions"])),
+                    "completion logical inputs contradict qualification")
         require(checked("zero_evidence", bytes((item["address"], 3, 4, 0, 0, 0, 0))) and item["raw_position_words"] == [0, 0] and
                 comp["delivered_us"] < evidence["zero_evidence"][0]["earliest_us"] and
                 item["started_us"] <= item["completion_observed_us"] <= comp["earliest_us"] and
                 evidence["zero_evidence"][0]["delivered_us"] == item["serviced_us"] and evidence["zero_evidence"][0]["latest_us"] <= item["deadline_us"], "zero/reference evidence is inconsistent")
         if item["method"] != 35 or p["raw_motion"] & 2:
             low, raw = evidence["low_evidence"]
-            require(len(raw) == 9 and checked("low_evidence", raw[:-2]) and raw[:3] == bytes((item["address"], 3, 4)) and
+            require(len(raw) == status_length and checked("low_evidence", raw[:-2]) and raw[:3] == bytes((item["address"], 3, status_bytes)) and
                     raw[3:5] == b"\0\0" and not int.from_bytes(raw[5:7], "big") & (0x7E if item["method"] == 35 else 0x7A) and
                     2 <= low["step"] < comp["step"] and evidence["trigger_evidence"][0]["delivered_us"] < low["earliest_us"] and
                     low["delivered_us"] < comp["earliest_us"], "completion lacks new homed-low evidence")
         if item["method"] != 35:
             activity, raw = evidence["activity_evidence"]
-            require(item["running_observed"] and len(raw) == 9 and checked("activity_evidence", raw[:-2]) and raw[:3] == bytes((item["address"], 3, 4)) and
+            require(item["running_observed"] and len(raw) == status_length and checked("activity_evidence", raw[:-2]) and raw[:3] == bytes((item["address"], 3, status_bytes)) and
                     raw[3:5] == b"\0\0" and not int.from_bytes(raw[5:7], "big") & 0x78 and int.from_bytes(raw[5:7], "big") & 4 and
                     2 <= activity["step"] < comp["step"] and evidence["trigger_evidence"][0]["delivered_us"] < activity["earliest_us"] and
                     activity["delivered_us"] < comp["earliest_us"], "index search lacks new running evidence")
@@ -1655,12 +1699,17 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
         require(item.get("status") in ("ILLEGAL_VALUE", "UNSUPPORTED", "CRC_ERROR", "FRAME_ERROR", "EXCEPTION") and
                 type(item.get("detail")) is int, "failure has invalid terminal status")
         outcome = item["outcome"]
-        if outcome in ("cancelled", "transport_error"):
+        if revoked:
+            require(item["status"] == "ILLEGAL_VALUE" and item["detail"] == 33 and outcome == "cancelled", "revoked terminal differs")
+            if failure["event"] == 0 and failure["status"] == "OK":
+                require(wire_crc(raw) == 0 and len(raw) in (8, 9, 11), "revocation lost checked settled frame")
+                if item["phase"] == 3: require(item["zero_evidence"] == item["failure_evidence"], "revocation lost final zero evidence")
+        elif outcome in ("cancelled", "transport_error"):
             event, detail = (2, 22) if outcome == "cancelled" else (1, 21)
             require(failure["event"] == event and failure["status"] == item["status"] == "ILLEGAL_VALUE" and
                     failure["detail"] == item["detail"] == detail, "local failure differs from terminal evidence")
         elif outcome == "deadline":
-            cap = min(item["deadline_us"], evidence_age_deadline(p["observed_us"], p["maximum_age_us"])) if failure["step"] < 2 else item["deadline_us"]
+            cap = write_cap if failure["step"] < 2 else item["deadline_us"]
             require(item["status"] == "ILLEGAL_VALUE" and item["detail"] in (15, 20) and
                     ((failure["event"] == 3 and failure["delivered_us"] >= cap and
                       failure["status"] == item["status"] and failure["detail"] == item["detail"]) or
@@ -1686,10 +1735,15 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
                 require(item["status"] == failure["status"] and item["detail"] == failure["detail"],
                         "parser failure differs from terminal evidence")
             else:
-                require(failure["response_confirmed"] and item["status"] == "ILLEGAL_VALUE" and len(raw) == 9 and raw[:3] == bytes((item["address"], 3, 4)) and
-                        wire_crc(raw) == 0 and item["detail"] in (25, 27, 31), "decoded failure lacks checked read")
+                zero_failure = item["detail"] == 27
+                require(failure["response_confirmed"] and item["status"] == "ILLEGAL_VALUE" and
+                        len(raw) == (9 if zero_failure else status_length) and raw[:3] == bytes((item["address"], 3, 4 if zero_failure else status_bytes)) and
+                        wire_crc(raw) == 0 and item["detail"] in (13, 25, 27, 31), "decoded failure lacks checked read")
                 first, second = int.from_bytes(raw[3:5], "big"), int.from_bytes(raw[5:7], "big")
-                require((item["detail"] == 25 and (first or second & 0x78)) or
+                inputs = int.from_bytes(raw[7:9], "big") if observe_inputs and not zero_failure else 0
+                require((item["detail"] == 13 and observe_inputs and (inputs > 15 or
+                            any(function and inputs & (1 << i) for i, function in enumerate(q["input_functions"])))) or
+                        (item["detail"] == 25 and (first or second & 0x78)) or
                         (item["detail"] == 27 and (first or second) and item["failure_evidence"] == item["zero_evidence"]) or
                         (item["detail"] == 31 and item["method"] == 35 and not first and not second & 0x78 and second & 4),
                         "decoded failure reason differs from frame")

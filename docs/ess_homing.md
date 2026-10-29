@@ -1,7 +1,8 @@
 # ESS bounded homing API
 
 [Homing.h](../include/MotorControlRS/profiles/ess_rs/Homing.h) provides
-`ESS_RS::prepareHome`, `nextHome`, `advanceHome` and `getHomeReference`.
+`ESS_RS::prepareHome`, `nextHome`, `advanceHome`, `revokeHome`,
+`checkHomeQualification` and `getHomeReference`.
 The common `MotorControlRS::prepareHome` calls the same profile operation.
 These functions perform no I/O, allocation, retry, clock read or implicit
 input/configuration change. Caller-owned `HomeContext` retains bounded state
@@ -203,53 +204,62 @@ New parameter reads can revoke mismatching qualification but never grant or
 refresh it. No home trigger, `0x0031/6` parameter staging, persistent save,
 input reassignment, automatic repair or rollback follows this setter.
 
-## Planned switch-method integration (not implemented)
+## Application qualification and shared observation
 
-The remaining [stage01 decisions](reports/2026-10-29_ess_software_contracts.md)
-cover stages08-12; existing execution support remains33/34/35 only.
+Stage08 implements the shared [stage01 decisions](reports/2026-10-29_ess_software_contracts.md).
+Execution support remains33/34/35 only; the 27 switch methods await stages09-12.
 
-Stage 08 will expose ordinary application `installHomeQualification`,
+The public [ProbeApp.h](../examples/probe_cli/ProbeApp.h) exposes `installHomeQualification`,
 `inspectHomeQualification`, `revokeHomeQualification`, `submitHome` and
 `copyHomeResult(id, HomeContext&)`, using one copied retained qualification and
-the existing `startHome`/owner path. Extend `HomePrerequisites` only for the
-concrete missing evidence. Keep exact target/binding/configuration, method,
+the existing `startHome`/owner path. `HomePrerequisites` retains exact target/binding/configuration, method,
 native search/return/ramp, zero-offset, active auxiliary, direction/mechanics,
 required wiring/index and coordinate correspondence. No qualifier may be filled
 from the requested method or from a successful write/readback. Copy/inspect
 functions are passive; wrong IDs leave output unchanged. Programmatic results
 use the same terminal-only `releaseOperation` and cannot be console-recycled.
 
-Caller qualification age must be retained separately from live observation age.
-New MOTION/IO/parameter reads must not refresh its original timestamp or expiry.
+Caller `qualifiedUs`/`qualificationMaximumAgeUs` are independent of live
+`observedUs`/`maximumAgeUs`. New MOTION/IO/parameter reads never refresh the
+original qualification timestamp or expiry.
 Preserve the existing zero-disables-age-expiry convention, with exact generations
 and operation deadlines still required; when ages are enabled, cap setup/trigger
 deadlines by every applicable admitted evidence bound. Reinstallation of the
 same old evidence does not make it new.
 
-| Qualification operation | Planned lifecycle |
+| Qualification operation | Implemented lifecycle |
 | --- | --- |
 | Install/replace | Copy and validate while no pending/active HOME depends on the slot; otherwise reject unchanged |
-| Inspect | Return the retained evidence, its binding and validity; no I/O or renewal |
+| Inspect | Return the supplied retained evidence and current validity; absent returns false with outputs unchanged; no I/O or renewal |
 | Explicit revoke | Clear future admission; cancel unsent dependent continuation after settling any in-flight transaction; retain frozen context, outcomes and possible motion; publish no new reference from revoked work |
 | Own accepted home staging | Preserve the existing single-use clearing of future qualification and expected generation transition; this is not explicit revocation of the admitted context |
 | Unrelated configuration/rebind change | Invalidate future admission and unsent dependent work; preserve already transmitted effects |
 
-Revocation must search pending/active HOME records even when own staging already
-emptied the future-qualification slot. Plan a narrow core `revokeHome(HomeContext&)`
-transition recording a copied revoked-admission disposition, independent of the
+Revocation searches pending/active HOME records even when own staging already
+emptied the future-qualification slot. Core `revokeHome(HomeContext&)`
+records a copied revoked-admission disposition, independent of the
 immutable prerequisite snapshot. It forbids further yielded work and reference
 publication without performing I/O. Settle and validate any in-flight reply,
 retain its raw/effect evidence, then terminate CANCELLED with revocation taking
 precedence over success, including the final status/zero-read race.
-`getHomeReference` must reject that copied disposition even if completion evidence
+`getHomeReference` rejects that copied disposition even if completion evidence
 arrived concurrently; guarding only the live app cache is insufficient.
-Already-terminal historical results are not rewritten by a later revoke. Tests
-must cover an empty future slot and final ZERO_CHECK in flight, with evidence
-conserved and no reference obtainable from the revoked result.
+Already-terminal historical results are not rewritten by a later revoke.
+Application cancellation and stop use the same disposition before consuming
+in-flight replies. Terminal status reports `QUALIFICATION_REVOKED`; the underlying
+settled frame/status remains in phase/failure evidence, even a valid zero reply.
 
 Actual `ConfigObservation` supplies functions/polarity, `StateBlock::IO` supplies
 live logical levels and `MOTION` supplies readiness. A current parameter read
 supplies stored auxiliary/method/rate/offset facts; it does not qualify them.
+Installation and submission conservatively require the stored method/search/
+return/ramp to match the exact supplied candidate, auxiliary7 and both offset
+words zero. Thus this first application path does not qualify an arbitrary
+new candidate while stored parameters differ. All five CONFIG frames and the
+parameter read must have checked provenance; their oldest request timestamp
+becomes `readbackObservedUs`. MOTION and IO must reference that exact CONFIG
+observation. Input functions/polarity and declared wiring must match both the
+supplied facts and actual readback. Missing levels reject before staging.
 All observations must match the admitted binding/configuration and retain their
 separate acquisition intervals. Require functions 1/2/3 for origin/positive/
 negative limit, known polarity and declared wiring for the method's inputs.
@@ -273,12 +283,25 @@ Method 35 keeps its nonmoving rule: fresh admission HOMED-low may supply the low
 baseline, and observed RUNNING fails. Reference publication still needs the
 separate qualified command-coordinate relation and current unrevoked admission.
 
-Reuse `0x0031/6` staging and one `0x0027=0x0010` trigger, immutable deadline and
-finite poll budget. Any added I/O sampling must audit step tokens, `step < 2`
-assumptions, counter overflow, evidence buffers and total poll work. Stage 08
-must deliver its real install/submit/result path and regress 33/34/35 before
-stages 09-12 change support flags. Physical switches are not needed for native
-software tests, but no test fixture or build qualifies physical motion.
+The app enables `observeInputs`: each home poll reads alarm, motion and logical
+inputs together through FC03 `0x0006/3`, retaining11-byte evidence. Core callers
+default to the existing two-word poll for source compatibility. No atomic drive
+snapshot is promised. Setup remains step0, trigger step1, then at most64 polls
+and one zero check (maximum step66), within the existing19-byte evidence and
+21-byte request storage. Polled inputs are diagnostics, not edge witnesses.
+Latest checked ordinary MOTION/IO/parameter contradictions cancel unsent work
+even after own staging consumed the slot. Existing in-flight frames settle.
+
+To use the standalone route, perform ordinary `read config`, `read state` and
+`home read`, construct `HomePrerequisites` from independently qualified fixture
+facts and exact observed mapping/native words, then call
+`installHomeQualification` followed by `submitHome`. Service the application,
+inspect `copyHomeResult`, and call `releaseOperation` when terminal. Reinstall
+requires new current-generation checked reads after staging invalidates the
+previous qualification. `checkHomeQualification` can validate a documented
+future method's supplied facts, but does not enable that method in `prepareHome`.
+Physical switches are not needed for native tests; builds and simulated caller
+qualification do not qualify physical motion.
 
 ## Console and finite host scenarios
 
@@ -286,6 +309,7 @@ The command calls the public preparation/execution API:
 
 ```text
 home methods
+home qualification
 home 35 60 30 100 zero [address]
 home 33 60 30 100 zero [address]
 ```
@@ -296,6 +320,12 @@ The parameter names in help are `search_native`, `return_native` and
 input/index/movement prerequisites. Terminal results and retained `result`
 inspection preserve acknowledgement, completion, raw flags, generations,
 uncertainty and bounded evidence.
+`home qualification` passively shows future-slot presence, validity, exact
+binding/native words and independent qualification age. It accepts no extra
+tokens and cannot install facts. Terminal/result JSON adds `qualification`,
+`qualification_revoked`, `inputs_observed` and `raw_inputs`; settled phase
+evidence remains independent of cancellation status. Python validates both the
+legacy two-word core path and the application's three-word observation path.
 
 The finite Python `home` scenario offers method 35 with an explicit normal/direct
 cleanup stop, retained-result inspection and final state/health reads. Methods

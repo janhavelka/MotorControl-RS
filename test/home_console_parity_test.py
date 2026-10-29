@@ -94,3 +94,28 @@ for line in subprocess.check_output([sys.argv[1], "--home-read-fixtures"], text=
     seen_reads.add(name)
 assert seen_reads == expected_reads, (seen_reads, expected_reads)
 print(f"PASS: {len(seen_reads)} actual core/console homing-parameter read terminals accepted by Python")
+
+assert len(sys.argv) == 4, "both real application frontends are required"
+frontend_records = []
+for executable in sys.argv[2:]:
+    records = [json.loads(line, object_pairs_hook=unique_object) for line in
+               subprocess.check_output([executable, "--emit-console-results"], text=True, timeout=20).splitlines() if line.startswith("{")]
+    records = [r for r in records if r.get("home") is True and r.get("command") == "result"]
+    assert len(records) == 4 and [r["method"] for r in records] == [33, 34, 35, 35]
+    for record in records:
+        Console._check_home(record, 1, None)
+        assert record["qualification"]["observe_inputs"] and record["inputs_observed"]
+        assert len(json.dumps(record, separators=(",", ":"))) < MAX_LINE
+        for mutate in (lambda r: r["qualification"].update(qualified_us=r["started_us"] + 1),
+                       lambda r: r["qualification"].update(readback_observed_us=r["started_us"] + 1),
+                       lambda r: r["qualification"].update(observe_inputs=False),
+                       lambda r: r.update(qualification_revoked=not r["qualification_revoked"])):
+            broken = copy.deepcopy(record); mutate(broken)
+            try: Console._check_home(broken, 1, None)
+            except BenchError: pass
+            else: raise AssertionError("forged application qualification accepted")
+    assert [r["ok"] for r in records] == [True, True, True, False]
+    assert records[-1]["qualification_revoked"] and records[-1]["zero_evidence"] == records[-1]["failure_evidence"]
+    frontend_records.append(records)
+assert frontend_records[0] == frontend_records[1], "Arduino/IDF home evidence differs"
+print("PASS: both real application frontends, methods33/34/35 and revoked final-zero evidence")

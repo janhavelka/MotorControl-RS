@@ -224,7 +224,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 $<TARGET_FILE:probe_console_test> $<TARGET_FILE:position_start_speed_app_test> $<TARGET_FILE:homing_auxiliary_app_test>)
             add_test(NAME home_console_parity COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/test/home_console_parity_test.py
-                $<TARGET_FILE:probe_console_test>)
+                $<TARGET_FILE:probe_console_test> $<TARGET_FILE:home_app_test> $<TARGET_FILE:idf_home_app_test>)
             add_test(NAME operations_inventory COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_ess_operations.py)
             add_test(NAME operations_inventory_failures COMMAND ${Python3_EXECUTABLE}

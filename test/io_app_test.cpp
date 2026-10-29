@@ -251,17 +251,11 @@ void optionalInputsAreNotGlobalPrerequisites() {
     assert(host(app).startHome(app,11,1,home,unchanged) == Probe::Action::UNIMPLEMENTED);
     assert(unchanged == 77 && !hardware.writes); // Setters do not implement missing switch transitions.
     home.method = ESS::HomingMethod::METHOD_35;
-    auto& hp = app->homePrerequisites; hp.target = app->axis.target; hp.configurationGeneration = app->axis.generation;
-    hp.qualifiedMethod = ESS::HomingMethod::METHOD_35;
-    hp.qualifiedSearchSpeed = 60; hp.qualifiedReturnSpeed = 30; hp.qualifiedRampTime = 100;
-    hp.methodQualified = hp.nativeRatesQualified = hp.nativeRampQualified = hp.zeroOffsetQualified = hp.auxiliaryQualified = true;
-    hp.inputsQualified = hp.readinessQualified = true; hp.observedUs = hardware.time; hp.maximumAgeUs = 1000000;
-    // No terminal/index requirement for current-position origin method35.
-    assert(host(app).startHome(app,12,1,home,id) == Probe::Action::OK);
-    assert(view(id).homeContext && !hardware.writes);
-    assert(host(app).cancel(app,id) == Probe::Action::OK);
-    for (unsigned i = 0; i < 100 && view(id).pending; ++i) step();
-    assert(!hardware.writes);
+    // I/O setter/read success never grants fixture qualification. Positive
+    // method35/no-terminal coverage uses installHomeQualification and actual
+    // checked reads in home_app_test on both frontends.
+    assert(!submitHome(home, unchanged));
+    assert(unchanged == 77 && !hardware.writes);
 }
 
 } // namespace
