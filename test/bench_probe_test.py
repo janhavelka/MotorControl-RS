@@ -42,7 +42,7 @@ class EvidenceImports(unittest.TestCase):
             self.assertIs(getattr(imported, name), getattr(evidence, name))
         for name in ("operation_id", "check_probe", "check_read_evidence", "check_capture_read",
                      "check_typed_read", "check_state_values", "check_state_block", "check_cached_state",
-                     "check_action", "check_move", "check_velocity", "check_home"):
+                     "check_action", "check_move", "check_position_interrupt", "check_velocity", "check_home"):
             self.assertIs(getattr(bench.Console, "_" + name), getattr(evidence, name))
             self.assertIs(getattr(imported.Console, "_" + name), getattr(evidence, name))
         with self.assertRaises(imported.BenchError):
@@ -74,12 +74,13 @@ fixtures = json.loads(sys.argv[2])
 evidence.check_typed_read(fixtures["state"], "state", 1)
 evidence.check_action(fixtures["action"], "enable", 1, None)
 evidence.check_move(fixtures["move"], 1, tuple(fixtures["move_args"]))
+evidence.check_position_interrupt(fixtures["interrupt"], 1, 40)
 evidence.check_velocity(fixtures["velocity"], 1, tuple(fixtures["velocity_args"]))
 evidence.check_home(fixtures["home"], 1, tuple(fixtures["home_args"]))
 assert "bench_probe" not in sys.modules and "serial" not in sys.modules
 '''
         fixtures = dict(state=typed_terminal(2, "state"), action=action_terminal(2, "enable"),
-                        move=move_terminal(2), velocity=velocity_terminal(2), home=home_terminal(2),
+                        move=move_terminal(2), interrupt=position_interrupt_terminal(2), velocity=velocity_terminal(2), home=home_terminal(2),
                         move_args=Framing.MOVE_ARGS, velocity_args=Framing.VELOCITY_ARGS, home_args=Framing.HOME_ARGS)
         result = subprocess.run([sys.executable, "-I", "-B", "-c", code, str(ROOT / "scripts"),
                                  json.dumps(fixtures)],
@@ -481,6 +482,30 @@ def move_terminal(request_id):
         last_observation=frame(3, [1, 3, 4, 0, 0, 0, 1], 8, 4000, 4200, 4300), failure_evidence=empty)
 
 
+def position_interrupt_terminal(request_id, original_id=40, relative=True):
+    empty = dict(step=0, event=0, raw_hex="", received_length=0, tx_accepted=0, tx_complete=False,
+        response_confirmed=False, qualified=False, execution_unknown=False, earliest_us=0,
+        latest_us=0, delivered_us=0, transport_detail=0, status="OK", detail=0, frame_error=0)
+    # Independent RTU vectors: FC06 MOTION_COMMAND, serial interrupt bit 3 plus
+    # relative bit 0 (0x0009), or absolute bits 2/0 (0x000D).
+    trigger = dict(empty, step=1, raw_hex="010600270009f9c7" if relative else "01060027000df804",
+        received_length=8, tx_accepted=8, tx_complete=True, response_confirmed=True, qualified=True,
+        earliest_us=1100, latest_us=1200, delivered_us=1250)
+    return reply(request_id, "position-interrupt", type="move", command_id=request_id, operation_id=request_id + 100,
+        ok=False, move_kind="relative" if relative else "absolute", position_interrupt=True,
+        action_kind=None, read_kind=None, capture_read=False, recovery=False,
+        target=1, address=1, generation=9, configuration_generation=3, state="succeeded", outcome="acknowledged",
+        status="OK", detail=0, setup_execution="not_transmitted", execution="acknowledged", completion="not_observed",
+        setup="stored", staging_applied=False, uncertain=False, observation_known=False, running_observed=False,
+        endpoint_known=False, displacement_known=False, interrupted_by_stop=False,
+        started_us=1000, deadline_us=10000, serviced_us=1250, native_rpm=60,
+        staging_words=[100, 100, 60, 0, 1000], trigger_step=1, trigger_evidence=trigger, failure_evidence=empty,
+        stored=dict(original_operation_id=original_id, target=1, address=1, generation=9, configuration_generation=3,
+            subdivision=1000, word_order=0, relative=relative, qualified=True, qualified_us=900, maximum_age_us=10000,
+            start_speed=10, acceleration_time=100, deceleration_time=100, speed=60, target_bits=1000),
+        relation=dict(original_operation_id=original_id, replacement_operation_id=request_id + 100, observation_superseded=True))
+
+
 class MoveSerial:
     def __init__(self, mutate=None, admission_only=False):
         self.retained = {}
@@ -682,7 +707,7 @@ def operation_transcript(record, mutate=None, mutate_live=False):
     terminal = copy.deepcopy(record)
     terminal.update(id=2, command_id=2, operation_id=102)
     command = terminal["command"]
-    wire_command = {"velocity-read": "velocity", "home-read": "home", "motion-profile-start-speed": "motion-profile", "home-auxiliary": "home"}.get(command,
+    wire_command = {"velocity-read": "velocity", "home-read": "home", "motion-profile-start-speed": "motion-profile", "home-auxiliary": "home", "position-interrupt": "position"}.get(command,
         "read" if command in bench.TYPED_READS else "move" if command in bench.MOVE_COMMANDS else command)
 
     def handler(request_id, requested, args):
@@ -714,6 +739,10 @@ def check_fixture_routes(record, *, live_command=None):
     port = Serial()
     console = bench.Console(port, clock=clock, sleeper=clock.sleep)
     terminal = dict(copy.deepcopy(record), id=2, command_id=2, operation_id=102)
+    if terminal.get("position_interrupt"):
+        terminal["relation"]["replacement_operation_id"] = 102
+        if terminal["relation"]["original_operation_id"] == 102:
+            terminal["relation"]["original_operation_id"] = terminal["stored"]["original_operation_id"] = 101
     if terminal.get("driver_group") in ("position_start_speed", "homing_auxiliary") and terminal["prior"]["operation_id"]:
         terminal["prior"]["operation_id"] = 102
     if live_command is not None:
@@ -737,7 +766,7 @@ def check_fixture_routes(record, *, live_command=None):
     # Real failed terminals must not slip through the permissive raw failure
     # validator after their only family selector disappears.
     stripped = dict(copy.deepcopy(terminal), type="reply", id=5, command="result")
-    for key in ("driver", "home", "velocity", "read_kind"):
+    for key in ("driver", "home", "velocity", "read_kind", "move_kind", "position_interrupt"):
         stripped.pop(key, None)
     query = bench.Command(console, 5, "result", 0, 1, None, None, 102)
     console.pending[5] = query
@@ -761,6 +790,7 @@ class Framing(unittest.TestCase):
             policy = "normal" if command == "stop" else None
             yield action_terminal(2, command, policy), dict(stop_policy=policy)
         yield move_terminal(2), dict(move_args=self.MOVE_ARGS)
+        yield position_interrupt_terminal(2), dict(host_args=("40",))
         yield velocity_terminal(2), dict(velocity_args=self.VELOCITY_ARGS)
         yield home_terminal(2), dict(home_args=self.HOME_ARGS)
         yield driver_terminal(2), dict(driver_args=("read",))
@@ -789,7 +819,7 @@ class Framing(unittest.TestCase):
                 self.assertEqual(self.port.writes, [b"@1 version\n", b"@2 result 102\n"])
 
     def test_conflicting_kind_flags_refused_on_every_terminal_route(self):
-        selectors = dict(home=True, driver=True, velocity=True, move_kind="relative",
+        selectors = dict(home=True, driver=True, velocity=True, move_kind="relative", position_interrupt=True,
                          action_kind="enable", recovery=True, capture_read=True, read_kind="state")
         for terminal, arguments in self.routing_fixtures():
             for field, value in selectors.items():
@@ -814,7 +844,7 @@ class Framing(unittest.TestCase):
 
     def test_missing_or_malformed_kind_cannot_select_another_validator(self):
         for terminal, arguments in self.routing_fixtures():
-            active = [name for name in ("home", "driver", "velocity", "move_kind", "action_kind",
+            active = [name for name in ("home", "driver", "velocity", "move_kind", "position_interrupt", "action_kind",
                                         "recovery", "capture_read", "read_kind") if terminal.get(name)]
             mutations = [lambda item: item.update(move_kind=[]),
                          lambda item: item.update(home=1),
@@ -1951,6 +1981,323 @@ class Framing(unittest.TestCase):
         console.command("release", operation_id=handle.operation_id)
         self.assertFalse(console.operations)
         self.assertEqual(self.port.writes[1], b"@2 move relative 1000 steps native 60 configured 1\n")
+
+    def test_position_interrupt_exact_wire_and_ack_only_retention(self):
+        for relative in (True, False):
+            terminal = position_interrupt_terminal(2, relative=relative)
+            console = self.session(operation_transcript(terminal), fragment=17)
+            handle = console.begin("position-interrupt", host_args=("40",), timeout_s=.1)
+            result = console.wait(handle)
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["outcome"], "acknowledged")
+            self.assertEqual(result["completion"], "not_observed")
+            self.assertFalse(result["endpoint_known"] or result["displacement_known"])
+            self.assertEqual(self.port.writes, [b"@1 version\n", b"@2 position interrupt 40\n"])
+            inspected = console.command("result", operation_id=handle.operation_id)
+            self.assertEqual(inspected["trigger_evidence"], result["trigger_evidence"])
+            self.assertEqual(inspected["relation"]["original_operation_id"], 40)
+            self.assertIs(console.operations[102], handle)
+            console.command("release", operation_id=handle.operation_id)
+            self.assertFalse(console.operations)
+
+    def test_position_interrupt_arguments_reject_new_targets_and_setup_before_tx(self):
+        console = self.session()
+        for tokens in (None, (), ("0",), ("4294967296",), ("-1",), ("+1",), ("1.0",), ("1 2",),
+                       ("1\nstop",), ("1", "2"), ("1", "setup", "stored"), (1,), ["1"], ("9" * 129,)):
+            with self.subTest(tokens=tokens), self.assertRaises(ValueError):
+                console.begin("position-interrupt", host_args=tokens)
+        for extras in (dict(address=2), dict(operation_id=40), dict(stop_policy="normal"),
+                       dict(move_args=self.MOVE_ARGS), dict(home_args=self.HOME_ARGS), dict(load=(0, 0, 0))):
+            with self.subTest(extras=extras), self.assertRaises(ValueError):
+                console.begin("position-interrupt", host_args=("40",), **extras)
+        self.assertEqual(self.port.writes, [b"@1 version\n"])
+        prefix = ["--port", "FAKE", "--log", "unused", "position-interrupt"]
+        self.assertEqual(bench.arguments(prefix + ["4294967295"]).host_args, ("4294967295",))
+        for extra in ([], ["0"], ["4294967296"], ["40", "1000"], ["40", "--setup", "stored"]):
+            with self.subTest(extra=extra), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                bench.arguments(prefix + extra)
+
+    def test_position_interrupt_pending_live_and_historical_have_relation_without_terminal_evidence(self):
+        for known in (False, True):
+            for superseded in (False, True):
+                def handler(i, command, args):
+                    if command == "position":
+                        return encoded(reply(i, "position-interrupt", result="accepted", operation_id=102, address=1))
+                    if command == "result":
+                        return encoded(reply(i, command, result="pending", operation_id=102, command_id=2,
+                            recovery=False, capture_read=False, read_kind=None, action_kind=None,
+                            move_kind="relative", position_interrupt=True,
+                            relation=dict(original_operation_id=40, replacement_operation_id=102, observation_superseded=superseded)))
+                    return Serial.normal(i, command, args)
+                console = self.session(handler)
+                if known:
+                    handle = console.begin("position-interrupt", host_args=("40",), timeout_s=.1)
+                result = console.command("result", operation_id=102, timeout_s=.1)
+                self.assertEqual(result["result"], "pending")
+                self.assertEqual(result["relation"]["observation_superseded"], superseded)
+                if known:
+                    self.assertIsNone(handle.terminal)
+                    self.assertIs(console.operations[102], handle)
+                else:
+                    self.assertFalse(console.operations)
+                self.assertEqual(len(self.port.writes), 3 if known else 2)
+
+    def test_position_interrupt_pending_rejects_identity_kind_and_terminal_conflicts(self):
+        mutations = (
+            lambda t: t.update(position_interrupt=1), lambda t: t.update(position_interrupt="true"),
+            lambda t: t.update(move_kind="angle"), lambda t: t.update(velocity=True),
+            lambda t: t.update(home=True), lambda t: t.update(driver=True), lambda t: t.update(action_kind="stop"),
+            lambda t: t.update(read_kind="state"), lambda t: t.update(capture_read=True),
+            lambda t: t.update(recovery=True), lambda t: t.pop("relation"),
+            lambda t: t["relation"].update(replacement_operation_id=101),
+            lambda t: t["relation"].update(original_operation_id=102),
+            lambda t: t["relation"].update(observation_superseded=1),
+            lambda t: t.update(outcome="acknowledged"), lambda t: t.update(trigger_evidence={}),
+            lambda t: t.update(stored={}), lambda t: t.update(observation_known=False),
+            lambda t: t.update(polls=0), lambda t: t.update(last_observation={}),
+        )
+        for mutate in mutations:
+            for known in (False, True):
+                def handler(i, command, args):
+                    if command == "position":
+                        return encoded(reply(i, "position-interrupt", result="accepted", operation_id=102, address=1))
+                    if command == "result":
+                        pending = reply(i, command, result="pending", operation_id=102, command_id=2,
+                            recovery=False, capture_read=False, read_kind=None, action_kind=None,
+                            move_kind="relative", position_interrupt=True,
+                            relation=dict(original_operation_id=40, replacement_operation_id=102, observation_superseded=False))
+                        mutate(pending)
+                        return encoded(pending)
+                    return Serial.normal(i, command, args)
+                with self.subTest(known=known, mutation=mutations.index(mutate)):
+                    console = self.session(handler)
+                    if known:
+                        handle = console.begin("position-interrupt", host_args=("40",), timeout_s=.1)
+                    self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), ".+")
+                    if known:
+                        self.assertIsNone(handle.terminal)
+                    self.assertEqual(len(self.port.writes), 3 if known else 2)
+
+    def test_position_interrupt_refusal_and_lost_admission_do_not_replay_or_touch_original(self):
+        for refused in (False, True):
+            def handler(i, command, args):
+                if command == "position":
+                    return encoded(reply(i, "position-interrupt", ok=False, result="axis_conflict")) if refused else b""
+                return Serial.normal(i, command, args)
+            console = self.session(handler)
+            original = bench.Command(console, 1, "move-relative", 0, 1, 1, None, 40)
+            console.operations[40] = original
+            if refused:
+                result = console.command("position-interrupt", host_args=("40",), timeout_s=.1)
+                self.assertEqual(result["result"], "axis_conflict")
+            else:
+                self.failed(lambda: console.begin("position-interrupt", host_args=("40",), timeout_s=.1), "deadline")
+            self.assertIs(console.operations[40], original)
+            self.assertIsNone(original.terminal)
+            self.assertEqual(self.port.writes, [b"@1 version\n", b"@2 position interrupt 40\n"])
+
+    def test_position_interrupt_malformed_evidence_never_publishes_or_replays(self):
+        mutations = (
+            lambda t: t.update(ok=True), lambda t: t.update(completion="observed"), lambda t: t.update(outcome="observed"),
+            lambda t: t.update(observation_known=True), lambda t: t.update(running_observed=True),
+            lambda t: t.update(endpoint_known=True), lambda t: t.update(displacement_known=True),
+            lambda t: t.update(setup="write"), lambda t: t.update(staging_applied=True),
+            lambda t: t.update(setup_execution="acknowledged"), lambda t: t.update(trigger_step=0),
+            lambda t: t.update(last_observation=move_terminal(2)["last_observation"]),
+            lambda t: t.update(polls=0), lambda t: t.update(reference={}),
+            lambda t: t.update(position_confirmed=True), lambda t: t.update(observed_position=1000),
+            lambda t: t.update(uncertain=True), lambda t: t.update(state="failed"),
+            lambda t: t["stored"].update(original_operation_id=41), lambda t: t["stored"].update(generation=10),
+            lambda t: t["stored"].update(configuration_generation=4), lambda t: t["stored"].update(address=2),
+            lambda t: t["stored"].update(target=2), lambda t: t["stored"].update(qualified=False),
+            lambda t: t["stored"].update(relative=False), lambda t: t["stored"].update(word_order=2),
+            lambda t: t["stored"].update(qualified_us=1001), lambda t: t["stored"].update(maximum_age_us=100),
+            lambda t: t["stored"].update(target_bits=1001), lambda t: t["stored"].update(speed=61),
+            lambda t: t["stored"].update(start_speed=3001), lambda t: t["stored"].update(subdivision=399),
+            lambda t: t.update(staging_words=[100, 100, 60, 1000, 0]),
+            lambda t: t["relation"].update(observation_superseded=False),
+            lambda t: t["relation"].update(original_operation_id=0),
+            lambda t: t["trigger_evidence"].update(raw_hex="010600270001f801"),
+            lambda t: t["trigger_evidence"].update(raw_hex="01060027000df804"),
+            lambda t: t["trigger_evidence"].update(raw_hex="010600270009f9c6"),
+            lambda t: t["trigger_evidence"].update(raw_hex="01030400000001"),
+            lambda t: t["trigger_evidence"].update(step=0), lambda t: t["trigger_evidence"].update(event=2),
+            lambda t: t["trigger_evidence"].update(tx_accepted=7),
+            lambda t: t["trigger_evidence"].update(response_confirmed=False),
+            lambda t: t["trigger_evidence"].update(qualified=False),
+            lambda t: t["trigger_evidence"].update(earliest_us=999),
+            lambda t: t["trigger_evidence"].update(delivered_us=1251),
+            lambda t: t["failure_evidence"].update(step=1),
+        )
+        for index, mutate in enumerate(mutations):
+            for route in ("live", "historical"):
+                with self.subTest(mutation=index, route=route):
+                    console = self.session(operation_transcript(position_interrupt_terminal(2), mutate, route == "live"))
+                    if route == "live":
+                        self.failed(lambda: console.wait(console.begin("position-interrupt", host_args=("40",), timeout_s=.1)), ".+")
+                        self.assertIsNone(console.operations[102].terminal)
+                    else:
+                        self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), ".+")
+                        self.assertFalse(console.operations)
+                    self.assertEqual(len(self.port.writes), 2)
+
+    def test_position_interrupt_original_id_and_retained_evidence_are_immutable(self):
+        console = self.session(operation_transcript(position_interrupt_terminal(2)))
+        self.failed(lambda: console.wait(console.begin("position-interrupt", host_args=("41",), timeout_s=.1)), "relation")
+        self.assertEqual(len(self.port.writes), 2)
+        def changed(item):
+            item["stored"]["start_speed"] = 11
+        console = self.session(operation_transcript(position_interrupt_terminal(2), changed))
+        handle = console.begin("position-interrupt", host_args=("40",), timeout_s=.1)
+        original = console.wait(handle)
+        self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), "immutable")
+        self.assertIs(handle.terminal, original)
+        self.assertEqual(original["stored"]["start_speed"], 10)
+
+    def test_position_interrupt_failures_conserve_execution_and_copied_evidence(self):
+        cases = []
+        for event, accepted, unknown in ((1, 3, True), (1, 8, True), (2, 0, False), (2, 8, True), (3, 0, False), (3, 8, True)):
+            t = position_interrupt_terminal(2)
+            failure = dict(t["failure_evidence"], step=1, event=event, tx_accepted=accepted,
+                tx_complete=accepted == 8, execution_unknown=unknown, delivered_us=10000 if event == 3 else 1250,
+                status="ILLEGAL_VALUE", detail={1: 17, 2: 18, 3: 16}[event])
+            t.update(state="failed", outcome={1: "transport_error", 2: "cancelled", 3: "deadline"}[event],
+                execution="unknown" if unknown else "not_transmitted", status=failure["status"], detail=failure["detail"],
+                uncertain=bool(accepted or unknown), serviced_us=failure["delivered_us"],
+                trigger_evidence=failure, failure_evidence=copy.deepcopy(failure))
+            if accepted == 0:
+                # Original completion/cancellation or replacement expiry can
+                # finish the held request before old observation settles.
+                t["relation"]["observation_superseded"] = False
+            cases.append(t)
+        for outcome, changes, status, detail, execution in (
+            ("unconfirmed_response", dict(response_confirmed=False), "ILLEGAL_VALUE", 20, "unknown"),
+            ("timing_unqualified", dict(qualified=False, earliest_us=0, latest_us=0), "ILLEGAL_VALUE", 19, "unknown"),
+            ("reply_error", dict(raw_hex="010600270009f9c6", status="CRC_ERROR", detail=6, frame_error=6), "CRC_ERROR", 6, "unknown"),
+            ("reply_error", dict(raw_hex="018602c3a1", received_length=5, status="EXCEPTION", detail=2, frame_error=10), "EXCEPTION", 2, "rejected"),
+            ("deadline", dict(earliest_us=10000, latest_us=10001, delivered_us=10010), "ILLEGAL_VALUE", 16, "acknowledged"),
+        ):
+            t = position_interrupt_terminal(2)
+            t["trigger_evidence"].update(changes)
+            t.update(state="failed", outcome=outcome, status=status, detail=detail, execution=execution, uncertain=True,
+                serviced_us=t["trigger_evidence"]["delivered_us"], failure_evidence=copy.deepcopy(t["trigger_evidence"]))
+            cases.append(t)
+        for index, terminal in enumerate(cases):
+            with self.subTest(case=index):
+                console = self.session(operation_transcript(terminal))
+                handle = console.begin("position-interrupt", host_args=("40",), timeout_s=.1)
+                result = console.wait(handle)
+                self.assertFalse(result["ok"])
+                inspected = console.command("result", operation_id=102, timeout_s=.1)
+                self.assertEqual(inspected["failure_evidence"], result["trigger_evidence"])
+                self.assertEqual(len(self.port.writes), 3)
+                bad = copy.deepcopy(terminal)
+                bad["uncertain"] = not bad["uncertain"]
+                with self.assertRaises(bench.BenchError): bench.Console._check_position_interrupt(bad, 1, 40)
+                bad = copy.deepcopy(terminal)
+                bad["failure_evidence"]["transport_detail"] += 1
+                with self.assertRaises(bench.BenchError): bench.Console._check_position_interrupt(bad, 1, 40)
+
+    def test_position_interrupt_qualification_and_deadline_boundaries(self):
+        t = position_interrupt_terminal(2)
+        t["stored"].update(word_order=1, maximum_age_us=300)
+        t["staging_words"] = [100, 100, 60, 1000, 0]
+        # Closure at qualification expiry is inclusive, even with later delivery.
+        bench.Console._check_position_interrupt(t, 1, 40)
+        bad = copy.deepcopy(t)
+        bad["trigger_evidence"]["latest_us"] += 1
+        with self.assertRaises(bench.BenchError): bench.Console._check_position_interrupt(bad, 1, 40)
+        t.update(state="failed", outcome="deadline", status="ILLEGAL_VALUE", detail=6,
+                 execution="acknowledged", uncertain=True)
+        t["trigger_evidence"]["latest_us"] += 1
+        t["failure_evidence"] = copy.deepcopy(t["trigger_evidence"])
+        bench.Console._check_position_interrupt(t, 1, 40)
+        zero_age = position_interrupt_terminal(2)
+        zero_age["stored"]["maximum_age_us"] = 0
+        zero_age["trigger_evidence"].update(earliest_us=9999, latest_us=10000, delivered_us=10010)
+        zero_age["serviced_us"] = 10010
+        bench.Console._check_position_interrupt(zero_age, 1, 40)
+        saturated = position_interrupt_terminal(2)
+        saturated["stored"]["maximum_age_us"] = 0xFFFFFFFFFFFFFFFF
+        bench.Console._check_position_interrupt(saturated, 1, 40)
+
+    def test_position_interrupt_held_expiry_preserves_unsuperseded_original(self):
+        t = position_interrupt_terminal(2)
+        t["stored"]["maximum_age_us"] = 300
+        failure = dict(t["failure_evidence"], step=1, event=3, delivered_us=1200,
+                       status="ILLEGAL_VALUE", detail=6)
+        t.update(state="failed", outcome="deadline", status="ILLEGAL_VALUE", detail=6,
+            execution="not_transmitted", uncertain=False, serviced_us=1200,
+            trigger_evidence=failure, failure_evidence=copy.deepcopy(failure))
+        t["relation"]["observation_superseded"] = False
+        console = self.session(operation_transcript(t))
+        original = bench.Command(console, 1, "move-relative", 0, 1, 1, None, 40)
+        console.operations[40] = original
+        handle = console.begin("position-interrupt", host_args=("40",), timeout_s=.1)
+        result = console.wait(handle)
+        self.assertEqual(result["detail"], 6)
+        self.assertIs(console.operations[40], original)
+        self.assertIsNone(original.terminal)
+        self.assertEqual(console.command("result", operation_id=102)["trigger_evidence"], failure)
+        self.assertEqual(len(self.port.writes), 3)
+        t["trigger_evidence"].update(tx_accepted=1, execution_unknown=True)
+        t["failure_evidence"] = copy.deepcopy(t["trigger_evidence"])
+        t.update(uncertain=True, execution="unknown")
+        with self.assertRaisesRegex(bench.BenchError, "unsuperseded"):
+            bench.Console._check_position_interrupt(t, 1, 40)
+
+    def test_position_interrupt_programmatic_historical_result_has_zero_command_id(self):
+        # Reproduced with an in-flight original observation and no old reply:
+        # the held programmatic replacement expires without acquiring a bus
+        # request. Its real formatter uses command_id=0 and relation=false.
+        terminal = position_interrupt_terminal(2)
+        failure = dict(terminal["failure_evidence"], step=1, event=3, delivered_us=10020,
+                       status="ILLEGAL_VALUE", detail=16)
+        terminal.update(command_id=0, state="failed", outcome="deadline", status="ILLEGAL_VALUE", detail=16,
+            execution="not_transmitted", uncertain=False, serviced_us=10020,
+            trigger_evidence=failure, failure_evidence=copy.deepcopy(failure))
+        terminal["relation"]["observation_superseded"] = False
+        for pending in (False, True):
+            def handler(i, command, args):
+                if command == "result":
+                    record = dict(terminal, type="reply", id=i, command=command)
+                    if pending:
+                        record = reply(i, command, result="pending", operation_id=102, command_id=0,
+                            recovery=False, capture_read=False, move_kind="relative", position_interrupt=True,
+                            relation=terminal["relation"])
+                    return encoded(record)
+                return Serial.normal(i, command, args)
+            console = self.session(handler)
+            result = console.command("result", operation_id=102, timeout_s=.1)
+            self.assertEqual(result["command_id"], 0)
+            self.assertFalse(console.operations, "historical inspection must not invent a console admission")
+            self.assertEqual(len(self.port.writes), 2)
+        for command_id in (0, 1, 3, False, -1, 0x100000000, None):
+            console = self.session(operation_transcript(position_interrupt_terminal(2),
+                lambda item: item.update(command_id=command_id)))
+            handle = console.begin("position-interrupt", host_args=("40",), timeout_s=.1)
+            original = console.wait(handle)
+            self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), "command ID")
+            self.assertIs(handle.terminal, original)
+            if command_id not in (0, 1, 3) or type(command_id) is not int:
+                console = self.session(operation_transcript(terminal, lambda item: item.update(command_id=command_id)))
+                self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), "command ID")
+
+    def test_ordinary_move_relation_preserves_observed_completion_and_legacy_discriminator(self):
+        t = move_terminal(2)
+        t["relation"] = dict(original_operation_id=102, replacement_operation_id=103, observation_superseded=False)
+        for position_interrupt in (None, False):
+            if position_interrupt is False:
+                t["position_interrupt"] = False
+            console = self.session(operation_transcript(t))
+            result = console.wait(console.begin("move-relative", move_args=self.MOVE_ARGS))
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["completion"], "observed")
+        for change in (dict(original_operation_id=103), dict(replacement_operation_id=102), dict(observation_superseded=1)):
+            bad = copy.deepcopy(t)
+            bad["relation"].update(change)
+            console = self.session(operation_transcript(bad))
+            self.failed(lambda: console.wait(console.begin("move-relative", move_args=self.MOVE_ARGS)), "relation")
 
     def test_move_trigger_closure_bound_includes_staging_delivery(self):
         def inclusive(t):
@@ -5222,5 +5569,55 @@ class HostSerialTests(unittest.TestCase):
                     self.assertEqual(self.device.active, self.device.original if stage != 2 else dict(baud=9600, format="8N1"))
 
 
+def check_position_interrupt_fixtures(executables):
+    """Check production Arduino/IDF formatter output before the normal host suite."""
+    assert len(executables) == 2 and Path(executables[0]).resolve() != Path(executables[1]).resolve()
+    records = []
+    for executable in executables:
+        output = subprocess.check_output([executable, "--emit-console-result"], text=True, timeout=10)
+        assert len(output.encode("utf-8")) <= bench.MAX_LINE
+        record = json.loads(output, object_pairs_hook=bench.unique_object)
+        assert record["type"] == "reply" and record["command"] == "result"
+        original_id = record["stored"]["original_operation_id"]
+        bench.Console._check_position_interrupt(record, 1, original_id)
+        assert not record["ok"] and record["outcome"] == "acknowledged" and record["completion"] == "not_observed"
+        terminal = dict(copy.deepcopy(record), type="move", command="position-interrupt")
+        check_fixture_routes(terminal)
+        # Exercise the actual structured record through serial admission and
+        # retained inspection as well as the direct dispatcher routes above.
+        terminal["relation"]["replacement_operation_id"] = 102
+        clock = Clock()
+        port = Serial(operation_transcript(terminal), fragment=17)
+        console = bench.Console(port, clock=clock, sleeper=clock.sleep)
+        console.identify(timeout_s=.1)
+        handle = console.begin("position-interrupt", host_args=(str(original_id),), timeout_s=.1)
+        live = console.wait(handle)
+        inspected = console.command("result", operation_id=102, timeout_s=.1)
+        assert live["trigger_evidence"] == inspected["trigger_evidence"] == record["trigger_evidence"]
+        assert console.operations[102] is handle and not handle.released
+        assert port.writes == [b"@1 version\n", f"@2 position interrupt {original_id}\n".encode(), b"@3 result 102\n"]
+        for mutate in (lambda t: t.update(completion="observed"),
+                       lambda t: t["stored"].update(generation=record["generation"] + 1),
+                       lambda t: t["trigger_evidence"].update(raw_hex="010600270001F801"),
+                       lambda t: t["relation"].update(replacement_operation_id=original_id)):
+            bad = copy.deepcopy(record)
+            mutate(bad)
+            try:
+                bench.Console._check_position_interrupt(bad, 1, original_id)
+            except bench.BenchError:
+                pass
+            else:
+                raise AssertionError("forged production interruption evidence accepted")
+        records.append(record)
+    assert records[0] == records[1], "Arduino/IDF production interruption records differ"
+    print("PASS: both production position-interrupt formatters accepted through live/retained/historical host routes")
+
+
 if __name__ == "__main__":
-    unittest.main()
+    if len(sys.argv) > 1 and sys.argv[1] == "--position-interrupt-fixtures":
+        if len(sys.argv) != 4:
+            raise ValueError("--position-interrupt-fixtures requires Arduino and IDF fixture executables")
+        check_position_interrupt_fixtures(sys.argv[2:])
+        unittest.main(argv=[sys.argv[0]])
+    else:
+        unittest.main()

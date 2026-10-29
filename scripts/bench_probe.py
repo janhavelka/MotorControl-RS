@@ -38,7 +38,7 @@ MAX_INPUT = 32768
 MAX_TRAFFIC_INPUT = 1048576  # Independent finite diagnostic budget per command/drain.
 COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "health", "memory", "stats", "load",
                       "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "communication", "persistence", "motion-profile", "motion-profile-start-speed", "home-auxiliary", "debug",
-                      "read-identity", "read-config", "read-state", "velocity-read", "home-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list"})
+                      "read-identity", "read-config", "read-state", "velocity-read", "home-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "position-interrupt", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list"})
 MAX_COMMANDS = 11  # Eight ordinary operations, recovery, reserved stop and local query.
 MAX_OPERATIONS = 10  # Eight ordinary operations, one recovery and one reserved stop.
 MAX_PROBES = 8
@@ -275,6 +275,14 @@ def host_timing(baud: int, fmt: str) -> dict:
                 recovery_guard_us=500000, tx_timeout_us=max(20000, 32 * maximum + 10040))
 ACTION_COMMANDS = ("enable", "motor-release", "alarm-clear", "stop", "position-clear")
 MOVE_COMMANDS = ("move-relative", "move-absolute", "move-angle")
+
+
+def position_interrupt_arguments(tokens: tuple[str, ...]) -> int:
+    """Select one existing operation; no target/profile or setup changes are allowed."""
+    if (not isinstance(tokens, tuple) or len(tokens) != 1 or type(tokens[0]) is not str or
+            re.fullmatch(r"[0-9]{1,10}", tokens[0]) is None or not 1 <= int(tokens[0]) <= 0xFFFFFFFF):
+        raise ValueError("position-interrupt requires one original operation ID within 1..4294967295")
+    return int(tokens[0])
 DRIVER_FIELDS = ("direction", "subdivision", "word-order", "soft-limit", "over-limit", "interruption", "position-mode", "positive-limit", "negative-limit")
 DRIVER_REGISTERS = (0x10, 0x11, 0x19, 0x18, 0x17, 0x51, 0x50)
 IO_FIELDS = ("input-polarity", "x0", "x1", "x2", "x3", "output-polarity", "y0", "y1", "custom")
@@ -653,6 +661,7 @@ class Console:
     _check_cached_state = staticmethod(_evidence.check_cached_state)
     _check_action = staticmethod(_evidence.check_action)
     _check_move = staticmethod(_evidence.check_move)
+    _check_position_interrupt = staticmethod(_evidence.check_position_interrupt)
     _check_velocity = staticmethod(_evidence.check_velocity)
     _check_home = staticmethod(_evidence.check_home)
 
@@ -2107,9 +2116,15 @@ class Console:
         read_kind = item.get("read_kind")
         action_kind = item.get("action_kind")
         move_kind = item.get("move_kind")
+        position_interrupt = item.get("position_interrupt", False)
         velocity = item.get("velocity", False)
         driver = item.get("driver", False)
         home = item.get("home", False)
+        if (type(position_interrupt) is not bool or
+                (position_interrupt and (move_kind not in ("relative", "absolute") or home or driver or velocity or
+                    action_kind is not None or recovery or capture_read or read_kind is not None)) or
+                (original is not None and position_interrupt != (original.command == "position-interrupt"))):
+            raise BenchError("result position interruption kind does not match retained operation")
         if (type(home) is not bool or
                 (home and (driver or velocity or move_kind is not None or action_kind is not None
                            or recovery or capture_read or read_kind is not None)) or
@@ -2128,7 +2143,8 @@ class Console:
         stop_policy = item.get("stop_policy")
         if (move_kind is not None and (type(move_kind) is not str or "move-" + move_kind not in MOVE_COMMANDS)) or (
                 move_kind is not None and (action_kind is not None or recovery or capture_read or read_kind is not None)) or (
-                original is not None and move_kind != (original.command[5:] if original.command in MOVE_COMMANDS else None)):
+                original is not None and not position_interrupt and
+                move_kind != (original.command[5:] if original.command in MOVE_COMMANDS else None)):
             raise BenchError("result move kind does not match retained operation")
         if (action_kind is not None and action_kind not in ACTION_KINDS.values()) or (
                 action_kind == "stop" and stop_policy not in ("normal", "fast")) or (
@@ -2146,7 +2162,18 @@ class Console:
                  capture_read != (original.command == "capture-read") or
                  read_kind != TYPED_READS.get(original.command)))):
             raise BenchError("result kind does not match retained operation")
+        original_interrupt_id = (position_interrupt_arguments(original.host_args)
+            if position_interrupt and original is not None and original.host_args is not None else None)
+        if position_interrupt or (move_kind is not None and "relation" in item):
+            _evidence.check_move_relation(item, original_interrupt_id, replacement=position_interrupt)
+        elif "relation" in item:
+            raise BenchError("move relation appears on an unrelated operation family")
         if pending:
+            if position_interrupt and item.keys() - {
+                    "type", "profile", "id", "command", "command_id", "operation_id", "ok", "result", "host_serial",
+                    "recovery", "capture_read", "read_kind", "action_kind", "stop_policy", "move_kind",
+                    "velocity", "driver", "home", "position_interrupt", "relation"}:
+                raise BenchError("pending position interruption contains terminal evidence")
             return
 
         # Every discriminator has now been checked, including inactive flags.
@@ -2171,6 +2198,8 @@ class Console:
             self._check_driver(item, address, arguments, expected_group)
         elif velocity:
             self._check_velocity(item, address, original.velocity_args if original else None)
+        elif position_interrupt:
+            self._check_position_interrupt(item, address, original_interrupt_id)
         elif move_kind is not None:
             kind = original.command[5:] if original else move_kind
             self._check_move(item, address, original.move_args if original else None, kind)
@@ -2209,7 +2238,7 @@ class Console:
         if self.clock() >= handle.deadline:
             raise BenchError("command response deadline expired; command was not replayed")
         self.emit("reply", response=item)
-        asynchronous = handle.command in (*READ_COMMANDS, *ACTION_COMMANDS, "recover", *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home", "motion-profile-start-speed", "home-auxiliary")
+        asynchronous = handle.command in (*READ_COMMANDS, *ACTION_COMMANDS, "recover", *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home", "motion-profile-start-speed", "home-auxiliary", "position-interrupt")
         if asynchronous:
             if item.get("type") == "reply" and not handle.accepted:
                 if not item["ok"]:
@@ -2218,7 +2247,7 @@ class Console:
                     return
                 if item.get("result") != "accepted":
                     raise BenchError(f"{handle.command} acceptance is not explicit")
-                if handle.command in (*READ_COMMANDS, *ACTION_COMMANDS, *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home", "motion-profile-start-speed", "home-auxiliary"):
+                if handle.command in (*READ_COMMANDS, *ACTION_COMMANDS, *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home", "motion-profile-start-speed", "home-auxiliary", "position-interrupt"):
                     address = item.get("address")
                     if (type(address) is not int or not 1 <= address <= 247
                             or (handle.address is not None and address != handle.address)):
@@ -2242,7 +2271,7 @@ class Console:
                 return
             expected_type = {"probe": "probe", "capture-read": "capture_read", "recover": "recovery",
                              **dict.fromkeys(TYPED_READS, "read"),
-                             **dict.fromkeys(ACTION_COMMANDS, "action"), **dict.fromkeys(MOVE_COMMANDS, "move"), "velocity": "velocity", "driver": "driver", "io": "io", "segment": "segment", "control": "control", "tuning": "tuning", "home": "home", "motion-profile-start-speed": "motion-profile-start-speed", "home-auxiliary": "home-auxiliary"}[handle.command]
+                             **dict.fromkeys(ACTION_COMMANDS, "action"), **dict.fromkeys(MOVE_COMMANDS, "move"), "position-interrupt": "move", "velocity": "velocity", "driver": "driver", "io": "io", "segment": "segment", "control": "control", "tuning": "tuning", "home": "home", "motion-profile-start-speed": "motion-profile-start-speed", "home-auxiliary": "home-auxiliary"}[handle.command]
             if item.get("type") != expected_type or not handle.accepted:
                 raise BenchError(f"{handle.command} response sequence is invalid")
             if (not self._operation_id(item.get("operation_id"))
@@ -2263,8 +2292,11 @@ class Console:
                     original = self.operations.get(operation_id)
                     self._check_host_serial(item, original.serial if original else None)
                     original_id = item.get("command_id")
-                    if (not self._operation_id(original_id)
-                            or (original is not None and original_id != original.id)):
+                    # Programmatic application submissions have no console
+                    # command and retain command_id=0. A locally admitted
+                    # console handle still requires its exact nonzero ID.
+                    if (type(original_id) is not int or not 0 <= original_id <= 0xFFFFFFFF
+                            or (original is not None and (original_id == 0 or original_id != original.id))):
                         raise BenchError("result original command ID does not match retained operation")
                     pending = item.get("result") == "pending"
                     self._check_operation_payload(item, original, pending=pending)
@@ -2357,6 +2389,8 @@ class Console:
             position_start_speed_arguments(host_args)
         elif command == "home-auxiliary":
             homing_auxiliary_arguments(host_args)
+        elif command == "position-interrupt":
+            position_interrupt_arguments(host_args)
         elif command == "wiring":
             host_args = () if host_args is None else host_args
             wiring_arguments(host_args)
@@ -2468,6 +2502,7 @@ class Console:
             if command == "home-read": wire_command = "home read"
             if command == "motion-profile-start-speed": wire_command = "motion-profile start-speed"
             if command == "home-auxiliary": wire_command = "home auxiliary"
+            if command == "position-interrupt": wire_command = "position interrupt"
             if command == "profile-list": wire_command = "profile list"
             if command in MOVE_COMMANDS: wire_command = "move " + command[5:]
             payload = f"@{request_id} {wire_command}{suffix}\n".encode("ascii")
@@ -3300,6 +3335,8 @@ def arguments(argv: list[str] | None) -> argparse.Namespace:
             action.add_argument("stop_policy", choices=("normal", "fast"))
     typed = sub.add_parser("typed-read", help="typed identity/configuration/state/velocity/homing-parameter reads, retained inspection and release")
     typed.add_argument("--kind", choices=(*TYPED_WINDOWS, "both"), default="both")
+    interrupt = sub.add_parser("position-interrupt", help="one qualified stored-profile retrigger of an existing operation; ACK-only, never replayed")
+    interrupt.add_argument("original_operation_id")
     for name in MOVE_COMMANDS:
         move = sub.add_parser(name, help="one finite move with explicit stop cleanup; never replayed")
         move.add_argument("value", help="exact integer/decimal/fraction coordinate")
@@ -3412,6 +3449,10 @@ def arguments(argv: list[str] | None) -> argparse.Namespace:
     if result.mode == "host":
         result.host_args = tuple(result.host_tokens)
         try: host_arguments(result.host_args)
+        except ValueError as exc: parser.error(str(exc))
+    if result.mode == "position-interrupt":
+        result.host_args = (result.original_operation_id,)
+        try: position_interrupt_arguments(result.host_args)
         except ValueError as exc: parser.error(str(exc))
     if result.mode in MOVE_COMMANDS:
         tokens = [result.value, result.unit, result.frame]
@@ -3537,6 +3578,10 @@ def main(argv: list[str] | None = None) -> int:
                     elif args.mode in MOVE_COMMANDS:
                         move_campaign(console, command=args.mode, move_args=args.move_args,
                                       cleanup_stop=args.cleanup_stop, timeout_s=args.timeout, address=args.address)
+                    elif args.mode == "position-interrupt":
+                        result = console.wait(console.begin(args.mode, host_args=args.host_args, timeout_s=args.timeout))
+                        if result.get("outcome") != "acknowledged":
+                            raise BenchError("position interruption rejected or failed: " + str(result.get("result", result.get("outcome"))))
                     else:
                         campaign(console, args.mode, count=args.count, interval_s=args.interval,
                                  timeout_s=args.timeout, address=args.address, load=args.load,

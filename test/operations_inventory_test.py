@@ -77,13 +77,13 @@ class Coverage(unittest.TestCase):
             "AuxiliaryCommand.SAVE_PARAMETERS", "AuxiliaryCommand.RESTORE_FACTORY",
             "AuxiliaryCommand.CLEAR_ALARM", "AuxiliaryCommand.CLEAR_POSITION", "MotionCommandBit.STOP",
             "MotionCommandBit.EMERGENCY_STOP", "MotionCommandBit.START_POSITION", "MotionCommandBit.ABSOLUTE_POSITION",
-            "MotionCommandBit.START_SPEED", "DefaultDirection.NORMAL", "DefaultDirection.REVERSED",
+            "MotionCommandBit.START_SPEED", "MotionCommandBit.INTERRUPT_POSITION", "DefaultDirection.NORMAL", "DefaultDirection.REVERSED",
             "WordOrder.HIGH_WORD_FIRST", "WordOrder.LOW_WORD_FIRST", "SoftLimitEnable.LIMITS_OFF",
             "SoftLimitEnable.AFTER_HOMING", "OverLimitStop.FREE_PARKING", "OverLimitStop.EMERGENCY_STOP",
             "PvTriggerMode.LEVEL", "PvTriggerMode.RISING_EDGE", "PositionMode.RELATIVE", "PositionMode.ABSOLUTE", "HomingMethod.METHOD_33", "HomingMethod.METHOD_34",
             "HomingMethod.METHOD_35", "MotionCommandBit.START_HOMING",
             "ControlAlgorithm.OPEN_LOOP", "ControlAlgorithm.ALGORITHM_1"} | {e["name"] + "." + v["name"] for e in LEDGER["enums"] if e["name"] in ("InputFunction", "OutputFunction", "InputBit", "OutputBit", "BaudRateCode", "SerialFormatCode", "MotionStatusBit", "AlarmCode", "HomingAuxiliary") for v in e["values"] if not (e["name"] == "OutputFunction" and v["value"] == 11)})
-        self.assertEqual(result["summary"]["choice_implementation"], {"NOT_IMPLEMENTED": 40, "IMPLEMENTED": 93, "UNSUPPORTED": 1, "NOT_APPLICABLE": 1})
+        self.assertEqual(result["summary"]["choice_implementation"], {"NOT_IMPLEMENTED": 39, "IMPLEMENTED": 94, "UNSUPPORTED": 1, "NOT_APPLICABLE": 1})
         for record in result["records"]:
             if record["id"] in ("AUXILIARY_COMMAND", "MOTION_COMMAND"):
                 self.assertEqual(record["obligations"]["write"], "IN_PROGRESS")
@@ -385,6 +385,7 @@ class Coverage(unittest.TestCase):
         gap = next(row for row in INVENTORY["gaps"] if row["id"] == "position_interrupt")
         self.assertEqual(gap["owner"], "09")
         self.assertEqual(gap["choices"], ["MotionCommandBit.INTERRUPT_POSITION"])
+        self.assertEqual(gap["disposition"], "PARTIAL")
         self.rejected(lambda value: value.update(gaps=[row for row in value["gaps"] if row["id"] != "position_interrupt"]))
         self.rejected(lambda value: next(row for row in value["gaps"] if row["id"] == "position_interrupt").update(choices=["MotionCommandBit.START_POSITION"]))
         self.rejected(lambda value: next(row for row in value["gaps"] if row["id"] == "position_interrupt").update(records=["DRIVER_MODEL"]))
@@ -395,6 +396,19 @@ class Coverage(unittest.TestCase):
             value = copy.deepcopy(INVENTORY)
             value["gaps"][0]["owner"] = owner
             operations.check(value, LEDGER)
+
+    def test_stored_interrupt_route_keeps_broader_gap_open(self):
+        operation = next(row for row in INVENTORY["operations"] if row["id"] == "position_interrupt_stored")
+        self.assertEqual(operation["cli_commands"], ["position interrupt ORIGINAL_ID"])
+        self.assertEqual(operation["hardware"]["state"], "NOT_RUN")
+        for route in ("position", "position interrupt", "position interrupt ORIGINAL_ID extra",
+                      "position interrupt TARGET", "stop normal", "move relative", "profile position"):
+            self.rejected(lambda value: next(row for row in value["operations"]
+                if row["id"] == "position_interrupt_stored").update(cli_commands=[route]))
+        self.rejected(lambda value: next(row for row in value["operations"]
+            if row["id"] == "position_interrupt_stored")["api"].update(symbols=["buildStartPosition"]))
+        self.rejected(lambda value: next(row for row in value["gaps"]
+            if row["id"] == "position_interrupt").update(disposition="NOT_IMPLEMENTED"))
 
     def test_helpers_have_explicit_roles_without_device_credit(self):
         surface = INVENTORY["public_surface"]

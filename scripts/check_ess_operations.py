@@ -78,6 +78,9 @@ def check_cli_route(command, metadata, operation_kind):
     elif root == "move":
         valid = len(tail) == 1 and tail[0] in {"relative", "absolute", "angle"}
         effects = {"WRITE", "ACTION"}
+    elif root == "position":
+        valid = tail == ["interrupt", "ORIGINAL_ID"]
+        effects = {"ACTION"}
     elif root == "stop" and tokens[0] == "stop":
         valid = len(tail) == 1 and tail[0] in {"normal", "fast"}
         effects = {"ACTION"}
@@ -245,6 +248,12 @@ def check(inventory, ledger):
                             raise ValueError("single-field setting requires its exact producing route: " + op_id)
                 check_cli_route(command, metadata, kind)
         api = operation.get("api", {})
+        if "MotionCommandBit.INTERRUPT_POSITION" in selected or any(c.startswith("position ") for c in commands):
+            if (op_id != "position_interrupt_stored" or kind != "ACTION" or linked != ["MOTION_COMMAND"] or
+                    selected != ["MotionCommandBit.INTERRUPT_POSITION"] or commands != ["position interrupt ORIGINAL_ID"] or
+                    api.get("header") != "include/MotorControlRS/profiles/ess_rs/Position.h" or
+                    set(api.get("symbols", [])) != {"prepareRelative", "prepareAbsolute", "nextMove", "advanceMove"}):
+                raise ValueError("stored position interruption requires its exact producing API/route")
         keys(api, "header symbols", "api")
         header = local_file(api.get("header"))
         try:
@@ -296,6 +305,11 @@ def check(inventory, ledger):
         raise ValueError("record overlap must match explicit shared_records exactly")
 
     gap_ids = set()
+    if "position_interrupt_stored" in seen:
+        gap = next((g for g in inventory.get("gaps", []) if g.get("id") == "position_interrupt"), {})
+        if (gap.get("disposition") != "PARTIAL" or gap.get("records") != ["MOTION_COMMAND"] or
+                gap.get("choices") != ["MotionCommandBit.INTERRUPT_POSITION"] or gap.get("kinds") != ["ACTION"]):
+            raise ValueError("stored interrupt subset does not close broader position_interrupt gap")
     for gap in inventory.get("gaps", []):
         keys(gap, "id records choices kinds owner disposition reason", "gap")
         gap_id = gap.get("id")

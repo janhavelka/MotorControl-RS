@@ -42,7 +42,7 @@ using ConsoleReport::executionName;
 using ConsoleReport::motorOutcome;
 using ConsoleReport::hex;
 
-enum class Command : uint8_t { HELP, VERSION, CONFIG, STATUS, HEALTH, STATS, PROBE, CAPTURE_READ, RECOVER, MEMORY, LOAD, DRV, RESULT, CANCEL, RELEASE, READ, PROFILE, CAPS, READ_IDENTITY, READ_CONFIG, READ_STATE, MONITOR, AXIS, PREPARE, ENABLE, MOTOR_RELEASE, ALARM_CLEAR, STOP, MOVE, POSITION_CLEAR, VELOCITY, DRIVER, IO, HOME, SEGMENT, CONTROL, TUNING, HOST, COMMUNICATION, PERSISTENCE, MOTION_PROFILE, DEBUG, DISCOVER, USEADDR, WIRING, MOVE_BY, MOVE_TO, SPEED, ACCEL, DECEL, MOTION, STEPS_PER_TURN, SETTINGS, SUBDIVISION };
+enum class Command : uint8_t { HELP, VERSION, CONFIG, STATUS, HEALTH, STATS, PROBE, CAPTURE_READ, RECOVER, MEMORY, LOAD, DRV, RESULT, CANCEL, RELEASE, READ, PROFILE, CAPS, READ_IDENTITY, READ_CONFIG, READ_STATE, MONITOR, AXIS, PREPARE, ENABLE, MOTOR_RELEASE, ALARM_CLEAR, STOP, MOVE, POSITION_CLEAR, VELOCITY, DRIVER, IO, HOME, SEGMENT, CONTROL, TUNING, HOST, COMMUNICATION, PERSISTENCE, MOTION_PROFILE, DEBUG, DISCOVER, USEADDR, WIRING, MOVE_BY, MOVE_TO, SPEED, ACCEL, DECEL, MOTION, STEPS_PER_TURN, SETTINGS, SUBDIVISION, POSITION };
 struct Entry { const char* name; Command command; const char* syntax; const char* effect; bool bus; const char* description; };
 const Entry COMMANDS[] = {
     {"moveby", Command::MOVE_BY, "moveby VALUE [steps|deg|turn|mm]", "finite_relative_move_with_readonly_preparation", true, "Move by an amount; default unit is command steps. Round to nearest command step, ties to even."},
@@ -55,6 +55,7 @@ const Entry COMMANDS[] = {
     {"stepsperturn", Command::STEPS_PER_TURN, "stepsperturn POSITIVE_NUMBER", "host_command_scale_only_no_motor_settings", false, "Declare command steps per motor turn for angle conversion."},
     {"discover", Command::DISCOVER, "discover [profile ess_rs|manufacturer stepperonline] [addresses FIRST LAST] [tuple BAUD FORMAT] [query-ms 1..5000] [overall-ms 1..60000] [requests 1..256] [results 1..8] [identity] | discover inspect|cancel|restore|finish; max4 distinct tuples,128bytes,20tokens; defaults selected endpoint/current tuple,query500ms,overall5000ms,requests16,results8,no identity,no retries", "bounded_nonchanging_queries_retained_findings_host_restoration", true, "Find responding drives within explicit address, serial and time limits."},
     {"debug", Command::DEBUG, "debug [off|raw|decoded]", "observe_regular_operations_and_cached_diagnostics", false, "Show diagnostics; select raw or decoded traffic while ordinary commands run."},
+    {"position", Command::POSITION, "position interrupt <original-id>", "qualified_stored_position_start_or_interrupt_ack_only", true, "Retrigger the exact stored native move. Acknowledgement does not prove interruption or arrival; use a checked stop to settle motion."},
     {"motion-profile", Command::MOTION_PROFILE, "motion-profile read|inspect|restore|forget | motion-profile start-speed <native>", "snapshot_restore_or_explicit_native_start_speed_setting", true, "Read, inspect or restore position parameters; explicitly set native start speed; forget releases the snapshot."},
     {"help", Command::HELP, "help [command]", "show_callable_commands", false, "Show all commands once, or detailed syntax for one command."},
     {"version", Command::VERSION, "version", "show_build", false, "Show the firmware version and console protocol."},
@@ -491,7 +492,7 @@ const char* helpGroup(Command command) {
     case Command::PROBE: case Command::STATUS: case Command::HEALTH: case Command::MONITOR:
         return "Read and observe";
     case Command::MOVE_BY: case Command::MOVE_TO: case Command::MOTION: case Command::SPEED: case Command::ACCEL: case Command::DECEL:
-    case Command::MOVE: case Command::VELOCITY: case Command::HOME: case Command::ENABLE:
+    case Command::MOVE: case Command::POSITION: case Command::VELOCITY: case Command::HOME: case Command::ENABLE:
     case Command::MOTOR_RELEASE: case Command::ALARM_CLEAR: case Command::POSITION_CLEAR: case Command::STOP:
         return "Motor operations";
     case Command::SUBDIVISION: case Command::DRIVER: case Command::IO: case Command::SEGMENT: case Command::CONTROL: case Command::TUNING:
@@ -510,6 +511,7 @@ const char* helpExample(Command command, const Host& host) {
     case Command::HELP: return "help moveby\n  @1 status  (machine-readable JSON)";
     case Command::MOVE_BY: return "moveby 100\n  moveby 36 deg";
     case Command::MOVE_TO: return "moveto 100 steps\n  moveto 36 deg";
+    case Command::POSITION: return "position interrupt 17  (active native move operation ID)";
     case Command::SPEED: return "speed 60";
     case Command::ACCEL: return "accel 100";
     case Command::DECEL: return "decel 100";
@@ -631,6 +633,12 @@ const char* stopPolicy(const Core::ActionRequest& request) {
     return request.kind != Core::ActionKind::STOP ? "null" : request.stop.behavior == Core::StopBehavior::CONFIGURED_DECELERATION ? "\"normal\"" : "\"fast\"";
 }
 
+bool moveRelation(char* output, std::size_t capacity, std::size_t& used, const MoveRelation& relation) {
+    return append(output, capacity, used,
+        ",\"relation\":{\"original_operation_id\":%lu,\"replacement_operation_id\":%lu,\"observation_superseded\":%s}",
+        static_cast<unsigned long>(relation.originalOperationId), static_cast<unsigned long>(relation.replacementOperationId),
+        boolean(relation.observationSuperseded));
+}
 bool actionEvidence(char* output, std::size_t capacity, std::size_t& used, const Ess::ActionEvidence& evidence) {
     char raw[Ess::ACTION_MAX_REPLY_BYTES * 2 + 1]; hex(evidence.raw, evidence.length, raw, sizeof(raw));
     return append(output, capacity, used,
@@ -819,7 +827,7 @@ void Console::error(uint32_t id, const char* command, const char* reason) noexce
 
 void Console::action(uint32_t id, const char* command, Action result, uint8_t address, uint32_t operationId) noexcept {
     const bool typed = std::strcmp(command, "read-identity") == 0 || std::strcmp(command, "read-config") == 0 || std::strcmp(command, "read-state") == 0 || std::strcmp(command, "velocity-read") == 0 || std::strcmp(command, "home-read") == 0;
-    const bool motor = std::strcmp(command, "home-auxiliary") == 0 || std::strcmp(command, "motion-profile-start-speed") == 0 || std::strcmp(command, "enable") == 0 || std::strcmp(command, "motor-release") == 0 || std::strcmp(command, "alarm-clear") == 0 || std::strcmp(command, "position-clear") == 0 || std::strcmp(command, "stop") == 0 || std::strncmp(command, "move-", 5) == 0 || std::strcmp(command, "velocity") == 0 || std::strcmp(command, "driver") == 0 || (std::strcmp(command, "io") == 0 || std::strcmp(command, "segment") == 0 || std::strcmp(command, "control") == 0 || std::strcmp(command, "tuning") == 0);
+    const bool motor = std::strcmp(command, "position-interrupt") == 0 || std::strcmp(command, "home-auxiliary") == 0 || std::strcmp(command, "motion-profile-start-speed") == 0 || std::strcmp(command, "enable") == 0 || std::strcmp(command, "motor-release") == 0 || std::strcmp(command, "alarm-clear") == 0 || std::strcmp(command, "position-clear") == 0 || std::strcmp(command, "stop") == 0 || std::strncmp(command, "move-", 5) == 0 || std::strcmp(command, "velocity") == 0 || std::strcmp(command, "driver") == 0 || (std::strcmp(command, "io") == 0 || std::strcmp(command, "segment") == 0 || std::strcmp(command, "control") == 0 || std::strcmp(command, "tuning") == 0);
     std::snprintf(output_, sizeof(output_),
         "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":%s,\"result\":\"%s\",\"address\":%u,\"operation_id\":%lu%s}",
         static_cast<unsigned long>(id), command, boolean(result == Action::OK),
@@ -1670,6 +1678,23 @@ void Console::dispatch() noexcept {
         }
         return;
     }
+    if (entry->command == Command::POSITION) {
+        if (outputPending()) { ++inputDropped_; return; }
+        uint32_t originalId = 0;
+        if (count != first + 3 || std::strcmp(tokens[first + 1], "interrupt") ||
+            !number(tokens[first + 2], originalId) || !originalId) {
+            error(id, "position-interrupt", "invalid_arguments"); return;
+        }
+        if (!host_.startPositionInterrupt || !host_.snapshot) { error(id, "position-interrupt", "unavailable"); return; }
+        Snapshot snapshot; host_.snapshot(host_.context, snapshot);
+        const bool available = availableSlot() != OUTSTANDING_CAPACITY;
+        uint32_t operationId = 0;
+        if (available) beginWork();
+        const auto result = available ? host_.startPositionInterrupt(host_.context, id, originalId, operationId) : Action::BUSY;
+        if (result == Action::OK) track(id, operationId);
+        action(id, "position-interrupt", result, snapshot.address, result == Action::OK ? operationId : 0);
+        return;
+    }
     if (entry->command == Command::MOVE) {
         if (outputPending()) { ++inputDropped_; return; }
         const char* kind = count > first + 1 ? tokens[first + 1] : "";
@@ -1911,6 +1936,7 @@ void Console::dispatch() noexcept {
         case Command::CAPTURE_READ: return host_.startCaptureRead != nullptr;
         case Command::ENABLE: case Command::MOTOR_RELEASE: case Command::ALARM_CLEAR: case Command::STOP: case Command::POSITION_CLEAR: return host_.startAction && host_.snapshot;
         case Command::SETTINGS: return host_.simpleMotion != nullptr;
+        case Command::POSITION: return host_.startPositionInterrupt && host_.snapshot;
         case Command::MOVE: return host_.startMove && host_.snapshot && host_.axis;
         case Command::VELOCITY: return host_.snapshot && (host_.startTypedRead || (host_.startVelocity && host_.axis));
         case Command::SUBDIVISION: return host_.simpleMotion != nullptr;
@@ -2011,6 +2037,9 @@ void Console::dispatch() noexcept {
             boolean(host_.startDriver && host_.snapshot), boolean(host_.startDriver && host_.snapshot))) {
             error(id,"caps","output_capacity");return;
         }
+        used=std::strlen(output_); if(used) --used;
+        if(!append(output_,sizeof(output_),used,",\"position_interrupt_stored\":%s,\"position_interrupt_completion\":\"not_observed\",\"position_interrupt_new_target\":false}",
+            boolean(callable(Command::POSITION)))) { error(id,"caps","output_capacity"); return; }
         emit(); return;
     }
     if (entry->command == Command::STATS && arg) {
@@ -2041,12 +2070,19 @@ void Console::dispatch() noexcept {
                 !view.actionContext ? "null" : view.actionContext->request.kind == Core::ActionKind::ENABLE ? "\"enable\"" : view.actionContext->request.kind == Core::ActionKind::RELEASE ? "\"release\"" : view.actionContext->request.kind == Core::ActionKind::CLEAR_ALARM ? "\"clear_alarm\"" : view.actionContext->request.kind == Core::ActionKind::CLEAR_POSITION ? "\"clear_position\"" : "\"stop\"",
                 view.actionContext ? stopPolicy(view.actionContext->request) : "null", view.moveContext ? (view.moveContext->request.position.wrapped ? "\"angle\"" : view.moveContext->request.position.relative ? "\"relative\"" : "\"absolute\"") : "null", boolean(view.velocityContext != nullptr), boolean(view.driverContext != nullptr), boolean(view.homeContext != nullptr));
             std::size_t used = std::strlen(output_);
+            if (view.moveContext) {
+                --used;
+                if (!append(output_, sizeof(output_), used, ",\"position_interrupt\":%s",
+                    boolean(view.moveContext->interruption == Ess::PositionInterruption::INTERRUPT)) ||
+                    (view.moveRelation.originalOperationId && !moveRelation(output_, sizeof(output_), used, view.moveRelation)) ||
+                    !append(output_, sizeof(output_), used, "}")) { error(id, "result", "output_full"); return; }
+            }
             if (!appendReportSerial(used)) { error(id, "result", "output_full"); return; }
             emit();
         } else if (view.homeContext) formatHome(id, view.commandId, view.operationId, *view.homeContext, true, view.interruptedByStop);
         else if (view.driverContext) formatDriver(id, view.commandId, view.operationId, *view.driverContext, true);
         else if (view.velocityContext) formatVelocity(id, view.commandId, view.operationId, *view.velocityContext, true, view.interruptedByStop);
-        else if (view.moveContext) formatMove(id, view.commandId, view.operationId, *view.moveContext, true, view.interruptedByStop);
+        else if (view.moveContext) formatMove(id, view.commandId, view.operationId, *view.moveContext, true, view.interruptedByStop, view.moveRelation);
         else if (view.actionContext) formatAction(id, view.commandId, view.operationId, *view.actionContext, true, view.interruptedByStop);
         else if (view.typedRead) formatRead(id, view.commandId, view.operationId, *view.typedRead, true);
         else if (view.recovery) formatRecovery(id, view.commandId, view.operationId, view.recoveryResult, true);
@@ -2607,14 +2643,15 @@ bool Console::reportSimpleMotion(uint32_t id, uint32_t operationId, const Simple
     return false;
 }
 bool Console::reportMove(uint32_t id, uint32_t operationId, const Ess::MoveContext& context,
-                         bool interruptedByStop, const HostTuple* tuple, uint32_t serialGeneration) noexcept {
+                         bool interruptedByStop, const HostTuple* tuple, uint32_t serialGeneration,
+                         const MoveRelation& relation) noexcept {
     setReportSerial(tuple, serialGeneration);
     if (outputPending() || context.operationId != operationId ||
         (context.state != Core::ActionState::SUCCEEDED && context.state != Core::ActionState::FAILED)) return false;
     for (auto& item : outstanding_) if (item.commandId == id && item.operationId == operationId && !item.transferred) {
         outputFormat_ = item.format;
         syntax_=helpCommand_=nullptr;
-        if (!formatMove(id, id, operationId, context, false, interruptedByStop)) return false;
+        if (!formatMove(id, id, operationId, context, false, interruptedByStop, relation)) return false;
         if (item.operationId == operationId) item.transferred = true;
         return true;
     }
@@ -2622,7 +2659,9 @@ bool Console::reportMove(uint32_t id, uint32_t operationId, const Ess::MoveConte
 }
 
 bool Console::formatMove(uint32_t id, uint32_t commandId, uint32_t operationId,
-                         const Ess::MoveContext& c, bool inspection, bool interruptedByStop) noexcept {
+                         const Ess::MoveContext& c, bool inspection, bool interruptedByStop, const MoveRelation& relation) noexcept {
+    if (c.interruption == Ess::PositionInterruption::INTERRUPT)
+        return formatPositionInterrupt(id, commandId, operationId, c, inspection, interruptedByStop, relation);
     std::size_t used = 0;
     const bool ok = c.state == Core::ActionState::SUCCEEDED && c.completion == Core::ActionCompletion::OBSERVED;
     const auto& p = c.prepared;
@@ -2687,9 +2726,49 @@ bool Console::formatMove(uint32_t id, uint32_t commandId, uint32_t operationId,
             static_cast<long>(c.observedPosition), c.observedSpeed) &&
             actionEvidence(output_, sizeof(output_), used, c.positionMatchEvidence) && append(output_, sizeof(output_), used, "}");
     }
+    if (fits && relation.originalOperationId) {
+        --used;
+        fits = moveRelation(output_, sizeof(output_), used, relation) && append(output_, sizeof(output_), used, "}");
+    }
     if (!fits || !appendReportSerial(used)) return false;
     emit(inspection ? 0 : operationId);
     return true;
+}
+
+bool Console::formatPositionInterrupt(uint32_t id, uint32_t commandId, uint32_t operationId,
+        const Ess::MoveContext& c, bool inspection, bool interruptedByStop, const MoveRelation& relation) noexcept {
+    std::size_t used = 0;
+    const auto& stored = c.stored;
+    bool fits = append(output_, sizeof(output_), used,
+        "{\"type\":\"%s\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"command_id\":%lu,\"operation_id\":%lu,"
+        "\"move_kind\":\"%s\",\"position_interrupt\":true,\"read_kind\":null,\"action_kind\":null,\"capture_read\":false,\"recovery\":false,"
+        "\"ok\":false,\"state\":\"%s\",\"outcome\":\"%s\",\"status\":\"%s\",\"detail\":%ld,\"setup_execution\":\"%s\","
+        "\"execution\":\"%s\",\"completion\":\"not_observed\",\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,"
+        "\"started_us\":%llu,\"deadline_us\":%llu,\"serviced_us\":%llu,\"setup\":\"stored\",\"staging_applied\":false,\"uncertain\":%s,"
+        "\"observation_known\":false,\"running_observed\":false,\"endpoint_known\":false,\"displacement_known\":false,"
+        "\"native_rpm\":%u,\"staging_words\":[%u,%u,%u,%u,%u],\"trigger_step\":%u,\"interrupted_by_stop\":%s,"
+        "\"stored\":{\"original_operation_id\":%lu,\"configuration_generation\":%lu,\"target\":%lu,\"address\":%u,\"generation\":%lu,"
+        "\"subdivision\":%u,\"word_order\":%u,\"relative\":%s,\"qualified\":%s,\"qualified_us\":%llu,\"maximum_age_us\":%llu,"
+        "\"start_speed\":%u,\"acceleration_time\":%u,\"deceleration_time\":%u,\"speed\":%u,\"target_bits\":%lu}",
+        inspection ? "reply" : "move", static_cast<unsigned long>(id), inspection ? "result" : "position-interrupt",
+        static_cast<unsigned long>(commandId), static_cast<unsigned long>(operationId), stored.relative ? "relative" : "absolute",
+        c.state == Core::ActionState::SUCCEEDED ? "succeeded" : "failed", motorOutcome(c.outcome), Core::errToString(c.status.code),
+        static_cast<long>(c.status.detail), executionName(c.setupExecution), executionName(c.execution),
+        static_cast<unsigned long>(c.target.id), c.target.address, static_cast<unsigned long>(c.target.generation),
+        static_cast<unsigned long>(stored.configurationGeneration), static_cast<unsigned long long>(c.startedUs),
+        static_cast<unsigned long long>(c.deadlineUs), static_cast<unsigned long long>(c.servicedUs), boolean(c.uncertain),
+        stored.profile.speed, c.words[0], c.words[1], c.words[2], c.words[3], c.words[4], c.triggerStep, boolean(interruptedByStop),
+        static_cast<unsigned long>(stored.originalOperationId), static_cast<unsigned long>(stored.configurationGeneration),
+        static_cast<unsigned long>(stored.target.id), stored.target.address, static_cast<unsigned long>(stored.target.generation),
+        stored.subdivision, static_cast<unsigned>(stored.wordOrder), boolean(stored.relative), boolean(stored.qualified),
+        static_cast<unsigned long long>(stored.qualifiedUs), static_cast<unsigned long long>(stored.maximumAgeUs),
+        stored.profile.startSpeed, stored.profile.accelerationTime, stored.profile.decelerationTime, stored.profile.speed,
+        static_cast<unsigned long>(stored.profile.targetBits)) && moveRelation(output_, sizeof(output_), used, relation) &&
+        append(output_, sizeof(output_), used, ",\"trigger_evidence\":") && actionEvidence(output_, sizeof(output_), used, c.triggerEvidence) &&
+        append(output_, sizeof(output_), used, ",\"failure_evidence\":") && actionEvidence(output_, sizeof(output_), used, c.failureEvidence) &&
+        append(output_, sizeof(output_), used, "}");
+    if (!fits || !appendReportSerial(used)) return false;
+    emit(inspection ? 0 : operationId); return true;
 }
 
 bool Console::reportVelocity(uint32_t id, uint32_t operationId, const Ess::VelocityContext& context,

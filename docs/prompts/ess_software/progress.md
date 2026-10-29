@@ -1,11 +1,12 @@
 # Execution progress
 
-Prepared 2026-10-23; updated 2026-10-29 for stages 01-06 execution. The preparation
+Prepared 2026-10-23; updated 2026-10-29 for stages 01-07 execution. The preparation
 record below is historical. Stage 01 delivered contracts only; stage 02 implements
 velocity parameter reads. Stage 03 adds homing parameter reads; stage 04 adds
 position start-speed setting. Stage05 adds homing auxiliary configuration;
-stage06 delivers the native stored-profile interruption core. Stages07-15 remain
-NOT STARTED; N05 remains PARTIAL until its separate integration/evidence work.
+stage06 delivers the native stored-profile interruption core. Stage07 integration
+is under final verification. Stages08-15 remain NOT STARTED; broader N05 remains
+PARTIAL pending active staging and completion-attribution evidence.
 
 | Stage | Stage status | Commit / evidence | Physical evidence |
 | --- | --- | --- | --- |
@@ -15,7 +16,7 @@ NOT STARTED; N05 remains PARTIAL until its separate integration/evidence work.
 | 04 | SOFTWARE COMPLETE | [Implementation and verification](../../reports/2026-10-29_ess_position_start_speed.md); `ef38513`; 83-test final quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 05 | SOFTWARE COMPLETE | [Implementation and verification](../../reports/2026-10-29_ess_homing_auxiliary.md); `88f8b9c`; 85-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 06 | SOFTWARE COMPLETE | `db65b1b`; [core subset, review and verification](../../reports/2026-10-29_ess_position_interrupt_core.md); 86-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: core-only delivery |
-| 07 | NOT STARTED | - | NOT RUN |
+| 07 | IN PROGRESS | [Owner/application integration and verification](../../reports/2026-10-29_ess_position_interrupt_owner.md); 88-test quick/package and independent review PASS; final CI pending | NOT RUN: recorded bench USB absent |
 | 08 | NOT STARTED | - | NOT RUN |
 | 09 | NOT STARTED | - | NOT RUN |
 | 10 | NOT STARTED | - | NOT RUN |
@@ -295,8 +296,8 @@ Local evidence: `build/ess_software_06_quick/` and `build/ess_software_06_ci/`.
 See the [report](../../reports/2026-10-29_ess_position_interrupt_core.md) for source
 hash, exact admission/evidence limits and tested handoff.
 
-Stage07 owns the ordinary owner/API/console route, independently retained
-original/replacement/stop results and stop priority. It remains NOT STARTED.
+Stage07's later entry owns the ordinary owner/API/console route, independently
+retained original/replacement/stop results and stop priority.
 Broader active new-target staging and completion attribution remain unresolved;
 N05 stays PARTIAL, with five named gaps and18 guarded pairs unchanged. Local full
 firmware and physical interruption NOT RUN; hosted firmware builds do not qualify

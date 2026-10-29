@@ -34,12 +34,12 @@ remain NOT RUN. Raw DIP interpretation remains unresolved; reading a writable
 setting still creates no setter credit. The documented auxiliary INVALID value
 is explicitly no-operation metadata, not a missing command to implement.
 
-The checked inventory retains 221 records/242 words, 135 choices, 53 producing
+The checked inventory retains 221 records/242 words, 135 choices, 54 producing
 operation rows and five named gaps. It accounts for 201 implemented reads and
 zero missing readable-record implementations; 172 implemented writes, zero missing writes, three partial
 write registers and 18 guarded pair writes. Sixteen reserved records and two
-unspecified-access records remain visible. Choice totals are 93 implemented
-(including twelve decoders), 40 unimplemented/unresolved, one unsupported and
+unspecified-access records remain visible. Choice totals are 94 implemented
+(including twelve decoders), 39 unimplemented/unresolved, one unsupported and
 one no-operation value. These counts are implementation accounting, not full
 device or physical qualification.
 
@@ -53,7 +53,7 @@ device or physical qualification.
 | Conversion | Exact position/velocity preparation, numeric parsing and unit conversions | `prepare`, axis configuration and motion unit arguments; helpers need no separate device command |
 | Metadata | Source catalogue, bounded indexed lookups, method descriptors, read/discovery capability queries, tuning parameter metadata, status labels | `caps`, `profile list`, `home methods` and help are local inspection |
 | Raw codecs | Checked FC03/06/10 builders/parsers, CRC, access/length checks, paired scalar encode/decode | Used beneath typed paths; raw wire helpers do not count as semantic device coverage |
-| Native remembered position intent | `PositionCommand::prepareRelative/prepareAbsolute`, raw `buildStartPosition` | API-only. Desired speed/ramps and exact target bits use the existing staging/start sequencer; command success is ACKNOWLEDGED, completion NOT_OBSERVED. Ordinary CLI moves retain observation-aware preparation. |
+| Native remembered position intent | `PositionCommand::prepareRelative/prepareAbsolute`, raw `buildStartPosition` | `position interrupt ORIGINAL_ID` exposes the qualified exact stored-profile subset through `submitPositionInterrupt`; other native/raw routes remain API-only. Native success is ACKNOWLEDGED, completion NOT_OBSERVED. Ordinary CLI moves retain observation-aware preparation. |
 | Diagnostics | `TrafficCapture`, traffic labels and checked ESS traffic decoder | `debug off/raw/decoded` observes copied owner traffic; display loss does not consume protocol bytes or retained outcomes |
 
 `TrafficCapture` also exposes bounded member operations for caller-owned
@@ -73,6 +73,7 @@ the installed core performs no UART, clock, retry, queue, heap or logging work.
 | Axis configuration and preview | `axis config`, `axis config set ...`, `axis origin`, `prepare` | `Axis.h`/`Units.h`; exact-number parsing and one conversion path |
 | Explicit actions | `enable`, `motor-release`, `alarm-clear`, `position-clear`, `stop normal|fast` | Common action preparation and ESS `Actions.h` |
 | Finite positioning | `moveby`, `moveto`, `move relative|absolute|angle` | Shared target preparation and ESS position sequence; simple commands refresh prerequisites |
+| Stored position interruption | `position interrupt ORIGINAL_ID` | `submitPositionInterrupt`, independently retained original witness, existing owner settlement and `copyMoveResult` relation; no changed target, active staging or observed completion |
 | Remembered intent and subdivision | `speed`, `accel`, `decel`, `subdivision [INTEGER|options]` | Speed/ramps are host intent until a move; subdivision uses the typed driver setter/readback |
 | Velocity parameters | `velocity read [address]` | ESS `Reads.h` producing single-window read, copied raw observation and ordinary application submit/copy/release API |
 | Velocity | `velocity` | Common target preparation and ESS velocity sequence; unresolved acceleration mapping rejected |
@@ -172,7 +173,7 @@ The remaining gaps are tracked by feature, independently of hardware evidence:
 
 | Area | Open obligation | Actual boundary |
 | --- | --- | --- |
-| Position | Native ignore-versus-interrupt position command | PARTIAL: typed bit-3 core option admits only qualified exact native stored retrigger, ACK-only. Ordinary owner/app/CLI route awaits stage07; broader staging/completion attribution remains evidence-gated. Priority stop is separate. |
+| Position | Native ignore-versus-interrupt position command | PARTIAL: typed bit-3 core and ordinary owner/app/CLI admit only qualified exact native stored retrigger, ACK-only, with independent retained results and stop priority. Broader staging/completion attribution remains evidence-gated. |
 | Position | Arbitrary native five-word profile candidates and archived restoration | Typed builder exists, but CLI restoration accepts only the volatile original snapshot; finite-move staging is not standalone parameter access |
 | Homing | Remaining homing trajectories | Three methods implemented, 27 unimplemented, five unresolved; I/O configuration does not implement a switch trajectory |
 | Homing | Nonzero homing offset and additional paired-write forms | Zero-only reviewed staging does not resolve offset order, signedness or units |

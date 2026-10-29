@@ -177,6 +177,17 @@ query, scan, configuration write or motion command.
 | [Codec.h](../include/MotorControlRS/profiles/ess_rs/Codec.h) and other ESS headers | Build and validate frames; typed profile preparations/sequences define the motor operations. |
 | [bench_probe.py](../scripts/bench_probe.py) | Correlate console requests, run finite campaigns and save JSONL evidence. |
 
+The host mode `position-interrupt ORIGINAL_ID` sends exactly
+`position interrupt ORIGINAL_ID` for the [qualified native stored-profile
+subset](ess_position.md#application-admission-and-retained-results). It requires
+an eligible active original ID and preserves both retained results for explicit
+inspection/release. It performs no profile staging, retry or automatic stop.
+Its validator checks original/replacement identity, qualification, exact 9/13
+trigger evidence and immutable deadlines in live and retained records. A checked
+ACK is accepted as command evidence only: `completion:not_observed`, unknown
+endpoint/displacement and the possible-motion interlock remain. Use an explicit
+checked stop to settle motion before competing ordinary work.
+
 The application is the only bus owner. The adapter configures UART2 without
 installing the IDF UART driver, ISR or driver receive ring. It polls low-level
 FIFO, state-machine and error registers directly. No `HardwareSerial`, IDF UART

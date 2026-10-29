@@ -117,15 +117,16 @@ Native target bits do not qualify negative-motion encoding, calibration or
 starting-speed compatibility. There is no implicit enable, I/O change, save,
 stop or retry. `buildStartPosition(address, relative, buffer, capacity)` builds
 only the eight-byte FC06 start for the drive's already stored target/profile;
-it does not stage parameters or observe the result. These lower-level routes
-are API-only. The CLI continues to use `prepareMove*`.
+it does not stage parameters or observe the result. Raw builders remain API-only.
+Ordinary CLI moves use `prepareMove*`; the restricted `position interrupt`
+route below uses native intent with an independently retained original witness.
 
 <a id="planned-start-speed-setting-and-interruption-not-implemented"></a>
 
 ## Native position start-speed setting
 
 The start-speed setting is implemented. Physical scaling, activation and
-persistence remain unqualified; interruption below remains planned.
+persistence remain unqualified. The restricted interruption route is described below.
 
 The start-speed setter uses `DriverContext`, a one-field
 `DriverGroup::POSITION_START_SPEED`, group-local selection bit 0 and a named
@@ -272,30 +273,60 @@ Wrong host target/ID/step envelopes reject unchanged. Those tokens are not on
 the wire: a bit-identical late FC06 echo still needs the owner's timing/source
 qualification and cannot be identified by core IDs alone.
 
-See the [stage 06 evidence](reports/2026-10-29_ess_position_interrupt_core.md).
-The normal application/console route remains **not implemented**. The raw
-builder validates wire shape/intent only; it does not perform this admission.
+See the [core evidence](reports/2026-10-29_ess_position_interrupt_core.md) and
+[application evidence](reports/2026-10-29_ess_position_interrupt_owner.md).
+The raw builder validates wire shape/intent only; it does not perform application admission.
 
-### Application handoff (planned, stage 07)
+### Application admission and retained results
 
-Stage 07 will expose `submitPositionInterrupt(originalId, command, targetBits,
-relative, replacementId)` and `position interrupt <original-id>` through the
-same owner path. The console constructs only the exact retained stored candidate;
-it accepts no implicit new target or setup policy. Admit at most one pending
-replacement for the same owned position operation/target, after its trigger is
-confirmed and it remains active. Reject pre-trigger/uncertain originals, another
-motion kind, duplicates, stale generations and an already pending stop. Reserve
-an additional ordinary result before changing the original continuation. Preserve
-the original slot and dedicated urgent-stop reservation; never borrow either.
+`submitPositionInterrupt(originalId, command, targetBits, relative, replacementId)`
+and `position interrupt <original-id>` use the same application admission and owner.
+The console constructs only the exact retained stored candidate; it accepts no
+new target or setup policy. The public API checks the supplied target, binding,
+configuration, subdivision, word order, mode, limits and five candidate words.
+It replaces the supplied `command.stored` with independently retained evidence.
+Rejection preserves the original and output ID and sends no traffic.
+
+The original must be an active ordinary observed move with a confirmed trigger,
+native unwrapped steps, actual-relative basis, no consumed coordinate reference
+and no host or drive soft limits. Programmatic `moveBy`/`moveTo`/`submitMove`
+and advanced `move relative|absolute` commands can supply this original.
+Simple `moveby`/`moveto` parent/child sessions are outside this initial subset.
+Pre-trigger or uncertain originals, other motion kinds, duplicate replacement,
+stale generations and pending stops reject. At most one replacement is admitted
+per original. Its separate ordinary result slot is reserved before cancelling
+the old continuation; the original and urgent-stop slots remain reserved.
+
+Qualification combines checked configuration, logical I/O, original readiness,
+the full six-word profile snapshot and confirmed original setup/trigger evidence.
+It preserves the existing native-unit/input/start-speed qualification policy.
+Its timestamp is the earliest of original readiness, I/O and profile evidence;
+its age bound is the tighter enabled original/application limit. Configuration
+uses generation and invalidation, without claiming a new device observation.
+No new read renews this witness. Contradictory checked state/profile/I/O,
+generation changes and expiry revoke unsent work. The replacement has one
+immutable 500 ms application budget; its core trigger budget also respects
+witness expiry. It waits in its reserved frontend record until the existing
+owner is settled, and retains all admission checks under owner-result pressure.
 
 Settle an in-flight frame before replacing its continuation. If the original
 completes during that settlement, retain a cancelled/no-TX replacement and require
 a deliberate new submission; do not turn it into an idle start. An admitted
 urgent stop cancels an unsent replacement, or settles its transmitted uncertainty
 before stopping. Retain original, replacement and stop results independently.
-ACK-only terminal publication does not release the application's possible-motion
-interlock; explicit checked stop/reconciliation is required before conflicting
-ordinary work. Local cancellation/recovery is not that stop.
+ACK-only terminal publication and result release do not clear the possible-motion
+interlock. A checked observed stop settles it before conflicting ordinary work;
+local cancellation/recovery is not that stop.
+
+`copyMoveResult(id, context, relation)` copies a programmatic move's current or
+terminal context and `MoveRelation`; missing, released or wrong-kind IDs leave
+both outputs unchanged. Related original/replacement records are never recycled
+automatically. Explicit terminal release refuses while the peer remains active.
+`relation` retains both operation IDs; `observationSuperseded` means the old
+observer was locally cancelled, not that the drive physically interrupted.
+Cancelling an active original also cancels its pending replacement. Once the
+original is terminal, cancel the replacement by its own ID. Cancelling the
+replacement never resumes the original observer and never sends a motor stop.
 
 This rejects a completion race known to the host, not every physical race. Bit 3
 is not an atomic only-if-busy command. The original motion can finish between
@@ -303,15 +334,9 @@ the last sample and the trigger, making the same write an ordinary new start.
 The native caller must explicitly accept that start-or-interrupt meaning; the
 ACK proves neither that interruption occurred nor that the old move was running.
 
-The planned `copyMoveResult(id, MoveContext&, MoveRelation&)` app function copies
-the exact pending/terminal context and small application-owned relation metadata:
-original ID, replacement ID and whether local observation was superseded by
-replacement. It checks MOVE kind and programmatic ownership, leaves both outputs
-unchanged on rejection, and does not consume/recycle either record. Relation
-metadata identifies the host handoff, not proof of physical interruption.
-Both IDs remain independently inspectable; `moveProgress` remains a compact
-projection and must not report an ACK-only replacement as observed success.
-Urgent stop keeps its independent result; no later result overwrites the old one.
+`moveProgress` remains a compact projection and never reports an ACK-only
+replacement as observed success. Urgent stop keeps its independent result;
+no later result overwrites the old one.
 
 Broader new-target replacement needs evidence of when the drive consumes target/
 profile writes and a supported coordinate/completion attribution contract.

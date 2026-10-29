@@ -65,7 +65,8 @@ no independent shaft calibration, electrical timing or loaded-machine claim.
    make reads, two one-field settings and 27 qualified zero-offset homing
    methods concrete software blocks. Stages02-05 now deliver both parameter reads
    and scalar settings. Stage06 delivers the native stored-profile interrupt
-   core; stage07 still owns application integration and retained results.
+   core; stage07 delivers application/console/host integration, independent
+   retained results and stop priority. Physical interruption remains NOT RUN.
    Broader replacement staging/attribution remains unresolved, so N05 stays
    PARTIAL. Software completion does not qualify a physical method.
 3. **Qualify remaining hardware behavior.** Repeat overnight testing; measure

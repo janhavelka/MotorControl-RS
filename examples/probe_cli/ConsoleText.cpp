@@ -423,7 +423,7 @@ bool heading(Writer& writer, const Value& report) {
 const char* motionSubject(const Value& report) {
     const Value command = member(report, "command"), kind = member(report, "action_kind");
     if (equal(member(report, "type"), "simple_move") || equal(command, "moveby") || equal(command, "moveto") ||
-        equal(command, "move-relative") || equal(command, "move-absolute") ||
+        equal(command, "position-interrupt") || equal(command, "move-relative") || equal(command, "move-absolute") ||
         equal(command, "move-angle") || member(report, "move_kind").kind == Kind::STRING) return "Move";
     if (equal(command, "stop") || equal(kind, "stop")) return "Stop";
     if (equal(command, "enable") || equal(kind, "enable")) return "Enable";
@@ -489,6 +489,9 @@ bool motionReport(Writer& writer, const Value& report, const char* subject) {
         observed ? " complete" : !terminal ? " rejected" : " not confirmed complete";
     if (!writer.text(subject) || !writer.text(disposition) || !operationNumber(writer, report) || !writer.text(".\n")) return false;
     if (accepted || pending) return true;
+    if (equal(member(report, "position_interrupt"), "true") &&
+        !writer.text("Stored start-or-interrupt command; interruption and arrival are not observed.\n"
+                     "After possible transmission, use a checked stop to settle motion.\n")) return false;
     const Value roundingError = member(report, "rounding_error");
     if (roundingError.begin && !equal(roundingError, "0")) {
         if (!writer.text("Rounded native target: ") || !writer.scalar(member(report, "effective_native")) ||

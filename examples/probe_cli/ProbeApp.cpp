@@ -125,6 +125,9 @@ struct App {
         ESS::ActionContext action;
         bool programmaticMove = false;
         ESS::MoveContext move;
+        ESS::StoredPositionQualification storedPosition; ///< Original admission provenance; qualified only after its checked trigger.
+        MoveRelation moveRelation;
+        bool interruptWaiting = false; ///< Reserved result, no bus request until old work settles.
         ESS::VelocityContext velocity;
         uint32_t configurationGeneration = 0;
         uint32_t driverEffects = 0;
@@ -264,6 +267,10 @@ void drainOutput(App& a) {
 }
 App::Record* findRecord(App& a, uint32_t operation) {
     for (auto& record : a.records) if (record.operationId && record.operationId == operation) return &record;
+    return nullptr;
+}
+const App::Record* findRecord(const App& a, uint32_t operation) {
+    for (const auto& record : a.records) if (record.operationId && record.operationId == operation) return &record;
     return nullptr;
 }
 bool sequenced(const App::Record& record) {
@@ -895,6 +902,7 @@ Probe::Action admitMoveStep(App& a, App::Record& record, const ESS::PreparedMove
     }
     return admissionResult(a.owner.admit(request, now, record.requestId));
 }
+void captureStoredPosition(App&, App::Record&, uint64_t);
 Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
                         const MotorControlRS::MoveRequest& supplied, uint32_t& operationId) {
     using namespace MotorControlRS;
@@ -975,9 +983,11 @@ Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
     record->serialTuple = a.serial.active; record->serialGeneration = a.serial.generation;
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
     record->deadlineUs = deadline; record->kind = App::OperationKind::MOVE; record->axisReserved = true;
+    captureStoredPosition(a, *record, now);
     operationId = a.latestOperationId = record->operationId;
     return Probe::Action::OK;
 }
+#include "PositionInterruptApp.h"
 Probe::Action admitVelocityStep(App& a, App::Record& record, const ESS::PreparedVelocity& prepared, uint64_t now) {
     Rtu::BusRequest request;
     request.wire.bytes = prepared.bytes; request.wire.length = prepared.length;
@@ -1891,7 +1901,9 @@ void advanceReads(App& a, uint64_t sampled) {
 void updateActionReservation(App& a, App::Record& record) {
     using namespace MotorControlRS;
     if (!terminal(a, record)) return;
-    record.motionUnresolved = (record.kind == App::OperationKind::MOVE && record.move.uncertain && record.move.triggerEvidence.txAccepted) ||
+    record.motionUnresolved = (record.kind == App::OperationKind::MOVE &&
+        (record.move.uncertain || record.move.interruption == ESS::PositionInterruption::INTERRUPT) &&
+        (record.move.triggerEvidence.txAccepted || record.move.triggerEvidence.executionUnknown)) ||
         (record.kind == App::OperationKind::VELOCITY && (record.velocity.uncertain || record.velocity.needsStop) && record.velocity.triggerEvidence.txAccepted) ||
         (record.kind == App::OperationKind::HOME && record.home.uncertain && record.home.triggerEvidence.txAccepted);
     switch (record.kind) {
@@ -1975,7 +1987,7 @@ void updateActionReservation(App& a, App::Record& record) {
         conflict = record.velocity.needsStop || record.velocity.uncertain;
         stopped = record.velocity.stop.completion == ActionCompletion::OBSERVED;
         break;
-    case App::OperationKind::MOVE: conflict = record.move.uncertain; break;
+    case App::OperationKind::MOVE: conflict = record.move.uncertain || record.motionUnresolved; break;
     case App::OperationKind::ACTION:
         conflict = record.action.execution == ActionExecution::UNKNOWN ||
             (record.action.execution == ActionExecution::ACKNOWLEDGED && record.action.completion != ActionCompletion::OBSERVED);
@@ -2033,6 +2045,10 @@ void advanceActions(App& a, uint64_t now) {
             updateActionReservation(a, record);
         }
         if (!sequenced(record) || terminal(a, record)) continue;
+        if (record.interruptWaiting && !settlePositionInterrupt(a, record, now)) {
+            updateActionReservation(a, record);
+            continue;
+        }
         // Reads queued ahead of this write may contradict its admitted stopped/
         // input policy. Settle an unsent cancellation before the owner can TX.
         // Once any write byte is accepted, preserve its outcome and readback.
@@ -2110,6 +2126,10 @@ void advanceActions(App& a, uint64_t now) {
                 // original absolute deadline and 64-poll cap never extend.
                 if (record.move.runningObserved) record.move.options.pollIntervalUs = 500000;
                 const auto& move = record.move;
+                if (record.storedPosition.target.id && move.execution == MotorControlRS::ActionExecution::ACKNOWLEDGED &&
+                    !move.uncertain && (move.stagingApplied || move.verificationKnown ||
+                        move.request.setup == MotorControlRS::MoveSetup::USE_STORED))
+                    record.storedPosition.qualified = true;
                 if (move.uncertain) a.rememberedMoveGeneration = 0;
                 else if ((move.stagingApplied || move.verificationKnown) &&
                     move.prepared.configurationGeneration == a.axis.generation &&
@@ -2126,7 +2146,9 @@ void advanceActions(App& a, uint64_t now) {
         }
         if (!terminal(a, record)) {
             if (record.cancelContinuation || actionEvent(record, ReadEventKind::CANCEL).transport.target.generation != a.bindingGeneration ||
-                (record.kind == App::OperationKind::MOVE && record.move.prepared.configurationGeneration != a.axis.generation) ||
+                (record.kind == App::OperationKind::MOVE &&
+                    (record.move.admission == ESS::MoveAdmission::NATIVE_INTENT ? record.move.stored.configurationGeneration :
+                     record.move.prepared.configurationGeneration) != a.axis.generation) ||
                 (record.kind == App::OperationKind::VELOCITY && record.velocity.request.configurationGeneration != a.axis.generation) ||
                 (record.kind == App::OperationKind::HOME && (!a.axis.generation || record.configurationGeneration != a.axis.generation)))
                 advanceOperation(record, actionEvent(record, ReadEventKind::CANCEL), now);
@@ -2165,8 +2187,10 @@ void advanceActions(App& a, uint64_t now) {
                     const auto next = ESS::nextMove(record.move, now, work);
                     if (!next && next.detail == static_cast<int32_t>(MotorControlRS::MoveError::READINESS))
                         advanceOperation(record, actionEvent(record, ReadEventKind::DEADLINE), now);
-                    else if (next && work.kind == ESS::ActionWork::TRANSACTION)
-                        admitMoveStep(a, record, work, now);
+                    else if (next && work.kind == ESS::ActionWork::TRANSACTION) {
+                        const auto admitted = admitMoveStep(a, record, work, now);
+                        if (admitted == Probe::Action::OK) record.interruptWaiting = false;
+                    }
                     break;
                 }
                 case App::OperationKind::DRIVER: {
@@ -2263,6 +2287,7 @@ bool lookup(void* context, uint32_t operationId, Probe::ResultView& out) {
     }
     case App::OperationKind::MOVE: {
         out.moveContext = &record->move; out.pending = !terminal(a, *record);
+        out.moveRelation = record->moveRelation;
         out.interruptedByStop = record->interruptedByStop; return true;
     }
     case App::OperationKind::ACTION: {
@@ -2316,6 +2341,13 @@ Probe::Action cancel(void* context, uint32_t operationId) {
     auto* record = findRecord(a, operationId); if (!record) return Probe::Action::INVALID;
     if (sequenced(*record)) {
         if (terminal(a, *record)) return Probe::Action::ALREADY_TERMINAL;
+        if (record->moveRelation.originalOperationId == operationId) {
+            auto* replacement = findRecord(a, record->moveRelation.replacementOperationId);
+            if (replacement && !terminal(a, *replacement)) {
+                replacement->cancelContinuation = true;
+                if (replacement->requestId.owner) a.owner.cancelUnsent(replacement->requestId, nowUs());
+            }
+        }
         record->cancelContinuation = true;
         if (record->requestId.owner) a.owner.cancel(record->requestId, uart.sample());
         else {
@@ -2349,6 +2381,10 @@ Probe::Action release(void* context, uint32_t operationId) {
         a.recovery = App::Recovery(); return Probe::Action::OK;
     }
     auto* record = findRecord(a, operationId); if (!record) return Probe::Action::INVALID;
+    const uint32_t peerId = record->moveRelation.originalOperationId == operationId ?
+        record->moveRelation.replacementOperationId : record->moveRelation.originalOperationId;
+    const auto* peer = findRecord(a, peerId);
+    if (peer && !terminal(a, *peer)) return Probe::Action::BUSY;
     if (!record->delivered || (record->requestId.owner && !a.owner.release(record->requestId))) return Probe::Action::BUSY;
     clearRecord(*record); return Probe::Action::OK;
 }
@@ -2566,6 +2602,7 @@ Probe::Host host(App* a) {
     h.startTypedRead = typedRead;
     h.beginInteractiveWork = recycleInteractiveResults;
     h.startAction = startAction; h.startMove = startMove; h.startVelocity = startVelocity; h.startDriver = startDriver; h.startHome = startHome;
+    h.startPositionInterrupt = startPositionInterrupt;
     h.simpleMotion = simpleMotion;
     h.monitor = monitor; h.motionProfile = motionProfileCommand; h.debug = debugCommand;
     h.axis = axisCommand; h.hostSerial = hostSerial; h.selectTarget = selectTarget;
@@ -2584,7 +2621,8 @@ void recycleInteractiveResults(void* context) {
     // JSON/API results and failures remain explicitly retained.
     if (a.outputCount || a.console.outputPending()) return;
     for (auto& r : a.records) {
-        if (!r.interactive || !r.delivered || r.simpleChild || r.programmaticRead || r.programmaticSettings || r.axisReserved || r.motionUnresolved) continue;
+        if (!r.interactive || !r.delivered || r.simpleChild || r.programmaticRead || r.programmaticSettings ||
+            r.moveRelation.originalOperationId || r.axisReserved || r.motionUnresolved) continue;
         bool success = false;
         switch (r.kind) {
         case App::OperationKind::EMPTY: break;
@@ -2632,7 +2670,8 @@ void deliver(App& a) {
             if (record.programmaticMove || record.simpleChild) {
                 record.delivered = true; record.deliveredUs = nowUs(); continue;
             }
-            if (!a.console.reportMove(record.commandId, record.operationId, record.move, record.interruptedByStop, &record.serialTuple, record.serialGeneration)) continue;
+            if (!a.console.reportMove(record.commandId, record.operationId, record.move, record.interruptedByStop,
+                &record.serialTuple, record.serialGeneration, record.moveRelation)) continue;
             record.delivered = true; record.deliveredUs = nowUs(); continue;
         }
         case App::OperationKind::ACTION: {
@@ -2794,7 +2833,7 @@ MotorControlRS::Status moveTo(MotorControlRS::Rational value, MotorControlRS::Po
 bool moveProgress(uint32_t operationId, MoveProgress& output) {
     if (!app || !operationId) return false;
     const auto* record = findRecord(*app, operationId);
-    if (!record || !record->programmaticMove) return false;
+    if (!record || record->kind != App::OperationKind::MOVE || !record->programmaticMove) return false;
     const auto& c = record->move;
     MoveProgress result;
     result.pending = !terminal(*app, *record); result.runningObserved = c.runningObserved;
@@ -2811,7 +2850,26 @@ bool positionConfiguration(MotorControlRS::AxisConfig& output) {
 bool releaseMove(uint32_t operationId) {
     if (!app || !operationId) return false;
     const auto* record = findRecord(*app, operationId);
-    return record && record->programmaticMove && release(app, operationId) == Probe::Action::OK;
+    return record && record->kind == App::OperationKind::MOVE && record->programmaticMove && release(app, operationId) == Probe::Action::OK;
+}
+MotorControlRS::Status submitPositionInterrupt(uint32_t originalId, const ESS::PositionCommand& command,
+        uint32_t bits, bool relative, uint32_t& operationId) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    const auto* original = findRecord(*app, originalId);
+    if (!original || original->kind != App::OperationKind::MOVE || !original->programmaticMove)
+        return Status(Err::INVALID_CONFIG, 0, "original is not a programmatic move");
+    const auto result = admitPositionInterrupt(*app, 0, originalId, command, bits, relative, operationId);
+    if (result != Probe::Action::OK)
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(result), "position interruption not admitted");
+    findRecord(*app, operationId)->programmaticMove = true;
+    return Ok();
+}
+bool copyMoveResult(uint32_t operationId, ESS::MoveContext& output, MoveRelation& relation) {
+    if (!app || !operationId) return false;
+    const auto* record = findRecord(*app, operationId);
+    if (!record || record->kind != App::OperationKind::MOVE || !record->programmaticMove) return false;
+    output = record->move; relation = record->moveRelation; return true;
 }
 MotorControlRS::Status submitVelocityParameterRead(uint32_t& operationId) {
     using namespace MotorControlRS;
@@ -2912,6 +2970,7 @@ void serviceApplication() {
 #if MOTORCONTROLRS_LOAD_FIXTURE
         loadFixture.serviced(sampled, a.owner.active());
 #endif
+        cancelInvalidPositionInterrupts(a, sampled);
         a.owner.service(sampled, recoveryReady);
         if (hadDE && !a.runner.transmitEnabled()) a.recoveryGuardUntilUs = nowUs() + RECOVER_US;
 #if MOTORCONTROLRS_LOAD_FIXTURE

@@ -8,6 +8,7 @@
 #include "StateCache.h"
 #include "AxisConsole.h"
 #include "SimpleMotion.h"
+#include "MoveRelation.h"
 #include "DiscoveryScan.h"
 #include "MotorControlRS/profiles/ess_rs/Codec.h"
 #include "MotorControlRS/profiles/ess_rs/Reads.h"
@@ -262,6 +263,7 @@ struct ResultView {
     const MotorControlRS::ESS_RS::ReadContext* typedRead = nullptr; ///< Borrowed only during formatting.
     const MotorControlRS::ESS_RS::ActionContext* actionContext = nullptr;
     const MotorControlRS::ESS_RS::MoveContext* moveContext = nullptr; ///< Borrowed only during formatting.
+    MoveRelation moveRelation;
     const MotorControlRS::ESS_RS::VelocityContext* velocityContext = nullptr;
     const MotorControlRS::ESS_RS::DriverContext* driverContext = nullptr;
     const MotorControlRS::ESS_RS::HomeContext* homeContext = nullptr;
@@ -308,6 +310,10 @@ struct Host {
     /** One finite move admission through the installed preparation API; no request pointer is retained. */
     Action (*startMove)(void*, uint32_t commandId, uint8_t address,
                        const MotorControlRS::MoveRequest&, uint32_t& operationId) = nullptr;
+    /** Exact retained stored candidate only; same application operation as the
+     * programmatic interrupt API. No new target/setup tokens or qualification. */
+    Action (*startPositionInterrupt)(void*, uint32_t commandId, uint32_t originalOperationId,
+                                    uint32_t& operationId) = nullptr;
     Action (*simpleMotion)(void*, uint32_t commandId, const SimpleMotionCommand*, SimpleMotionView&) = nullptr;
     Action (*startVelocity)(void*, uint32_t commandId, uint8_t address,
                            const MotorControlRS::VelocityRequest&, uint32_t& operationId) = nullptr;
@@ -392,7 +398,8 @@ public:
     bool reportAction(uint32_t id, uint32_t operationId, const MotorControlRS::ESS_RS::ActionContext&,
                       bool interruptedByStop = false, const HostTuple* tuple = nullptr, uint32_t serialGeneration = 0) noexcept;
     bool reportMove(uint32_t id, uint32_t operationId, const MotorControlRS::ESS_RS::MoveContext&,
-                    bool interruptedByStop = false, const HostTuple* tuple = nullptr, uint32_t serialGeneration = 0) noexcept;
+                    bool interruptedByStop = false, const HostTuple* tuple = nullptr, uint32_t serialGeneration = 0,
+                    const MoveRelation& = MoveRelation()) noexcept;
     bool reportSimpleMotion(uint32_t id, uint32_t operationId, const SimpleMotionView&) noexcept;
     bool reportVelocity(uint32_t id, uint32_t operationId, const MotorControlRS::ESS_RS::VelocityContext&,
                         bool interruptedByStop = false, const HostTuple* tuple = nullptr, uint32_t serialGeneration = 0) noexcept;
@@ -424,7 +431,11 @@ private:
     bool formatAction(uint32_t id, uint32_t commandId, uint32_t operationId,
                       const MotorControlRS::ESS_RS::ActionContext&, bool inspection, bool interruptedByStop) noexcept;
     bool formatMove(uint32_t id, uint32_t commandId, uint32_t operationId,
-                    const MotorControlRS::ESS_RS::MoveContext&, bool inspection, bool interruptedByStop) noexcept;
+                    const MotorControlRS::ESS_RS::MoveContext&, bool inspection, bool interruptedByStop,
+                    const MoveRelation& = MoveRelation()) noexcept;
+    bool formatPositionInterrupt(uint32_t id, uint32_t commandId, uint32_t operationId,
+                    const MotorControlRS::ESS_RS::MoveContext&, bool inspection, bool interruptedByStop,
+                    const MoveRelation&) noexcept;
     bool formatVelocity(uint32_t id, uint32_t commandId, uint32_t operationId,
                         const MotorControlRS::ESS_RS::VelocityContext&, bool inspection, bool interruptedByStop) noexcept;
     bool formatDriver(uint32_t id, uint32_t commandId, uint32_t operationId,

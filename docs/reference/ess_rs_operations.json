@@ -500,6 +500,44 @@
       "reason": "Noninterrupting finite-relative trigger followed by fresh running then arrival/standstill reports; acknowledgement is not physical completion."
     },
     {
+      "id": "position_interrupt_stored",
+      "kind": "ACTION",
+      "records": [
+        "MOTION_COMMAND"
+      ],
+      "choices": [
+        "MotionCommandBit.INTERRUPT_POSITION"
+      ],
+      "api": {
+        "header": "include/MotorControlRS/profiles/ess_rs/Position.h",
+        "symbols": [
+          "prepareRelative",
+          "prepareAbsolute",
+          "nextMove",
+          "advanceMove"
+        ]
+      },
+      "cli_commands": [
+        "position interrupt ORIGINAL_ID"
+      ],
+      "implementation": "IMPLEMENTED",
+      "cli": "REACHABLE",
+      "native": {
+        "state": "PASS",
+        "evidence": [
+          "test/position_interrupt_test.cpp",
+          "test/position_interrupt_app_test.cpp",
+          "test/bench_probe_test.py"
+        ]
+      },
+      "hardware": {
+        "state": "NOT_RUN",
+        "evidence": [],
+        "reason": "No physical bit-3 interruption test; software evidence is scripted owner/application traffic."
+      },
+      "reason": "Restricted exact native stored-profile start-or-interrupt through the ordinary application/owner and console, with independent original/replacement/stop results. ACK-only; no active staging/new-target or completion attribution. Broader N05 remains PARTIAL."
+    },
+    {
       "id": "enable",
       "kind": "ACTION",
       "records": [
@@ -2839,7 +2877,7 @@
       ],
       "owner": "09",
       "disposition": "PARTIAL",
-      "reason": "The core implements explicit PositionCommand interruption only for an independently qualified exact native USE_STORED profile, ending ACKNOWLEDGED/NOT_OBSERVED. Ordinary owner/application/CLI integration remains open. Broader active staging/new-target replacement and completion attribution remain evidence-gated; priority stop is a separate operation."
+      "reason": "The exact qualified native USE_STORED subset now has core, ordinary owner/application API and position interrupt ORIGINAL_ID route with ACK-only results. Broader active staging/new-target replacement and completion attribution remain evidence-gated; the usable subset does not close N05."
     }
   ],
   "public_surface": [
@@ -3197,11 +3235,12 @@
         "nextMove"
       ],
       "classification": "SEQUENCER",
-      "reason": "Shared finite move engine. Observation-aware preparations serve CLI moves and retain stationary admission. API-only PositionCommand preparations end ACKNOWLEDGED/NOT_OBSERVED; explicit interruption additionally requires an independently qualified exact native USE_STORED profile. Its owner/application/CLI route remains open.",
+      "reason": "Shared finite move engine. Observation-aware preparations retain stationary admission. Native PositionCommand ends ACKNOWLEDGED/NOT_OBSERVED; explicit interruption requires an independently qualified exact native USE_STORED profile and has the ordinary owner/API/console route.",
       "cli_topics": [
         "move",
         "motion-profile",
-        "profile"
+        "profile",
+        "position"
       ]
     },
     {

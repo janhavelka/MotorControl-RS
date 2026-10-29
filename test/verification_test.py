@@ -23,7 +23,7 @@ class VerificationFailures(unittest.TestCase):
         tests = [{"name": name, "command": [str(build / (binary + suffix))]} for name, binary in
                  [("foo", "foo_test"), ("units_preview", "units_preview"),
                   *[(n, n + "_test") for n in ("codec_independent", "probe_app_load", "idf_move_app",
-                                              "idf_simple_motion_app", "idf_control_app", "idf_velocity_app", "idf_home_app", "idf_position_start_speed_app", "idf_homing_auxiliary_app")]]]
+                                              "idf_simple_motion_app", "idf_position_interrupt_app", "idf_control_app", "idf_velocity_app", "idf_home_app", "idf_position_start_speed_app", "idf_homing_auxiliary_app")]]]
         tests.append({"name": "foo_python", "command": [sys.executable, str(root / "test/foo_test.py")]})
         for name, script, args in (("version_generated", "generate_version.py", ["check"]),
                 ("registers_generated", "generate_ess_registers.py", ["--check"]),
@@ -61,7 +61,7 @@ class VerificationFailures(unittest.TestCase):
             root = Path(directory)
             listing, build = self.inventory(root)
             for name in ("codec_independent", "probe_app_load", "idf_move_app",
-                         "idf_simple_motion_app", "idf_control_app", "idf_velocity_app", "idf_home_app", "idf_position_start_speed_app", "idf_homing_auxiliary_app"):
+                         "idf_simple_motion_app", "idf_position_interrupt_app", "idf_control_app", "idf_velocity_app", "idf_home_app", "idf_position_start_speed_app", "idf_homing_auxiliary_app"):
                 with self.subTest(name=name):
                     missing = copy.deepcopy(listing)
                     missing["tests"] = [t for t in missing["tests"] if t["name"] != name]
@@ -71,6 +71,23 @@ class VerificationFailures(unittest.TestCase):
                     next(t for t in wrong["tests"] if t["name"] == name)["command"] = ["echo"]
                     with self.assertRaisesRegex(RuntimeError, "missing or wrong native test"):
                         verify.check_inventory(root, wrong, build)
+
+    def test_interrupt_host_requires_both_real_frontend_fixtures(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            listing, build = self.inventory(root)
+            script = root / "test/bench_probe_test.py"
+            script.touch()
+            suffix = ".exe" if verify.os.name == "nt" else ""
+            args = ["--position-interrupt-fixtures", *[str(build / (name+suffix)) for name in
+                    ("position_interrupt_app_test", "idf_position_interrupt_app_test")]]
+            entry = {"name": "bench_probe", "command": [sys.executable, str(script), *args]}
+            listing["tests"].append(entry)
+            verify.check_inventory(root, listing, build)
+            for invalid in ([], args[:-1], args[1:], [args[0], args[2], args[1]]):
+                entry["command"] = [sys.executable, str(script), *invalid]
+                with self.subTest(args=invalid), self.assertRaisesRegex(RuntimeError, "wrong position interruption fixtures"):
+                    verify.check_inventory(root, listing, build)
 
     def test_required_command_identity_and_modes(self):
         with tempfile.TemporaryDirectory() as directory:

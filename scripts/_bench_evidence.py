@@ -842,6 +842,159 @@ def check_action(item: dict, command: str, address: int | None, policy: str | No
             require(item["serviced_us"] >= item["deadline_us"], "deadline failure precedes deadline")
 
 
+def check_move_relation(item: dict, original_id: int | None = None, *, replacement: bool = False) -> None:
+    """Correlate retained original/replacement results without inventing completion."""
+    relation = item.get("relation")
+    if (not isinstance(relation, dict) or
+            not operation_id(relation.get("original_operation_id")) or
+            not operation_id(relation.get("replacement_operation_id")) or
+            relation["original_operation_id"] == relation["replacement_operation_id"] or
+            type(relation.get("observation_superseded")) is not bool or
+            not operation_id(item.get("operation_id")) or
+            item["operation_id"] != relation["replacement_operation_id" if replacement else "original_operation_id"] or
+            (original_id is not None and relation["original_operation_id"] != original_id)):
+        raise BenchError("position interruption relation does not match the retained operation")
+
+
+def check_position_interrupt(item: dict, address: int | None, original_id: int | None = None) -> None:
+    """Check the single stored-profile FC06 retrigger; no observation proves arrival."""
+    def require(condition, message):
+        if not condition:
+            raise BenchError("position interruption " + message)
+
+    def integer(value, low=0, high=0xFFFFFFFFFFFFFFFF):
+        return type(value) is int and low <= value <= high
+
+    check_move_relation(item, original_id, replacement=True)
+    require(item.get("position_interrupt") is True and item.get("move_kind") in ("relative", "absolute") and
+            item.get("action_kind") is None and item.get("read_kind") is None and
+            item.get("capture_read") is False and item.get("recovery") is False, "kind differs")
+    require(integer(item.get("address"), 1, 247) and (address is None or item["address"] == address) and
+            all(operation_id(item.get(key)) for key in ("target", "generation", "configuration_generation")),
+            "target or configuration identity differs")
+    check_counts(item, ("started_us", "deadline_us", "serviced_us"), "position interruption")
+    require(item["started_us"] < item["deadline_us"] and item["serviced_us"] >= item["started_us"],
+            "lifetime is inconsistent")
+    require(item.get("ok") is False and item.get("completion") == "not_observed" and
+            item.get("setup") == "stored" and item.get("setup_execution") == "not_transmitted" and
+            all(item.get(key) is False for key in ("staging_applied", "observation_known", "running_observed",
+                                                    "endpoint_known", "displacement_known")),
+            "stored retrigger claims setup or observed completion")
+    require(not any(key in item for key in ("polls", "last_observation", "activity_evidence", "staging_evidence",
+                "verification_evidence", "requested", "reference", "prerequisites", "raw_alarm", "raw_motion",
+                "endpoint_native", "displacement_native", "effective_native", "observed_position", "observed_speed",
+                "position_confirmed", "position_feedback_matches_command", "position_match_evidence", "raw_position")),
+            "native retrigger includes observed-move evidence")
+    require(type(item.get("interrupted_by_stop")) is bool and type(item.get("uncertain")) is bool and
+            integer(item.get("trigger_step"), 1, 1), "state evidence is missing")
+    stored = item.get("stored")
+    require(isinstance(stored, dict), "stored qualification is missing")
+    require(all(type(stored.get(key)) is int and stored[key] == item[key]
+                for key in ("target", "address", "generation", "configuration_generation")) and
+            stored.get("original_operation_id") == item["relation"]["original_operation_id"] and
+            operation_id(stored.get("original_operation_id")) and
+            type(stored.get("relative")) is bool and stored["relative"] == (item["move_kind"] == "relative") and
+            stored.get("qualified") is True and integer(stored.get("subdivision"), 400, 51200) and
+            integer(stored.get("word_order"), 0, 1), "stored identity or qualification differs")
+    require(integer(stored.get("qualified_us")) and integer(stored.get("maximum_age_us")) and
+            evidence_age_valid(stored["qualified_us"], item["started_us"], stored["maximum_age_us"]),
+            "qualification was not fresh at admission")
+    require(integer(stored.get("start_speed"), 0, 3000) and
+            all(integer(stored.get(key), 0, 2000) for key in ("acceleration_time", "deceleration_time")) and
+            integer(stored.get("speed"), 1, 3000) and integer(stored.get("target_bits"), 0, 0xFFFFFFFF) and
+            type(item.get("native_rpm")) is int and item["native_rpm"] == stored["speed"],
+            "stored profile is invalid")
+    pair = [stored["target_bits"] >> 16, stored["target_bits"] & 0xFFFF]
+    if stored["word_order"] == 1:
+        pair.reverse()
+    expected_words = [stored["acceleration_time"], stored["deceleration_time"], stored["speed"], *pair]
+    require(isinstance(item.get("staging_words"), list) and len(item["staging_words"]) == 5 and
+            all(integer(word, 0, 0xFFFF) for word in item["staging_words"]) and item["staging_words"] == expected_words,
+            "candidate differs from qualified stored parameters")
+    cap = min(item["deadline_us"], evidence_age_deadline(stored["qualified_us"], stored["maximum_age_us"]))
+    empty = dict(step=0, event=0, raw_hex="", received_length=0, tx_accepted=0, tx_complete=False,
+        response_confirmed=False, qualified=False, execution_unknown=False, earliest_us=0, latest_us=0,
+        delivered_us=0, transport_detail=0, status="OK", detail=0, frame_error=0)
+    evidence = {}
+    echo = (0x27, 9 if stored["relative"] else 13)
+    for name in ("trigger_evidence", "failure_evidence"):
+        entry = item.get(name)
+        require(isinstance(entry, dict), "missing " + name)
+        for key, limit in (("step", 1), ("event", 3), ("received_length", 0xFFFFFFFF), ("tx_accepted", 8),
+                           ("frame_error", 255), ("earliest_us", 0xFFFFFFFFFFFFFFFF),
+                           ("latest_us", 0xFFFFFFFFFFFFFFFF), ("delivered_us", 0xFFFFFFFFFFFFFFFF)):
+            require(integer(entry.get(key), 0, limit), name + " has invalid " + key)
+        require(all(type(entry.get(key)) is bool for key in
+                    ("tx_complete", "response_confirmed", "qualified", "execution_unknown")) and
+                all(integer(entry.get(key), -0x80000000, 0x7FFFFFFF) for key in ("detail", "transport_detail")) and
+                entry.get("status") in ("OK", "INVALID_CONFIG", "ILLEGAL_VALUE", "UNSUPPORTED", "CRC_ERROR", "FRAME_ERROR", "EXCEPTION"),
+                name + " has invalid transport or codec evidence")
+        require(isinstance(entry.get("raw_hex"), str) and
+                re.fullmatch(r"(?:[0-9a-fA-F]{2}){0,19}", entry["raw_hex"]) is not None,
+                name + " raw frame is malformed")
+        raw = bytes.fromhex(entry["raw_hex"])
+        require(len(raw) == min(entry["received_length"], 19), name + " copied frame length differs")
+        is_empty = all(entry.get(key) == value for key, value in empty.items())
+        if is_empty:
+            evidence[name] = (entry, True)
+            continue
+        require(entry["step"] == 1 and item["started_us"] <= entry["delivered_us"] <= item["serviced_us"] and
+                (not entry["tx_complete"] or entry["tx_accepted"] == 8), name + " lifetime or trigger token differs")
+        if entry["event"] == 0:
+            require(entry["tx_complete"] and entry["tx_accepted"] == 8, name + " frame precedes full physical TX")
+            require((entry["status"], entry["detail"], entry["frame_error"]) ==
+                    _reply_status(raw, entry["received_length"], item["address"], 6, 8, echo),
+                    name + " codec result differs from retained FC06 reply")
+        else:
+            require(not entry["qualified"] and not entry["response_confirmed"] and entry["frame_error"] == 0 and
+                    entry["status"] == "ILLEGAL_VALUE" and
+                    entry["detail"] == {1: 17, 2: 18, 3: 6 if cap < item["deadline_us"] else 16}[entry["event"]],
+                    name + " local event claims incorrect response or outcome")
+        if entry["qualified"]:
+            require(item["started_us"] <= entry["earliest_us"] <= entry["latest_us"] <= entry["delivered_us"],
+                    name + " qualified bounds differ")
+        else:
+            require(entry["earliest_us"] == entry["latest_us"] == 0, name + " unqualified bounds are published")
+        if entry["event"] == 3:
+            require(entry["delivered_us"] >= cap, name + " deadline precedes its immutable budget")
+        evidence[name] = (entry, False)
+    trigger, trigger_empty = evidence["trigger_evidence"]
+    failure, failure_empty = evidence["failure_evidence"]
+    require(not trigger_empty and trigger["delivered_us"] == item["serviced_us"], "trigger lacks final event evidence")
+    if trigger["tx_accepted"] == 0 and not trigger["execution_unknown"]:
+        execution = "not_transmitted"
+    elif trigger["event"] == 0 and trigger["qualified"] and trigger["response_confirmed"] and trigger["status"] == "OK":
+        execution = "acknowledged"
+    elif trigger["event"] == 0 and trigger["qualified"] and trigger["response_confirmed"] and trigger["status"] == "EXCEPTION" and 1 <= trigger["detail"] <= 7:
+        execution = "rejected"
+    else:
+        execution = "unknown"
+    require(item.get("execution") == execution, "execution differs from transmission and checked response")
+    if trigger["event"] != 0:
+        outcome = {1: "transport_error", 2: "cancelled", 3: "deadline"}[trigger["event"]]
+        status, detail = trigger["status"], trigger["detail"]
+    elif not trigger["qualified"]:
+        outcome, status, detail = "timing_unqualified", "ILLEGAL_VALUE", 19
+    elif trigger["latest_us"] > cap:
+        outcome, status, detail = "deadline", "ILLEGAL_VALUE", 6 if cap < item["deadline_us"] else 16
+    elif trigger["status"] != "OK":
+        outcome, status, detail = "reply_error", trigger["status"], trigger["detail"]
+    elif not trigger["response_confirmed"]:
+        outcome, status, detail = "unconfirmed_response", "ILLEGAL_VALUE", 20
+    else:
+        outcome, status, detail = "acknowledged", "OK", 0
+    succeeded = outcome == "acknowledged"
+    require(item.get("outcome") == outcome and item.get("state") == ("succeeded" if succeeded else "failed") and
+            item.get("status") == status and type(item.get("detail")) is int and item["detail"] == detail,
+            "outcome differs from terminal trigger evidence")
+    require((failure_empty if succeeded else failure == trigger), "failure evidence differs from terminal trigger")
+    require(item["uncertain"] == (not succeeded and (trigger["tx_accepted"] > 0 or trigger["execution_unknown"])),
+            "possible effects were discarded or invented")
+    require(item["relation"]["observation_superseded"] or
+            (outcome in ("cancelled", "deadline") and execution == "not_transmitted"),
+            "unsuperseded original permits only no-transmission cancellation or expiry")
+
+
 def check_move(item: dict, address: int | None, arguments: tuple[str, ...] | None, kind: str = "relative") -> None:
     """Check staged/triggered execution and fresh running-to-arrival evidence."""
     def require(condition, text):

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include "../common/Esp32S3Uart.h"
+#include "MoveRelation.h"
 #include <MotorControlRS/profiles/ess_rs/Position.h>
 #include <MotorControlRS/profiles/ess_rs/Reads.h>
 #include <MotorControlRS/profiles/ess_rs/DriverSettings.h>
@@ -68,6 +69,25 @@ struct MoveProgress {
 bool moveProgress(uint32_t operationId, MoveProgress&);
 /// Explicitly free a completed programmatic move result; does not stop the motor.
 bool releaseMove(uint32_t operationId);
+/** Explicit native stored-profile start-or-interrupt, through the ordinary
+ * owner. Original must be an active acknowledged programmatic observed move,
+ * with native unwrapped steps and no consumed reference/soft-limit dependence.
+ * Simple-motion parent/child IDs are unsupported. command must request
+ * INTERRUPT/USE_STORED and exactly match the independently retained original
+ * qualification. Its .stored field is ignored: this application supplies that
+ * witness, never the new candidate. Rejection preserves operationId and old work.
+ * A separate ordinary result is reserved before superseding old observation;
+ * in-flight work settles first. A known completed original cancels the unsent
+ * replacement. A physical finish-before-TX can still produce a new stored start.
+ * ACK is not arrival; possible motion remains interlocked until checked stop.
+ * Call from the service task. No retry, automatic stop or result recycling. */
+MotorControlRS::Status submitPositionInterrupt(uint32_t originalOperationId,
+    const MotorControlRS::ESS_RS::PositionCommand&, uint32_t targetBits, bool relative,
+    uint32_t& operationId);
+/** Copy pending/terminal programmatic MOVE evidence and relation without traffic
+ * or consumption. Missing/released/wrong-kind/console-owned IDs preserve both
+ * outputs. Explicit release is blocked while the related peer remains active. */
+bool copyMoveResult(uint32_t operationId, MotorControlRS::ESS_RS::MoveContext&, MoveRelation&);
 /** Submit one non-changing velocity-parameter read for the selected axis through
  * the normal owner. Call from the service task; rejection preserves operationId.
  * No console is needed. Result storage remains reserved until explicit release;

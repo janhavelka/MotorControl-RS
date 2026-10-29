@@ -44,7 +44,7 @@ def check_inventory(root, listing, build):
     native = {p.stem[:-5]: p.stem for p in (root / "test").glob("*_test.cpp")}
     native.update({name: name+"_test" for name in
                    ("codec_independent", "probe_app_load", "idf_move_app",
-                    "idf_simple_motion_app", "idf_control_app", "idf_velocity_app", "idf_home_app",
+                    "idf_simple_motion_app", "idf_position_interrupt_app", "idf_control_app", "idf_velocity_app", "idf_home_app",
                     "idf_position_start_speed_app", "idf_homing_auxiliary_app")})
     native["units_preview"] = "units_preview"
     for name, binary in native.items():
@@ -72,6 +72,13 @@ def check_inventory(root, listing, build):
             python_command(registered, path)
             if len(registered["command"]) != 4:
                 raise RuntimeError("idf_config requires compiler and compiler ID")
+        elif path.name == "bench_probe_test.py":
+            python_command(registered, path)
+            args = registered["command"][2:]
+            expected = [str((build / (binary+suffix)).resolve()) for binary in
+                        ("position_interrupt_app_test", "idf_position_interrupt_app_test")]
+            if not args or args[0] != "--position-interrupt-fixtures" or [str(Path(arg).resolve()) for arg in args[1:]] != expected:
+                raise RuntimeError("wrong position interruption fixtures: bench_probe_test.py")
         elif path.name.endswith("_console_parity_test.py") or path.name == "discovery_harness_test.py":
             target = "discovery_console_test" if path.name == "discovery_harness_test.py" else "probe_console_test"
             python_command(registered, path)

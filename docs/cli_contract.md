@@ -193,10 +193,10 @@ are counted. Debug mode uses the same production operation path.
 
 ## ESS completion routes and remaining plans
 
-Stages 02, 03, 04 and 05 are implemented. Other rows remain stage 01 plans;
+Stages 02, 03, 04, 05 and 07 are implemented. Other rows remain stage 01 plans;
 help/grammar and coverage change only when their producing routes exist.
 
-| Stage | Planned command | Ordinary application path |
+| Stage | Command | Ordinary application path |
 | --- | --- | --- |
 | 02 | `velocity read` | `submitVelocityParameterRead` -> shared typed read owner |
 | 03 | `home read` | `submitHomingParameterRead` -> shared typed read owner |
@@ -224,15 +224,28 @@ Generalizing the current `programmaticMove` ownership flag must preserve exact
 kind checks in `moveProgress`/`releaseMove` and all new copy functions; another
 operation family's ID cannot be accepted as a move/read/setting/home result.
 
-The planned application interrupt route uses the implemented restricted
+The application interrupt route uses the restricted
 [native core contract](ess_position.md#native-stored-profile-interruption),
 with no changed target or silent staging. It accepts that a drive finishing
 before TX may execute a new stored start; ACK does not certify an interruption
 or arrival. Preserve original/replacement/stop result IDs and reserved stop
 capacity. No observed move or wrapped-coordinate replacement is implied.
-Planned programmatic `copyMoveResult` returns the exact MoveContext and original/
+Programmatic `copyMoveResult` returns the exact MoveContext and original/
 replacement relation metadata; both IDs and the separate stop result remain
 inspectable. The relation describes host ownership, not physical interruption.
+
+Only `position interrupt <original-id>` is accepted; zero, malformed IDs, extra
+tokens and unsupported original/setup/coordinate states reject before TX.
+Protocol 3 reports accepted command `position-interrupt`. Its terminal `move`
+and retained `result` carry `position_interrupt:true`, `stored` qualification,
+`relation` IDs, trigger/failure evidence and `completion:not_observed`.
+Even confirmed `acknowledged` has `ok:false`, no known endpoint/displacement,
+no observed running/arrival and no borrowed old position baseline. Pending
+results retain the discriminator and relation. The interrupted original retains
+its own setup/trigger/observation evidence. Related results require explicit
+release after both operations settle; ACK and release do not clear possible
+motion. `caps` exposes the stored subset separately from unavailable new-target
+replacement and observed completion. Human help states these same limits.
 
 Home qualification is supplied through the ordinary application install/inspect/
 revoke API with the [documented lifecycle](ess_homing.md#planned-auxiliary-setting-and-switch-method-integration-not-implemented).
