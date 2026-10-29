@@ -4,7 +4,7 @@ Execute the [shared contract](execution_contract.md) and
 [verification rules](verification.md). Requirement: core portion of N05
 `position_interrupt`. Prerequisite: 01's source-reviewed bit-3 contract.
 
-Stage 01 settled the [initial native stored-profile subset](../../ess_position.md#planned-start-speed-setting-and-interruption-not-implemented).
+Stage 01 settled the [initial native stored-profile subset](../../ess_position.md#native-stored-profile-interruption).
 Follow that setup/admission matrix: active WRITE_ALL/VERIFY_AND_UPDATE, changed
 stored candidates and observed/reference-dependent replacement reject before
 TX. Native stored retrigger is ACK-only and accepts the physical finish-before-TX

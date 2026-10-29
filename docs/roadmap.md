@@ -63,10 +63,11 @@ no independent shaft calibration, electrical timing or loaded-machine claim.
    paired setters or tuning. Keep the operation inventory current.
    The [29 October stage 01 decisions](reports/2026-10-29_ess_software_contracts.md)
    make reads, two one-field settings and 27 qualified zero-offset homing
-   methods concrete software blocks; implementation starts at stage02.
-   Initial native stored-profile interruption is a bounded subset and leaves
-   broader replacement staging/attribution unresolved. Contract completion does
-   not reduce implementation counts or qualify a physical method.
+   methods concrete software blocks. Stages02-05 now deliver both parameter reads
+   and scalar settings. Stage06 delivers the native stored-profile interrupt
+   core; stage07 still owns application integration and retained results.
+   Broader replacement staging/attribution remains unresolved, so N05 stays
+   PARTIAL. Software completion does not qualify a physical method.
 3. **Qualify remaining hardware behavior.** Repeat overnight testing; measure
    independent shaft/electrical behavior; use actual fixtures for external I/O,
    restart/persistence, wire faults and loaded mechanics. The complete list and

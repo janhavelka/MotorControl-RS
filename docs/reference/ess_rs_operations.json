@@ -2838,8 +2838,8 @@
         "ACTION"
       ],
       "owner": "09",
-      "disposition": "NOT_IMPLEMENTED",
-      "reason": "The typed finite position path emits fixed noninterrupting triggers. Native bit3 ignore-versus-interrupt positioning has no public request option, sequence or CLI route; priority stop is a separate operation and does not implement it."
+      "disposition": "PARTIAL",
+      "reason": "The core implements explicit PositionCommand interruption only for an independently qualified exact native USE_STORED profile, ending ACKNOWLEDGED/NOT_OBSERVED. Ordinary owner/application/CLI integration remains open. Broader active staging/new-target replacement and completion attribution remain evidence-gated; priority stop is a separate operation."
     }
   ],
   "public_surface": [
@@ -3197,7 +3197,7 @@
         "nextMove"
       ],
       "classification": "SEQUENCER",
-      "reason": "Shared finite move engine. Observation-aware preparations serve CLI moves. API-only PositionCommand::prepareRelative/prepareAbsolute retain desired native settings without prior observations, stage then start, and end ACKNOWLEDGED with completion NOT_OBSERVED.",
+      "reason": "Shared finite move engine. Observation-aware preparations serve CLI moves and retain stationary admission. API-only PositionCommand preparations end ACKNOWLEDGED/NOT_OBSERVED; explicit interruption additionally requires an independently qualified exact native USE_STORED profile. Its owner/application/CLI route remains open.",
       "cli_topics": [
         "move",
         "motion-profile",

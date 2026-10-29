@@ -7,6 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [ESS position interruption core](2026-10-29_ess_position_interrupt_core.md) | Typed exact stored-profile retrigger, copied qualification and ACK-only evidence; ordinary integration remains stage07, broader N05 stays PARTIAL; physical NOT RUN. |
 | [Independent settings audit, prompts04/05](2026-10-29_ess_settings_audit.md) | Fresh parallel code/source/test review; fixes queued-state admission, contradictory-prior invalidation, start-speed relation qualification, exact coverage routes and partial-host help. |
 | [ESS homing auxiliary configuration](2026-10-29_ess_homing_auxiliary.md) | Explicit twelve-choice stored setter with independent readback, ordinary API/console and qualification invalidation; physical NOT RUN. |
 | [ESS position start-speed setting](2026-10-29_ess_position_start_speed.md) | Explicit native word setting, retained prior/echo/readback, ordinary API/console and readiness invalidation; physical NOT RUN. |

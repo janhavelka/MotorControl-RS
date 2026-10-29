@@ -1,10 +1,10 @@
 # Execution progress
 
-Prepared 2026-10-23; updated 2026-10-29 for stages 01-05 execution. The preparation
+Prepared 2026-10-23; updated 2026-10-29 for stages 01-06 execution. The preparation
 record below is historical. Stage 01 delivered contracts only; stage 02 implements
 velocity parameter reads. Stage 03 adds homing parameter reads; stage 04 adds
 position start-speed setting. Stage05 adds homing auxiliary configuration;
-stages06-15 remain NOT STARTED.
+stage06 is IN PROGRESS and stages07-15 remain NOT STARTED.
 
 | Stage | Stage status | Commit / evidence | Physical evidence |
 | --- | --- | --- | --- |
@@ -13,7 +13,7 @@ stages06-15 remain NOT STARTED.
 | 03 | SOFTWARE COMPLETE | `ff3fae3`; [implementation/source/verification](../../reports/2026-10-29_ess_homing_reads.md); 81-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 04 | SOFTWARE COMPLETE | [Implementation and verification](../../reports/2026-10-29_ess_position_start_speed.md); `ef38513`; 83-test final quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 05 | SOFTWARE COMPLETE | [Implementation and verification](../../reports/2026-10-29_ess_homing_auxiliary.md); `88f8b9c`; 85-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
-| 06 | NOT STARTED | - | NOT RUN |
+| 06 | IN PROGRESS | [Core contract, review and verification](../../reports/2026-10-29_ess_position_interrupt_core.md); 86-test quick/package PASS, exact-commit CI pending | NOT RUN: core-only delivery |
 | 07 | NOT STARTED | - | NOT RUN |
 | 08 | NOT STARTED | - | NOT RUN |
 | 09 | NOT STARTED | - | NOT RUN |

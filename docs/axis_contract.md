@@ -334,6 +334,13 @@ endpoint binding, same-axis reservation, deadlines, transport and explicit stop.
 The raw builder only starts the drive's already stored target/profile. Neither
 route enables, reconfigures I/O, persists settings or replays uncertain writes.
 They are public API paths, not a change to the ordinary observation-aware CLI.
+The ESS-only `PositionInterruption::INTERRUPT` option narrows this native route
+to an independently qualified exact stored profile with `USE_STORED`. Its copied
+witness binds target/configuration, mode and native words and caps the trigger
+deadline. It establishes neither a moving reference nor observed completion;
+common observed requests retain stationary admission. The
+[position contract](ess_position.md#native-stored-profile-interruption) owns the
+start-or-interrupt race and the separate, still planned application handoff.
 
 ## Velocity, ramps and effort
 

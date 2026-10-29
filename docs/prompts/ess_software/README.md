@@ -1,7 +1,7 @@
 # ESS software completion
 
-Prepared 2026-10-23. **Stage 01 contracts and stages 02/03 software completed
-2026-10-29; stages 04-15 are NOT STARTED.** See the [source decisions](../../reports/2026-10-29_ess_software_contracts.md)
+Prepared 2026-10-23. **Stage 01 contracts and stages 02-05 software completed
+2026-10-29; stage 06 is IN PROGRESS and stages 07-15 are NOT STARTED.** See the [source decisions](../../reports/2026-10-29_ess_software_contracts.md)
 and [progress](progress.md). Contracts do not implement the features. Read the
 [verified audit](audit.md), [execution contract](execution_contract.md),
 [source map](source_map.md) and [verification rules](verification.md).

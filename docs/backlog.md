@@ -44,10 +44,12 @@ the register catalogue alone is not semantic command coverage.
 [Stage 01 contracts](reports/2026-10-29_ess_software_contracts.md) were completed
 on 29 October 2026; no implementation/physical obligation was closed. Stage
 02 implements velocity reads and stage 03 implements homing reads. Stage 04 implements the position start-speed setter; stage 05
-reuses the setting sequencer, and 08-12 the reviewed homing qualification/observation
-contract. N05's first implementable
-subset is native stored-profile start-or-interrupt with ACK-only result and no
-active setup writes. Arbitrary replacement still needs active-register
+implements homing auxiliary configuration. Stage 06 implements the native
+stored-profile start-or-interrupt core with ACK-only result and no active setup
+writes; [stage 07](prompts/ess_software/07_position_interrupt_owner.md) still owns
+the ordinary application route, result reservations and stop arbitration.
+Stages 08-12 retain the reviewed homing qualification/observation contract.
+Arbitrary replacement still needs active-register
 consumption and completion-attribution evidence; keep N05 PARTIAL after that
 subset. Method28's exchanged branch drawings are recorded in the method guide.
 

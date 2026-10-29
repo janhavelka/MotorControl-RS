@@ -5,13 +5,24 @@ Execute the [shared contract](execution_contract.md) and
 `position_interrupt`. Prerequisite: 06's implemented core contract.
 
 Stage 01 limits this first integration to the
-[native stored-profile contract](../../ess_position.md#planned-start-speed-setting-and-interruption-not-implemented)
+[native stored-profile contract](../../ess_position.md#native-stored-profile-interruption)
 and `position interrupt <original-id>`. Preserve N05 as PARTIAL even after that
 usable subset lands; arbitrary new-target/profile replacement and attributable
 observed completion still need exact missing evidence. Test rejection during
 pre-trigger staging, and distinguish a host-known completion race from the
 unavoidable drive finish-before-TX race. An ACK-only terminal does not clear the
 possible-motion interlock or permit competing ordinary motion automatically.
+
+Stage06 now supplies `PositionCommand::interruption`, its nonzero
+`configurationGeneration` and copied `StoredPositionQualification`. Construct
+the witness from independently retained qualified active values, including
+original ID, exact target/generations, subdivision, word order, coordinate mode,
+all six stored profile words and qualification age; never certify the incoming
+candidate by copying it into a new witness. `MoveContext::stored` preserves that
+association, while the owner must establish original activity/ownership, result
+capacity and invalidation before dispatch. The core emits one start and never
+polls replacement completion. Its IDs reject old envelopes, not indistinguishable
+late wire ACKs; preserve qualified transport closure/source attribution.
 
 ## Inspect and assign
 

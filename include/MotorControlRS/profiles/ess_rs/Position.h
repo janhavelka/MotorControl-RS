@@ -33,6 +33,30 @@ struct PositionProfile {
     uint16_t startSpeed = 0, accelerationTime = 0, decelerationTime = 0, speed = 0;
     uint32_t targetBits = 0;
 };
+/** Serial positioning bit 3. INTERRUPT starts the stored motion even if the
+ * previous motion finished before TX; it is not an only-if-busy command. */
+enum class PositionInterruption : uint8_t { IGNORE, INTERRUPT };
+/** Independently established active stored profile and native interpretation.
+ * Readback or the incoming candidate alone cannot establish this qualification.
+ * qualified includes start-speed compatibility, native coordinate/sign/bounds
+ * semantics and applicable input/limit policy. The raw start word is retained
+ * without assuming a raw-to-RPM conversion. Reset, changed settings/target or
+ * contradicted evidence invalidate this witness in the application.
+ * originalOperationId associates retained results; it does not prove that the
+ * original is active, acknowledged or owned. The owner must establish those
+ * facts, settle in-flight work and reserve original/replacement/stop results. */
+struct StoredPositionQualification {
+    ReadTarget target;
+    uint32_t configurationGeneration = 0, originalOperationId = 0;
+    uint16_t subdivision = 0;
+    WordOrder wordOrder = WordOrder::HIGH_WORD_FIRST;
+    PositionProfile profile;
+    bool relative = true, qualified = false;
+    /** Original qualification time in the prepare/advance monotonic microsecond
+     * epoch; readback alone cannot renew it. Zero maximum age disables age
+     * expiry, not binding/invalidation checks. */
+    uint64_t qualifiedUs = 0, maximumAgeUs = 0;
+};
 /** Fixed non-consuming read; no operation, trigger or persistence side effects. */
 std::size_t buildReadPositionProfile(uint8_t address, uint8_t*, std::size_t) noexcept;
 /** Checked response; output remains unchanged on every failure. */
@@ -46,6 +70,11 @@ std::size_t buildWritePositionProfile(uint8_t address, const PositionProfile&,
 /** Raw finite-position start only; uses the drive's already stored target and
  * profile. No cached-state admission, setup, observation or retry is implied. */
 std::size_t buildStartPosition(uint8_t address, bool relative,
+                               uint8_t*, std::size_t) noexcept;
+/** Wire-only explicit bit-3 choice; IGNORE is byte-identical to the old overload.
+ * Invalid intent/address/capacity returns zero with output unchanged. This raw
+ * builder does not enforce the stored-profile admission of PositionCommand. */
+std::size_t buildStartPosition(uint8_t address, bool relative, PositionInterruption,
                                uint8_t*, std::size_t) noexcept;
 /** Exact target/configuration binding and caller-qualified prerequisites.
  * Configured ramp words are preserved verbatim in the reviewed FC10 window;
@@ -83,6 +112,8 @@ enum class MoveAdmission : uint8_t { OBSERVED_STATE, NATIVE_INTENT };
  * execution separately describes the trigger, never physical completion. */
 struct MoveContext {
     MoveAdmission admission = MoveAdmission::OBSERVED_STATE;
+    PositionInterruption interruption = PositionInterruption::IGNORE;
+    StoredPositionQualification stored; ///< Independent immutable witness for native INTERRUPT only; no stationary baseline.
     ReadTarget target;
     uint32_t operationId = 0;
     MoveRequest request;
@@ -124,7 +155,8 @@ struct PreparedMove {
     uint64_t deadlineUs = 0, eligibleUs = 0; ///< Optional readiness expiry caps writes; the operation deadline always applies.
 };
 /** Remembered caller intent, not a motor-state cache. Each preparation copies
- * these settings into an independent MoveContext. WRITE_ALL (default) stages
+ * these settings into an independent MoveContext; rejection leaves it unchanged.
+ * WRITE_ALL (default) stages
  * 0x0021/5; VERIFY_AND_UPDATE compares a new read before selecting one documented
  * write; USE_STORED sends start only and explicitly relies on existing settings.
  * No cache is treated as proof that motor power/settings stayed unchanged.
@@ -140,9 +172,19 @@ struct PreparedMove {
  * The context retains NATIVE_INTENT; its prerequisites/reference/PreparedTarget
  * do not pretend that observations or coordinate conversion took place.
  * Success means the selected sequence was acknowledged: outcome ACKNOWLEDGED and
- * completion NOT_OBSERVED. No status polling can attribute an already running
- * motion to this noninterrupting start without a prior stationary observation.
+ * completion NOT_OBSERVED. No status polling attributes an already running
+ * motion or preexisting arrival flag to this operation.
  * Use typed state reads for feedback, or prepareMove* for observed completion.
+ *
+ * INTERRUPT admits only USE_STORED with an independently qualified stored
+ * witness matching target/configuration/subdivision/order, coordinate mode and
+ * every requested profile/target word. No setup writes or new target staging
+ * are supported. The nonzero original ID must differ from this operation ID.
+ * Native relative replacement has no known endpoint; absolute replacement has
+ * no observed arrival. Wrapped/reference-dependent replacement is not offered.
+ * The caller accepts start-or-interrupt semantics and retains possible motion
+ * after ACK until explicit checked stop/reconciliation. No local cancel is a
+ * physical stop. Observed prepareMove* keeps its stationary admission.
  */
 struct PositionCommand {
     ReadTarget target;
@@ -151,6 +193,9 @@ struct PositionCommand {
     WordOrder wordOrder = WordOrder::HIGH_WORD_FIRST;
     uint16_t accelerationTime = 0, decelerationTime = 0, speedRpm = 0;
     MoveSetup setup = MoveSetup::WRITE_ALL;
+    PositionInterruption interruption = PositionInterruption::IGNORE;
+    uint32_t configurationGeneration = 0; ///< Nonzero and matched to stored for INTERRUPT; unused by legacy IGNORE.
+    StoredPositionQualification stored;
     Status prepareRelative(MoveContext&, uint32_t operationId, uint32_t targetBits,
                            uint64_t nowUs, uint64_t deadlineUs) const noexcept;
     Status prepareAbsolute(MoveContext&, uint32_t operationId, uint32_t targetBits,
@@ -194,6 +239,10 @@ Status nextMove(const MoveContext&, uint64_t nowUs, PreparedMove&) noexcept;
  * truncates TX or retries setup/trigger. Wrong envelopes leave state unchanged.
  * A write deadline may expire before the retained operation deadline, reporting
  * READINESS. The caller must honor yielded deadlines through queue/setup/TX.
+ * Native INTERRUPT uses copied stored qualification age instead of stationary
+ * readiness, and ends ACKNOWLEDGED/NOT_OBSERVED without polling. IDs/generations
+ * reject mismatched event envelopes, not bit-identical stale wire replies;
+ * responseConfirmed still requires the owner's transport/echo qualification.
  * On-time trigger evidence may arrive after readiness expires; observations can
  * continue, but no new staging or trigger is yielded from stale readiness. */
 Status advanceMove(MoveContext&, const ActionEvent&, uint64_t nowUs) noexcept;

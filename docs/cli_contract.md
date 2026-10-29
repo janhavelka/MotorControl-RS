@@ -224,12 +224,13 @@ Generalizing the current `programmaticMove` ownership flag must preserve exact
 kind checks in `moveProgress`/`releaseMove` and all new copy functions; another
 operation family's ID cannot be accepted as a move/read/setting/home result.
 
-Interrupt is the restricted [native contract](ess_position.md#planned-position-interruption-not-implemented),
+The planned application interrupt route uses the implemented restricted
+[native core contract](ess_position.md#native-stored-profile-interruption),
 with no changed target or silent staging. It accepts that a drive finishing
 before TX may execute a new stored start; ACK does not certify an interruption
 or arrival. Preserve original/replacement/stop result IDs and reserved stop
 capacity. No observed move or wrapped-coordinate replacement is implied.
-Programmatic `copyMoveResult` returns the exact MoveContext and original/
+Planned programmatic `copyMoveResult` returns the exact MoveContext and original/
 replacement relation metadata; both IDs and the separate stop result remain
 inspectable. The relation describes host ownership, not physical interruption.
 

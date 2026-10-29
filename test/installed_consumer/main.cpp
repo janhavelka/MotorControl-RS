@@ -75,6 +75,34 @@ int main() {
         nativeMove.admission != MoveAdmission::NATIVE_INTENT) return 104;
     uint8_t rawStart[8];
     if (buildStartPosition(1, true, rawStart, sizeof(rawStart)) != 8) return 105;
+    // A fixture-supplied active profile qualifies a native stored retrigger.
+    // Production callers retain this independently of new command intent.
+    desired.setup = MoveSetup::USE_STORED;
+    desired.interruption = PositionInterruption::INTERRUPT;
+    desired.configurationGeneration = 3;
+    StoredPositionQualification& stored = desired.stored;
+    stored.target = target; stored.configurationGeneration = 3;
+    stored.originalOperationId = 12; stored.subdivision = 1000;
+    stored.profile.startSpeed = 0; stored.profile.speed = 60;
+    stored.profile.accelerationTime = stored.profile.decelerationTime = 100;
+    stored.profile.targetBits = 100; stored.qualified = true;
+    stored.qualifiedUs = 100; stored.maximumAgeUs = 1000;
+    MoveContext replacement;
+    if (!desired.prepareRelative(replacement, 19, 100, 100, 1000000) ||
+        !nextMove(replacement, 100, nativeWork) || nativeWork.length != 8 ||
+        nativeWork.value != 9 || nativeWork.deadlineUs != 1100 ||
+        replacement.stored.originalOperationId != 12 || replacement.prepared.endpointKnown ||
+        buildStartPosition(1, true, PositionInterruption::INTERRUPT, rawStart, sizeof(rawStart)) != 8)
+        return 110;
+    const uint8_t interruptAck[] = {1,6,0,0x27,0,9,0xF9,0xC7};
+    ActionEvent interruptEvent; interruptEvent.transport.target = target;
+    interruptEvent.transport.operationId = 19; interruptEvent.transport.step = nativeWork.step;
+    interruptEvent.transport.frame = interruptAck; interruptEvent.transport.length = sizeof(interruptAck);
+    interruptEvent.transport.txAccepted = 8; interruptEvent.txComplete = true;
+    interruptEvent.transport.qualified = true; interruptEvent.responseConfirmed = true;
+    interruptEvent.transport.earliestUs = 200; interruptEvent.transport.latestUs = 220;
+    if (!advanceMove(replacement, interruptEvent, 230) || replacement.outcome != ActionOutcome::ACKNOWLEDGED ||
+        replacement.completion != ActionCompletion::NOT_OBSERVED) return 111;
     DiscoveryCapabilities discovery;
     ESS_RS::PreparedProbe probe;
     if (discoveryProfileCount() != 1 || !getDiscoveryCapabilities(DriveProfile::ESS_RS, discovery) ||

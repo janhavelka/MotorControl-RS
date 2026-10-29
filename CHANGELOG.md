@@ -4,6 +4,12 @@
 
 ### Added
 
+- Typed serial position interruption in the core: exact independently qualified
+  native stored-profile retrigger, copied binding/age evidence and one checked
+  bit-3 trigger. Default starts and stationary observed moves are unchanged.
+  Results remain ACK-only; no active setup writes, completion attribution or
+  ordinary app/console interrupt route is claimed. N05 remains PARTIAL.
+
 - Explicit homing auxiliary setting for all twelve native choices, with retained
   prior read, checked FC06 echo and independent readback. Ordinary app API,
   `home auxiliary` and strict host results share the bounded settings session.

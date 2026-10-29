@@ -30,6 +30,8 @@ std::size_t requestLength(const MoveContext& c) {
     return staging(c) && c.setupCount > 1 ? 9 + 2 * c.setupCount : READ_REQUEST_LEN;
 }
 uint64_t readinessDeadline(const MoveContext& c) {
+    if (c.interruption == PositionInterruption::INTERRUPT)
+        return evidenceAgeDeadline(c.stored.qualifiedUs, c.stored.maximumAgeUs);
     return evidenceAgeDeadline(c.prerequisites.observedUs, c.prerequisites.maximumAgeUs);
 }
 uint64_t stepDeadline(const MoveContext& c) {
@@ -76,9 +78,11 @@ void beginMove(MoveContext& c, const ReadTarget& target, uint32_t id,
 uint16_t observationCount(const MoveContext& c) {
     return c.prerequisites.positionFeedbackMatchesCommand ? 7 : 2;
 }
-uint16_t startValue(bool relative) {
+uint16_t startValue(bool relative, PositionInterruption interruption) {
     return static_cast<uint16_t>(MotionCommandBit::START_POSITION) |
-        (relative ? 0 : static_cast<uint16_t>(MotionCommandBit::ABSOLUTE_POSITION));
+        (relative ? 0 : static_cast<uint16_t>(MotionCommandBit::ABSOLUTE_POSITION)) |
+        (interruption == PositionInterruption::INTERRUPT ?
+            static_cast<uint16_t>(MotionCommandBit::INTERRUPT_POSITION) : 0);
 }
 } // namespace
 
@@ -127,7 +131,12 @@ std::size_t buildWritePositionProfile(uint8_t address, const PositionProfile& pr
     return buildWriteMultipleRegisters(address, Registers::POSITION_ACCELERATION_TIME, words, 5, out, capacity);
 }
 std::size_t buildStartPosition(uint8_t address, bool relative, uint8_t* out, std::size_t capacity) noexcept {
-    return buildWriteSingleRegister(address, Registers::MOTION_COMMAND, startValue(relative), out, capacity);
+    return buildStartPosition(address, relative, PositionInterruption::IGNORE, out, capacity);
+}
+std::size_t buildStartPosition(uint8_t address, bool relative, PositionInterruption interruption,
+                               uint8_t* out, std::size_t capacity) noexcept {
+    if (interruption > PositionInterruption::INTERRUPT) return 0;
+    return buildWriteSingleRegister(address, Registers::MOTION_COMMAND, startValue(relative, interruption), out, capacity);
 }
 
 static Status prepareNative(MoveContext& output, const PositionCommand& command,
@@ -137,6 +146,9 @@ static Status prepareNative(MoveContext& output, const PositionCommand& command,
     if (!id) return invalid(MoveError::INVALID_OPERATION, "zero move id");
     if (deadline <= now) return invalid(MoveError::INVALID_DEADLINE, "expired move deadline");
     if (command.setup > MoveSetup::USE_STORED) return invalid(MoveError::INVALID_OPTIONS, "invalid move setup policy");
+    if (command.interruption > PositionInterruption::INTERRUPT ||
+        (command.interruption == PositionInterruption::INTERRUPT && command.setup != MoveSetup::USE_STORED))
+        return invalid(MoveError::INVALID_OPTIONS, "position interruption requires native stored-profile setup");
     if (!command.speedRpm || command.speedRpm > 3000 || command.accelerationTime > 2000 ||
         command.decelerationTime > 2000 || (relative && !bits))
         return invalid(MoveError::INVALID_REQUEST, "invalid native position parameters");
@@ -156,6 +168,24 @@ static Status prepareNative(MoveContext& output, const PositionCommand& command,
     const Status access = validateWriteMultipleRegistersRequest(command.target.address,
         Registers::POSITION_ACCELERATION_TIME, prepared.words, 5);
     if (!access) return access;
+    if (command.interruption == PositionInterruption::INTERRUPT) {
+        const StoredPositionQualification& stored = command.stored;
+        if (!command.configurationGeneration || !stored.originalOperationId || stored.originalOperationId == id ||
+            !sameTarget(command.target, stored.target) ||
+            command.configurationGeneration != stored.configurationGeneration ||
+            command.subdivision != stored.subdivision || command.wordOrder != stored.wordOrder ||
+            relative != stored.relative || bits != stored.profile.targetBits ||
+            command.accelerationTime != stored.profile.accelerationTime ||
+            command.decelerationTime != stored.profile.decelerationTime || command.speedRpm != stored.profile.speed)
+            return invalid(MoveError::STALE_CONFIGURATION, "interrupt candidate does not match independently qualified stored profile");
+        if (stored.profile.startSpeed > 3000)
+            return invalid(MoveError::INVALID_REQUEST, "stored raw position start speed is outside its documented range");
+        if (!stored.qualified || !evidenceAgeValid(stored.qualifiedUs, now, stored.maximumAgeUs))
+            return invalid(MoveError::READINESS, "fresh independent stored position qualification is required");
+        prepared.interruption = command.interruption;
+        prepared.stored = stored;
+        prepared.request.position.configurationGeneration = command.configurationGeneration;
+    }
     beginMove(prepared, command.target, id, now, deadline, ActionOptions());
     output = prepared; return Ok();
 }
@@ -299,8 +329,8 @@ Status nextMove(const MoveContext& c, uint64_t nowUs, PreparedMove& output) noex
                 next.bytes, sizeof(next.bytes));
     } else if (c.step == c.triggerStep) {
         next.function = 6; next.reg = Registers::MOTION_COMMAND;
-        next.value = startValue(c.request.position.relative); next.count = 1;
-        next.length = buildStartPosition(c.target.address, c.request.position.relative, next.bytes, sizeof(next.bytes));
+        next.value = startValue(c.request.position.relative, c.interruption); next.count = 1;
+        next.length = buildStartPosition(c.target.address, c.request.position.relative, c.interruption, next.bytes, sizeof(next.bytes));
     } else {
         next.function = 3; next.reg = Registers::ERROR_CODE; next.count = observationCount(c);
         next.length = buildReadRegisters(c.target.address, next.reg, next.count, next.bytes, sizeof(next.bytes));
@@ -341,7 +371,7 @@ Status advanceMove(MoveContext& c, const ActionEvent& supplied, uint64_t nowUs) 
             parseWriteMultipleRegisters(event.frame, event.length, c.target.address,
                 Registers::POSITION_ACCELERATION_TIME + c.setupOffset, c.setupCount, &evidence.frameError);
         else if (triggering) evidence.status = parseWriteSingleRegister(event.frame, event.length, c.target.address,
-            Registers::MOTION_COMMAND, startValue(c.request.position.relative), &evidence.frameError);
+            Registers::MOTION_COMMAND, startValue(c.request.position.relative, c.interruption), &evidence.frameError);
         else evidence.status = parseRegisters(event.frame, event.length, c.target.address, observationCount(c),
             words, 7, count, &evidence.frameError);
     } else if (event.kind == ReadEventKind::CANCEL)

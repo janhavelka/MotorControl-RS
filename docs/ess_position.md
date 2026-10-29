@@ -218,7 +218,7 @@ Restore compares exactly the five words it writes. The observed current and
 original start-speed words remain visible separately; a deliberately changed
 start word does not prevent settlement of the five-word restoration.
 
-## Planned position interruption (not implemented)
+## Native stored-profile interruption
 
 For interruption, function p16 defines serial `0x0027` bit 3 as 0 = ignore a new
 position command while moving, 1 = interrupt and execute it immediately. This
@@ -226,25 +226,57 @@ is independent of external PV trigger mode. Bit 0 starts positioning and bit 2
 selects absolute mode. Preserve legacy values `0x0001`/`0x0005`; the derived
 explicit interrupt values are `0x0009`/`0x000D`. No wire queue is documented.
 
-Plan a profile-specific typed `PositionInterruption` choice, default `IGNORE`,
-on `PositionCommand` and a checked `buildStartPosition` overload. It is copied
-into `MoveContext`; the old builder and ordinary observed preparations retain
-their current behavior. Initial active replacement is deliberately limited:
+`PositionCommand::interruption` is a profile-specific `PositionInterruption`
+choice, default `IGNORE`. The checked `buildStartPosition(address, relative,
+interruption, out, capacity)` overload also exposes that wire choice. The core
+copies it into `MoveContext`; the old builder and ordinary observed preparations
+retain their current behavior. The implemented core subset is limited:
 
-| Request while an owned position operation may be moving | Planned disposition |
+| Request while an owned position operation may be moving | Core disposition |
 | --- | --- |
 | `WRITE_ALL` or `VERIFY_AND_UPDATE` | Reject before any profile/target write: active staging effects are unresolved |
 | Native `USE_STORED`, exact qualified stored-profile match | One explicit interrupt trigger; terminal ACKNOWLEDGED, completion NOT_OBSERVED |
 | Changed target/profile supplied with `USE_STORED` | Reject; start-only does not stage the supplied values |
 | Observed/generic replacement, wrapped angle or moving reference-dependent endpoint | Reject before TX; no attributable replacement-completion contract is established |
 
-The stored witness must match exact target, configuration, word order, target
-bits and native profile values; the application retains its provenance and
-qualification independently of incoming intent. Readback alone does not prove
-activation or absence of an unseen reset. Relative retriggering retains native
+`PositionCommand::stored` is a `StoredPositionQualification`: exact `ReadTarget`
+(ID/address/binding generation), nonzero `configurationGeneration`, nonzero
+`originalOperationId` distinct from the new ID, active subdivision, word order,
+relative/absolute mode, all six `PositionProfile` words, and independent
+`qualified`/`qualifiedUs`/`maximumAgeUs` evidence. Preparation matches the command's
+nonzero configuration generation, subdivision, order, coordinate mode and all
+five requested profile/target words. The retained start word must be in raw
+0..3000; qualification owns its compatible interpretation, not an inferred
+raw-to-RPM conversion. Normal speed/ramp/subdivision limits still apply.
+
+The application retains provenance independently of incoming intent. Readback
+alone does not prove activation or absence of an unseen reset. Qualification
+includes native coordinates/sign/bounds, applicable input/limit policy and
+start-speed compatibility. Changed settings/target, reset or contradicted facts
+invalidate the witness before dispatch. Relative retriggering retains native
 displacement intent but no known absolute endpoint; an old endpoint or moving
 sample cannot supply a stationary baseline. Absolute retriggering retains native
 target intent but still cannot claim a newly observed arrival.
+
+The immutable copied witness is separate from `MovePrerequisites` stationary
+readiness. Future qualification timestamps reject even when age expiry is off.
+Nonzero maximum age caps the trigger deadline at the saturating sum of
+`qualifiedUs + maximumAgeUs`; zero disables age expiry. Preparation and new work
+reject at expiry. Qualified response closure at the deadline is accepted, even
+if delivered later; late closure fails with possible execution retained. The
+overall operation deadline never moves. No observation request follows the
+trigger: a confirmed checked echo ends `ACKNOWLEDGED`/`NOT_OBSERVED`, a lost or
+unconfirmed reply after TX retains `UNKNOWN`, and local cancellation sends no
+stop. Old RUNNING/HOMED/ARRIVED cannot certify replacement execution or completion.
+Wrong host target/ID/step envelopes reject unchanged. Those tokens are not on
+the wire: a bit-identical late FC06 echo still needs the owner's timing/source
+qualification and cannot be identified by core IDs alone.
+
+See the [stage 06 evidence](reports/2026-10-29_ess_position_interrupt_core.md).
+The normal application/console route remains **not implemented**. The raw
+builder validates wire shape/intent only; it does not perform this admission.
+
+### Application handoff (planned, stage 07)
 
 Stage 07 will expose `submitPositionInterrupt(originalId, command, targetBits,
 relative, replacementId)` and `position interrupt <original-id>` through the

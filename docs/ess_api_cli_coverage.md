@@ -172,7 +172,7 @@ The remaining gaps are tracked by feature, independently of hardware evidence:
 
 | Area | Open obligation | Actual boundary |
 | --- | --- | --- |
-| Position | Native ignore-versus-interrupt position command | Fixed noninterrupting triggers are implemented; bit 3 has no typed option or CLI route. Priority stop does not implement position interruption. |
+| Position | Native ignore-versus-interrupt position command | PARTIAL: typed bit-3 core option admits only qualified exact native stored retrigger, ACK-only. Ordinary owner/app/CLI route awaits stage07; broader staging/completion attribution remains evidence-gated. Priority stop is separate. |
 | Position | Arbitrary native five-word profile candidates and archived restoration | Typed builder exists, but CLI restoration accepts only the volatile original snapshot; finite-move staging is not standalone parameter access |
 | Homing | Remaining homing trajectories | Three methods implemented, 27 unimplemented, five unresolved; I/O configuration does not implement a switch trajectory |
 | Homing | Nonzero homing offset and additional paired-write forms | Zero-only reviewed staging does not resolve offset order, signedness or units |
