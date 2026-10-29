@@ -38,12 +38,12 @@ MAX_INPUT = 32768
 MAX_TRAFFIC_INPUT = 1048576  # Independent finite diagnostic budget per command/drain.
 COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "health", "memory", "stats", "load",
                       "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "communication", "persistence", "motion-profile", "debug",
-                      "read-identity", "read-config", "read-state", "velocity-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list"})
+                      "read-identity", "read-config", "read-state", "velocity-read", "home-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list"})
 MAX_COMMANDS = 11  # Eight ordinary operations, recovery, reserved stop and local query.
 MAX_OPERATIONS = 10  # Eight ordinary operations, one recovery and one reserved stop.
 MAX_PROBES = 8
 TYPED_READS = {"read-identity": "identity", "read-config": "config", "read-state": "state",
-               "velocity-read": "velocity_parameters"}
+               "velocity-read": "velocity_parameters", "home-read": "homing_parameters"}
 READ_COMMANDS = ("probe", "capture-read", *TYPED_READS)
 HOST_FORMATS = ("8N1", "8N2", "8E1", "8O1")
 ADMISSION_FAILURES = frozenset({"busy", "recovery_required", "unavailable", "failed", "queue_full", "results_full",
@@ -2391,6 +2391,7 @@ class Console:
                 suffix = " " + " ".join(driver_args) + suffix
             wire_command = "read " + TYPED_READS[command] if command in TYPED_READS else command
             if command == "velocity-read": wire_command = "velocity read"
+            if command == "home-read": wire_command = "home read"
             if command == "profile-list": wire_command = "profile list"
             if command in MOVE_COMMANDS: wire_command = "move " + command[5:]
             payload = f"@{request_id} {wire_command}{suffix}\n".encode("ascii")
@@ -2610,7 +2611,7 @@ def typed_read_campaign(console: Console, *, kind: str, timeout_s: float, addres
     Inspection does not refresh observations, change settings or send motor traffic.
     """
     if kind not in (*TYPED_WINDOWS, "both"):
-        raise ValueError("typed read kind must be identity, config, state, velocity_parameters or both")
+        raise ValueError("typed read kind must be a reviewed TYPED_WINDOWS kind or both")
     positive(timeout_s, "command timeout")
     if type(address) is not int or not 1 <= address <= 247:
         raise ValueError("ESS read address must be within 1..247")
@@ -3201,7 +3202,7 @@ def arguments(argv: list[str] | None) -> argparse.Namespace:
         action = sub.add_parser(name, help="one explicit action attempt; never retried")
         if name == "stop":
             action.add_argument("stop_policy", choices=("normal", "fast"))
-    typed = sub.add_parser("typed-read", help="typed identity/configuration/state/velocity-parameter reads, retained inspection and release")
+    typed = sub.add_parser("typed-read", help="typed identity/configuration/state/velocity/homing-parameter reads, retained inspection and release")
     typed.add_argument("--kind", choices=(*TYPED_WINDOWS, "both"), default="both")
     for name in MOVE_COMMANDS:
         move = sub.add_parser(name, help="one finite move with explicit stop cleanup; never replayed")

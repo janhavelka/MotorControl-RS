@@ -51,6 +51,10 @@ Uncertain writes are never automatically replayed.
 JOG-parameter read plus retained inspection/release; it does not stage or start
 velocity. See [typed reads](../docs/ess_reads.md#native-velocity-parameter-read).
 
+`bench_probe.py typed-read --kind homing_parameters` reads six native homing
+records as seven raw words with retained inspection/release. It does not stage
+homing, assemble an offset, establish an origin or renew qualification.
+
 ## Reference preparation
 
 `prepare_references.py` downloads the nine references listed in the source

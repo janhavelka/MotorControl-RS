@@ -593,9 +593,218 @@ void testVelocityParameterCorrelationDeadlineAndCancellation() {
         assert(!advanceRead(c,frame(c,VELOCITY_PARAMETERS,sizeof(VELOCITY_PARAMETERS)),1200)); terminal.check(c);
     }
 }
+// Function manual physical pp19/20/72/73: six homing records occupy seven
+// contiguous words. Offset stays in address order, with unresolved sign/scale
+// and configurable-word-order applicability (omitted from the p30 list).
+const uint8_t HOMING_PARAMETERS[] = {1,3,14,0,7,0,24,0,60,0,30,0,100,0x12,0x34,0xAB,0xCD,0xEE,0x29};
+const uint8_t HOMING_UNKNOWN[] = {1,3,14,0xFF,0xFF,0xFF,0xFC,0xF1,0x23,0xE2,0x34,0xD3,0x45,0xC4,0x56,0xB5,0x67,0x38,1};
+const uint8_t HOMING_MAXIMUM[] = {1,3,14,0,11,0,35,0x0B,0xB8,1,0x2C,7,0xD0,0,0,0xFF,0xFF,0x9F,0x23};
+const uint8_t HOMING_MAX_RAW[] = {1,3,14,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x11,0x95};
+const uint8_t HOMING_ZERO_OFFSET[] = {1,3,14,0,7,0,35,0,60,0,30,0,100,0,0,0,0,0xCE,0x1E};
+ReadContext homingParameters(uint64_t deadline = 1000) {
+    ReadContext c; assert(prepareHomingParameters(c,target(),12,23,100,deadline,active())); return c;
+}
+void homingInterpretationUnresolved(const HomingParametersObservation& out) {
+    assert(out.speedScaleResolution == ReadResolution::SCALE_UNRESOLVED);
+    assert(out.rampScaleResolution == ReadResolution::SCALE_UNRESOLVED);
+    assert(out.offsetWordOrderResolution == ReadResolution::WORD_ORDER_UNRESOLVED);
+    assert(out.offsetSignedResolution == ReadResolution::SIGNED_ENCODING_UNRESOLVED);
+    assert(out.offsetScaleResolution == ReadResolution::SCALE_UNRESOLVED);
+}
+void testHomingParameterWindowSevenWordsAndOwnedEvidence() {
+    ReadContext c = homingParameters(); PreparedRead request;
+    const uint8_t expected[] = {1,3,0,0x30,0,7,4,7};
+    assert(nextRead(c,100,request));
+    assert(c.kind == ReadKind::HOMING_PARAMETERS && c.configurationGeneration == 23);
+    assert(request.first == 0x0030 && request.count == 7 && request.length == 8 && request.step == 0);
+    assert(request.target.id == 7 && request.target.address == 1 && request.target.generation == 9);
+    assert(request.operationId == 12 && request.deadlineUs == 1000 && request.bytes[1] == 3);
+    assert(std::memcmp(request.bytes,expected,sizeof(expected)) == 0);
+    assert(expectedReadRegistersLen(7) == 19 && isReadRangeValid(0x0030,7));
+    const Saved<ReadContext> unchanged(c); PreparedRead repeated;
+    assert(nextRead(c,150,repeated)); unchanged.check(c);
+    assert(std::memcmp(repeated.bytes,expected,sizeof(expected)) == 0);
+    HomingParametersObservation out; out.rawSearchSpeed = 0xA55A;
+    const Saved<HomingParametersObservation> unpublished(out);
+    assert(!getHomingParameters(c,out)); unpublished.check(out);
+    uint8_t borrowed[sizeof(HOMING_PARAMETERS)]; std::memcpy(borrowed,HOMING_PARAMETERS,sizeof(borrowed));
+    assert(advanceRead(c,frame(c,borrowed,sizeof(borrowed)),230));
+    std::memset(borrowed,0,sizeof(borrowed));
+    assert(c.state == ReadState::SUCCEEDED && c.outcome == ReadOutcome::SUCCESS && c.completedSteps == 1 && c.step == 1);
+    assert(getHomingParameters(c,out));
+    assert(out.target.id == 7 && out.target.address == 1 && out.target.generation == 9);
+    assert(out.operationId == 12 && out.configurationGeneration == 23 && c.configOperationId == 0);
+    assert(out.rawAuxiliary == 7 && out.rawMethod == 24 && out.rawSearchSpeed == 60 && out.rawReturnSpeed == 30);
+    assert(out.rawRampTime == 100 && out.rawOffsetWords[0] == 0x1234 && out.rawOffsetWords[1] == 0xABCD);
+    assert(out.auxiliaryKnown && out.auxiliary == HomingAuxiliary::KEEP_POSITION_SET_ZERO);
+    assert(out.methodKnown && out.method == HomingMethod::METHOD_24 && out.methodSupport == HomeSupport::UNIMPLEMENTED);
+    assert(out.searchSpeedInRange && out.returnSpeedInRange && out.rampTimeInRange);
+    homingInterpretationUnresolved(out);
+    assert(out.provenance.first == 0x0030 && out.provenance.count == 7 && out.provenance.length == 19);
+    assert(out.provenance.qualified && out.provenance.txAccepted == 8 && out.provenance.receivedLength == 19);
+    assert(out.provenance.earliestUs == 200 && out.provenance.latestUs == 220 && out.provenance.deliveredUs == 230);
+    assert(std::memcmp(out.provenance.raw,HOMING_PARAMETERS,sizeof(HOMING_PARAMETERS)) == 0);
+    std::memset(c.observations[0].raw,0,sizeof(c.observations[0].raw));
+    assert(std::memcmp(out.provenance.raw,HOMING_PARAMETERS,sizeof(HOMING_PARAMETERS)) == 0);
+    const Saved<PreparedRead> noFurtherWork(request);
+    assert(!nextRead(c,240,request)); noFurtherWork.check(request); // No second step or motion write.
+    const uint16_t raw[7] = {7,24,60,30,100,0x1234,0xABCD};
+    assert(!validateWriteMultipleRegistersRequest(1,0x0030,raw,7));
+    assert(!validateWriteMultipleRegistersRequest(1,0x0031,raw,7));
+    assert(validateWriteMultipleRegistersRequest(1,0x0031,raw,6)); // Existing staging window only.
+    assert(!validateWriteSingleRegisterRequest(1,0x0035,0x1234));
+    assert(!validateWriteSingleRegisterRequest(1,0x0036,0xABCD));
+}
+void testHomingParameterRawCodesAndNativeBounds() {
+    struct RawCase { const uint8_t* bytes; uint16_t auxiliary, method, search, returning, ramp, offset0, offset1; bool knownAux, knownMethod, ranges; };
+    const RawCase cases[] = {
+        {HOMING_UNKNOWN,0xFFFF,0xFFFC,0xF123,0xE234,0xD345,0xC456,0xB567,false,false,false},
+        {HOMING_MAXIMUM,11,35,3000,300,2000,0,0xFFFF,true,true,true},
+        {HOMING_MAX_RAW,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,false,false,false},
+        {HOMING_ZERO_OFFSET,7,35,60,30,100,0,0,true,true,true}
+    };
+    for (const auto& raw : cases) {
+        ReadContext c = homingParameters(); assert(advanceRead(c,frame(c,raw.bytes,19),230));
+        HomingParametersObservation out; assert(getHomingParameters(c,out));
+        assert(out.rawAuxiliary == raw.auxiliary && out.rawMethod == raw.method && out.rawSearchSpeed == raw.search);
+        assert(out.rawReturnSpeed == raw.returning && out.rawRampTime == raw.ramp);
+        assert(out.rawOffsetWords[0] == raw.offset0 && out.rawOffsetWords[1] == raw.offset1);
+        assert(out.auxiliaryKnown == raw.knownAux && out.methodKnown == raw.knownMethod);
+        assert(out.searchSpeedInRange == raw.ranges && out.returnSpeedInRange == raw.ranges && out.rampTimeInRange == raw.ranges);
+        if (raw.knownMethod) assert(out.method == HomingMethod::METHOD_35 && out.methodSupport == HomeSupport::IMPLEMENTED);
+        else assert(out.methodSupport == HomeSupport::UNRESOLVED);
+        homingInterpretationUnresolved(out); // Even two raw zero offset words establish no origin or ordering.
+    }
+    struct Bounds { uint16_t search, returning, ramp; bool searchKnown, returnKnown, rampKnown; };
+    const Bounds limits[] = {{0,0,0,false,false,false}, {4,4,29,false,false,false}, {5,5,30,true,true,true},
+        {4,5,30,false,true,true}, {5,4,30,true,false,true}, {5,5,29,true,true,false},
+        {3001,301,2001,false,false,false}, {3000,300,2000,true,true,true}};
+    for (const auto& limit : limits) {
+        uint8_t bytes[19]; std::memcpy(bytes,HOMING_ZERO_OFFSET,sizeof(bytes));
+        bytes[7] = static_cast<uint8_t>(limit.search >> 8); bytes[8] = static_cast<uint8_t>(limit.search);
+        bytes[9] = static_cast<uint8_t>(limit.returning >> 8); bytes[10] = static_cast<uint8_t>(limit.returning);
+        bytes[11] = static_cast<uint8_t>(limit.ramp >> 8); bytes[12] = static_cast<uint8_t>(limit.ramp); seal(bytes,sizeof(bytes));
+        ReadContext c = homingParameters(); assert(advanceRead(c,frame(c,bytes,sizeof(bytes)),230));
+        HomingParametersObservation out; assert(getHomingParameters(c,out));
+        assert(out.rawSearchSpeed == limit.search && out.rawReturnSpeed == limit.returning && out.rawRampTime == limit.ramp);
+        assert(out.searchSpeedInRange == limit.searchKnown && out.returnSpeedInRange == limit.returnKnown && out.rampTimeInRange == limit.rampKnown);
+    }
+}
+void testHomingParameterMembershipIsNotExecutableSupport() {
+    // Independent source membership, including unlisted positive gaps and unresolved negative encodings.
+    for (uint16_t code : {uint16_t(0),uint16_t(1),uint16_t(14),uint16_t(15),uint16_t(16),uint16_t(17),uint16_t(18),
+        uint16_t(24),uint16_t(30),uint16_t(31),uint16_t(32),uint16_t(33),uint16_t(34),uint16_t(35),uint16_t(36),
+        uint16_t(0x7FFF),uint16_t(0x8000),uint16_t(0xFFFC),uint16_t(0xFFFD),uint16_t(0xFFFE),uint16_t(0xFFFF)}) {
+        uint8_t bytes[19]; std::memcpy(bytes,HOMING_ZERO_OFFSET,sizeof(bytes));
+        bytes[5] = static_cast<uint8_t>(code >> 8); bytes[6] = static_cast<uint8_t>(code); seal(bytes,sizeof(bytes));
+        ReadContext c = homingParameters(); assert(advanceRead(c,frame(c,bytes,sizeof(bytes)),230));
+        HomingParametersObservation out; assert(getHomingParameters(c,out));
+        const bool known = (code >= 1 && code <= 14) || (code >= 17 && code <= 30) || (code >= 33 && code <= 35);
+        assert(out.rawMethod == code && out.methodKnown == known);
+        if (known) {
+            assert(static_cast<uint16_t>(out.method) == code);
+            assert(out.methodSupport == (code >= 33 ? HomeSupport::IMPLEMENTED : code == 18 ? HomeSupport::UNRESOLVED : HomeSupport::UNIMPLEMENTED));
+        } else assert(out.methodSupport == HomeSupport::UNRESOLVED);
+    }
+    for (uint16_t auxiliary : {uint16_t(0),uint16_t(7),uint16_t(11),uint16_t(12),uint16_t(0xFFFF)}) {
+        uint8_t bytes[19]; std::memcpy(bytes,HOMING_ZERO_OFFSET,sizeof(bytes));
+        bytes[3] = static_cast<uint8_t>(auxiliary >> 8); bytes[4] = static_cast<uint8_t>(auxiliary); seal(bytes,sizeof(bytes));
+        ReadContext c = homingParameters(); assert(advanceRead(c,frame(c,bytes,sizeof(bytes)),230));
+        HomingParametersObservation out; assert(getHomingParameters(c,out));
+        assert(out.rawAuxiliary == auxiliary && out.auxiliaryKnown == (auxiliary <= 11));
+        if (out.auxiliaryKnown) assert(static_cast<uint16_t>(out.auxiliary) == auxiliary);
+    }
+    unsigned implemented = 0, pending = 0, unresolved = 0;
+    for (uint8_t i = 0; i < HOME_METHOD_COUNT; ++i) {
+        const auto* method = homeMethodAt(i); assert(method);
+        if (method->support == HomeSupport::IMPLEMENTED) ++implemented;
+        else if (method->support == HomeSupport::UNIMPLEMENTED) ++pending; else ++unresolved;
+    }
+    assert(implemented == 3 && pending == 27 && unresolved == 5);
+}
+void testHomingParameterPreparationAndPublicationFailuresPreserveOutput() {
+    ReadContext output = homingParameters(); const Saved<ReadContext> unchanged(output);
+    for (unsigned i = 0; i < 7; ++i) {
+        ReadTarget selected = target();
+        if (i == 0) selected.id = 0; else if (i == 1) selected.address = 0;
+        else if (i == 2) selected.address = 248; else if (i == 3) selected.generation = 0;
+        assert(!prepareHomingParameters(output,selected,i == 4 ? 0 : 12,i == 5 ? 0 : 23,100,i == 6 ? 100 : 1000,active()));
+        unchanged.check(output);
+    }
+    ActiveSerialTuple bad = active(); bad.baud = 0;
+    assert(!prepareHomingParameters(output,target(),12,23,100,1000,bad)); unchanged.check(output);
+    assert(!prepareHomingParameters(output,target(),12,23,100,99)); unchanged.check(output);
+    HomingParametersObservation prior; prior.rawOffsetWords[1] = 0xA55A;
+    const Saved<HomingParametersObservation> preserved(prior);
+    assert(!getHomingParameters(output,prior)); preserved.check(prior);
+    ReadContext other = velocityParameters(); assert(advanceRead(other,frame(other,VELOCITY_PARAMETERS,sizeof(VELOCITY_PARAMETERS)),230));
+    assert(!getHomingParameters(other,prior)); preserved.check(prior);
+    assert(prepareHomingParameters(output,target(),12,std::numeric_limits<uint32_t>::max(),100,1000));
+    assert(advanceRead(output,frame(output,HOMING_PARAMETERS,sizeof(HOMING_PARAMETERS)),230));
+    assert(getHomingParameters(output,prior) && prior.configurationGeneration == std::numeric_limits<uint32_t>::max());
+    VelocityParametersObservation velocity; velocity.rawSpeed = 0xA55A; const Saved<VelocityParametersObservation> oldVelocity(velocity);
+    assert(!getVelocityParameters(output,velocity)); oldVelocity.check(velocity);
+}
+void testHomingParameterMalformedRepliesRetainWithoutPublication() {
+    const uint8_t shortCount[] = {1,3,12,0,7,0,24,0,60,0,30,0,100,0x12,0x34,0x3B,0xAD};
+    const uint8_t longCount[] = {1,3,16,0,7,0,24,0,60,0,30,0,100,0x12,0x34,0xAB,0xCD,0x56,0x78,0xDA,0x5A};
+    const uint8_t wrongAddress[] = {2,3,14,0,7,0,24,0,60,0,30,0,100,0x12,0x34,0xAB,0xCD,0x1E,0xD9};
+    const uint8_t wrongFunction[] = {1,4,14,0,7,0,24,0,60,0,30,0,100,0x12,0x34,0xAB,0xCD,0xAC,0x1B};
+    const uint8_t exception[] = {1,0x83,2,0xC0,0xF1};
+    uint8_t badCount[19]; std::memcpy(badCount,HOMING_PARAMETERS,sizeof(badCount)); badCount[2] = 12; seal(badCount,sizeof(badCount));
+    uint8_t badCrc[19]; std::memcpy(badCrc,HOMING_PARAMETERS,sizeof(badCrc)); badCrc[18] ^= 1;
+    struct Rejected { const uint8_t* bytes; std::size_t length; FrameError error; };
+    const Rejected failures[] = {{shortCount,sizeof(shortCount),FrameError::LENGTH}, {longCount,sizeof(longCount),FrameError::LENGTH},
+        {wrongAddress,sizeof(wrongAddress),FrameError::ADDRESS}, {wrongFunction,sizeof(wrongFunction),FrameError::FUNCTION},
+        {badCount,sizeof(badCount),FrameError::BYTE_COUNT}, {badCrc,sizeof(badCrc),FrameError::CRC},
+        {HOMING_PARAMETERS,18,FrameError::LENGTH}, {HOMING_PARAMETERS,0,FrameError::LENGTH}, {exception,sizeof(exception),FrameError::EXCEPTION}};
+    for (const auto& failure : failures) {
+        ReadContext c = homingParameters(); HomingParametersObservation prior; prior.rawAuxiliary = 0xA55A;
+        const Saved<HomingParametersObservation> unchanged(prior);
+        assert(advanceRead(c,frame(c,failure.bytes,failure.length),230));
+        assert(c.state == ReadState::FAILED && c.outcome == ReadOutcome::REPLY_ERROR && c.completedSteps == 0);
+        assert(c.observations[0].frameError == failure.error && c.observations[0].receivedLength == failure.length);
+        assert(c.observations[0].length == failure.length && std::memcmp(c.observations[0].raw,failure.bytes,failure.length) == 0);
+        if (failure.error == FrameError::EXCEPTION) assert(c.status.code == Err::EXCEPTION && c.status.detail == 2);
+        assert(!getHomingParameters(c,prior)); unchanged.check(prior);
+        PreparedRead request; const Saved<PreparedRead> noRetry(request);
+        assert(!nextRead(c,240,request)); noRetry.check(request);
+    }
+}
+void testHomingParameterCorrelationDeadlineAndCancellation() {
+    for (unsigned i = 0; i < 5; ++i) {
+        ReadContext c = homingParameters(); const Saved<ReadContext> unchanged(c);
+        ReadEvent stale = frame(c,HOMING_PARAMETERS,sizeof(HOMING_PARAMETERS));
+        if (i == 0) ++stale.target.id; else if (i == 1) ++stale.target.address;
+        else if (i == 2) ++stale.target.generation; else if (i == 3) ++stale.operationId; else ++stale.step;
+        assert(!advanceRead(c,stale,230)); unchanged.check(c); // Same 19-byte reply cannot satisfy a wrong step.
+    }
+    ReadContext c = homingParameters(); PreparedRead request; request.first = 0xA55A;
+    const Saved<PreparedRead> noLateTraffic(request);
+    assert(!nextRead(c,1000,request)); noLateTraffic.check(request);
+    assert(advanceRead(c,frame(c,HOMING_PARAMETERS,sizeof(HOMING_PARAMETERS),980,1000),5000));
+    HomingParametersObservation out; assert(getHomingParameters(c,out));
+    assert(out.provenance.latestUs == 1000 && out.provenance.deliveredUs == 5000 && c.deadlineUs == 1000);
+    for (unsigned i = 0; i < 5; ++i) {
+        c = homingParameters(); ReadEvent event = frame(c,HOMING_PARAMETERS,sizeof(HOMING_PARAMETERS),980,1001);
+        if (i == 1) { event.qualified = false; event.earliestUs = event.latestUs = 0; }
+        else if (i >= 2) event = control(c,i == 2 ? ReadEventKind::DEADLINE : i == 3 ? ReadEventKind::CANCEL : ReadEventKind::TRANSPORT_FAILURE);
+        if (i == 3 || i == 4) { event.frame = HOMING_PARAMETERS; event.length = 10; event.txAccepted = 8; }
+        const Saved<HomingParametersObservation> preserved(out);
+        assert(advanceRead(c,event,i >= 3 ? 230 : 1001));
+        assert(c.state == ReadState::FAILED && c.completedSteps == 0 && c.deadlineUs == 1000);
+        assert(c.outcome == (i == 1 ? ReadOutcome::TIMING_UNQUALIFIED : i == 3 ? ReadOutcome::CANCELLED :
+            i == 4 ? ReadOutcome::TRANSPORT_ERROR : ReadOutcome::DEADLINE));
+        if (i >= 3) assert(c.observations[0].length == 10 && c.observations[0].txAccepted == 8);
+        assert(!getHomingParameters(c,out)); preserved.check(out);
+        assert(!nextRead(c,1100,request)); noLateTraffic.check(request);
+        const Saved<ReadContext> terminal(c);
+        assert(!advanceRead(c,frame(c,HOMING_PARAMETERS,sizeof(HOMING_PARAMETERS)),1200)); terminal.check(c);
+    }
+}
 void testCapabilitiesAndFixedStorage() {
     const ReadCapabilities caps = readCapabilities();
-    assert(caps.probe && caps.identity && caps.config && caps.state && caps.velocityParameters && caps.maxSteps == 5 && caps.maxReplyBytes <= 37);
+    assert(caps.probe && caps.identity && caps.config && caps.state && caps.velocityParameters && caps.homingParameters && caps.maxSteps == 5 && caps.maxReplyBytes <= 37);
     static_assert(READ_MAX_STEPS == 5 && READ_INPUT_COUNT == 4 && READ_MAX_REPLY_BYTES == 37, "Reviewed read bounds");
     static_assert(sizeof(ReadContext) < 2048 && sizeof(ConfigObservation) < 2048, "Fixed bounded read storage");
 }
@@ -612,4 +821,7 @@ int main() {
     testVelocityParameterWindowAndOwnedObservation(); testVelocityParameterUnknownAndNativeBoundaryWords();
     testVelocityParameterPreparationAndGetterPreservation(); testVelocityParameterMalformedRepliesAndException();
     testVelocityParameterCorrelationDeadlineAndCancellation();
+    testHomingParameterWindowSevenWordsAndOwnedEvidence(); testHomingParameterRawCodesAndNativeBounds();
+    testHomingParameterMembershipIsNotExecutableSupport(); testHomingParameterPreparationAndPublicationFailuresPreserveOutput();
+    testHomingParameterMalformedRepliesRetainWithoutPublication(); testHomingParameterCorrelationDeadlineAndCancellation();
 }

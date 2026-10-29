@@ -51,6 +51,21 @@ int main() {
     if (!advanceRead(velocityRead, velocityEvent, 230) || !getVelocityParameters(velocityRead, velocityParameters) ||
         velocityParameters.configurationGeneration != 3 || velocityParameters.rawSpeed != 60 ||
         velocityParameters.rawAccelerationTime != 50 || velocityParameters.rawDecelerationTime != 100) return 107;
+    ReadContext homingRead; PreparedRead homingWork;
+    if (!readCapabilities().homingParameters || !prepareHomingParameters(homingRead,target,18,3,100,1000) ||
+        !nextRead(homingRead,100,homingWork) || homingWork.first != 0x0030 || homingWork.count != 7 ||
+        homingWork.length != 8 || expectedReadRegistersLen(homingWork.count) != 19) return 108;
+    const uint8_t homingReply[] = {1,3,14,0,7,0,24,0,60,0,30,0,100,0x12,0x34,0xAB,0xCD,0xEE,0x29};
+    ReadEvent homingEvent; homingEvent.target = target; homingEvent.operationId = 18;
+    homingEvent.frame = homingReply; homingEvent.length = sizeof(homingReply);
+    homingEvent.qualified = true; homingEvent.earliestUs = 200; homingEvent.latestUs = 220;
+    HomingParametersObservation homingParameters;
+    if (!advanceRead(homingRead,homingEvent,230) || !getHomingParameters(homingRead,homingParameters) ||
+        homingParameters.rawAuxiliary != 7 || homingParameters.rawMethod != 24 ||
+        homingParameters.rawOffsetWords[0] != 0x1234 || homingParameters.rawOffsetWords[1] != 0xABCD ||
+        !homingParameters.methodKnown || homingParameters.methodSupport != HomeSupport::UNIMPLEMENTED ||
+        homingParameters.offsetWordOrderResolution != ReadResolution::WORD_ORDER_UNRESOLVED ||
+        homingParameters.configurationGeneration != 3) return 109;
     PositionCommand desired;
     desired.subdivision = 1000; desired.target = target; desired.speedRpm = 60;
     desired.accelerationTime = desired.decelerationTime = 100;

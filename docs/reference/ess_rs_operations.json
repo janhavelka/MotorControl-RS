@@ -38,6 +38,11 @@
     "DRIVER_MODEL",
     "ENCODER_RESOLUTION",
     "EXTERNAL_POSITION_MODE",
+    "HOMING_METHOD",
+    "HOMING_OFFSET",
+    "HOMING_QUERY_SPEED",
+    "HOMING_RAMP_TIME",
+    "HOMING_SPEED",
     "INPUT_FILTER",
     "INPUT_POLARITY",
     "INPUT_X0_FUNCTION",
@@ -1112,6 +1117,49 @@
         "reason": "Physical homing/reference/return need independent electrical/source timing, active auxiliary7, native rate/ramp/zero semantics and method/index/mechanics qualification. No switch fixture or I/O reassignment is provided."
       },
       "reason": "Only zero pair in exact reviewed0x0031/6 staging is implemented; nonzero offset signedness/order/scale remain unresolved. No standalone/split/pair setter is exposed."
+    },
+    {
+      "id": "homing_parameter_read",
+      "kind": "READ",
+      "records": [
+        "HOMING_AUXILIARY",
+        "HOMING_METHOD",
+        "HOMING_SPEED",
+        "HOMING_QUERY_SPEED",
+        "HOMING_RAMP_TIME",
+        "HOMING_OFFSET"
+      ],
+      "api": {
+        "header": "include/MotorControlRS/profiles/ess_rs/Reads.h",
+        "symbols": [
+          "prepareHomingParameters",
+          "nextRead",
+          "advanceRead",
+          "getHomingParameters"
+        ]
+      },
+      "cli_commands": [
+        "home read"
+      ],
+      "implementation": "IMPLEMENTED",
+      "cli": "REACHABLE",
+      "native": {
+        "state": "PASS",
+        "evidence": [
+          "test/reads_test.cpp",
+          "test/home_app_test.cpp",
+          "test/probe_console_test.cpp",
+          "test/home_console_parity_test.py",
+          "test/bench_probe_test.py",
+          "test/installed_consumer/main.cpp"
+        ]
+      },
+      "hardware": {
+        "state": "NOT_RUN",
+        "evidence": [],
+        "reason": "New producing seven-word read has no physical evidence. No homing, signed/ordered offset, physical speed/ramp or calibrated origin qualification inferred."
+      },
+      "reason": "One checked non-changing FC03 0x0030/7 read preserves six records/seven raw words, positive method membership separately from existing execution support, native range flags, unresolved physical/offset interpretation, admitted configuration generation and owned19-byte provenance. Shared ordinary application and console reads do not stage or qualify homing."
     },
     {
       "id": "home_start",
@@ -2629,23 +2677,6 @@
       "reason": "No typed start-speed setter or CLI write; profile restore writes0021/5 only."
     },
     {
-      "id": "homing_parameter_reads",
-      "records": [
-        "HOMING_AUXILIARY",
-        "HOMING_METHOD",
-        "HOMING_SPEED",
-        "HOMING_QUERY_SPEED",
-        "HOMING_RAMP_TIME",
-        "HOMING_OFFSET"
-      ],
-      "kinds": [
-        "READ"
-      ],
-      "owner": "14",
-      "disposition": "NOT_IMPLEMENTED",
-      "reason": "No standalone typed homing parameter read; a staged HomeContext is not read coverage."
-    },
-    {
       "id": "homing_auxiliary_write",
       "records": [
         "HOMING_AUXILIARY"
@@ -3135,7 +3166,8 @@
         "health",
         "result",
         "profile",
-        "velocity"
+        "velocity",
+        "home"
       ]
     },
     {
@@ -3144,7 +3176,8 @@
         "getConfig",
         "getIdentity",
         "getStateBlock",
-        "getVelocityParameters"
+        "getVelocityParameters",
+        "getHomingParameters"
       ],
       "classification": "OBSERVATION",
       "reason": "Typed nonchanging reads, bounded progression and retained observations.",
@@ -3154,7 +3187,8 @@
         "health",
         "result",
         "profile",
-        "velocity"
+        "velocity",
+        "home"
       ]
     },
     {
@@ -3163,7 +3197,8 @@
         "prepareConfig",
         "prepareIdentity",
         "prepareState",
-        "prepareVelocityParameters"
+        "prepareVelocityParameters",
+        "prepareHomingParameters"
       ],
       "classification": "DEVICE_OPERATION",
       "reason": "Typed nonchanging reads, bounded progression and retained observations.",
@@ -3173,7 +3208,8 @@
         "health",
         "result",
         "profile",
-        "velocity"
+        "velocity",
+        "home"
       ]
     },
     {
@@ -3189,7 +3225,8 @@
         "health",
         "result",
         "profile",
-        "velocity"
+        "velocity",
+        "home"
       ]
     },
     {

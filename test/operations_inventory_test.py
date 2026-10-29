@@ -65,7 +65,7 @@ class Coverage(unittest.TestCase):
         self.assertEqual(summary["write"]["UNSUPPORTED"], 18)
         self.assertEqual(summary["action"]["IN_PROGRESS"], 2)
         linked = {record for group in INVENTORY["operations"] for record in group["records"]}
-        self.assertEqual(len(linked), 202)
+        self.assertEqual(len(linked), 203)
         self.assertEqual(len(result["records"]), len({record["id"] for record in result["records"]}))
         self.assertTrue(all(choice["default_disposition"] == operations.DEFAULT for choice in result["named_choices"]))
 
@@ -249,13 +249,38 @@ class Coverage(unittest.TestCase):
             self.assertEqual(records[name]["read_operations"], ["velocity_parameter_read"])
             self.assertEqual(records[name]["write_operations"], ["velocity_parameters"])
         self.assertNotIn("velocity_parameter_reads", {gap["id"] for gap in INVENTORY["gaps"]})
-        self.assertIn("homing_parameter_reads", {gap["id"] for gap in INVENTORY["gaps"]})
+        self.assertNotIn("homing_parameter_reads", {gap["id"] for gap in INVENTORY["gaps"]})
         for route in ("velocity", "velocity inspect", "velocity read extra", "read velocity"):
             self.rejected(lambda value: next(row for row in value["operations"]
                 if row["id"] == "velocity_parameter_read").update(cli_commands=[route]))
         for kind in ("WRITE", "ACTION"):
             with self.assertRaisesRegex(ValueError, "invalid operation CLI prefix"):
                 operations.check_cli_route("velocity read", operations.console_commands(), kind)
+
+    def test_homing_read_closes_only_six_read_obligations(self):
+        result = operations.check(INVENTORY, LEDGER)
+        records = {row["id"]: row for row in result["records"]}
+        read = next(row for row in INVENTORY["operations"] if row["id"] == "homing_parameter_read")
+        self.assertEqual(read["cli_commands"], ["home read"])
+        self.assertEqual(read["api"]["symbols"], ["prepareHomingParameters", "nextRead", "advanceRead", "getHomingParameters"])
+        self.assertEqual(read["hardware"]["state"], "NOT_RUN")
+        self.assertEqual(len(read["records"]), 6)
+        for name in read["records"]:
+            self.assertEqual(records[name]["obligations"]["read"], "IMPLEMENTED")
+            self.assertEqual(records[name]["read_operations"], ["homing_parameter_read"])
+        self.assertEqual(records["HOMING_AUXILIARY"]["obligations"]["write"], "NOT_IMPLEMENTED")
+        self.assertEqual(records["HOMING_OFFSET"]["obligations"]["write"], "IN_PROGRESS")
+        choices = {row["id"]: row for row in result["named_choices"]}
+        self.assertEqual(choices["HomingMethod.METHOD_24"]["disposition"], operations.DEFAULT)
+        self.assertEqual(choices["HomingAuxiliary.KEEP_POSITION_SET_ZERO"]["disposition"], operations.DEFAULT)
+        self.assertIn("homing_auxiliary_write", {gap["id"] for gap in INVENTORY["gaps"]})
+        self.assertEqual(result["summary"]["read"].get("NOT_IMPLEMENTED", 0), 0)
+        for route in ("home", "home methods", "home inspect", "home read extra", "read home"):
+            self.rejected(lambda value: next(row for row in value["operations"]
+                if row["id"] == "homing_parameter_read").update(cli_commands=[route]))
+        for kind in ("WRITE", "ACTION"):
+            with self.assertRaisesRegex(ValueError, "invalid operation CLI prefix"):
+                operations.check_cli_route("home read", operations.console_commands(), kind)
 
     def test_reachability_requires_a_real_producing_route(self):
         for command in ("missing-command", "missing", "profile other identity",
@@ -284,7 +309,7 @@ class Coverage(unittest.TestCase):
         self.assertEqual(gap["disposition"], "PARTIAL")
         self.assertEqual(set(gap["records"]), set(restored["records"]))
         self.assertIn("volatile original snapshot", gap["reason"])
-        self.assertEqual(result["summary"]["named_gaps"], 8)
+        self.assertEqual(result["summary"]["named_gaps"], 7)
 
     def test_profile_snapshot_inspection_and_forget_do_not_produce_device_coverage(self):
         restored = lambda value: next(row for row in value["operations"] if row["id"] == "position_profile_restore")

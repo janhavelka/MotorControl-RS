@@ -48,6 +48,7 @@ struct ReadCapabilities {
     bool config = false;
     bool state = false;
     bool velocityParameters = false;
+    bool homingParameters = false;
     uint8_t maxSteps = 0;
     uint8_t maxReplyBytes = 0;
 };

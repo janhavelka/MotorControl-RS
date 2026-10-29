@@ -72,6 +72,10 @@ bool releaseMove(uint32_t operationId);
  * No console is needed. Result storage remains reserved until explicit release;
  * reading does not stage parameters or establish motion qualification. */
 MotorControlRS::Status submitVelocityParameterRead(uint32_t& operationId);
+/** Submit one seven-word non-changing homing-parameter read for the selected
+ * axis. Same service-task, rejection, retention and release contract as velocity
+ * reads. Raw parameters do not qualify homing, offset decoding or an origin. */
+MotorControlRS::Status submitHomingParameterRead(uint32_t& operationId);
 /** Copy pending, failed or completed typed-read state, including owned evidence.
  * Historical target/configuration generations remain those admitted. Missing,
  * released or wrong-kind IDs preserve output. No traffic or result consumption. */

@@ -81,7 +81,7 @@ def check_cli_route(command, metadata, operation_kind):
     elif root == "read":
         valid = len(tail) == 1 and tail[0] in {"identity", "config", "state"}
         effects = {"READ"}
-    elif root == "velocity":
+    elif root in {"velocity", "home"}:
         valid = tail == ["read"] or not tail
         effects = {"READ"} if tail == ["read"] else {"WRITE", "ACTION"}
     elif root == "discover":

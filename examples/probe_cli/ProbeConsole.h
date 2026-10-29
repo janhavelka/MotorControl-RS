@@ -409,6 +409,7 @@ private:
     void beginWork() noexcept;
     void error(uint32_t id, const char* command, const char* reason) noexcept;
     void action(uint32_t id, const char* command, Action result, uint8_t address = 0, uint32_t operationId = 0) noexcept;
+    void parameterRead(uint32_t id, MotorControlRS::ESS_RS::ReadKind, const char* address) noexcept;
     void emit(uint32_t terminalOperation = 0, bool humanText = false) noexcept;
     bool outstanding(uint32_t id) const noexcept;
     std::size_t availableSlot(bool stop = false) const noexcept;
@@ -446,6 +447,7 @@ private:
     MotorControlRS::ESS_RS::ConfigObservation configView_;
     MotorControlRS::ESS_RS::StateObservation stateView_;
     MotorControlRS::ESS_RS::VelocityParametersObservation velocityParametersView_;
+    MotorControlRS::ESS_RS::HomingParametersObservation homingParametersView_;
     MotorControlRS::ESS_RS::DriverObservation driverView_;
     std::size_t length_ = 0;
     uint32_t nextId_ = 1;

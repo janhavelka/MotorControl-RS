@@ -4,6 +4,12 @@
 
 ### Added
 
+- Typed seven-word homing-parameter read, ordinary application submit/copy/release
+  and shared `home read` with strict host inspection. Preserves unknown codes and
+  both raw offset words; known method membership is separate from existing
+  execution support. Offset order/sign/scale and physical rates remain unresolved;
+  no homing method or write window is enabled.
+
 - Typed non-changing JOG speed/ramp read with raw words, explicit unresolved
   interpretation, admitted configuration generation and copied evidence. Shared
   `velocity read` and ordinary application submit/copy/release use the same owner;

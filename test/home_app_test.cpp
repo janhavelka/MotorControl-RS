@@ -2,8 +2,14 @@
 // Actual cooperative application; all qualifications are simulated fixtures.
 #include "../examples/probe_cli/ProbeApp.cpp"
 #include "fakes/esp32_uart/UsbConsoleFixture.h"
+#if MOTORCONTROLRS_TEST_IDF
+#include "fakes/esp32_uart/FakeUsb.h"
+#include "../examples/probe_idf/main/IdfPlatform.cpp"
+#include "../examples/common/BoardPins.h"
+#else
 #include "../examples/probe_cli/ArduinoPlatform.cpp"
 #include "../examples/probe_cli/main.cpp"
+#endif
 #include <cassert>
 #include <cstdlib>
 #include <vector>
@@ -13,10 +19,12 @@ void fresh() {
     if (app) { app->~App(); std::free(app); app = nullptr; }
     uart.~Esp32S3Uart(); new (&uart) Esp32S3Uart;
     resetHardware(); resetUsbConsole(); platformReady = writeResponseConfirmed = false;
-    setup(); assert(app && !hardware.writes);
+    assert(beginApplication({Board::kRs485TxPin, Board::kRs485RxPin, Board::kRs485DeRePin,
+        Board::kRs485DeReActiveHigh}, Board::kRs485ReceiverDisabledDuringTransmit));
+    assert(app && !hardware.writes);
     hardware.txCharacterUs = 87; assert(uart.startCapture(20, timing().holdUs));
 }
-void step() { advanceHardware(hardware.time + 10); loop(); }
+void step() { advanceHardware(hardware.time + 10); serviceApplication(); }
 void pump(unsigned n = 1000) { while (n--) step(); }
 Probe::ResultView view(uint32_t id) { Probe::ResultView v; assert(host(app).result(app, id, v)); return v; }
 std::vector<uint8_t> crc(std::vector<uint8_t> v) {
@@ -159,7 +167,7 @@ void stopAtBoundariesAndUnsentExpiry() {
     }
     fresh(); qualify(); app->homePrerequisites.maximumAgeUs = 20000; const auto id = admit();
     const auto cap = view(id).homeContext->prerequisites.observedUs + 20000;
-    advanceHardware(cap + 1000); loop(); pump();
+    advanceHardware(cap + 1000); serviceApplication(); pump();
     assert(!view(id).pending && !hardware.writes && !axisReserved(*app,1));
     assert(view(id).homeContext->status.detail == static_cast<int32_t>(ESS::HomeError::READINESS));
     fresh(); qualify(); const auto changed = admit(); reply(changed);
@@ -264,8 +272,116 @@ void feedbackAfterHomeUsesTheNewZeroWitness() {
         assert(!app->axis.originKnown);
     }
 }
+const std::vector<uint8_t> HOME_PARAMETERS = {1,3,14,0,7,0,24,0,60,0,30,0,100,0x12,0x34,0xAB,0xCD,0xEE,0x29};
+const std::vector<uint8_t> HOME_ZERO = {1,3,14,0,7,0,35,0,60,0,30,0,100,0,0,0,0,0xCE,0x1E};
+uint32_t parameterRead() {
+    uint32_t id = 0; assert(submitHomingParameterRead(id));
+    assert(id && view(id).pending && view(id).typedRead); return id;
+}
+void parameterReply(uint32_t id, const std::vector<uint8_t>& bytes = HOME_PARAMETERS) {
+    waitTx(id);
+    const std::vector<uint8_t> expected = {1,3,0,0x30,0,7,4,7};
+    assert(hardware.tx == expected);
+    scheduleReply(std::max(hardware.writeStarted+8*87+1000,hardware.time+1000),bytes);
+    for (unsigned i=0;i<25000 && view(id).pending;++i) step();
+    assert(!view(id).pending); pump();
+}
+void command(const std::string& text) {
+    Serial.input = text; Serial.output.clear();
+    for (unsigned i=0;i<500 && !Serial.input.empty();++i) step();
+    assert(Serial.input.empty()); pump(64);
+}
+void parameterReadApplicationPath() {
+    fresh(); uint32_t unchanged = 77;
+    app->discovery.owned = true;
+    assert(!submitHomingParameterRead(unchanged) && unchanged == 77 && !hardware.writes);
+    app->discovery.owned = false;
+    assert(typedRead(app,1,2,ESS::ReadKind::HOMING_PARAMETERS,unchanged) == Probe::Action::INVALID);
+    assert(unchanged == 77 && !hardware.writes);
+    const auto generation = app->axis.generation;
+    const auto id = parameterRead(); ESS::ReadContext copied;
+    assert(copyReadResult(id,copied) && copied.state == ReadState::ACTIVE && !releaseOperation(id));
+    ESS::HomingParametersObservation out; out.rawMethod = 999;
+    assert(!ESS::getHomingParameters(copied,out) && out.rawMethod == 999);
+    parameterReply(id);
+    assert(copyReadResult(id,copied) && ESS::getHomingParameters(copied,out));
+    assert(out.rawAuxiliary == 7 && out.rawMethod == 24 && out.rawSearchSpeed == 60 && out.rawReturnSpeed == 30 && out.rawRampTime == 100);
+    assert(out.rawOffsetWords[0] == 0x1234 && out.rawOffsetWords[1] == 0xABCD && out.provenance.length == 19);
+    assert(out.methodKnown && out.methodSupport == ESS::HomeSupport::UNIMPLEMENTED && out.configurationGeneration == generation);
+    assert(hardware.writes == 1 && app->homingParameters.operationId == id && !app->homePrerequisites.methodQualified &&
+        !app->homePrerequisites.auxiliaryQualified && !app->homePrerequisites.zeroOffsetQualified && !app->coordinateReference.nativeKnown);
+    command("status\n"); pump(); assert(copyReadResult(id,copied));
+    assert(releaseOperation(id)); copied.operationId = 999;
+    assert(!copyReadResult(id,copied) && copied.operationId == 999 && !releaseOperation(id));
+    const auto again = parameterRead(); parameterReply(again,HOME_ZERO);
+    assert(hardware.writes == 2 && again != id && !app->homePrerequisites.methodQualified);
+    assert(host(app).startHome(app,1,1,request(),unchanged) != Probe::Action::OK && unchanged == 77 && hardware.writes == 2);
+    assert(releaseOperation(again));
+    qualify(); command("@30 home 35 60 30 100 zero\n"); const auto home = app->latestOperationId;
+    assert(!copyReadResult(home,copied) && copied.operationId == 999);
+    assert(cancel(app,home) == Probe::Action::OK); pump(); assert(releaseOperation(home));
+}
+void parameterReadQualificationAndHistory() {
+    fresh(); qualify(); const auto original = app->homePrerequisites;
+    const auto origin = app->axis.originNative; const auto generation = app->axis.generation;
+    const auto id = parameterRead(); parameterReply(id,HOME_ZERO);
+    assert(app->homePrerequisites.methodQualified && app->homePrerequisites.nativeRatesQualified &&
+        app->homePrerequisites.nativeRampQualified && app->homePrerequisites.zeroOffsetQualified &&
+        app->homePrerequisites.auxiliaryQualified && app->homePrerequisites.readinessQualified);
+    const auto changed = parameterRead();
+    parameterReply(changed,{1,3,14,0xFF,0xFF,0xFF,0xFC,0xF1,0x23,0xE2,0x34,0xD3,0x45,0xC4,0x56,0xB5,0x67,0x38,1});
+    const auto& p = app->homePrerequisites;
+    assert(!p.methodQualified && !p.nativeRatesQualified && !p.nativeRampQualified && !p.zeroOffsetQualified &&
+        !p.auxiliaryQualified && !p.readinessQualified && !p.referenceSemanticsQualified);
+    assert(p.qualifiedMethod == original.qualifiedMethod && p.qualifiedSearchSpeed == original.qualifiedSearchSpeed &&
+        p.qualifiedReturnSpeed == original.qualifiedReturnSpeed && p.qualifiedRampTime == original.qualifiedRampTime &&
+        p.observedUs == original.observedUs && p.auxiliary == original.auxiliary);
+    assert(app->axis.generation == generation && app->axis.originKnown && app->axis.originNative == origin);
+    assert(!app->coordinateReference.nativeKnown && hardware.writes == 2);
+    for (unsigned stale=0;stale<3;++stale) {
+        fresh(); const auto historical = parameterRead(); const auto admittedGeneration = app->axis.generation;
+        if (stale == 0) ++app->axis.generation;
+        else if (stale == 1) ++app->bindingGeneration;
+        else { app->homingParameters.operationId = historical+1; app->homingParameters.rawMethod = 321; }
+        parameterReply(historical);
+        ESS::ReadContext copy; ESS::HomingParametersObservation result;
+        assert(copyReadResult(historical,copy) && ESS::getHomingParameters(copy,result));
+        assert(result.configurationGeneration == admittedGeneration && result.rawOffsetWords[1] == 0xABCD);
+        assert(app->homingParameters.operationId == (stale == 2 ? historical+1 : 0));
+        if (stale == 2) assert(app->homingParameters.rawMethod == 321);
+    }
+}
+void parameterReadConsoleFailureAndCapacity() {
+    fresh();
+    for (const char* invalid : {"@1 home read extra","@2 home read 1 extra","@3 home read 0","@4 home read 248",
+        "@5 home read -1","@6 home read 2","@7 home reads"}) {
+        command(std::string(invalid)+"\n");
+        assert(Serial.output.find("\"ok\":false") != std::string::npos && !hardware.writes);
+    }
+    command("@8 home read\n"); const auto id = app->latestOperationId;
+    assert(Serial.output.find("\"command\":\"home-read\"") != std::string::npos);
+    command("@9 result "+std::to_string(id)+"\n"); assert(Serial.output.find("\"read_kind\":\"homing_parameters\"") != std::string::npos);
+    parameterReply(id);
+    assert(Serial.output.find("\"raw_offset_words\":[4660,43981]") != std::string::npos);
+    assert(releaseOperation(id)); command("@10 result "+std::to_string(id)+"\n");
+    assert(Serial.output.find("\"ok\":false") != std::string::npos);
+    const auto failed = parameterRead(); parameterReply(failed,{1,0x83,2,0xC0,0xF1});
+    ESS::ReadContext copy;
+    assert(copyReadResult(failed,copy) && copy.outcome == ReadOutcome::REPLY_ERROR && copy.observations[0].length == 5);
+    assert(app->homingParameters.operationId == id && app->homingParameters.rawOffsetWords[1] == 0xABCD);
+    assert(releaseOperation(failed));
+    fresh(); const auto cancelled = parameterRead(); assert(cancel(app,cancelled) == Probe::Action::OK); pump();
+    assert(copyReadResult(cancelled,copy) && copy.outcome == ReadOutcome::CANCELLED && !hardware.writes);
+    assert(releaseOperation(cancelled));
+    fresh(); uint32_t retained[REQUEST_CAPACITY] = {};
+    for (auto& kept : retained) { kept = parameterRead(); parameterReply(kept); }
+    uint32_t unchanged = 77; assert(!submitHomingParameterRead(unchanged) && unchanged == 77 && hardware.writes == REQUEST_CAPACITY);
+    for (auto kept : retained) assert(copyReadResult(kept,copy) && copy.state == ReadState::SUCCEEDED);
+    for (auto kept : retained) assert(releaseOperation(kept));
+}
 }
 int main() {
+    parameterReadApplicationPath(); parameterReadQualificationAndHistory(); parameterReadConsoleFailureAndCapacity();
     productionAndFixtureGates(); completeAndInvalidateReference(); oldFlagsAndPartialSetup();
     stopAtBoundariesAndUnsentExpiry(); orderedSharedMotionCachePreservesNewHomeReference();
     feedbackAfterHomeUsesTheNewZeroWitness();

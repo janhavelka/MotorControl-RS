@@ -193,6 +193,8 @@ def typed_terminal(request_id, kind):
     ) if kind == "identity" else (
         ((0x1D, 3), "0103001D000395CD", "010306003C00320064D154"),
     ) if kind == "velocity_parameters" else (
+        ((0x30, 7), "0103003000070407", "01030E00070018003C001E00641234ABCDEE29"),
+    ) if kind == "homing_parameters" else (
         ((6, 2), "010300060002240A", "010304000080115BFF"),
         ((8, 2), "01030008000245C9", "010304A5F5000388CC"),
         ((10, 3), "0103000A000325C9", "01030612345678FFFF03E2"),
@@ -210,7 +212,7 @@ def typed_terminal(request_id, kind):
                           latest_us=2050 + index * 1000, delivered_us=2100 + index * 1000,
                           tx=tx, rx=rx, received_length=len(rx) // 2, tx_accepted=8,
                           execution_unknown=False, transport_detail=1))
-    command = "velocity-read" if kind == "velocity_parameters" else "read-" + kind
+    command = {"velocity_parameters": "velocity-read", "homing_parameters": "home-read"}.get(kind, "read-" + kind)
     result = reply(request_id, command, type="read", command_id=request_id,
                    operation_id=request_id + 100, read_kind=kind, state="succeeded", outcome="success",
                    status="OK", detail=0, target=1, address=1, generation=9, started_us=1000,
@@ -221,6 +223,14 @@ def typed_terminal(request_id, kind):
         result[kind] = dict(raw_speed=60, raw_acceleration_time=50, raw_deceleration_time=100,
                             acceleration_time_in_range=True, deceleration_time_in_range=True,
                             speed_signed_resolution=7, speed_scale_resolution=5, ramp_scale_resolution=5)
+    elif kind == "homing_parameters":
+        result["configuration_generation"] = 3
+        result[kind] = dict(raw_auxiliary=7, raw_method=24, raw_search_speed=60, raw_return_speed=30,
+                            raw_ramp_time=100, raw_offset_words=[0x1234, 0xABCD],
+                            auxiliary_known=True, method_known=True, method_support="unimplemented",
+                            search_speed_in_range=True, return_speed_in_range=True, ramp_time_in_range=True,
+                            speed_scale_resolution=5, ramp_scale_resolution=5,
+                            offset_word_order_resolution=9, offset_signed_resolution=7, offset_scale_resolution=5)
     elif kind == "identity":
         result[kind] = dict(raw_model=0x4EEA, raw_version=0x1234, raw_active_node=1, raw_dip=0xA581,
                             active_node_known=True, active_node=1, model_resolution=2, version_resolution=3,
@@ -281,8 +291,8 @@ class TypedSerial:
         self.admission_only = admission_only
 
     def __call__(self, request_id, command, args):
-        if command == "read" or (command == "velocity" and args and args[0] == "read"):
-            kind = "velocity_parameters" if command == "velocity" else args[0]
+        if command == "read" or (command in ("velocity", "home") and args and args[0] == "read"):
+            kind = {"velocity": "velocity_parameters", "home": "homing_parameters"}.get(command, args[0])
             terminal = typed_terminal(request_id, kind)
             if self.mutate:
                 self.mutate(terminal)
@@ -629,7 +639,8 @@ def operation_transcript(record, mutate=None, mutate_live=False):
     terminal = copy.deepcopy(record)
     terminal.update(id=2, command_id=2, operation_id=102)
     command = terminal["command"]
-    wire_command = "velocity" if command == "velocity-read" else "read" if command in bench.TYPED_READS else "move" if command in bench.MOVE_COMMANDS else command
+    wire_command = {"velocity-read": "velocity", "home-read": "home"}.get(command,
+        "read" if command in bench.TYPED_READS else "move" if command in bench.MOVE_COMMANDS else command)
 
     def handler(request_id, requested, args):
         if requested == wire_command:
@@ -3046,6 +3057,130 @@ class Framing(unittest.TestCase):
         terminal = console.command("read-state", address=1, timeout_s=0.1)
         self.assertEqual(terminal["command"], "read-state")
         self.assertEqual(self.port.writes[-2:], [b"@2 read state 1\n", b"@3 release 102\n"])
+
+    def test_homing_parameter_read_retains_all_seven_words_until_release(self):
+        handler = TypedSerial()
+        console = self.session(handler, fragment=1)
+        handle = console.begin("home-read", address=1, timeout_s=.1)
+        terminal = console.wait(handle)
+        self.assertEqual((terminal["command"], terminal["read_kind"]), ("home-read", "homing_parameters"))
+        self.assertEqual(terminal["steps"][0]["tx"], "0103003000070407")
+        self.assertEqual(terminal["steps"][0]["received_length"], 19)
+        self.assertEqual(terminal["homing_parameters"]["raw_offset_words"], [0x1234, 0xABCD])
+        self.assertEqual(self.port.writes[-1], b"@2 home read 1\n")
+        self.assertIs(console.operations[102], handle)
+        inspected = console.command("result", operation_id=102, timeout_s=.1)
+        self.assertEqual(inspected["homing_parameters"], terminal["homing_parameters"])
+        self.assertEqual(inspected["steps"], terminal["steps"])
+        console.command("release", operation_id=102, timeout_s=.1)
+        self.assertFalse(console.operations)
+        self.assertFalse(handler.retained)
+        self.port.handler = lambda i, command, args: encoded(reply(i, command, ok=False, result="invalid"))
+        self.assertFalse(console.command("result", operation_id=102, timeout_s=.1)["ok"])
+        self.assertEqual(sum(b"home read" in line for line in self.port.writes), 1)
+
+    def test_homing_parameter_pending_inspection_checks_kind(self):
+        for kind in ("homing_parameters", "state", "velocity_parameters", None, [], True):
+            with self.subTest(kind=kind):
+                console = self.session(TypedSerial(admission_only=True))
+                console.begin("home-read", timeout_s=.1)
+                self.port.handler = lambda i, command, args: encoded(reply(i, command,
+                    result="pending", operation_id=102, command_id=2, recovery=False,
+                    capture_read=False, read_kind=kind))
+                if kind == "homing_parameters":
+                    self.assertEqual(console.command("result", operation_id=102, timeout_s=.1)["result"], "pending")
+                else:
+                    self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), "kind")
+
+    def test_homing_parameter_raw_mapping_membership_and_resolutions_are_checked(self):
+        mutations = (
+            lambda r: r.update(configuration_generation=0),
+            lambda r: r.update(configuration_generation=True),
+            lambda r: r["homing_parameters"].update(raw_auxiliary=8),
+            lambda r: r["homing_parameters"].update(raw_method=True),
+            lambda r: r["homing_parameters"].update(raw_search_speed=61),
+            lambda r: r["homing_parameters"].update(raw_return_speed=31),
+            lambda r: r["homing_parameters"].update(raw_ramp_time=101),
+            lambda r: r["homing_parameters"].update(raw_offset_words=[0xABCD, 0x1234]),
+            lambda r: r["homing_parameters"].update(raw_offset_words=[0x1234]),
+            lambda r: r["homing_parameters"].update(raw_offset_words=[True, 0xABCD]),
+            lambda r: r["homing_parameters"].update(auxiliary_known=False),
+            lambda r: r["homing_parameters"].update(method_known=False),
+            lambda r: r["homing_parameters"].update(method_support="implemented"),
+            lambda r: r["homing_parameters"].update(search_speed_in_range=1),
+            lambda r: r["homing_parameters"].update(return_speed_in_range=False),
+            lambda r: r["homing_parameters"].update(ramp_time_in_range=False),
+            *(lambda r, key=key: r["homing_parameters"].update({key: 0}) for key in
+              ("speed_scale_resolution", "ramp_scale_resolution", "offset_word_order_resolution",
+               "offset_signed_resolution", "offset_scale_resolution")),
+            lambda r: r["steps"][0].update(count=5),
+            lambda r: r["steps"][0].update(first=0x31),
+            lambda r: r["steps"][0].update(rx="01030C00070018003C001E006412343BAD", received_length=17),
+            lambda r: r["steps"][0].update(rx="01031000070018003C001E00641234ABCD5678DA5A", received_length=21),
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate):
+                console = self.session(TypedSerial(mutate))
+                self.failed(lambda: console.command("home-read", timeout_s=.1), "typed-read")
+                self.assertEqual(self.port.writes, [b"@1 version\n", b"@2 home read\n"])
+
+    def test_homing_parameter_unknown_words_survive_delayed_on_time_closure(self):
+        def unknown(r):
+            r["steps"][0]["rx"] = "01030EFFFFFFFCF123E234D345C456B5673801"
+            r["homing_parameters"].update(raw_auxiliary=65535, raw_method=65532, raw_search_speed=0xF123,
+                raw_return_speed=0xE234, raw_ramp_time=0xD345, raw_offset_words=[0xC456, 0xB567],
+                auxiliary_known=False, method_known=False, method_support="unknown",
+                search_speed_in_range=False, return_speed_in_range=False, ramp_time_in_range=False)
+            r["serviced_us"] = r["steps"][0]["delivered_us"] = r["deadline_us"] + 5000
+        console = self.session(TypedSerial(unknown))
+        terminal = console.command("home-read", timeout_s=.1)
+        self.assertTrue(terminal["ok"])
+        self.assertGreater(terminal["serviced_us"], terminal["deadline_us"])
+        self.assertEqual(terminal["homing_parameters"]["raw_method"], 65532)
+        self.assertFalse(terminal["homing_parameters"]["method_known"])
+
+    def test_homing_parameter_zero_offset_stays_unresolved_and_method_support_is_separate(self):
+        fixture = typed_terminal(2, "homing_parameters")
+        for method, known, support in ((1, True, "unimplemented"), (14, True, "unimplemented"),
+                (15, False, "unknown"), (16, False, "unknown"), (17, True, "unimplemented"),
+                (18, True, "unresolved"), (30, True, "unimplemented"), (31, False, "unknown"),
+                (32, False, "unknown"), (33, True, "implemented"), (34, True, "implemented"),
+                (35, True, "implemented"), (36, False, "unknown"), (0xFFFC, False, "unknown"),
+                (0xFFFD, False, "unknown"), (0xFFFE, False, "unknown"), (0xFFFF, False, "unknown")):
+            with self.subTest(method=method):
+                item = copy.deepcopy(fixture)
+                raw = bytearray.fromhex(item["steps"][0]["rx"])
+                raw[5:7] = method.to_bytes(2, "big")
+                raw[13:17] = bytes(4)
+                raw[-2:] = bench.wire_crc(raw[:-2]).to_bytes(2, "little")
+                item["steps"][0]["rx"] = raw.hex()
+                item["homing_parameters"].update(raw_method=method, method_known=known,
+                    method_support=support, raw_offset_words=[0, 0])
+                bench.Console._check_typed_read(item, "homing_parameters", 1)
+                self.assertEqual(item["homing_parameters"]["offset_word_order_resolution"], 9)
+                for key in ("offset_word_order_resolution", "offset_signed_resolution", "offset_scale_resolution"):
+                    broken = copy.deepcopy(item); broken["homing_parameters"][key] = 0
+                    with self.assertRaises(bench.BenchError):
+                        bench.Console._check_typed_read(broken, "homing_parameters", 1)
+
+    def test_homing_parameter_retained_configuration_generation_is_immutable(self):
+        handler = TypedSerial()
+        console = self.session(handler)
+        handle = console.begin("home-read", timeout_s=.1)
+        original = console.wait(handle)
+        handler.retained[102] = {**original, "configuration_generation": 4}
+        self.failed(lambda: console.command("result", operation_id=102, timeout_s=.1), "immutable")
+        self.assertIs(handle.terminal, original)
+
+    def test_homing_parameter_campaign_selects_only_the_read_and_release(self):
+        parsed = bench.arguments(["--port", "FAKE", "--log", "unused", "typed-read", "--kind", "homing_parameters"])
+        self.assertEqual(parsed.kind, "homing_parameters")
+        console = self.session(TypedSerial())
+        bench.typed_read_campaign(console, kind="homing_parameters", timeout_s=.1, address=1)
+        self.assertEqual(sum(b"home read" in line for line in self.port.writes), 1)
+        self.assertEqual(sum(line.split()[1] == b"result" for line in self.port.writes), 1)
+        self.assertEqual(sum(line.split()[1] == b"release" for line in self.port.writes), 1)
+        self.assertFalse(console.operations)
 
     def test_velocity_parameter_read_uses_family_wire_command_and_retains_result(self):
         handler = TypedSerial()

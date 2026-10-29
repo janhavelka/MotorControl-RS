@@ -7,6 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [ESS homing parameter reads](2026-10-29_ess_homing_reads.md) | Six-record/seven-word typed raw observation, ordinary API/console/host integration; no new homing support or offset interpretation; physical checks NOT RUN. |
 | [ESS velocity parameter reads](2026-10-29_ess_velocity_reads.md) | Single-window typed raw observation, ordinary API/console/host integration and independent tests; physical checks NOT RUN on the absent recorded bench device. |
 | [ESS software stage 01 contracts](2026-10-29_ess_software_contracts.md) | Settles planned reads/settings, restricted interruption and homing qualification/observation; all feature implementation and physical gates remain separate. |
 | [Lichuan promptset audit](2026-10-23_lichuan_promptset_audit.md) | Corrects both prospective RS485 families against original manuals and current code; records remaining source gaps without claiming implementation or hardware qualification. |

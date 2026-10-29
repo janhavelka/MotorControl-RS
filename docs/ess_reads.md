@@ -168,28 +168,70 @@ campaign is `typed-read --kind velocity_parameters`. It checks raw words against
 the retained reply, the exact request window, native range flags and unresolved
 interpretations, including inspection/release and immutable historical results.
 
-## Planned homing parameter read (not implemented)
+## Native homing parameter read
 
-The [29 October contract review](reports/2026-10-29_ess_software_contracts.md)
-selects the same sequencer for a future `HOMING_PARAMETERS` read kind,
-`prepareHomingParameters` and `getHomingParameters`. Its one FC03 `0x0030/7`
-window has a 19-byte reply and proposed `HomingParametersObservation`: auxiliary,
-method, search speed, return speed, ramp and separate offset words at
-`0x0035`/`0x0036`. These names remain planned, not callable declarations.
+`prepareHomingParameters(context, target, operationId, configurationGeneration,
+nowUs, deadlineUs, activeSerial)` prepares one FC03 `0x0030/7` request. These
+are six records across seven words: auxiliary, method, search speed, return/query
+speed, shared ramp and the two offset words at `0x0035`/`0x0036`. The request is
+eight bytes, normal reply nineteen and exception reply five. `nextRead` and
+`advanceRead` retain the exact target/operation/step, nonzero binding and
+configuration generations, immutable deadline and closure-versus-delivery rules.
+The seven-word decoder receives actual capacity seven; existing 37-byte read
+provenance and owner storage suffice. No write window or request limit changes.
 
-The private decoder now receives the actual output capacity and verifies count;
-this future seven-word read must supply seven-word storage. It fits the existing
-five-step/37-byte provenance without widening FC03 or any write window. It must
-retain explicit nonzero configuration generation, all raw words, known/support
-indicators for auxiliary/method codes and copied per-window provenance. Unknown
-codes are successful raw observations; collision encodings, signed offset,
-word-order applicability and physical speed/ramp conversion remain unresolved.
+`getHomingParameters` publishes `HomingParametersObservation` only after the
+whole checked read succeeds. Wrong kind, pending or failed getters preserve
+output. All seven raw words survive unknown codes and out-of-range values:
+`rawAuxiliary`, `rawMethod`, `rawSearchSpeed`, `rawReturnSpeed`, `rawRampTime`
+and `rawOffsetWords[2]` in ascending register-address order. Provenance owns a
+copy of the reply; the original RX buffer may be reused immediately.
 
-The planned `submitHomingParameterRead`/`home read` route uses the same selected
-axis, admission, copied result and explicit release contract as velocity reads.
-No observation renews qualification or establishes active settings. A current
-changed observation invalidates dependent qualification. Implementing velocity
-reads does not close the homing read obligation.
+Consult `auxiliaryKnown` before `auxiliary` (known native codes 0..11), and
+`methodKnown` before `method` or `methodSupport`. Positive documented IDs are
+1..14, 17..30 and 33..35. Support comes from the existing `homeMethod` descriptor:
+33..35 IMPLEMENTED, 18 UNRESOLVED and the other positive methods UNIMPLEMENTED.
+This reports software implementation, not readiness or physical qualification.
+Unknown codes, including `0xFFFC..0xFFFF`, remain successful raw observations;
+negative semantic collision enums do not establish their wire encoding.
+
+`searchSpeedInRange`, `returnSpeedInRange` and `rampTimeInRange` describe native
+ranges 5..3000, 5..300 and 30..2000 respectively. Physical speed/ramp scaling
+stays SCALE_UNRESOLVED. Offset word order, signed encoding and scale stay
+WORD_ORDER_UNRESOLVED, SIGNED_ENCODING_UNRESOLVED and SCALE_UNRESOLVED even
+when both raw words are zero. No signed offset is assembled or calibrated
+mechanical origin inferred. Reading WORD_ORDER does not establish its
+applicability to the homing offset.
+
+The original function manual physical pages 19/20/72/73 establish these records,
+positive method membership and native ranges; page 30 omits `0x0035/0x0036`
+from its configurable-word-order list. Conflicting default annotations remain
+unresolved. Existing homing execution still stages exactly FC10 `0x0031/6`
+with zero offset and requires independent qualification. This read adds no
+setter, support flag, collision encoding or nonzero-offset permission.
+
+The ordinary application exports `submitHomingParameterRead(id)` with the same
+service-task, selected-axis, admission, copied `copyReadResult` and terminal
+`releaseOperation` contract as velocity reads. `home read [address]` uses that
+same owner path; another address requires explicit idle binding. Canonical JSON
+uses `home-read`, `read_kind=homing_parameters`, terminal `type=read` and the
+admitted `configuration_generation`. Its `method_support` is `unknown` when the
+raw code is not recognized, otherwise `implemented`, `unimplemented` or
+`unresolved`. Read-only callback hosts can expose this route without home execution.
+
+Current-cache promotion checks target/binding/configuration/serial generations
+and newer operation identity at consumption, including this single-step result.
+Historical copied results keep admitted generations. A failed read preserves
+previous history. Changed checked parameters invalidate dependent future
+qualification without changing desired/staged words, origin or already admitted
+homing parameters. Matching values do not renew qualification, sample age or
+active-setting certainty. Reading does not stage, start, stop or save a home.
+Programmatic results survive human console output until explicit release.
+
+The Python host's `Console.command("home-read", ...)` emits `home read`; its
+bounded campaign is `typed-read --kind homing_parameters`. It validates exact
+window/count, every raw word against RX, method membership/support, native flags,
+unresolved offset/rate interpretation and immutable retained results.
 
 ## State observations and application health
 

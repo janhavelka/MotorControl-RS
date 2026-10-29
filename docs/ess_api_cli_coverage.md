@@ -34,9 +34,9 @@ remain NOT RUN. Raw DIP interpretation remains unresolved; reading a writable
 setting still creates no setter credit. The documented auxiliary INVALID value
 is explicitly no-operation metadata, not a missing command to implement.
 
-The checked inventory retains 221 records/242 words, 135 choices, 50 producing
-operation rows and eight named gaps. It accounts for 195 implemented reads and
-six missing reads; 170 implemented writes, two missing writes, three partial
+The checked inventory retains 221 records/242 words, 135 choices, 51 producing
+operation rows and seven named gaps. It accounts for 201 implemented reads and
+zero missing readable-record implementations; 170 implemented writes, two missing writes, three partial
 write registers and 18 guarded pair writes. Sixteen reserved records and two
 unspecified-access records remain visible. Choice totals are 81 implemented
 (including twelve decoders), 52 unimplemented/unresolved, one unsupported and
@@ -48,7 +48,7 @@ device or physical qualification.
 | Typed device operations | ESS read/action/move/velocity/home/settings/communication/persistence preparations; common wrappers reuse ESS preparations | Producing common/profile routes call these functions through one application owner |
 | Typed position profile | `buildReadPositionProfile`, `parsePositionProfile`, `buildWritePositionProfile` | `motion-profile read/inspect/restore/forget` manage an original six-word snapshot; restore writes only `0x0021/5`, excluding observed start speed; arbitrary candidate/archive staging remains a named gap; forget is local release |
 | Sequencers | `next*`, `advance*`, `serviceVelocity`, settings write deadline and persistence verification | Cooperatively executed by the owner; inspecting a context is not a second device operation |
-| Observations | Checked `getIdentity/getConfig/getStateBlock/getVelocityParameters`, settings observations, `checkProbe`, `getHomeReference` | Terminal/result/status formatting uses retained evidence; reads and cached inspection remain separate |
+| Observations | Checked `getIdentity/getConfig/getStateBlock/getVelocityParameters/getHomingParameters`, settings observations, `checkProbe`, `getHomeReference` | Terminal/result/status formatting uses retained evidence; reads and cached inspection remain separate |
 | Host configuration | `validateAxisConfig/configureAxis/setAxisOrigin/invalidateAxisReference`; explicitly assumed bench units | Axis commands change host interpretation, with idle/reference/generation rules; no implicit device write |
 | Conversion | Exact position/velocity preparation, numeric parsing and unit conversions | `prepare`, axis configuration and motion unit arguments; helpers need no separate device command |
 | Metadata | Source catalogue, bounded indexed lookups, method descriptors, read/discovery capability queries, tuning parameter metadata, status labels | `caps`, `profile list`, `home methods` and help are local inspection |
@@ -76,6 +76,7 @@ the installed core performs no UART, clock, retry, queue, heap or logging work.
 | Remembered intent and subdivision | `speed`, `accel`, `decel`, `subdivision [INTEGER|options]` | Speed/ramps are host intent until a move; subdivision uses the typed driver setter/readback |
 | Velocity parameters | `velocity read [address]` | ESS `Reads.h` producing single-window read, copied raw observation and ordinary application submit/copy/release API |
 | Velocity | `velocity` | Common target preparation and ESS velocity sequence; unresolved acceleration mapping rejected |
+| Homing parameters | `home read [address]` | ESS `Reads.h` single seven-word read, raw result, explicit interpretation/support and ordinary application submit/copy/release |
 | Homing | `home methods`, `home ...` | ESS method descriptors and homing sequence; only methods 33-35 implemented |
 | Driver and optional I/O | `driver read|set`, `io read|set` | ESS whole-candidate driver preparation and checked readback |
 | Stored records | `segment position|speed|start INDEX read|set` | One indexed helper per real layout; no serial record trigger |
@@ -173,7 +174,7 @@ The remaining gaps are tracked by feature, independently of hardware evidence:
 | Position | Native ignore-versus-interrupt position command | Fixed noninterrupting triggers are implemented; bit 3 has no typed option or CLI route. Priority stop does not implement position interruption. |
 | Position | Native positioning start-speed setter | Profile snapshot reads start speed; restoration never writes it |
 | Position | Arbitrary native five-word profile candidates and archived restoration | Typed builder exists, but CLI restoration accepts only the volatile original snapshot; finite-move staging is not standalone parameter access |
-| Homing | Standalone typed homing parameter reads and auxiliary setter | Existing homing requires independently qualified active auxiliary 7 |
+| Homing | Native auxiliary setter | Existing homing requires independently qualified active auxiliary 7 |
 | Homing | Remaining homing trajectories | Three methods implemented, 27 unimplemented, five unresolved; I/O configuration does not implement a switch trajectory |
 | Homing | Nonzero homing offset and additional paired-write forms | Zero-only reviewed staging does not resolve offset order, signedness or units |
 | Settings | Limit and stored-position paired setters | Reviewed write restrictions stay in the source denominator; no split FC06 workaround |

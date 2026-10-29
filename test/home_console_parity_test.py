@@ -64,3 +64,33 @@ for line in subprocess.check_output([sys.argv[1], "--home-fixtures"], text=True,
     seen.add(name)
 assert seen == expected
 print(f"PASS: {len(seen)} actual core/console homing terminals accepted by Python")
+
+expected_reads = {"success", "unknown", "implemented", "unresolved", "exception", "cancelled", "deadline"}
+seen_reads = set()
+for line in subprocess.check_output([sys.argv[1], "--home-read-fixtures"], text=True, timeout=10).splitlines():
+    fixture = json.loads(line, object_pairs_hook=unique_object)
+    name, record = fixture["case"], fixture["record"]
+    assert name in expected_reads and name not in seen_reads, name
+    assert len(json.dumps(record, separators=(",", ":"))) < MAX_LINE
+    Console._check_typed_read(record, "homing_parameters", 1)
+    check_fixture_routes(record, live_command="home-read")
+    if record["ok"]:
+        value = record["homing_parameters"]
+        assert value["offset_word_order_resolution"] == 9
+        assert value["offset_signed_resolution"] == 7
+        assert value["offset_scale_resolution"] == 5
+        assert value["method_support"] == {"success": "unimplemented", "unknown": "unknown",
+                                            "implemented": "implemented", "unresolved": "unresolved"}[name]
+        for mutate in (lambda r: r["homing_parameters"].update(raw_offset_words=[1, 2]),
+                       lambda r: r["homing_parameters"].update(offset_word_order_resolution=0),
+                       lambda r: r["homing_parameters"].update(offset_signed_resolution=0),
+                       lambda r: r["homing_parameters"].update(offset_scale_resolution=0),
+                       lambda r: r["homing_parameters"].update(method_support="unsupported"),
+                       lambda r: r.update(configuration_generation=0)):
+            broken = copy.deepcopy(record); mutate(broken)
+            try: Console._check_typed_read(broken, "homing_parameters", 1)
+            except BenchError: pass
+            else: raise AssertionError((name, "forged homing read accepted"))
+    seen_reads.add(name)
+assert seen_reads == expected_reads, (seen_reads, expected_reads)
+print(f"PASS: {len(seen_reads)} actual core/console homing-parameter read terminals accepted by Python")

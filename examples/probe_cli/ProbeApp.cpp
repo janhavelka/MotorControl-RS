@@ -194,6 +194,7 @@ struct App {
     ESS::HomePrerequisites homePrerequisites; // Explicit method/active-auxiliary/native/reference qualification.
     ESS::VelocityPrerequisites velocityPrerequisites; // Independent commissioning evidence, initially unqualified.
     ESS::VelocityParametersObservation velocityParameters; // Checked observation, never desired/staged values.
+    ESS::HomingParametersObservation homingParameters; // Raw observation is separate from home qualification.
     uint32_t bindingGeneration = 1;
     uint8_t actionConflicts[32] = {}; ///< Physical address conflicts survive result release and host recovery.
     uint8_t knownTargets[32] = {}; ///< Checked physical addresses, independent of the latest passive observation.
@@ -629,7 +630,8 @@ Probe::Action startTypedRead(void* context, uint32_t commandId, uint8_t address,
     const uint64_t sampled = uart.sample();
     if (a.owner.needsRecovery() || uart.needsRecovery()) return Probe::Action::RECOVERY_REQUIRED;
     if (!a.nextOperationId) return Probe::Action::IDS_EXHAUSTED;
-    if (kind == ESS::ReadKind::VELOCITY_PARAMETERS && address != a.axis.target.address)
+    if ((kind == ESS::ReadKind::VELOCITY_PARAMETERS || kind == ESS::ReadKind::HOMING_PARAMETERS) &&
+        address != a.axis.target.address)
         return Probe::Action::INVALID;
     App::Record* record = nullptr;
     if (monitored) {
@@ -643,14 +645,16 @@ Probe::Action startTypedRead(void* context, uint32_t commandId, uint8_t address,
         &a.configuration : nullptr;
     const auto prepared = kind == ESS::ReadKind::IDENTITY ?
         ESS::prepareIdentity(record->read, target, a.nextOperationId, sampled, sampled + REQUEST_US, serial) :
-        kind == ESS::ReadKind::VELOCITY_PARAMETERS ?
+        kind == ESS::ReadKind::HOMING_PARAMETERS ?
+        ESS::prepareHomingParameters(record->read, target, a.nextOperationId, a.axis.generation,
+            sampled, sampled + REQUEST_US, serial) : kind == ESS::ReadKind::VELOCITY_PARAMETERS ?
         ESS::prepareVelocityParameters(record->read, target, a.nextOperationId, a.axis.generation,
             sampled, sampled + REQUEST_US, serial) : kind == ESS::ReadKind::STATE ?
         ESS::prepareState(record->read, target, a.nextOperationId, sampled, sampled + REQUEST_US, serial, configuration) :
         ESS::prepareConfig(record->read, target, a.nextOperationId, sampled, sampled + REQUEST_US, serial,
             address == a.axis.target.address ? a.inputWiring : nullptr);
     if (!prepared || (kind != ESS::ReadKind::IDENTITY && kind != ESS::ReadKind::CONFIG &&
-        kind != ESS::ReadKind::STATE && kind != ESS::ReadKind::VELOCITY_PARAMETERS)) {
+        kind != ESS::ReadKind::STATE && kind != ESS::ReadKind::VELOCITY_PARAMETERS && kind != ESS::ReadKind::HOMING_PARAMETERS)) {
         clearRecord(*record); return Probe::Action::INVALID;
     }
     const auto admitted = admitStep(a, *record, sampled);
@@ -1615,6 +1619,35 @@ void reconcileVelocityParameters(App& a, const App::Record& record) {
         }
     }
 }
+void reconcileHomingParameters(App& a, const App::Record& record) {
+    if (record.serialGeneration != a.serial.generation || record.read.target.generation != a.bindingGeneration ||
+        record.read.kind != ESS::ReadKind::HOMING_PARAMETERS || !Probe::sameTarget(record.read.target, a.axis.target) ||
+        record.read.configurationGeneration != a.axis.generation || record.operationId <= a.homingParameters.operationId) return;
+    ESS::HomingParametersObservation observed;
+    if (!ESS::getHomingParameters(record.read, observed)) return;
+    const auto& prior = a.homingParameters;
+    auto& p = a.homePrerequisites;
+    const bool same = prior.operationId && Probe::sameTarget(prior.target, observed.target) &&
+        prior.configurationGeneration == observed.configurationGeneration;
+    const bool auxiliaryChanged = (same && prior.rawAuxiliary != observed.rawAuxiliary) ||
+        (p.auxiliaryQualified && observed.rawAuxiliary != static_cast<uint16_t>(p.auxiliary));
+    const bool methodChanged = (same && prior.rawMethod != observed.rawMethod) ||
+        (p.methodQualified && observed.rawMethod != static_cast<uint16_t>(p.qualifiedMethod));
+    const bool ratesChanged = (same && (prior.rawSearchSpeed != observed.rawSearchSpeed || prior.rawReturnSpeed != observed.rawReturnSpeed)) ||
+        (p.nativeRatesQualified && (observed.rawSearchSpeed != p.qualifiedSearchSpeed || observed.rawReturnSpeed != p.qualifiedReturnSpeed));
+    const bool rampChanged = (same && prior.rawRampTime != observed.rawRampTime) ||
+        (p.nativeRampQualified && observed.rawRampTime != p.qualifiedRampTime);
+    const bool offsetChanged = (same && (prior.rawOffsetWords[0] != observed.rawOffsetWords[0] || prior.rawOffsetWords[1] != observed.rawOffsetWords[1])) ||
+        (p.zeroOffsetQualified && (observed.rawOffsetWords[0] || observed.rawOffsetWords[1]));
+    if (auxiliaryChanged) p.auxiliaryQualified = false;
+    if (methodChanged) p.methodQualified = false;
+    if (ratesChanged) p.nativeRatesQualified = false;
+    if (rampChanged) p.nativeRampQualified = false;
+    if (offsetChanged) p.zeroOffsetQualified = false;
+    if (auxiliaryChanged || methodChanged || offsetChanged) p.referenceSemanticsQualified = false;
+    if (auxiliaryChanged || methodChanged || ratesChanged || rampChanged || offsetChanged) p.readinessQualified = false;
+    a.homingParameters = observed;
+}
 // Consume one retained transaction per operation per loop. Intermediate evidence
 // is copied into the public context before its owner slot is explicitly released.
 // The frontend record reserves terminal storage across the gaps between steps.
@@ -1643,6 +1676,7 @@ void advanceReads(App& a, uint64_t sampled) {
             observeCommunication(a, *result);
             reconcileConfigRead(a, record, sampled);
             reconcileVelocityParameters(a, record);
+            reconcileHomingParameters(a, record);
             if (record.read.kind == ESS::ReadKind::STATE && record.configurationGeneration == a.axis.generation) {
                 const auto& previous = a.stateCache.blocks[static_cast<uint8_t>(block)];
                 const auto& reference = a.coordinateReference;
@@ -2605,6 +2639,15 @@ MotorControlRS::Status submitVelocityParameterRead(uint32_t& operationId) {
     const auto admitted = typedRead(app, 0, app->axis.target.address, ESS::ReadKind::VELOCITY_PARAMETERS, operationId);
     if (admitted != Probe::Action::OK)
         return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted), "velocity parameter read not admitted");
+    findRecord(*app, operationId)->programmaticRead = true;
+    return Ok();
+}
+MotorControlRS::Status submitHomingParameterRead(uint32_t& operationId) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    const auto admitted = typedRead(app, 0, app->axis.target.address, ESS::ReadKind::HOMING_PARAMETERS, operationId);
+    if (admitted != Probe::Action::OK)
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted), "homing parameter read not admitted");
     findRecord(*app, operationId)->programmaticRead = true;
     return Ok();
 }

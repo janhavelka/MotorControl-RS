@@ -13,7 +13,7 @@ retain successful and failed experiments.
 | Area | Current implementation | Evidence boundary |
 | --- | --- | --- |
 | Portable core | Exact units/coordinates, typed targets, register ledger, checked ESS FC03/06/10 codecs | No framework, transport, clock, heap or retry ownership |
-| Bounded operations | Typed reads/settings, actions, relative/absolute/wrapped position, finite velocity, homing 33/34/35, discovery and explicit communication/persistence sequences | Unsupported and unresolved operations fail explicitly; eight native-family gaps and 18 guarded paired setters remain |
+| Bounded operations | Typed reads/settings, actions, relative/absolute/wrapped position, finite velocity, homing 33/34/35, discovery and explicit communication/persistence sequences | Unsupported and unresolved operations fail explicitly; seven native-family gaps and 18 guarded paired setters remain |
 | Application reference | Cooperative owner, retained results, immutable deadlines, urgent stop, runner/capture, ordinary API/console and passive traffic observation | Software timing observations do not establish exact wire timing; no uncertain write replay |
 | Consumers and tooling | Shared Arduino/native ESP-IDF S3 application, S2 compile-only fixtures, strict host tools, source/install packages and CI | S3 functional evidence belongs to the exact tested image, motor and fixture; S2 hardware is unqualified |
 | Documentation | Current contracts and operation coverage, source-backed FieldCore handoff, preserved manuals and bench reports | Old numbered prompts are historical delivery instructions, not current missing-feature lists |
@@ -31,6 +31,11 @@ do not close the native-coverage or hardware gates below.
 The native velocity-parameter read now has a producing core/application/console
 route and checked copied results; [stage 02 evidence](reports/2026-10-29_ess_velocity_reads.md)
 keeps software checks separate from its unperformed physical read checks.
+
+Native homing-parameter observation now uses one checked seven-word read and
+ordinary application/console results; [stage 03 evidence](reports/2026-10-29_ess_homing_reads.md)
+keeps method implementation and unresolved offset interpretation separate from
+physical qualification. No new homing method or write window is enabled.
 
 ## Current bench evidence
 

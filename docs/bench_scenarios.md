@@ -108,7 +108,7 @@ these failure regressions and the repeated COM13 finite functional checks.
 
 Uncertain movement is never retried. A volatile profile backup is preserved by
 same-session restoration, but cannot survive a board restart. Historical archive
-imports, missing native parameter APIs, switch-dependent methods, unsupported
+imports, missing native setters, switch-dependent methods, unsupported
 pair writes and restart/persistence fixtures remain the named owning gaps in
 [the coverage matrix](ess_api_cli_coverage.md). Functional reports do not become
 independent physical shaft or electrical measurements.
@@ -121,3 +121,12 @@ python scripts/bench_probe.py --port COM13 --log build/bench/velocity-read-new.j
 
 Confirm the actual bench device first. This reads the three JOG words, inspects
 and releases the result, with no staging, start, save or automatic qualification.
+
+For the six homing parameter records, use the same explicit read-only campaign:
+
+```sh
+python scripts/bench_probe.py --port COM13 --log build/bench/home-read-new.jsonl typed-read --kind homing_parameters
+```
+
+This reads seven words and inspects/releases their checked result. It does not
+qualify or start homing; both offset words remain uninterpreted raw evidence.

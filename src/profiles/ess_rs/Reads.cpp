@@ -21,13 +21,16 @@ bool validTuple(const ActiveSerialTuple& tuple) {
 }
 uint8_t steps(ReadKind kind) {
     switch (kind) {
-    case ReadKind::IDENTITY: case ReadKind::VELOCITY_PARAMETERS: return 1;
+    case ReadKind::IDENTITY: case ReadKind::VELOCITY_PARAMETERS: case ReadKind::HOMING_PARAMETERS: return 1;
     case ReadKind::STATE: return 3;
     case ReadKind::CONFIG: return 5;
     }
     return 0;
 }
 bool window(ReadKind kind, uint8_t step, uint16_t& first, uint16_t& count) {
+    if (kind == ReadKind::HOMING_PARAMETERS && step == 0) {
+        first = Registers::HOMING_AUXILIARY; count = 7; return true;
+    }
     if (kind == ReadKind::VELOCITY_PARAMETERS && step == 0) {
         first = Registers::JOG_SPEED; count = 3; return true;
     }
@@ -95,6 +98,7 @@ ReadCapabilities readCapabilities() noexcept {
     ReadCapabilities result;
     result.probe = result.identity = result.config = result.state = true;
     result.velocityParameters = true;
+    result.homingParameters = true;
     result.maxSteps = READ_MAX_STEPS; result.maxReplyBytes = READ_MAX_REPLY_BYTES;
     return result;
 }
@@ -135,6 +139,19 @@ Status prepareVelocityParameters(ReadContext& output, const ReadTarget& target, 
         return invalid(ReadError::INVALID_CONFIGURATION, "zero configuration generation");
     ReadContext prepared;
     const Status status = prepare(prepared, ReadKind::VELOCITY_PARAMETERS, target, operationId,
+        nowUs, deadlineUs, activeSerial, nullptr);
+    if (!status) return status;
+    prepared.configurationGeneration = configurationGeneration;
+    output = prepared;
+    return Ok();
+}
+Status prepareHomingParameters(ReadContext& output, const ReadTarget& target, uint32_t operationId,
+                               uint32_t configurationGeneration, uint64_t nowUs, uint64_t deadlineUs,
+                               const ActiveSerialTuple& activeSerial) noexcept {
+    if (!configurationGeneration)
+        return invalid(ReadError::INVALID_CONFIGURATION, "zero configuration generation");
+    ReadContext prepared;
+    const Status status = prepare(prepared, ReadKind::HOMING_PARAMETERS, target, operationId,
         nowUs, deadlineUs, activeSerial, nullptr);
     if (!status) return status;
     prepared.configurationGeneration = configurationGeneration;
@@ -331,6 +348,31 @@ Status getVelocityParameters(const ReadContext& context, VelocityParametersObser
     result.configurationGeneration = context.configurationGeneration;
     result.rawSpeed = values[0]; result.rawAccelerationTime = values[1]; result.rawDecelerationTime = values[2];
     result.accelerationTimeInRange = values[1] <= 2000; result.decelerationTimeInRange = values[2] <= 2000;
+    result.provenance = context.observations[0];
+    output = result;
+    return Ok();
+}
+Status getHomingParameters(const ReadContext& context, HomingParametersObservation& output) noexcept {
+    const Status ready = publishable(context, ReadKind::HOMING_PARAMETERS); if (!ready) return ready;
+    uint16_t values[7] = {};
+    const Status parsed = words(context, 0, values, 7); if (!parsed) return parsed;
+    HomingParametersObservation result;
+    result.target = context.target; result.operationId = context.operationId;
+    result.configurationGeneration = context.configurationGeneration;
+    result.rawAuxiliary = values[0]; result.rawMethod = values[1]; result.rawSearchSpeed = values[2];
+    result.rawReturnSpeed = values[3]; result.rawRampTime = values[4];
+    result.rawOffsetWords[0] = values[5]; result.rawOffsetWords[1] = values[6];
+    result.auxiliaryKnown = values[0] <= 11;
+    if (result.auxiliaryKnown) result.auxiliary = static_cast<HomingAuxiliary>(values[0]);
+    // Only positive documented IDs have reviewed wire membership. In particular,
+    // never reinterpret unsigned high words as signed collision-method codes.
+    const auto* descriptor = values[1] <= 32767 ? homeMethod(static_cast<HomingMethod>(values[1])) : nullptr;
+    if (descriptor) {
+        result.methodKnown = true; result.method = descriptor->method; result.methodSupport = descriptor->support;
+    }
+    result.searchSpeedInRange = values[2] >= 5 && values[2] <= 3000;
+    result.returnSpeedInRange = values[3] >= 5 && values[3] <= 300;
+    result.rampTimeInRange = values[4] >= 30 && values[4] <= 2000;
     result.provenance = context.observations[0];
     output = result;
     return Ok();

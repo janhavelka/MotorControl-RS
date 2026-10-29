@@ -1,11 +1,12 @@
 /** @file Reads.h
- * @brief Non-changing ESS identity, configuration and state operations. No I/O.
+ * @brief Non-changing ESS identity, configuration, parameter and state reads. No I/O.
  * SPDX-License-Identifier: MIT
  */
 #pragma once
 #include "MotorControlRS/ReadOperation.h"
 #include "MotorControlRS/Units.h"
 #include "MotorControlRS/profiles/ess_rs/Codec.h"
+#include "MotorControlRS/profiles/ess_rs/Homing.h"
 
 namespace MotorControlRS { namespace ESS_RS {
 
@@ -13,11 +14,11 @@ constexpr std::size_t READ_MAX_STEPS = 5;
 constexpr std::size_t READ_MAX_REPLY_BYTES = 37;
 constexpr std::size_t READ_INPUT_COUNT = 4;
 constexpr std::size_t STATE_BLOCK_COUNT = 3;
-enum class ReadKind : uint8_t { IDENTITY, CONFIG, STATE, VELOCITY_PARAMETERS };
+enum class ReadKind : uint8_t { IDENTITY, CONFIG, STATE, VELOCITY_PARAMETERS, HOMING_PARAMETERS };
 enum class StateBlock : uint8_t { MOTION, IO, FEEDBACK };
 
 /** Copied wire provenance for each consumed step, including a failing reply.
- * Failed and partial operations retain this evidence. Identity/configuration
+ * Failed and partial operations retain this evidence. Identity/configuration/parameters
  * publish only a whole successful operation; state publishes successful blocks.
  * deliveredUs is application servicing, not freshness. */
 struct ReadStepObservation {
@@ -90,6 +91,34 @@ struct VelocityParametersObservation {
     ReadResolution speedSignedResolution = ReadResolution::SIGNED_ENCODING_UNRESOLVED;
     ReadResolution speedScaleResolution = ReadResolution::SCALE_UNRESOLVED;
     ReadResolution rampScaleResolution = ReadResolution::SCALE_UNRESOLVED;
+    ReadStepObservation provenance;
+};
+
+/** One checked seven-word homing window, not active qualification or origin.
+ * All raw words survive unknown/out-of-range values. Consult auxiliaryKnown and
+ * methodKnown before using the typed codes; methodSupport describes software
+ * implementation only, never mechanical/firmware qualification. Negative method
+ * wire encoding is unresolved, so 0xFFFC..0xFFFF remain unknown raw codes.
+ * Range flags refer only to native words (search 5..3000, return 5..300,
+ * ramp 30..2000). No physical speed/ramp conversion is established.
+ * Offset words remain in address order; WORD_ORDER applicability, sign and scale
+ * are unresolved even when both words are zero. Zero proves no calibrated origin.
+ * Provenance owns its bytes; configurationGeneration is the admitted snapshot. */
+struct HomingParametersObservation {
+    ReadTarget target;
+    uint32_t operationId = 0, configurationGeneration = 0;
+    uint16_t rawAuxiliary = 0, rawMethod = 0, rawSearchSpeed = 0, rawReturnSpeed = 0, rawRampTime = 0;
+    uint16_t rawOffsetWords[2] = {};
+    bool auxiliaryKnown = false, methodKnown = false;
+    HomingAuxiliary auxiliary = HomingAuxiliary::KEEP_POSITION_SET_ZERO;
+    HomingMethod method = HomingMethod::METHOD_35;
+    HomeSupport methodSupport = HomeSupport::UNRESOLVED;
+    bool searchSpeedInRange = false, returnSpeedInRange = false, rampTimeInRange = false;
+    ReadResolution speedScaleResolution = ReadResolution::SCALE_UNRESOLVED;
+    ReadResolution rampScaleResolution = ReadResolution::SCALE_UNRESOLVED;
+    ReadResolution offsetWordOrderResolution = ReadResolution::WORD_ORDER_UNRESOLVED;
+    ReadResolution offsetSignedResolution = ReadResolution::SIGNED_ENCODING_UNRESOLVED;
+    ReadResolution offsetScaleResolution = ReadResolution::SCALE_UNRESOLVED;
     ReadStepObservation provenance;
 };
 
@@ -204,6 +233,12 @@ Status prepareConfig(ReadContext& output, const ReadTarget& target, uint32_t ope
 Status prepareVelocityParameters(ReadContext& output, const ReadTarget& target, uint32_t operationId,
                                  uint32_t configurationGeneration, uint64_t nowUs, uint64_t deadlineUs,
                                  const ActiveSerialTuple& activeSerial = ActiveSerialTuple()) noexcept;
+/** One FC03 0x0030/7 step (19-byte reply), with the same nonzero generation,
+ * target/tuple/time/deadline and output-preservation contract as velocity reads.
+ * No offset assembly, write, motion trigger or qualification is performed. */
+Status prepareHomingParameters(ReadContext& output, const ReadTarget& target, uint32_t operationId,
+                               uint32_t configurationGeneration, uint64_t nowUs, uint64_t deadlineUs,
+                               const ActiveSerialTuple& activeSerial = ActiveSerialTuple()) noexcept;
 /** Supplied configuration is copied only if its exact target/generation matches.
  * Unknown configuration leaves pair/source decoding explicitly unresolved. No
  * state field in these three reviewed windows is consuming/read-to-clear. */
@@ -227,6 +262,9 @@ Status getConfig(const ReadContext&, ConfigObservation& output) noexcept;
 /** Publishes only the complete successful velocity-parameter read. Unknown raw
  * values succeed; wrong kind, incomplete or failed reads preserve output. */
 Status getVelocityParameters(const ReadContext&, VelocityParametersObservation& output) noexcept;
+/** Whole successful homing-parameter observation only. Unknown raw codes succeed;
+ * wrong kind, pending and failed reads preserve output. No frame pointer remains. */
+Status getHomingParameters(const ReadContext&, HomingParametersObservation& output) noexcept;
 /** Publish one successful block even if a later block failed. No output change
  * for an absent/failed block or wrong kind. Index corresponds to StateBlock. */
 Status getStateBlock(const ReadContext&, uint8_t block, StateObservation& output) noexcept;

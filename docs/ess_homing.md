@@ -14,6 +14,17 @@ method 18 and collision methods −1 through −4 have unresolved source semanti
 See the [complete method table](ess_homing_methods.md) for trajectories,
 prerequisites, source conflicts and external-input fixture requirements.
 
+## Parameter observations
+
+`home read [address]` reads the six native records in one seven-word checked
+FC03 operation. The installed `prepareHomingParameters` / `getHomingParameters`
+API preserves raw words and separates known auxiliary/method codes from
+executable method support. Offset words remain separate with unresolved
+order/sign/scale; raw zero does not establish a mechanical origin. Ordinary
+application submission/copy/release and Python inspection are documented in
+[typed reads](ess_reads.md#native-homing-parameter-read). This observation never
+qualifies or starts a home; current execution prerequisites below remain.
+
 ## Admission and yielded work
 
 `HomeRequest` supplies a method, configuration generation, native search and

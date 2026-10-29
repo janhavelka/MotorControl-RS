@@ -23,7 +23,7 @@ class VerificationFailures(unittest.TestCase):
         tests = [{"name": name, "command": [str(build / (binary + suffix))]} for name, binary in
                  [("foo", "foo_test"), ("units_preview", "units_preview"),
                   *[(n, n + "_test") for n in ("codec_independent", "probe_app_load", "idf_move_app",
-                                              "idf_simple_motion_app", "idf_control_app", "idf_velocity_app")]]]
+                                              "idf_simple_motion_app", "idf_control_app", "idf_velocity_app", "idf_home_app")]]]
         tests.append({"name": "foo_python", "command": [sys.executable, str(root / "test/foo_test.py")]})
         for name, script, args in (("version_generated", "generate_version.py", ["check"]),
                 ("registers_generated", "generate_ess_registers.py", ["--check"]),
@@ -61,7 +61,7 @@ class VerificationFailures(unittest.TestCase):
             root = Path(directory)
             listing, build = self.inventory(root)
             for name in ("codec_independent", "probe_app_load", "idf_move_app",
-                         "idf_simple_motion_app", "idf_control_app", "idf_velocity_app"):
+                         "idf_simple_motion_app", "idf_control_app", "idf_velocity_app", "idf_home_app"):
                 with self.subTest(name=name):
                     missing = copy.deepcopy(listing)
                     missing["tests"] = [t for t in missing["tests"] if t["name"] != name]

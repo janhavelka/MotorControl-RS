@@ -20,7 +20,8 @@ HOST_BAUDS = (9600, 19200, 38400, 115200)
 TYPED_WINDOWS = {"identity": ((0x0000, 4),),
                  "config": ((0x0010, 2), (0x0013, 3), (0x0017, 3), (0x0040, 5), (0x0100, 2)),
                  "state": ((0x0006, 2), (0x0008, 2), (0x000A, 3)),
-                 "velocity_parameters": ((0x001D, 3),)}
+                 "velocity_parameters": ((0x001D, 3),),
+                 "homing_parameters": ((0x0030, 7),)}
 
 
 class BenchError(RuntimeError):
@@ -209,7 +210,7 @@ def check_typed_read(item: dict, kind: str, address: int | None) -> None:
             and (address is None or item["address"] == address), "address does not match acceptance")
     require(operation_id(item.get("target")) and operation_id(item.get("generation")),
             "target or generation is invalid")
-    if kind == "velocity_parameters":
+    if kind in ("velocity_parameters", "homing_parameters"):
         require(operation_id(item.get("configuration_generation")), "configuration generation is invalid")
     check_counts(item, ("started_us", "deadline_us", "serviced_us", "completed_steps"), "typed-read")
     require(item["started_us"] < item["deadline_us"] and item["serviced_us"] >= item["started_us"],
@@ -313,6 +314,32 @@ def check_typed_read(item: dict, kind: str, address: int | None) -> None:
     if kind == "state":
         return
     require(isinstance(decoded, dict), "successful operation lacks decoded observation")
+    if kind == "homing_parameters":
+        for key, value in zip(("raw_auxiliary", "raw_method", "raw_search_speed", "raw_return_speed", "raw_ramp_time"), decoded_words):
+            require(type(decoded.get(key)) is int and decoded[key] == value,
+                    "homing parameters differ from retained RX")
+        offset = decoded.get("raw_offset_words")
+        require(isinstance(offset, list) and len(offset) == 2 and
+                all(type(word) is int for word in offset) and offset == decoded_words[5:7],
+                "homing offset words differ from retained RX")
+        method = decoded_words[1]
+        known_method = method in (*range(1, 15), *range(17, 31), 33, 34, 35)
+        support = ("unknown" if not known_method else "implemented" if method in (33, 34, 35) else
+                   "unresolved" if method == 18 else "unimplemented")
+        for key, value in (("auxiliary_known", decoded_words[0] <= 11), ("method_known", known_method),
+                           ("search_speed_in_range", 5 <= decoded_words[2] <= 3000),
+                           ("return_speed_in_range", 5 <= decoded_words[3] <= 300),
+                           ("ramp_time_in_range", 30 <= decoded_words[4] <= 2000)):
+            require(type(decoded.get(key)) is bool and decoded[key] == value,
+                    "homing native interpretation is inconsistent")
+        require(type(decoded.get("method_support")) is str and decoded["method_support"] == support,
+                "homing method support is inconsistent")
+        for key, value in (("speed_scale_resolution", 5), ("ramp_scale_resolution", 5),
+                           ("offset_word_order_resolution", 9), ("offset_signed_resolution", 7),
+                           ("offset_scale_resolution", 5)):
+            require(type(decoded.get(key)) is int and decoded[key] == value,
+                    "homing parameters claim unsupported interpretation")
+        return
     if kind == "velocity_parameters":
         for key, value in zip(("raw_speed", "raw_acceleration_time", "raw_deceleration_time"), decoded_words):
             require(type(decoded.get(key)) is int and decoded[key] == value,
