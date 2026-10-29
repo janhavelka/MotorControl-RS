@@ -2,7 +2,7 @@
 
 N07 adds the twelve-choice stored `0x0030` setter through the existing checked
 settings engine and ordinary application/console. Source, implementation and
-qualification remain separate. Local integrated verification is complete; exact-commit CI is pending below;
+qualification remain separate. Local integrated verification and exact implementation-commit CI are complete;
 physical start/offset/coordinate/activation evidence is NOT RUN.
 
 ## Source and boundaries
@@ -120,7 +120,18 @@ Existing home/read/position/stop behavior and both frontends are regression scop
   strict C++11/C++17 headers/linkage/package checks PASS. Logs/summary retained
   there. Local package SHA-256:
   `6318c3c23069f6c21fe01121d5441fb2d017c3a7665d42aac9f0782705069f69`.
-- Exact implementation-commit GCC/Clang/Arduino/IDF CI: PENDING.
+- Implementation commit `88f8b9ce52d8011193e11277f3641757fd116ef4` was committed
+  and pushed on `main`, with clean worktree and upstream0/0.
+  [CI run40919806925](https://github.com/janhavelka/MotorControl-RS/actions/runs/40919806925)
+  reports terminal SUCCESS for GCC, Clang, Arduino and native ESP-IDF. Exact
+  head SHA, terminal conclusion and all four job states were verified with
+  `gh run view --json headSha,status,conclusion,jobs,url`; saved status:
+  `build/stage05_ci_status.json`. All four downloaded summaries PASS85 tests
+  plus package/consumer checks. Artifacts: `build/ess_software_05_ci/` with
+  `native-gcc`, `native-clang`, `arduino` and `native-idf` directories.
+  Arduino `16-arduino-builds.log` confirms4/4: bench_s3_units, bench_s3_probe,
+  bench_s3_load_poll and bench_s3_load_timer. IDF summary confirms S3 app,
+  core-S3/core-S2 and portable-S2 checks all exit0 in the pinned5.5.5 environment.
   No older green run is credited here. Local full firmware builds NOT RUN.
 - Physical NOT RUN: fresh port enumeration retained in `build/stage05_ports.log`
   lacks recorded COM13/USB serial `3C:0F:02:CD:6B:98`. COM11/12/15 identify other

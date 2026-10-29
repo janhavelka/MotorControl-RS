@@ -12,7 +12,7 @@ stages06-15 remain NOT STARTED.
 | 02 | SOFTWARE COMPLETE | `6bede39`; [implementation/review/validation](../../reports/2026-10-29_ess_velocity_reads.md); 80-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 03 | SOFTWARE COMPLETE | `ff3fae3`; [implementation/source/verification](../../reports/2026-10-29_ess_homing_reads.md); 81-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 04 | SOFTWARE COMPLETE | [Implementation and verification](../../reports/2026-10-29_ess_position_start_speed.md); `ef38513`; 83-test final quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
-| 05 | IN PROGRESS | [Implementation and verification](../../reports/2026-10-29_ess_homing_auxiliary.md); 85-test quick/package PASS; exact-commit CI pending | NOT RUN: recorded bench USB absent |
+| 05 | SOFTWARE COMPLETE | [Implementation and verification](../../reports/2026-10-29_ess_homing_auxiliary.md); `88f8b9c`; 85-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 06 | NOT STARTED | - | NOT RUN |
 | 07 | NOT STARTED | - | NOT RUN |
 | 08 | NOT STARTED | - | NOT RUN |
@@ -229,7 +229,7 @@ Arduino4/4 and IDF S3 app/core-S3/core-S2/portable-S2 checks PASS. Artifacts:
 Local full firmware NOT RUN. Physical NOT RUN: fresh enumeration still lacks
 the recorded bench USB identity; other devices were not opened or flashed.
 
-## Stage 05 implementation checkpoint (2026-10-29)
+## Stage 05 completed software (2026-10-29)
 
 N07 implements all twelve stored auxiliary choices with a one-field
 `DriverContext` prior-read/FC06/readback path, ordinary app submit/copy/release,
@@ -242,5 +242,11 @@ Lead focused15/15, independent review7/7, writer3/3, host271/parity14+6+6,
 inventory32 and fresh quick85/85 plus package/consumers PASS. The independent
 review's existing position-result wording regression was fixed without changing
 its assertions. Only N07 closes: five named gaps and18 guarded pairs remain.
-Exact implementation-commit CI pending. Physical NOT RUN: recorded bench USB
-identity absent in fresh enumeration; other devices were not opened/flashed.
+Final implementation commit `88f8b9ce52d8011193e11277f3641757fd116ef4` was
+pushed and synchronized. [CI run40919806925](https://github.com/janhavelka/MotorControl-RS/actions/runs/40919806925)
+terminal SUCCESS verified through exact head SHA/job JSON. Downloaded GCC,
+Clang, Arduino and IDF summaries each PASS85 tests plus package/consumer checks;
+Arduino4/4 and IDF S3 app/core-S3/core-S2/portable-S2 PASS. Artifacts:
+`build/ess_software_05_ci/`; local full firmware NOT RUN. No prior green
+commit is credited to this change. Physical NOT RUN: recorded bench USB identity
+absent in fresh enumeration; other devices were not opened/flashed/commanded.
