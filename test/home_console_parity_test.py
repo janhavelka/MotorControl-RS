@@ -101,7 +101,7 @@ for executable in sys.argv[2:]:
     records = [json.loads(line, object_pairs_hook=unique_object) for line in
                subprocess.check_output([executable, "--emit-console-results"], text=True, timeout=20).splitlines() if line.startswith("{")]
     records = [r for r in records if r.get("home") is True and r.get("command") == "result"]
-    assert len(records) == 4 and [r["method"] for r in records] == [33, 34, 35, 35]
+    assert len(records) == 5 and [r["method"] for r in records] == [33, 34, 35, 35, 35]
     for record in records:
         Console._check_home(record, 1, None)
         assert record["qualification"]["observe_inputs"] and record["inputs_observed"]
@@ -109,13 +109,52 @@ for executable in sys.argv[2:]:
         for mutate in (lambda r: r["qualification"].update(qualified_us=r["started_us"] + 1),
                        lambda r: r["qualification"].update(readback_observed_us=r["started_us"] + 1),
                        lambda r: r["qualification"].update(observe_inputs=False),
+                       lambda r: r["prerequisites"].update(raw_motion=r["prerequisites"]["raw_motion"] | 0x8000),
                        lambda r: r.update(qualification_revoked=not r["qualification_revoked"])):
             broken = copy.deepcopy(record); mutate(broken)
             try: Console._check_home(broken, 1, None)
             except BenchError: pass
             else: raise AssertionError("forged application qualification accepted")
-    assert [r["ok"] for r in records] == [True, True, True, False]
-    assert records[-1]["qualification_revoked"] and records[-1]["zero_evidence"] == records[-1]["failure_evidence"]
+        if record["ok"]:
+            fields = ("completion_evidence",) if record["method"] == 35 else ("activity_evidence", "low_evidence", "completion_evidence")
+            for field in fields:
+                for contradiction in ("unknown_motion", "assigned_input", "unknown_input"):
+                    broken = copy.deepcopy(record)
+                    raw = bytearray.fromhex(broken[field][2])
+                    if contradiction == "unknown_motion": raw[5] |= 0x80
+                    else:
+                        raw[8] = 1 if contradiction == "assigned_input" else 16
+                        if contradiction == "assigned_input": broken["qualification"]["input_functions"][0] = 1
+                    raw[-2:] = wire_crc(raw[:-2]).to_bytes(2, "little")
+                    broken[field][2] = raw.hex()
+                    if field == "completion_evidence":
+                        broken["last_observation"] = copy.deepcopy(broken[field])
+                        broken["raw_motion"] = int.from_bytes(raw[5:7], "big")
+                        broken["raw_inputs"] = int.from_bytes(raw[7:9], "big")
+                    try: Console._check_home(broken, 1, None)
+                    except BenchError: pass
+                    else: raise AssertionError((field, contradiction, "contradictory transition accepted"))
+    assert [r["ok"] for r in records] == [True, True, True, False, False]
+    assert records[3]["qualification_revoked"] and records[3]["zero_evidence"] == records[3]["failure_evidence"]
+    assert records[4]["outcome"] == "reply_error" and records[4]["detail"] == 15 and records[4]["raw_motion"] == 0x8003
+    # Checked unknown status precedes input/activity failure classification.
+    for detail, motion, inputs in ((13, 0x8003, 16), (31, 0x8004, 0)):
+        broken = copy.deepcopy(records[4]); broken["detail"] = detail
+        raw = bytearray.fromhex(broken["failure_evidence"][2])
+        raw[5:7] = motion.to_bytes(2, "big"); raw[7:9] = inputs.to_bytes(2, "big")
+        raw[-2:] = wire_crc(raw[:-2]).to_bytes(2, "little")
+        broken["failure_evidence"][2] = raw.hex()
+        broken["last_observation"] = copy.deepcopy(broken["failure_evidence"])
+        broken.update(raw_motion=motion, raw_inputs=inputs)
+        try: Console._check_home(broken, 1, None)
+        except BenchError: pass
+        else: raise AssertionError("unknown status relabelled as a lower-priority failure")
+    for outcome, detail in (("observation_limit", 26), ("deadline", 20)):
+        broken = copy.deepcopy(records[4]); broken.update(outcome=outcome, detail=detail)
+        if outcome == "deadline": broken["deadline_us"] = broken["serviced_us"]
+        try: Console._check_home(broken, 1, None)
+        except BenchError: pass
+        else: raise AssertionError("checked unknown status relabelled as exhausted observation budget")
     frontend_records.append(records)
 assert frontend_records[0] == frontend_records[1], "Arduino/IDF home evidence differs"
-print("PASS: both real application frontends, methods33/34/35 and revoked final-zero evidence")
+print("PASS: both real application frontends, methods33/34/35, revoked final-zero and unqualified status evidence")

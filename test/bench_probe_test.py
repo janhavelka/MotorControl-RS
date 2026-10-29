@@ -1328,15 +1328,12 @@ class Framing(unittest.TestCase):
         self.assertFalse(console.synchronized); self.assertEqual(self.events[-1]["cleanup"], "unknown")
 
     def test_home_impossible_admission_motion_is_not_trusted(self):
-        for flag in (4, 8, 16, 32, 64):
+        # Unknown bits are retained by reads, but cannot qualify home readiness.
+        for flag in (4, 8, 16, 32, 64, 0x80, 0x8000):
             record = home_terminal(1)
             record["prerequisites"]["raw_motion"] = flag
             with self.subTest(flag=flag), self.assertRaises(bench.BenchError):
                 bench.Console._check_home(record, 1, None)
-        # Unknown raw bits are preserved rather than treated as invented faults.
-        record = home_terminal(1)
-        record["prerequisites"]["raw_motion"] |= 0x8000
-        bench.Console._check_home(record, 1, None)
 
     def test_home_forged_local_failure_cannot_relabel_success(self):
         for outcome, detail in (("cancelled", 22), ("transport_error", 21)):

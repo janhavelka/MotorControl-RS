@@ -238,6 +238,15 @@ void revocationAndCancellationConserveEvidence() {
         if (phase >= 4) reply(id);
         if (phase == 5) { reply(id,observed(3)); waitTx(id); }
         const auto before = copiedHome(id);
+        const auto writesBeforeReplacement = sentCount();
+        auto replacement = witness; replacement.qualifiedUs = hardware.time;
+        assert(!installHomeQualification(replacement) && sentCount() == writesBeforeReplacement);
+        const auto afterReplacement = copiedHome(id);
+        assert(afterReplacement.phase == before.phase && afterReplacement.step == before.step &&
+            afterReplacement.prerequisites.qualifiedUs == admitted.prerequisites.qualifiedUs &&
+            afterReplacement.prerequisites.qualifiedMethod == admitted.prerequisites.qualifiedMethod &&
+            afterReplacement.prerequisites.configurationGeneration == admitted.prerequisites.configurationGeneration &&
+            !afterReplacement.qualificationRevoked);
         if (cancellation) assert(cancel(app,id) == Probe::Action::OK);
         else assert(revokeHomeQualification());
         assert(copiedHome(id).qualificationRevoked);
@@ -323,6 +332,36 @@ void movingMethodsAndInsufficientObservations() {
         copiedHome(staging).execution == ActionExecution::NOT_TRANSMITTED && copiedHome(staging).uncertain);
     const auto writes = sentCount(); pump(); assert(sentCount() == writes && !app->coordinateReference.nativeKnown);
 }
+void unknownMotionCannotEstablishReference() {
+    for (const int method : {33,34,35}) {
+        fresh(); qualify(false,method); const auto witness = installed();
+        command("@92 read state\n"); const uint32_t state = app->latestOperationId;
+        readReply(state,words({0,0x8001})); readReply(state,words({0,0})); readReply(state,words({0,0,0}));
+        pump(64); assert(releaseOperation(state));
+        const auto before = sentCount(); uint32_t unchanged = 77;
+        assert(!installHomeQualification(witness) && !submitHome(request(method),unchanged) &&
+            unchanged == 77 && sentCount() == before);
+        for (const uint16_t flags : {uint16_t(0x8000), uint16_t(0x8004), uint16_t(0x8003)}) {
+            fresh(); qualify(true,method); const auto id = admit(method); reply(id); reply(id);
+            if (flags == 0x8004) reply(id,observed(1));
+            if (flags == 0x8003) reply(id,observed(method == 35 ? 1 : 4));
+            const auto prior = copiedHome(id); reply(id,observed(flags));
+            const auto result = copiedHome(id);
+            assert(!view(id).pending && result.outcome == ActionOutcome::REPLY_ERROR &&
+                result.status.code == Err::ILLEGAL_VALUE && result.status.detail == static_cast<int32_t>(ESS::HomeError::READINESS));
+            assert(result.rawMotion == flags && result.observationKnown && result.inputsObserved &&
+                result.uncertain && result.homedLowObserved == prior.homedLowObserved &&
+                result.runningObserved == prior.runningObserved && result.completion == ActionCompletion::NOT_OBSERVED &&
+                !result.completionEvidence.length && !result.zeroEvidence.length);
+            assert(result.failureEvidence.status && result.failureEvidence.length == 11 &&
+                result.failureEvidence.raw[5] == 0x80 && result.failureEvidence.raw[6] == uint8_t(flags) &&
+                !app->coordinateReference.nativeKnown && !app->axis.originKnown);
+            AxisReference reference; reference.nativePosition = 123;
+            assert(!ESS::getHomeReference(result,hardware.time,0,reference) && reference.nativePosition == 123);
+            const auto writes = sentCount(); pump(); assert(sentCount() == writes);
+        }
+    }
+}
 void productionAndFixtureGates() {
     fresh(); uint32_t unchanged = 77;
     assert(host(app).startHome(app,1,1,request(),unchanged) != Probe::Action::OK);
@@ -402,22 +441,30 @@ void oldFlagsAndPartialSetup() {
     const auto unexpected = sentCount(); pump(); assert(sentCount() == unexpected);
 }
 void stopAtBoundariesAndUnsentExpiry() {
-    for (unsigned phase = 0; phase < 5; ++phase) {
+    // Pending, staging in flight, staged, trigger in flight, observing,
+    // final-zero pending and final-zero in flight all share urgent-stop policy.
+    for (unsigned phase = 0; phase < 7; ++phase) {
         fresh(); qualify(); const auto id = admit();
-        if (phase >= 1) reply(id);
+        if (phase == 1) waitTx(id);
         if (phase >= 2) reply(id);
-        if (phase >= 3) reply(id,observed(3));
-        if (phase == 4) waitTx(id);
+        if (phase == 3) waitTx(id);
+        if (phase >= 4) reply(id);
+        if (phase >= 5) reply(id,observed(3));
+        if (phase == 6) waitTx(id);
         ActionRequest stop; stop.kind = ActionKind::STOP;
         stop.stop.behavior = StopBehavior::CONFIGURED_DECELERATION; uint32_t stopping = 0;
         assert(host(app).startAction(app,50,1,stop,stopping) == Probe::Action::OK);
-        if (phase == 4) reply(id, words(0,0));
+        if (phase == 1 || phase == 3) reply(id);
+        if (phase == 6) reply(id, words(0,0));
         pump(); assert(!view(id).pending && view(id).interruptedByStop);
         assert(!app->coordinateReference.nativeKnown);
         reply(stopping); reply(stopping,words(0,1));
         assert(!view(stopping).pending && !axisReserved(*app,1));
         assert(view(id).homeContext->completion == ActionCompletion::NOT_OBSERVED && view(id).homeContext->qualificationRevoked);
-        if (phase == 4) assert(view(id).homeContext->zeroEvidence.length == 9 && view(id).homeContext->zeroEvidence.status);
+        if (phase == 1) assert(view(id).homeContext->setupExecution == ActionExecution::ACKNOWLEDGED &&
+            view(id).homeContext->execution == ActionExecution::NOT_TRANSMITTED);
+        if (phase == 3) assert(view(id).homeContext->execution == ActionExecution::ACKNOWLEDGED);
+        if (phase == 6) assert(view(id).homeContext->zeroEvidence.length == 9 && view(id).homeContext->zeroEvidence.status);
     }
     fresh(); qualify(); auto shortAge = installed(); shortAge.maximumAgeUs = 1000000;
     assert(installHomeQualification(shortAge)); const auto id = admit();
@@ -708,6 +755,11 @@ void emitConsoleResults() {
     command("@901 result " + std::to_string(id) + "\n"); pump(64);
     assert(Serial.output.find("\"qualification_revoked\":true") != std::string::npos);
     std::fwrite(Serial.output.data(),1,Serial.output.size(),stdout);
+    fresh(); qualify(); const auto unknown = admit(); reply(unknown); reply(unknown); reply(unknown,observed(0x8003));
+    assert(copiedHome(unknown).outcome == ActionOutcome::REPLY_ERROR &&
+        copiedHome(unknown).status.detail == static_cast<int32_t>(ESS::HomeError::READINESS));
+    command("@902 result " + std::to_string(unknown) + "\n"); pump(64);
+    std::fwrite(Serial.output.data(),1,Serial.output.size(),stdout);
 }
 }
 int main(int argc, char** argv) {
@@ -715,6 +767,7 @@ int main(int argc, char** argv) {
     qualificationLifecycleAndBindings(); qualificationMappingAndLogicalInputs(); revocationAndCancellationConserveEvidence();
     qualificationConsoleInspection();
     queuedReadContradictionPreventsTrigger(); movingMethodsAndInsufficientObservations();
+    unknownMotionCannotEstablishReference();
     parameterReadApplicationPath(); parameterReadQualificationAndHistory(); parameterReadConsoleFailureAndCapacity(); parameterReadHumanTerminal();
     productionAndFixtureGates(); completeAndInvalidateReference(); oldFlagsAndPartialSetup();
     stopAtBoundariesAndUnsentExpiry(); orderedSharedMotionCachePreservesNewHomeReference();

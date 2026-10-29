@@ -8,6 +8,7 @@ namespace {
 constexpr uint16_t RUNNING = static_cast<uint16_t>(MotionStatusBit::RUNNING);
 constexpr uint16_t HOMED = static_cast<uint16_t>(MotionStatusBit::HOMING_COMPLETE);
 constexpr uint16_t ARRIVED = static_cast<uint16_t>(MotionStatusBit::IN_POSITION);
+constexpr uint16_t UNKNOWN_MOTION = 0xFF80; // Only bits 0..6 are documented; unknown is not a drive fault.
 static_assert(ACTION_MAX_POLLS + 2 < 256, "home setup/trigger/poll/zero step must fit uint8_t");
 static_assert(ACTION_MAX_REPLY_BYTES >= 11, "combined home alarm/motion/input reply must fit evidence");
 constexpr uint16_t FAULTS = static_cast<uint16_t>(MotionStatusBit::ALARM) |
@@ -185,19 +186,13 @@ Status prepareHome(HomeContext& output, const AxisConfig& axis, uint32_t id,
     if (request.method != p.qualifiedMethod || request.searchSpeed != p.qualifiedSearchSpeed ||
         request.returnSpeed != p.qualifiedReturnSpeed || request.rampTime != p.qualifiedRampTime)
         return invalid(HomeError::QUALIFICATION_MISMATCH, "home method and native words differ from the qualified request");
-    if (!p.nativeRatesQualified) return invalid(HomeError::UNRESOLVED_RATES, "home native rate interpretation is unresolved");
-    if (!p.nativeRampQualified) return invalid(HomeError::UNRESOLVED_RAMP, "home native ramp interpretation is unresolved");
-    if (!p.inputsQualified || (p.availableInputs & method->requiredInputs) != method->requiredInputs)
-        return invalid(HomeError::INPUT_REQUIRED, "existing inputs and interfering assignments must be qualified");
-    if (method->requiresIndex && !p.indexQualified)
-        return invalid(HomeError::INDEX_REQUIRED, "qualified closed-loop motor Z index is required");
     const Status qualification = checkHomeQualification(p, nowUs);
     if (!qualification) return qualification;
     if (p.observeInputs && (!evidenceAgeValid(p.ioObservedUs, nowUs, p.maximumAgeUs) ||
         !evidenceAgeValid(p.readbackObservedUs, nowUs, p.maximumAgeUs)))
         return invalid(HomeError::READINESS, "input or configuration readback is stale");
-    if (!p.methodQualified || !p.readinessQualified || !evidenceAgeValid(p.observedUs, nowUs, p.maximumAgeUs) ||
-        p.rawAlarm || (p.rawMotion & (FAULTS | RUNNING)))
+    if (!evidenceAgeValid(p.observedUs, nowUs, p.maximumAgeUs) ||
+        p.rawAlarm || (p.rawMotion & (FAULTS | RUNNING | UNKNOWN_MOTION)))
         return invalid(HomeError::READINESS, "fresh enabled stationary alarm-free qualified home readiness is required");
     HomeContext c;
     c.target = axis.target; c.operationId = id; c.request = request; c.prerequisites = p;
@@ -304,7 +299,6 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
         else if (c.step == 0) { ++c.step; c.phase = HomePhase::TRIGGER; c.eligibleUs = nowUs; }
         else { c.phase = HomePhase::OBSERVING; wait(c, nowUs); }
     } else if (c.phase == HomePhase::ZERO_CHECK) {
-        c.zeroEvidence = evidence; c.rawPositionWords[0] = words[0]; c.rawPositionWords[1] = words[1];
         if (words[0] || words[1]) finish(c, ActionOutcome::REPLY_ERROR,
             failed(HomeError::ZERO_NOT_OBSERVED, "fresh position pair does not report zero"));
         else { c.completion = ActionCompletion::OBSERVED; finish(c, ActionOutcome::OBSERVED, Ok()); }
@@ -314,6 +308,8 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
         if (c.prerequisites.observeInputs) { c.inputsObserved = true; c.rawInputs = words[2]; }
         if (words[0] || (words[1] & FAULTS)) finish(c, ActionOutcome::REPLY_ERROR,
             failed(HomeError::DRIVE_FAULT, "drive alarm, release or limit interrupted home"));
+        else if (words[1] & UNKNOWN_MOTION) finish(c, ActionOutcome::REPLY_ERROR,
+            failed(HomeError::READINESS, "home motion status contains unqualified bits"));
         else if (c.prerequisites.observeInputs && !inputReadiness(c.prerequisites, words[2]))
             finish(c, ActionOutcome::REPLY_ERROR, failed(HomeError::INPUT_REQUIRED, "logical inputs contradict qualified mapping"));
         else if (c.request.method == HomingMethod::METHOD_35 && (words[1] & RUNNING))

@@ -84,6 +84,14 @@ establish a new reference. Retained low/activity/completion evidence records
 the relevant observations. A subsequent checked current-position pair must
 contain two zero words before completion is published.
 
+Only MOTION bits 0..6 have documented meanings (function manual physical p68).
+Unknown bits reject admission or fail a checked poll with `READINESS`; raw
+evidence remains available, but cannot qualify a transition or reference.
+Known alarm/fault reports take precedence. This is a conservative qualification
+policy, not a claim that unknown bits are drive faults; typed reads still
+preserve them. Host validation checks every required low/activity/completion
+witness against the same status and logical-input policy.
+
 Alarm, released state or soft-limit flags fail the operation. Cancellation ends
 local sequencing and does not stop the motor. The application settles any
 in-flight transaction before executing explicit priority stop through the

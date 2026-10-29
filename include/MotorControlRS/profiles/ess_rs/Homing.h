@@ -128,7 +128,8 @@ Status checkHomeQualification(const HomePrerequisites&, uint64_t nowUs) noexcept
 Status revokeHome(HomeContext&) noexcept;
 /** Rejection leaves output unchanged and yields no traffic. Writes are capped
  * by the admitted readiness age. Reviewed staging is exactly 0x0031/6 with
- * zero offset; no subset, split pair, negative mode or collision alias is used. */
+ * zero offset; no subset, split pair, negative mode or collision alias is used.
+ * Unknown MOTION bits outside 0..6 cannot qualify admission or observation. */
 Status prepareHome(HomeContext&, const AxisConfig&, uint32_t operationId,
                    const HomeRequest&, const HomePrerequisites&, uint64_t nowUs,
                    uint64_t deadlineUs, const ActionOptions& = ActionOptions()) noexcept;
@@ -138,6 +139,8 @@ Status nextHome(const HomeContext&, uint64_t nowUs, PreparedHome&) noexcept;
  * HOMED low-to-high; its fresh admission baseline may supply low. A RUNNING
  * report during nonmoving method35 fails with uncertain execution. Missed
  * transitions remain unobserved. Completion additionally needs new zero pair.
+ * Unknown MOTION bits fail READINESS with raw evidence retained; known alarm/
+ * fault reports take precedence. Unknown bits are not classified as drive faults.
  * Wrong envelopes leave state unchanged; evidence is copied, never retained
  * by pointer. Qualified final evidence may be delivered after its deadline. */
 Status advanceHome(HomeContext&, const ActionEvent&, uint64_t nowUs) noexcept;

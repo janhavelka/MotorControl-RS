@@ -52,6 +52,9 @@ and stop arbitration. Physical interruption remains NOT RUN.
 Stage08 implements the shared homing qualification/observation contract through
 public application APIs and checked live reads, including final-zero revocation.
 The 27 switch methods remain for stages09-12; N08 remains PARTIAL.
+The [independent prompts06-08 audit](reports/2026-10-29_ess_06_08_audit.md)
+tightens homing status/host evidence and lifecycle regressions; it changes no
+native coverage or physical qualification claims.
 Arbitrary replacement still needs active-register
 consumption and completion-attribution evidence; keep N05 PARTIAL after that
 subset. Method28's exchanged branch drawings are recorded in the method guide.

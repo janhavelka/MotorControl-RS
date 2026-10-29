@@ -375,3 +375,19 @@ inventory verification. Local full firmware and physical homing/bench regression
 are NOT RUN; recorded COM13/USB identity remains absent. No alternate board,
 FieldCore source or original reference was changed. Next is stage09, methods1/2/17;
 stages09-15 remain NOT STARTED and method18/collision/nonzero-offset guards remain.
+
+## Independent audit of prompts06-08 (2026-10-29)
+
+Fresh parallel core/owner/homing reviews started at `6493e18`, using full original
+prompts, actual implementation diffs, original PDF pages and current FieldCore
+read-only. No confirmed prompt06/07 defect. Homing corrections reject unknown
+status as unqualified evidence, validate host input/status transition witnesses
+and preserve failure precedence. Removed duplicated qualification checks/zero
+copying; extended reached-phase replacement, in-flight stop and poll64 tests.
+See the [audit report](../../reports/2026-10-29_ess_06_08_audit.md).
+
+Independent final reviews and host/parity reruns PASS. Fresh final quick88/88,
+package export/install and source/installed consumers3/3 each PASS at
+`build/audit_060708_final_quick/`. Exact implementation CI is pending. Physical tests remain
+NOT RUN because the recorded bench USB identity is absent. N05/N08 stay PARTIAL;
+the delivered subsets and remaining method/source limits do not change.

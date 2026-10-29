@@ -142,3 +142,6 @@ logical-input diagnostics and copied revocation that prevents reference publicat
 after cancellation. Methods33/34/35 regress through both application frontends.
 The 27 switch methods remain unimplemented for stages09-12, so N08 stays PARTIAL.
 Physical homing and the absent recorded-bench regression remain NOT RUN.
+The [independent prompts06-08 audit](reports/2026-10-29_ess_06_08_audit.md)
+corrects unknown-status qualification and host transition validation, with
+explicit active-phase replacement, in-flight stop and maximum-poll regressions.

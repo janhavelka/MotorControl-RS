@@ -202,8 +202,8 @@ void testExactWireAndReference() {
     assert(!Ess::getHomeReference(c, c.servicedUs, 1000, ref)); saved.check(ref);
     assert(Ess::nextHome(c, c.servicedUs, work) && work.kind == Ess::ActionWork::WAIT && !work.length);
     const uint64_t completeReadEligible = c.eligibleUs;
-    consume(c, 0x8003); assert(c.phase == Ess::HomePhase::ZERO_CHECK && !c.runningObserved);
-    assert(c.rawMotion == 0x8003 && c.completionObservedUs == completeReadEligible);
+    consume(c, 3); assert(c.phase == Ess::HomePhase::ZERO_CHECK && !c.runningObserved);
+    assert(c.rawMotion == 3 && c.completionObservedUs == completeReadEligible);
     assert(Ess::nextHome(c, c.eligibleUs, work) && work.reg == 0xA && work.count == 2);
     consume(c); assert(c.state == ActionState::SUCCEEDED && c.completion == ActionCompletion::OBSERVED); done(c);
     assert(Ess::getHomeReference(c, c.servicedUs, 1000, ref));
@@ -355,6 +355,71 @@ void testReadinessAndDelayedEvidence() {
     assert(Ess::advanceHome(c, e, 1000));
     assert(c.state == ActionState::FAILED && c.completion == ActionCompletion::NOT_OBSERVED); done(c);
 }
+void testUnknownMotionCannotEstablishReference() {
+    for (const auto method : {Ess::HomingMethod::METHOD_33, Ess::HomingMethod::METHOD_34, Ess::HomingMethod::METHOD_35}) {
+        for (const bool observeInputs : {false, true}) {
+            auto p = prerequisites(method);
+            p.observeInputs = observeInputs; p.ioObservedUs = p.readbackObservedUs = 80;
+            p.rawMotion = 0x8001;
+            auto unchanged = home(method);
+            const Saved<Ess::HomeContext> saved(unchanged);
+            const auto rejected = Ess::prepareHome(unchanged, axis(), 12, request(method), p, 100, 10000, options());
+            assert(!rejected && rejected.detail == static_cast<int32_t>(Ess::HomeError::READINESS));
+            saved.check(unchanged);
+            // Unknown bits cannot supply the low, activity or completion witness.
+            for (const uint16_t flags : {uint16_t(0x8000), uint16_t(0x8004), uint16_t(0x8003)}) {
+                p.rawMotion = 3; // Require a genuinely new low even for method35.
+                Ess::HomeContext c;
+                assert(Ess::prepareHome(c, axis(), 12, request(method), p, 100, 10000, options()));
+                trigger(c);
+                if (flags == 0x8004) consume(c, 1);
+                if (flags == 0x8003) consume(c, method == Ess::HomingMethod::METHOD_35 ? 1 : 4);
+                const bool priorLow = c.homedLowObserved, priorActivity = c.runningObserved;
+                consume(c, flags);
+                assert(c.state == ActionState::FAILED && c.outcome == ActionOutcome::REPLY_ERROR &&
+                    c.status.code == Err::ILLEGAL_VALUE && c.status.detail == static_cast<int32_t>(Ess::HomeError::READINESS));
+                assert(c.rawMotion == flags && c.observationKnown && c.uncertain &&
+                    c.homedLowObserved == priorLow && c.runningObserved == priorActivity &&
+                    c.completion == ActionCompletion::NOT_OBSERVED && !c.completionEvidence.length);
+                assert(c.lastObservation.status && c.failureEvidence.status &&
+                    c.failureEvidence.length == (observeInputs ? 11 : 9) &&
+                    c.failureEvidence.raw[5] == 0x80 && c.failureEvidence.raw[6] == uint8_t(flags));
+                AxisReference reference; reference.nativePosition = 123;
+                assert(!Ess::getHomeReference(c, c.servicedUs, 0, reference) && reference.nativePosition == 123);
+                done(c); // Terminal contexts yield no replay or zero-check work.
+            }
+            for (const bool alarmCode : {false, true}) {
+                Ess::HomeContext c;
+                assert(Ess::prepareHome(c, axis(), 12, request(method), p, 100, 10000, options()));
+                trigger(c); consume(c, alarmCode ? 0x8003 : 0x8008, alarmCode ? 1 : 0);
+                assert(c.status.detail == static_cast<int32_t>(Ess::HomeError::DRIVE_FAULT) &&
+                    c.completion == ActionCompletion::NOT_OBSERVED); // Known faults retain precedence.
+            }
+        }
+    }
+}
+void testMaximumPollBoundary() {
+    for (const bool observeInputs : {false, true}) {
+        auto p = prerequisites(Ess::HomingMethod::METHOD_33);
+        p.observeInputs = observeInputs; p.ioObservedUs = p.readbackObservedUs = 80;
+        auto o = options(); o.maxPolls = 64;
+        Ess::HomeContext c;
+        assert(Ess::prepareHome(c, axis(), 12, request(Ess::HomingMethod::METHOD_33), p, 100, 10000, o));
+        trigger(c);
+        for (unsigned i = 0; i < 63; ++i) consume(c, 4);
+        consume(c, 3);
+        assert(c.polls == 64 && c.step == 66 && c.phase == Ess::HomePhase::ZERO_CHECK);
+        Ess::PreparedHome work;
+        assert(Ess::nextHome(c, c.eligibleUs, work) && work.step == 66 && work.count == 2 && work.length == 8);
+        consume(c); assert(c.state == ActionState::SUCCEEDED && c.polls == 64 && c.zeroEvidence.step == 66);
+        done(c);
+        assert(Ess::prepareHome(c, axis(), 13, request(Ess::HomingMethod::METHOD_33), p, 100, 10000, o));
+        trigger(c);
+        for (unsigned i = 0; i < 64; ++i) consume(c, 4);
+        assert(c.outcome == ActionOutcome::OBSERVATION_LIMIT && c.polls == 64 && c.step == 65 && !c.zeroEvidence.length);
+        done(c);
+    }
+}
 }
 static void testOptionalAgePolicy() {
     const uint64_t now = 100000, deadline = 110000;
@@ -423,5 +488,7 @@ int main() {
     testOptionalAgePolicy();
     testDescriptorsAndNoTraffic(); testPreparationAndBounds(); testExactQualificationCannotBeReused(); testExactWireAndReference();
     testCorrelatedTransitions(); testFailuresAndEnvelopes(); testReadinessAndDelayedEvidence();
+    testUnknownMotionCannotEstablishReference();
+    testMaximumPollBoundary();
     testBorrowedAndOversizedEvidence();
 }

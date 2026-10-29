@@ -47,6 +47,12 @@
 
 ### Fixed
 
+- Homing rejects unknown MOTION bits as unqualified readiness while retaining
+  raw evidence. Host validation also rejects contradictory logical inputs in
+  low/activity witnesses and preserves core failure precedence. Active-phase
+  qualification replacement, in-flight stop and the 64-poll bound have explicit
+  regressions; duplicate qualification checks and zero-evidence copying removed.
+
 - Setting sessions cancel unsent FC06 work when newer checked state/input/feedback
   contradicts admission; contradictory priors revoke stale readiness even without
   a write. Changed start speed requires an explicit, generation-bound application
