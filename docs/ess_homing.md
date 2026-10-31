@@ -9,11 +9,40 @@ input/configuration change. Caller-owned `HomeContext` retains bounded state
 and copied evidence; treat its fields as read-only between API calls.
 
 `homeMethod` and `homeMethodAt` expose all 35 documented method dispositions.
-Methods 33 and 34 implement negative/positive internal-Z search, and 35 uses
-the current mechanical position. Other switch methods remain unimplemented;
+Methods 1 and 2 implement negative/positive-limit reference with internal Z;
+17 uses negative-limit release without index. Methods 33 and 34 implement
+negative/positive internal-Z search, and 35 uses the current mechanical position.
+The other 24 switch methods remain unimplemented;
 method 18 and collision methods −1 through −4 have unresolved source semantics.
 See the [complete method table](ess_homing_methods.md) for trajectories,
 prerequisites, source conflicts and external-input fixture requirements.
+
+## Limit-reference methods 1, 2 and 17
+
+These methods use the same preparation, staging, trigger and observation path
+as 33/34/35. The drive performs the trajectory. Both initially inactive and
+active logical limits are admitted under exact caller qualification:
+
+| Method | Required input | Initially inactive | Initially active | Final reference |
+| --- | --- | --- | --- | --- |
+| 1 | Negative limit, function 3 | Negative high-speed search to activation, then positive low-speed return | Positive low-speed return | First internal Z after limit release |
+| 2 | Positive limit, function 2 | Positive high-speed search to activation, then negative low-speed return | Negative low-speed return | First internal Z after limit release |
+| 17 | Negative limit, function 3 | Negative high-speed search to activation, then positive low-speed return | Positive low-speed return | Limit release; no index qualification required |
+
+For these switch methods `observeInputs=true` is mandatory. Supply exact
+function/polarity readback, declared connected wiring, current logical levels
+and their acquisition times. `availableInputs` alone cannot qualify a method.
+The supplied method qualification covers both admitted starting branches,
+direction, travel and rate/ramp behavior; it is not inferred from sensor level.
+Logical levels already include drive polarity and must not be inverted again.
+
+Required limit activation is expected, while an unexpected active assigned
+origin/opposite limit, alarm or motion-status soft-limit flag rejects or fails.
+An unchanged sampled limit does not prove a stuck sensor: missed input edges
+are tolerated when the qualified status/zero completion contract below is met.
+If RUNNING or the fresh HOMED transition is missing, poll/deadline exhaustion
+leaves completion unobserved. No atomic input/status snapshot is promised.
+Method 18 remains unresolved independently of method 17.
 
 ## Parameter observations
 
@@ -47,7 +76,7 @@ qualification, without deriving them from incoming intent. Terminal JSON keeps
 them in `prerequisites.qualified_parameters`; Python checks them against the
 staged method/rate/ramp words.
 
-Methods 33/34 additionally need qualified internal Z;
+Methods 1/2/33/34 additionally need qualified internal Z;
 35 needs neither Z nor an external sensor. Unknown input assignments are not
 qualified by unplugged wiring. Existing active auxiliary `0x0030` must already
 be qualified as `KEEP_POSITION_SET_ZERO` (7). Homing never writes that auxiliary
@@ -76,7 +105,7 @@ automatic replay. Partial or uncertain setup remains visible on failure.
 
 ## Completion, stop and reference
 
-Methods 33/34 require fresh post-trigger RUNNING and HOMED-low observations,
+Moving methods 1/2/17/33/34 require fresh post-trigger RUNNING and HOMED-low observations,
 then stopped/in-position HOMED-high. Method 35 requires HOMED-low to high; its
 fresh admission baseline may supply low because no search motion is required.
 Old HOMED-high, a missed transition, start echo or interrupted search cannot
@@ -96,8 +125,8 @@ Alarm, released state or soft-limit flags fail the operation. Cancellation ends
 local sequencing and does not stop the motor. The application settles any
 in-flight transaction before executing explicit priority stop through the
 existing action API. Timeout, recovery and stop interruption preserve execution
-uncertainty; none proves standstill. No new switch transitions or return path
-are claimed by the internal-Z/current-position subset.
+uncertainty; none proves standstill. Software completion does not prove every
+physical switch transition, internal Z passage or return path.
 Method 35 also fails if a fresh report shows RUNNING, since activity contradicts
 its nonmoving current-position procedure and cannot establish the reference.
 
@@ -160,7 +189,7 @@ change. Physical p73 does not resolve offset order/sign/scale or the sampling
 instant of its term actual value. Selecting a stored policy implements no new
 coordinate policy as motion. `prepareHome` still requires independently
 qualified active auxiliary7, qualified zero offset, exact native parameters and
-methods33/34/35. A stored/readback7 never grants any of those qualifications.
+methods1/2/17/33/34/35. A stored/readback7 never grants any of those qualifications.
 
 Use `prepareDriverRead`/`getDriver` for prior FC03 `0x0030/1`; the update uses
 `prepareDriverSettings`/`nextDriver`/`advanceDriver` for FC06 `0x0030` and separate
@@ -215,7 +244,8 @@ input reassignment, automatic repair or rollback follows this setter.
 ## Application qualification and shared observation
 
 Stage08 implements the shared [stage01 decisions](reports/2026-10-29_ess_software_contracts.md).
-Execution support remains33/34/35 only; the 27 switch methods await stages09-12.
+Stage09 implements limit-reference1/2/17 alongside33/34/35; the other24 switch
+methods await stages10-12.
 
 The public [ProbeApp.h](../examples/probe_cli/ProbeApp.h) exposes `installHomeQualification`,
 `inspectHomeQualification`, `revokeHomeQualification`, `submitHome` and
@@ -320,6 +350,9 @@ home methods
 home qualification
 home 35 60 30 100 zero [address]
 home 33 60 30 100 zero [address]
+home 1 60 30 100 zero [address]
+home 2 60 30 100 zero [address]
+home 17 60 30 100 zero [address]
 ```
 
 The parameter names in help are `search_native`, `return_native` and

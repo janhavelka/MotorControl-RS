@@ -78,7 +78,8 @@ void testDescriptorsAndNoTraffic() {
         assert(Ess::homeMethod(d->method) == d && d->requiredInputs == inputs[i] && d->reason && *d->reason);
         assert(d->requiresIndex == ((values[i] >= 1 && values[i] <= 14) || values[i] == 33 || values[i] == 34));
         assert(d->moves == (values[i] != 35));
-        if (values[i] >= 33) assert(d->support == Ess::HomeSupport::IMPLEMENTED);
+        if (values[i] >= 33 || values[i] == 1 || values[i] == 2 || values[i] == 17)
+            assert(d->support == Ess::HomeSupport::IMPLEMENTED);
         else {
             const Saved<Ess::HomeContext> saved(c);
             const auto status = Ess::prepareHome(c, axis(), 12, request(d->method), prerequisites(), 100, 10000);
@@ -420,6 +421,188 @@ void testMaximumPollBoundary() {
         done(c);
     }
 }
+// Source-derived vectors: original function PDF physical p32 (method1), p33
+// (method2), p50-51 (method17). CRC literals were calculated independently of
+// the production builders. These simulated samples do not observe direction,
+// a physical edge, or internal Z; the drive owns the documented trajectories.
+struct LimitCase {
+    Ess::HomingMethod method;
+    uint16_t function;
+    uint8_t inputRole;
+    bool index;
+    uint8_t staging[21];
+};
+const LimitCase LIMIT_CASES[] = {
+    // Initially inactive: -H to negative rising, stop/reverse +L; active:
+    // directly +L. Both stop at the first internal Z after negative falling.
+    {Ess::HomingMethod::METHOD_1, 3, 4, true,
+        {1,16,0,49,0,6,12,0,1,0,60,0,30,0,100,0,0,0,0,0x55,0x67}},
+    // Initially inactive: +H to positive rising, stop/reverse -L; active:
+    // directly -L. Both stop at the first internal Z after positive falling.
+    {Ess::HomingMethod::METHOD_2, 2, 2, true,
+        {1,16,0,49,0,6,12,0,2,0,60,0,30,0,100,0,0,0,0,0x5A,0x23}},
+    // Independently reviewed p50-51: inactive -H to negative rising then +L;
+    // active directly +L. Stop at negative falling, with no Z dependency.
+    {Ess::HomingMethod::METHOD_17, 3, 4, false,
+        {1,16,0,49,0,6,12,0,17,0,60,0,30,0,100,0,0,0,0,0x01,0xA7}}
+};
+Ess::HomePrerequisites limitPrerequisites(const LimitCase& source, bool initiallyActive = false) {
+    auto p = prerequisites(source.method);
+    p.observeInputs = true; p.ioObservedUs = p.readbackObservedUs = 80;
+    p.inputFunctions[0] = source.function; p.inputWiring[0] = InputWiring::CONNECTED;
+    p.availableInputs = source.inputRole; p.indexQualified = source.index;
+    p.rawInputs = initiallyActive ? 1 : 0;
+    // Polarity is already applied by the drive; logical validity must not invert.
+    p.inputPolarity = 1; p.rawMotion = 3;
+    return p;
+}
+Ess::HomeContext limitHome(const LimitCase& source, bool initiallyActive = false) {
+    Ess::HomeContext c;
+    assert(Ess::prepareHome(c, axis(), 12, request(source.method), limitPrerequisites(source, initiallyActive),
+        100, 10000, options()));
+    return c;
+}
+void consumeInputs(Ess::HomeContext& c, uint16_t flags, uint16_t inputs) {
+    auto bytes = reply(c, flags); bytes.resize(bytes.size() - 2);
+    assert(bytes.size() == 9 && bytes[2] == 6);
+    bytes[7] = static_cast<uint8_t>(inputs >> 8); bytes[8] = static_cast<uint8_t>(inputs);
+    crc(bytes); const auto at = c.eligibleUs + 20;
+    assert(Ess::advanceHome(c, frame(c, bytes, at), at + 20));
+}
+void testLimitBranchesAndVectors() {
+    for (const auto& source : LIMIT_CASES) for (const bool initiallyActive : {false, true}) {
+        auto c = limitHome(source, initiallyActive); Ess::PreparedHome work;
+        assert(c.prerequisites.rawInputs == (initiallyActive ? 1 : 0));
+        assert(c.prerequisites.indexQualified == source.index && !c.homedLowObserved);
+        assert(Ess::nextHome(c, 100, work));
+        assert(work.length == sizeof(source.staging) && work.write && work.reg == 0x31 && work.count == 6);
+        assert(std::memcmp(work.bytes, source.staging, sizeof(source.staging)) == 0);
+        consume(c);
+        const uint8_t triggerBytes[] = {1,6,0,0x27,0,16,0x38,0x0D};
+        assert(Ess::nextHome(c, c.eligibleUs, work));
+        assert(work.length == sizeof(triggerBytes) && std::memcmp(work.bytes, triggerBytes, sizeof(triggerBytes)) == 0);
+        consume(c);
+        assert(c.execution == ActionExecution::ACKNOWLEDGED && c.completion == ActionCompletion::NOT_OBSERVED);
+        const uint8_t pollBytes[] = {1,3,0,6,0,3,0xE5,0xCA};
+        assert(Ess::nextHome(c, c.eligibleUs, work));
+        assert(work.length == sizeof(pollBytes) && std::memcmp(work.bytes, pollBytes, sizeof(pollBytes)) == 0);
+        if (!initiallyActive) consumeInputs(c, 4, 0);
+        consumeInputs(c, 4, 1); // Expected physical limit activation is not a soft-limit fault.
+        assert(c.state == ActionState::ACTIVE && c.runningObserved && c.homedLowObserved);
+        consumeInputs(c, 4, 0); // Effective release sample; this is not a wire-edge witness.
+        consumeInputs(c, 3, 0); assert(c.phase == Ess::HomePhase::ZERO_CHECK);
+        assert(c.activityEvidence.length == 11 && c.lowEvidence.length == 11 && c.completionEvidence.length == 11);
+        consume(c); assert(c.state == ActionState::SUCCEEDED && !c.uncertain);
+        AxisReference reference; assert(Ess::getHomeReference(c, c.servicedUs, 0, reference));
+        assert(reference.nativeKnown && reference.nativePosition == 0); done(c);
+
+        // A sampled input transition can be missed completely. Qualified fresh
+        // status transitions plus zero still complete; no invented Z/edge proof.
+        // Alarm, motion and input words do not promise an atomic snapshot, so
+        // an unchanged active input sample alone cannot contradict completion.
+        for (const uint16_t sampledInputs : {uint16_t(0), uint16_t(1)}) {
+            c = limitHome(source, initiallyActive); trigger(c);
+            consumeInputs(c, 4, sampledInputs); consumeInputs(c, 3, sampledInputs); consume(c);
+            assert(c.state == ActionState::SUCCEEDED && c.inputsObserved && c.rawInputs == sampledInputs); done(c);
+        }
+    }
+}
+void testLimitAdmission() {
+    for (const auto& source : LIMIT_CASES) {
+        auto c = limitHome(source);
+        for (unsigned fault = 0; fault < 22; ++fault) {
+            auto p = limitPrerequisites(source); auto r = request(source.method);
+            switch (fault) {
+            case 0: p.observeInputs = false; break;
+            case 1: p.availableInputs = 0; break;
+            case 2: p.inputFunctions[0] = 0; break;
+            case 3: p.inputFunctions[0] = source.function == 3 ? 2 : 3; break;
+            case 4: p.inputWiring[0] = InputWiring::UNCONNECTED; break;
+            case 5: p.inputWiring[0] = InputWiring::UNKNOWN; break;
+            case 6: p.inputPolarity = 16; break;
+            case 7: p.rawInputs = 16; break;
+            case 8: p.ioObservedUs = 0; p.maximumAgeUs = 100; break;
+            case 9: p.ioObservedUs = 101; break;
+            case 10: p.readbackObservedUs = 0; p.maximumAgeUs = 100; break;
+            case 11: ++p.target.generation; break;
+            case 12: ++p.configurationGeneration; break;
+            case 13: ++r.configurationGeneration; break;
+            case 14: r.offset = 1; break;
+            case 15: r.searchSpeed = 3001; break;
+            case 16: r.returnSpeed = 301; break;
+            case 17: r.rampTime = 29; break;
+            case 18: ++r.searchSpeed; break;
+            case 19: p.inputsQualified = false; break;
+            case 20: p.methodQualified = false; break;
+            case 21: p.qualifiedUs = 0; p.qualificationMaximumAgeUs = 100; break;
+            }
+            const Saved<Ess::HomeContext> saved(c);
+            assert(!Ess::prepareHome(c, axis(), 12, r, p, 100, 10000, options())); saved.check(c);
+        }
+        auto p = limitPrerequisites(source); p.indexQualified = false;
+        const auto result = Ess::prepareHome(c, axis(), 12, request(source.method), p, 100, 10000, options());
+        if (source.index) assert(!result && result.detail == static_cast<int32_t>(Ess::HomeError::INDEX_REQUIRED));
+        else assert(result && !c.prerequisites.indexQualified); // Method17 must never inherit a Z prerequisite.
+    }
+}
+void testLimitIncompleteAndFailedEvidence() {
+    for (const auto& source : LIMIT_CASES) {
+        for (const uint16_t stuckFlags : {uint16_t(3),uint16_t(4),uint16_t(6),uint16_t(1)}) {
+            auto c = limitHome(source, true); trigger(c);
+            // Old HOMED/ARRIVED, stuck RUNNING, RUNNING with stale HOMED, or
+            // no observed search cannot prove a reference, even with active IO.
+            for (unsigned poll = 0; poll < c.options.maxPolls; ++poll) consumeInputs(c, stuckFlags, 1);
+            assert(c.outcome == ActionOutcome::OBSERVATION_LIMIT && c.uncertain);
+            assert(c.completion == ActionCompletion::NOT_OBSERVED && !c.zeroEvidence.length); done(c);
+        }
+        for (unsigned fault = 0; fault < 6; ++fault) {
+            auto c = limitHome(source); trigger(c); auto bytes = reply(c, 4);
+            bytes.resize(bytes.size() - 2);
+            if (fault == 0) bytes[0] = 2;
+            if (fault == 1) bytes[1] = 4;
+            if (fault == 2) bytes[2] = 4;
+            if (fault == 3) bytes.pop_back();
+            if (fault == 4) bytes.push_back(0);
+            crc(bytes); if (fault == 5) bytes.back() ^= 1;
+            const auto at = c.eligibleUs + 20;
+            assert(Ess::advanceHome(c, frame(c, bytes, at), at + 20));
+            assert(c.outcome == ActionOutcome::REPLY_ERROR && !c.runningObserved && !c.homedLowObserved);
+            assert(c.completion == ActionCompletion::NOT_OBSERVED); done(c);
+        }
+        for (const uint16_t flags : {uint16_t(8),uint16_t(16),uint16_t(32),uint16_t(64),uint16_t(0x8004)}) {
+            auto c = limitHome(source); trigger(c); consumeInputs(c, flags, 1);
+            assert(c.state == ActionState::FAILED && c.uncertain && c.completion == ActionCompletion::NOT_OBSERVED);
+            assert(c.status.detail == static_cast<int32_t>(flags == 0x8004 ? Ess::HomeError::READINESS : Ess::HomeError::DRIVE_FAULT)); done(c);
+        }
+        auto c = limitHome(source); trigger(c); consumeInputs(c, 4, 16);
+        assert(c.status.detail == static_cast<int32_t>(Ess::HomeError::INPUT_REQUIRED)); done(c);
+        c = limitHome(source); trigger(c); consumeInputs(c, 4, 0); consumeInputs(c, 3, 0);
+        auto bytes = reply(c); bytes.resize(bytes.size() - 2); bytes[6] = 1; crc(bytes);
+        auto at = c.eligibleUs + 20;
+        assert(Ess::advanceHome(c, frame(c, bytes, at), at + 20));
+        assert(c.status.detail == static_cast<int32_t>(Ess::HomeError::ZERO_NOT_OBSERVED)); done(c);
+        c = limitHome(source); trigger(c);
+        assert(Ess::advanceHome(c, local(c, ReadEventKind::DEADLINE), c.deadlineUs));
+        assert(c.outcome == ActionOutcome::DEADLINE && c.uncertain); done(c);
+        c = limitHome(source); trigger(c); consumeInputs(c, 4, 1);
+        assert(Ess::advanceHome(c, local(c, ReadEventKind::CANCEL), c.servicedUs));
+        assert(c.outcome == ActionOutcome::CANCELLED && c.uncertain); done(c);
+        for (const bool setupAcknowledged : {false, true}) {
+            c = limitHome(source); if (setupAcknowledged) consume(c);
+            auto event = local(c, ReadEventKind::TRANSPORT_FAILURE);
+            event.transport.txAccepted = setupAcknowledged ? 8 : 21; event.txComplete = true;
+            assert(Ess::advanceHome(c, event, c.servicedUs + 20));
+            assert(c.uncertain && c.completion == ActionCompletion::NOT_OBSERVED &&
+                (setupAcknowledged ? c.execution : c.setupExecution) == ActionExecution::UNKNOWN); done(c);
+            const Saved<Ess::HomeContext> saved(c); bytes = reply(c);
+            assert(!Ess::advanceHome(c, frame(c, bytes, c.servicedUs + 20), c.servicedUs + 40)); saved.check(c);
+        }
+        c = limitHome(source); trigger(c); bytes = reply(c, 4); at = c.eligibleUs + 20;
+        auto oldEvent = frame(c, bytes, at); --oldEvent.transport.operationId;
+        const Saved<Ess::HomeContext> saved(c);
+        assert(!Ess::advanceHome(c, oldEvent, at + 20)); saved.check(c);
+    }
+}
 }
 static void testOptionalAgePolicy() {
     const uint64_t now = 100000, deadline = 110000;
@@ -491,4 +674,5 @@ int main() {
     testUnknownMotionCannotEstablishReference();
     testMaximumPollBoundary();
     testBorrowedAndOversizedEvidence();
+    testLimitBranchesAndVectors(); testLimitAdmission(); testLimitIncompleteAndFailedEvidence();
 }

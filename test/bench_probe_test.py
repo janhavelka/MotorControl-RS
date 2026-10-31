@@ -1282,7 +1282,7 @@ class Framing(unittest.TestCase):
         self.assertEqual(self.events[-1]["cleanup"], "not_required")
 
     def test_home_unresolved_and_unimplemented_are_exact_unadmitted_results(self):
-        for method, disposition in (("1", "unimplemented"), ("18", "unresolved")):
+        for method, disposition in (("3", "unimplemented"), ("18", "unresolved")):
             def handler(i, command, args):
                 if command != "home": return Serial.normal(i, command, args)
                 return encoded(reply(i, command, ok=False, result=disposition, address=1, operation_id=0))
@@ -3689,8 +3689,8 @@ class Framing(unittest.TestCase):
 
     def test_homing_parameter_zero_offset_stays_unresolved_and_method_support_is_separate(self):
         fixture = typed_terminal(2, "homing_parameters")
-        for method, known, support in ((1, True, "unimplemented"), (14, True, "unimplemented"),
-                (15, False, "unknown"), (16, False, "unknown"), (17, True, "unimplemented"),
+        for method, known, support in ((1, True, "implemented"), (2, True, "implemented"), (14, True, "unimplemented"),
+                (15, False, "unknown"), (16, False, "unknown"), (17, True, "implemented"),
                 (18, True, "unresolved"), (30, True, "unimplemented"), (31, False, "unknown"),
                 (32, False, "unknown"), (33, True, "implemented"), (34, True, "implemented"),
                 (35, True, "implemented"), (36, False, "unknown"), (0xFFFC, False, "unknown"),

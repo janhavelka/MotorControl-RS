@@ -1,5 +1,5 @@
 /** @file Homing.h
- * @brief Bounded ESS index search and current-position homing. No I/O or retry.
+ * @brief Bounded ESS limit, index and current-position homing. No I/O or retry.
  * SPDX-License-Identifier: MIT
  */
 #pragma once
@@ -69,8 +69,10 @@ struct HomePrerequisites {
     /** Supplied fixture facts have their own age; refreshing register reads does
      * not renew them. Zero maximum age disables expiry, not future-time checks. */
     uint64_t qualifiedUs = 0, qualificationMaximumAgeUs = 0;
-    /** Optional checked logical-input observation. Standalone application homes
-     * enable this and bind these assignments to real configuration readback. */
+    /** Checked logical-input observation, required for switch methods; optional
+     * for 33/34/35. Standalone application homes always enable it and bind these
+     * assignments to real configuration readback. INPUT_STATUS is already
+     * logical; polarity must not be applied again. */
     bool observeInputs = false;
     uint16_t inputFunctions[4] = {}, inputPolarity = 0;
     InputWiring inputWiring[4] = {};
@@ -134,11 +136,14 @@ Status prepareHome(HomeContext&, const AxisConfig&, uint32_t operationId,
                    const HomeRequest&, const HomePrerequisites&, uint64_t nowUs,
                    uint64_t deadlineUs, const ActionOptions& = ActionOptions()) noexcept;
 Status nextHome(const HomeContext&, uint64_t nowUs, PreparedHome&) noexcept;
-/** Checked start echo only acknowledges. Index searches need new RUNNING and
+/** Checked start echo only acknowledges. Moving homes need new RUNNING and
  * post-trigger HOMED low then high while stopped/in-position. Method35 needs
  * HOMED low-to-high; its fresh admission baseline may supply low. A RUNNING
  * report during nonmoving method35 fails with uncertain execution. Missed
- * transitions remain unobserved. Completion additionally needs new zero pair.
+ * status transitions remain unobserved. Completion additionally needs new zero
+ * pair. Required limit activation is expected during the drive's trajectory;
+ * sampled inputs cannot prove each edge, reversal or internal Z passage. Missing
+ * sampled input edges alone do not defeat qualified status/zero completion.
  * Unknown MOTION bits fail READINESS with raw evidence retained; known alarm/
  * fault reports take precedence. Unknown bits are not classified as drive faults.
  * Wrong envelopes leave state unchanged; evidence is copied, never retained

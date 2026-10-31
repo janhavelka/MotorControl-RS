@@ -80,10 +80,11 @@ class Coverage(unittest.TestCase):
             "MotionCommandBit.START_SPEED", "MotionCommandBit.INTERRUPT_POSITION", "DefaultDirection.NORMAL", "DefaultDirection.REVERSED",
             "WordOrder.HIGH_WORD_FIRST", "WordOrder.LOW_WORD_FIRST", "SoftLimitEnable.LIMITS_OFF",
             "SoftLimitEnable.AFTER_HOMING", "OverLimitStop.FREE_PARKING", "OverLimitStop.EMERGENCY_STOP",
-            "PvTriggerMode.LEVEL", "PvTriggerMode.RISING_EDGE", "PositionMode.RELATIVE", "PositionMode.ABSOLUTE", "HomingMethod.METHOD_33", "HomingMethod.METHOD_34",
+            "PvTriggerMode.LEVEL", "PvTriggerMode.RISING_EDGE", "PositionMode.RELATIVE", "PositionMode.ABSOLUTE", "HomingMethod.METHOD_1", "HomingMethod.METHOD_2", "HomingMethod.METHOD_17",
+            "HomingMethod.METHOD_33", "HomingMethod.METHOD_34",
             "HomingMethod.METHOD_35", "MotionCommandBit.START_HOMING",
             "ControlAlgorithm.OPEN_LOOP", "ControlAlgorithm.ALGORITHM_1"} | {e["name"] + "." + v["name"] for e in LEDGER["enums"] if e["name"] in ("InputFunction", "OutputFunction", "InputBit", "OutputBit", "BaudRateCode", "SerialFormatCode", "MotionStatusBit", "AlarmCode", "HomingAuxiliary") for v in e["values"] if not (e["name"] == "OutputFunction" and v["value"] == 11)})
-        self.assertEqual(result["summary"]["choice_implementation"], {"NOT_IMPLEMENTED": 39, "IMPLEMENTED": 94, "UNSUPPORTED": 1, "NOT_APPLICABLE": 1})
+        self.assertEqual(result["summary"]["choice_implementation"], {"NOT_IMPLEMENTED": 36, "IMPLEMENTED": 97, "UNSUPPORTED": 1, "NOT_APPLICABLE": 1})
         for record in result["records"]:
             if record["id"] in ("AUXILIARY_COMMAND", "MOTION_COMMAND"):
                 self.assertEqual(record["obligations"]["write"], "IN_PROGRESS")
@@ -94,6 +95,7 @@ class Coverage(unittest.TestCase):
         choices = {row["id"]: row["disposition"] for row in result["named_choices"]}
         for choice, disposition in choices.items():
             if choice.startswith("HomingMethod.") and choice not in {
+                    "HomingMethod.METHOD_1", "HomingMethod.METHOD_2", "HomingMethod.METHOD_17",
                     "HomingMethod.METHOD_33", "HomingMethod.METHOD_34", "HomingMethod.METHOD_35"}:
                 self.assertEqual(disposition, operations.DEFAULT)
         offset = next(row for row in result["records"] if row["id"] == "HOMING_OFFSET")

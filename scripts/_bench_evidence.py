@@ -324,7 +324,7 @@ def check_typed_read(item: dict, kind: str, address: int | None) -> None:
                 "homing offset words differ from retained RX")
         method = decoded_words[1]
         known_method = method in (*range(1, 15), *range(17, 31), 33, 34, 35)
-        support = ("unknown" if not known_method else "implemented" if method in (33, 34, 35) else
+        support = ("unknown" if not known_method else "implemented" if method in (1, 2, 17, 33, 34, 35) else
                    "unresolved" if method == 18 else "unimplemented")
         for key, value in (("auxiliary_known", decoded_words[0] <= 11), ("method_known", known_method),
                            ("search_speed_in_range", 5 <= decoded_words[2] <= 3000),
@@ -1538,7 +1538,8 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
     require(all(operation_id(item.get(k)) for k in ("target", "generation", "configuration_generation")), "binding is invalid")
     check_counts(item, ("started_us", "deadline_us", "serviced_us", "polls", "completion_observed_us"), "home")
     require(item["started_us"] < item["deadline_us"] and item["started_us"] <= item["serviced_us"] and item["polls"] <= 64, "time/count bounds are invalid")
-    require(item.get("method") in (33, 34, 35), "unimplemented method yielded traffic")
+    require(item.get("method") in (1, 2, 17, 33, 34, 35), "unimplemented method yielded traffic")
+    required_inputs = {1: 4, 2: 2, 17: 4}.get(item["method"], 0)
     require(uint(item.get("phase"), 3), "phase is invalid")
     words = item.get("staging_words")
     require(isinstance(words, list) and len(words) == 6 and all(uint(w, 65535) for w in words) and
@@ -1587,18 +1588,20 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
             available = 0
             for function, wire in zip(functions, wiring):
                 if function and wire == 2: available |= 1 << (function - 1)
-            require(available == q["available_inputs"] and
-                    not any(function and q["raw_inputs"] & (1 << i) for i, function in enumerate(functions)),
-                    "input qualification contradicts implemented no-switch method")
+            require(available == q["available_inputs"] and available & required_inputs == required_inputs and
+                    not any(function and not required_inputs & (1 << (function - 1)) and
+                            q["raw_inputs"] & (1 << i) for i, function in enumerate(functions)),
+                    "input qualification contradicts required method signals")
         require(not revoked or (not item["ok"] and item["outcome"] == "cancelled" and item.get("detail") == 33),
                 "revocation did not prevent success")
     else:
         require(not revoked, "revocation lacks copied qualification")
+    require(not required_inputs or observe_inputs, "switch method lacks checked logical input observation")
     status_length, status_bytes = (11, 6) if observe_inputs else (9, 4)
     def inputs_permit(raw):
         if not observe_inputs: return True
         inputs = int.from_bytes(raw[7:9], "big")
-        return inputs <= 15 and not any(function and inputs & (1 << i)
+        return inputs <= 15 and not any(function and not required_inputs & (1 << (function - 1)) and inputs & (1 << i)
                                        for i, function in enumerate(q["input_functions"]))
     def observation_permits_continuation(raw):
         if len(raw) != status_length or raw[:3] != bytes((item["address"], 3, status_bytes)) or wire_crc(raw): return False

@@ -1,12 +1,13 @@
 # Execution progress
 
-Prepared 2026-10-23; updated 2026-10-29 for stages 01-08 execution. The preparation
+Prepared 2026-10-23; updated 2026-10-31 for stages 01-09 execution. The preparation
 record below is historical. Stage 01 delivered contracts only; stage 02 implements
 velocity parameter reads. Stage 03 adds homing parameter reads; stage 04 adds
 position start-speed setting. Stage05 adds homing auxiliary configuration;
 stage06 delivers the native stored-profile interruption core. Stage07 delivers
 its bounded owner/application/console integration. Stage08 implements shared
-homing qualification/observation with final verification complete. Stages09-15
+homing qualification/observation with final verification complete. Stage09
+implements limit-reference1/2/17 with verification in progress. Stages10-15
 remain NOT STARTED; N08 stays PARTIAL and broader N05 remains PARTIAL pending
 active staging and completion-attribution evidence.
 
@@ -20,7 +21,7 @@ active staging and completion-attribution evidence.
 | 06 | SOFTWARE COMPLETE | `db65b1b`; [core subset, review and verification](../../reports/2026-10-29_ess_position_interrupt_core.md); 86-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: core-only delivery |
 | 07 | SOFTWARE COMPLETE | `14da3ad`; [owner/application integration and verification](../../reports/2026-10-29_ess_position_interrupt_owner.md); 88-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 08 | SOFTWARE COMPLETE | `77f9886`; [shared homing qualification/observation](../../reports/2026-10-29_ess_homing_foundation.md); fresh88-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
-| 09 | NOT STARTED | - | NOT RUN |
+| 09 | IN PROGRESS | [Limit-reference implementation and verification](../../reports/2026-10-31_ess_limit_homing.md) | NOT RUN: recorded bench USB absent; no limit-switch fixture |
 | 10 | NOT STARTED | - | NOT RUN |
 | 11 | NOT STARTED | - | NOT RUN |
 | 12 | NOT STARTED | - | NOT RUN |
@@ -398,3 +399,21 @@ The documentation-only evidence checkpoint uses local consistency checks.
 Local full firmware is NOT RUN; CI supplies the firmware matrix. Physical tests
 remain NOT RUN because the recorded bench USB identity is absent. N05/N08 stay PARTIAL;
 the delivered subsets and remaining method/source limits do not change.
+
+## Stage 09 limit-reference homing (2026-10-31)
+
+Implemented methods 1, 2 and 17 through the shared production path; native
+vectors cover each initial branch and the app/console uses public qualification
+installation. Method17 requires no index;1/2 require the exact limit and Z.
+Checked switch observation is mandatory, with status/zero completion preserving
+stage08's sampled-input limits. Method18, collision and nonzero-offset guards
+remain. Counts are six implemented,24 unimplemented and five unresolved methods;
+N08 stays PARTIAL. Physical tests are NOT RUN: the recorded USB device is absent
+and no limit-switch fixture is present.
+
+[Source, review findings, failures and verification](../../reports/2026-10-31_ess_limit_homing.md)
+records the independent vector/app authors and read-only review. Core/app and
+seven integrated focused suites pass; first quick run86/88 exposed two stale
+expectations, now corrected with unsupported-method coverage retained. Final
+fresh quick/package passed all 88 suites and 15 checks in
+`build/ess_software_09_final`; exact-commit CI is pending.

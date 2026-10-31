@@ -1,8 +1,8 @@
 # ESS software completion
 
-Prepared 2026-10-23. **Stage 01 contracts and stages 02-07 software completed
-2026-10-29; stage07 delivers the bounded stored-profile interrupt route. Stages08-15 are
-NOT STARTED.** See the [source decisions](../../reports/2026-10-29_ess_software_contracts.md)
+Prepared 2026-10-23. **Stage 01 contracts and stages 02-08 software completed
+2026-10-29. Stage09 implements limit-reference methods 1, 2 and 17 with final
+verification in progress on 2026-10-31. Stages10-15 are NOT STARTED.** See the [source decisions](../../reports/2026-10-29_ess_software_contracts.md)
 and [progress](progress.md). Contracts do not implement the features. Read the
 [verified audit](audit.md), [execution contract](execution_contract.md),
 [source map](source_map.md) and [verification rules](verification.md).
@@ -12,8 +12,8 @@ Complete the standalone library and its ordinary application/console paths for:
 - Typed reads of three velocity parameters and six homing parameters.
 - Typed setters for position start speed and homing auxiliary configuration.
 - Explicit serial position interruption, including ownership and retained results.
-- The 27 switch homing methods currently marked UNIMPLEMENTED, in four bounded
-  groups, with honest source, observation and physical qualification limits.
+- The original 27 switch homing methods, in four bounded groups (24 remain
+  unimplemented after stage09), with honest source, observation and physical qualification limits.
 
 Keep the existing C++11 core, caller-owned sequences, portable bus owner and
 shared Arduino/native ESP-IDF application. Use small direct extensions, clear

@@ -23,8 +23,8 @@ const HomeMethodDescriptor METHODS[HOME_METHOD_COUNT] = {
     {HomingMethod::COLLISION_MINUS_3, HomeSupport::UNRESOLVED, 0, false, true, COLLISION_UNRESOLVED},
     {HomingMethod::COLLISION_MINUS_2, HomeSupport::UNRESOLVED, 0, false, true, COLLISION_UNRESOLVED},
     {HomingMethod::COLLISION_MINUS_1, HomeSupport::UNRESOLVED, 0, false, true, COLLISION_UNRESOLVED},
-    {HomingMethod::METHOD_1, HomeSupport::UNIMPLEMENTED, 4, true, true, SWITCH_PENDING},
-    {HomingMethod::METHOD_2, HomeSupport::UNIMPLEMENTED, 2, true, true, SWITCH_PENDING},
+    {HomingMethod::METHOD_1, HomeSupport::IMPLEMENTED, 4, true, true, "negative-limit release then first internal Z in positive low-speed direction; qualified limit and index required"},
+    {HomingMethod::METHOD_2, HomeSupport::IMPLEMENTED, 2, true, true, "positive-limit release then first internal Z in negative low-speed direction; qualified limit and index required"},
     {HomingMethod::METHOD_3, HomeSupport::UNIMPLEMENTED, 1, true, true, SWITCH_PENDING},
     {HomingMethod::METHOD_4, HomeSupport::UNIMPLEMENTED, 1, true, true, SWITCH_PENDING},
     {HomingMethod::METHOD_5, HomeSupport::UNIMPLEMENTED, 1, true, true, SWITCH_PENDING},
@@ -37,7 +37,7 @@ const HomeMethodDescriptor METHODS[HOME_METHOD_COUNT] = {
     {HomingMethod::METHOD_12, HomeSupport::UNIMPLEMENTED, 5, true, true, SWITCH_PENDING},
     {HomingMethod::METHOD_13, HomeSupport::UNIMPLEMENTED, 5, true, true, SWITCH_PENDING},
     {HomingMethod::METHOD_14, HomeSupport::UNIMPLEMENTED, 5, true, true, SWITCH_PENDING},
-    {HomingMethod::METHOD_17, HomeSupport::UNIMPLEMENTED, 4, false, true, SWITCH_PENDING},
+    {HomingMethod::METHOD_17, HomeSupport::IMPLEMENTED, 4, false, true, "negative-limit release in positive low-speed direction; qualified limit required, no index"},
     {HomingMethod::METHOD_18, HomeSupport::UNRESOLVED, 2, false, true, "positive-limit prose conflicts with negative-limit diagram labels"},
     {HomingMethod::METHOD_19, HomeSupport::UNIMPLEMENTED, 1, false, true, SWITCH_PENDING},
     {HomingMethod::METHOD_20, HomeSupport::UNIMPLEMENTED, 1, false, true, SWITCH_PENDING},
@@ -146,6 +146,8 @@ Status checkHomeQualification(const HomePrerequisites& p, uint64_t nowUs) noexce
     if (!p.nativeRampQualified) return invalid(HomeError::UNRESOLVED_RAMP, "native ramp is unqualified");
     if (!p.inputsQualified || (p.availableInputs & method->requiredInputs) != method->requiredInputs)
         return invalid(HomeError::INPUT_REQUIRED, "required input qualification is absent");
+    if (method->requiredInputs && !p.observeInputs)
+        return invalid(HomeError::INPUT_REQUIRED, "switch homing requires checked input mapping and logical levels");
     if (method->requiresIndex && !p.indexQualified) return invalid(HomeError::INDEX_REQUIRED, "index qualification is absent");
     if (!p.methodQualified || !p.readinessQualified || !evidenceAgeValid(p.qualifiedUs, nowUs, p.qualificationMaximumAgeUs))
         return invalid(HomeError::READINESS, "fixture qualification is absent or expired");

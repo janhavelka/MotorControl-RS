@@ -73,8 +73,8 @@ spatial branches in source-derived tests; do not use the a/b letters as reliable
 path identifiers or generalize this interpretation to unresolved method 18.
 See the [stage 01 source review](reports/2026-10-29_ess_software_contracts.md).
 
-The implemented subset is 33, 34 and 35, with zero offset and auxiliary value 7.
-Methods requiring external switches remain unimplemented. Their planned
+The implemented subset is 1, 2, 17, 33, 34 and 35, with zero offset and auxiliary
+value 7. The other 24 switch methods remain unimplemented. Their shared
 [admission and observation contract](ess_homing.md#planned-auxiliary-setting-and-switch-method-integration-not-implemented)
 keeps trajectories in the drive and sampled evidence in the host; it does not
 require a host reconstruction of every physical edge. Method 18
@@ -112,7 +112,7 @@ Auxiliary `0x0030` is a choice 0–11, not independently combinable bit flags:
 | 6–11 | Keep position | Offset; zero; negative offset; actual; actual + offset; actual − offset |
 
 The implemented value 7 keeps position after reference acquisition and requests
-coordinate zero. It does not remove the index-search movement of 33/34. An
+coordinate zero. It does not remove the limit-reference movement of 1/2/17 or index search of 33/34. An
 acknowledged write or an old homed flag establishes no new reference. Require
 correlated, fresh post-trigger completion evidence and checked zero feedback;
 missed completion transitions, stop, alarm, cancellation and uncertainty leave

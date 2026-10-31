@@ -4,12 +4,20 @@
 
 ### Added
 
+- Limit-reference homing methods 1, 2 and 17 through the existing core,
+  qualification-install API and ordinary console route. Methods 1/2 require
+  the matching negative/positive limit and qualified internal Z; 17 uses the
+  negative limit without index. Checked logical-input observation is mandatory
+  for switch methods. Sampled edges remain diagnostic; completion requires
+  fresh status transitions and checked zero. Method18 and collision guards
+  remain; physical limit homing is NOT RUN.
+
 - Public application homing qualification install/inspect/revoke and retained
   submit/result APIs, with checked configuration, logical inputs and parameter
   readback. Independent fixture age, bounded combined status/input observations
   and copied revocation preserve final-zero evidence while preventing a revoked
-  reference. `home qualification` is passive inspection; methods33/34/35 remain
-  the implemented subset and physical homing remains unqualified.
+  reference. `home qualification` is passive inspection; physical homing remains
+  unqualified.
 
 - Typed serial position interruption in the core: exact independently qualified
   native stored-profile retrigger, copied binding/age evidence and one checked

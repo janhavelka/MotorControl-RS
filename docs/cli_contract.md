@@ -256,7 +256,9 @@ actual method implementations.
 renewing age. Programmatic `submitHome`/`copyHomeResult` and console home use
 the same owner route. Protocol3 retains independent fixture/live ages, logical
 inputs and copied revocation; a settled final-zero reply cannot override a
-revoked admission. Methods33/34/35 remain the complete implemented subset.
+revoked admission. Methods1/2/17/33/34/35 are the implemented subset. Limit methods require the
+method-specific checked input binding and caller qualification;1/2 require Z,
+17 does not. `caps` and `home methods` advertise the same six choices.
 
 ## Verification and qualification
 

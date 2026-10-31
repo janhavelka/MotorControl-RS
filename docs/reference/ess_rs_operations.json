@@ -1104,7 +1104,8 @@
           "test/home_app_test.cpp",
           "test/probe_console_test.cpp",
           "test/bench_probe_test.py",
-          "test/installed_consumer/main.cpp"
+          "test/installed_consumer/main.cpp",
+          "test/home_console_parity_test.py"
         ]
       },
       "hardware": {
@@ -1114,8 +1115,11 @@
         ],
         "reason": "Physical homing/reference/return need independent electrical/source timing, active auxiliary7, native rate/ramp/zero semantics and method/index/mechanics qualification. No switch fixture or I/O reassignment is provided."
       },
-      "reason": "Qualified native-word staging supports only internal-index33/34 and current-position35. No RPM/acceleration formula or switched method is inferred. Whole candidate validates before exact reviewed FC10 window; active auxiliary is read-only prerequisite.",
+      "reason": "Qualified native-word staging supports limit-reference1/2/17, internal-index33/34 and current-position35. Switch methods require checked logical inputs and exact function/polarity/wiring qualification;1/2 additionally require internal Z. Whole candidate validates before exact0x0031/6 zero-offset staging; auxiliary7 is an active-policy prerequisite.",
       "choices": [
+        "HomingMethod.METHOD_1",
+        "HomingMethod.METHOD_2",
+        "HomingMethod.METHOD_17",
         "HomingMethod.METHOD_33",
         "HomingMethod.METHOD_34",
         "HomingMethod.METHOD_35"
@@ -1238,7 +1242,7 @@
         ],
         "reason": "Physical homing/reference/return need independent electrical/source timing, active auxiliary7, native rate/ramp/zero semantics and method/index/mechanics qualification. No switch fixture or I/O reassignment is provided."
       },
-      "reason": "Ordinary submitHome/copyHomeResult and home route consume public install/inspect/revoke qualification bound to checked CONFIG/MOTION/IO/HOMING_PARAMETERS. Explicit start after checked staging, qualified transitions and stopped/arrival plus zero. Copied revokeHome cancels before new reference publication while retaining settled zero/effects; stop uses existing urgent path. No new method support.",
+      "reason": "Ordinary submitHome/copyHomeResult and home route consume public install/inspect/revoke qualification bound to checked CONFIG/MOTION/IO/HOMING_PARAMETERS. Explicit start after checked staging, qualified transitions and stopped/arrival plus zero. Copied revokeHome cancels before new reference publication while retaining settled zero/effects; stop uses existing urgent path. Methods1/2/17/33/34/35 use the same production path; sampled I/O does not establish every physical edge or internal Z passage.",
       "choices": [
         "MotionCommandBit.START_HOMING"
       ]
@@ -2764,7 +2768,7 @@
     "Prompt10 implements absolute/wrapped finite positioning and explicit zero-only device clear through the same owner and public preparation/operation APIs. Motion/clear physical qualification remains NOT_RUN; host arithmetic/read-only checks never replace independent shaft or linear travel evidence.",
     "Prompt12 derives pair_write_policy for every writable pair from the same register ledger: exact reviewed FC10 windows, split-FC06 denial and unresolved interpretation/wire-form reasons. This adds no typed-write or hardware credit; see docs/ess_pair_writes.md.",
     "Prompt13 implements seven typed single-word settings and raw paired-limit reads; unavailable limit-pair writes remain UNSUPPORTED. Settings enum choices receive WRITE coverage separately from native action choices. ACK/readback never imply active or saved settings.",
-    "Prompt14 accounts for all35 homing methods; executable33/34/35 receive narrow native staging/trigger coverage. External-switch methods remain unimplemented pending edge/return and prompt15 assignment/fixture evidence;18 and collision methods remain unresolved. Existing auxiliary7 is a prerequisite, never typed setter coverage. Offset write obligation is IN_PROGRESS: zero-only complete reviewed window, no nonzero encoding or pair expansion.",
+    "All35 homing methods remain accounted for; executable1/2/17/33/34/35 receive native staging/trigger coverage. The24 other switch methods remain unimplemented;18 and collision methods remain unresolved. Physical qualification is separate. Existing auxiliary7 is a prerequisite, never typed setter coverage. Offset write obligation is IN_PROGRESS: zero-only complete reviewed window, no nonzero encoding or pair expansion.",
     "Prompt15 implements all18 documented input assignments and eight resolved output assignments; custom2 remains unresolved. Register readback is distinct from physical switch/load operation and unconfirmed FC06 execution. No external switch/load is required for independent serial-only modes.",
     "Prompt16 accounts separately for all16 PT records, all16 PV records and all16 shared start-speed words; all16 PT reserved slots remain ACCOUNTED_RESERVED. Stored PT target-pair setters remain UNSUPPORTED; negative PV/start encoding remains guarded. Storage16 is distinct from maximum8 externally selected combinations on four-input ESS drives. PT5ms setup/hold is not inherited by PV. No serial segment execution command exists. Shared EXTERNAL_POSITION_MODE and PV_TRIGGER_MODE reuse existing driver_settings_read/update coverage rather than duplicate operations.",
     "Prompt17 control settings are native configuration, not commanded torque/current modes. Raw algorithm3 remains unknown; RS20 peak-current dial ratings do not establish maximum-effective-current0102 limits, and percent prose referencing2042 does not establish an0102 denominator. Exact independent qualification is required before affected writes.",
@@ -2803,14 +2807,12 @@
       ],
       "owner": "14",
       "disposition": "PARTIAL",
-      "reason": "Three methods33/34/35 implemented;27 switch-based methods unimplemented and five collision/diagram methods unresolved. ESS software stage08 adds public qualification lifecycle and bounded logical-input observation only; N08 remains PARTIAL and stage09-12 trajectories are not implemented.",
+      "reason": "Six methods1/2/17/33/34/35 implemented;24 switch-based methods unimplemented and five collision/diagram methods unresolved. N08 remains PARTIAL for stages10-12; software support does not qualify physical homing.",
       "choices": [
         "HomingMethod.COLLISION_MINUS_4",
         "HomingMethod.COLLISION_MINUS_3",
         "HomingMethod.COLLISION_MINUS_2",
         "HomingMethod.COLLISION_MINUS_1",
-        "HomingMethod.METHOD_1",
-        "HomingMethod.METHOD_2",
         "HomingMethod.METHOD_3",
         "HomingMethod.METHOD_4",
         "HomingMethod.METHOD_5",
@@ -2823,7 +2825,6 @@
         "HomingMethod.METHOD_12",
         "HomingMethod.METHOD_13",
         "HomingMethod.METHOD_14",
-        "HomingMethod.METHOD_17",
         "HomingMethod.METHOD_18",
         "HomingMethod.METHOD_19",
         "HomingMethod.METHOD_20",
@@ -3159,7 +3160,7 @@
         "revokeHome"
       ],
       "classification": "SEQUENCER",
-      "reason": "Method metadata and bounded33/34/35 subset; other source methods remain gaps.",
+      "reason": "Method metadata and bounded1/2/17/33/34/35 subset; other source methods remain gaps.",
       "cli_topics": [
         "home",
         "profile"
@@ -3171,7 +3172,7 @@
         "getHomeReference"
       ],
       "classification": "OBSERVATION",
-      "reason": "Method metadata and bounded33/34/35 subset; other source methods remain gaps.",
+      "reason": "Method metadata and bounded1/2/17/33/34/35 subset; other source methods remain gaps.",
       "cli_topics": [
         "home",
         "profile"
@@ -3185,7 +3186,7 @@
         "checkHomeQualification"
       ],
       "classification": "METADATA",
-      "reason": "Method metadata and bounded33/34/35 subset; other source methods remain gaps.",
+      "reason": "Method metadata and bounded1/2/17/33/34/35 subset; other source methods remain gaps.",
       "cli_topics": [
         "home",
         "profile"
@@ -3197,7 +3198,7 @@
         "prepareHome"
       ],
       "classification": "DEVICE_OPERATION",
-      "reason": "Method metadata and bounded33/34/35 subset; other source methods remain gaps.",
+      "reason": "Method metadata and bounded1/2/17/33/34/35 subset; other source methods remain gaps.",
       "cli_topics": [
         "home",
         "profile"

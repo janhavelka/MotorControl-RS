@@ -1641,7 +1641,14 @@ void testHomeRoutesAndDescriptors() {
     send(c, "@1 home methods\n");
     f.contains("\"method\":35,\"support\":\"implemented\"");
     f.contains("\"method\":-1,\"support\":\"unresolved\"");
+    f.contains("\"method\":1,\"support\":\"implemented\",\"inputs\":4,\"index\":true,\"moves\":true,\"reason\":6");
+    f.contains("\"method\":2,\"support\":\"implemented\",\"inputs\":2,\"index\":true,\"moves\":true,\"reason\":7");
+    f.contains("\"method\":17,\"support\":\"implemented\",\"inputs\":4,\"index\":false,\"moves\":true,\"reason\":8");
+    f.contains("\"6\":\"negative_limit_then_index\"");
+    f.contains("\"7\":\"positive_limit_then_index\"");
+    f.contains("\"8\":\"negative_limit_release\"");
     assert(!f.homes && !f.probes && f.lines.back().size() < Probe::OUTPUT_CAPACITY);
+    send(c, "@10 caps\n"); f.contains("\"home_methods\":[1,2,17,33,34,35]");
     send(c, "@2 home 35 60 30 100 zero\n");
     assert(f.homes == 1 && f.homeRequest.method == Ess::HomingMethod::METHOD_35 && f.homeRequest.configurationGeneration == 3);
     send(c, "@3 home 33 5 300 2000 zero 2\n");

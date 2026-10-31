@@ -193,8 +193,12 @@ void testHomeAvailabilityReasonsBeforeTraffic() {
     assert(startHome(app, 1, 1, request, operation) == Probe::Action::INVALID);
     request.method = ESS::HomingMethod::COLLISION_MINUS_1;
     assert(startHome(app, 1, 1, request, operation) == Probe::Action::UNRESOLVED);
-    request.method = ESS::HomingMethod::METHOD_1;
+    request.method = ESS::HomingMethod::METHOD_3;
     assert(startHome(app, 1, 1, request, operation) == Probe::Action::UNIMPLEMENTED);
+    for (const auto method : {ESS::HomingMethod::METHOD_1, ESS::HomingMethod::METHOD_2, ESS::HomingMethod::METHOD_17}) {
+        request.method = method;
+        assert(startHome(app, 1, 1, request, operation) == Probe::Action::UNAVAILABLE);
+    }
     request.method = ESS::HomingMethod::METHOD_35; request.offset = 1;
     assert(startHome(app, 1, 1, request, operation) == Probe::Action::UNRESOLVED);
     assert(operation == 777 && !hardware.writes && !app->owner.pending());

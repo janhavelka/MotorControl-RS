@@ -1,7 +1,7 @@
 # Homing method ownership and evidence
 
-This is the exhaustive planning partition, not an implementation-status change.
-Current source has 35 descriptors: 27 UNIMPLEMENTED, 3 IMPLEMENTED, 5 UNRESOLVED.
+The original planning partition is 3 + 8 + 8 + 8 switch methods. After stage09,
+current source has 35 descriptors: 24 UNIMPLEMENTED, 6 IMPLEMENTED, 5 UNRESOLVED.
 The [maintained method guide](../../ess_homing_methods.md) describes the source;
 reopen the original diagrams when executing each family stage.
 
@@ -11,9 +11,9 @@ Source pages are one-based physical pages in the preserved function PDF.
 
 | Method | Current software | Stage | Required signals | Index | PDF pages |
 | --- | --- | --- | --- | --- | --- |
-| 1 | UNIMPLEMENTED | 09 | Negative limit | Yes | 32 |
-| 2 | UNIMPLEMENTED | 09 | Positive limit | Yes | 33 |
-| 17 | UNIMPLEMENTED | 09 | Negative limit | No | 50-51 |
+| 1 | IMPLEMENTED | 09 | Negative limit | Yes | 32 |
+| 2 | IMPLEMENTED | 09 | Positive limit | Yes | 33 |
+| 17 | IMPLEMENTED | 09 | Negative limit | No | 50-51 |
 | 3 | UNIMPLEMENTED | 10 | Origin | Yes | 34 |
 | 4 | UNIMPLEMENTED | 10 | Origin | Yes | 34-35 |
 | 5 | UNIMPLEMENTED | 10 | Origin | Yes | 35-36 |

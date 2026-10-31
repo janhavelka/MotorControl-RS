@@ -11,6 +11,20 @@ using ConsoleReport::hex;
 using ConsoleReport::executionName;
 using ConsoleReport::motorOutcome;
 namespace {
+unsigned methodReason(const Ess::HomeMethodDescriptor& method) {
+    if (method.support == Ess::HomeSupport::UNIMPLEMENTED) return 0;
+    if (static_cast<int>(method.method) < 0) return 1;
+    switch (method.method) {
+    case Ess::HomingMethod::METHOD_18: return 2;
+    case Ess::HomingMethod::METHOD_33: return 3;
+    case Ess::HomingMethod::METHOD_34: return 4;
+    case Ess::HomingMethod::METHOD_35: return 5;
+    case Ess::HomingMethod::METHOD_1: return 6;
+    case Ess::HomingMethod::METHOD_2: return 7;
+    case Ess::HomingMethod::METHOD_17: return 8;
+    default: return 0;
+    }
+}
 // Homing retains eight observations. One fixed column schema keeps every
 // provenance field within the existing line bound, including 64-bit extremes.
 bool homeEvidence(char* output, std::size_t capacity, std::size_t& used, const Ess::ActionEvidence& e) {
@@ -68,10 +82,9 @@ bool formatMethods(char* output, std::size_t capacity, std::size_t& used, uint32
             i ? "," : "", static_cast<int>(method->method),
             method->support == Ess::HomeSupport::IMPLEMENTED ? "implemented" : method->support == Ess::HomeSupport::UNIMPLEMENTED ? "unimplemented" : "unresolved",
             method->requiredInputs, boolean(method->requiresIndex), boolean(method->moves),
-            method->support == Ess::HomeSupport::UNIMPLEMENTED ? 0U : static_cast<int>(method->method) < 0 ? 1U :
-            static_cast<int>(method->method) == 18 ? 2U : static_cast<unsigned>(method->method) - 30U);
+            methodReason(*method));
     }
-    fits = fits && append(output, capacity, used, "],\"reasons\":{\"0\":\"switch_edges_and_return_pending\",\"1\":\"collision_encoding_and_parameter_conflicts\",\"2\":\"limit_prose_diagram_conflict\",\"3\":\"negative_internal_index_search\",\"4\":\"positive_internal_index_search\",\"5\":\"current_position_origin\"},\"physical_qualified\":false,\"offset\":\"zero_only\",\"auxiliary\":7}");
+    fits = fits && append(output, capacity, used, "],\"reasons\":{\"0\":\"switch_edges_and_return_pending\",\"1\":\"collision_encoding_and_parameter_conflicts\",\"2\":\"limit_prose_diagram_conflict\",\"3\":\"negative_internal_index_search\",\"4\":\"positive_internal_index_search\",\"5\":\"current_position_origin\",\"6\":\"negative_limit_then_index\",\"7\":\"positive_limit_then_index\",\"8\":\"negative_limit_release\"},\"physical_qualified\":false,\"offset\":\"zero_only\",\"auxiliary\":7}");
     return fits;
 }
 }}}
