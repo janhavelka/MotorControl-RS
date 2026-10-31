@@ -1,8 +1,8 @@
 # ESS software completion
 
 Prepared 2026-10-23. **Stage 01 contracts and stages 02-08 software completed
-2026-10-29. Stage09 implements limit-reference methods 1, 2 and 17 with final
-verification in progress on 2026-10-31. Stages10-15 are NOT STARTED.** See the [source decisions](../../reports/2026-10-29_ess_software_contracts.md)
+2026-10-29. Stage09 limit-reference methods 1, 2 and 17 completed software
+verification on 2026-10-31. Stages10-15 are NOT STARTED.** See the [source decisions](../../reports/2026-10-29_ess_software_contracts.md)
 and [progress](progress.md). Contracts do not implement the features. Read the
 [verified audit](audit.md), [execution contract](execution_contract.md),
 [source map](source_map.md) and [verification rules](verification.md).

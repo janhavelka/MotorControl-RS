@@ -7,7 +7,7 @@ position start-speed setting. Stage05 adds homing auxiliary configuration;
 stage06 delivers the native stored-profile interruption core. Stage07 delivers
 its bounded owner/application/console integration. Stage08 implements shared
 homing qualification/observation with final verification complete. Stage09
-implements limit-reference1/2/17 with verification in progress. Stages10-15
+implements limit-reference1/2/17 with final verification complete. Stages10-15
 remain NOT STARTED; N08 stays PARTIAL and broader N05 remains PARTIAL pending
 active staging and completion-attribution evidence.
 
@@ -21,7 +21,7 @@ active staging and completion-attribution evidence.
 | 06 | SOFTWARE COMPLETE | `db65b1b`; [core subset, review and verification](../../reports/2026-10-29_ess_position_interrupt_core.md); 86-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: core-only delivery |
 | 07 | SOFTWARE COMPLETE | `14da3ad`; [owner/application integration and verification](../../reports/2026-10-29_ess_position_interrupt_owner.md); 88-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 08 | SOFTWARE COMPLETE | `77f9886`; [shared homing qualification/observation](../../reports/2026-10-29_ess_homing_foundation.md); fresh88-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
-| 09 | IN PROGRESS | [Limit-reference implementation and verification](../../reports/2026-10-31_ess_limit_homing.md) | NOT RUN: recorded bench USB absent; no limit-switch fixture |
+| 09 | SOFTWARE COMPLETE | `a9d5eaa`; [limit-reference implementation and verification](../../reports/2026-10-31_ess_limit_homing.md); 88-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent; no limit-switch fixture |
 | 10 | NOT STARTED | - | NOT RUN |
 | 11 | NOT STARTED | - | NOT RUN |
 | 12 | NOT STARTED | - | NOT RUN |
@@ -416,4 +416,11 @@ records the independent vector/app authors and read-only review. Core/app and
 seven integrated focused suites pass; first quick run86/88 exposed two stale
 expectations, now corrected with unsupported-method coverage retained. Final
 fresh quick/package passed all 88 suites and 15 checks in
-`build/ess_software_09_final`; exact-commit CI is pending.
+`build/ess_software_09_final`. Implementation commit
+`a9d5eaa2757becaf760c512a9642afe9c6a2ed1c` passed
+[CI 41194031231](https://github.com/janhavelka/MotorControl-RS/actions/runs/41194031231)
+with GCC, Clang, Arduino and native ESP-IDF all SUCCESS. Downloaded summaries
+confirm 88 suites and no failed checks in every job; terminal JSON/artifacts
+are in `build/ess_software_09_ci`. Local full firmware was NOT RUN; hosted CI
+supplies the complete supported matrix. The documentation-only evidence
+checkpoint receives local consistency checks without redispatching CI.

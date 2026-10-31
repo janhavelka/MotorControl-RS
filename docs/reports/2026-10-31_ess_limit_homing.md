@@ -102,8 +102,24 @@ and `git diff --check` pass. The final fresh quick/package command is
 it passed all 88 registered suites and all 15 verification checks, including
 core ZIP export, source/install consumers, standalone C++11/C++17 headers and
 codec-only symbol linkage. Logs, package and `summary.json` are retained in
-that directory. Exact-commit CI is pending. Local full firmware is NOT RUN;
-the existing hosted Arduino and native-IDF jobs provide the required matrix.
+that directory. Local full firmware is NOT RUN; the hosted jobs provide the
+required supported matrix.
+
+Implementation commit `a9d5eaa2757becaf760c512a9642afe9c6a2ed1c` was pushed on the
+existing main branch and verified by terminal
+[CI run 41194031231](https://github.com/janhavelka/MotorControl-RS/actions/runs/41194031231):
+GCC, Clang, Arduino and native ESP-IDF all completed SUCCESS. `gh run watch
+41194031231 --exit-status` exited zero. All four downloaded summaries report
+PASS, 88 registered suites and zero failed checks. Arduino covers the four
+configured environments; IDF covers the S3 app, core S3, core S2 and portable S2
+consumers with the workflow's pinned toolchains. Terminal JSON and artifacts
+are retained under `build/ess_software_09_ci/run-final.json` and `artifacts/`.
+
+The subsequent documentation-only verification checkpoint changes no tested
+code or build inputs. It uses repository/reference/inventory and whitespace
+checks under the impact-based verification policy; no new CI dispatch is needed.
+Stage09 software is complete. N08's remaining methods and physical gates stay
+open.
 
 ## Physical evidence
 
