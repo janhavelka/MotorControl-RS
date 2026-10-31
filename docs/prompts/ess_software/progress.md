@@ -435,3 +435,10 @@ corrected. Fresh quick verification passes88 suites and15 checks; focused host
 validation passes286 tests. See the [audit report](../../reports/2026-10-31_ess_limit_homing_audit.md)
 for source review, coverage boundaries and final CI evidence. Physical tests
 remain NOT RUN; N08 and remaining family dispositions are unchanged.
+
+Correction commit `bb3afb6562d544ae284e6fbe7c4645f29e02fdfc` passed
+[CI 41194910823](https://github.com/janhavelka/MotorControl-RS/actions/runs/41194910823):
+GCC, Clang, Arduino and native ESP-IDF all SUCCESS, with 88 suites and no failed
+checks in each downloaded summary. Evidence is retained in
+`build/ess_software_09_audit_ci`. The documentation-only checkpoint uses local
+consistency checks; no further implementation changes were needed.
