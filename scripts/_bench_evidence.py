@@ -1538,7 +1538,8 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
     require(all(operation_id(item.get(k)) for k in ("target", "generation", "configuration_generation")), "binding is invalid")
     check_counts(item, ("started_us", "deadline_us", "serviced_us", "polls", "completion_observed_us"), "home")
     require(item["started_us"] < item["deadline_us"] and item["started_us"] <= item["serviced_us"] and item["polls"] <= 64, "time/count bounds are invalid")
-    require(item.get("method") in (1, 2, 17, 33, 34, 35), "unimplemented method yielded traffic")
+    require(type(item.get("method")) is int and item["method"] in (1, 2, 17, 33, 34, 35),
+            "invalid or unimplemented method yielded traffic")
     required_inputs = {1: 4, 2: 2, 17: 4}.get(item["method"], 0)
     require(uint(item.get("phase"), 3), "phase is invalid")
     words = item.get("staging_words")

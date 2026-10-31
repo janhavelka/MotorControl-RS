@@ -504,7 +504,7 @@ enable/cancel with physical drive enable/stop, or import sensor replay policy.
    raw-model/firmware interpretation and independent electrical timing remain
    unresolved. Preserve the observed turnaround exception and checked framing.
 4. Exact target preparation and bounded actions, relative/absolute/wrapped
-   positioning, velocity and homing33/34/35 are implemented through the same
+   positioning, velocity and homing1/2/17/33/34/35 are implemented through the same
    common/profile APIs and console. Selected finite positive moves and both
    moving stops have S3 functional evidence. Velocity/homing, calibrated units
    and wider motion cases retain their own unperformed qualification gates.

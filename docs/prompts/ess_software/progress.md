@@ -424,3 +424,14 @@ confirm 88 suites and no failed checks in every job; terminal JSON/artifacts
 are in `build/ess_software_09_ci`. Local full firmware was NOT RUN; hosted CI
 supplies the complete supported matrix. The documentation-only evidence
 checkpoint receives local consistency checks without redispatching CI.
+
+## Independent stage09 audit (2026-10-31)
+
+Fresh parallel original-source, core/owner and test reviews at `b353852` found
+no core/application execution defect. Host result validation now rejects boolean
+and floating-point aliases of integer method IDs, with an actual emitted-result
+regression that failed before the fix. CLI/architecture support summaries were
+corrected. Fresh quick verification passes88 suites and15 checks; focused host
+validation passes286 tests. See the [audit report](../../reports/2026-10-31_ess_limit_homing_audit.md)
+for source review, coverage boundaries and final CI evidence. Physical tests
+remain NOT RUN; N08 and remaining family dispositions are unchanged.

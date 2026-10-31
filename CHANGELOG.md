@@ -55,6 +55,9 @@
 
 ### Fixed
 
+- Host homing-result validation requires an integer method ID, rejecting JSON
+  booleans and floating-point values that compare equal to supported methods.
+
 - Homing rejects unknown MOTION bits as unqualified readiness while retaining
   raw evidence. Host validation also rejects contradictory logical inputs in
   low/activity witnesses and preserves core failure precedence. Active-phase

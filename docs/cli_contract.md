@@ -193,8 +193,10 @@ are counted. Debug mode uses the same production operation path.
 
 ## ESS completion routes and remaining plans
 
-Stages 02, 03, 04, 05 and 07 are implemented. Other rows remain stage 01 plans;
-help/grammar and coverage change only when their producing routes exist.
+Stages 02, 03, 04, 05 and 07 are implemented, together with stage 08's shared
+homing qualification path and stage 09's methods 1, 2 and 17. Methods assigned
+to stages 10-12 remain planned; help and coverage distinguish those choices
+from the six currently implemented methods.
 
 | Stage | Command | Ordinary application path |
 | --- | --- | --- |

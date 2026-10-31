@@ -104,6 +104,13 @@ for executable in sys.argv[2:]:
     assert len(records) == 8 and [r["method"] for r in records] == [1, 2, 17, 33, 34, 35, 35, 35]
     for record in records:
         Console._check_home(record, 1, None)
+        # JSON booleans/floats compare equal to Python integer method IDs.
+        # Only an actual integer can identify the admitted native method.
+        for method in (True, float(record["method"]), str(record["method"])):
+            broken = copy.deepcopy(record); broken["method"] = method
+            try: Console._check_home(broken, 1, None)
+            except BenchError: pass
+            else: raise AssertionError((record["method"], type(method).__name__, "non-integer method accepted"))
         assert record["qualification"]["observe_inputs"] and record["inputs_observed"]
         assert len(json.dumps(record, separators=(",", ":"))) < MAX_LINE
         if record["method"] in (1, 2, 17):
