@@ -127,8 +127,22 @@ build/ess_software_11_final_rerun` passes all88 registered suites and all15
 checks, including offline references, generated tables, package export/install,
 source/installed consumers, standalone C++11/C++17 headers and codec-only
 linkage. Logs, package and `summary.json` are retained in that directory.
-Exact implementation-commit CI is pending.
-Local full firmware is NOT RUN; hosted CI will supply the supported matrix.
+Implementation commit `51fef5ed41c9ec232016e6c3116bbb239c24979b` passed terminal
+[CI run41287624378](https://github.com/janhavelka/MotorControl-RS/actions/runs/41287624378).
+GCC, Clang, Arduino and native ESP-IDF all finished SUCCESS;
+`gh run watch 41287624378 --exit-status --interval 30` exited zero.
+All four downloaded summaries report PASS,88 suites and zero failed checks:
+15 checks each for GCC/Clang,16 for Arduino and19 for IDF. Arduino builds all
+four configured environments; IDF builds the S3 app, S3/S2 core consumers and
+portable S2 consumer. Terminal JSON and artifacts are retained under
+`build/ess_software_11_ci/run-final.json` and `artifacts/`.
+Local full firmware is NOT RUN; hosted CI supplies the supported matrix.
+
+Stage11 software verification is complete. The subsequent documentation-only
+checkpoint records these results without changing code or build inputs.
+Repository/reference/inventory and whitespace checks pass; no extra CI dispatch
+is required for that evidence update. N08's remaining methods and physical
+qualification remain open.
 
 ## Physical evidence
 

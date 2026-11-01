@@ -484,7 +484,15 @@ found no functional gap and caught three stale public subset lists, corrected.
 The first quick run passed87/88 suites and exposed one stale method24 inventory
 guard. After switching that guard to pending method27, all33 inventory tests
 pass. Fresh quick/package verification passes88 suites and15 checks in
-`build/ess_software_11_final_rerun`. Exact implementation-commit CI is pending. See the
+`build/ess_software_11_final_rerun`. See the
 [source, findings and verification report](../../reports/2026-11-01_ess_positive_limit_homing.md).
 Physical checks remain NOT RUN: the recorded USB identity is absent and no
 origin/positive-limit fixture is available.
+
+Implementation commit `51fef5ed41c9ec232016e6c3116bbb239c24979b` passed
+[CI41287624378](https://github.com/janhavelka/MotorControl-RS/actions/runs/41287624378):
+GCC, Clang, Arduino and native ESP-IDF all SUCCESS. Every downloaded summary
+reports88 suites and zero failed checks. Terminal JSON and artifacts are under
+`build/ess_software_11_ci`. Local full firmware is NOT RUN; hosted CI supplies
+the supported matrix. Stage11 software verification is complete. The subsequent
+documentation-only evidence checkpoint uses local consistency checks.
