@@ -10,9 +10,10 @@ and copied evidence; treat its fields as read-only between API calls.
 
 `homeMethod` and `homeMethodAt` expose all 35 documented method dispositions.
 Methods 1 and 2 implement negative/positive-limit reference with internal Z;
-17 uses negative-limit release without index. Methods 33 and 34 implement
+17 uses negative-limit release without index. Origin-reference methods 3–6
+require internal Z; 19–22 use the origin edge without index. Methods 33 and 34 implement
 negative/positive internal-Z search, and 35 uses the current mechanical position.
-The other 24 switch methods remain unimplemented;
+The other 16 limit-assisted switch methods remain unimplemented;
 method 18 and collision methods −1 through −4 have unresolved source semantics.
 See the [complete method table](ess_homing_methods.md) for trajectories,
 prerequisites, source conflicts and external-input fixture requirements.
@@ -43,6 +44,36 @@ are tolerated when the qualified status/zero completion contract below is met.
 If RUNNING or the fresh HOMED transition is missing, poll/deadline exhaustion
 leaves completion unobserved. No atomic input/status snapshot is promised.
 Method 18 remains unresolved independently of method 17.
+
+## Origin-reference methods
+
+All eight require a connected origin assigned to input function 1, known
+polarity, fresh logical levels and exact caller qualification. Both initial
+states are admitted. The drive executes the following paths; `H` and `L` mean
+the qualified native search and return rates, and signs follow the manual's
+direction convention, not a measured shaft direction.
+
+| Method | Initially inactive | Initially active | Final approach/reference | Physical PDF pages |
+| --- | --- | --- | --- | --- |
+| 3 | +H to rising, decelerate/stop, reverse −L | Direct −L | −L, first internal Z after falling | 34 |
+| 4 | Direct +L | −H through falling, decelerate/stop, reverse +L | +L, first internal Z after rising | 34–35 |
+| 5 | −H to rising, decelerate/stop, reverse +L | Direct +L | +L, first internal Z after falling | 35–36 |
+| 6 | Direct −L | +H through falling, decelerate/stop, reverse −L | −L, first internal Z after rising | 36–37 |
+| 19 | +H to rising, decelerate/stop, reverse −L | Direct −L | −L, falling edge; no index | 52 |
+| 20 | Direct +L | −H through falling, decelerate/stop, reverse +L | +L, rising edge; no index | 52–53 |
+| 21 | −H to rising, decelerate/stop, reverse +L | Direct +L | +L, falling edge; no index | 53–54 |
+| 22 | Direct −L | +H through falling, decelerate/stop, reverse −L | −L, rising edge; no index | 54–55 |
+
+Each row was independently reviewed against its original diagram. Methods
+5 and 21 repeat the paragraph label `a)` for the active branch; both its text
+and drawing identify the active state. These methods have no documented
+limit-assisted branch. The required origin may be active; an unexpected active
+assigned limit fails. Input samples are logical, already interpreted by the
+drive polarity. They need not capture every edge or end at the diagram's final
+level because input/status samples are not atomic. Missing required status
+transitions still fail within the poll/deadline bound. Internal Z and physical
+direction/travel remain supplied qualifications, never inferred poll evidence.
+Methods 19–22 do not require `indexQualified`.
 
 ## Parameter observations
 
@@ -76,7 +107,7 @@ qualification, without deriving them from incoming intent. Terminal JSON keeps
 them in `prerequisites.qualified_parameters`; Python checks them against the
 staged method/rate/ramp words.
 
-Methods 1/2/33/34 additionally need qualified internal Z;
+Methods 1/2/3/4/5/6/33/34 additionally need qualified internal Z;
 35 needs neither Z nor an external sensor. Unknown input assignments are not
 qualified by unplugged wiring. Existing active auxiliary `0x0030` must already
 be qualified as `KEEP_POSITION_SET_ZERO` (7). Homing never writes that auxiliary
@@ -105,7 +136,7 @@ automatic replay. Partial or uncertain setup remains visible on failure.
 
 ## Completion, stop and reference
 
-Moving methods 1/2/17/33/34 require fresh post-trigger RUNNING and HOMED-low observations,
+Every implemented moving method requires fresh post-trigger RUNNING and HOMED-low observations,
 then stopped/in-position HOMED-high. Method 35 requires HOMED-low to high; its
 fresh admission baseline may supply low because no search motion is required.
 Old HOMED-high, a missed transition, start echo or interrupted search cannot
@@ -189,7 +220,7 @@ change. Physical p73 does not resolve offset order/sign/scale or the sampling
 instant of its term actual value. Selecting a stored policy implements no new
 coordinate policy as motion. `prepareHome` still requires independently
 qualified active auxiliary7, qualified zero offset, exact native parameters and
-methods1/2/17/33/34/35. A stored/readback7 never grants any of those qualifications.
+methods1/2/3/4/5/6/17/19/20/21/22/33/34/35. A stored/readback7 never grants any of those qualifications.
 
 Use `prepareDriverRead`/`getDriver` for prior FC03 `0x0030/1`; the update uses
 `prepareDriverSettings`/`nextDriver`/`advanceDriver` for FC06 `0x0030` and separate
@@ -244,8 +275,9 @@ input reassignment, automatic repair or rollback follows this setter.
 ## Application qualification and shared observation
 
 Stage08 implements the shared [stage01 decisions](reports/2026-10-29_ess_software_contracts.md).
-Stage09 implements limit-reference1/2/17 alongside33/34/35; the other24 switch
-methods await stages10-12.
+Stage09 implements limit-reference1/2/17 alongside33/34/35. Stage10 adds
+origin-reference3/4/5/6/19/20/21/22; the other16 limit-assisted switch methods
+await stages11-12.
 
 The public [ProbeApp.h](../examples/probe_cli/ProbeApp.h) exposes `installHomeQualification`,
 `inspectHomeQualification`, `revokeHomeQualification`, `submitHome` and

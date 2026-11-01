@@ -51,9 +51,10 @@ the ordinary application/console/host route, independent result reservations
 and stop arbitration. Physical interruption remains NOT RUN.
 Stage08 implements the shared homing qualification/observation contract through
 public application APIs and checked live reads, including final-zero revocation.
-Stage09 implements limit-reference methods1/2/17 through that path; 24 switch
-methods remain for stages10-12, and N08 remains PARTIAL. Physical limit homing
-is NOT RUN. See [stage09 evidence](reports/2026-10-31_ess_limit_homing.md).
+Stage09 implements limit-reference methods1/2/17 through that path; stage10 adds
+origin-reference3/4/5/6/19/20/21/22. The16 limit-assisted methods remain for
+stages11-12, and N08 remains PARTIAL. Physical switch homing is NOT RUN.
+See [stage10 evidence](reports/2026-11-01_ess_origin_homing.md).
 The [independent prompts06-08 audit](reports/2026-10-29_ess_06_08_audit.md)
 tightens homing status/host evidence and lifecycle regressions; it changes no
 native coverage or physical qualification claims.
@@ -84,8 +85,9 @@ subset. Method28's exchanged branch drawings are recorded in the method guide.
   write forms, and home-offset order/sign/scale before exposing their setters.
 - [ ] Resolve external-switch homing and collision methods, including method 18's
   conflicting limit diagram and negative collision encoding. Internal-index
-  methods 33/34, current-position35 and limit-reference1/2/17 have bounded software.
-  The remaining 24 switch methods and five unresolved methods stay open.
+  methods 33/34, current-position35, limit-reference1/2/17 and origin-reference
+  3/4/5/6/19/20/21/22 have bounded software. The remaining 16 limit-assisted
+  switch methods and five unresolved methods stay open.
   [Method dispositions](ess_homing_methods.md).
 - [x] Deliver the shared N08 qualification foundation: exact externally supplied
   install/inspect/revoke, ordinary submit/result ownership, independent ages,

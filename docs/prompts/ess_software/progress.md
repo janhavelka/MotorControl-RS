@@ -442,3 +442,19 @@ GCC, Clang, Arduino and native ESP-IDF all SUCCESS, with 88 suites and no failed
 checks in each downloaded summary. Evidence is retained in
 `build/ess_software_09_audit_ci`. The documentation-only checkpoint uses local
 consistency checks; no further implementation changes were needed.
+
+## Stage 10 origin-reference homing (2026-11-01)
+
+Methods3/4/5/6/19/20/21/22 are implemented through the shared production path,
+with origin function1 and internal Z required only for3–6. Lead and independent
+source/test owners checked original pages34–37 and52–55. Sixteen initial-state
+branches, distinct literal wire vectors, real qualification/app/console paths
+and per-method bounded failure cases are present. Counts are14 implemented,
+16 unimplemented and five unresolved; N08 remains PARTIAL. Core/read/console
+focus4/4 and app/parity3/3 pass. Fresh quick/package verification passes all88
+suites and15 checks in `build/ess_software_10_final`. Independent final review
+found no functional or scope gap. Exact-commit CI is pending.
+See [source, review and verification evidence](../../reports/2026-11-01_ess_origin_homing.md).
+Physical tests remain NOT RUN: the recorded USB device is absent and no origin
+switch fixture is present. Methods18, negative collisions, nonzero offsets and
+the two limit-assisted groups retain their guards.

@@ -73,8 +73,8 @@ spatial branches in source-derived tests; do not use the a/b letters as reliable
 path identifiers or generalize this interpretation to unresolved method 18.
 See the [stage 01 source review](reports/2026-10-29_ess_software_contracts.md).
 
-The implemented subset is 1, 2, 17, 33, 34 and 35, with zero offset and auxiliary
-value 7. The other 24 switch methods remain unimplemented. Their shared
+The implemented subset is 1–6, 17, 19–22 and 33–35, with zero offset and auxiliary
+value 7. The other 16 limit-assisted switch methods remain unimplemented. Their shared
 [admission and observation contract](ess_homing.md#planned-auxiliary-setting-and-switch-method-integration-not-implemented)
 keeps trajectories in the drive and sampled evidence in the host; it does not
 require a host reconstruction of every physical edge. Method 18
@@ -82,6 +82,12 @@ and the four collision methods report unresolved source semantics separately.
 Unwired or disabled optional external inputs do not exclude 33–35. Internal Z
 is a motor capability requiring qualification, not an external input terminal.
 Software implementation establishes no physical homing qualification.
+
+The 1 November 2026 origin-method review independently checked every branch
+on physical pages 34–37 and 52–55. Methods 5 (p36) and 21 (p54) repeat `a)` for
+the active branch; text and drawing agree on the state. The complete
+[origin-family paths](ess_homing.md#origin-reference-methods)
+include intermediate reversals and separate indexed/non-indexed references.
 
 ## Parameters, auxiliary policy and unresolved fields
 

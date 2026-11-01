@@ -7,8 +7,9 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [ESS origin-reference homing3–6/19–22](2026-11-01_ess_origin_homing.md) | Eight individual method/branch paths with checked origin qualification and index only for3–6; remaining16 limit-assisted methods and physical qualification stay open. |
 | [Independent stage09 limit-homing audit](2026-10-31_ess_limit_homing_audit.md) | Fresh parallel source/core/test review; rejects non-integer host method evidence and corrects stale support summaries. Physical qualification stays open. |
-| [ESS limit-reference homing1/2/17](2026-10-31_ess_limit_homing.md) | Exact limit/index admission, shared production path and source-derived branch fixtures; remaining24 switch methods and physical qualification stay open. |
+| [ESS limit-reference homing1/2/17](2026-10-31_ess_limit_homing.md) | Exact limit/index admission, shared production path and source-derived branch fixtures; later origin support is recorded above. Physical qualification stays open. |
 | [Independent interruption/homing audit, prompts06-08](2026-10-29_ess_06_08_audit.md) | Fresh parallel source/code/test review; unknown homing status qualification and host transition evidence corrected, lifecycle/bounds regressions extended. |
 | [ESS homing qualification foundation](2026-10-29_ess_homing_foundation.md) | Public qualification lifecycle, independent ages, checked logical-input observation and copied final-zero revocation; methods33/34/35 only, N08 PARTIAL and physical NOT RUN. |
 | [ESS position interruption owner](2026-10-29_ess_position_interrupt_owner.md) | Ordinary API/console/host stored retrigger, independent outcomes, owner settlement and stop priority; broader N05 PARTIAL, physical NOT RUN. |

@@ -78,7 +78,8 @@ void testDescriptorsAndNoTraffic() {
         assert(Ess::homeMethod(d->method) == d && d->requiredInputs == inputs[i] && d->reason && *d->reason);
         assert(d->requiresIndex == ((values[i] >= 1 && values[i] <= 14) || values[i] == 33 || values[i] == 34));
         assert(d->moves == (values[i] != 35));
-        if (values[i] >= 33 || values[i] == 1 || values[i] == 2 || values[i] == 17)
+        if (values[i] >= 33 || (values[i] >= 1 && values[i] <= 6) || values[i] == 17 ||
+            (values[i] >= 19 && values[i] <= 22))
             assert(d->support == Ess::HomeSupport::IMPLEMENTED);
         else {
             const Saved<Ess::HomeContext> saved(c);
@@ -425,14 +426,14 @@ void testMaximumPollBoundary() {
 // (method2), p50-51 (method17). CRC literals were calculated independently of
 // the production builders. These simulated samples do not observe direction,
 // a physical edge, or internal Z; the drive owns the documented trajectories.
-struct LimitCase {
+struct SwitchCase {
     Ess::HomingMethod method;
     uint16_t function;
     uint8_t inputRole;
     bool index;
     uint8_t staging[21];
 };
-const LimitCase LIMIT_CASES[] = {
+const SwitchCase LIMIT_CASES[] = {
     // Initially inactive: -H to negative rising, stop/reverse +L; active:
     // directly +L. Both stop at the first internal Z after negative falling.
     {Ess::HomingMethod::METHOD_1, 3, 4, true,
@@ -446,7 +447,27 @@ const LimitCase LIMIT_CASES[] = {
     {Ess::HomingMethod::METHOD_17, 3, 4, false,
         {1,16,0,49,0,6,12,0,17,0,60,0,30,0,100,0,0,0,0,0x01,0xA7}}
 };
-Ess::HomePrerequisites limitPrerequisites(const LimitCase& source, bool initiallyActive = false) {
+// Each method word and CRC was derived separately from physical PDF p34-37,
+// p52-55 and the documented FC10 window; no production builder supplies it.
+const SwitchCase ORIGIN_CASES[] = {
+    {Ess::HomingMethod::METHOD_3, 1, 1, true,
+        {1,16,0,49,0,6,12,0,3,0,60,0,30,0,100,0,0,0,0,0x5E,0xDF}},
+    {Ess::HomingMethod::METHOD_4, 1, 1, true,
+        {1,16,0,49,0,6,12,0,4,0,60,0,30,0,100,0,0,0,0,0x44,0xAB}},
+    {Ess::HomingMethod::METHOD_5, 1, 1, true,
+        {1,16,0,49,0,6,12,0,5,0,60,0,30,0,100,0,0,0,0,0x40,0x57}},
+    {Ess::HomingMethod::METHOD_6, 1, 1, true,
+        {1,16,0,49,0,6,12,0,6,0,60,0,30,0,100,0,0,0,0,0x4F,0x13}},
+    {Ess::HomingMethod::METHOD_19, 1, 1, false,
+        {1,16,0,49,0,6,12,0,19,0,60,0,30,0,100,0,0,0,0,0x0A,0x1F}},
+    {Ess::HomingMethod::METHOD_20, 1, 1, false,
+        {1,16,0,49,0,6,12,0,20,0,60,0,30,0,100,0,0,0,0,0x10,0x6B}},
+    {Ess::HomingMethod::METHOD_21, 1, 1, false,
+        {1,16,0,49,0,6,12,0,21,0,60,0,30,0,100,0,0,0,0,0x14,0x97}},
+    {Ess::HomingMethod::METHOD_22, 1, 1, false,
+        {1,16,0,49,0,6,12,0,22,0,60,0,30,0,100,0,0,0,0,0x1B,0xD3}}
+};
+Ess::HomePrerequisites switchPrerequisites(const SwitchCase& source, bool initiallyActive = false) {
     auto p = prerequisites(source.method);
     p.observeInputs = true; p.ioObservedUs = p.readbackObservedUs = 80;
     p.inputFunctions[0] = source.function; p.inputWiring[0] = InputWiring::CONNECTED;
@@ -456,9 +477,9 @@ Ess::HomePrerequisites limitPrerequisites(const LimitCase& source, bool initiall
     p.inputPolarity = 1; p.rawMotion = 3;
     return p;
 }
-Ess::HomeContext limitHome(const LimitCase& source, bool initiallyActive = false) {
+Ess::HomeContext switchHome(const SwitchCase& source, bool initiallyActive = false) {
     Ess::HomeContext c;
-    assert(Ess::prepareHome(c, axis(), 12, request(source.method), limitPrerequisites(source, initiallyActive),
+    assert(Ess::prepareHome(c, axis(), 12, request(source.method), switchPrerequisites(source, initiallyActive),
         100, 10000, options()));
     return c;
 }
@@ -471,7 +492,7 @@ void consumeInputs(Ess::HomeContext& c, uint16_t flags, uint16_t inputs) {
 }
 void testLimitBranchesAndVectors() {
     for (const auto& source : LIMIT_CASES) for (const bool initiallyActive : {false, true}) {
-        auto c = limitHome(source, initiallyActive); Ess::PreparedHome work;
+        auto c = switchHome(source, initiallyActive); Ess::PreparedHome work;
         assert(c.prerequisites.rawInputs == (initiallyActive ? 1 : 0));
         assert(c.prerequisites.indexQualified == source.index && !c.homedLowObserved);
         assert(Ess::nextHome(c, 100, work));
@@ -501,17 +522,100 @@ void testLimitBranchesAndVectors() {
         // Alarm, motion and input words do not promise an atomic snapshot, so
         // an unchanged active input sample alone cannot contradict completion.
         for (const uint16_t sampledInputs : {uint16_t(0), uint16_t(1)}) {
-            c = limitHome(source, initiallyActive); trigger(c);
+            c = switchHome(source, initiallyActive); trigger(c);
             consumeInputs(c, 4, sampledInputs); consumeInputs(c, 3, sampledInputs); consume(c);
             assert(c.state == ActionState::SUCCEEDED && c.inputsObserved && c.rawInputs == sampledInputs); done(c);
         }
     }
 }
-void testLimitAdmission() {
-    for (const auto& source : LIMIT_CASES) {
-        auto c = limitHome(source);
-        for (unsigned fault = 0; fault < 22; ++fault) {
-            auto p = limitPrerequisites(source); auto r = request(source.method);
+void testOriginBranchesAndVectors() {
+    struct Branch {
+        Ess::HomingMethod method;
+        bool initiallyActive;
+        uint8_t samples[3];
+        uint8_t count;
+    };
+    // Independent page/branch transcription. Samples are possible logical IO
+    // observations, not direction, speed, exact-edge or internal-Z witnesses.
+    const Branch branches[] = {
+        // p34 method3: inactive +H to rising, reverse -L to falling then first Z;
+        // active directly -L to falling then first Z.
+        {Ess::HomingMethod::METHOD_3, false, {0,1,0}, 3},
+        {Ess::HomingMethod::METHOD_3, true, {1,0,0}, 2},
+        // p34-35 method4: inactive +L to rising then first Z; active -H to
+        // falling, reverse +L to rising then first Z.
+        {Ess::HomingMethod::METHOD_4, false, {0,1,0}, 2},
+        {Ess::HomingMethod::METHOD_4, true, {1,0,1}, 3},
+        // p35-36 method5: inactive -H to rising, reverse +L to falling then Z;
+        // active directly +L to falling then first Z.
+        {Ess::HomingMethod::METHOD_5, false, {0,1,0}, 3},
+        {Ess::HomingMethod::METHOD_5, true, {1,0,0}, 2},
+        // p36-37 method6: inactive -L to rising then first Z; active +H to
+        // falling, reverse -L to rising then first Z.
+        {Ess::HomingMethod::METHOD_6, false, {0,1,0}, 2},
+        {Ess::HomingMethod::METHOD_6, true, {1,0,1}, 3},
+        // p52 method19: inactive +H to rising, reverse -L to falling;
+        // active directly -L to falling. Neither branch requires Z.
+        {Ess::HomingMethod::METHOD_19, false, {0,1,0}, 3},
+        {Ess::HomingMethod::METHOD_19, true, {1,0,0}, 2},
+        // p52-53 method20: inactive +L to rising; active -H to falling,
+        // reverse +L to rising. Stop at the edge without Z.
+        {Ess::HomingMethod::METHOD_20, false, {0,1,0}, 2},
+        {Ess::HomingMethod::METHOD_20, true, {1,0,1}, 3},
+        // p53-54 method21: inactive -H to rising, reverse +L to falling;
+        // active directly +L to falling. Stop at the edge without Z.
+        {Ess::HomingMethod::METHOD_21, false, {0,1,0}, 3},
+        {Ess::HomingMethod::METHOD_21, true, {1,0,0}, 2},
+        // p54-55 method22: inactive -L to rising; active +H to falling,
+        // reverse -L to rising. Stop at the edge without Z.
+        {Ess::HomingMethod::METHOD_22, false, {0,1,0}, 2},
+        {Ess::HomingMethod::METHOD_22, true, {1,0,1}, 3}
+    };
+    unsigned checked = 0;
+    for (const auto& source : ORIGIN_CASES) for (const auto& branch : branches) {
+        if (branch.method != source.method) continue;
+        ++checked;
+        auto c = switchHome(source, branch.initiallyActive); Ess::PreparedHome work;
+        assert(c.prerequisites.rawInputs == (branch.initiallyActive ? 1 : 0));
+        assert(c.prerequisites.indexQualified == source.index && !c.homedLowObserved);
+        assert(Ess::nextHome(c, 100, work));
+        assert(work.length == sizeof(source.staging) && work.write && work.reg == 0x31 && work.count == 6);
+        assert(std::memcmp(work.bytes, source.staging, sizeof(source.staging)) == 0);
+        consume(c);
+        const uint8_t triggerBytes[] = {1,6,0,0x27,0,16,0x38,0x0D};
+        assert(Ess::nextHome(c, c.eligibleUs, work));
+        assert(work.length == sizeof(triggerBytes) && std::memcmp(work.bytes, triggerBytes, sizeof(triggerBytes)) == 0);
+        consume(c);
+        const uint8_t pollBytes[] = {1,3,0,6,0,3,0xE5,0xCA};
+        assert(Ess::nextHome(c, c.eligibleUs, work));
+        assert(work.length == sizeof(pollBytes) && std::memcmp(work.bytes, pollBytes, sizeof(pollBytes)) == 0);
+        for (uint8_t sample = 0; sample < branch.count; ++sample) {
+            consumeInputs(c, 4, branch.samples[sample]);
+            assert(c.state == ActionState::ACTIVE && c.runningObserved && c.homedLowObserved);
+        }
+        consumeInputs(c, 3, branch.samples[branch.count - 1]);
+        assert(c.phase == Ess::HomePhase::ZERO_CHECK && c.completion == ActionCompletion::NOT_OBSERVED);
+        consume(c);
+        assert(c.state == ActionState::SUCCEEDED && !c.uncertain);
+        assert(c.activityEvidence.length == 11 && c.lowEvidence.length == 11 && c.completionEvidence.length == 11);
+        AxisReference reference; assert(Ess::getHomeReference(c, c.servicedUs, 0, reference));
+        assert(reference.nativeKnown && reference.nativePosition == 0); done(c);
+
+        // An absent sampled transition (including apparently stuck active IO)
+        // cannot diagnose a sensor. Fresh required status and zero still suffice.
+        for (const uint16_t sampled : {uint16_t(0), uint16_t(1)}) {
+            c = switchHome(source, branch.initiallyActive); trigger(c);
+            consumeInputs(c, 4, sampled); consumeInputs(c, 3, sampled); consume(c);
+            assert(c.state == ActionState::SUCCEEDED && c.inputsObserved && c.rawInputs == sampled); done(c);
+        }
+    }
+    assert(checked == 16);
+}
+template<size_t N> void testSwitchAdmission(const SwitchCase (&cases)[N]) {
+    for (const auto& source : cases) {
+        auto c = switchHome(source);
+        for (unsigned fault = 0; fault < 34; ++fault) {
+            auto p = switchPrerequisites(source); auto r = request(source.method);
             switch (fault) {
             case 0: p.observeInputs = false; break;
             case 1: p.availableInputs = 0; break;
@@ -535,20 +639,47 @@ void testLimitAdmission() {
             case 19: p.inputsQualified = false; break;
             case 20: p.methodQualified = false; break;
             case 21: p.qualifiedUs = 0; p.qualificationMaximumAgeUs = 100; break;
+            case 22: p.observedUs = 101; break;
+            case 23: p.inputFunctions[0] = source.function == 2 ? 3 : 2; break;
+            case 24: p.auxiliary = Ess::HomingAuxiliary::MOVE_OFFSET_SET_ZERO; break;
+            case 25: p.auxiliaryQualified = false; break;
+            case 26: p.zeroOffsetQualified = false; break;
+            case 27: p.nativeRatesQualified = false; break;
+            case 28: p.nativeRampQualified = false; break;
+            case 29: ++r.returnSpeed; break;
+            case 30: ++r.rampTime; break;
+            case 31: p.qualifiedMethod = Ess::HomingMethod::METHOD_35; break;
+            case 32: ++p.target.id; break;
+            case 33:
+                p.inputFunctions[1] = source.function == 1 ? 2 : 1;
+                p.inputWiring[1] = InputWiring::CONNECTED;
+                p.availableInputs |= uint8_t(1u << (p.inputFunctions[1] - 1));
+                p.rawInputs = 2; break;
             }
             const Saved<Ess::HomeContext> saved(c);
             assert(!Ess::prepareHome(c, axis(), 12, r, p, 100, 10000, options())); saved.check(c);
         }
-        auto p = limitPrerequisites(source); p.indexQualified = false;
+        auto p = switchPrerequisites(source); p.indexQualified = false;
         const auto result = Ess::prepareHome(c, axis(), 12, request(source.method), p, 100, 10000, options());
         if (source.index) assert(!result && result.detail == static_cast<int32_t>(Ess::HomeError::INDEX_REQUIRED));
-        else assert(result && !c.prerequisites.indexQualified); // Method17 must never inherit a Z prerequisite.
+        else assert(result && !c.prerequisites.indexQualified); // Non-indexed methods must never inherit a Z prerequisite.
+        // A function role is independent of the chosen terminal's bit position.
+        // Both polarities already produce logical levels, without host inversion.
+        for (uint8_t slot = 0; slot < 4; ++slot) for (uint16_t polarity : {uint16_t(0), uint16_t(15)}) {
+            p = switchPrerequisites(source);
+            p.inputFunctions[0] = 0; p.inputWiring[0] = InputWiring::UNKNOWN;
+            p.inputFunctions[slot] = source.function; p.inputWiring[slot] = InputWiring::CONNECTED;
+            p.inputPolarity = polarity; p.rawInputs = uint16_t(1u << slot);
+            assert(Ess::prepareHome(c, axis(), 12, request(source.method), p, 100, 10000, options()));
+            trigger(c); consumeInputs(c, 4, uint16_t(1u << slot)); consumeInputs(c, 3, 0); consume(c);
+            assert(c.state == ActionState::SUCCEEDED); done(c);
+        }
     }
 }
-void testLimitIncompleteAndFailedEvidence() {
-    for (const auto& source : LIMIT_CASES) {
+template<size_t N> void testSwitchIncompleteAndFailedEvidence(const SwitchCase (&cases)[N]) {
+    for (const auto& source : cases) {
         for (const uint16_t stuckFlags : {uint16_t(3),uint16_t(4),uint16_t(6),uint16_t(1)}) {
-            auto c = limitHome(source, true); trigger(c);
+            auto c = switchHome(source, true); trigger(c);
             // Old HOMED/ARRIVED, stuck RUNNING, RUNNING with stale HOMED, or
             // no observed search cannot prove a reference, even with active IO.
             for (unsigned poll = 0; poll < c.options.maxPolls; ++poll) consumeInputs(c, stuckFlags, 1);
@@ -556,7 +687,7 @@ void testLimitIncompleteAndFailedEvidence() {
             assert(c.completion == ActionCompletion::NOT_OBSERVED && !c.zeroEvidence.length); done(c);
         }
         for (unsigned fault = 0; fault < 6; ++fault) {
-            auto c = limitHome(source); trigger(c); auto bytes = reply(c, 4);
+            auto c = switchHome(source); trigger(c); auto bytes = reply(c, 4);
             bytes.resize(bytes.size() - 2);
             if (fault == 0) bytes[0] = 2;
             if (fault == 1) bytes[1] = 4;
@@ -570,25 +701,32 @@ void testLimitIncompleteAndFailedEvidence() {
             assert(c.completion == ActionCompletion::NOT_OBSERVED); done(c);
         }
         for (const uint16_t flags : {uint16_t(8),uint16_t(16),uint16_t(32),uint16_t(64),uint16_t(0x8004)}) {
-            auto c = limitHome(source); trigger(c); consumeInputs(c, flags, 1);
+            auto c = switchHome(source); trigger(c); consumeInputs(c, flags, 1);
             assert(c.state == ActionState::FAILED && c.uncertain && c.completion == ActionCompletion::NOT_OBSERVED);
             assert(c.status.detail == static_cast<int32_t>(flags == 0x8004 ? Ess::HomeError::READINESS : Ess::HomeError::DRIVE_FAULT)); done(c);
         }
-        auto c = limitHome(source); trigger(c); consumeInputs(c, 4, 16);
+        auto c = switchHome(source); trigger(c); consumeInputs(c, 4, 16);
         assert(c.status.detail == static_cast<int32_t>(Ess::HomeError::INPUT_REQUIRED)); done(c);
-        c = limitHome(source); trigger(c); consumeInputs(c, 4, 0); consumeInputs(c, 3, 0);
+        auto p = switchPrerequisites(source);
+        p.inputFunctions[1] = source.function == 1 ? 2 : 1;
+        p.inputWiring[1] = InputWiring::CONNECTED;
+        p.availableInputs |= uint8_t(1u << (p.inputFunctions[1] - 1));
+        assert(Ess::prepareHome(c, axis(), 12, request(source.method), p, 100, 10000, options()));
+        trigger(c); consumeInputs(c, 4, 2);
+        assert(c.status.detail == static_cast<int32_t>(Ess::HomeError::INPUT_REQUIRED)); done(c);
+        c = switchHome(source); trigger(c); consumeInputs(c, 4, 0); consumeInputs(c, 3, 0);
         auto bytes = reply(c); bytes.resize(bytes.size() - 2); bytes[6] = 1; crc(bytes);
         auto at = c.eligibleUs + 20;
         assert(Ess::advanceHome(c, frame(c, bytes, at), at + 20));
         assert(c.status.detail == static_cast<int32_t>(Ess::HomeError::ZERO_NOT_OBSERVED)); done(c);
-        c = limitHome(source); trigger(c);
+        c = switchHome(source); trigger(c);
         assert(Ess::advanceHome(c, local(c, ReadEventKind::DEADLINE), c.deadlineUs));
         assert(c.outcome == ActionOutcome::DEADLINE && c.uncertain); done(c);
-        c = limitHome(source); trigger(c); consumeInputs(c, 4, 1);
+        c = switchHome(source); trigger(c); consumeInputs(c, 4, 1);
         assert(Ess::advanceHome(c, local(c, ReadEventKind::CANCEL), c.servicedUs));
         assert(c.outcome == ActionOutcome::CANCELLED && c.uncertain); done(c);
         for (const bool setupAcknowledged : {false, true}) {
-            c = limitHome(source); if (setupAcknowledged) consume(c);
+            c = switchHome(source); if (setupAcknowledged) consume(c);
             auto event = local(c, ReadEventKind::TRANSPORT_FAILURE);
             event.transport.txAccepted = setupAcknowledged ? 8 : 21; event.txComplete = true;
             assert(Ess::advanceHome(c, event, c.servicedUs + 20));
@@ -597,7 +735,7 @@ void testLimitIncompleteAndFailedEvidence() {
             const Saved<Ess::HomeContext> saved(c); bytes = reply(c);
             assert(!Ess::advanceHome(c, frame(c, bytes, c.servicedUs + 20), c.servicedUs + 40)); saved.check(c);
         }
-        c = limitHome(source); trigger(c); bytes = reply(c, 4); at = c.eligibleUs + 20;
+        c = switchHome(source); trigger(c); bytes = reply(c, 4); at = c.eligibleUs + 20;
         auto oldEvent = frame(c, bytes, at); --oldEvent.transport.operationId;
         const Saved<Ess::HomeContext> saved(c);
         assert(!Ess::advanceHome(c, oldEvent, at + 20)); saved.check(c);
@@ -674,5 +812,7 @@ int main() {
     testUnknownMotionCannotEstablishReference();
     testMaximumPollBoundary();
     testBorrowedAndOversizedEvidence();
-    testLimitBranchesAndVectors(); testLimitAdmission(); testLimitIncompleteAndFailedEvidence();
+    testLimitBranchesAndVectors(); testOriginBranchesAndVectors();
+    testSwitchAdmission(LIMIT_CASES); testSwitchAdmission(ORIGIN_CASES);
+    testSwitchIncompleteAndFailedEvidence(LIMIT_CASES); testSwitchIncompleteAndFailedEvidence(ORIGIN_CASES);
 }

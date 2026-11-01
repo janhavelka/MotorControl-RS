@@ -1,7 +1,7 @@
 # Homing method ownership and evidence
 
-The original planning partition is 3 + 8 + 8 + 8 switch methods. After stage09,
-current source has 35 descriptors: 24 UNIMPLEMENTED, 6 IMPLEMENTED, 5 UNRESOLVED.
+The original planning partition is 3 + 8 + 8 + 8 switch methods. After stage10,
+current source has 35 descriptors: 16 UNIMPLEMENTED, 14 IMPLEMENTED, 5 UNRESOLVED.
 The [maintained method guide](../../ess_homing_methods.md) describes the source;
 reopen the original diagrams when executing each family stage.
 
@@ -14,14 +14,14 @@ Source pages are one-based physical pages in the preserved function PDF.
 | 1 | IMPLEMENTED | 09 | Negative limit | Yes | 32 |
 | 2 | IMPLEMENTED | 09 | Positive limit | Yes | 33 |
 | 17 | IMPLEMENTED | 09 | Negative limit | No | 50-51 |
-| 3 | UNIMPLEMENTED | 10 | Origin | Yes | 34 |
-| 4 | UNIMPLEMENTED | 10 | Origin | Yes | 34-35 |
-| 5 | UNIMPLEMENTED | 10 | Origin | Yes | 35-36 |
-| 6 | UNIMPLEMENTED | 10 | Origin | Yes | 36-37 |
-| 19 | UNIMPLEMENTED | 10 | Origin | No | 52 |
-| 20 | UNIMPLEMENTED | 10 | Origin | No | 52-53 |
-| 21 | UNIMPLEMENTED | 10 | Origin | No | 53-54 |
-| 22 | UNIMPLEMENTED | 10 | Origin | No | 54-55 |
+| 3 | IMPLEMENTED | 10 | Origin | Yes | 34 |
+| 4 | IMPLEMENTED | 10 | Origin | Yes | 34-35 |
+| 5 | IMPLEMENTED | 10 | Origin | Yes | 35-36 |
+| 6 | IMPLEMENTED | 10 | Origin | Yes | 36-37 |
+| 19 | IMPLEMENTED | 10 | Origin | No | 52 |
+| 20 | IMPLEMENTED | 10 | Origin | No | 52-53 |
+| 21 | IMPLEMENTED | 10 | Origin | No | 53-54 |
+| 22 | IMPLEMENTED | 10 | Origin | No | 54-55 |
 | 7 | UNIMPLEMENTED | 11 | Origin + positive limit | Yes | 37-39 |
 | 8 | UNIMPLEMENTED | 11 | Origin + positive limit | Yes | 39-40 |
 | 9 | UNIMPLEMENTED | 11 | Origin + positive limit | Yes | 40-42 |

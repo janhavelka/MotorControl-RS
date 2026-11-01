@@ -97,11 +97,12 @@ print(f"PASS: {len(seen_reads)} actual core/console homing-parameter read termin
 
 assert len(sys.argv) == 4, "both real application frontends are required"
 frontend_records = []
+origin_methods = (3, 4, 5, 6, 19, 20, 21, 22)
 for executable in sys.argv[2:]:
     records = [json.loads(line, object_pairs_hook=unique_object) for line in
                subprocess.check_output([executable, "--emit-console-results"], text=True, timeout=20).splitlines() if line.startswith("{")]
     records = [r for r in records if r.get("home") is True and r.get("command") == "result"]
-    assert len(records) == 8 and [r["method"] for r in records] == [1, 2, 17, 33, 34, 35, 35, 35]
+    assert len(records) == 16 and [r["method"] for r in records] == [1, 2, 3, 4, 5, 6, 17, 19, 20, 21, 22, 33, 34, 35, 35, 35]
     for record in records:
         Console._check_home(record, 1, None)
         # JSON booleans/floats compare equal to Python integer method IDs.
@@ -113,8 +114,8 @@ for executable in sys.argv[2:]:
             else: raise AssertionError((record["method"], type(method).__name__, "non-integer method accepted"))
         assert record["qualification"]["observe_inputs"] and record["inputs_observed"]
         assert len(json.dumps(record, separators=(",", ":"))) < MAX_LINE
-        if record["method"] in (1, 2, 17):
-            # Required physical-limit activation is expected. These altered
+        if record["method"] in (1, 2, 17) + origin_methods:
+            # Required origin/limit activation is expected. These altered
             # samples test host evidence validation, not a physical edge trace.
             active = copy.deepcopy(record)
             active["qualification"]["raw_inputs"] = 1
@@ -125,9 +126,9 @@ for executable in sys.argv[2:]:
                 active[field][2] = raw.hex()
             Console._check_home(active, 1, None)
             # Keep the role summary consistent to reach method-specific checks.
-            for failure in ("wrong_limit", "unwired", "absent_qualification"):
+            for failure in ("wrong_function", "unwired", "absent_qualification"):
                 broken = copy.deepcopy(record)
-                if failure == "wrong_limit":
+                if failure == "wrong_function":
                     wrong = 3 if record["method"] == 2 else 2
                     broken["qualification"]["input_functions"][0] = wrong
                     broken["qualification"]["available_inputs"] = 1 << (wrong - 1)
@@ -137,14 +138,15 @@ for executable in sys.argv[2:]:
                 else: del broken["qualification"]
                 try: Console._check_home(broken, 1, None)
                 except BenchError: pass
-                else: raise AssertionError((record["method"], failure, "invalid limit qualification accepted"))
-            # Add an independently connected but initially inactive origin,
+                else: raise AssertionError((record["method"], failure, "invalid switch qualification accepted"))
+            # Add a connected but initially inactive unexpected function,
             # then make it active only in a post-trigger witness.
             for field in ("activity_evidence", "low_evidence", "completion_evidence"):
                 broken = copy.deepcopy(record)
-                broken["qualification"]["input_functions"][1] = 1
+                unexpected = 2 if record["method"] in origin_methods else 1
+                broken["qualification"]["input_functions"][1] = unexpected
                 broken["qualification"]["input_wiring"][1] = 2
-                broken["qualification"]["available_inputs"] |= 1
+                broken["qualification"]["available_inputs"] |= 1 << (unexpected - 1)
                 raw = bytearray.fromhex(broken[field][2]); raw[8] = 2
                 raw[-2:] = wire_crc(raw[:-2]).to_bytes(2, "little")
                 broken[field][2] = raw.hex()
@@ -153,7 +155,7 @@ for executable in sys.argv[2:]:
                     broken["raw_inputs"] = 2
                 try: Console._check_home(broken, 1, None)
                 except BenchError: pass
-                else: raise AssertionError((record["method"], field, "unexpected origin sample accepted"))
+                else: raise AssertionError((record["method"], field, "unexpected assigned sample accepted"))
         for mutate in (lambda r: r["qualification"].update(qualified_us=r["started_us"] + 1),
                        lambda r: r["qualification"].update(readback_observed_us=r["started_us"] + 1),
                        lambda r: r["qualification"].update(observe_inputs=False),
@@ -172,7 +174,8 @@ for executable in sys.argv[2:]:
                     if contradiction == "unknown_motion": raw[5] |= 0x80
                     else:
                         raw[8] = 1 if contradiction == "assigned_input" else 16
-                        if contradiction == "assigned_input": broken["qualification"]["input_functions"][0] = 1
+                        if contradiction == "assigned_input":
+                            broken["qualification"]["input_functions"][0] = 2 if record["method"] in origin_methods else 1
                     raw[-2:] = wire_crc(raw[:-2]).to_bytes(2, "little")
                     broken[field][2] = raw.hex()
                     if field == "completion_evidence":
@@ -182,7 +185,7 @@ for executable in sys.argv[2:]:
                     try: Console._check_home(broken, 1, None)
                     except BenchError: pass
                     else: raise AssertionError((field, contradiction, "contradictory transition accepted"))
-    assert [r["ok"] for r in records] == [True, True, True, True, True, True, False, False]
+    assert [r["ok"] for r in records] == [True] * 14 + [False, False]
     assert records[-2]["qualification_revoked"] and records[-2]["zero_evidence"] == records[-2]["failure_evidence"]
     assert records[-1]["outcome"] == "reply_error" and records[-1]["detail"] == 15 and records[-1]["raw_motion"] == 0x8003
     # Checked unknown status precedes input/activity failure classification.
@@ -205,4 +208,4 @@ for executable in sys.argv[2:]:
         else: raise AssertionError("checked unknown status relabelled as exhausted observation budget")
     frontend_records.append(records)
 assert frontend_records[0] == frontend_records[1], "Arduino/IDF home evidence differs"
-print("PASS: both real application frontends, methods1/2/17/33/34/35, revoked final-zero and unqualified status evidence")
+print("PASS: both real application frontends, all14 methods, revoked final-zero and unqualified status evidence")

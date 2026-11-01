@@ -4,6 +4,12 @@
 
 ### Added
 
+- Origin-reference homing methods 3–6 and 19–22 through the shared bounded
+  core, application qualification and console paths. All require checked origin
+  inputs; only 3–6 require internal Z. Independent method/branch fixtures retain
+  sampled-evidence limits, status/zero completion and no replay. Physical
+  qualification remains NOT RUN; limit-assisted and unresolved methods stay guarded.
+
 - Limit-reference homing methods 1, 2 and 17 through the existing core,
   qualification-install API and ordinary console route. Methods 1/2 require
   the matching negative/positive limit and qualified internal Z; 17 uses the

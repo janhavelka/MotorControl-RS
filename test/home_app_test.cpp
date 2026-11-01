@@ -117,11 +117,13 @@ ESS::HomePrerequisites installed(bool expectedValid = true) {
 }
 void qualify(bool oldHomed = false, int method = 35, uint16_t inputs = 0, uint16_t polarity = 0) {
     const bool limit = method == 1 || method == 2 || method == 17;
-    if (limit) command("@89 wiring x0 connected\n");
-    checkedBaseline(method,oldHomed,polarity,limit ? (method == 2 ? 2 : 3) : 0,inputs);
+    const bool origin = (method >= 3 && method <= 6) || (method >= 19 && method <= 22);
+    if (limit || origin) command("@89 wiring x0 connected\n");
+    checkedBaseline(method,oldHomed,polarity,origin ? 1 : limit ? (method == 2 ? 2 : 3) : 0,inputs);
     auto qualification = supplied(method);
     if (limit) qualification.availableInputs = method == 2 ? 2 : 4;
-    if (method == 17) qualification.indexQualified = false;
+    if (origin) qualification.availableInputs = 1;
+    if (method == 17 || (method >= 19 && method <= 22)) qualification.indexQualified = false;
     const auto writes = hardware.writes; assert(installHomeQualification(qualification));
     assert(hardware.writes == writes && installed().qualifiedMethod == static_cast<ESS::HomingMethod>(method));
     baselineWrites = hardware.writes;
@@ -176,12 +178,66 @@ void limitBranchesThroughPublicAndConsoleRoutes() {
             assert(!copyHomeResult(id,unchanged) && unchanged.operationId == 777);
         }
 }
-void limitAdmissionUsesCheckedFacts() {
-    for (const int method : {1,2,17}) {
+struct OriginBranch {
+    int method;
+    bool index, rising;
+};
+// Independently read physical PDF34-37 and52-55. The comments give the drive's
+// inactive / active path; the scripted logical samples do not measure direction
+// or prove observation of a physical edge or internal Z pulse.
+const OriginBranch ORIGIN_BRANCHES[] = {
+    {3, true, false},   // p34: +H to rising, reverse -L / -L; falling then first Z.
+    {4, true, true},    // p34-35: +L / -H to falling, reverse +L; rising then first Z.
+    {5, true, false},   // p35-36: -H to rising, reverse +L / +L; falling then first Z.
+    {6, true, true},    // p36-37: -L / +H to falling, reverse -L; rising then first Z.
+    {19, false, false}, // p52: +H to rising, reverse -L / -L; falling origin reference.
+    {20, false, true},  // p52-53: +L / -H to falling, reverse +L; rising origin reference.
+    {21, false, false}, // p53-54: -H to rising, reverse +L / +L; falling origin reference.
+    {22, false, true},  // p54-55: -L / +H to falling, reverse -L; rising origin reference.
+};
+void originBranchesThroughPublicAndConsoleRoutes() {
+    for (const auto& source : ORIGIN_BRANCHES) for (const bool active : {false,true})
+        for (const bool console : {false,true}) {
+            fresh(); qualify(true,source.method,active ? 1 : 0,1);
+            const auto qualification = installed();
+            assert(qualification.inputFunctions[0] == 1 && qualification.availableInputs == 1 &&
+                qualification.indexQualified == source.index);
+            uint32_t id = 0;
+            if (console) {
+                command("@80 home " + std::to_string(source.method) + " 60 30 100 zero\n");
+                id = app->latestOperationId;
+                assert(id && view(id).homeContext && !findRecord(*app,id)->programmaticHome);
+            } else id = admit(source.method);
+            const auto admitted = *view(id).homeContext;
+            assert(admitted.prerequisites.observeInputs && admitted.prerequisites.rawInputs == (active ? 1 : 0) &&
+                admitted.prerequisites.inputPolarity == 1 && admitted.prerequisites.indexQualified == source.index);
+            reply(id);
+            assert(hardware.tx == crc({1,16,0,0x31,0,6,12,0,static_cast<uint8_t>(source.method),0,60,0,30,0,100,0,0,0,0}));
+            reply(id); assert(hardware.tx == crc({1,6,0,0x27,0,16}));
+            reply(id,observed(4,active ? 1 : 0));
+            // Falling methods first acquire an inactive origin; rising methods
+            // first leave an active origin. All eight have separate source rows.
+            const bool intermediate = active == source.rising;
+            if (intermediate) reply(id,observed(4,active ? 0 : 1));
+            assert(view(id).pending && !app->coordinateReference.nativeKnown);
+            reply(id,observed(3,source.rising ? 1 : 0)); reply(id,words(0,0));
+            const auto complete = *view(id).homeContext;
+            assert(!view(id).pending && complete.state == ActionState::SUCCEEDED && complete.inputsObserved &&
+                complete.runningObserved && complete.homedLowObserved && complete.rawInputs == (source.rising ? 1 : 0) &&
+                complete.completion == ActionCompletion::OBSERVED && app->coordinateReference.nativeKnown && !app->axis.originKnown);
+            assert(sentCount() == (intermediate ? 6U : 5U));
+            command("@81 result " + std::to_string(id) + "\n");
+            assert(Serial.output.find("\"method\":" + std::to_string(source.method) + ",") != std::string::npos &&
+                Serial.output.find("\"completion\":\"observed\"") != std::string::npos);
+            const auto writes = sentCount(); pump(); assert(sentCount() == writes && releaseOperation(id));
+        }
+}
+void switchAdmissionUsesCheckedFacts() {
+    for (const int method : {1,2,3,4,5,6,17,19,20,21,22}) {
         fresh(); qualify(false,method); const auto qualified = installed();
         for (unsigned fault = 0; fault < 12; ++fault) {
             auto candidate = qualified;
-            if (fault == 0) candidate.inputFunctions[0] = method == 2 ? 3 : 2;
+            if (fault == 0) candidate.inputFunctions[0] = qualified.inputFunctions[0] == 2 ? 3 : 2;
             if (fault == 1) candidate.inputFunctions[0] = 0;
             if (fault == 2) candidate.inputWiring[0] = InputWiring::UNCONNECTED;
             if (fault == 3) candidate.inputWiring[0] = InputWiring::UNKNOWN;
@@ -195,7 +251,7 @@ void limitAdmissionUsesCheckedFacts() {
             if (fault == 11) candidate.qualifiedUs = hardware.time + 1;
             assert(!installHomeQualification(candidate) && !sentCount());
         }
-        if (method != 17) {
+        if (method != 17 && method < 19) {
             auto noIndex = qualified; noIndex.indexQualified = false;
             assert(!installHomeQualification(noIndex) && !sentCount());
         } else assert(!qualified.indexQualified);
@@ -215,18 +271,23 @@ void limitAdmissionUsesCheckedFacts() {
         }
         // Real IO readback with undocumented logical bits cannot install facts.
         fresh(); command("@89 wiring x0 connected\n");
-        checkedBaseline(method,false,0,method == 2 ? 2 : 3,16);
-        auto badLevels = supplied(method); badLevels.availableInputs = method == 2 ? 2 : 4;
+        checkedBaseline(method,false,0,qualified.inputFunctions[0],16);
+        auto badLevels = supplied(method); badLevels.availableInputs = qualified.availableInputs;
         const auto before = hardware.writes;
         assert(!installHomeQualification(badLevels) && hardware.writes == before);
         // Fresh intent cannot manufacture absent wire connection evidence.
-        fresh(); checkedBaseline(method,false,0,method == 2 ? 2 : 3,0);
-        auto unwired = supplied(method); unwired.availableInputs = method == 2 ? 2 : 4;
+        fresh(); checkedBaseline(method,false,0,qualified.inputFunctions[0],0);
+        auto unwired = supplied(method); unwired.availableInputs = qualified.availableInputs;
         assert(!installHomeQualification(unwired));
+        // Renewing supplied qualification does not renew stale checked IO/config.
+        fresh(); qualify(false,method); auto renewed = installed();
+        advanceHardware(hardware.time + renewed.maximumAgeUs + 1); serviceApplication();
+        renewed.qualifiedUs = hardware.time;
+        assert(!installHomeQualification(renewed) && !sentCount());
     }
 }
-void limitFailuresAndInterruption() {
-    for (const int method : {1,2,17}) for (unsigned scenario = 0; scenario < 8; ++scenario) {
+void switchFailuresAndInterruption() {
+    for (const int method : {1,2,3,4,5,6,17,19,20,21,22}) for (unsigned scenario = 0; scenario < 9; ++scenario) {
         fresh(); qualify(true,method,1); const auto id = admit(method);
         if (scenario != 0) reply(id);
         if (scenario > 1) reply(id);
@@ -244,13 +305,17 @@ void limitFailuresAndInterruption() {
             assert(failed.outcome == ActionOutcome::TRANSPORT_ERROR && failed.failureEvidence.length == 9 &&
                 failed.failureEvidence.transportDetail == static_cast<int32_t>(Rtu::Reason::LENGTH));
         } else if (scenario == 3) {
-            reply(id,observed(0x40,1)); // Physical negative input is normal; soft limit is a fault.
+            reply(id,observed(0x40,1)); // Required physical input is normal; soft limit is a fault.
             assert(copiedHome(id).status.detail == static_cast<int32_t>(ESS::HomeError::DRIVE_FAULT));
         } else if (scenario == 7) {
             // Neither stale HOMED nor an unchanging required input proves a new home.
             reply(id,observed(6,1)); reply(id,observed(3,1));
             assert(view(id).pending && !copiedHome(id).homedLowObserved && !app->coordinateReference.nativeKnown);
             assert(revokeHomeQualification()); pump();
+        } else if (scenario == 8) {
+            waitTx(id); // Absent status samples time out; no replacement poll is replayed.
+            for (unsigned i = 0; i < 40000 && view(id).pending; ++i) step();
+            assert(copiedHome(id).outcome == ActionOutcome::TRANSPORT_ERROR);
         } else {
             reply(id,observed(4,1)); reply(id,observed(3,0)); waitTx(id);
             if (scenario == 4) {
@@ -272,6 +337,30 @@ void limitFailuresAndInterruption() {
         // A late historical reply cannot promote this terminal record or emit a replay.
         scheduleReply(hardware.time + 1000,words(0,0)); pump();
         assert(copiedHome(id).outcome == result.outcome && sentCount() == writes);
+    }
+}
+void originObservationBounds() {
+    for (const auto& source : ORIGIN_BRANCHES) for (unsigned scenario = 0; scenario < 6; ++scenario) {
+        const uint16_t level = scenario == 1 ? 1 : 0;
+        fresh(); qualify(true,source.method,level); const auto id = admit(source.method);
+        reply(id); reply(id);
+        if (scenario < 2) {
+            // Constant inactive or active samples can miss the source trajectory's
+            // transitions. Status plus zero still meets the shared contract.
+            reply(id,observed(4,level)); reply(id,observed(3,level)); reply(id,words(0,0));
+            assert(copiedHome(id).completion == ActionCompletion::OBSERVED &&
+                copiedHome(id).rawInputs == level && app->coordinateReference.nativeKnown);
+        } else {
+            reply(id,observed(scenario == 2 ? 6 : scenario == 3 ? 1 : 4));
+            for (unsigned poll = 1; poll < ESS::ACTION_MAX_POLLS && view(id).pending; ++poll)
+                reply(id,observed(scenario == 4 ? 2 : scenario == 5 ? 4 : 3));
+            const auto result = copiedHome(id);
+            assert(!view(id).pending && result.outcome == ActionOutcome::OBSERVATION_LIMIT &&
+                result.polls == ESS::ACTION_MAX_POLLS && !app->coordinateReference.nativeKnown && !result.zeroEvidence.length);
+            if (scenario == 2) assert(result.runningObserved && !result.homedLowObserved);
+            if (scenario == 3) assert(!result.runningObserved && result.homedLowObserved);
+        }
+        const auto writes = sentCount(); pump(); assert(sentCount() == writes);
     }
 }
 void qualificationLifecycleAndBindings() {
@@ -336,7 +425,7 @@ void qualificationMappingAndLogicalInputs() {
     reply(id); reply(id); reply(id,observed(3,1)); reply(id,words(0,0));
     const auto completed = copiedHome(id);
     assert(completed.inputsObserved && completed.rawInputs == 1 && completed.completion == ActionCompletion::OBSERVED);
-    // Qualification does not enable the still unsupported origin method19.
+    // Qualification validates origin and both limit identities separately.
     // Function 3 is a physical negative-limit input, not
     // the distinct motion-status soft-limit fault bit.
     struct RequiredInput { int method; uint16_t function; uint8_t available; };
@@ -351,7 +440,7 @@ void qualificationMappingAndLogicalInputs() {
         assert(static_cast<bool>(accepted) == (function == mapping.function) && hardware.writes == writes);
         if (function == mapping.function) assert(installed().inputFunctions[0] == mapping.function);
         uint32_t operation = 77;
-        const bool executable = function == mapping.function && mapping.method != 19;
+        const bool executable = function == mapping.function;
         assert(static_cast<bool>(submitHome(request(mapping.method),operation)) == executable && hardware.writes == writes);
         if (executable) {
             assert(operation != 77 && cancel(app,operation) == Probe::Action::OK);
@@ -525,7 +614,7 @@ void productionAndFixtureGates() {
         assert(host(app).startHome(app,2,1,mismatch,unchanged) == Probe::Action::INVALID);
         assert(unchanged == 77 && !sentCount() && !app->owner.pending() && !axisReserved(*app,1));
     }
-    for (int method : {3,18,24,-1,15}) {
+    for (int method : {7,18,24,-1,15}) {
         const auto* descriptor = ESS::homeMethod(static_cast<ESS::HomingMethod>(method));
         const auto expected = !descriptor ? Probe::Action::INVALID :
             descriptor->support == ESS::HomeSupport::UNRESOLVED ? Probe::Action::UNRESOLVED : Probe::Action::UNIMPLEMENTED;
@@ -889,7 +978,7 @@ void parameterReadHumanTerminal() {
     }
 }
 void emitConsoleResults() {
-    for (const int method : {1,2,17,33,34,35}) {
+    for (const int method : {1,2,3,4,5,6,17,19,20,21,22,33,34,35}) {
         fresh(); qualify(false,method); const auto id = admit(method); reply(id); reply(id);
         if (method != 35) reply(id,observed(4));
         reply(id,observed(3)); reply(id,words(0,0));
@@ -913,7 +1002,8 @@ void emitConsoleResults() {
 }
 int main(int argc, char** argv) {
     if (argc == 2 && !std::strcmp(argv[1],"--emit-console-results")) { emitConsoleResults(); return 0; }
-    limitBranchesThroughPublicAndConsoleRoutes(); limitAdmissionUsesCheckedFacts(); limitFailuresAndInterruption();
+    limitBranchesThroughPublicAndConsoleRoutes(); originBranchesThroughPublicAndConsoleRoutes();
+    switchAdmissionUsesCheckedFacts(); switchFailuresAndInterruption(); originObservationBounds();
     qualificationLifecycleAndBindings(); qualificationMappingAndLogicalInputs(); revocationAndCancellationConserveEvidence();
     qualificationConsoleInspection();
     queuedReadContradictionPreventsTrigger(); movingMethodsAndInsufficientObservations();

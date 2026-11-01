@@ -286,13 +286,17 @@ firmware must also install an independently qualified, raw-word/binding-matched
 Its minimum compatible move speed is checked without adjusting desired speed. Profile restore still excludes this word; see
 [position setting and restoration limits](ess_position.md#native-position-start-speed-setting).
 
-## Limit-reference homing
+## Limit- and origin-reference homing
 
-`home methods` and `caps` list implemented methods1/2/17/33/34/35. After ordinary
+`home methods` and `caps` list implemented methods1–6/17/19–22/33–35. After ordinary
 checked reads and application `installHomeQualification`, use
 `home 1|2|17 SEARCH_NATIVE RETURN_NATIVE RAMP_NATIVE zero [address]` with one
-method number. Method1 requires a connected negative limit plus internal Z,
+method number. Origin methods use the same syntax, for example
+`home 20 60 30 100 zero`. Method1 requires a connected negative limit plus internal Z,
 2 a connected positive limit plus Z, and17 a negative limit without Z.
+Methods3–6 require a connected function-1 origin plus Z;19–22 require the origin
+without Z. Each method has its own edge and direction; consult `home methods`
+and the [method guide](ess_homing_methods.md) before supplying qualification.
 `home qualification` inspects supplied facts; it cannot install or invent them.
 See [admission, completion and evidence limits](ess_homing.md).
 

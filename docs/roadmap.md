@@ -13,7 +13,7 @@ retain successful and failed experiments.
 | Area | Current implementation | Evidence boundary |
 | --- | --- | --- |
 | Portable core | Exact units/coordinates, typed targets, register ledger, checked ESS FC03/06/10 codecs | No framework, transport, clock, heap or retry ownership |
-| Bounded operations | Typed reads/settings, actions, relative/absolute/wrapped position, finite velocity, homing 1/2/17/33/34/35, discovery and explicit communication/persistence sequences | Unsupported and unresolved operations fail explicitly; five native-family gaps and 18 guarded paired setters remain |
+| Bounded operations | Typed reads/settings, actions, relative/absolute/wrapped position, finite velocity, homing 1-6/17/19-22/33-35, discovery and explicit communication/persistence sequences | Unsupported and unresolved operations fail explicitly; five native-family gaps and 18 guarded paired setters remain |
 | Application reference | Cooperative owner, retained results, immutable deadlines, urgent stop, runner/capture, ordinary API/console and passive traffic observation | Software timing observations do not establish exact wire timing; no uncertain write replay |
 | Consumers and tooling | Shared Arduino/native ESP-IDF S3 application, S2 compile-only fixtures, strict host tools, source/install packages and CI | S3 functional evidence belongs to the exact tested image, motor and fixture; S2 hardware is unqualified |
 | Documentation | Current contracts and operation coverage, source-backed FieldCore handoff, preserved manuals and bench reports | Old numbered prompts are historical delivery instructions, not current missing-feature lists |
@@ -141,9 +141,10 @@ independent caller/live ages, exact checked configuration/native parameters,
 logical-input diagnostics and copied revocation that prevents reference publication
 after cancellation. Methods33/34/35 regress through both application frontends.
 Stage09 adds limit-reference1/2/17 with exact input/index qualification and the
-same status/zero completion path. The remaining24 switch methods belong to
-stages10-12, so N08 stays PARTIAL. Physical limit homing remains NOT RUN; see
-[stage09 evidence](reports/2026-10-31_ess_limit_homing.md).
+same status/zero completion path. Stage10 adds origin-reference3/4/5/6/19/20/21/22,
+with separate branch fixtures and index qualification only for3–6. The remaining16
+limit-assisted methods belong to stages11-12, so N08 stays PARTIAL. Physical
+switch homing remains NOT RUN; see [stage10 evidence](reports/2026-11-01_ess_origin_homing.md).
 Physical homing and the absent recorded-bench regression remain NOT RUN.
 The [independent prompts06-08 audit](reports/2026-10-29_ess_06_08_audit.md)
 corrects unknown-status qualification and host transition validation, with

@@ -1,5 +1,5 @@
 /** @file Homing.h
- * @brief Bounded ESS limit, index and current-position homing. No I/O or retry.
+ * @brief Bounded ESS limit, origin, index and current-position homing. No I/O or retry.
  * SPDX-License-Identifier: MIT
  */
 #pragma once
@@ -13,6 +13,7 @@ enum class HomeSupport : uint8_t { IMPLEMENTED, UNIMPLEMENTED, UNRESOLVED };
 enum class HomeInput : uint8_t { ORIGIN = 1, POSITIVE_LIMIT = 2, NEGATIVE_LIMIT = 4 };
 /** Static descriptors distinguish a documented number from implemented work.
  * Inputs describe reviewed trajectory dependencies, not assignment setters.
+ * Origin methods 3..6 and 19..22 require function 1; only 3..6 require index.
  * Index is internal motor Z; methods 33/34 need no external input terminal. */
 struct HomeMethodDescriptor {
     HomingMethod method;
