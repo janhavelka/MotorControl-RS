@@ -11,9 +11,11 @@ and copied evidence; treat its fields as read-only between API calls.
 `homeMethod` and `homeMethodAt` expose all 35 documented method dispositions.
 Methods 1 and 2 implement negative/positive-limit reference with internal Z;
 17 uses negative-limit release without index. Origin-reference methods 3–6
-require internal Z; 19–22 use the origin edge without index. Methods 33 and 34 implement
+require internal Z; 19–22 use the origin edge without index. Methods 7–10 and
+23–26 add positive-limit reversal, with internal Z required only for 7–10.
+Methods 33 and 34 implement
 negative/positive internal-Z search, and 35 uses the current mechanical position.
-The other 16 limit-assisted switch methods remain unimplemented;
+The other eight origin-plus-negative-limit methods remain unimplemented;
 method 18 and collision methods −1 through −4 have unresolved source semantics.
 See the [complete method table](ess_homing_methods.md) for trajectories,
 prerequisites, source conflicts and external-input fixture requirements.
@@ -75,6 +77,51 @@ transitions still fail within the poll/deadline bound. Internal Z and physical
 direction/travel remain supplied qualifications, never inferred poll evidence.
 Methods 19–22 do not require `indexQualified`.
 
+## Origin plus positive-limit methods
+
+Methods 7–10 and 23–26 require both origin/function 1 and positive-limit/function
+2, known polarity, declared connected wiring and fresh logical state bound to
+the same configuration. The positive limit is mandatory even for a starting
+location that reaches the origin without encountering it. Methods 7–10 also
+require qualified internal Z; 23–26 do not. An assigned negative limit cannot
+substitute for the positive limit. Supplied polarity must match checked readback;
+logical levels already include that polarity and are not inverted by the host.
+
+Each method has three source-defined locations. The two inactive locations
+have identical initial logical levels but different paths; an inactive Boolean
+cannot identify their physical location. In the table, `O↑`/`O↓` are effective
+origin rising/falling, `P` is positive-limit activation, and `H`/`L` are qualified
+search/return rates. Direction signs follow the manual. Every reversal includes
+deceleration/stop; a same-direction `H` to `L` change is a slowdown.
+
+| Method | Inactive, approaching origin | Inactive, beyond origin | Origin active | Final reference | Physical PDF pages |
+| --- | --- | --- | --- | --- | --- |
+| 7 | +H O↑; reverse −L O↓ | +H P; reverse −H O↑, slow −L O↓ | −L O↓ | First Z after falling, −L | 37–39 |
+| 8 | +H O↑; reverse −L O↓; reverse +L O↑ | +H P; reverse −H O↑, slow −L O↓; reverse +L O↑ | −L O↓; reverse +L O↑ | First Z after rising, +L | 39–40 |
+| 9 | +H O↑, slow +L O↓; reverse −L O↑ | +H P; reverse −H O↑; reverse +L O↓; reverse −L O↑ | +L O↓; reverse −L O↑ | First Z after rising, −L | 40–42 |
+| 10 | +H O↑, slow +L O↓ | +H P; reverse −H O↑; reverse +L O↓ | +L O↓ | First Z after falling, +L | 42–43 |
+| 23 | +H O↑; reverse −L O↓ | +H P; reverse −H O↑, slow −L O↓ | −L O↓ | Falling edge, −L; no Z | 55–57 |
+| 24 | +H O↑; reverse −L O↓; reverse +L O↑ | +H P; reverse −H O↑, slow −L O↓; reverse +L O↑ | −L O↓; reverse +L O↑ | Rising edge, +L; no Z | 57–58 |
+| 25 | +H O↑, slow +L O↓; reverse −L O↑ | +H P; reverse −H O↑; reverse +L O↓; reverse −L O↑ | +L O↓; reverse −L O↑ | Rising edge, −L; no Z | 58–60 |
+| 26 | +H O↑, slow +L O↓ | +H P; reverse −H O↑; reverse +L O↓ | +L O↓ | Falling edge, +L; no Z | 60–61 |
+
+Each row was independently checked against its original pages. Method 8 p40(c)
+says **valid**, agreeing with its active drawing; an older maintained note
+incorrectly listed a conflict there. Methods 10 p43(c) and 26 p61(c) say
+**invalid**, but their drawing and direct +L exit at falling describe active
+origin. The active cases above retain that explicit interpretation.
+
+The drive performs all intermediate motion after native staging and one trigger.
+Both required inputs may appear active in sampled evidence. The host records
+those facts without asserting which physical branch occurred. Missed edges or
+constant samples alone cannot establish a stuck switch or prove a reversal.
+Completion still requires the qualified fresh status transition/activity and
+checked zero contract below; neither HOMED nor zero alone proves the physical
+path, internal Z or wiring. Missing required status evidence fails within the
+poll/deadline bounds. Unexpected active assigned negative-limit input remains
+a failure, as do alarm and soft-limit status. No new write or automatic retry
+is introduced.
+
 ## Parameter observations
 
 `home read [address]` reads the six native records in one seven-word checked
@@ -107,7 +154,7 @@ qualification, without deriving them from incoming intent. Terminal JSON keeps
 them in `prerequisites.qualified_parameters`; Python checks them against the
 staged method/rate/ramp words.
 
-Methods 1/2/3/4/5/6/33/34 additionally need qualified internal Z;
+Methods 1–10 and 33/34 additionally need qualified internal Z;
 35 needs neither Z nor an external sensor. Unknown input assignments are not
 qualified by unplugged wiring. Existing active auxiliary `0x0030` must already
 be qualified as `KEEP_POSITION_SET_ZERO` (7). Homing never writes that auxiliary
@@ -220,7 +267,7 @@ change. Physical p73 does not resolve offset order/sign/scale or the sampling
 instant of its term actual value. Selecting a stored policy implements no new
 coordinate policy as motion. `prepareHome` still requires independently
 qualified active auxiliary7, qualified zero offset, exact native parameters and
-methods1/2/3/4/5/6/17/19/20/21/22/33/34/35. A stored/readback7 never grants any of those qualifications.
+methods1–10/17/19–26/33–35. A stored/readback7 never grants any of those qualifications.
 
 Use `prepareDriverRead`/`getDriver` for prior FC03 `0x0030/1`; the update uses
 `prepareDriverSettings`/`nextDriver`/`advanceDriver` for FC06 `0x0030` and separate
@@ -276,8 +323,9 @@ input reassignment, automatic repair or rollback follows this setter.
 
 Stage08 implements the shared [stage01 decisions](reports/2026-10-29_ess_software_contracts.md).
 Stage09 implements limit-reference1/2/17 alongside33/34/35. Stage10 adds
-origin-reference3/4/5/6/19/20/21/22; the other16 limit-assisted switch methods
-await stages11-12.
+origin-reference3/4/5/6/19/20/21/22. Stage11 adds positive-limit-assisted
+methods7/8/9/10/23/24/25/26; the other eight negative-limit-assisted methods
+await stage12.
 
 The public [ProbeApp.h](../examples/probe_cli/ProbeApp.h) exposes `installHomeQualification`,
 `inspectHomeQualification`, `revokeHomeQualification`, `submitHome` and

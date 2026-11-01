@@ -4,6 +4,12 @@
 
 ### Added
 
+- Origin plus positive-limit homing methods 7–10 and 23–26 through the existing
+  bounded core, application and console. Both inputs are required for every
+  starting location; only 7–10 require internal Z. Independent vectors cover
+  all 24 spatial branches and conservative sampled completion. Physical
+  reversal/index qualification remains NOT RUN; negative-limit methods stay guarded.
+
 - Origin-reference homing methods 3–6 and 19–22 through the shared bounded
   core, application qualification and console paths. All require checked origin
   inputs; only 3–6 require internal Z. Independent method/branch fixtures retain

@@ -62,8 +62,7 @@ Several `c)` captions incorrectly say the origin is inactive while depicting
 it active. Method 18 labels the figures “negative limit” despite a positive
 heading/prose; that discrepancy remains unresolved.
 
-The original-page recheck on 29 October 2026 identifies the inactive-caption/
-active-drawing conflicts precisely: method 8 p40, 10 p43, 13 p48, 14 p50,
+The maintained inactive-caption/active-drawing conflicts are method 10 p43, 13 p48, 14 p50,
 26 p61, 29 p65 and 30 p67. Method 28 has a separate discrepancy: the p63(a)
 prose describes direct origin acquisition, while its drawing shows the far-side
 negative-limit reversal. The p64 drawing following (b) shows direct acquisition,
@@ -73,8 +72,15 @@ spatial branches in source-derived tests; do not use the a/b letters as reliable
 path identifiers or generalize this interpretation to unresolved method 18.
 See the [stage 01 source review](reports/2026-10-29_ess_software_contracts.md).
 
-The implemented subset is 1–6, 17, 19–22 and 33–35, with zero offset and auxiliary
-value 7. The other 16 limit-assisted switch methods remain unimplemented. Their shared
+The 1 November positive-limit review corrects an earlier attribution to method
+8 p40(c): its caption says **valid**, and the drawing agrees on active origin.
+Methods 10 p43(c) and 26 p61(c) say **invalid** while depicting active origin
+and a direct positive low-speed exit at the falling edge. Their active branches
+are retained explicitly. The [positive-limit family paths](ess_homing.md#origin-plus-positive-limit-methods)
+separate all three starting locations for every method.
+
+The implemented subset is 1–10, 17, 19–26 and 33–35, with zero offset and auxiliary
+value 7. The other eight negative-limit-assisted methods remain unimplemented. Their shared
 [admission and observation contract](ess_homing.md#planned-auxiliary-setting-and-switch-method-integration-not-implemented)
 keeps trajectories in the drive and sampled evidence in the host; it does not
 require a host reconstruction of every physical edge. Method 18

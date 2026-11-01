@@ -83,10 +83,12 @@ class Coverage(unittest.TestCase):
             "PvTriggerMode.LEVEL", "PvTriggerMode.RISING_EDGE", "PositionMode.RELATIVE", "PositionMode.ABSOLUTE", "HomingMethod.METHOD_1", "HomingMethod.METHOD_2", "HomingMethod.METHOD_17",
             "HomingMethod.METHOD_3", "HomingMethod.METHOD_4", "HomingMethod.METHOD_5", "HomingMethod.METHOD_6",
             "HomingMethod.METHOD_19", "HomingMethod.METHOD_20", "HomingMethod.METHOD_21", "HomingMethod.METHOD_22",
+            "HomingMethod.METHOD_7", "HomingMethod.METHOD_8", "HomingMethod.METHOD_9", "HomingMethod.METHOD_10",
+            "HomingMethod.METHOD_23", "HomingMethod.METHOD_24", "HomingMethod.METHOD_25", "HomingMethod.METHOD_26",
             "HomingMethod.METHOD_33", "HomingMethod.METHOD_34",
             "HomingMethod.METHOD_35", "MotionCommandBit.START_HOMING",
             "ControlAlgorithm.OPEN_LOOP", "ControlAlgorithm.ALGORITHM_1"} | {e["name"] + "." + v["name"] for e in LEDGER["enums"] if e["name"] in ("InputFunction", "OutputFunction", "InputBit", "OutputBit", "BaudRateCode", "SerialFormatCode", "MotionStatusBit", "AlarmCode", "HomingAuxiliary") for v in e["values"] if not (e["name"] == "OutputFunction" and v["value"] == 11)})
-        self.assertEqual(result["summary"]["choice_implementation"], {"NOT_IMPLEMENTED": 28, "IMPLEMENTED": 105, "UNSUPPORTED": 1, "NOT_APPLICABLE": 1})
+        self.assertEqual(result["summary"]["choice_implementation"], {"NOT_IMPLEMENTED": 20, "IMPLEMENTED": 113, "UNSUPPORTED": 1, "NOT_APPLICABLE": 1})
         for record in result["records"]:
             if record["id"] in ("AUXILIARY_COMMAND", "MOTION_COMMAND"):
                 self.assertEqual(record["obligations"]["write"], "IN_PROGRESS")
@@ -100,6 +102,8 @@ class Coverage(unittest.TestCase):
                     "HomingMethod.METHOD_1", "HomingMethod.METHOD_2", "HomingMethod.METHOD_17",
                     "HomingMethod.METHOD_3", "HomingMethod.METHOD_4", "HomingMethod.METHOD_5", "HomingMethod.METHOD_6",
                     "HomingMethod.METHOD_19", "HomingMethod.METHOD_20", "HomingMethod.METHOD_21", "HomingMethod.METHOD_22",
+                    "HomingMethod.METHOD_7", "HomingMethod.METHOD_8", "HomingMethod.METHOD_9", "HomingMethod.METHOD_10",
+                    "HomingMethod.METHOD_23", "HomingMethod.METHOD_24", "HomingMethod.METHOD_25", "HomingMethod.METHOD_26",
                     "HomingMethod.METHOD_33", "HomingMethod.METHOD_34", "HomingMethod.METHOD_35"}:
                 self.assertEqual(disposition, operations.DEFAULT)
         offset = next(row for row in result["records"] if row["id"] == "HOMING_OFFSET")
@@ -277,7 +281,7 @@ class Coverage(unittest.TestCase):
         self.assertEqual(records["HOMING_AUXILIARY"]["obligations"]["write"], "IMPLEMENTED")
         self.assertEqual(records["HOMING_OFFSET"]["obligations"]["write"], "IN_PROGRESS")
         choices = {row["id"]: row for row in result["named_choices"]}
-        self.assertEqual(choices["HomingMethod.METHOD_24"]["disposition"], operations.DEFAULT)
+        self.assertEqual(choices["HomingMethod.METHOD_27"]["disposition"], operations.DEFAULT)
         self.assertEqual(choices["HomingAuxiliary.KEEP_POSITION_SET_ZERO"]["coverage_kind"], "WRITE")
         self.assertNotIn("homing_auxiliary_write", {gap["id"] for gap in INVENTORY["gaps"]})
         self.assertEqual(result["summary"]["read"].get("NOT_IMPLEMENTED", 0), 0)

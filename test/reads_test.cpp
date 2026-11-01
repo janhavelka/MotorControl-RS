@@ -637,7 +637,7 @@ void testHomingParameterWindowSevenWordsAndOwnedEvidence() {
     assert(out.rawAuxiliary == 7 && out.rawMethod == 24 && out.rawSearchSpeed == 60 && out.rawReturnSpeed == 30);
     assert(out.rawRampTime == 100 && out.rawOffsetWords[0] == 0x1234 && out.rawOffsetWords[1] == 0xABCD);
     assert(out.auxiliaryKnown && out.auxiliary == HomingAuxiliary::KEEP_POSITION_SET_ZERO);
-    assert(out.methodKnown && out.method == HomingMethod::METHOD_24 && out.methodSupport == HomeSupport::UNIMPLEMENTED);
+    assert(out.methodKnown && out.method == HomingMethod::METHOD_24 && out.methodSupport == HomeSupport::IMPLEMENTED);
     assert(out.searchSpeedInRange && out.returnSpeedInRange && out.rampTimeInRange);
     homingInterpretationUnresolved(out);
     assert(out.provenance.first == 0x0030 && out.provenance.count == 7 && out.provenance.length == 19);
@@ -703,7 +703,7 @@ void testHomingParameterMembershipIsNotExecutableSupport() {
         assert(out.rawMethod == code && out.methodKnown == known);
         if (known) {
             assert(static_cast<uint16_t>(out.method) == code);
-            assert(out.methodSupport == (code >= 33 || (code >= 1 && code <= 6) || code == 17 || (code >= 19 && code <= 22) ?
+            assert(out.methodSupport == (code >= 33 || (code >= 1 && code <= 10) || code == 17 || (code >= 19 && code <= 26) ?
                 HomeSupport::IMPLEMENTED : code == 18 ? HomeSupport::UNRESOLVED : HomeSupport::UNIMPLEMENTED));
         } else assert(out.methodSupport == HomeSupport::UNRESOLVED);
     }
@@ -721,7 +721,7 @@ void testHomingParameterMembershipIsNotExecutableSupport() {
         if (method->support == HomeSupport::IMPLEMENTED) ++implemented;
         else if (method->support == HomeSupport::UNIMPLEMENTED) ++pending; else ++unresolved;
     }
-    assert(implemented == 14 && pending == 16 && unresolved == 5);
+    assert(implemented == 22 && pending == 8 && unresolved == 5);
 }
 void testHomingParameterPreparationAndPublicationFailuresPreserveOutput() {
     ReadContext output = homingParameters(); const Saved<ReadContext> unchanged(output);

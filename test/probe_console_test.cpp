@@ -1647,26 +1647,34 @@ void testHomeRoutesAndDescriptors() {
     f.contains("\"6\":\"negative_limit_then_index\"");
     f.contains("\"7\":\"positive_limit_then_index\"");
     f.contains("\"8\":\"negative_limit_release\"");
-    const struct { int method, reason; bool index; const char* description; } origins[] = {
-        {3,9,true,"origin_falling_negative_then_index"},
-        {4,10,true,"origin_rising_positive_then_index"},
-        {5,11,true,"origin_falling_positive_then_index"},
-        {6,12,true,"origin_rising_negative_then_index"},
-        {19,13,false,"origin_falling_negative"},
-        {20,14,false,"origin_rising_positive"},
-        {21,15,false,"origin_falling_positive"},
-        {22,16,false,"origin_rising_negative"}
+    const struct { int method, reason, inputs; bool index; const char* description; } origins[] = {
+        {3,9,1,true,"origin_falling_negative_then_index"},
+        {4,10,1,true,"origin_rising_positive_then_index"},
+        {5,11,1,true,"origin_falling_positive_then_index"},
+        {6,12,1,true,"origin_rising_negative_then_index"},
+        {19,13,1,false,"origin_falling_negative"},
+        {20,14,1,false,"origin_rising_positive"},
+        {21,15,1,false,"origin_falling_positive"},
+        {22,16,1,false,"origin_rising_negative"},
+        {7,17,3,true,"positive_limit_origin_falling_negative_then_index"},
+        {8,18,3,true,"positive_limit_origin_rising_positive_then_index"},
+        {9,19,3,true,"positive_limit_origin_rising_negative_then_index"},
+        {10,20,3,true,"positive_limit_origin_falling_positive_then_index"},
+        {23,21,3,false,"positive_limit_origin_falling_negative"},
+        {24,22,3,false,"positive_limit_origin_rising_positive"},
+        {25,23,3,false,"positive_limit_origin_rising_negative"},
+        {26,24,3,false,"positive_limit_origin_falling_positive"}
     };
     for (const auto& origin : origins) {
         const auto method = std::string("\"method\":") + std::to_string(origin.method) +
-            ",\"support\":\"implemented\",\"inputs\":1,\"index\":" + (origin.index ? "true" : "false") +
+            ",\"support\":\"implemented\",\"inputs\":" + std::to_string(origin.inputs) + ",\"index\":" + (origin.index ? "true" : "false") +
             ",\"moves\":true,\"reason\":" + std::to_string(origin.reason);
         f.contains(method.c_str());
         const auto reason = std::string("\"") + std::to_string(origin.reason) + "\":\"" + origin.description + "\"";
         f.contains(reason.c_str());
     }
     assert(!f.homes && !f.probes && f.lines.back().size() < Probe::OUTPUT_CAPACITY);
-    send(c, "@10 caps\n"); f.contains("\"home_methods\":[1,2,3,4,5,6,17,19,20,21,22,33,34,35]");
+    send(c, "@10 caps\n"); f.contains("\"home_methods\":[1,2,3,4,5,6,7,8,9,10,17,19,20,21,22,23,24,25,26,33,34,35]");
     send(c, "@2 home 35 60 30 100 zero\n");
     assert(f.homes == 1 && f.homeRequest.method == Ess::HomingMethod::METHOD_35 && f.homeRequest.configurationGeneration == 3);
     send(c, "@3 home 33 5 300 2000 zero 2\n");

@@ -14,6 +14,8 @@ enum class HomeInput : uint8_t { ORIGIN = 1, POSITIVE_LIMIT = 2, NEGATIVE_LIMIT 
 /** Static descriptors distinguish a documented number from implemented work.
  * Inputs describe reviewed trajectory dependencies, not assignment setters.
  * Origin methods 3..6 and 19..22 require function 1; only 3..6 require index.
+ * Methods 7..10 and 23..26 require both origin/function 1 and positive-limit/
+ * function 2 for every starting location; only 7..10 require index.
  * Index is internal motor Z; methods 33/34 need no external input terminal. */
 struct HomeMethodDescriptor {
     HomingMethod method;

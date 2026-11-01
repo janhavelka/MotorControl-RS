@@ -1,7 +1,7 @@
 # Homing method ownership and evidence
 
-The original planning partition is 3 + 8 + 8 + 8 switch methods. After stage10,
-current source has 35 descriptors: 16 UNIMPLEMENTED, 14 IMPLEMENTED, 5 UNRESOLVED.
+The original planning partition is 3 + 8 + 8 + 8 switch methods. After stage11,
+current source has 35 descriptors: 8 UNIMPLEMENTED, 22 IMPLEMENTED, 5 UNRESOLVED.
 The [maintained method guide](../../ess_homing_methods.md) describes the source;
 reopen the original diagrams when executing each family stage.
 
@@ -22,14 +22,14 @@ Source pages are one-based physical pages in the preserved function PDF.
 | 20 | IMPLEMENTED | 10 | Origin | No | 52-53 |
 | 21 | IMPLEMENTED | 10 | Origin | No | 53-54 |
 | 22 | IMPLEMENTED | 10 | Origin | No | 54-55 |
-| 7 | UNIMPLEMENTED | 11 | Origin + positive limit | Yes | 37-39 |
-| 8 | UNIMPLEMENTED | 11 | Origin + positive limit | Yes | 39-40 |
-| 9 | UNIMPLEMENTED | 11 | Origin + positive limit | Yes | 40-42 |
-| 10 | UNIMPLEMENTED | 11 | Origin + positive limit | Yes | 42-43 |
-| 23 | UNIMPLEMENTED | 11 | Origin + positive limit | No | 55-57 |
-| 24 | UNIMPLEMENTED | 11 | Origin + positive limit | No | 57-58 |
-| 25 | UNIMPLEMENTED | 11 | Origin + positive limit | No | 58-60 |
-| 26 | UNIMPLEMENTED | 11 | Origin + positive limit | No | 60-61 |
+| 7 | IMPLEMENTED | 11 | Origin + positive limit | Yes | 37-39 |
+| 8 | IMPLEMENTED | 11 | Origin + positive limit | Yes | 39-40 |
+| 9 | IMPLEMENTED | 11 | Origin + positive limit | Yes | 40-42 |
+| 10 | IMPLEMENTED | 11 | Origin + positive limit | Yes | 42-43 |
+| 23 | IMPLEMENTED | 11 | Origin + positive limit | No | 55-57 |
+| 24 | IMPLEMENTED | 11 | Origin + positive limit | No | 57-58 |
+| 25 | IMPLEMENTED | 11 | Origin + positive limit | No | 58-60 |
+| 26 | IMPLEMENTED | 11 | Origin + positive limit | No | 60-61 |
 | 11 | UNIMPLEMENTED | 12 | Origin + negative limit | Yes | 44-45 |
 | 12 | UNIMPLEMENTED | 12 | Origin + negative limit | Yes | 45-47 |
 | 13 | UNIMPLEMENTED | 12 | Origin + negative limit | Yes | 47-49 |

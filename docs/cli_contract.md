@@ -195,8 +195,9 @@ are counted. Debug mode uses the same production operation path.
 
 Stages 02, 03, 04, 05 and 07 are implemented, together with stage 08's shared
 homing qualification path, stage 09's methods 1, 2 and 17, and stage 10's
-origin methods 3–6 and 19–22. Methods assigned to stages 11-12 remain planned;
-help and coverage distinguish those choices from the fourteen implemented methods.
+origin methods 3–6 and 19–22, and stage 11's origin/positive-limit methods
+7–10 and 23–26. Stage 12's negative-limit-assisted methods remain planned;
+help and coverage distinguish those choices from the twenty-two implemented methods.
 
 | Stage | Command | Ordinary application path |
 | --- | --- | --- |
@@ -258,9 +259,9 @@ actual method implementations.
 renewing age. Programmatic `submitHome`/`copyHomeResult` and console home use
 the same owner route. Protocol3 retains independent fixture/live ages, logical
 inputs and copied revocation; a settled final-zero reply cannot override a
-revoked admission. Methods1–6/17/19–22/33–35 are the implemented subset. Switch methods require the
-method-specific checked input binding and caller qualification;1–6 require Z,
-17/19–22 do not. `caps` and `home methods` advertise the same fourteen choices.
+revoked admission. Methods1–10/17/19–26/33–35 are the implemented subset. Switch methods require the
+method-specific checked input binding and caller qualification;1–10 require Z,
+17/19–26 do not. `caps` and `home methods` advertise the same twenty-two choices.
 
 ## Verification and qualification
 

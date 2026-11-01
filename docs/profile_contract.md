@@ -11,8 +11,8 @@ The [release scope](releases/1.0.0.md) identifies the bench-tested subset and
 unperformed qualification. Model/firmware mappings, physical feedback units,
 electrical timing and independent shaft measurements remain unresolved. Current
 settings are not torque/current motion; stored segment configuration supplies
-no serial trigger. Homing methods 1–6, 17, 19–22 and 33–35 require their exact documented prerequisites.
-Limit/origin methods require checked input bindings;1–6 also require internal Z.
+no serial trigger. Homing methods 1–10, 17, 19–26 and 33–35 require their exact documented prerequisites.
+Limit/origin methods require checked input bindings;1–10 also require internal Z.
 Software support does not qualify physical switch or index behavior.
 
 The [architecture](architecture.md) defines ownership and the three layers.

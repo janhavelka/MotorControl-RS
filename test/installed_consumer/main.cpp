@@ -63,7 +63,7 @@ int main() {
     if (!advanceRead(homingRead,homingEvent,230) || !getHomingParameters(homingRead,homingParameters) ||
         homingParameters.rawAuxiliary != 7 || homingParameters.rawMethod != 24 ||
         homingParameters.rawOffsetWords[0] != 0x1234 || homingParameters.rawOffsetWords[1] != 0xABCD ||
-        !homingParameters.methodKnown || homingParameters.methodSupport != HomeSupport::UNIMPLEMENTED ||
+        !homingParameters.methodKnown || homingParameters.methodSupport != HomeSupport::IMPLEMENTED ||
         homingParameters.offsetWordOrderResolution != ReadResolution::WORD_ORDER_UNRESOLVED ||
         homingParameters.configurationGeneration != 3) return 109;
     PositionCommand desired;

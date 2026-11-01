@@ -288,7 +288,7 @@ Its minimum compatible move speed is checked without adjusting desired speed. Pr
 
 ## Limit- and origin-reference homing
 
-`home methods` and `caps` list implemented methods1–6/17/19–22/33–35. After ordinary
+`home methods` and `caps` list implemented methods1–10/17/19–26/33–35. After ordinary
 checked reads and application `installHomeQualification`, use
 `home 1|2|17 SEARCH_NATIVE RETURN_NATIVE RAMP_NATIVE zero [address]` with one
 method number. Origin methods use the same syntax, for example
@@ -297,6 +297,10 @@ method number. Origin methods use the same syntax, for example
 Methods3–6 require a connected function-1 origin plus Z;19–22 require the origin
 without Z. Each method has its own edge and direction; consult `home methods`
 and the [method guide](ess_homing_methods.md) before supplying qualification.
+Methods7–10 and23–26 require both origin and positive limit, even for easy
+origin approaches; only7–10 require Z. The same command syntax applies, for
+example `home 24 60 30 100 zero`, after exact independent qualification.
+The host does not infer which of the three physical starting locations occurred.
 `home qualification` inspects supplied facts; it cannot install or invent them.
 See [admission, completion and evidence limits](ess_homing.md).
 

@@ -466,3 +466,25 @@ reports 88 suites and no failed checks; terminal JSON and artifacts are under
 `build/ess_software_10_ci`. Local full firmware is NOT RUN; hosted CI provides
 the supported matrix. Stage10 software is complete. The documentation-only
 checkpoint uses local consistency checks without another CI dispatch.
+
+## Stage 11 origin plus positive-limit homing (2026-11-01)
+
+Methods7/8/9/10/23/24/25/26 are implemented through the shared production path.
+Both origin and positive limit are mandatory for every starting location;
+internal Z is required only for7–10. Original pages37–43 and55–61 support the
+24 explicit spatial branch fixtures, independently reviewed against core/app
+behavior. Method8 page40(c) is correctly labelled active; maintained erroneous
+conflict wording was corrected. Methods10/26 retain their real caption/figure
+conflicts. Counts are22 implemented, eight unimplemented and five unresolved;
+N08 remains PARTIAL. Negative-limit work and method18 guards are unchanged.
+
+Focused core/read/console/I/O5/5 and app/IDF/parity3/3 PASS; host286 tests and
+exact choice inventory113 implemented/20 remaining PASS. Independent review
+found no functional gap and caught three stale public subset lists, corrected.
+The first quick run passed87/88 suites and exposed one stale method24 inventory
+guard. After switching that guard to pending method27, all33 inventory tests
+pass. Fresh quick/package verification passes88 suites and15 checks in
+`build/ess_software_11_final_rerun`. Exact implementation-commit CI is pending. See the
+[source, findings and verification report](../../reports/2026-11-01_ess_positive_limit_homing.md).
+Physical checks remain NOT RUN: the recorded USB identity is absent and no
+origin/positive-limit fixture is available.

@@ -270,7 +270,7 @@ def typed_terminal(request_id, kind):
         result["configuration_generation"] = 3
         result[kind] = dict(raw_auxiliary=7, raw_method=24, raw_search_speed=60, raw_return_speed=30,
                             raw_ramp_time=100, raw_offset_words=[0x1234, 0xABCD],
-                            auxiliary_known=True, method_known=True, method_support="unimplemented",
+                            auxiliary_known=True, method_known=True, method_support="implemented",
                             search_speed_in_range=True, return_speed_in_range=True, ramp_time_in_range=True,
                             speed_scale_resolution=5, ramp_scale_resolution=5,
                             offset_word_order_resolution=9, offset_signed_resolution=7, offset_scale_resolution=5)
@@ -1282,7 +1282,7 @@ class Framing(unittest.TestCase):
         self.assertEqual(self.events[-1]["cleanup"], "not_required")
 
     def test_home_unresolved_and_unimplemented_are_exact_unadmitted_results(self):
-        for method, disposition in (("3", "unimplemented"), ("18", "unresolved")):
+        for method, disposition in (("11", "unimplemented"), ("18", "unresolved")):
             def handler(i, command, args):
                 if command != "home": return Serial.normal(i, command, args)
                 return encoded(reply(i, command, ok=False, result=disposition, address=1, operation_id=0))
@@ -3654,7 +3654,7 @@ class Framing(unittest.TestCase):
             lambda r: r["homing_parameters"].update(raw_offset_words=[True, 0xABCD]),
             lambda r: r["homing_parameters"].update(auxiliary_known=False),
             lambda r: r["homing_parameters"].update(method_known=False),
-            lambda r: r["homing_parameters"].update(method_support="implemented"),
+            lambda r: r["homing_parameters"].update(method_support="unimplemented"),
             lambda r: r["homing_parameters"].update(search_speed_in_range=1),
             lambda r: r["homing_parameters"].update(return_speed_in_range=False),
             lambda r: r["homing_parameters"].update(ramp_time_in_range=False),
@@ -3689,7 +3689,10 @@ class Framing(unittest.TestCase):
 
     def test_homing_parameter_zero_offset_stays_unresolved_and_method_support_is_separate(self):
         fixture = typed_terminal(2, "homing_parameters")
-        for method, known, support in ((1, True, "implemented"), (2, True, "implemented"), (14, True, "unimplemented"),
+        for method, known, support in ((1, True, "implemented"), (2, True, "implemented"),
+                (7, True, "implemented"), (8, True, "implemented"), (9, True, "implemented"), (10, True, "implemented"),
+                (23, True, "implemented"), (24, True, "implemented"), (25, True, "implemented"), (26, True, "implemented"),
+                (14, True, "unimplemented"),
                 (15, False, "unknown"), (16, False, "unknown"), (17, True, "implemented"),
                 (18, True, "unresolved"), (30, True, "unimplemented"), (31, False, "unknown"),
                 (32, False, "unknown"), (33, True, "implemented"), (34, True, "implemented"),
