@@ -512,7 +512,15 @@ Focused core1/1, app/IDF/parity3/3, lead reads/console/monitor/I/O4/4, host286 a
 inventory33 tests PASS. Inventory records121 implemented choices and12 remaining.
 Independent final review found no functional or scope gap. Fresh quick/package
 verification passes all88 suites and15 checks in `build/ess_software_12_final`.
-Exact implementation-commit CI is pending. See
+See
 [source, review and verification evidence](../../reports/2026-11-01_ess_negative_limit_homing.md).
 Physical checks remain NOT RUN: the recorded USB identity is absent and there
 is no external origin/negative-limit fixture.
+
+Implementation commit `96ebf18ad8a21d90bca271be9c7fb7be9f6ed42f` passed
+[CI41288837030](https://github.com/janhavelka/MotorControl-RS/actions/runs/41288837030):
+GCC, Clang, Arduino and native ESP-IDF all SUCCESS. Every downloaded summary
+reports88 suites and zero failed checks; terminal JSON and artifacts are under
+`build/ess_software_12_ci`. Local full firmware is NOT RUN; hosted CI supplies
+the supported matrix. Stage12 software verification is complete. The subsequent
+documentation-only evidence checkpoint uses local consistency checks.

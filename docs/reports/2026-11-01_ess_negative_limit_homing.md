@@ -126,9 +126,22 @@ Fresh `python scripts/verify.py --mode quick --build-dir build/ess_software_12_f
 passes all88 registered suites and all15 checks. This includes offline references,
 generated tables, package export/install, source and installed consumers,
 standalone C++11/C++17 headers and codec-only linkage. Logs, package and
-`summary.json` are retained in that directory. Exact implementation-commit CI
-is pending.
-Local full firmware is NOT RUN; hosted CI will supply the supported matrix.
+`summary.json` are retained in that directory.
+
+Implementation commit `96ebf18ad8a21d90bca271be9c7fb7be9f6ed42f` passed terminal
+[CI run41288837030](https://github.com/janhavelka/MotorControl-RS/actions/runs/41288837030):
+GCC, Clang, Arduino and native ESP-IDF all SUCCESS. Every downloaded summary
+reports PASS,88 suites and zero failed checks:15 checks each for GCC/Clang,
+16 for Arduino and19 for IDF. Arduino covers all four configured environments;
+IDF covers the S3 app, S3/S2 core consumers and portable S2 consumer. Terminal
+JSON and downloaded artifacts are retained under `build/ess_software_12_ci/`.
+Local full firmware is NOT RUN; hosted CI supplies the supported matrix.
+
+Stage12 software verification is complete. The subsequent documentation-only
+checkpoint records these results without changing code or build inputs.
+Repository/reference/inventory and whitespace checks pass; it does not require
+another CI dispatch. N08 remains PARTIAL for the explicit residual guards and
+physical qualification, despite completion of the27 planned switch methods.
 
 ## Physical evidence
 
