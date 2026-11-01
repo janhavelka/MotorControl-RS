@@ -74,6 +74,10 @@
 
 ### Fixed
 
+- Reject homing host records that claim success after interruption by stop.
+  Actual emitted-result regressions cover all30 supported methods on both
+  application frontends; core motion and stop behavior are unchanged.
+
 - Host homing-result validation requires an integer method ID, rejecting JSON
   booleans and floating-point values that compare equal to supported methods.
 

@@ -108,6 +108,12 @@ for executable in sys.argv[2:]:
     assert len(records) == 32 and [r["method"] for r in records] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 33, 34, 35, 35, 35]
     for record in records:
         Console._check_home(record, 1, None)
+        if record["ok"]:
+            interrupted = copy.deepcopy(record)
+            interrupted["interrupted_by_stop"] = True
+            try: Console._check_home(interrupted, 1, None)
+            except BenchError: pass
+            else: raise AssertionError((record["method"], "interrupted home accepted as successful"))
         # JSON booleans/floats compare equal to Python integer method IDs.
         # Only an actual integer can identify the admitted native method.
         for method in (True, float(record["method"]), str(record["method"])):

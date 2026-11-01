@@ -149,6 +149,9 @@ independent spatial branch fixtures. All27 planned switch methods are delivered;
 N08 stays PARTIAL for unresolved18/collision methods and physical qualification.
 Physical switch homing remains NOT RUN; see
 [stage12 evidence](reports/2026-11-01_ess_negative_limit_homing.md).
+The [independent stages10–12 audit](reports/2026-11-01_ess_homing_10_12_audit.md)
+checks all64 family branches and rejects host records claiming interrupted
+success, without expanding coverage or physical qualification.
 Physical homing and the absent recorded-bench regression remain NOT RUN.
 The [independent prompts06-08 audit](reports/2026-10-29_ess_06_08_audit.md)
 corrects unknown-status qualification and host transition validation, with

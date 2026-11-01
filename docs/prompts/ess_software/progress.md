@@ -524,3 +524,17 @@ reports88 suites and zero failed checks; terminal JSON and artifacts are under
 `build/ess_software_12_ci`. Local full firmware is NOT RUN; hosted CI supplies
 the supported matrix. Stage12 software verification is complete. The subsequent
 documentation-only evidence checkpoint uses local consistency checks.
+
+## Independent stages10-12 audit (2026-11-01)
+
+Fresh parallel source/core/app review at `6363afc` checked the original prompts,
+actual aggregate diff and all24 method/64 branch fixtures. One confirmed host
+validation gap accepted successful results with interrupted_by_stop=true.
+The lead reproduced it from an actual method11 terminal, added a regression
+that failed before the fix, and rejects that contradiction with one predicate.
+All30 methods on both frontends pass the new parity check; host286 tests pass.
+No other source, core, application or scope gap was confirmed. See the
+[audit evidence](../../reports/2026-11-01_ess_homing_10_12_audit.md).
+Fresh final quick/package passes88 suites and15 checks in
+`build/ess_software_10_12_audit_final`. Exact correction-commit CI is pending.
+Coverage remains30 implemented/five unresolved; physical checks remain NOT RUN.

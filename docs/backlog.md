@@ -57,6 +57,9 @@ origin-reference3/4/5/6/19/20/21/22. Stage11 adds origin/positive-limit methods
 The planned27 switch methods are implemented in software. N08 remains PARTIAL
 for unresolved18/collision methods and physical qualification. Physical switch
 homing is NOT RUN. See [stage12 evidence](reports/2026-11-01_ess_negative_limit_homing.md).
+The [independent stages10–12 audit](reports/2026-11-01_ess_homing_10_12_audit.md)
+rejects contradictory interrupted-success host evidence; source paths and
+software/physical dispositions are unchanged.
 The [independent prompts06-08 audit](reports/2026-10-29_ess_06_08_audit.md)
 tightens homing status/host evidence and lifecycle regressions; it changes no
 native coverage or physical qualification claims.

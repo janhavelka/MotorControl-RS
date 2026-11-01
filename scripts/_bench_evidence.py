@@ -1676,6 +1676,7 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
     require(uint(item.get("raw_alarm"), 65535) and uint(item.get("raw_motion"), 65535) and
             isinstance(item.get("raw_position_words"), list) and len(item["raw_position_words"]) == 2 and all(uint(w, 65535) for w in item["raw_position_words"]), "raw outputs invalid")
     if item["ok"]:
+        require(not item["interrupted_by_stop"], "interrupted home cannot complete successfully")
         require(item["setup_execution"] == item["execution"] == "acknowledged" and item["homed_low_observed"] and item["observation_known"], "completion lacks fresh transition")
         comp, raw = evidence["completion_evidence"]
         require(len(raw) == status_length and checked("completion_evidence", raw[:-2]) and raw[:3] == bytes((item["address"], 3, status_bytes)) and
