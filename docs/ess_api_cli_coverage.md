@@ -38,8 +38,8 @@ The checked inventory retains 221 records/242 words, 135 choices, 54 producing
 operation rows and five named gaps. It accounts for 201 implemented reads and
 zero missing readable-record implementations; 172 implemented writes, zero missing writes, three partial
 write registers and 18 guarded pair writes. Sixteen reserved records and two
-unspecified-access records remain visible. Choice totals are 113 implemented
-(including twelve decoders), 20 unimplemented/unresolved, one unsupported and
+unspecified-access records remain visible. Choice totals are 121 implemented
+(including twelve decoders), 12 unimplemented/unresolved, one unsupported and
 one no-operation value. These counts are implementation accounting, not full
 device or physical qualification.
 
@@ -79,7 +79,7 @@ the installed core performs no UART, clock, retry, queue, heap or logging work.
 | Velocity | `velocity` | Common target preparation and ESS velocity sequence; unresolved acceleration mapping rejected |
 | Homing auxiliary | `home auxiliary CHOICE` | One-field checked prior/FC06/readback API, all twelve stored choices; active-policy qualification remains independent |
 | Homing parameters | `home read [address]` | ESS `Reads.h` single seven-word read, raw result, explicit interpretation/support and ordinary application submit/copy/release |
-| Homing | `home methods`, `home qualification`, `home ...` | `installHomeQualification`/`inspectHomeQualification`/`revokeHomeQualification`, `submitHome`/`copyHomeResult` and ESS bounded sequence; only1-10/17/19-26/33-35 implemented; qualification inspection performs no device operation |
+| Homing | `home methods`, `home qualification`, `home ...` | `installHomeQualification`/`inspectHomeQualification`/`revokeHomeQualification`, `submitHome`/`copyHomeResult` and ESS bounded sequence; only1-14/17/19-30/33-35 implemented; qualification inspection performs no device operation |
 | Driver and optional I/O | `driver read|set`, `io read|set` | ESS whole-candidate driver preparation and checked readback |
 | Stored records | `segment position|speed|start INDEX read|set` | One indexed helper per real layout; no serial record trigger |
 | Control and tuning | `control read|set`, `tuning GROUP read|set` | ESS typed parameter validation and common settings sequence |

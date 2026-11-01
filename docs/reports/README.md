@@ -7,7 +7,8 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
-| [ESS origin plus positive-limit homing7–10/23–26](2026-11-01_ess_positive_limit_homing.md) | Eight methods with 24 spatial branches, mandatory origin and positive-limit qualification, and index only for7–10. Negative-limit family and physical qualification stay open. |
+| [ESS origin plus negative-limit homing11–14/27–30](2026-11-01_ess_negative_limit_homing.md) | Eight methods and24 spatial branches complete the27 planned switch-method partition. Method28 drawing discrepancy is explicit; method18/collision guards and physical qualification remain open. |
+| [ESS origin plus positive-limit homing7–10/23–26](2026-11-01_ess_positive_limit_homing.md) | Eight methods with 24 spatial branches, mandatory origin and positive-limit qualification, and index only for7–10. Later negative-limit support is recorded above; physical qualification stays open. |
 | [ESS origin-reference homing3–6/19–22](2026-11-01_ess_origin_homing.md) | Eight individual method/branch paths with checked origin qualification and index only for3–6; later positive-limit support is recorded above. Physical qualification stays open. |
 | [Independent stage09 limit-homing audit](2026-10-31_ess_limit_homing_audit.md) | Fresh parallel source/core/test review; rejects non-integer host method evidence and corrects stale support summaries. Physical qualification stays open. |
 | [ESS limit-reference homing1/2/17](2026-10-31_ess_limit_homing.md) | Exact limit/index admission, shared production path and source-derived branch fixtures; later origin support is recorded above. Physical qualification stays open. |

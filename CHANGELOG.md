@@ -4,6 +4,13 @@
 
 ### Added
 
+- Origin plus negative-limit homing methods11–14 and27–30 through the existing
+  qualified API/console path, completing the27 planned switch-method partition.
+  Both inputs are required for every spatial branch; only11–14 need internal Z.
+  Preserve method28's exchanged drawings and separate caption conflicts,
+  bounded observation/no replay and physical NOT RUN status. Method18,
+  collision methods and nonzero offsets remain unresolved.
+
 - Origin plus positive-limit homing methods 7–10 and 23–26 through the existing
   bounded core, application and console. Both inputs are required for every
   starting location; only 7–10 require internal Z. Independent vectors cover

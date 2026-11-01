@@ -248,8 +248,8 @@ void optionalInputsAreNotGlobalPrerequisites() {
     app->configuration.target = app->axis.target; app->configuration.operationId = 99;
     ESS::HomeRequest home; home.method = ESS::HomingMethod::METHOD_27; home.configurationGeneration = app->axis.generation;
     uint32_t unchanged = 77;
-    assert(host(app).startHome(app,11,1,home,unchanged) == Probe::Action::UNIMPLEMENTED);
-    assert(unchanged == 77 && !hardware.writes); // Setters do not implement missing switch transitions.
+    assert(host(app).startHome(app,11,1,home,unchanged) == Probe::Action::UNAVAILABLE);
+    assert(unchanged == 77 && !hardware.writes); // Setters do not supply switch fixture qualification.
     home.method = ESS::HomingMethod::METHOD_35;
     // I/O setter/read success never grants fixture qualification. Positive
     // method35/no-terminal coverage uses installHomeQualification and actual

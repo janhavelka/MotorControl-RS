@@ -78,18 +78,24 @@ void testDescriptorsAndNoTraffic() {
         assert(Ess::homeMethod(d->method) == d && d->requiredInputs == inputs[i] && d->reason && *d->reason);
         assert(d->requiresIndex == ((values[i] >= 1 && values[i] <= 14) || values[i] == 33 || values[i] == 34));
         assert(d->moves == (values[i] != 35));
-        if (values[i] >= 33 || (values[i] >= 1 && values[i] <= 10) || values[i] == 17 ||
-            (values[i] >= 19 && values[i] <= 26))
+        if (values[i] >= 33 || (values[i] >= 1 && values[i] <= 14) || values[i] == 17 ||
+            (values[i] >= 19 && values[i] <= 30))
             assert(d->support == Ess::HomeSupport::IMPLEMENTED);
         else {
             const Saved<Ess::HomeContext> saved(c);
             const auto status = Ess::prepareHome(c, axis(), 12, request(d->method), prerequisites(), 100, 10000);
             assert(!status && status.code == Err::UNSUPPORTED); saved.check(c);
-            assert(d->support == (values[i] < 0 || values[i] == 18 ? Ess::HomeSupport::UNRESOLVED : Ess::HomeSupport::UNIMPLEMENTED));
+            assert(d->support == Ess::HomeSupport::UNRESOLVED);
         }
     }
     assert(!Ess::homeMethodAt(35));
-    for (int value : {0,15,16,31,32,36,-5}) assert(!Ess::homeMethod(static_cast<Ess::HomingMethod>(value)));
+    for (int value : {0,15,16,31,32,36,-5}) {
+        const auto method = static_cast<Ess::HomingMethod>(value);
+        assert(!Ess::homeMethod(method));
+        const Saved<Ess::HomeContext> saved(c);
+        const auto status = Ess::prepareHome(c, axis(), 12, request(method), prerequisites(), 100, 10000);
+        assert(!status && status.detail == static_cast<int32_t>(Ess::HomeError::INVALID_METHOD)); saved.check(c);
+    }
 }
 void testPreparationAndBounds() {
     auto c = home();
@@ -487,6 +493,27 @@ const SwitchCase POSITIVE_CASES[] = {
     {Ess::HomingMethod::METHOD_26, {1,2}, 3, false,
         {1,16,0,49,0,6,12,0,26,0,60,0,30,0,100,0,0,0,0,0x24,0x83}}
 };
+// Each method word is independently read from physical p44-50 and p61-67.
+// Literal FC10 vectors include independently calculated CRCs. X0 is origin,
+// X1 is negative limit; the required role mask is 5, not the terminal mask 3.
+const SwitchCase NEGATIVE_CASES[] = {
+    {Ess::HomingMethod::METHOD_11, {1,3}, 5, true,
+        {1,16,0,49,0,6,12,0,11,0,60,0,30,0,100,0,0,0,0,0x74,0xBF}},
+    {Ess::HomingMethod::METHOD_12, {1,3}, 5, true,
+        {1,16,0,49,0,6,12,0,12,0,60,0,30,0,100,0,0,0,0,0x6E,0xCB}},
+    {Ess::HomingMethod::METHOD_13, {1,3}, 5, true,
+        {1,16,0,49,0,6,12,0,13,0,60,0,30,0,100,0,0,0,0,0x6A,0x37}},
+    {Ess::HomingMethod::METHOD_14, {1,3}, 5, true,
+        {1,16,0,49,0,6,12,0,14,0,60,0,30,0,100,0,0,0,0,0x65,0x73}},
+    {Ess::HomingMethod::METHOD_27, {1,3}, 5, false,
+        {1,16,0,49,0,6,12,0,27,0,60,0,30,0,100,0,0,0,0,0x20,0x7F}},
+    {Ess::HomingMethod::METHOD_28, {1,3}, 5, false,
+        {1,16,0,49,0,6,12,0,28,0,60,0,30,0,100,0,0,0,0,0x3A,0x0B}},
+    {Ess::HomingMethod::METHOD_29, {1,3}, 5, false,
+        {1,16,0,49,0,6,12,0,29,0,60,0,30,0,100,0,0,0,0,0x3E,0xF7}},
+    {Ess::HomingMethod::METHOD_30, {1,3}, 5, false,
+        {1,16,0,49,0,6,12,0,30,0,60,0,30,0,100,0,0,0,0,0x31,0xB3}}
+};
 Ess::HomePrerequisites switchPrerequisites(const SwitchCase& source, bool initiallyActive = false) {
     auto p = prerequisites(source.method);
     p.observeInputs = true; p.ioObservedUs = p.readbackObservedUs = 80;
@@ -633,14 +660,55 @@ void testOriginBranchesAndVectors() {
     }
     assert(checked == 16);
 }
+enum class Start { APPROACHING, BEYOND_ORIGIN, ORIGIN_ACTIVE };
+struct Branch {
+    Ess::HomingMethod method;
+    Start start;
+    uint8_t samples[6];
+    uint8_t count;
+};
+template<size_t N, size_t B> void checkSpatialBranches(const SwitchCase (&cases)[N], const Branch (&branches)[B]) {
+    unsigned checked = 0;
+    for (const auto& source : cases) for (const auto& branch : branches) {
+        if (branch.method != source.method) continue;
+        ++checked;
+        auto p = switchPrerequisites(source, branch.start == Start::ORIGIN_ACTIVE);
+        auto o = options(); o.maxPolls = 8; // Six sampled running points plus completion, independently bounded.
+        Ess::HomeContext c;
+        assert(Ess::prepareHome(c, axis(), 12, request(source.method), p, 100, 10000, o));
+        Ess::PreparedHome work; assert(Ess::nextHome(c, 100, work));
+        assert(work.length == sizeof(source.staging) && work.count == 6 && work.reg == 0x31);
+        assert(std::memcmp(work.bytes, source.staging, sizeof(source.staging)) == 0);
+        assert(c.prerequisites.availableInputs == source.inputRole && c.prerequisites.indexQualified == source.index);
+        consume(c);
+        const uint8_t triggerBytes[] = {1,6,0,0x27,0,16,0x38,0x0D};
+        assert(Ess::nextHome(c, c.eligibleUs, work));
+        assert(work.length == sizeof(triggerBytes) && std::memcmp(work.bytes, triggerBytes, sizeof(triggerBytes)) == 0);
+        consume(c);
+        const uint8_t pollBytes[] = {1,3,0,6,0,3,0xE5,0xCA};
+        assert(Ess::nextHome(c, c.eligibleUs, work));
+        assert(work.length == sizeof(pollBytes) && std::memcmp(work.bytes, pollBytes, sizeof(pollBytes)) == 0);
+        for (uint8_t sample = 0; sample < branch.count; ++sample) {
+            consumeInputs(c, 4, branch.samples[sample]);
+            assert(c.state == ActionState::ACTIVE && c.completion == ActionCompletion::NOT_OBSERVED);
+        }
+        consumeInputs(c, 3, branch.samples[branch.count - 1]);
+        assert(c.phase == Ess::HomePhase::ZERO_CHECK && c.completion == ActionCompletion::NOT_OBSERVED);
+        consume(c);
+        assert(c.state == ActionState::SUCCEEDED && c.polls == branch.count + 1);
+        AxisReference reference; assert(Ess::getHomeReference(c, c.servicedUs, 0, reference));
+        assert(reference.nativeKnown && reference.nativePosition == 0); done(c);
+        // Neither path nor switch health can be reconstructed from missed or
+        // unchanged samples. Qualified status/zero evidence remains sufficient.
+        for (uint16_t sampled : {uint16_t(0),uint16_t(1),uint16_t(2),uint16_t(3)}) {
+            c = switchHome(source, branch.start == Start::ORIGIN_ACTIVE); trigger(c);
+            consumeInputs(c, 4, sampled); consumeInputs(c, 3, sampled); consume(c);
+            assert(c.state == ActionState::SUCCEEDED && c.rawInputs == sampled); done(c);
+        }
+    }
+    assert(checked == B && B == 3 * N);
+}
 void testPositiveBranchesAndVectors() {
-    enum class Start { APPROACHING, BEYOND_ORIGIN, ORIGIN_ACTIVE };
-    struct Branch {
-        Ess::HomingMethod method;
-        Start start;
-        uint8_t samples[6];
-        uint8_t count;
-    };
     // X0=origin, X1=positive limit. These are possible sampled logical levels,
     // not proof of speed, direction, reversals, exact edge timing or internal Z.
     const Branch branches[] = {
@@ -693,45 +761,61 @@ void testPositiveBranchesAndVectors() {
         {Ess::HomingMethod::METHOD_26, Start::BEYOND_ORIGIN, {0,2,0,1,0}, 5},
         {Ess::HomingMethod::METHOD_26, Start::ORIGIN_ACTIVE, {1,0}, 2}
     };
-    unsigned checked = 0;
-    for (const auto& source : POSITIVE_CASES) for (const auto& branch : branches) {
-        if (branch.method != source.method) continue;
-        ++checked;
-        auto p = switchPrerequisites(source, branch.start == Start::ORIGIN_ACTIVE);
-        auto o = options(); o.maxPolls = 8; // Six sampled running points plus completion, independently bounded.
-        Ess::HomeContext c;
-        assert(Ess::prepareHome(c, axis(), 12, request(source.method), p, 100, 10000, o));
-        Ess::PreparedHome work; assert(Ess::nextHome(c, 100, work));
-        assert(work.length == sizeof(source.staging) && work.count == 6 && work.reg == 0x31);
-        assert(std::memcmp(work.bytes, source.staging, sizeof(source.staging)) == 0);
-        assert(c.prerequisites.availableInputs == 3 && c.prerequisites.indexQualified == source.index);
-        consume(c);
-        const uint8_t triggerBytes[] = {1,6,0,0x27,0,16,0x38,0x0D};
-        assert(Ess::nextHome(c, c.eligibleUs, work));
-        assert(work.length == sizeof(triggerBytes) && std::memcmp(work.bytes, triggerBytes, sizeof(triggerBytes)) == 0);
-        consume(c);
-        const uint8_t pollBytes[] = {1,3,0,6,0,3,0xE5,0xCA};
-        assert(Ess::nextHome(c, c.eligibleUs, work));
-        assert(work.length == sizeof(pollBytes) && std::memcmp(work.bytes, pollBytes, sizeof(pollBytes)) == 0);
-        for (uint8_t sample = 0; sample < branch.count; ++sample) {
-            consumeInputs(c, 4, branch.samples[sample]);
-            assert(c.state == ActionState::ACTIVE && c.completion == ActionCompletion::NOT_OBSERVED);
-        }
-        consumeInputs(c, 3, branch.samples[branch.count - 1]);
-        assert(c.phase == Ess::HomePhase::ZERO_CHECK && c.completion == ActionCompletion::NOT_OBSERVED);
-        consume(c);
-        assert(c.state == ActionState::SUCCEEDED && c.polls == branch.count + 1);
-        AxisReference reference; assert(Ess::getHomeReference(c, c.servicedUs, 0, reference));
-        assert(reference.nativeKnown && reference.nativePosition == 0); done(c);
-        // Neither path nor switch health can be reconstructed from missed or
-        // unchanged samples. Qualified status/zero evidence remains sufficient.
-        for (uint16_t sampled : {uint16_t(0),uint16_t(1),uint16_t(2),uint16_t(3)}) {
-            c = switchHome(source, branch.start == Start::ORIGIN_ACTIVE); trigger(c);
-            consumeInputs(c, 4, sampled); consumeInputs(c, 3, sampled); consume(c);
-            assert(c.state == ActionState::SUCCEEDED && c.rawInputs == sampled); done(c);
-        }
-    }
-    assert(checked == 24);
+    checkSpatialBranches(POSITIVE_CASES, branches);
+}
+void testNegativeBranchesAndVectors() {
+    // Independently reviewed physical p44-50 and p61-67. X0=origin, X1=negative
+    // limit. Sample sequences do not prove the depicted motion or internal Z.
+    const Branch branches[] = {
+        // 11 p44-45: approach -H O-rise, reverse +L O-fall; far -H limit,
+        // reverse +H O-rise, slow +L O-fall; active direct +L O-fall. Then Z.
+        {Ess::HomingMethod::METHOD_11, Start::APPROACHING, {0,1,0}, 3},
+        {Ess::HomingMethod::METHOD_11, Start::BEYOND_ORIGIN, {0,2,0,1,0}, 5},
+        {Ess::HomingMethod::METHOD_11, Start::ORIGIN_ACTIVE, {1,0}, 2},
+        // 12 p45-47: approach -H O-rise, +L O-fall, reverse -L O-rise;
+        // far -H limit, +H O-rise, slow +L O-fall, reverse -L O-rise;
+        // active +L O-fall then -L O-rise. First Z follows negative rising.
+        {Ess::HomingMethod::METHOD_12, Start::APPROACHING, {0,1,0,1}, 4},
+        {Ess::HomingMethod::METHOD_12, Start::BEYOND_ORIGIN, {0,2,0,1,0,1}, 6},
+        {Ess::HomingMethod::METHOD_12, Start::ORIGIN_ACTIVE, {1,0,1}, 3},
+        // 13 p47-48: approach -H O-rise, slow -L O-fall, reverse +L O-rise;
+        // far -H limit, +H O-rise/stop, -L O-fall, +L O-rise; active -L/+L.
+        // First Z follows positive rising. p48(c) says invalid but depicts active.
+        {Ess::HomingMethod::METHOD_13, Start::APPROACHING, {0,1,0,1}, 4},
+        {Ess::HomingMethod::METHOD_13, Start::BEYOND_ORIGIN, {0,2,0,1,0,1}, 6},
+        {Ess::HomingMethod::METHOD_13, Start::ORIGIN_ACTIVE, {1,0,1}, 3},
+        // 14 p49-50: approach -H O-rise, slow -L O-fall; far -H limit,
+        // reverse +H O-rise/stop, -L O-fall; active direct -L O-fall. Then Z.
+        // p50(c) says invalid but its starting position is inside the origin.
+        {Ess::HomingMethod::METHOD_14, Start::APPROACHING, {0,1,0}, 3},
+        {Ess::HomingMethod::METHOD_14, Start::BEYOND_ORIGIN, {0,2,0,1,0}, 5},
+        {Ess::HomingMethod::METHOD_14, Start::ORIGIN_ACTIVE, {1,0}, 2},
+        // 27 p61-63: approach -H O-rise, reverse +L O-fall; far -H limit,
+        // reverse +H O-rise then +L O-fall; active +L O-fall. No index.
+        {Ess::HomingMethod::METHOD_27, Start::APPROACHING, {0,1,0}, 3},
+        {Ess::HomingMethod::METHOD_27, Start::BEYOND_ORIGIN, {0,2,0,1,0}, 5},
+        {Ess::HomingMethod::METHOD_27, Start::ORIGIN_ACTIVE, {1,0}, 2},
+        // 28 p63-64: direct -H O-rise/+L O-fall/-L O-rise; far first -H limit
+        // then +H O-rise/+L O-fall/-L O-rise; active +L O-fall/-L O-rise.
+        // p63(a) prose is direct but its drawing is far-side; p64's drawing
+        // after (b) is direct while (b) prose is far-side. Spatial labels govern.
+        {Ess::HomingMethod::METHOD_28, Start::APPROACHING, {0,1,0,1}, 4},
+        {Ess::HomingMethod::METHOD_28, Start::BEYOND_ORIGIN, {0,2,0,1,0,1}, 6},
+        {Ess::HomingMethod::METHOD_28, Start::ORIGIN_ACTIVE, {1,0,1}, 3},
+        // 29 p64-66: approach -H O-rise, slow -L O-fall, +L O-rise;
+        // far -H limit, +H O-rise/stop, -L O-fall, +L O-rise; active -L/+L.
+        // Stop at positive rising, no Z. p65(c) says invalid; p66 depicts active.
+        {Ess::HomingMethod::METHOD_29, Start::APPROACHING, {0,1,0,1}, 4},
+        {Ess::HomingMethod::METHOD_29, Start::BEYOND_ORIGIN, {0,2,0,1,0,1}, 6},
+        {Ess::HomingMethod::METHOD_29, Start::ORIGIN_ACTIVE, {1,0,1}, 3},
+        // 30 p66-67: approach -H O-rise, slow -L O-fall; far -H limit,
+        // +H O-rise/stop, reverse -L O-fall; active direct -L O-fall, no Z.
+        // p67(c) says invalid while depicting active and direct low-speed exit.
+        {Ess::HomingMethod::METHOD_30, Start::APPROACHING, {0,1,0}, 3},
+        {Ess::HomingMethod::METHOD_30, Start::BEYOND_ORIGIN, {0,2,0,1,0}, 5},
+        {Ess::HomingMethod::METHOD_30, Start::ORIGIN_ACTIVE, {1,0}, 2}
+    };
+    checkSpatialBranches(NEGATIVE_CASES, branches);
 }
 template<size_t N> void testSwitchAdmission(const SwitchCase (&cases)[N]) {
     for (const auto& source : cases) {
@@ -774,17 +858,19 @@ template<size_t N> void testSwitchAdmission(const SwitchCase (&cases)[N]) {
             case 32: ++p.target.id; break;
             case 33: {
                 const uint8_t slot = source.functions[1] ? 2 : 1;
-                p.inputFunctions[slot] = source.functions[1] ? 3 : source.functions[0] == 1 ? 2 : 1;
+                p.inputFunctions[slot] = source.functions[1] ? (source.functions[1] == 2 ? 3 : 2) : source.functions[0] == 1 ? 2 : 1;
                 p.inputWiring[slot] = InputWiring::CONNECTED;
                 p.availableInputs |= uint8_t(1u << (p.inputFunctions[slot] - 1));
                 p.rawInputs = uint16_t(1u << slot); break;
             }
             case 34: p.inputFunctions[1] = 0; p.availableInputs = 1; break;
-            case 35: p.inputFunctions[1] = 3; p.availableInputs = 5; break;
+            case 35:
+                p.inputFunctions[1] = source.functions[1] == 2 ? 3 : 2;
+                p.availableInputs = uint8_t(1 | (1u << (p.inputFunctions[1] - 1))); break;
             case 36: p.inputFunctions[1] = 1; p.availableInputs = 1; break;
             case 37: p.inputWiring[1] = InputWiring::UNCONNECTED; p.availableInputs = 1; break;
             case 38: p.inputWiring[1] = InputWiring::UNKNOWN; p.availableInputs = 1; break;
-            case 39: p.inputFunctions[0] = 0; p.availableInputs = 2; break;
+            case 39: p.inputFunctions[0] = 0; p.availableInputs = uint8_t(1u << (source.functions[1] - 1)); break;
             }
             const Saved<Ess::HomeContext> saved(c);
             assert(!Ess::prepareHome(c, axis(), 12, r, p, 100, 10000, options())); saved.check(c);
@@ -846,7 +932,7 @@ template<size_t N> void testSwitchIncompleteAndFailedEvidence(const SwitchCase (
         assert(c.status.detail == static_cast<int32_t>(Ess::HomeError::INPUT_REQUIRED)); done(c);
         auto p = switchPrerequisites(source);
         const uint8_t unexpectedSlot = source.functions[1] ? 2 : 1;
-        p.inputFunctions[unexpectedSlot] = source.functions[1] ? 3 : source.functions[0] == 1 ? 2 : 1;
+        p.inputFunctions[unexpectedSlot] = source.functions[1] ? (source.functions[1] == 2 ? 3 : 2) : source.functions[0] == 1 ? 2 : 1;
         p.inputWiring[unexpectedSlot] = InputWiring::CONNECTED;
         p.availableInputs |= uint8_t(1u << (p.inputFunctions[unexpectedSlot] - 1));
         assert(Ess::prepareHome(c, axis(), 12, request(source.method), p, 100, 10000, options()));
@@ -877,6 +963,36 @@ template<size_t N> void testSwitchIncompleteAndFailedEvidence(const SwitchCase (
         auto oldEvent = frame(c, bytes, at); --oldEvent.transport.operationId;
         const Saved<Ess::HomeContext> saved(c);
         assert(!Ess::advanceHome(c, oldEvent, at + 20)); saved.check(c);
+    }
+}
+void testNegativeCancellationAndUnrelatedEvents() {
+    for (const auto& source : NEGATIVE_CASES) for (unsigned phase = 0; phase < 4; ++phase) {
+        auto c = switchHome(source);
+        if (phase >= 1) consume(c);
+        if (phase >= 2) consume(c);
+        if (phase >= 3) { consumeInputs(c, 4, 1); consumeInputs(c, 3, 0); }
+        const auto bytes = reply(c, 3); const auto at = c.eligibleUs + 20;
+        auto event = frame(c, bytes, at);
+        for (unsigned field = 0; field < 4; ++field) {
+            auto unrelated = event;
+            if (field == 0) ++unrelated.transport.operationId;
+            if (field == 1) ++unrelated.transport.target.generation;
+            if (field == 2) ++unrelated.transport.step;
+            if (field == 3) ++unrelated.transport.target.id;
+            const Saved<Ess::HomeContext> saved(c);
+            assert(!Ess::advanceHome(c, unrelated, at + 20)); saved.check(c);
+        }
+        // Cancellation itself sends no motor stop; a settled in-flight reply
+        // still cannot publish a reference after qualification revocation.
+        assert(Ess::revokeHome(c));
+        assert(Ess::advanceHome(c, event, at + 20));
+        assert(c.outcome == ActionOutcome::CANCELLED && c.qualificationRevoked && c.uncertain);
+        assert(c.completion == ActionCompletion::NOT_OBSERVED);
+        if (phase == 3) assert(c.zeroEvidence.length == 9 && c.zeroEvidence.responseConfirmed);
+        AxisReference reference; reference.nativePosition = 123;
+        assert(!Ess::getHomeReference(c, at + 20, 0, reference) && reference.nativePosition == 123);
+        const Saved<Ess::HomeContext> saved(c);
+        assert(!Ess::advanceHome(c, event, at + 21)); saved.check(c); done(c);
     }
 }
 }
@@ -951,7 +1067,10 @@ int main() {
     testMaximumPollBoundary();
     testBorrowedAndOversizedEvidence();
     testLimitBranchesAndVectors(); testOriginBranchesAndVectors(); testPositiveBranchesAndVectors();
+    testNegativeBranchesAndVectors(); testNegativeCancellationAndUnrelatedEvents();
     testSwitchAdmission(LIMIT_CASES); testSwitchAdmission(ORIGIN_CASES); testSwitchAdmission(POSITIVE_CASES);
+    testSwitchAdmission(NEGATIVE_CASES);
     testSwitchIncompleteAndFailedEvidence(LIMIT_CASES); testSwitchIncompleteAndFailedEvidence(ORIGIN_CASES);
     testSwitchIncompleteAndFailedEvidence(POSITIVE_CASES);
+    testSwitchIncompleteAndFailedEvidence(NEGATIVE_CASES);
 }

@@ -15,7 +15,8 @@ require internal Z; 19–22 use the origin edge without index. Methods 7–10 an
 23–26 add positive-limit reversal, with internal Z required only for 7–10.
 Methods 33 and 34 implement
 negative/positive internal-Z search, and 35 uses the current mechanical position.
-The other eight origin-plus-negative-limit methods remain unimplemented;
+Methods 11–14 and 27–30 use origin plus negative-limit reversal, with internal Z
+required only for 11–14. All 27 planned switch methods now have software paths;
 method 18 and collision methods −1 through −4 have unresolved source semantics.
 See the [complete method table](ess_homing_methods.md) for trajectories,
 prerequisites, source conflicts and external-input fixture requirements.
@@ -122,6 +123,49 @@ poll/deadline bounds. Unexpected active assigned negative-limit input remains
 a failure, as do alarm and soft-limit status. No new write or automatic retry
 is introduced.
 
+## Origin plus negative-limit methods
+
+Methods 11, 12, 13, 14, 27, 28, 29 and 30 require both origin/function 1 and
+negative-limit/function 3 for every starting location. Qualification binds both
+assignments, known matching polarity, connected wiring and fresh logical levels
+to the same target/configuration and exact native parameters. A favorable
+origin approach does not waive the negative limit. Only 11–14 require internal
+Z; 27–30 must work without index qualification. Positive limit cannot substitute
+for negative limit. Logical levels are not inverted again by the host.
+
+The following paths were derived individually from the original pages. `N` is
+negative-limit activation; `O↑`/`O↓`, `H`/`L` and direction signs have the same
+meaning as above. Every reversal includes deceleration/stop. The approaching
+and far-side positions both start with inactive origin; a Boolean level cannot
+identify which spatial path the drive will take.
+
+| Method | Inactive, approaching origin | Inactive, beyond origin | Origin active | Final reference | Physical PDF pages |
+| --- | --- | --- | --- | --- | --- |
+| 11 | −H O↑; reverse +L O↓ | −H N; reverse +H O↑, slow +L O↓ | +L O↓ | First Z after falling, +L | 44–45 |
+| 12 | −H O↑; reverse +L O↓; reverse −L O↑ | −H N; reverse +H O↑, slow +L O↓; reverse −L O↑ | +L O↓; reverse −L O↑ | First Z after rising, −L | 45–47 |
+| 13 | −H O↑, slow −L O↓; reverse +L O↑ | −H N; reverse +H O↑; reverse −L O↓; reverse +L O↑ | −L O↓; reverse +L O↑ | First Z after rising, +L | 47–48 |
+| 14 | −H O↑, slow −L O↓ | −H N; reverse +H O↑; reverse −L O↓ | −L O↓ | First Z after falling, −L | 49–50 |
+| 27 | −H O↑; reverse +L O↓ | −H N; reverse +H O↑, slow +L O↓ | +L O↓ | Falling edge, +L; no Z | 61–63 |
+| 28 | −H O↑; reverse +L O↓; reverse −L O↑ | −H N; reverse +H O↑, slow +L O↓; reverse −L O↑ | +L O↓; reverse −L O↑ | Rising edge, −L; no Z | 63–64 |
+| 29 | −H O↑, slow −L O↓; reverse +L O↑ | −H N; reverse +H O↑; reverse −L O↓; reverse +L O↑ | −L O↓; reverse +L O↑ | Rising edge, +L; no Z | 64–66 |
+| 30 | −H O↑, slow −L O↓ | −H N; reverse +H O↑; reverse −L O↓ | −L O↓ | Falling edge, −L; no Z | 66–67 |
+
+Method 28 p63(a) prose describes direct acquisition but its drawing shows the
+far-side negative-limit reversal. The p64 top drawing following (b) shows direct
+acquisition while (b)'s prose describes limit reversal. The drawings appear
+exchanged; the table and tests identify paths by their spatial trajectory.
+Separate (c) captions for 13 p48, 14 p50, 29 p65 (drawing p66) and 30 p67 say
+**invalid** while depicting active origin. Their low-speed active paths are
+retained explicitly. The active captions for 11, 12, 27 and 28 say **valid**.
+
+The drive owns every intermediate movement. Required negative-limit activation
+is distinct from a soft-limit fault; unexpected active assigned positive limit
+still fails. Missing/constant samples do not prove a stuck sensor, a reversal,
+or a completed physical edge. Fresh qualified status/activity and subsequent
+checked zero remain necessary under the shared contract below. No extra writes,
+poll assumptions, buffer growth or automatic replay are introduced. Physical
+reversal, direction, switch edges and index qualification remain separate.
+
 ## Parameter observations
 
 `home read [address]` reads the six native records in one seven-word checked
@@ -154,7 +198,7 @@ qualification, without deriving them from incoming intent. Terminal JSON keeps
 them in `prerequisites.qualified_parameters`; Python checks them against the
 staged method/rate/ramp words.
 
-Methods 1–10 and 33/34 additionally need qualified internal Z;
+Methods 1–14 and 33/34 additionally need qualified internal Z;
 35 needs neither Z nor an external sensor. Unknown input assignments are not
 qualified by unplugged wiring. Existing active auxiliary `0x0030` must already
 be qualified as `KEEP_POSITION_SET_ZERO` (7). Homing never writes that auxiliary
@@ -267,7 +311,7 @@ change. Physical p73 does not resolve offset order/sign/scale or the sampling
 instant of its term actual value. Selecting a stored policy implements no new
 coordinate policy as motion. `prepareHome` still requires independently
 qualified active auxiliary7, qualified zero offset, exact native parameters and
-methods1–10/17/19–26/33–35. A stored/readback7 never grants any of those qualifications.
+methods1–14/17/19–30/33–35. A stored/readback7 never grants any of those qualifications.
 
 Use `prepareDriverRead`/`getDriver` for prior FC03 `0x0030/1`; the update uses
 `prepareDriverSettings`/`nextDriver`/`advanceDriver` for FC06 `0x0030` and separate
@@ -324,8 +368,9 @@ input reassignment, automatic repair or rollback follows this setter.
 Stage08 implements the shared [stage01 decisions](reports/2026-10-29_ess_software_contracts.md).
 Stage09 implements limit-reference1/2/17 alongside33/34/35. Stage10 adds
 origin-reference3/4/5/6/19/20/21/22. Stage11 adds positive-limit-assisted
-methods7/8/9/10/23/24/25/26; the other eight negative-limit-assisted methods
-await stage12.
+methods7/8/9/10/23/24/25/26. Stage12 adds negative-limit-assisted
+methods11/12/13/14/27/28/29/30, completing the27 planned switch-method partition.
+Method18, collision methods and physical qualification remain unresolved.
 
 The public [ProbeApp.h](../examples/probe_cli/ProbeApp.h) exposes `installHomeQualification`,
 `inspectHomeQualification`, `revokeHomeQualification`, `submitHome` and

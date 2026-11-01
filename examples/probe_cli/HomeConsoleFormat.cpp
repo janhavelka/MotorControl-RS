@@ -38,6 +38,14 @@ unsigned methodReason(const Ess::HomeMethodDescriptor& method) {
     case Ess::HomingMethod::METHOD_24: return 22;
     case Ess::HomingMethod::METHOD_25: return 23;
     case Ess::HomingMethod::METHOD_26: return 24;
+    case Ess::HomingMethod::METHOD_11: return 25;
+    case Ess::HomingMethod::METHOD_12: return 26;
+    case Ess::HomingMethod::METHOD_13: return 27;
+    case Ess::HomingMethod::METHOD_14: return 28;
+    case Ess::HomingMethod::METHOD_27: return 29;
+    case Ess::HomingMethod::METHOD_28: return 30;
+    case Ess::HomingMethod::METHOD_29: return 31;
+    case Ess::HomingMethod::METHOD_30: return 32;
     default: return 0;
     }
 }
@@ -100,7 +108,7 @@ bool formatMethods(char* output, std::size_t capacity, std::size_t& used, uint32
             method->requiredInputs, boolean(method->requiresIndex), boolean(method->moves),
             methodReason(*method));
     }
-    fits = fits && append(output, capacity, used, "],\"reasons\":{\"0\":\"switch_edges_and_return_pending\",\"1\":\"collision_encoding_and_parameter_conflicts\",\"2\":\"limit_prose_diagram_conflict\",\"3\":\"negative_internal_index_search\",\"4\":\"positive_internal_index_search\",\"5\":\"current_position_origin\",\"6\":\"negative_limit_then_index\",\"7\":\"positive_limit_then_index\",\"8\":\"negative_limit_release\",\"9\":\"origin_falling_negative_then_index\",\"10\":\"origin_rising_positive_then_index\",\"11\":\"origin_falling_positive_then_index\",\"12\":\"origin_rising_negative_then_index\",\"13\":\"origin_falling_negative\",\"14\":\"origin_rising_positive\",\"15\":\"origin_falling_positive\",\"16\":\"origin_rising_negative\",\"17\":\"positive_limit_origin_falling_negative_then_index\",\"18\":\"positive_limit_origin_rising_positive_then_index\",\"19\":\"positive_limit_origin_rising_negative_then_index\",\"20\":\"positive_limit_origin_falling_positive_then_index\",\"21\":\"positive_limit_origin_falling_negative\",\"22\":\"positive_limit_origin_rising_positive\",\"23\":\"positive_limit_origin_rising_negative\",\"24\":\"positive_limit_origin_falling_positive\"},\"physical_qualified\":false,\"offset\":\"zero_only\",\"auxiliary\":7}");
+    fits = fits && append(output, capacity, used, "],\"reasons\":{\"0\":\"switch_edges_and_return_pending\",\"1\":\"collision_encoding_and_parameter_conflicts\",\"2\":\"limit_prose_diagram_conflict\",\"3\":\"negative_internal_index_search\",\"4\":\"positive_internal_index_search\",\"5\":\"current_position_origin\",\"6\":\"negative_limit_then_index\",\"7\":\"positive_limit_then_index\",\"8\":\"negative_limit_release\",\"9\":\"origin_falling_negative_then_index\",\"10\":\"origin_rising_positive_then_index\",\"11\":\"origin_falling_positive_then_index\",\"12\":\"origin_rising_negative_then_index\",\"13\":\"origin_falling_negative\",\"14\":\"origin_rising_positive\",\"15\":\"origin_falling_positive\",\"16\":\"origin_rising_negative\",\"17\":\"positive_limit_origin_falling_negative_then_index\",\"18\":\"positive_limit_origin_rising_positive_then_index\",\"19\":\"positive_limit_origin_rising_negative_then_index\",\"20\":\"positive_limit_origin_falling_positive_then_index\",\"21\":\"positive_limit_origin_falling_negative\",\"22\":\"positive_limit_origin_rising_positive\",\"23\":\"positive_limit_origin_rising_negative\",\"24\":\"positive_limit_origin_falling_positive\",\"25\":\"negative_limit_origin_falling_positive_then_index\",\"26\":\"negative_limit_origin_rising_negative_then_index\",\"27\":\"negative_limit_origin_rising_positive_then_index\",\"28\":\"negative_limit_origin_falling_negative_then_index\",\"29\":\"negative_limit_origin_falling_positive\",\"30\":\"negative_limit_origin_rising_negative\",\"31\":\"negative_limit_origin_rising_positive\",\"32\":\"negative_limit_origin_falling_negative\"},\"physical_qualified\":false,\"offset\":\"zero_only\",\"auxiliary\":7}");
     return fits;
 }
 }}}

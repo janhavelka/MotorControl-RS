@@ -703,8 +703,7 @@ void testHomingParameterMembershipIsNotExecutableSupport() {
         assert(out.rawMethod == code && out.methodKnown == known);
         if (known) {
             assert(static_cast<uint16_t>(out.method) == code);
-            assert(out.methodSupport == (code >= 33 || (code >= 1 && code <= 10) || code == 17 || (code >= 19 && code <= 26) ?
-                HomeSupport::IMPLEMENTED : code == 18 ? HomeSupport::UNRESOLVED : HomeSupport::UNIMPLEMENTED));
+            assert(out.methodSupport == (code == 18 ? HomeSupport::UNRESOLVED : HomeSupport::IMPLEMENTED));
         } else assert(out.methodSupport == HomeSupport::UNRESOLVED);
     }
     for (uint16_t auxiliary : {uint16_t(0),uint16_t(7),uint16_t(11),uint16_t(12),uint16_t(0xFFFF)}) {
@@ -721,7 +720,7 @@ void testHomingParameterMembershipIsNotExecutableSupport() {
         if (method->support == HomeSupport::IMPLEMENTED) ++implemented;
         else if (method->support == HomeSupport::UNIMPLEMENTED) ++pending; else ++unresolved;
     }
-    assert(implemented == 22 && pending == 8 && unresolved == 5);
+    assert(implemented == 30 && pending == 0 && unresolved == 5);
 }
 void testHomingParameterPreparationAndPublicationFailuresPreserveOutput() {
     ReadContext output = homingParameters(); const Saved<ReadContext> unchanged(output);

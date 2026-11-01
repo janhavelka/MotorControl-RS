@@ -324,7 +324,7 @@ def check_typed_read(item: dict, kind: str, address: int | None) -> None:
                 "homing offset words differ from retained RX")
         method = decoded_words[1]
         known_method = method in (*range(1, 15), *range(17, 31), 33, 34, 35)
-        support = ("unknown" if not known_method else "implemented" if method in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 17, 19, 20, 21, 22, 23, 24, 25, 26, 33, 34, 35) else
+        support = ("unknown" if not known_method else "implemented" if method in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 33, 34, 35) else
                    "unresolved" if method == 18 else "unimplemented")
         for key, value in (("auxiliary_known", decoded_words[0] <= 11), ("method_known", known_method),
                            ("search_speed_in_range", 5 <= decoded_words[2] <= 3000),
@@ -1538,10 +1538,10 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
     require(all(operation_id(item.get(k)) for k in ("target", "generation", "configuration_generation")), "binding is invalid")
     check_counts(item, ("started_us", "deadline_us", "serviced_us", "polls", "completion_observed_us"), "home")
     require(item["started_us"] < item["deadline_us"] and item["started_us"] <= item["serviced_us"] and item["polls"] <= 64, "time/count bounds are invalid")
-    require(type(item.get("method")) is int and item["method"] in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 17, 19, 20, 21, 22, 23, 24, 25, 26, 33, 34, 35),
+    require(type(item.get("method")) is int and item["method"] in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 33, 34, 35),
             "invalid or unimplemented method yielded traffic")
-    required_inputs = {1: 4, 2: 2, 3: 1, 4: 1, 5: 1, 6: 1, 7: 3, 8: 3, 9: 3, 10: 3,
-                       17: 4, 19: 1, 20: 1, 21: 1, 22: 1, 23: 3, 24: 3, 25: 3, 26: 3}.get(item["method"], 0)
+    required_inputs = {1: 4, 2: 2, 3: 1, 4: 1, 5: 1, 6: 1, 7: 3, 8: 3, 9: 3, 10: 3, 11: 5, 12: 5, 13: 5, 14: 5,
+                       17: 4, 19: 1, 20: 1, 21: 1, 22: 1, 23: 3, 24: 3, 25: 3, 26: 3, 27: 5, 28: 5, 29: 5, 30: 5}.get(item["method"], 0)
     require(uint(item.get("phase"), 3), "phase is invalid")
     words = item.get("staging_words")
     require(isinstance(words, list) and len(words) == 6 and all(uint(w, 65535) for w in words) and

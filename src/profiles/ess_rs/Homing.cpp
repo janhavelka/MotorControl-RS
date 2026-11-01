@@ -15,7 +15,6 @@ constexpr uint16_t FAULTS = static_cast<uint16_t>(MotionStatusBit::ALARM) |
     static_cast<uint16_t>(MotionStatusBit::RELEASED) |
     static_cast<uint16_t>(MotionStatusBit::POSITIVE_SOFT_LIMIT) |
     static_cast<uint16_t>(MotionStatusBit::NEGATIVE_SOFT_LIMIT);
-constexpr const char* SWITCH_PENDING = "method-specific switch-edge/return verification and qualified existing inputs are not implemented";
 constexpr const char* COLLISION_UNRESOLVED = "negative method encoding, collision trajectory and conflicting parameter mappings are unresolved";
 // Explicit descriptors; numeric membership never enables an operation.
 const HomeMethodDescriptor METHODS[HOME_METHOD_COUNT] = {
@@ -33,10 +32,10 @@ const HomeMethodDescriptor METHODS[HOME_METHOD_COUNT] = {
     {HomingMethod::METHOD_8, HomeSupport::IMPLEMENTED, 3, true, true, "origin rising then first internal Z in positive low-speed direction; qualified origin and positive limit and index required"},
     {HomingMethod::METHOD_9, HomeSupport::IMPLEMENTED, 3, true, true, "origin rising then first internal Z in negative low-speed direction; qualified origin and positive limit and index required"},
     {HomingMethod::METHOD_10, HomeSupport::IMPLEMENTED, 3, true, true, "origin falling then first internal Z in positive low-speed direction; qualified origin and positive limit and index required"},
-    {HomingMethod::METHOD_11, HomeSupport::UNIMPLEMENTED, 5, true, true, SWITCH_PENDING},
-    {HomingMethod::METHOD_12, HomeSupport::UNIMPLEMENTED, 5, true, true, SWITCH_PENDING},
-    {HomingMethod::METHOD_13, HomeSupport::UNIMPLEMENTED, 5, true, true, SWITCH_PENDING},
-    {HomingMethod::METHOD_14, HomeSupport::UNIMPLEMENTED, 5, true, true, SWITCH_PENDING},
+    {HomingMethod::METHOD_11, HomeSupport::IMPLEMENTED, 5, true, true, "origin falling then first internal Z in positive low-speed direction; qualified origin and negative limit and index required"},
+    {HomingMethod::METHOD_12, HomeSupport::IMPLEMENTED, 5, true, true, "origin rising then first internal Z in negative low-speed direction; qualified origin and negative limit and index required"},
+    {HomingMethod::METHOD_13, HomeSupport::IMPLEMENTED, 5, true, true, "origin rising then first internal Z in positive low-speed direction; qualified origin and negative limit and index required"},
+    {HomingMethod::METHOD_14, HomeSupport::IMPLEMENTED, 5, true, true, "origin falling then first internal Z in negative low-speed direction; qualified origin and negative limit and index required"},
     {HomingMethod::METHOD_17, HomeSupport::IMPLEMENTED, 4, false, true, "negative-limit release in positive low-speed direction; qualified limit required, no index"},
     {HomingMethod::METHOD_18, HomeSupport::UNRESOLVED, 2, false, true, "positive-limit prose conflicts with negative-limit diagram labels"},
     {HomingMethod::METHOD_19, HomeSupport::IMPLEMENTED, 1, false, true, "origin falling in negative low-speed direction; qualified origin required, no index"},
@@ -47,10 +46,10 @@ const HomeMethodDescriptor METHODS[HOME_METHOD_COUNT] = {
     {HomingMethod::METHOD_24, HomeSupport::IMPLEMENTED, 3, false, true, "origin rising in positive low-speed direction; qualified origin and positive limit required, no index"},
     {HomingMethod::METHOD_25, HomeSupport::IMPLEMENTED, 3, false, true, "origin rising in negative low-speed direction; qualified origin and positive limit required, no index"},
     {HomingMethod::METHOD_26, HomeSupport::IMPLEMENTED, 3, false, true, "origin falling in positive low-speed direction; qualified origin and positive limit required, no index"},
-    {HomingMethod::METHOD_27, HomeSupport::UNIMPLEMENTED, 5, false, true, SWITCH_PENDING},
-    {HomingMethod::METHOD_28, HomeSupport::UNIMPLEMENTED, 5, false, true, SWITCH_PENDING},
-    {HomingMethod::METHOD_29, HomeSupport::UNIMPLEMENTED, 5, false, true, SWITCH_PENDING},
-    {HomingMethod::METHOD_30, HomeSupport::UNIMPLEMENTED, 5, false, true, SWITCH_PENDING},
+    {HomingMethod::METHOD_27, HomeSupport::IMPLEMENTED, 5, false, true, "origin falling in positive low-speed direction; qualified origin and negative limit required, no index"},
+    {HomingMethod::METHOD_28, HomeSupport::IMPLEMENTED, 5, false, true, "origin rising in negative low-speed direction; qualified origin and negative limit required, no index"},
+    {HomingMethod::METHOD_29, HomeSupport::IMPLEMENTED, 5, false, true, "origin rising in positive low-speed direction; qualified origin and negative limit required, no index"},
+    {HomingMethod::METHOD_30, HomeSupport::IMPLEMENTED, 5, false, true, "origin falling in negative low-speed direction; qualified origin and negative limit required, no index"},
     {HomingMethod::METHOD_33, HomeSupport::IMPLEMENTED, 0, true, true, "negative low-speed internal Z search; qualified mechanics and index required"},
     {HomingMethod::METHOD_34, HomeSupport::IMPLEMENTED, 0, true, true, "positive low-speed internal Z search; qualified mechanics and index required"},
     {HomingMethod::METHOD_35, HomeSupport::IMPLEMENTED, 0, false, false, "current mechanical position as origin; no search trajectory"}

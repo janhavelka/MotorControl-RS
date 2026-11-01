@@ -496,3 +496,23 @@ reports88 suites and zero failed checks. Terminal JSON and artifacts are under
 `build/ess_software_11_ci`. Local full firmware is NOT RUN; hosted CI supplies
 the supported matrix. Stage11 software verification is complete. The subsequent
 documentation-only evidence checkpoint uses local consistency checks.
+
+## Stage 12 origin plus negative-limit homing (2026-11-01)
+
+Methods11/12/13/14/27/28/29/30 are implemented through the shared production
+path, requiring origin and negative limit for every spatial branch; only11–14
+require internal Z. Original pages44–50 and61–67 were independently reviewed.
+All24 branches have core vectors and ordinary app/console coverage. Method28's
+exchanged drawings and the separate13/14/29/30 c-caption conflicts remain explicit.
+The partition3+8+8+8=27 is delivered in software; with33/34/35, dispositions are
+30 IMPLEMENTED, zero UNIMPLEMENTED, five UNRESOLVED. N08 remains PARTIAL for18,
+collision methods and physical qualification. Undocumented IDs stay rejected.
+
+Focused core1/1, app/IDF/parity3/3, lead reads/console/monitor/I/O4/4, host286 and
+inventory33 tests PASS. Inventory records121 implemented choices and12 remaining.
+Independent final review found no functional or scope gap. Fresh quick/package
+verification passes all88 suites and15 checks in `build/ess_software_12_final`.
+Exact implementation-commit CI is pending. See
+[source, review and verification evidence](../../reports/2026-11-01_ess_negative_limit_homing.md).
+Physical checks remain NOT RUN: the recorded USB identity is absent and there
+is no external origin/negative-limit fixture.

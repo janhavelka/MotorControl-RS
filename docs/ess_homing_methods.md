@@ -32,7 +32,7 @@ the initial direction and omits the high-speed search.
 | 10 | Internal Z + origin + positive limit | +H / +L | +L, first Z after origin falling | 42–43 |
 | 11 | Internal Z + origin + negative limit | −H / +L | +L, first Z after origin falling | 44–45 |
 | 12 | Internal Z + origin + negative limit | −H / +L then −L | −L, first Z after origin rising | 45–47 |
-| 13 | Internal Z + origin + negative limit | −H / −L then +L | +L, first Z after origin rising | 47–49 |
+| 13 | Internal Z + origin + negative limit | −H / −L then +L | +L, first Z after origin rising | 47–48 |
 | 14 | Internal Z + origin + negative limit | −H / −L | −L, first Z after origin falling | 49–50 |
 | 17 | Negative limit | −H / +L | +L, negative-limit falling | 50–51 |
 | 18 | Positive limit; conflicting figure labels | +H / −L | −L, positive-limit falling in prose | 51 |
@@ -79,8 +79,8 @@ and a direct positive low-speed exit at the falling edge. Their active branches
 are retained explicitly. The [positive-limit family paths](ess_homing.md#origin-plus-positive-limit-methods)
 separate all three starting locations for every method.
 
-The implemented subset is 1–10, 17, 19–26 and 33–35, with zero offset and auxiliary
-value 7. The other eight negative-limit-assisted methods remain unimplemented. Their shared
+The implemented subset is 1–14, 17, 19–30 and 33–35, with zero offset and auxiliary
+value 7. All 27 planned switch methods (3 + 8 + 8 + 8) have software paths. Their shared
 [admission and observation contract](ess_homing.md#planned-auxiliary-setting-and-switch-method-integration-not-implemented)
 keeps trajectories in the drive and sampled evidence in the host; it does not
 require a host reconstruction of every physical edge. Method 18
@@ -88,6 +88,13 @@ and the four collision methods report unresolved source semantics separately.
 Unwired or disabled optional external inputs do not exclude 33–35. Internal Z
 is a motor capability requiring qualification, not an external input terminal.
 Software implementation establishes no physical homing qualification.
+
+The negative-limit review independently checked pages44–50 and61–67. The
+[negative-limit family paths](ess_homing.md#origin-plus-negative-limit-methods)
+retain all24 spatial branches and method28's exchanged drawings. Method29's
+conflicting (c) caption is on p65 and its active drawing is on p66. Method13's
+content ends on p48; p49 begins method14. No unresolved method18 or collision
+semantics are inferred from this completed planned partition.
 
 The 1 November 2026 origin-method review independently checked every branch
 on physical pages 34–37 and 52–55. Methods 5 (p36) and 21 (p54) repeat `a)` for

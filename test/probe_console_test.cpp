@@ -1663,7 +1663,15 @@ void testHomeRoutesAndDescriptors() {
         {23,21,3,false,"positive_limit_origin_falling_negative"},
         {24,22,3,false,"positive_limit_origin_rising_positive"},
         {25,23,3,false,"positive_limit_origin_rising_negative"},
-        {26,24,3,false,"positive_limit_origin_falling_positive"}
+        {26,24,3,false,"positive_limit_origin_falling_positive"},
+        {11,25,5,true,"negative_limit_origin_falling_positive_then_index"},
+        {12,26,5,true,"negative_limit_origin_rising_negative_then_index"},
+        {13,27,5,true,"negative_limit_origin_rising_positive_then_index"},
+        {14,28,5,true,"negative_limit_origin_falling_negative_then_index"},
+        {27,29,5,false,"negative_limit_origin_falling_positive"},
+        {28,30,5,false,"negative_limit_origin_rising_negative"},
+        {29,31,5,false,"negative_limit_origin_rising_positive"},
+        {30,32,5,false,"negative_limit_origin_falling_negative"}
     };
     for (const auto& origin : origins) {
         const auto method = std::string("\"method\":") + std::to_string(origin.method) +
@@ -1674,7 +1682,7 @@ void testHomeRoutesAndDescriptors() {
         f.contains(reason.c_str());
     }
     assert(!f.homes && !f.probes && f.lines.back().size() < Probe::OUTPUT_CAPACITY);
-    send(c, "@10 caps\n"); f.contains("\"home_methods\":[1,2,3,4,5,6,7,8,9,10,17,19,20,21,22,23,24,25,26,33,34,35]");
+    send(c, "@10 caps\n"); f.contains("\"home_methods\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,17,19,20,21,22,23,24,25,26,27,28,29,30,33,34,35]");
     send(c, "@2 home 35 60 30 100 zero\n");
     assert(f.homes == 1 && f.homeRequest.method == Ess::HomingMethod::METHOD_35 && f.homeRequest.configurationGeneration == 3);
     send(c, "@3 home 33 5 300 2000 zero 2\n");
@@ -2520,7 +2528,7 @@ void testSetterCapabilities() {
         send(c, "@1 caps\n");
         f.contains(setter && snapshot ? "\"position_start_speed_write\":true" : "\"position_start_speed_write\":false");
         f.contains(setter && snapshot ? "\"homing_auxiliary_write\":true" : "\"homing_auxiliary_write\":false");
-        f.contains("\"unimplemented\":[\"switch_homing\"]");
+        f.contains("\"unimplemented\":[]");
         f.contains("\"home\":false"); f.contains("\"home_physical_qualified\":false");
         assert(!f.drivers && !f.homes);
     }

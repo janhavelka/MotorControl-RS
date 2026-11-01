@@ -1,7 +1,7 @@
 # Homing method ownership and evidence
 
-The original planning partition is 3 + 8 + 8 + 8 switch methods. After stage11,
-current source has 35 descriptors: 8 UNIMPLEMENTED, 22 IMPLEMENTED, 5 UNRESOLVED.
+The original planning partition is 3 + 8 + 8 + 8 switch methods. After stage12,
+current source has 35 descriptors: 0 UNIMPLEMENTED, 30 IMPLEMENTED, 5 UNRESOLVED.
 The [maintained method guide](../../ess_homing_methods.md) describes the source;
 reopen the original diagrams when executing each family stage.
 
@@ -30,14 +30,14 @@ Source pages are one-based physical pages in the preserved function PDF.
 | 24 | IMPLEMENTED | 11 | Origin + positive limit | No | 57-58 |
 | 25 | IMPLEMENTED | 11 | Origin + positive limit | No | 58-60 |
 | 26 | IMPLEMENTED | 11 | Origin + positive limit | No | 60-61 |
-| 11 | UNIMPLEMENTED | 12 | Origin + negative limit | Yes | 44-45 |
-| 12 | UNIMPLEMENTED | 12 | Origin + negative limit | Yes | 45-47 |
-| 13 | UNIMPLEMENTED | 12 | Origin + negative limit | Yes | 47-49 |
-| 14 | UNIMPLEMENTED | 12 | Origin + negative limit | Yes | 49-50 |
-| 27 | UNIMPLEMENTED | 12 | Origin + negative limit | No | 61-63 |
-| 28 | UNIMPLEMENTED | 12 | Origin + negative limit | No | 63-64 |
-| 29 | UNIMPLEMENTED | 12 | Origin + negative limit | No | 64-66 |
-| 30 | UNIMPLEMENTED | 12 | Origin + negative limit | No | 66-67 |
+| 11 | IMPLEMENTED | 12 | Origin + negative limit | Yes | 44-45 |
+| 12 | IMPLEMENTED | 12 | Origin + negative limit | Yes | 45-47 |
+| 13 | IMPLEMENTED | 12 | Origin + negative limit | Yes | 47-48 |
+| 14 | IMPLEMENTED | 12 | Origin + negative limit | Yes | 49-50 |
+| 27 | IMPLEMENTED | 12 | Origin + negative limit | No | 61-63 |
+| 28 | IMPLEMENTED | 12 | Origin + negative limit | No | 63-64 |
+| 29 | IMPLEMENTED | 12 | Origin + negative limit | No | 64-66 |
+| 30 | IMPLEMENTED | 12 | Origin + negative limit | No | 66-67 |
 | 33 | IMPLEMENTED | Regression in 08-15 | None | Yes | 67 |
 | 34 | IMPLEMENTED | Regression in 08-15 | None | Yes | 67 |
 | 35 | IMPLEMENTED | Regression in 08-15 | None | No | 67 |

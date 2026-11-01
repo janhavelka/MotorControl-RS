@@ -1281,8 +1281,8 @@ class Framing(unittest.TestCase):
         self.assertEqual(self.events[-1]["homes_attempted"], 1)
         self.assertEqual(self.events[-1]["cleanup"], "not_required")
 
-    def test_home_unresolved_and_unimplemented_are_exact_unadmitted_results(self):
-        for method, disposition in (("11", "unimplemented"), ("18", "unresolved")):
+    def test_home_unresolved_and_invalid_are_exact_unadmitted_results(self):
+        for method, disposition in (("15", "invalid"), ("18", "unresolved")):
             def handler(i, command, args):
                 if command != "home": return Serial.normal(i, command, args)
                 return encoded(reply(i, command, ok=False, result=disposition, address=1, operation_id=0))
@@ -3692,9 +3692,11 @@ class Framing(unittest.TestCase):
         for method, known, support in ((1, True, "implemented"), (2, True, "implemented"),
                 (7, True, "implemented"), (8, True, "implemented"), (9, True, "implemented"), (10, True, "implemented"),
                 (23, True, "implemented"), (24, True, "implemented"), (25, True, "implemented"), (26, True, "implemented"),
-                (14, True, "unimplemented"),
+                (11, True, "implemented"), (12, True, "implemented"),
+                (13, True, "implemented"), (14, True, "implemented"),
                 (15, False, "unknown"), (16, False, "unknown"), (17, True, "implemented"),
-                (18, True, "unresolved"), (30, True, "unimplemented"), (31, False, "unknown"),
+                (18, True, "unresolved"), (27, True, "implemented"), (28, True, "implemented"),
+                (29, True, "implemented"), (30, True, "implemented"), (31, False, "unknown"),
                 (32, False, "unknown"), (33, True, "implemented"), (34, True, "implemented"),
                 (35, True, "implemented"), (36, False, "unknown"), (0xFFFC, False, "unknown"),
                 (0xFFFD, False, "unknown"), (0xFFFE, False, "unknown"), (0xFFFF, False, "unknown")):
