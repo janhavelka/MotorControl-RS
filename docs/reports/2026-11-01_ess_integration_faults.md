@@ -1,5 +1,9 @@
 # ESS stage13: cross-operation faults and ordinary-route parity
 
+SOFTWARE COMPLETE at `bfa2e91d358082a89f32283f837ea213c0154d37`, with fresh local
+verification and all four exact-commit CI jobs passing. No confirmed in-scope
+finding remains; physical qualification and the stated source limits stay open.
+
 Started from clean, synchronized `main` at
 `f608587fd477157257b06ca4cc4751dc61104cf1`. Stages02-12 were inspected against
 actual APIs, implementations, callers, tests and final diffs. Two parallel
@@ -81,9 +85,16 @@ export/install, standalone headers and source/installed consumers3/3 each.
 Package SHA-256:
 `da638c94619ec0ab09b3c06fdff8f880993c872f75936e223629f3187a47d11c`.
 Repository/reference/metadata, generated catalogue and whitespace checks PASS.
-Exact-commit CI is pending at this checkpoint; its implementation SHA and
-terminal results will be recorded here. No separate scheduler or fake success
-model was introduced.
+[CI41299310726](https://github.com/janhavelka/MotorControl-RS/actions/runs/41299310726)
+completed SUCCESS on exact implementation
+`bfa2e91d358082a89f32283f837ea213c0154d37`. GCC, Clang, Arduino and native-IDF
+jobs each report PASS, 88 suites and zero failed checks. Arduino builds all four
+configured environments; IDF builds app, core-S3, core-S2 and portable-S2.
+Terminal JSON and downloaded artifacts are under `build/ess_software_13_ci/`.
+Local full firmware is NOT RUN; hosted CI supplies the required matrix.
+The subsequent documentation-only checkpoint changes no tested code/build input
+and uses local document/reference/inventory checks under repository policy.
+No separate scheduler or fake success model was introduced.
 
 Coverage remains 54 producing operations, 121 implemented choices, 144 classified
 public functions, five named gaps and 18 guarded paired setters. Homing has 30

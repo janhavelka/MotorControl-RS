@@ -8,7 +8,7 @@ stage06 delivers the native stored-profile interruption core. Stage07 delivers
 its bounded owner/application/console integration. Stage08 implements shared
 homing qualification/observation with final verification complete. Stage09
 implements limit-reference1/2/17 with final verification complete. Stages10-12
-complete the 27 planned switch methods. Stage13 is verifying cross-operation
+complete the 27 planned switch methods. Stage13 verified cross-operation
 faults and ordinary-route parity; stages14-15 remain NOT STARTED.
 N08 stays PARTIAL and broader N05 remains PARTIAL pending
 active staging and completion-attribution evidence.
@@ -27,7 +27,7 @@ active staging and completion-attribution evidence.
 | 10 | SOFTWARE COMPLETE | `e157ce0`; [origin methods and exact-commit verification](../../reports/2026-11-01_ess_origin_homing.md) | NOT RUN: recorded bench absent; no origin fixture |
 | 11 | SOFTWARE COMPLETE | `51fef5e`; [positive-limit methods and exact-commit verification](../../reports/2026-11-01_ess_positive_limit_homing.md) | NOT RUN: recorded bench absent; no switch fixture |
 | 12 | SOFTWARE COMPLETE | `96ebf18`; [negative-limit methods and exact-commit verification](../../reports/2026-11-01_ess_negative_limit_homing.md) | NOT RUN: recorded bench absent; no switch fixture |
-| 13 | IN PROGRESS | [Cross-operation traces, review and verification](../../reports/2026-11-01_ess_integration_faults.md); fresh88-suite quick/package PASS, exact-commit CI pending | NOT RUN: recorded bench USB absent |
+| 13 | SOFTWARE COMPLETE | `bfa2e91`; [cross-operation traces, review and verification](../../reports/2026-11-01_ess_integration_faults.md); fresh88-suite quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 14 | NOT STARTED | - | NOT RUN |
 | 15 | NOT STARTED | - | NOT RUN |
 
@@ -570,7 +570,14 @@ Stale stage10-12 summary/table entries now agree with their recorded completion.
 Lead focused9/9, independent state8/8, parity17/17 then5/5, both pressure
 frontends2/2 and final reviews PASS. Fresh final quick/package passes88 suites,
 all15 checks and source/installed consumers3/3 each in `build/ess_software_13_final`.
-Exact-commit CI is pending. See the [report](../../reports/2026-11-01_ess_integration_faults.md).
+Commit `bfa2e91d358082a89f32283f837ea213c0154d37` passes exact-commit
+[CI41299310726](https://github.com/janhavelka/MotorControl-RS/actions/runs/41299310726):
+GCC, Clang, Arduino4/4 and IDF app/core-S3/core-S2/portable-S2 all SUCCESS.
+Each downloaded summary reports88 suites and zero failed checks; terminal JSON
+and artifacts are in `build/ess_software_13_ci`. Stage13 is SOFTWARE COMPLETE.
+The documentation-only checkpoint uses local consistency checks. Local full
+firmware is NOT RUN; CI supplies the supported matrix. See the
+[report](../../reports/2026-11-01_ess_integration_faults.md).
 Coverage remains54 producing operations,121 implemented choices,144 classified
 functions, five named gaps and18 guarded pairs. N05/N08 remain PARTIAL. Physical
 tests are NOT RUN: recorded bench USB absent; no external switch fixture.
