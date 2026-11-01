@@ -1,14 +1,16 @@
 # Execution progress
 
-Prepared 2026-10-23; updated 2026-10-31 for stages 01-09 execution. The preparation
+Prepared 2026-10-23; updated 2026-11-01 for stages 01-13 execution. The preparation
 record below is historical. Stage 01 delivered contracts only; stage 02 implements
 velocity parameter reads. Stage 03 adds homing parameter reads; stage 04 adds
 position start-speed setting. Stage05 adds homing auxiliary configuration;
 stage06 delivers the native stored-profile interruption core. Stage07 delivers
 its bounded owner/application/console integration. Stage08 implements shared
 homing qualification/observation with final verification complete. Stage09
-implements limit-reference1/2/17 with final verification complete. Stages10-15
-remain NOT STARTED; N08 stays PARTIAL and broader N05 remains PARTIAL pending
+implements limit-reference1/2/17 with final verification complete. Stages10-12
+complete the 27 planned switch methods. Stage13 is verifying cross-operation
+faults and ordinary-route parity; stages14-15 remain NOT STARTED.
+N08 stays PARTIAL and broader N05 remains PARTIAL pending
 active staging and completion-attribution evidence.
 
 | Stage | Stage status | Commit / evidence | Physical evidence |
@@ -22,10 +24,10 @@ active staging and completion-attribution evidence.
 | 07 | SOFTWARE COMPLETE | `14da3ad`; [owner/application integration and verification](../../reports/2026-10-29_ess_position_interrupt_owner.md); 88-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 08 | SOFTWARE COMPLETE | `77f9886`; [shared homing qualification/observation](../../reports/2026-10-29_ess_homing_foundation.md); fresh88-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 09 | SOFTWARE COMPLETE | `a9d5eaa`; [limit-reference implementation and verification](../../reports/2026-10-31_ess_limit_homing.md); 88-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent; no limit-switch fixture |
-| 10 | NOT STARTED | - | NOT RUN |
-| 11 | NOT STARTED | - | NOT RUN |
-| 12 | NOT STARTED | - | NOT RUN |
-| 13 | NOT STARTED | - | NOT RUN |
+| 10 | SOFTWARE COMPLETE | `e157ce0`; [origin methods and exact-commit verification](../../reports/2026-11-01_ess_origin_homing.md) | NOT RUN: recorded bench absent; no origin fixture |
+| 11 | SOFTWARE COMPLETE | `51fef5e`; [positive-limit methods and exact-commit verification](../../reports/2026-11-01_ess_positive_limit_homing.md) | NOT RUN: recorded bench absent; no switch fixture |
+| 12 | SOFTWARE COMPLETE | `96ebf18`; [negative-limit methods and exact-commit verification](../../reports/2026-11-01_ess_negative_limit_homing.md) | NOT RUN: recorded bench absent; no switch fixture |
+| 13 | IN PROGRESS | [Cross-operation traces, review and verification](../../reports/2026-11-01_ess_integration_faults.md); fresh88-suite quick/package PASS, exact-commit CI pending | NOT RUN: recorded bench USB absent |
 | 14 | NOT STARTED | - | NOT RUN |
 | 15 | NOT STARTED | - | NOT RUN |
 
@@ -545,3 +547,30 @@ report 88 suites and zero failed checks. Terminal JSON and artifacts are under
 supplies the matrix. The documentation-only evidence checkpoint uses local
 consistency checks.
 Coverage remains30 implemented/five unresolved; physical checks remain NOT RUN.
+
+## Stage13 cross-operation faults and route parity (2026-11-01)
+
+Started at `f608587` with delivered stages02-12. Parallel conservation and parity
+reviewers used actual code/diffs and independent low-level owner traces; a
+disjoint writer added interruption pressure/reconciliation fixtures. Public
+home tests now cross both parameter reads with both settings, preserve delayed
+history, reject stale qualification, and cover lost ACK/recovery/new admission
+and old-address replies after rebind. Full ordinary results and blocked output
+preserve original/replacement/urgent-stop results; idle reads cannot clear the
+possible-motion interlock. Host parity consumes 11 real cross-operation results
+per frontend through live/current/historical dispatch.
+
+One confirmed checker defect credited eight getter/raw-codec substitutions as
+implemented producers. Exact producer/lifecycle sets and owning definitions are
+now required for delivered completion operations; declaration-only, renamed and
+commented-out implementations reject. All35 inventory tests PASS. No production
+state/effect defect was confirmed; no protocol or retry semantics changed.
+Stale stage10-12 summary/table entries now agree with their recorded completion.
+
+Lead focused9/9, independent state8/8, parity17/17 then5/5, both pressure
+frontends2/2 and final reviews PASS. Fresh final quick/package passes88 suites,
+all15 checks and source/installed consumers3/3 each in `build/ess_software_13_final`.
+Exact-commit CI is pending. See the [report](../../reports/2026-11-01_ess_integration_faults.md).
+Coverage remains54 producing operations,121 implemented choices,144 classified
+functions, five named gaps and18 guarded pairs. N05/N08 remain PARTIAL. Physical
+tests are NOT RUN: recorded bench USB absent; no external switch fixture.

@@ -156,3 +156,9 @@ Physical homing and the absent recorded-bench regression remain NOT RUN.
 The [independent prompts06-08 audit](reports/2026-10-29_ess_06_08_audit.md)
 corrects unknown-status qualification and host transition validation, with
 explicit active-phase replacement, in-flight stop and maximum-poll regressions.
+
+[Stage13](reports/2026-11-01_ess_integration_faults.md) verifies cross-operation
+history, stale observations, recovery and urgent stop under full result storage.
+The checked inventory now requires the actual producers and definitions for
+the delivered completion features; software coverage and physical limits stay
+separate. Stages14-15 retain portability/resource verification and final audit.

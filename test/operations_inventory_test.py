@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("operations", ROOT / "scripts/check_ess_operations.py")
@@ -250,6 +251,47 @@ class Coverage(unittest.TestCase):
         self.rejected(lambda value: value["operations"][1].update(implementation="IN_PROGRESS", cli="REACHABLE"))
         self.rejected(lambda value: value["operations"][0]["api"].update(symbols=["missingDeclaration"]))
         self.rejected(lambda value: value["operations"][0]["api"].update(header="examples/common/RtuBusOwner.h"))
+
+    def test_delivered_operations_require_producing_api(self):
+        # A declared decoder or raw frame builder cannot stand in for the
+        # operation that prepares, advances and publishes checked evidence.
+        for operation in ("velocity_parameter_read", "homing_parameter_read",
+                          "position_start_speed_write", "homing_auxiliary_write"):
+            for header, symbol in (("Reads.h", "getVelocityParameters"),
+                                   ("Codec.h", "buildReadRegisters")):
+                with self.subTest(operation=operation, symbol=symbol):
+                    def substitute(value):
+                        row = next(row for row in value["operations"] if row["id"] == operation)
+                        row["api"] = {"header": "include/MotorControlRS/profiles/ess_rs/" + header,
+                                      "symbols": [symbol]}
+                    self.rejected(substitute)
+
+    def test_producer_declaration_cannot_replace_definition(self):
+        # Change only the checker's read of the implementation. The actual
+        # source and installed declaration remain intact for other tests.
+        source = ROOT / "src/profiles/ess_rs/Reads.cpp"
+        read_text = Path.read_text
+        text = read_text(source, encoding="utf-8")
+        signature = "Status prepareVelocityParameters("
+        self.assertEqual(text.count(signature), 1)
+        start = text.index(signature)
+        end = text.index("\nStatus prepareHomingParameters(", start)
+        body = text[start:end]
+        declaration = body.split("{", 1)[0].rstrip() + ";\n"
+        self.assertIn(signature, read_text(ROOT / "include/MotorControlRS/profiles/ess_rs/Reads.h", encoding="utf-8"))
+        for replacement in (body.replace("prepareVelocityParameters", "removedVelocityParameters", 1),
+                            declaration, "/*\n" + body + "\n*/\n"):
+            with self.subTest(replacement=replacement.splitlines()[0]):
+                inspected = []
+                def missing_definition(path, *args, **kwargs):
+                    if path.resolve() == source.resolve():
+                        inspected.append(path)
+                        return text[:start] + replacement + text[end:]
+                    return read_text(path, *args, **kwargs)
+                with mock.patch.object(Path, "read_text", missing_definition):
+                    with self.assertRaises(ValueError):
+                        operations.check(INVENTORY, LEDGER)
+                self.assertTrue(inspected, "producer validation did not inspect its owning source")
 
     def test_velocity_read_closes_only_three_read_obligations(self):
         result = operations.check(INVENTORY, LEDGER)

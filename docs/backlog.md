@@ -67,6 +67,11 @@ Arbitrary replacement still needs active-register
 consumption and completion-attribution evidence; keep N05 PARTIAL after that
 subset. Method28's exchanged branch drawings are recorded in the method guide.
 
+[Stage13 integration verification](reports/2026-11-01_ess_integration_faults.md)
+adds cross-operation conservation/parity regressions and closes a checker gap
+that credited getters/raw codecs as producers. It adds no native method or
+physical qualification; final stage evidence is recorded in that report.
+
 - [x] Implement native velocity-parameter reads (N01): one checked FC03 `0x001D/3`,
   copied raw result, application API and `velocity read`; physical read evidence
   NOT RUN because the recorded bench USB device is absent. See the

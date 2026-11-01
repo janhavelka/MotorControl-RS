@@ -7,6 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [ESS cross-operation faults and parity](2026-11-01_ess_integration_faults.md) | Delayed reads, settings, homing qualification, interruption/stop pressure and recovery retain exact outcomes; producer/definition coverage guards corrected. |
 | [Independent homing stages10–12 audit](2026-11-01_ess_homing_10_12_audit.md) | Fresh source/core/app review; host validation now rejects interrupted success, with actual-result regressions across30 methods. Coverage and physical qualification limits are unchanged. |
 | [ESS origin plus negative-limit homing11–14/27–30](2026-11-01_ess_negative_limit_homing.md) | Eight methods and24 spatial branches complete the27 planned switch-method partition. Method28 drawing discrepancy is explicit; method18/collision guards and physical qualification remain open. |
 | [ESS origin plus positive-limit homing7–10/23–26](2026-11-01_ess_positive_limit_homing.md) | Eight methods with 24 spatial branches, mandatory origin and positive-limit qualification, and index only for7–10. Later negative-limit support is recorded above; physical qualification stays open. |

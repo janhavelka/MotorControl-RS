@@ -26,6 +26,11 @@ metadata and known leaf grammar; it cannot establish callback admission or
 physical effects. Native console/application tests verify runtime parity.
 Device rows use producing `cli_commands`; helper rows use local `cli_topics`
 to identify related command families without claiming additional device access.
+For the delivered parameter reads, single-field settings, interruption and
+homing operations, the checker also requires the exact owning API and lifecycle
+symbols, with definitions in their reviewed source files. Getters, raw codecs,
+declarations and commented-out bodies cannot replace those producers. This
+bounded source check supplements the actual native/package link tests.
 
 The inventory separates twelve implemented read-only status/alarm decoders from
 setting and action choices. A passing state read does not prove physical

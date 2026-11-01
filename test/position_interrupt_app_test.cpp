@@ -273,6 +273,156 @@ void testPressureAndReservedStop() {
     for (const auto id : retained) assert(view(id).probe.outcome==Rtu::Outcome::SUCCESS);
 }
 
+void testFullResultsAndBlockedOutputDuringInterruptStop() {
+    // Six retained probes plus both moves fill ordinary frontend storage. The
+    // replacement ACK may establish execution only; only checked stop feedback
+    // clears possible motion. Output delivery must not gate any transition.
+    fresh(); baseline(); uint32_t retained[6];
+    std::vector<Saved<Rtu::Completion>> probeEvidence;
+    for (unsigned i=0; i<6; ++i) {
+        retained[i]=retainedProbe(30+i);
+        const auto request=findRecord(*app,retained[i])->requestId;
+        const auto* result=app->owner.result(request); assert(result);
+        assert(result->expected.address==2 && result->expected.function==3 && result->expected.count==1);
+        probeEvidence.emplace_back(*result);
+    }
+    const auto old=original(); startOriginal(old);
+    const auto oldDeadline=view(old).moveContext->deadlineUs;
+    const Saved<ESS::ActionEvidence> oldSetup(view(old).moveContext->stagingEvidence);
+    const Saved<ESS::ActionEvidence> oldTrigger(view(old).moveContext->triggerEvidence);
+    const auto target=view(old).moveContext->target;
+    const auto generation=view(old).moveContext->prepared.configurationGeneration;
+    const auto writes=hardware.writes;
+    flushOutputOnly(); Serial.output.clear(); Serial.writeCapacity=0;
+    while (app->outputCount<OUTPUT_LINES) assert(emit(app,"blocked",7));
+    feed("@70 status\n"); assert(app->console.outputPending());
+    const auto replacement=interrupt(old);
+    const auto replacementDeadline=view(replacement).moveContext->deadlineUs;
+    assert(replacementDeadline==view(replacement).moveContext->startedUs+500000);
+    for (std::size_t i=0; i<REQUEST_CAPACITY; ++i) assert(app->records[i].operationId);
+    uint32_t untouched=77; const auto next=app->nextOperationId;
+    assert(typedRead(app,71,1,ESS::ReadKind::STATE,untouched)==Probe::Action::RESULTS_FULL);
+    assert(untouched==77 && app->nextOperationId==next && hardware.writes==writes);
+    waitTx(replacement,INTERRUPT_RELATIVE);
+    const uint64_t physicalEnd=hardware.writeStarted+8*87;
+    assert(hardware.time<physicalEnd && hardware.de==hardware.transmitLevel);
+    assert(hardware.writes==writes+1 && !view(old).pending);
+    const auto stopping=stop(); const auto stopDeadline=view(stopping).actionContext->deadlineUs;
+    assert(stopping!=old && stopping!=replacement && view(stopping).pending);
+    assert(stopDeadline==view(stopping).actionContext->startedUs+3000000);
+    assert(findRecord(*app,stopping)==&app->records[REQUEST_CAPACITY+1]);
+    assert(!app->owner.txAccepted(findRecord(*app,stopping)->requestId));
+    assert(hardware.time<physicalEnd && hardware.writes==writes+1);
+    for (unsigned i=0; i<1000 && hardware.de==hardware.transmitLevel; ++i) {
+        step(); assert(hardware.writes==writes+1 && hardware.tx==INTERRUPT_RELATIVE);
+    }
+    assert(hardware.de!=hardware.transmitLevel && hardware.deReleasedAt>=physicalEnd);
+    moveReply(replacement,INTERRUPT_RELATIVE,INTERRUPT_RELATIVE);
+    const auto& previous=*view(old).moveContext;
+    const auto& changed=*view(replacement).moveContext;
+    assert(previous.operationId==old && previous.outcome==ActionOutcome::CANCELLED && previous.uncertain);
+    assert(previous.execution==ActionExecution::ACKNOWLEDGED && previous.completion==ActionCompletion::NOT_OBSERVED);
+    oldSetup.unchanged(previous.stagingEvidence); oldTrigger.unchanged(previous.triggerEvidence);
+    assert(changed.operationId==replacement && changed.outcome==ActionOutcome::ACKNOWLEDGED && !changed.uncertain);
+    assert(changed.execution==ActionExecution::ACKNOWLEDGED && changed.completion==ActionCompletion::NOT_OBSERVED);
+    assert(changed.triggerEvidence.txAccepted==8 && changed.triggerEvidence.txComplete && changed.triggerEvidence.responseConfirmed);
+    assert(changed.triggerEvidence.length==8 && !std::memcmp(changed.triggerEvidence.raw,INTERRUPT_RELATIVE.data(),8));
+    assert(changed.triggerEvidence.latestUs<replacementDeadline && changed.triggerEvidence.qualified);
+    assert(Probe::sameTarget(previous.target,target) && Probe::sameTarget(changed.target,target));
+    assert(previous.prepared.configurationGeneration==generation && changed.stored.configurationGeneration==generation);
+    const Saved<ESS::MoveContext> oldResult(previous), replacementResult(changed);
+    for (const auto id : {old,replacement}) {
+        const auto result=view(id);
+        assert(result.moveRelation.originalOperationId==old && result.moveRelation.replacementOperationId==replacement);
+        assert(result.moveRelation.observationSuperseded && findRecord(*app,id)->motionUnresolved);
+    }
+    assert(view(replacement).interruptedByStop && !view(old).interruptedByStop);
+    actionReply(stopping,STOP,STOP);
+    assert(view(stopping).actionContext->execution==ActionExecution::ACKNOWLEDGED);
+    assert(view(stopping).actionContext->completion==ActionCompletion::NOT_OBSERVED);
+    assert(axisReserved(*app,1) && triggeredMotion(*app,1));
+    actionReply(stopping,words({0,1}),crc({1,3,0,6,0,2}));
+    const auto& stoppedResult=*view(stopping).actionContext;
+    assert(stoppedResult.operationId==stopping && stoppedResult.outcome==ActionOutcome::OBSERVED);
+    assert(stoppedResult.completion==ActionCompletion::OBSERVED && stoppedResult.lastObservation.qualified);
+    assert(Probe::sameTarget(stoppedResult.target,target) && stoppedResult.deadlineUs==stopDeadline);
+    assert(stoppedResult.writeEvidence.length==8 && !std::memcmp(stoppedResult.writeEvidence.raw,STOP.data(),8));
+    const auto idle=words({0,1});
+    assert(stoppedResult.lastObservation.length==idle.size());
+    assert(!std::memcmp(stoppedResult.lastObservation.raw,idle.data(),idle.size()));
+    assert(stoppedResult.lastObservation.latestUs<stopDeadline);
+    assert(!axisReserved(*app,1) && !triggeredMotion(*app,1) && hardware.writes==writes+3);
+    assert(view(old).moveContext->deadlineUs==oldDeadline && view(replacement).moveContext->deadlineUs==replacementDeadline);
+    oldResult.unchanged(*view(old).moveContext); replacementResult.unchanged(*view(replacement).moveContext);
+    const Saved<ESS::ActionContext> stopResult(stoppedResult);
+    pump(1000);
+    assert(Serial.output.empty() && app->outputCount==OUTPUT_LINES && app->console.outputPending());
+    assert(app->outputBlocked && hardware.writes==writes+3);
+    Serial.writeCapacity=4096; pump(1000); flushOutputOnly();
+    oldResult.unchanged(*view(old).moveContext); replacementResult.unchanged(*view(replacement).moveContext);
+    stopResult.unchanged(*view(stopping).actionContext);
+    for (unsigned i=0; i<6; ++i) {
+        const auto result=view(retained[i]);
+        assert(result.operationId==retained[i] && result.commandId==30+i && !result.pending);
+        assert(result.probe.outcome==Rtu::Outcome::SUCCESS);
+        probeEvidence[i].unchanged(*app->owner.result(findRecord(*app,retained[i])->requestId));
+    }
+    assert(hardware.writes==writes+3);
+}
+
+void testLostInterruptAckReconciliationPreservesHistory() {
+    // A new read can report idle without proving the missing trigger ACK or
+    // clearing the application's stop requirement. Recovery sends no replay.
+    fresh(); baseline(); const auto old=original(); startOriginal(old);
+    const auto replacement=interrupt(old); waitTx(replacement,INTERRUPT_RELATIVE);
+    const auto writes=hardware.writes; terminalResult(replacement);
+    const auto& failed=*view(replacement).moveContext;
+    assert(failed.outcome==ActionOutcome::TRANSPORT_ERROR && failed.execution==ActionExecution::UNKNOWN);
+    assert(failed.uncertain && failed.completion==ActionCompletion::NOT_OBSERVED);
+    assert(failed.triggerEvidence.txAccepted==8 && failed.triggerEvidence.txComplete && !failed.triggerEvidence.length);
+    assert(view(old).moveContext->outcome==ActionOutcome::CANCELLED && view(old).moveContext->uncertain);
+    const Saved<ESS::MoveContext> oldResult(*view(old).moveContext), replacementResult(failed);
+    const auto binding=app->bindingGeneration;
+    assert(app->runner.stats().started);
+    command("@90 stats reset\n");
+    assert(Serial.output.find("\"id\":90,\"command\":\"stats\",\"ok\":true,\"result\":\"done\"")!=std::string::npos);
+    assert(!app->runner.stats().started && app->owner.needsRecovery());
+    assert(hardware.writes==writes && axisReserved(*app,1) && triggeredMotion(*app,1));
+    oldResult.unchanged(*view(old).moveContext); replacementResult.unchanged(*view(replacement).moveContext);
+    command("@91 recover\n"); const auto recovery=app->latestOperationId;
+    assert(Serial.output.find("\"id\":91,\"command\":\"recover\",\"ok\":true,\"result\":\"accepted\"")!=std::string::npos);
+    terminalResult(recovery);
+    assert(view(recovery).recovery && view(recovery).recoveryResult.outcome==Rtu::RecoveryOutcome::RECOVERED);
+    assert(app->bindingGeneration==binding+1 && hardware.writes==writes);
+    assert(axisReserved(*app,1) && triggeredMotion(*app,1));
+    oldResult.unchanged(*view(old).moveContext); replacementResult.unchanged(*view(replacement).moveContext);
+    command("@92 read state\n"); const auto state=app->latestOperationId;
+    readReply(state,words({0,1})); readReply(state,words({0,0})); readReply(state,words({0,0,0}));
+    terminalResult(state);
+    assert(view(state).typedRead->outcome==ReadOutcome::SUCCESS && hardware.writes==writes+3);
+    assert(view(state).typedRead->target.generation==binding+1);
+    assert(axisReserved(*app,1) && triggeredMotion(*app,1));
+    uint32_t untouched=77; const auto next=app->nextOperationId;
+    assert(!moveBy(Rational(20),PositionUnit::STEPS,untouched) && untouched==77);
+    assert(app->nextOperationId==next && hardware.writes==writes+3);
+    oldResult.unchanged(*view(old).moveContext); replacementResult.unchanged(*view(replacement).moveContext);
+    stopped(stop()); assert(!axisReserved(*app,1) && !triggeredMotion(*app,1));
+    assert(hardware.writes==writes+5);
+    oldResult.unchanged(*view(old).moveContext); replacementResult.unchanged(*view(replacement).moveContext);
+    // Recovery changed the binding. The saved profile belongs to that old
+    // binding and requires explicit local release before a fresh snapshot.
+    Probe::MotionProfileView profile;
+    assert(motionProfileCommand(app,Probe::MotionProfileCommand::FORGET,profile)==Probe::Action::OK);
+    baseline(); const auto refreshed=hardware.writes;
+    pump(1000); assert(hardware.writes==refreshed);
+    const auto newMove=original(); assert(newMove!=old && newMove!=replacement && hardware.writes==refreshed);
+    waitTx(newMove,crc({1,16,0,0x21,0,5,10,0,100,0,100,0,60,0,0,0,20}));
+    assert(hardware.writes==refreshed+1);
+    assert(cancel(app,newMove)==Probe::Action::OK); terminalResult(newMove);
+    oldResult.unchanged(*view(old).moveContext); replacementResult.unchanged(*view(replacement).moveContext);
+    pump(1000); assert(hardware.writes==refreshed+1);
+}
+
 void testStopAtReplacementBoundaries() {
     for (unsigned phase=0; phase<4; ++phase) {
         fresh(); baseline(); const auto old=original(); startOriginal(old);
@@ -581,6 +731,7 @@ int main(int argc, char** argv) {
     assert(argc==1);
     testProductionPathAndCopiedResults(); testRejectedCandidatesAndPhases();
     testInflightSettlementAndCompletionRace(); testPressureAndReservedStop();
+    testFullResultsAndBlockedOutputDuringInterruptStop(); testLostInterruptAckReconciliationPreservesHistory();
     testStopAtReplacementBoundaries(); testCancellationAndUnknownReplies();
     testOriginalFailureConservation(); testWitnessAgeAndImmutableDeadline(); testUnsupportedOriginsAndResultKinds();
     testInvalidationBeforeDispatch(); testOwnerResultPressureKeepsAdmissionGuard();

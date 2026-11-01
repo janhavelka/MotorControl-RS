@@ -22,6 +22,40 @@ CONSOLE = ROOT / "examples/probe_cli/ProbeConsole.cpp"
 PUBLIC_DECLARATION = re.compile(
     r"^(?:(?:inline|constexpr)\s+)*(?:const\s+)?[A-Za-z_][\w:]*(?:\s*\*)?\s+([A-Za-z_]\w*)\s*\(", re.MULTILINE)
 
+# Delivered completion operations need their actual producer and lifecycle,
+# not an unrelated declaration, raw codec or observation getter. These bounded
+# source checks supplement the real native/package consumers; they do not parse
+# arbitrary C++ or prove the implementation's behavior.
+PRODUCING_APIS = {
+    "velocity_parameter_read": ("Reads", "prepareVelocityParameters nextRead advanceRead getVelocityParameters"),
+    "homing_parameter_read": ("Reads", "prepareHomingParameters nextRead advanceRead getHomingParameters"),
+    "position_start_speed_write": ("DriverSettings", "preparePositionStartSpeed prepareDriverRead getDriver prepareDriverSettings nextDriver advanceDriver"),
+    "homing_auxiliary_write": ("DriverSettings", "prepareHomingAuxiliary prepareDriverRead getDriver prepareDriverSettings nextDriver advanceDriver"),
+    "position_interrupt_stored": ("Position", "prepareRelative prepareAbsolute nextMove advanceMove"),
+    "home_parameters": ("Homing", "prepareHome nextHome advanceHome getHomeReference"),
+    "home_start": ("Homing", "prepareHome nextHome advanceHome getHomeReference"),
+}
+
+
+def check_producing_api(operation_id, api, sources):
+    if operation_id not in PRODUCING_APIS:
+        return
+    module, symbols = PRODUCING_APIS[operation_id]
+    required = set(symbols.split())
+    if (api["header"] != f"include/MotorControlRS/profiles/ess_rs/{module}.h" or
+            set(api["symbols"]) != required):
+        raise ValueError("operation requires its exact producing API: " + operation_id)
+    if module not in sources:
+        path = ROOT / f"src/profiles/ess_rs/{module}.cpp"
+        if not path.is_file():
+            raise ValueError("missing producing source: " + operation_id)
+        sources[module] = re.sub(r"//[^\n]*|/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.DOTALL)
+    for symbol in required:
+        name = "PositionCommand::" + symbol if module == "Position" and symbol.startswith("prepare") else symbol
+        definition = r"^Status\s+" + name + r"\s*\([^;{}]*\)\s*(?:const\s+)?noexcept\s*\{"
+        if not re.search(definition, sources[module], re.MULTILINE):
+            raise ValueError("missing producing API definition: " + operation_id + ":" + symbol)
+
 
 def console_commands():
     """Read the production inventory, rather than a second list of top-level names."""
@@ -187,6 +221,7 @@ def check(inventory, ledger):
             disposition={"implementation": "NOT_APPLICABLE", "cli": "NOT_REACHABLE",
                          "native": "NOT_APPLICABLE", "hardware": "NOT_APPLICABLE"})
     seen = set()
+    producing_sources = {}
     referenced = Counter()
     metadata = console_commands()
     for operation in inventory.get("operations", []):
@@ -269,6 +304,7 @@ def check(inventory, ledger):
             text = header.read_text(encoding="utf-8")
             if any(not re.search(r"\b" + name + r"\s*\(", text) for name in symbols):
                 raise ValueError("API symbol absent from header: " + op_id)
+            check_producing_api(op_id, api, producing_sources)
         for column in ("native", "hardware"):
             evidence = operation.get(column, {})
             keys(evidence, "state evidence reason", column)

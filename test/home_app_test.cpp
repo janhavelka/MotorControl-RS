@@ -79,7 +79,23 @@ void readReply(uint32_t id, const std::vector<uint8_t>& bytes) {
     for (unsigned i = 0; i < 25000 && view(id).pending && view(id).typedRead->step == token; ++i) step();
     assert(!view(id).pending || view(id).typedRead->step != token);
 }
+// Settle real transport while deliberately deferring application harvest. This
+// models a retained completion delivered after another operation changes state.
+void ownerReply(uint32_t id, const std::vector<uint8_t>& bytes) {
+    const auto pending = findRecord(*app,id)->requestId;
+    const auto ownerTurn = []() { advanceHardware(hardware.time + 10); app->owner.service(uart.sample()); };
+    for (unsigned i = 0; i < 25000 && !app->owner.txAccepted(pending); ++i) ownerTurn();
+    assert(app->owner.txAccepted(pending));
+    scheduleReply(std::max(hardware.writeStarted + hardware.tx.size()*87 + 1000, hardware.time + 1000),bytes);
+    for (unsigned i = 0; i < 25000 && !app->owner.result(pending); ++i) ownerTurn();
+    const auto* result = app->owner.result(pending);
+    assert(result && result->outcome == Rtu::Outcome::SUCCESS && result->transport.closureQualified);
+}
 void command(const std::string& text);
+void emitRetainedResult(uint32_t id) {
+    command("@950 result " + std::to_string(id) + "\n"); pump(64);
+    std::fwrite(Serial.output.data(),1,Serial.output.size(),stdout);
+}
 void checkedBaseline(int method = 35, bool oldHomed = false, uint16_t polarity = 0,
                      uint16_t firstFunction = 0, uint16_t inputs = 0, uint16_t secondFunction = 0) {
     writeResponseConfirmed = true; // Explicit simulated UART topology only.
@@ -1104,6 +1120,107 @@ void parameterReadQualificationAndHistory() {
         if (stale == 2) assert(app->homingParameters.rawMethod == 321);
     }
 }
+void settingsAndDelayedParameterReads(bool emit = false) {
+    for (const bool auxiliary : {false,true}) for (const bool homingRead : {false,true}) {
+        fresh(); qualify();
+        const auto qualification = installed(); const auto generation = app->axis.generation;
+        const auto oldParameters = app->homingParameters.operationId;
+        uint32_t historical = 0;
+        assert(homingRead ? submitHomingParameterRead(historical) : submitVelocityParameterRead(historical));
+        const auto oldRequest = findRecord(*app,historical)->requestId;
+        const auto response = homingRead ? words({7,35,60,30,100,0,0}) : words({60,100,100});
+        const auto readDeadline = view(historical).typedRead->deadlineUs;
+        ownerReply(historical,response); // Complete, but not yet published by advanceReads.
+        assert(view(historical).pending && app->owner.result(oldRequest));
+        uint32_t settingId = 0;
+        assert(auxiliary ? submitHomingAuxiliary(ESS::HomingAuxiliary::KEEP_POSITION_SET_ZERO,settingId) :
+                           submitPositionStartSpeed(30,settingId));
+        ESS::DriverContext before; assert(copySettingsResult(settingId,before));
+        const auto writes = sentCount(); uint32_t unchanged = 77;
+        assert(!submitHome(request(),unchanged) && unchanged == 77);
+        assert(!(auxiliary ? submitPositionStartSpeed(40,unchanged) :
+                             submitHomingAuxiliary(ESS::HomingAuxiliary::KEEP_POSITION_SET_ZERO,unchanged)) && unchanged == 77);
+        ESS::DriverContext after; assert(copySettingsResult(settingId,after));
+        assert(after.deadlineUs == before.deadlineUs && after.request.positionStartSpeed == before.request.positionStartSpeed &&
+            after.request.homingAuxiliary == before.request.homingAuxiliary && sentCount() == writes);
+        assert(!std::memcmp(&before,&after,sizeof(before)));
+        ownerReply(settingId,words({static_cast<uint16_t>(auxiliary ? 7 : 30)}));
+        advanceActions(*app,hardware.time);
+        const auto write = crc({1,6,0,static_cast<uint8_t>(auxiliary ? 0x30 : 0x20),0,static_cast<uint8_t>(auxiliary ? 7 : 30)});
+        ownerReply(settingId,write); assert(hardware.tx == write);
+        advanceActions(*app,hardware.time);
+        assert(app->axis.generation == generation + 1 && !app->configuration.operationId);
+        ownerReply(settingId,words({static_cast<uint16_t>(auxiliary ? 7 : 30)}));
+        advanceActions(*app,hardware.time);
+        assert(copySettingsResult(settingId,after) && after.state == ReadState::SUCCEEDED &&
+            after.deadlineUs == before.deadlineUs && after.configurationGeneration == generation);
+        advanceReads(*app,hardware.time); pump(64);
+        ESS::ReadContext old; assert(copyReadResult(historical,old) && old.state == ReadState::SUCCEEDED &&
+            old.configurationGeneration == generation && old.deadlineUs == readDeadline);
+        assert(old.observations[0].length == response.size() &&
+            !std::memcmp(old.observations[0].raw,response.data(),response.size()));
+        assert(app->homingParameters.operationId == oldParameters && !app->velocityParameters.operationId &&
+            !app->homePrerequisites.auxiliaryQualified && !app->configuration.operationId);
+        assert(sentCount() == writes + 3 && !submitHome(request(),unchanged) && unchanged == 77);
+        if (emit) { emitRetainedResult(historical); emitRetainedResult(settingId); }
+        assert(releaseOperation(settingId) && releaseOperation(historical));
+        checkedBaseline(); // New reads can restore observations, never caller qualification.
+        const auto refreshedWrites = sentCount();
+        assert(!submitHome(request(),unchanged) && !installHomeQualification(qualification) && unchanged == 77);
+        assert(!app->homePrerequisites.methodQualified && sentCount() == refreshedWrites);
+        assert(installHomeQualification(supplied()));
+        const auto home = admit(); assert(cancel(app,home) == Probe::Action::OK); pump(64);
+        assert(!view(home).pending && !copiedHome(home).stagingEvidence.txAccepted && sentCount() == refreshedWrites);
+    }
+}
+void lostSettingAckAcrossRecoveryAndNewAdmission(bool emit = false) {
+    fresh(); qualify(); uint32_t settingId = 0;
+    assert(submitHomingAuxiliary(ESS::HomingAuxiliary::KEEP_POSITION_SET_ZERO,settingId));
+    ownerReply(settingId,words({7})); advanceActions(*app,hardware.time);
+    waitTx(settingId); assert(hardware.tx == crc({1,6,0,0x30,0,7}));
+    // Deliberately lose this one write ACK; no retry is scheduled.
+    for (unsigned i = 0; i < 5000 && view(settingId).pending; ++i) {
+        advanceHardware(hardware.time + 1000); serviceApplication();
+    }
+    ESS::DriverContext lost, retained;
+    assert(!view(settingId).pending && copySettingsResult(settingId,lost) && lost.uncertain &&
+        lost.effects == 1 && lost.progress[0].execution == ActionExecution::UNKNOWN && !lost.progress[0].acknowledged);
+    const auto writes = sentCount(); reset(app); pump(64);
+    assert(copySettingsResult(settingId,retained) && !std::memcmp(&lost,&retained,sizeof(lost)) && sentCount() == writes);
+    uint32_t recovery = 0; assert(recover(app,0,recovery) == Probe::Action::OK);
+    for (unsigned i = 0; i < 25000 && view(recovery).pending; ++i) step();
+    assert(!view(recovery).pending && view(recovery).recoveryResult.outcome == Rtu::RecoveryOutcome::RECOVERED);
+    assert(copySettingsResult(settingId,retained) && !std::memcmp(&lost,&retained,sizeof(lost)) && sentCount() == writes);
+    checkedBaseline(); uint32_t unchanged = 77; const auto refreshedWrites = sentCount();
+    assert(!submitHome(request(),unchanged) && unchanged == 77 && sentCount() == refreshedWrites);
+    assert(copySettingsResult(settingId,retained) && !std::memcmp(&lost,&retained,sizeof(lost)));
+    assert(installHomeQualification(supplied())); const auto home = admit();
+    assert(cancel(app,home) == Probe::Action::OK); pump(64);
+    assert(!view(home).pending && !copiedHome(home).stagingEvidence.txAccepted && sentCount() == refreshedWrites);
+    assert(copySettingsResult(settingId,retained) && !std::memcmp(&lost,&retained,sizeof(lost)));
+    if (emit) emitRetainedResult(settingId);
+    assert(releaseOperation(home) && releaseOperation(settingId));
+}
+void oldReadAfterRebind(bool emit = false) {
+    fresh(); qualify(); uint32_t historical = 0; assert(submitHomingParameterRead(historical));
+    ownerReply(historical,words({7,35,60,30,100,0,0}));
+    const auto binding = app->bindingGeneration, writes = sentCount();
+    assert(selectTarget(app,2) == Probe::Action::BUSY && app->bindingGeneration == binding && sentCount() == writes);
+    advanceReads(*app,hardware.time); pump(64);
+    ESS::ReadContext old, retained; assert(copyReadResult(historical,old) && old.state == ReadState::SUCCEEDED);
+    assert(selectTarget(app,2) == Probe::Action::OK && app->bindingGeneration == binding + 1);
+    assert(!app->homePrerequisites.target.id && sentCount() == writes);
+    uint32_t current = 0; assert(submitHomingParameterRead(current));
+    readReply(current,words({7,35,60,30,100,0,0})); // Old address1 reply to an address2 request.
+    pump(64); assert(hardware.tx[0] == 2 && !view(current).pending);
+    ESS::ReadContext failed; assert(copyReadResult(current,failed) && failed.state == ReadState::FAILED &&
+        failed.target.address == 2 && failed.target.generation == binding + 1 && failed.outcome == ReadOutcome::REPLY_ERROR);
+    assert(copyReadResult(historical,retained) && !std::memcmp(&old,&retained,sizeof(old)));
+    assert(app->homingParameters.target.generation != app->bindingGeneration && !app->homePrerequisites.target.id);
+    const auto after = sentCount(); pump(); assert(sentCount() == after);
+    if (emit) { emitRetainedResult(historical); emitRetainedResult(current); }
+    assert(releaseOperation(historical) && releaseOperation(current));
+}
 void parameterReadConsoleFailureAndCapacity() {
     fresh();
     for (const char* invalid : {"@1 home read extra","@2 home read 1 extra","@3 home read 0","@4 home read 248",
@@ -1207,6 +1324,9 @@ void emitConsoleResults() {
 }
 int main(int argc, char** argv) {
     if (argc == 2 && !std::strcmp(argv[1],"--emit-console-results")) { emitConsoleResults(); return 0; }
+    if (argc == 2 && !std::strcmp(argv[1],"--emit-integration-results")) {
+        settingsAndDelayedParameterReads(true); lostSettingAckAcrossRecoveryAndNewAdmission(true); oldReadAfterRebind(true); return 0;
+    }
     limitBranchesThroughPublicAndConsoleRoutes(); originBranchesThroughPublicAndConsoleRoutes();
     limitAssistedBranchesThroughRoutes(POSITIVE_BRANCHES,3,2);
     limitAssistedBranchesThroughRoutes(NEGATIVE_BRANCHES,5,3); limitAssistedAdmissionUsesBothInputs();
@@ -1216,6 +1336,8 @@ int main(int argc, char** argv) {
     queuedReadContradictionPreventsTrigger(); movingMethodsAndInsufficientObservations();
     unknownMotionCannotEstablishReference();
     parameterReadApplicationPath(); parameterReadQualificationAndHistory(); parameterReadConsoleFailureAndCapacity(); parameterReadHumanTerminal();
+    settingsAndDelayedParameterReads();
+    lostSettingAckAcrossRecoveryAndNewAdmission(); oldReadAfterRebind();
     productionAndFixtureGates(); completeAndInvalidateReference(); oldFlagsAndPartialSetup();
     stopAtBoundariesAndUnsentExpiry(); orderedSharedMotionCachePreservesNewHomeReference();
     feedbackAfterHomeUsesTheNewZeroWitness();

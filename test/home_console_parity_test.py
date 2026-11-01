@@ -229,3 +229,27 @@ for executable in sys.argv[2:]:
     frontend_records.append(records)
 assert frontend_records[0] == frontend_records[1], "Arduino/IDF home evidence differs"
 print("PASS: both real application frontends, all30 methods, revoked final-zero and unqualified status evidence")
+
+integration_records = []
+for executable in sys.argv[2:]:
+    records = [json.loads(line, object_pairs_hook=unique_object) for line in
+               subprocess.check_output([executable, "--emit-integration-results"], text=True, timeout=20).splitlines() if line.startswith("{")]
+    records = [r for r in records if r.get("command") == "result"]
+    assert len(records) == 11
+    for record in records:
+        if record.get("driver"):
+            Console._check_driver(record, record["address"], None, record["driver_group"])
+            check_fixture_routes(record, live_command="home-auxiliary" if record["driver_group"] == "homing_auxiliary" else "motion-profile-start-speed")
+        else:
+            Console._check_typed_read(record, record["read_kind"], record["address"])
+            check_fixture_routes(record, live_command="home-read" if record["read_kind"] == "homing_parameters" else "velocity-read")
+    # These actual results were inspected after settings, recovery and rebind.
+    # Successful reconciliation must not relabel the historical unknown write.
+    assert all(r["ok"] for r in records[:8])
+    assert records[8]["driver_group"] == "homing_auxiliary" and not records[8]["ok"] and records[8]["uncertain"]
+    assert records[9]["ok"] and records[9]["address"] == 1
+    assert not records[10]["ok"] and records[10]["address"] == 2
+    assert records[9]["generation"] < records[10]["generation"]
+    integration_records.append(records)
+assert integration_records[0] == integration_records[1], "Arduino/IDF cross-operation history differs"
+print("PASS: delayed reads/settings, lost ACK through reconciliation, and old reply after rebind on both frontends")

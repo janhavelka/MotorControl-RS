@@ -74,6 +74,12 @@
 
 ### Fixed
 
+- Completion-operation coverage now requires the actual producing API and
+  definitions; unrelated getters, raw codecs and declaration-only bodies cannot
+  claim implementation. Cross-operation regressions cover delayed reads,
+  setting/qualification invalidation, recovery, rebind and urgent stop with full
+  ordinary result storage on both frontends.
+
 - Reject homing host records that claim success after interruption by stop.
   Actual emitted-result regressions cover all30 supported methods on both
   application frontends; core motion and stop behavior are unchanged.
