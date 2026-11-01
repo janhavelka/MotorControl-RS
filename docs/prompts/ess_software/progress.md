@@ -453,8 +453,16 @@ and per-method bounded failure cases are present. Counts are14 implemented,
 16 unimplemented and five unresolved; N08 remains PARTIAL. Core/read/console
 focus4/4 and app/parity3/3 pass. Fresh quick/package verification passes all88
 suites and15 checks in `build/ess_software_10_final`. Independent final review
-found no functional or scope gap. Exact-commit CI is pending.
+found no functional or scope gap.
 See [source, review and verification evidence](../../reports/2026-11-01_ess_origin_homing.md).
 Physical tests remain NOT RUN: the recorded USB device is absent and no origin
 switch fixture is present. Methods18, negative collisions, nonzero offsets and
 the two limit-assisted groups retain their guards.
+
+Implementation commit `e157ce05e02a786e3e3091d0757feed0ff4278a6` passed
+[CI 41286152315](https://github.com/janhavelka/MotorControl-RS/actions/runs/41286152315):
+GCC, Clang, Arduino and native ESP-IDF all SUCCESS. Every downloaded summary
+reports 88 suites and no failed checks; terminal JSON and artifacts are under
+`build/ess_software_10_ci`. Local full firmware is NOT RUN; hosted CI provides
+the supported matrix. Stage10 software is complete. The documentation-only
+checkpoint uses local consistency checks without another CI dispatch.

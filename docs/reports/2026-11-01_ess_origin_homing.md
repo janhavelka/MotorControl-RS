@@ -103,7 +103,21 @@ and `summary.json` are retained in that directory. Focused lead command:
 '^(homing|reads|probe_console|probe_app_monitor_control)$' --output-on-failure`.
 The test listing was checked first and matched four suites. The app build runs
 the registered `home_app`, `idf_home_app` and `home_console_parity` suites.
-Local full firmware is NOT RUN; exact-commit hosted CI remains pending.
+Local full firmware is NOT RUN; hosted CI supplies the supported firmware matrix.
+
+Implementation commit `e157ce05e02a786e3e3091d0757feed0ff4278a6` passed terminal
+[CI run 41286152315](https://github.com/janhavelka/MotorControl-RS/actions/runs/41286152315):
+GCC, Clang, Arduino and native ESP-IDF all SUCCESS. `gh run watch 41286152315
+--exit-status --interval 30` exited zero. All four downloaded summaries report
+PASS, 88 registered suites and zero failed checks. Arduino covers all four
+configured environments; IDF covers the S3 application, S3/S2 core consumers
+and portable S2 consumer. Terminal JSON and artifacts are retained under
+`build/ess_software_10_ci/run-final.json` and `artifacts/`.
+
+The subsequent documentation-only checkpoint records these results without
+changing tested code or build inputs. Repository/reference/inventory and
+whitespace checks pass; no additional CI dispatch is needed. Stage10 software
+is complete, while N08's remaining methods and physical gates stay open.
 
 ## Physical evidence
 
