@@ -536,5 +536,12 @@ All30 methods on both frontends pass the new parity check; host286 tests pass.
 No other source, core, application or scope gap was confirmed. See the
 [audit evidence](../../reports/2026-11-01_ess_homing_10_12_audit.md).
 Fresh final quick/package passes88 suites and15 checks in
-`build/ess_software_10_12_audit_final`. Exact correction-commit CI is pending.
+`build/ess_software_10_12_audit_final`. Correction commit
+`e7c1dd9e5c73aff5599bfeab141f8298702bda21` passed
+[CI 41289829797](https://github.com/janhavelka/MotorControl-RS/actions/runs/41289829797):
+GCC, Clang, Arduino and native ESP-IDF all SUCCESS. All downloaded summaries
+report 88 suites and zero failed checks. Terminal JSON and artifacts are under
+`build/ess_software_10_12_audit_ci`. Local full firmware is NOT RUN; hosted CI
+supplies the matrix. The documentation-only evidence checkpoint uses local
+consistency checks.
 Coverage remains30 implemented/five unresolved; physical checks remain NOT RUN.

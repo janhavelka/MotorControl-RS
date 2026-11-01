@@ -85,8 +85,17 @@ there. The application reviewer independently re-ran the corrected parity and
 host286 checks, confirmed the original reproduction now rejects, and checked
 that a cancelled/revoked result with the stop flag remains accepted.
 
-Exact correction-commit CI is pending. Local full firmware is NOT RUN; hosted
-CI will supply the supported matrix.
+Correction commit `e7c1dd9e5c73aff5599bfeab141f8298702bda21` passed
+[CI 41289829797](https://github.com/janhavelka/MotorControl-RS/actions/runs/41289829797):
+GCC, Clang, Arduino and native ESP-IDF all SUCCESS. The run reached terminal
+success and `gh run watch --exit-status` returned zero. All four downloaded
+summaries report 88 registered suites, PASS and zero failed checks: 15 checks
+each for GCC/Clang, 16 for Arduino and 19 for ESP-IDF. Terminal JSON and artifacts
+are retained under `build/ess_software_10_12_audit_ci`.
+
+Local full firmware is NOT RUN; hosted CI supplies the supported matrix.
+The subsequent documentation-only evidence checkpoint uses local consistency
+checks. Software audit verification is complete; physical limits remain below.
 
 ## Physical boundary
 
