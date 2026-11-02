@@ -377,8 +377,9 @@ Required with it:
   A finite stop with no accepted byte waits for one bounded recovery and is then sent once,
   under a deadline fixed at admission; if recovery fails it ends `not_transmitted`."
 
-Both fixes together were trialled in a scratch tree, with the drive never answering the lost
-frame and later frames as stated:
+Both fixes together were trialled in a scratch tree. In the lost-start trial the simulated
+drive answered nothing afterwards, so the stop's own reply was lost too, and the stop was not
+resent in the following 107 s:
 
 ```text
 Lost second poll, 200 ms run:  today no stop; with both fixes FC06 stop at due+627 ms, driveRunning=0
