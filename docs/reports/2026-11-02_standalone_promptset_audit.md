@@ -20,6 +20,10 @@ Autonomous run on branch `overnight-stress-20261102` (worktree `../MotorControl-
 
 <!-- overnight entries -->
 
+**HW-12, under investigation: USB console output stalled** after 52 minutes and about 700 clean cases (18:12). Firmware kept running: no reboot, command processed on time, motor healthy at status `3`, zero transport faults. Queued replies appeared only when the host reopened the port 20 s later. This is the class of failure as the October HWCDC stall, now on the shared IDF driver, which had no overnight qualification. Added a diagnostic (`usb_stall` in `drv`) and a one-packet nudge to separate a lost device wakeup from a host not reading.
+
+**Clean so far:** 373 interrupted moves left to finish, with no persistent RUNNING recurrence (HW-01 stays unexplained).
+
 **HW-11, fixed on the branch (`c53f6d3`): a finished home was reported as a failure.** After a plain move was stopped (fast or normal) the drive sits at status `2`, HOMED without IN_POSITION. A following home ran correctly and ended with position exactly 0, but IN_POSITION stayed clear. The core required it, so polling continued to the 30 s deadline and reported `deadline`, uncertain, axis conflict. Cause: my unverified assumption in `Homing.cpp` (H-02 row 1). The manual defines bit 1 as return to origin completed and ties bit 0 to positioning. Fix: completion is HOMED after a witnessed low, not RUNNING, then position exactly 0. Recheck on hardware: same trial went from 30.06 s `deadline` to 2.18 s `observed`, position 0; other prior states unchanged. Native: 90/90.
 
 ### 2 November 2026 afternoon: first hardware run
