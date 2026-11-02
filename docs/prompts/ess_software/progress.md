@@ -9,8 +9,8 @@ its bounded owner/application/console integration. Stage08 implements shared
 homing qualification/observation with final verification complete. Stage09
 implements limit-reference1/2/17 with final verification complete. Stages10-12
 complete the 27 planned switch methods. Stage13 verified cross-operation
-faults and ordinary-route parity; stage14 verification is in progress and
-stage15 remains NOT STARTED.
+faults and ordinary-route parity; stage14 completed portable/build/storage
+verification. Stage15 remains NOT STARTED.
 N08 stays PARTIAL and broader N05 remains PARTIAL pending
 active staging and completion-attribution evidence.
 
@@ -29,7 +29,7 @@ active staging and completion-attribution evidence.
 | 11 | SOFTWARE COMPLETE | `51fef5e`; [positive-limit methods and exact-commit verification](../../reports/2026-11-01_ess_positive_limit_homing.md) | NOT RUN: recorded bench absent; no switch fixture |
 | 12 | SOFTWARE COMPLETE | `96ebf18`; [negative-limit methods and exact-commit verification](../../reports/2026-11-01_ess_negative_limit_homing.md) | NOT RUN: recorded bench absent; no switch fixture |
 | 13 | SOFTWARE COMPLETE | `bfa2e91`; [cross-operation traces, review and verification](../../reports/2026-11-01_ess_integration_faults.md); fresh88-suite quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
-| 14 | IN PROGRESS | [Portable consumers, measured storage and verification](../../reports/2026-11-02_ess_portability.md); local88-suite quick/package PASS; exact-commit matrix pending | NOT RUN: software/build scope only |
+| 14 | SOFTWARE COMPLETE | `2d646f7`; [portable consumers, measured storage and verification](../../reports/2026-11-02_ess_portability.md); fresh88-suite quick/package and all four exact-commit CI jobs PASS | NOT RUN: software/build scope only |
 | 15 | NOT STARTED | - | NOT RUN |
 
 Use NOT STARTED, IN PROGRESS, SOFTWARE COMPLETE, PARTIAL or BLOCKED;
@@ -600,6 +600,13 @@ estimates do not claim runtime MCU headroom. See
 [measurements, commands and limits](../../reports/2026-11-02_ess_portability.md).
 Fresh final quick passes88 suites, all15 checks and source/installed consumers
 3/3 each in `build/ess_software_14_final_rerun`; final package bytes match source.
-Exact correction-commit GCC/Clang/Arduino/IDF matrix is pending. Local full
-firmware and physical tests NOT RUN; no physical/platform/coverage flags change.
-Stage15 receives concrete artifacts after terminal CI verification.
+Implementation commit `2d646f775566ab7e5d31b3abc10c0fc46fa08625` passes
+exact-commit [CI41428221375](https://github.com/janhavelka/MotorControl-RS/actions/runs/41428221375):
+GCC, Clang, Arduino4/4 and IDF app/core-S3/core-S2/portable-S2 all SUCCESS.
+Each downloaded summary reports88 suites and zero failed checks. Actual pinned
+firmware RAM/flash/image sizes match stage13 (zero deltas). Terminal JSON,
+summaries and measurements are in `build/ess_software_14_ci/`. Local full firmware
+and physical tests NOT RUN; no physical/platform/coverage flags change.
+Stage14 is SOFTWARE COMPLETE; stage15 receives the report/artifacts and explicit
+runtime/physical limits. The following evidence-only checkpoint uses local
+consistency checks and does not alter the verified implementation.

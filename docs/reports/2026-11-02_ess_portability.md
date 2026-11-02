@@ -2,8 +2,8 @@
 
 Stage 14 started from `f5f600e`, with stage 13 complete. This stage verifies
 software consumption and resources; it changes no drive behavior, SDK, platform
-support or physical qualification. Final local integrated verification passes;
-exact-commit CI is in progress.
+support or physical qualification. Final local integrated verification and
+exact-commit CI pass. Stage 14 is SOFTWARE COMPLETE.
 
 ## Consumer coverage and review
 
@@ -150,12 +150,35 @@ The earlier local run passed but exported before a concurrent changelog edit;
 the fresh rerun above is the final evidence. Lead checked final ZIP metadata and
 changelog bytes directly against the source; they match.
 
-Exact-commit GCC/Clang and pinned Arduino/IDF firmware results will be recorded
-after completion. No older green run is credited to this stage. Local full
-firmware is NOT RUN; CI supplies the existing supported matrix. Local full IDF
-requires an exported environment:
-the current shell has no exported `IDF_PATH`/SDK Python environment; hosted
-`espressif/idf:v5.5.5` supplies that environment. No SDK or dependency is upgraded.
+Implementation commit `2d646f775566ab7e5d31b3abc10c0fc46fa08625` was pushed
+and synchronized. [CI 41428221375](https://github.com/janhavelka/MotorControl-RS/actions/runs/41428221375)
+is terminal SUCCESS for that exact SHA, verified with
+`gh run view --json headSha,status,conclusion,jobs,url`. Downloaded GCC, Clang,
+Arduino and IDF summaries each report 88 suites and every check passing.
+Arduino builds all four environments. Native ESP-IDF builds app/core-S3/core-S2/
+portable-S2. CI uses the unchanged PlatformIO 6.1.19/platform 55.03.311 and
+`espressif/idf:v5.5.5` pins. No older green run is credited to this stage.
+
+Terminal JSON, downloaded summaries/logs and firmware measurements are retained
+under `build/ess_software_14_ci/`. `firmware_sizes.json` compares actual pinned
+image outputs against stage13 commit `bfa2e91d358082a89f32283f837ea213c0154d37`;
+all listed RAM/flash/image deltas are zero. Arduino linker-reported static RAM
+excludes startup PSRAM allocation and runtime heap/task usage:
+
+| Arduino environment | Static RAM bytes | Used flash bytes | Reported image bytes | Delta from stage13 |
+| --- | ---: | ---: | ---: | ---: |
+| bench_s3_units | 22800 | 326084 | 330452 | 0 |
+| bench_s3_probe | 23932 | 623146 | 629194 | 0 |
+| bench_s3_load_poll | 28764 | 630714 | 636890 | 0 |
+| bench_s3_load_timer | 28764 | 630750 | 636930 | 0 |
+
+Native-IDF binary sizes are app `0x92080`, core-S3 `0x2c510`, core-S2 `0x251a0`
+and portable-S2 `0x584b0` bytes, also unchanged from stage13. These are linked
+binary lengths, not live RAM or stack watermarks. Local full firmware is
+NOT RUN; CI supplies the complete supported matrix. Local full IDF requires
+an exported environment: the current shell has no `IDF_PATH`/SDK Python
+environment. No SDK or dependency is upgraded. A subsequent evidence-only
+documentation commit records terminal results without changing implementation.
 
 Stage 15 receives the source/install/header/symbol checks, raw size/stack
 measurements and supported matrix evidence. Coverage stays 54 producing
