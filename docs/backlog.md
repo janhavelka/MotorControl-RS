@@ -243,7 +243,8 @@ functional evidence; independent shaft calibration remains absent.
   Corrected access guards, coordinate/trigger requirements, source-policy claims
   and reference verification. Implementation and hardware milestones remain open.
 - [ ] Apply the [2 November LC57BK audit](prompts/lichuan_lc57bk_rs485/audit.md) before
-  its stage 01, and close its open ESS items: C1, C3, C7..C9, C11..C13.
+  its stage 01, and close its open ESS items: C1, C7..C9, C11..C14. C1 and C14 leave a
+  finite velocity run's own stop unsent; settle them before the first physical velocity test.
 - [ ] Develop CANopen in a separate future library, initially the verified
   CL86-C subset, after obtaining firmware-matched manual/EDS and transport
   evidence. Preserve the common motion vocabulary; extract shared types only
