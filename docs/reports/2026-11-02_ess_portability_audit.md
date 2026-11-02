@@ -80,11 +80,24 @@ Exact commands/logs/summary are under `build/audit14_final/`, console log
 `build/audit14_final_console.log`. Repository/reference/metadata and whitespace
 checks PASS. Final independent correction review passes actual real-log
 positives, empty/incomplete negatives and all13 focused tests. Exact correction-
-commit GCC/Clang/Arduino/IDF verification is pending; no older CI is credited
+commit GCC/Clang/Arduino/IDF verification also passes; no older CI is credited
 to the revised verifier.
+
+Correction commit `c0f124bdd6bb8c5da8a879e09ebb452752b11ae6` was pushed and
+synchronized. [CI 41431122227](https://github.com/janhavelka/MotorControl-RS/actions/runs/41431122227)
+is terminal SUCCESS for that exact SHA, verified with
+`gh run view --json headSha,status,conclusion,jobs,url`. Downloaded GCC, Clang,
+Arduino and IDF summaries each report 88 suites and zero failed checks. Arduino
+4/4 and native-IDF app/core-S3/core-S2/portable-S2 pass using unchanged pins.
+Actual firmware RAM/flash/image sizes match the prior stage14 commit (zero
+deltas). Terminal JSON, summaries/logs and `firmware_sizes.json` are retained
+under `build/audit14_ci/`. Local full firmware remains NOT RUN; hosted CI supplies
+the complete supported matrix. A subsequent evidence-only documentation commit
+records terminal results without changing the verified implementation.
 
 The audit changes no producing API, register window, homing method, platform
 support or coverage count. Physical checks are NOT RUN for this software/build
 audit. Runtime memory, electrical timing, switch/index and mechanical labels
 remain unchanged. Stage15 receives this audit, the original measurements and
 final correction artifacts.
+No confirmed in-scope gap remains; the audit is COMPLETE.

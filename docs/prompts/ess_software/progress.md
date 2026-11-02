@@ -29,7 +29,7 @@ active staging and completion-attribution evidence.
 | 11 | SOFTWARE COMPLETE | `51fef5e`; [positive-limit methods and exact-commit verification](../../reports/2026-11-01_ess_positive_limit_homing.md) | NOT RUN: recorded bench absent; no switch fixture |
 | 12 | SOFTWARE COMPLETE | `96ebf18`; [negative-limit methods and exact-commit verification](../../reports/2026-11-01_ess_negative_limit_homing.md) | NOT RUN: recorded bench absent; no switch fixture |
 | 13 | SOFTWARE COMPLETE | `bfa2e91`; [cross-operation traces, review and verification](../../reports/2026-11-01_ess_integration_faults.md); fresh88-suite quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
-| 14 | SOFTWARE COMPLETE | `2d646f7`; [portable consumers, measured storage and verification](../../reports/2026-11-02_ess_portability.md); fresh88-suite quick/package and all four exact-commit CI jobs PASS | NOT RUN: software/build scope only |
+| 14 | SOFTWARE COMPLETE | `c0f124b`; [portable consumers/storage](../../reports/2026-11-02_ess_portability.md), [independent audit/correction](../../reports/2026-11-02_ess_portability_audit.md); fresh88-suite quick/package and all four exact-commit CI jobs PASS | NOT RUN: software/build scope only |
 | 15 | NOT STARTED | - | NOT RUN |
 
 Use NOT STARTED, IN PROGRESS, SOFTWARE COMPLETE, PARTIAL or BLOCKED;
@@ -613,7 +613,7 @@ consistency checks and does not alter the verified implementation.
 
 ## Independent stage14 audit (2026-11-02)
 
-IN PROGRESS: [fresh code/diff audit](../../reports/2026-11-02_ess_portability_audit.md)
+COMPLETE: [fresh code/diff audit](../../reports/2026-11-02_ess_portability_audit.md)
 from `4d7bef7`, with three read-only consumer, bounds and header/build reviewers.
 One confirmed verifier gap accepts empty/incomplete CTest logs; the correction
 requires a completed result and preserves skip rejection. New regressions fail
@@ -623,5 +623,14 @@ No API, storage, counter, platform or scope defect was confirmed. Independent
 consumer/link mutations and fresh host/Xtensa measurements match actual source.
 Final corrected quick/package passes88 suites and15 checks, source/installed
 consumers3/3 each, with complete detailed logs and final ZIP/source bytes matched
-in `build/audit14_final`. Exact-commit matrix is pending; physical and runtime
-qualification labels remain unchanged.
+in `build/audit14_final`. Correction commit
+`c0f124bdd6bb8c5da8a879e09ebb452752b11ae6` passes exact-commit
+[CI41431122227](https://github.com/janhavelka/MotorControl-RS/actions/runs/41431122227):
+GCC, Clang, Arduino4/4 and IDF app/core-S3/core-S2/portable-S2 all SUCCESS.
+Every downloaded summary reports88 suites and zero failed checks; actual
+firmware RAM/flash/image sizes are unchanged from stage14. Terminal JSON,
+summaries and measurements are in `build/audit14_ci/`. No confirmed in-scope
+gap remains. Local full firmware and physical checks NOT RUN; hosted CI supplies
+the matrix. Runtime/physical qualification labels stay unchanged, with stage15
+receiving the correction and independent evidence. The following evidence-only
+checkpoint uses local consistency checks.
