@@ -1,5 +1,8 @@
 # ESS software final audit - 2 November 2026
 
+Later note: the [code and standalone promptset audit](2026-11-02_standalone_promptset_audit.md) of the same day
+reproduced stop-path and homing defects that this report did not find. This report stays as dated history.
+
 Audit base: `2642c30`, clean and synchronized on `main`. The lead and three
 independent read-only reviewers inspected actual source and the aggregate diff
 from `bd831c859daa9c8c07b8d27a2dd879bb4e750511`, the original requirements,
