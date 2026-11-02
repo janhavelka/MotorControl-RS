@@ -1,7 +1,7 @@
 # 05 - Unresolved homing semantics and physical qualification
 
 Read [README](README.md), [execution contract](execution_contract.md) and the
-[original audit](audit.md). Status: NOT EXECUTED.
+[original audit](audit.md).
 
 The [ESS software set](../ess_software/README.md) exclusively owns homing reads
 (stage 03), the auxiliary setter (05), production qualification/admission support
@@ -19,14 +19,20 @@ use the actual applicable fixture, source-supported implementation and current
 AGENTS authorization. Missing hardware blocks only the physical trial.
 
 Inspect current homing core/app/tests, typed parameter/setting/qualification
-paths delivered by the software set, method and pair guides, original PDF
-diagrams and exact model/firmware evidence. Reconcile current code first.
+paths delivered by the software set, `docs/ess_homing_methods.md`,
+`docs/prompts/ess_software/homing_matrix.md`, the pair guide, original PDF
+diagrams and exact model/firmware evidence. Reconcile current code first. Carry
+the caption conflicts of methods 10, 13, 14, 26, 28, 29 and 30 into the physical
+checklist.
 
 ## Work
 
-1. Preserve method 18's positive-limit prose versus negative-limit figure
-   conflict and negative collision encoding/access questions until concrete
-   evidence resolves them. Do not infer one method from its numbered neighbor.
+1. Method 18's prose and drawn trajectory agree (positive limit). Only the signal
+   captions say negative. Firmware confirmation of the sampled input remains
+   required. Collision methods -1..-4 appear only in p72 and the p73 rows. p19 lists 1~14, 17~30,
+   33~35, and Appendix 1 has no entry. The manual gives no trajectory, no wire
+   encoding and an unsigned printed range. Resolving encoding alone would not
+   make them implementable. Do not infer one method from its numbered neighbor.
 2. Resolve nonzero offset order/sign/scale and admissible write form separately.
    Zero-offset software completion does not supply that evidence. No split
    FC06 or unreviewed FC10 pair write may be enabled by assumption.
@@ -34,10 +40,14 @@ diagrams and exact model/firmware evidence. Reconcile current code first.
    through the existing public/owner/application paths with independent source
    vectors, uncertainty handling, bounded admission and appropriate CI.
    Document the scope change and update the canonical software coverage.
-4. Qualify physical homing only on a matching switch/index/mechanism fixture.
-   Record input assignments, effective polarity, each initial-location branch,
-   actual search/return/index behavior, bounded travel, stop and origin evidence.
-   The drive executes the trajectory; sampled software state does not prove
+4. Physical homing requires the D2 route. D3 authorizes method 35 first, then 33
+   and 34 at low speed on the free shaft. Switch methods need a real fixture.
+   Record input assignments, effective polarity, the X0-X3 default conflict
+   (V-01), the >10 ms input pulse requirement (hardware p9), each initial-location
+   branch, actual search/return/index behavior, bounded travel, stop and origin
+   evidence. Record H-02's assumptions as bench observations: ARRIVED after
+   homing, HOMED falling after the trigger, position reading exactly 0, the
+   meaning of bits 5 and 6, and INPUT_STATUS polarity. The drive executes the trajectory; sampled software state does not prove
    every physical transition.
 5. Keep raw failures, uncertain writes, interrupted results and remaining limits.
    No automatic replay or motion restart. No FieldCore/product changes here.

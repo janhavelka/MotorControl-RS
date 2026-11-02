@@ -3,11 +3,11 @@
 Read [README](README.md), [execution contract](execution_contract.md) and the
 [audit finding map](audit.md) together with this prompt.
 
-Findings: **Q03, Q06, Q07**. Status: **NOT EXECUTED**.
+Findings: **Q03, Q06, Q07**.
 
 ## Entry gate
 
-07's failure disposition and an admitted instrumented fixture; loaded testing requires the actual mechanism.
+Stay inside default `PositionLimits` unless 07 established a broader envelope. 07's disposition is not otherwise required. Admitted instrumented fixture; loaded testing requires the actual mechanism.
 
 ## Inspect before editing
 
@@ -19,9 +19,14 @@ src/Axis.cpp, Units.cpp; src/profiles/ess_rs/Position.cpp, Velocity.cpp, Homing.
 ## Work
 
 1. Independently measure shaft angle/velocity and correlate command increments,
-   configured subdivision, encoder feedback and raw algorithm 3. Resolve sign,
-   scale, feedback source and arrival precision instead of changing conversion
-   ratios because two 100-command moves reported raw delta 99.
+   configured subdivision, encoder feedback and raw algorithm 3. Test the
+   documented p69 mapping (closed loop: subdivision equivalent of encoder
+   feedback), which is conditional because the bench reads algorithm 3 and p77
+   documents only 1 or 2, and the p78 arrival window (`0x010B`, default 5, unit
+   unspecified) as candidate explanations for raw delta 99. Neither is proven. One
+   increment is 4 counts at subdivision 1000, so simple encoder quantization is a
+   weak explanation. See K-01. Resolve sign and scale by measurement instead of
+   changing conversion ratios because of that delta.
 2. Measure ramps, positive/negative velocity, origins and position clear. Keep
    host coordinate arithmetic separate from physical device interpretation.
    Same-endpoint live velocity update remains unsupported unless separately

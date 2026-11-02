@@ -49,8 +49,8 @@ moves and 435 planned stop interruptions in its narrower tested envelope.
 
 Broader experiments reproduced reset-like loss of volatile settings and
 persistent RUNNING/normal-stop failures; their drive-side causes remain open.
-The captured USB lost-event stall has a shared-driver fix, but renewed overnight
-qualification remains due. Historical failed aggregates remain FAIL. There is
+The captured USB lost-event stall has a shared-driver replacement, but its actual
+trigger was not traced and renewed overnight qualification remains due. Historical failed aggregates remain FAIL. There is
 no independent shaft calibration, electrical timing or loaded-machine claim.
 
 ## Next delivery blocks

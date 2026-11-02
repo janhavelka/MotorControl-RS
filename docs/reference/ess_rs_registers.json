@@ -608,12 +608,11 @@
       "word_order": "CONFIGURABLE",
       "issues": [
         "RANGE_MALFORMED",
-        "SIGNED_ENCODING_UNRESOLVED",
-        "SCALE_UNRESOLVED"
+        "SIGNED_ENCODING_UNRESOLVED"
       ],
-      "notes": "Positive/negative direction documented; two-register width documented; full signed range/negative encoding unresolved.",
+      "notes": "Positive/negative direction documented; two-register width documented; full signed range/negative encoding unresolved. Unit pulse and word layout are documented by worked examples: at 0x0019=0 the lower address holds the high word (p8, p30, p70; 100000 pulses is high 0x0001, low 0x86A0).",
       "choices": null,
-      "write_constraint": "Only 0x0024/2 or complete 0x0021/5 reviewed. Typed Position preparation requires established signed range/encoding, scale and active word order; malformed appendix range is not a full int32 guarantee."
+      "write_constraint": "Only 0x0024/2 or complete 0x0021/5 reviewed. Typed Position preparation requires established signed range/encoding and active word order; engineering-unit targets also need an explicit host scale. Malformed appendix range is not a full int32 guarantee."
     },
     {
       "address": "0x0027",
@@ -905,8 +904,10 @@
       "words": 1,
       "signedness": "ENUMERATED",
       "word_order": "SINGLE_REGISTER",
-      "issues": [],
-      "notes": "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins.",
+      "issues": [
+        "SOURCE_CONFLICT"
+      ],
+      "notes": "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins. Source conflict: hardware manual p9 says X0-X3 default to the unspecified state at each power-on, with the input signal invalid; function manual p73-74 print defaults 1/2/3/0.",
       "choices": "InputFunction"
     },
     {
@@ -925,8 +926,10 @@
       "words": 1,
       "signedness": "ENUMERATED",
       "word_order": "SINGLE_REGISTER",
-      "issues": [],
-      "notes": "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins.",
+      "issues": [
+        "SOURCE_CONFLICT"
+      ],
+      "notes": "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins. Source conflict: hardware manual p9 says X0-X3 default to the unspecified state at each power-on, with the input signal invalid; function manual p73-74 print defaults 1/2/3/0.",
       "choices": "InputFunction"
     },
     {
@@ -945,8 +948,10 @@
       "words": 1,
       "signedness": "ENUMERATED",
       "word_order": "SINGLE_REGISTER",
-      "issues": [],
-      "notes": "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins.",
+      "issues": [
+        "SOURCE_CONFLICT"
+      ],
+      "notes": "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins. Source conflict: hardware manual p9 says X0-X3 default to the unspecified state at each power-on, with the input signal invalid; function manual p73-74 print defaults 1/2/3/0.",
       "choices": "InputFunction"
     },
     {
@@ -965,8 +970,10 @@
       "words": 1,
       "signedness": "ENUMERATED",
       "word_order": "SINGLE_REGISTER",
-      "issues": [],
-      "notes": "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins.",
+      "issues": [
+        "SOURCE_CONFLICT"
+      ],
+      "notes": "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins. Source conflict: hardware manual p9 says X0-X3 default to the unspecified state at each power-on, with the input signal invalid; function manual p73-74 print defaults 1/2/3/0.",
       "choices": "InputFunction"
     },
     {
@@ -1722,12 +1729,11 @@
           "signedness": "SIGNED_ENCODING_UNRESOLVED",
           "word_order": "CONFIGURABLE",
           "issues": [
-            "SIGNED_ENCODING_UNRESOLVED",
-            "SCALE_UNRESOLVED"
+            "SIGNED_ENCODING_UNRESOLVED"
           ],
-          "notes": "Defaults explicitly listed for first segment only; later instance defaults not independently stated.",
+          "notes": "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30).",
           "choices": null,
-          "write_constraint": "No exact FC10 window is documented for this stored pulse pair or whole position record; split FC06 and spans over the reserved record word are unavailable. Configurable order is documented; signed encoding, scale and partial application remain unresolved."
+          "write_constraint": "No exact FC10 window is documented for this stored pulse pair or whole position record; split FC06 and spans over the reserved record word are unavailable. Configurable order and the pulse unit are documented (p22, p30, p75); signed encoding and partial application remain unresolved."
         },
         {
           "offset": 2,

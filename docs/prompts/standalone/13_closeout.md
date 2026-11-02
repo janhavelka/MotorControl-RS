@@ -3,11 +3,14 @@
 Read [README](README.md), [execution contract](execution_contract.md) and the
 [audit finding map](audit.md) together with this prompt.
 
-Findings: **All N/Q rows and the FieldCore correction**. Status: **NOT EXECUTED**.
+Findings: **All N/Q rows and the FieldCore correction**.
 
 ## Entry gate
 
-Every preceding stage has a factual completion, partial, blocked or deferred disposition.
+Every other stage, including [14](14_bench_regression.md), has a factual completion,
+partial, blocked or deferred disposition. Require explicit rows for the N05 remainder
+and the bench regression. The stage is reachable, because blocked and deferred
+dispositions count.
 Use the [ESS software closeout](../../archive/prompts/ess_software/15_final_audit.md) and its actual
 progress as evidence for redirected software work; do not execute its features
 again or treat a redirect as completion.
@@ -37,7 +40,8 @@ docs/reference/ess_rs_operations.json; scripts/check_ess_operations.py; docs/ess
 
 ## Acceptance and handoff
 
-Provide an evidence table for every finding: implemented, tested, physically
+Provide an evidence table for every finding in
+`docs/reports/DATE_standalone_closeout.md`: implemented, tested, physically
 qualified, unresolved or deferred, with links. Zero remaining findings is not
 an acceptance requirement when the vendor/fixture cannot resolve them; an
 honest bounded disposition is. Do not mark blocked implementation as complete

@@ -54,18 +54,18 @@ Follow [AGENTS.md](../../AGENTS.md) for Git, CI and hardware rules. Each fix bel
 owning boundary. Do not weaken a check, adjust a test merely to agree with the code,
 or add a retry that hides the cause.
 
-## Decisions needed from the owner
+## Owner decisions (2 November 2026)
 
-The coder must not settle these alone. Each has a recommendation; the other work
-in its step can proceed without it.
+The owner decided these on 2 November 2026, asking for options that are simple,
+understandable and safe enough.
 
-| ID | Decision | Recommendation |
+| ID | Question | Decision |
 | --- | --- | --- |
-| D1 | May a stop start transport recovery by itself? `docs/bus_owner.md:203` says a fault requires explicit recovery and fresh urgent submission, and recovery cancels queued urgent work. | Yes, for stop only. A stop that was never transmitted is not a replay, so it may be sent once after bounded recovery settles. A stop that was transmitted and lost stays UNKNOWN and needs a new explicit stop. Without this, ship the A-01 fallback only. |
-| D2 | How does the bench reach `home`, `velocity` and `position-clear`? All three need commissioning facts that the console cannot supply. | Add explicit typed console routes that state each fact and call the existing install APIs. Testing the same image follows AGENTS "ordinary firmware"; the banned all-true switch (`docs/cli_contract.md:255`) stays banned. |
-| D3 | Does standing bench authorization cover homing, which AGENTS does not name? It covers "small finite position commands". | Authorize method 35 (non-moving), then 33 and 34 at low speed on the free shaft. Switch methods wait for a real switch fixture. |
-| D4 | May stage 04 test an FC10 write form that the library currently rejects? | Yes, for one stored target with a positive asymmetric value, saved before-value and verified restoration, by explicit instruction naming exact start and count. Otherwise stage 04 ends BLOCKED. |
-| D5 | May stage 07 reproduce reset cases above the default limits? Reset cases include 2,700 rpm, above the 2,000 rpm default. | Name each case and its explicit `PositionLimits` policy, and run one at a time. These are not "small finite" tests. |
+| D1 | May a stop start transport recovery by itself? `docs/bus_owner.md:203` said a fault requires explicit recovery and fresh urgent submission. | **Yes, for stop only.** A stop that was never transmitted is not a replay, so it is sent once after bounded recovery settles. A stop that was transmitted and lost stays UNKNOWN and needs a new explicit stop. |
+| D2 | How does the bench reach `home`, `velocity` and `position-clear`, which need commissioning facts that the console cannot supply? | **Explicit typed console routes** that state each fact and call the existing install APIs, on the same image. The all-true switch stays banned. |
+| D3 | Does standing bench authorization cover homing? | **Yes for method 35 (non-moving), then 33 and 34 at low speed on the free shaft.** Switch methods wait for a real switch fixture. |
+| D4 | May stage 04 test an FC10 write form that the library currently rejects? | **Yes, for one stored target only:** FC10 start `0x0060`, count 2, a positive asymmetric value, saved before-value and verified restoration, through a fixture-only route rather than a production setter. |
+| D5 | May stage 07 reproduce reset cases above the default limits? | **Yes, named cases only:** each case names its explicit `PositionLimits` policy, one case at a time. These are not "small finite" tests. |
 
 ## Application and firmware findings
 

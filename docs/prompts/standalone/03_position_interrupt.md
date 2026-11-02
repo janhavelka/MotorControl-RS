@@ -11,3 +11,7 @@ original/replacement/stop results and no replay. Broader N05 remains PARTIAL.
 Use the [active source-evidence handoff](../ess_software/README.md#remaining-n05-work-and-next-evidence)
 before extending replacement staging or completion attribution. Physical
 interruption qualification remains separate; do not reimplement the subset.
+
+Dispatch the N05 remainder only as explicit "N05 evidence". Start with source
+review. Any write during motion needs explicit user confirmation. Without
+evidence, record PARTIAL and stop.

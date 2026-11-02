@@ -16,6 +16,7 @@ start of each test session; old readback is not fresh admission evidence.
 | UART / pins | UART2; TX GPIO47, RX GPIO48, combined DE/RE GPIO21, high for transmit |
 | Motor serial link | Address 1, 115200 baud, 8N1 in the recorded campaigns |
 | Host console | COM13; ordinary MotorControl-RS firmware, not a transparent RTU bridge |
+| USB identity | Espressif `303A:1001`, serial `3C:0F:02:CD:6B:98`; never open or flash another device. Absent at the [2 November final audit](reports/2026-11-02_ess_final_audit.md) |
 
 The user authorized communication and motion tests on 2 October and reconfirmed
 the fixture and bounded unattended free-shaft testing on 4 October. Routine
