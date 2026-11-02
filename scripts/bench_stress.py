@@ -12,6 +12,7 @@ degraded after recovery (needs a motor power cycle).
 """
 import argparse
 import collections
+import ctypes
 import gzip
 import json
 import pathlib
@@ -155,6 +156,12 @@ class Console:
                 self.retained.remove(op)
 
 
+def keep_awake():
+    """Holds off system sleep for this process only; changes no power setting."""
+    if sys.platform == "win32":
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)
+
+
 def state_fields(item):
     """Flatten one read-state terminal."""
     out = {}
@@ -178,6 +185,7 @@ class Run:
         self.cases = open(self.out / "cases.csv", "a", encoding="utf-8")
         self.counts = collections.Counter()
         self.anomalies = []
+        self.usb_stalls = []
         self.started = time.time()
         self.moved = 0
         self.last = None
@@ -415,6 +423,56 @@ class Run:
         self.check_terminal(self.console.terminal(reply, 3), "AUX")
         self.console.release_all()
 
+    # USB stall: keep the same handle first, because reconnecting hides where bytes were.
+    def usb_stall(self, detail):
+        c = self.console
+        begun = time.time()
+        before = len(c.ring)
+        arrivals = []
+        probe_sent = False
+        while time.time() - begun < 20:
+            count = len(c.ring)
+            c.pump(0.1)
+            if len(c.ring) != count:
+                arrivals.append(round(time.time() - begun, 2))
+            if not probe_sent and time.time() - begun > 8:
+                # Host to device traffic alone: does input wake the stuck output?
+                probe_sent = True
+                c.ring.append((round(time.time(), 3), ">> newline probe"))
+                c.port.write(b"\n")
+        stalled_only = not arrivals
+        c.close()
+        time.sleep(0.5)
+        c.open()
+        c.pump(1.5)
+        drv = None
+        try:
+            ident = c.next_id
+            reply = c.send("drv", 3.0)
+            drv = {k: reply.get(k) for k in ("output_queued", "output_blocked", "output_short_writes", "reset_reason", "usb_stall")}
+            status = c.send("status", 2.0)
+            drv["uptime_ms"] = status.get("uptime_ms")
+        except Unresponsive:
+            drv = "still unresponsive after reopen"
+        record = dict(when=time.strftime("%H:%M:%S"), detail=str(detail), recovered_on_same_handle=not stalled_only,
+                      arrivals=arrivals[:10], drv=drv)
+        self.usb_stalls.append(record)
+        path = self.incident("USB_STALL", record)
+        record["file"] = path.name
+        self.counts["usb_stall"] += 1
+        self.summary()
+        if isinstance(drv, str):
+            return False
+        # The interrupted case may have left an unresolved operation: settle with a checked stop.
+        c.next_id += 1
+        for attempt in ("stop normal 1",):
+            reply = c.send(attempt, 3.0)
+            if reply.get("ok"):
+                c.terminal(reply, 7.0)
+        c.pump(0.5)
+        c.retained.clear()
+        return True
+
     # Diagnostics
     def incident(self, name, detail):
         stamp = time.strftime("%Y%m%d_%H%M%S")
@@ -490,7 +548,7 @@ class Run:
 
     def summary(self, final=None):
         data = dict(elapsed_s=round(time.time() - self.started), moved_increments=self.moved, counts=dict(self.counts),
-                    anomalies=self.anomalies, final=final, seed=self.args.seed)
+                    anomalies=self.anomalies, usb_stalls=self.usb_stalls, final=final, seed=self.args.seed)
         (self.out / "summary.json").write_text(json.dumps(data, indent=1))
         return data
 
@@ -520,6 +578,10 @@ class Run:
             except (Anomaly, Unresponsive) as exc:
                 kind = exc.kind if isinstance(exc, Anomaly) else "CONSOLE_UNRESPONSIVE"
                 detail = exc.detail if isinstance(exc, Anomaly) else str(exc)
+                if kind == "CONSOLE_UNRESPONSIVE" and self.usb_stall(detail):
+                    self.cases.write(f"{time.strftime('%H:%M:%S')},{name},usb_stall,{time.time() - begun:.2f},{detail}\n")
+                    self.cases.flush()
+                    continue
                 self.counts["anomaly_" + kind] += 1
                 self.cases.write(f"{time.strftime('%H:%M:%S')},{name},{kind},{time.time() - begun:.2f},{detail}\n")
                 self.cases.flush()
@@ -561,6 +623,7 @@ def main():
     parser.add_argument("--debug", choices=("off", "raw", "decoded"), default="off")
     parser.add_argument("--recover", action="store_true")
     args = parser.parse_args()
+    keep_awake()
     run = Run(args)
     code = 1
     try:
@@ -569,6 +632,8 @@ def main():
         data = run.summary(final=code)
         run.console.close()
     print(json.dumps({k: data[k] for k in ("elapsed_s", "moved_increments", "counts", "final")}))
+    for u in data["usb_stalls"]:
+        print("usb_stall", u["when"], u["detail"][:60], "same_handle=", u["recovered_on_same_handle"], u["drv"])
     for a in data["anomalies"]:
         print(a["when"], a["case"], a["kind"], a["detail"][:400])
         print("  post", (a.get("postmortem") or [])[:3], "rec", a.get("recovery"))
