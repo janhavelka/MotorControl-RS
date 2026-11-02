@@ -1,7 +1,7 @@
 # 11 - Implement origin plus positive-limit homing methods
 
-Execute the [shared contract](execution_contract.md) and
-[verification rules](verification.md), including stage 08's observation contract.
+Execute the [shared contract](../../../prompts/ess_software/execution_contract.md) and
+[verification rules](../../../prompts/ess_software/verification.md), including stage 08's observation contract.
 Requirement: N08 subset **7,8,9,10,23,24,25,26**. Prerequisite: 10.
 
 ## Inspect and assign

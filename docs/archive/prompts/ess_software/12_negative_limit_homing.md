@@ -1,10 +1,10 @@
 # 12 - Implement origin plus negative-limit homing methods
 
-Execute the [shared contract](execution_contract.md) and
-[verification rules](verification.md), including stage 08's observation contract.
+Execute the [shared contract](../../../prompts/ess_software/execution_contract.md) and
+[verification rules](../../../prompts/ess_software/verification.md), including stage 08's observation contract.
 Requirement: N08 subset **11,12,13,14,27,28,29,30**. Prerequisite: 11.
 
-Preserve the [stage 01 source discrepancies](../../ess_homing_methods.md): method
+Preserve the [stage 01 source discrepancies](../../../ess_homing_methods.md): method
 28's a/b drawings on physical pp63-64 appear exchanged relative to the prose.
 Derive direct and far-side branch fixtures by their spatial trajectory, not the
 letter alone. Record the identified c-caption conflicts independently.

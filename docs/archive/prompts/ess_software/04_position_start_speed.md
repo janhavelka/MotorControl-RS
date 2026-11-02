@@ -1,7 +1,7 @@
 # 04 - Set position start speed explicitly
 
-Execute the [shared contract](execution_contract.md) and
-[verification rules](verification.md). Requirement: N04
+Execute the [shared contract](../../../prompts/ess_software/execution_contract.md) and
+[verification rules](../../../prompts/ess_software/verification.md). Requirement: N04
 `position_start_speed_write`. Prerequisite: 01's reviewed setting contract.
 
 ## Inspect and assign

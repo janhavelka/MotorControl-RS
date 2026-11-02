@@ -38,7 +38,7 @@
 The first release is 1.0.0. Implemented code includes exact units/targets,
 checked ESS codecs, typed reads/settings and bounded motion/action/discovery
 sequences. Arduino and native ESP-IDF share the standalone owner and console.
-Scope and qualification are in `docs/releases/1.0.0.md`; nine named native-family
+Scope and qualification are in `docs/releases/1.0.0.md`; five named native-family
 gaps and 18 guarded paired setters remain. Do not infer full native coverage
 or physical qualification from the register catalogue or a successful build.
 New implementation remains authorized in small tested blocks, without placeholder

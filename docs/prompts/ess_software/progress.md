@@ -1,6 +1,6 @@
 # Execution progress
 
-Prepared 2026-10-23; updated 2026-11-02 for stages 01-14 execution. The preparation
+Prepared 2026-10-23; updated 2026-11-02 for stages 01-15 execution. The preparation
 record below is historical. Stage 01 delivered contracts only; stage 02 implements
 velocity parameter reads. Stage 03 adds homing parameter reads; stage 04 adds
 position start-speed setting. Stage05 adds homing auxiliary configuration;
@@ -10,7 +10,9 @@ homing qualification/observation with final verification complete. Stage09
 implements limit-reference1/2/17 with final verification complete. Stages10-12
 complete the 27 planned switch methods. Stage13 verified cross-operation
 faults and ordinary-route parity; stage14 completed portable/build/storage
-verification. Stage15 remains NOT STARTED.
+verification. Stage15's independent review is complete; final verification is
+in progress. Completed numbered instructions are archived; the active handoff
+retains the broader software objective as PARTIAL, not fully implemented.
 N08 stays PARTIAL and broader N05 remains PARTIAL pending
 active staging and completion-attribution evidence.
 
@@ -30,7 +32,7 @@ active staging and completion-attribution evidence.
 | 12 | SOFTWARE COMPLETE | `96ebf18`; [negative-limit methods and exact-commit verification](../../reports/2026-11-01_ess_negative_limit_homing.md) | NOT RUN: recorded bench absent; no switch fixture |
 | 13 | SOFTWARE COMPLETE | `bfa2e91`; [cross-operation traces, review and verification](../../reports/2026-11-01_ess_integration_faults.md); fresh88-suite quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 14 | SOFTWARE COMPLETE | `c0f124b`; [portable consumers/storage](../../reports/2026-11-02_ess_portability.md), [independent audit/correction](../../reports/2026-11-02_ess_portability_audit.md); fresh88-suite quick/package and all four exact-commit CI jobs PASS | NOT RUN: software/build scope only |
-| 15 | NOT STARTED | - | NOT RUN |
+| 15 | IN PROGRESS | [Independent final audit](../../reports/2026-11-02_ess_final_audit.md); fresh88-suite quick/package PASS; exact-commit CI pending | NOT RUN: recorded bench absent |
 
 Use NOT STARTED, IN PROGRESS, SOFTWARE COMPLETE, PARTIAL or BLOCKED;
 CONTRACTS COMPLETE applies only to documentation stage 01. A blocked

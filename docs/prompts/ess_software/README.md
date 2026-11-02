@@ -1,73 +1,71 @@
 # ESS software completion
 
-Prepared 2026-10-23. **Stage 01 contracts and stages 02-08 software completed
-2026-10-29. Stage09 limit-reference methods 1, 2 and 17 completed software
-verification on 2026-10-31. Stage10 origin-reference methods completed software
-verification on 2026-11-01. Stage11 positive-limit-assisted methods completed
-software verification on 2026-11-01. Stage12 negative-limit-assisted methods
-completed software verification on 2026-11-01. Stage13 cross-operation verification
-completed with exact-commit CI on 2026-11-01; stages14-15 are NOT STARTED.** See the
-[source decisions](../../reports/2026-10-29_ess_software_contracts.md)
-and [progress](progress.md). Contracts do not implement the features. Read the
-[verified audit](audit.md), [execution contract](execution_contract.md),
-[source map](source_map.md) and [verification rules](verification.md).
+Prepared 2026-10-23; final review 2026-11-02. **The bounded stages 01-15 are
+delivered; the broader software objective remains PARTIAL because N05 still
+lacks arbitrary active replacement and attributable completion.** See the
+[final audit](../../reports/2026-11-02_ess_final_audit.md) and [progress](progress.md)
+for verification and separate physical dispositions. Completed numbered
+instructions are [archived](../../archive/prompts/ess_software/README.md);
+do not dispatch them again.
 
-Complete the standalone library and its ordinary application/console paths for:
+The standalone library and its ordinary application/console paths now deliver:
 
 - Typed reads of three velocity parameters and six homing parameters.
 - Typed setters for position start speed and homing auxiliary configuration.
-- Explicit serial position interruption, including ownership and retained results.
+- Exact native stored-profile start-or-interrupt, ACK-only, with independent
+  original/replacement results and urgent-stop ownership.
 - The original27 switch homing methods, in four bounded groups (all implemented
   after stage12), with explicit source, observation and physical qualification limits.
 
-Keep the existing C++11 core, caller-owned sequences, portable bus owner and
-shared Arduino/native ESP-IDF application. Use small direct extensions, clear
-public contracts and independent reviews. No new motion framework is needed.
+The C++11 core, caller-owned sequences, portable owner and shared Arduino/native
+ESP-IDF application remain the implementation boundaries. The original
+[source audit](audit.md), [source map](source_map.md), [execution contract](execution_contract.md)
+and [verification rules](verification.md) remain available with the dated progress.
 
-## Dispatch and order
+## Completed instruction index
 
-For one stage, give an agent this instruction:
-
-> Execute `docs/prompts/ess_software/02_velocity_reads.md` in full. Read this
-> set's README, execution contract, source map, verification rules and progress
-> first. Recheck its prerequisites against current code. Use its bounded agent
-> assignments, implement and review the complete unit, run the relevant checks,
-> update evidence, and commit/push only owned changes on the existing branch.
-
-To execute the whole set, explicitly request stages 01 through 15 in order,
-resuming completed prerequisites from [progress](progress.md). That authorization
-covers implementation; this preparation request alone does not dispatch it.
-Do not launch all stages as parallel writers. Within a stage, spawn the specified
-reviewer and delegate independent implementation/tests after contracts are fixed.
+These are the original bounded delivery units and their historical prerequisites.
+Their software completion does not close the broader source or physical gaps below.
 
 | Stage | Complete unit | Prerequisites |
 | --- | --- | --- |
-| [01](01_contracts.md) | Revalidate evidence and decide API/operation contracts | Current source/manual/workflow audit |
-| [02](02_velocity_reads.md) | Three velocity parameter reads, API and console | 01 |
-| [03](03_homing_reads.md) | Six homing parameter reads, API and console | 01; reuse 02's agreed read conventions |
-| [04](04_position_start_speed.md) | Position start-speed setter and readback | 01 |
-| [05](05_homing_auxiliary.md) | Homing auxiliary setter and readback | 03 |
-| [06](06_position_interrupt_core.md) | Typed serial interrupt intent in the core | 01; independently reviewed bit-3 contract |
-| [07](07_position_interrupt_owner.md) | Interrupting move through owner, app and console | 06 |
-| [08](08_switch_homing_foundation.md) | Usable homing evidence/admission and shared observation support | 03,05; reviewed observation contract |
-| [09](09_limit_homing.md) | Methods 1,2,17 | 08 |
-| [10](10_origin_homing.md) | Methods 3,4,5,6,19,20,21,22 | 09's first integrated family review |
-| [11](11_positive_limit_homing.md) | Methods 7,8,9,10,23,24,25,26 | 10 |
-| [12](12_negative_limit_homing.md) | Methods 11,12,13,14,27,28,29,30 | 11 |
-| [13](13_integration_faults.md) | Cross-operation faults, result conservation and CLI/tool parity | 02-12, or explicit partial dispositions |
-| [14](14_portability.md) | Installed/source consumers, supported builds and resource bounds | 13 |
-| [15](15_final_audit.md) | Independent final review, fixes and truthful coverage closeout | 14; disposition of every stage |
+| [01](../../archive/prompts/ess_software/01_contracts.md) | Revalidate evidence and decide API/operation contracts | Current source/manual/workflow audit |
+| [02](../../archive/prompts/ess_software/02_velocity_reads.md) | Three velocity parameter reads, API and console | 01 |
+| [03](../../archive/prompts/ess_software/03_homing_reads.md) | Six homing parameter reads, API and console | 01; reuse 02's agreed read conventions |
+| [04](../../archive/prompts/ess_software/04_position_start_speed.md) | Position start-speed setter and readback | 01 |
+| [05](../../archive/prompts/ess_software/05_homing_auxiliary.md) | Homing auxiliary setter and readback | 03 |
+| [06](../../archive/prompts/ess_software/06_position_interrupt_core.md) | Typed serial interrupt intent in the core | 01; independently reviewed bit-3 contract |
+| [07](../../archive/prompts/ess_software/07_position_interrupt_owner.md) | Interrupting move through owner, app and console | 06 |
+| [08](../../archive/prompts/ess_software/08_switch_homing_foundation.md) | Usable homing evidence/admission and shared observation support | 03,05; reviewed observation contract |
+| [09](../../archive/prompts/ess_software/09_limit_homing.md) | Methods 1,2,17 | 08 |
+| [10](../../archive/prompts/ess_software/10_origin_homing.md) | Methods 3,4,5,6,19,20,21,22 | 09's first integrated family review |
+| [11](../../archive/prompts/ess_software/11_positive_limit_homing.md) | Methods 7,8,9,10,23,24,25,26 | 10 |
+| [12](../../archive/prompts/ess_software/12_negative_limit_homing.md) | Methods 11,12,13,14,27,28,29,30 | 11 |
+| [13](../../archive/prompts/ess_software/13_integration_faults.md) | Cross-operation faults, result conservation and CLI/tool parity | 02-12, or explicit partial dispositions |
+| [14](../../archive/prompts/ess_software/14_portability.md) | Installed/source consumers, supported builds and resource bounds | 13 |
+| [15](../../archive/prompts/ess_software/15_final_audit.md) | Independent final review, fixes and truthful coverage closeout | 14; disposition of every stage |
 
-Stage 01 restricts initial interruption to native stored-profile start-or-interrupt,
-ACK-only, without active setup writes. Broader N05 remains evidence-gated and
-must stay PARTIAL after that subset; do not claim whole-set completion from its
-delivery. Reads, setters and supported homing can proceed independently.
+## Remaining N05 work and next evidence
 
-The default order limits overlapping edits. Dependencies are technical, not an
-instruction to stall independent work: if bit-3 semantics block 06, finish reads,
-setters and supported homing work. Record the precise blocked part and proceed
-only where its contract is not required. Never bypass a guard to make the table
-green. See the [method matrix](homing_matrix.md) for exhaustive method ownership.
+The delivered `position interrupt ORIGINAL_ID` route retriggers the exact
+qualified stored profile. It rejects changed candidates, active setup writes,
+observed/reference-dependent replacement and unsupported coordinate modes before
+TX. It accepts the drive finish-before-TX race and reports ACK, not arrival.
+
+Arbitrary new-target/profile replacement remains unimplemented. Before extending
+that route, establish from exact ESS firmware/source evidence when each profile
+and target write takes effect during motion and whether consumption can be
+isolated until the trigger. Separately establish a completion witness that can
+distinguish the replacement from old RUNNING/ARRIVED and late old replies, with
+an explicit moving coordinate/reference basis. The existing manual's ordinary
+staging example and bit 3 do not settle these facts. Once evidence supports a
+bounded contract, extend the existing core/owner route and its real transport
+regressions; do not add a second scheduler or infer success from ACK.
+
+This is active follow-up work, not an archived completion claim. The maintained
+[position contract](../../ess_position.md#application-admission-and-retained-results)
+owns the delivered subset. N08's 27 planned switch methods are implemented;
+its unresolved methods and physical qualification remain separate below.
 
 ## What completion means
 

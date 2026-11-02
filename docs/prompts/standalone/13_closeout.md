@@ -8,7 +8,7 @@ Findings: **All N/Q rows and the FieldCore correction**. Status: **NOT EXECUTED*
 ## Entry gate
 
 Every preceding stage has a factual completion, partial, blocked or deferred disposition.
-Use the [ESS software closeout](../ess_software/15_final_audit.md) and its actual
+Use the [ESS software closeout](../../archive/prompts/ess_software/15_final_audit.md) and its actual
 progress as evidence for redirected software work; do not execute its features
 again or treat a redirect as completion.
 

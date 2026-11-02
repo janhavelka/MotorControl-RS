@@ -144,12 +144,14 @@ line/token bounds, retained operation/result storage and command correlation
 remain the existing console contract. Host wiring declarations remain host
 configuration, separate from device assignments and logical state reads.
 
-Homing methods requiring a switch need that method's verified assignment,
-connected input, transitions and fixture. The documented switch-method
-capability remains visible while execution is unimplemented/unqualified;
-setting a function does not make the method ready. Methods 33/34/35 have no
-required external terminal and retain their existing index, readiness,
-parameter, completion and reference qualifications.
+The 27 implemented switch-homing methods need exact checked assignments,
+declared connected inputs and externally supplied fixture qualification.
+Completion uses the [qualified status/zero contract](ess_homing.md); polled
+logical levels may miss edges and do not prove the physical trajectory.
+Setting a function alone does not make a method ready. Method 18 and negative
+collision methods remain unresolved. Methods 33/34/35 have no required external
+terminal and retain their index, readiness, parameter, completion and reference
+qualifications. Physical switch/index qualification remains separate.
 
 PT/PV triggers and PIN0-PIN3 are external-input choices. Their
 setters configure the drive; they do not send a trigger or establish a physical

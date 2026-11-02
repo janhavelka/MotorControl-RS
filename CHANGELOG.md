@@ -134,6 +134,12 @@
 
 ### Maintenance
 
+- Independently audited the delivered ESS software scope and corrected stale
+  homing/gap counts, I/O qualification wording and prompt navigation. Completed
+  numbered instructions are archived; broader N05 replacement/completion and
+  separate source/physical gaps remain active and PARTIAL. No runtime behavior
+  or coverage count changes follow from this documentation closeout.
+
 - Added a source-audited 15-stage ESS software promptset for native parameter
   reads, start-speed and homing-auxiliary setters, serial position interruption
   and 27 switch homing methods. Included concrete agent ownership, independent

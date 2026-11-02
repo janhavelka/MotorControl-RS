@@ -1,7 +1,7 @@
 # 03 - Read the six native homing parameters
 
-Execute the [shared contract](execution_contract.md) and
-[verification rules](verification.md). Requirement: N02
+Execute the [shared contract](../../../prompts/ess_software/execution_contract.md) and
+[verification rules](../../../prompts/ess_software/verification.md). Requirement: N02
 `homing_parameter_reads`. Prerequisites: 01; reuse 02's agreed read conventions.
 
 ## Inspect and assign

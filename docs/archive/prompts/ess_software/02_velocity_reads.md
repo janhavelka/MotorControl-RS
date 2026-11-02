@@ -1,7 +1,7 @@
 # 02 - Read the three native velocity parameters
 
-Execute the [shared contract](execution_contract.md) and
-[verification rules](verification.md). Requirement: N01
+Execute the [shared contract](../../../prompts/ess_software/execution_contract.md) and
+[verification rules](../../../prompts/ess_software/verification.md). Requirement: N01
 `velocity_parameter_reads`. Prerequisite: 01's reviewed read contract.
 
 ## Inspect and assign

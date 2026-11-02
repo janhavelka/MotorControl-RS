@@ -1,7 +1,7 @@
 # 05 - Set homing auxiliary configuration explicitly
 
-Execute the [shared contract](execution_contract.md) and
-[verification rules](verification.md). Requirement: N07
+Execute the [shared contract](../../../prompts/ess_software/execution_contract.md) and
+[verification rules](../../../prompts/ess_software/verification.md). Requirement: N07
 `homing_auxiliary_write`. Prerequisite: 03.
 
 ## Inspect and assign

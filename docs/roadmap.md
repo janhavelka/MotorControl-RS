@@ -163,5 +163,9 @@ The checked inventory now requires the actual producers and definitions for
 the delivered completion features; software coverage and physical limits stay
 separate. [Stage14](reports/2026-11-02_ess_portability.md) adds portable consumer
 coverage and measured layout/stack bounds with pinned-matrix verification.
-Stage15 retains the final audit; runtime headroom and physical labels remain
-separate from these build checks.
+[Stage15's final audit](reports/2026-11-02_ess_final_audit.md) independently
+checks all delivered requirements and corrects stale scope/navigation claims.
+Completed numbered instructions are archived. The broader software objective
+remains PARTIAL: [active N05 follow-up](prompts/ess_software/README.md#remaining-n05-work-and-next-evidence)
+needs active-write consumption/isolation and replacement completion evidence.
+Runtime headroom and physical labels remain separate from build checks.
