@@ -7,7 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
-| [Code and standalone promptset audit](2026-11-02_standalone_promptset_audit.md) | Open work list: reproduced stop-path, homing supervision and core defects; vendor corrections and exact fixes for each standalone prompt; owner decisions and first bench plan. Standalone promptset corrections are applied to the prompts; its code and bench items remain open. |
+| [Code and standalone promptset audit](2026-11-02_standalone_promptset_audit.md) | Reproduced stop-path, homing supervision and core defects, vendor corrections and exact fixes for each standalone prompt, owner decisions and first bench plan. Its status section records what is fixed; bench and maintainability work remain. |
 | [ESS software final audit](2026-11-02_ess_final_audit.md) | Independent source/API, execution/ownership and consumption reviews of all delivered requirements; corrected stale documentation, archived bounded instructions and retained broader N05/source/physical obligations. |
 | [Independent stage14 portability audit](2026-11-02_ess_portability_audit.md) | Fresh consumer/header/bounds review; verifier rejects empty/incomplete CTest evidence, and IDF source-package wording is precise. Physical and runtime limits stay unchanged. |
 | [ESS portable consumers and storage bounds](2026-11-02_ess_portability.md) | Stage14 source/install API fixtures, independent headers/symbols and measured host/Xtensa layout/stack deltas; pinned firmware verification and physical limits remain separate. |
