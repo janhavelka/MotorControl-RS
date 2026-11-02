@@ -137,6 +137,26 @@ class Console:
             self.retained.append(op)
         return reply
 
+    def simple(self, command, wait):
+        """moveby and moveto answer with simple_move records instead of a reply. Returns the last one."""
+        ident = self.next_id
+        self.next_id += 1
+        self.ring.append((round(time.time(), 3), f">> @{ident} {command}"))
+        self.port.write(f"@{ident} {command}\n".encode())
+        end = time.time() + wait
+        while time.time() < end:
+            self.pump(0.002)
+            if ident in self.replies:
+                return self.replies.pop(ident)
+            item = self.terminals.get(ident)
+            if item and not item.get("pending"):
+                del self.terminals[ident]
+                for key in ("operation_id", "move_operation_id"):
+                    if item.get(key) and item[key] not in self.retained:
+                        self.retained.append(item[key])
+                return item
+        return None
+
     def terminal(self, reply, wait):
         ident = reply["_id"]
         end = time.time() + wait
@@ -364,6 +384,66 @@ class Run:
         self.moved += delta
         self.prepare_auxiliary()
         return f"moving={moving} delta={delta}"
+
+    def simple_ramps(self):
+        rpm = self.random.choice([60, 120, 300, 600])
+        accel, decel = self.random.choice([100, 200, 500, 1000, 2000]), self.random.choice([100, 200, 500, 1000, 2000])
+        for command in (f"speed {rpm}", f"accel {accel}", f"decel {decel}"):
+            if not self.console.send(command).get("ok"):
+                raise Anomaly("SIMPLE_SETUP", command)
+        return rpm, accel, decel
+
+    def simple_move(self, command, steps, ramps):
+        rpm, accel, decel = ramps
+        self.t0 = time.time()
+        item = self.console.simple(command, self.duration(abs(steps), rpm) + (accel + decel) / 1000 + 5)
+        self.check_terminal(item, "SIMPLE")
+        self.console.release_all()
+
+    def case_simple(self):
+        """The ordinary route: stated speed and ramps, then moveby, with ramps across the admitted range."""
+        ramps = self.simple_ramps()
+        before = self.state()
+        steps = self.random.choice([100, 1000, 3000])  # A negative moveby is refused until its encoding is resolved.
+        self.simple_move(f"moveby {steps}", steps, ramps)
+        after = self.state()
+        delta = (after["position"] - before["position"]) & 0xFFFFFFFF
+        expected = steps & 0xFFFFFFFF
+        if min((delta - expected) & 0xFFFFFFFF, (expected - delta) & 0xFFFFFFFF) > 20 or after["raw_motion"] & RUNNING:
+            raise Anomaly("POSITION", {"steps": steps, "ramps": ramps, "delta": delta, "motion": after["raw_motion"]})
+        self.moved += abs(steps)
+        return f"moveby {steps} ramps={ramps}"
+
+    def case_simple_boot(self):
+        """The documented first use: after a controller reset, moveto relative to the RAM boot zero."""
+        self.console.reset_mcu()
+        self.console.send("debug " + self.args.debug, 3.0)
+        ramps = self.simple_ramps()
+        zero = self.state()["position"]
+        for target in sorted([self.random.randrange(100, 3000), self.random.randrange(100, 3000)]) + [0]:
+            self.simple_move(f"moveto {target}", 3000, ramps)
+            after = self.state()
+            offset = (after["position"] - zero) & 0xFFFFFFFF
+            if min((offset - target) & 0xFFFFFFFF, (target - offset) & 0xFFFFFFFF) > 20 or after["raw_motion"] & RUNNING:
+                raise Anomaly("POSITION", {"target": target, "zero": zero, "offset": offset, "ramps": ramps, "motion": after["raw_motion"]})
+        self.prepare_auxiliary()
+        return f"zero={zero} ramps={ramps}"
+
+    def case_position_clear(self):
+        self.read("config")
+        self.state()
+        reply = self.console.send("position-clear qualification install clear-semantics")
+        if not reply.get("ok"):
+            raise Anomaly("CLEAR_INSTALL", reply.get("result"))
+        reply = self.console.send("position-clear")
+        if not reply.get("ok"):
+            raise Anomaly("CLEAR_REFUSED", reply.get("result"))
+        self.check_terminal(self.console.terminal(reply, 3), "CLEAR")
+        after = self.state()
+        if after["position"] != 0 or after["raw_motion"] & RUNNING:
+            raise Anomaly("CLEAR_END", after)
+        self.console.release_all()
+        return "ok"
 
     def interrupt_finish(self, steps, rpm):
         duration = self.duration(steps, rpm)
@@ -628,6 +708,8 @@ class Run:
             reply = self.console.send("drv", 2.0)
             self.health = {k: reply.get(k) for k in ("output_blocked", "output_short_writes", "input_dropped", "stop_evidence_overwritten", "reset_reason", "usb_stall")}
             self.health["memory"] = self.console.send("memory", 2.0)
+            with open(self.out / "health.jsonl", "a", encoding="utf-8") as f:
+                f.write(json.dumps(dict(when=time.strftime("%H:%M:%S"), cases=self.counts.total(), **self.health)) + chr(10))
         except Unresponsive:
             pass
 
@@ -646,7 +728,9 @@ class Run:
                      ("interrupt_stop", self.case_interrupt_stop, 10), ("stop_moving", self.case_stop_moving, 10),
                      ("home", self.case_home, 7), ("release_enable", self.case_release_enable, 3),
                      ("fast_plain", self.case_fast_plain, 12), ("fast_interrupt", self.case_fast_interrupt, 12),
-                     ("double_interrupt", self.case_double_interrupt, 10), ("mcu_reset", self.case_mcu_reset, 1)]
+                     ("double_interrupt", self.case_double_interrupt, 10), ("mcu_reset", self.case_mcu_reset, 1),
+                     ("simple", self.case_simple, 15), ("simple_boot", self.case_simple_boot, 2),
+                     ("position_clear", self.case_position_clear, 3)]
         if self.args.only:
             cases = [c for c in cases if c[0] == self.args.only]
         names = [c[0] for c in cases]
