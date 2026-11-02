@@ -86,6 +86,13 @@ An independent consumer needs only its own CMake project/main and
 and individual-header checks. Hardware and endurance dispositions remain in
 their owning reports; a green verifier is software/build evidence.
 
+The consumer fixture includes native velocity/homing observations, both scalar
+setters, stored position interruption intent and representative admitted homing
+families. It executes against both the exported source and installed package,
+under C++11 and C++17 (RTTI disabled for C++17). See the
+[stage14 storage review](reports/2026-11-02_ess_portability.md) for compiler-specific
+layout/stack deltas and their limits; these do not establish runtime MCU headroom.
+
 ## First release tag
 
 The existing annotated `v1.0.0` tag points to

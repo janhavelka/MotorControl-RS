@@ -1,6 +1,6 @@
 # Execution progress
 
-Prepared 2026-10-23; updated 2026-11-01 for stages 01-13 execution. The preparation
+Prepared 2026-10-23; updated 2026-11-02 for stages 01-14 execution. The preparation
 record below is historical. Stage 01 delivered contracts only; stage 02 implements
 velocity parameter reads. Stage 03 adds homing parameter reads; stage 04 adds
 position start-speed setting. Stage05 adds homing auxiliary configuration;
@@ -9,7 +9,8 @@ its bounded owner/application/console integration. Stage08 implements shared
 homing qualification/observation with final verification complete. Stage09
 implements limit-reference1/2/17 with final verification complete. Stages10-12
 complete the 27 planned switch methods. Stage13 verified cross-operation
-faults and ordinary-route parity; stages14-15 remain NOT STARTED.
+faults and ordinary-route parity; stage14 verification is in progress and
+stage15 remains NOT STARTED.
 N08 stays PARTIAL and broader N05 remains PARTIAL pending
 active staging and completion-attribution evidence.
 
@@ -28,7 +29,7 @@ active staging and completion-attribution evidence.
 | 11 | SOFTWARE COMPLETE | `51fef5e`; [positive-limit methods and exact-commit verification](../../reports/2026-11-01_ess_positive_limit_homing.md) | NOT RUN: recorded bench absent; no switch fixture |
 | 12 | SOFTWARE COMPLETE | `96ebf18`; [negative-limit methods and exact-commit verification](../../reports/2026-11-01_ess_negative_limit_homing.md) | NOT RUN: recorded bench absent; no switch fixture |
 | 13 | SOFTWARE COMPLETE | `bfa2e91`; [cross-operation traces, review and verification](../../reports/2026-11-01_ess_integration_faults.md); fresh88-suite quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
-| 14 | NOT STARTED | - | NOT RUN |
+| 14 | IN PROGRESS | [Portable consumers, measured storage and verification](../../reports/2026-11-02_ess_portability.md); local88-suite quick/package PASS; exact-commit matrix pending | NOT RUN: software/build scope only |
 | 15 | NOT STARTED | - | NOT RUN |
 
 Use NOT STARTED, IN PROGRESS, SOFTWARE COMPLETE, PARTIAL or BLOCKED;
@@ -581,3 +582,24 @@ firmware is NOT RUN; CI supplies the supported matrix. See the
 Coverage remains54 producing operations,121 implemented choices,144 classified
 functions, five named gaps and18 guarded pairs. N05/N08 remain PARTIAL. Physical
 tests are NOT RUN: recorded bench USB absent; no external switch fixture.
+
+## Stage14 portable consumers and storage bounds (2026-11-02)
+
+Started at `f5f600e` with stage13 complete. A disjoint writer extended actual
+exported-source/installed consumers with both scalar setters and admitted
+homing1/3/7/24/28. Existing seven-word reads and stored interruption intent remain
+covered. Read-only reviewers checked all28 public headers, core/symbol isolation,
+registration/assertions, fixed capacities and compiler layout/stack deltas.
+Only the IDF core fixture's missing direct common Discovery include and stale
+header-count wording needed correction; no production portability defect found.
+
+Lead independently recompiled host/Xtensa layout diagnostics and checked actual
+diffs. App grows2976 host /2840 Xtensa bytes from stage01, while read/settings/
+owner storage is unchanged. Explicit poll/token/frame bounds and compiler stack
+estimates do not claim runtime MCU headroom. See
+[measurements, commands and limits](../../reports/2026-11-02_ess_portability.md).
+Fresh final quick passes88 suites, all15 checks and source/installed consumers
+3/3 each in `build/ess_software_14_final_rerun`; final package bytes match source.
+Exact correction-commit GCC/Clang/Arduino/IDF matrix is pending. Local full
+firmware and physical tests NOT RUN; no physical/platform/coverage flags change.
+Stage15 receives concrete artifacts after terminal CI verification.

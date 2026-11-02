@@ -15,6 +15,6 @@ idf.py -C test/idf_consumer -B $consumerBuild -D "MOTORCONTROLRS_COMPONENT_PATH=
 ```
 
 Use an empty stage/build directory for a clean check. The application compiles
-all 27 installed headers, links only the core component, and contains real
+all public headers, links only the core component, and contains real
 checked codec and exact-number preparation calls. Its build does not run
 `app_main` or access a motor. Native tests execute the same library behavior.

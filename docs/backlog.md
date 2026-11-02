@@ -249,3 +249,8 @@ corrects prompts04/05 admission and qualification boundaries: newer observations
 cancel unsent settings; contradictory priors revoke stale readiness; changed
 start speed needs explicit independent relation evidence. Register/method
 coverage counts do not change, and physical qualification remains separate.
+
+[Stage14 portable verification](reports/2026-11-02_ess_portability.md) extends
+exported-source/installed consumer coverage and records measured host/Xtensa
+layout and stack deltas. Supported build evidence, runtime memory watermarks
+and physical qualification remain separate; no native gap or platform is added.

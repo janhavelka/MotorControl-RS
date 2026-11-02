@@ -30,6 +30,123 @@ static_assert(sizeof(MotorControlRS::VelocityRequest) > 0, "umbrella exports vel
 #include <MotorControlRS/profiles/ess_rs/Registers.h>
 #include <MotorControlRS/profiles/ess_rs/Traffic.h>
 #include <MotorControlRS/profiles/ess_rs/Types.h>
+#include <cstring>
+
+namespace {
+bool scalarSettings(const MotorControlRS::ReadTarget& target) {
+    using namespace MotorControlRS;
+    using namespace MotorControlRS::ESS_RS;
+    // Independent FC03/FC06 vectors: native start-speed maximum and auxiliary
+    // choice 11. Neither stored result qualifies active behavior or a home.
+    const struct {
+        DriverGroup group;
+        uint16_t reg, value;
+        uint8_t read[8], write[8], readback[7];
+    } cases[] = {
+        {DriverGroup::POSITION_START_SPEED, 0x0020, 3000,
+            {1,3,0,0x20,0,1,0x85,0xC0}, {1,6,0,0x20,0x0B,0xB8,0x8F,0x42},
+            {1,3,2,0x0B,0xB8,0xBF,0x06}},
+        {DriverGroup::HOMING_AUXILIARY, 0x0030, 11,
+            {1,3,0,0x30,0,1,0x84,0x05}, {1,6,0,0x30,0,11,0xC8,0x02},
+            {1,3,2,0,11,0xF9,0x83}}
+    };
+    const uint8_t unknownPrior[] = {1,3,2,0xFF,0xFF,0xB9,0xF4};
+    for (const auto& item : cases) {
+        DriverContext context; PreparedDriver work;
+        if (!prepareDriverRead(context, target, 20, 3, 100, 5000, item.group) ||
+            !nextDriver(context, 100, work) || work.write || work.count != 1 ||
+            work.length != sizeof(item.read) || std::memcmp(work.bytes, item.read, sizeof(item.read))) return false;
+        ActionEvent event; event.transport.target = target; event.transport.operationId = 20;
+        event.transport.frame = unknownPrior; event.transport.length = sizeof(unknownPrior);
+        event.transport.txAccepted = 8; event.transport.qualified = true;
+        event.transport.earliestUs = 200; event.transport.latestUs = 220;
+        event.txComplete = event.responseConfirmed = true;
+        DriverPrerequisites prerequisites;
+        if (!advanceDriver(context, event, 230) || !getDriver(context, prerequisites.previous) ||
+            prerequisites.previous.raw[0] != 0xFFFF || prerequisites.previous.knownFields ||
+            prerequisites.previous.provenance[0].length != 7) return false;
+        prerequisites.configurationGeneration = 3;
+        prerequisites.stationaryTarget = prerequisites.triggerTarget = target;
+        prerequisites.triggerConfigurationGeneration = 3;
+        prerequisites.stationaryQualified = prerequisites.inputsPermit = prerequisites.externalTriggerInhibitedQualified = true;
+        prerequisites.stationaryEarliestUs = prerequisites.triggerEarliestUs = 230;
+        prerequisites.stationaryLatestUs = prerequisites.triggerLatestUs = 230;
+        prerequisites.maxAgeUs = 1000;
+        DriverRequest request; request.configurationGeneration = 3;
+        const Status selected = item.group == DriverGroup::POSITION_START_SPEED ?
+            preparePositionStartSpeed(request, item.value) :
+            prepareHomingAuxiliary(request, HomingAuxiliary::KEEP_POSITION_SUBTRACT_OFFSET);
+        if (!selected || !prepareDriverSettings(context, target, 21, request, prerequisites, 300, 5000) ||
+            !nextDriver(context, 300, work) || !work.write || work.reg != item.reg ||
+            work.length != sizeof(item.write) || std::memcmp(work.bytes, item.write, sizeof(item.write)) ||
+            driverWriteDeadline(context) != 1100) return false;
+        event.transport.operationId = 21; event.transport.frame = item.write;
+        event.transport.length = sizeof(item.write); event.transport.earliestUs = 400; event.transport.latestUs = 420;
+        if (!advanceDriver(context, event, 430) || !nextDriver(context, 430, work) || work.write ||
+            work.step != 1 || work.count != 1 || work.reg != item.reg ||
+            std::memcmp(work.bytes, item.read, sizeof(item.read))) return false;
+        event.transport.step = 1; event.transport.frame = item.readback; event.transport.length = sizeof(item.readback);
+        event.transport.earliestUs = 500; event.transport.latestUs = 520;
+        if (!advanceDriver(context, event, 530) || context.state != ReadState::SUCCEEDED ||
+            context.effects != 1 || context.uncertain || context.prerequisites.previous.raw[0] != 0xFFFF ||
+            !context.progress[0].acknowledged || !context.progress[0].readbackKnown ||
+            context.progress[0].readback != item.value || context.progress[0].activeKnown) return false;
+    }
+    return true;
+}
+
+bool admittedSwitchHomes(const MotorControlRS::ReadTarget& target) {
+    using namespace MotorControlRS;
+    using namespace MotorControlRS::ESS_RS;
+    // Fixture-supplied mechanical/input/index qualification is independent of
+    // register reads. These representative limit/origin/combined methods cover
+    // both index and non-index admission without running a physical trajectory.
+    const struct {
+        HomingMethod method;
+        uint16_t functions[2];
+        uint8_t roles;
+        bool index;
+        uint8_t staging[21];
+    } cases[] = {
+        {HomingMethod::METHOD_1, {3,0}, 4, true,
+            {1,16,0,49,0,6,12,0,1,0,60,0,30,0,100,0,0,0,0,0x55,0x67}},
+        {HomingMethod::METHOD_3, {1,0}, 1, true,
+            {1,16,0,49,0,6,12,0,3,0,60,0,30,0,100,0,0,0,0,0x5E,0xDF}},
+        {HomingMethod::METHOD_7, {1,2}, 3, true,
+            {1,16,0,49,0,6,12,0,7,0,60,0,30,0,100,0,0,0,0,0x4B,0xEF}},
+        {HomingMethod::METHOD_24, {1,2}, 3, false,
+            {1,16,0,49,0,6,12,0,24,0,60,0,30,0,100,0,0,0,0,0x2F,0x3B}},
+        {HomingMethod::METHOD_28, {1,3}, 5, false,
+            {1,16,0,49,0,6,12,0,28,0,60,0,30,0,100,0,0,0,0,0x3A,0x0B}}
+    };
+    AxisConfig axis; axis.target = target; axis.generation = 3;
+    for (const auto& item : cases) {
+        HomeRequest request; request.method = item.method; request.configurationGeneration = 3;
+        HomePrerequisites p; p.target = target; p.configurationGeneration = 3;
+        p.qualifiedMethod = item.method; p.qualifiedSearchSpeed = 60; p.qualifiedReturnSpeed = 30; p.qualifiedRampTime = 100;
+        p.methodQualified = p.nativeRatesQualified = p.nativeRampQualified = p.zeroOffsetQualified = true;
+        p.auxiliaryQualified = p.inputsQualified = p.readinessQualified = p.referenceSemanticsQualified = true;
+        p.observeInputs = true; p.indexQualified = item.index; p.availableInputs = item.roles;
+        p.observedUs = p.qualifiedUs = p.ioObservedUs = p.readbackObservedUs = 2300;
+        p.maximumAgeUs = p.qualificationMaximumAgeUs = 1000; p.rawMotion = 1;
+        for (unsigned slot = 0; slot < 2; ++slot) {
+            p.inputFunctions[slot] = item.functions[slot];
+            if (item.functions[slot]) p.inputWiring[slot] = InputWiring::CONNECTED;
+        }
+        HomeContext home; PreparedHome work;
+        if (!checkHomeQualification(p, 2400) || !MotorControlRS::prepareHome(home, axis, 22, request, p, 2400, 10000) ||
+            !nextHome(home, 2400, work) || !work.write || work.reg != 0x0031 || work.count != 6 ||
+            work.length != sizeof(item.staging) || std::memcmp(work.bytes, item.staging, sizeof(item.staging))) return false;
+        ActionEvent cancel; cancel.transport.target = target; cancel.transport.operationId = 22;
+        cancel.transport.kind = ReadEventKind::CANCEL;
+        AxisReference reference; reference.nativePosition = 77;
+        if (!advanceHome(home, cancel, 2500) || home.outcome != ActionOutcome::CANCELLED || home.stagingApplied ||
+            home.execution != ActionExecution::NOT_TRANSMITTED || getHomeReference(home, 2500, 1000, reference) ||
+            reference.nativePosition != 77) return false;
+    }
+    return true;
+}
+} // namespace
 
 int main() {
     MotorControlRS::ESS_RS::PersistenceContext persistence;
@@ -38,6 +155,8 @@ int main() {
     using namespace MotorControlRS;
     using namespace MotorControlRS::ESS_RS;
     ReadTarget target; target.id = 1; target.address = 1; target.generation = 2;
+    if (!scalarSettings(target)) return 112;
+    if (!admittedSwitchHomes(target)) return 113;
     ReadContext velocityRead; PreparedRead velocityWork;
     if (!readCapabilities().velocityParameters ||
         !prepareVelocityParameters(velocityRead, target, 17, 3, 100, 1000) ||

@@ -161,4 +161,7 @@ explicit active-phase replacement, in-flight stop and maximum-poll regressions.
 history, stale observations, recovery and urgent stop under full result storage.
 The checked inventory now requires the actual producers and definitions for
 the delivered completion features; software coverage and physical limits stay
-separate. Stages14-15 retain portability/resource verification and final audit.
+separate. [Stage14](reports/2026-11-02_ess_portability.md) adds portable consumer
+coverage and measured layout/stack bounds with pinned-matrix verification.
+Stage15 retains the final audit; runtime headroom and physical labels remain
+separate from these build checks.

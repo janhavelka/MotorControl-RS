@@ -4,6 +4,11 @@
 
 ### Added
 
+- Portable source/installed consumer checks for both native scalar setters and
+  representative admitted homing families, preserving strict C++11/C++17,
+  independent headers and codec-only isolation. Storage review records actual
+  host/Xtensa ABI and stack deltas separately from runtime memory qualification.
+
 - Origin plus negative-limit homing methods11–14 and27–30 through the existing
   qualified API/console path, completing the27 planned switch-method partition.
   Both inputs are required for every spatial branch; only11–14 need internal Z.
