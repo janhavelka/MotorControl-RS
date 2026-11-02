@@ -350,7 +350,8 @@ void testCancellationAndStopAtSequenceBoundaries() {
     fresh(); qualify(); const uint32_t transmitting = admitMove(); waitTx(transmitting);
     const uint64_t physicalEnd = hardware.writeStarted + hardware.tx.size() * 87;
     assert(cancel(app, transmitting) == Probe::Action::OK);
-    for (unsigned i = 0; i < 1000 && view(transmitting).pending; ++i) step();
+    assert(!app->owner.needsRecovery()); // Local cancellation leaves the frame to settle.
+    for (unsigned i = 0; i < 30000 && view(transmitting).pending; ++i) step();
     assert(!view(transmitting).pending && view(transmitting).moveContext->uncertain);
     assert(hardware.deReleasedAt >= physicalEnd && hardware.writes == 1 && axisReserved(*app, 1));
     fresh(); qualify(); const uint32_t moving = admitMove();
@@ -406,10 +407,12 @@ void testConsoleResetPreservesUncertainTriggerUnderBackpressure() {
     assert(hardware.deReleasedAt == releasedBefore && hardware.writes == writes && hardware.tx == trigger);
     assert(app->bindingGeneration == binding && app->axis.generation == configuration && app->serial.generation == serial);
 
-    for (unsigned i = 0; i < 1000 && view(operation).pending; ++i) step();
+    // Local cancellation leaves the in-flight trigger to settle naturally; its
+    // lost reply is the genuine transport fault, recorded as such.
+    for (unsigned i = 0; i < 30000 && view(operation).pending; ++i) step();
     assert(!view(operation).pending && axisReserved(*app, 1));
     const auto retained = *view(operation).moveContext;
-    assert(retained.outcome == ActionOutcome::CANCELLED && retained.uncertain);
+    assert(retained.outcome == ActionOutcome::TRANSPORT_ERROR && retained.uncertain);
     assert(retained.execution == ActionExecution::UNKNOWN && retained.triggerEvidence.txAccepted == trigger.size());
     assert(app->owner.needsRecovery());
     assert(hardware.deReleasedAt >= physicalEnd && !app->runner.transmitEnabled() && hardware.de == 0);

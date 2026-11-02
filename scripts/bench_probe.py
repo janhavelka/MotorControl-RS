@@ -41,6 +41,8 @@ COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "h
                       "read-identity", "read-config", "read-state", "velocity-read", "home-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "position-interrupt", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list"})
 MAX_COMMANDS = 11  # Eight ordinary operations, recovery, reserved stop and local query.
 MAX_OPERATIONS = 10  # Eight ordinary operations, one recovery and one reserved stop.
+MAX_STOPS = 2  # The reserved stop plus one escalation, beyond the protocol-3 advertised capacity.
+STOP_TERMINAL_S = 6.0  # Firmware's fixed stop budget, including one bounded recovery.
 MAX_PROBES = 8
 TYPED_READS = {"read-identity": "identity", "read-config": "config", "read-state": "state",
                "velocity-read": "velocity_parameters", "home-read": "homing_parameters"}
@@ -847,7 +849,7 @@ class Console:
                     effects |= p["field"]; execution = "unknown"
                 if e["event"] == 0 and e["qualified"] and e["response_confirmed"] and e["latest_us"] <= item["stationary_valid_until_us"]:
                     if e["status"] == "OK": execution = "acknowledged"
-                    elif e["status"] == "EXCEPTION" and 1 <= e["detail"] <= 7: execution = "rejected"
+                    elif e["status"] == "EXCEPTION" and 1 <= e["detail"] <= 7 and e["detail"] != 5: execution = "rejected"
             require(p["execution"] == execution, "execution differs from write evidence")
             stored_settled = stored and echo_policy and p["readback_known"] and p["readback"] == p["requested"]
             uncertain |= (execution == "unknown" and not stored_settled) or (execution == "acknowledged" and (not p["readback_known"] or p["readback"] != p["requested"]))
@@ -2258,11 +2260,16 @@ class Console:
                 operation_id = item.get("operation_id")
                 if not self._operation_id(operation_id) or operation_id <= self.last_operation_id:
                     raise BenchError("accepted operation ID is missing, reused or not monotonic")
-                if len(self.operations) == MAX_OPERATIONS:
-                    raise BenchError("accepted operation exceeds retained result limit")
                 quota = operation_quota(handle.command)
+                if quota == "recover":  # Firmware released the delivered earlier recovery result.
+                    for earlier, original in list(self.operations.items()):
+                        if original.command == "recover" and original.terminal is not None:
+                            original.released = True
+                            del self.operations[earlier]
+                if len(self.operations) >= MAX_OPERATIONS + (MAX_STOPS - 1 if quota == "stop" else 0):
+                    raise BenchError("accepted operation exceeds retained result limit")
                 same_kind = sum(operation_quota(original.command) == quota for original in self.operations.values())
-                if same_kind >= (MAX_PROBES if quota == "ordinary" else 1):
+                if same_kind >= {"ordinary": MAX_PROBES, "stop": MAX_STOPS}.get(quota, 1):
                     raise BenchError("accepted operation exceeds its retained result quota")
                 handle.operation_id = operation_id
                 handle.accepted = True
@@ -2371,6 +2378,8 @@ class Console:
             raise ValueError("command is not in the explicit harness inventory")
         if (command == "stop" and stop_policy not in ("normal", "fast")) or (command != "stop" and stop_policy is not None):
             raise ValueError("stop requires explicit normal or fast policy")
+        if command == "stop":
+            timeout_s = max(timeout_s, STOP_TERMINAL_S)
         if command == "host":
             host_args = () if host_args is None else host_args
             host_arguments(host_args)
@@ -2445,7 +2454,7 @@ class Console:
             raise BenchError("console framing failed; session cannot be reused")
         if not self.identified and command != "version":
             raise BenchError("identify the standalone firmware before issuing commands")
-        if len(self.pending) == MAX_COMMANDS:
+        if len(self.pending) >= MAX_COMMANDS + (MAX_STOPS - 1 if command == "stop" else 0):
             raise BenchError("outstanding command limit reached; wait for a retained handle")
         if self.next_id > 0xFFFFFFFF:
             raise BenchError("request IDs exhausted; start a new inspected session")
@@ -3083,6 +3092,22 @@ def observe_stopped(console: Console, *, address: int, timeout_s: float,
     raise BenchError("zero-speed/non-running observation bound exhausted")
 
 
+def cleanup_stop_attempts(console: Console, *, policy: str, address: int, timeout_s: float) -> list[dict]:
+    """One stop; only a refused stop gets one bounded recover and one fresh stop.
+
+    Firmware recovers by itself for a transport fault, so a refusal means something
+    else held the bus. An accepted stop is never resent and the original operation
+    is never replayed. Every result is returned for retention, in order.
+    """
+    results = [console.command("stop", stop_policy=policy, address=address, timeout_s=timeout_s)]
+    if results[-1]["ok"] or results[-1].get("type") != "reply":
+        return results
+    results.append(console.command("recover", timeout_s=timeout_s))
+    if results[-1]["ok"]:
+        results.append(console.command("stop", stop_policy=policy, address=address, timeout_s=timeout_s))
+    return results
+
+
 def move_campaign(console: Console, *, move_args: tuple[str, ...] | None, cleanup_stop: str,
                   timeout_s: float, address: int, command: str = "move-relative",
                   velocity_args: tuple[str, ...] | None = None, home_args: tuple[str, ...] | None = None) -> None:
@@ -3099,6 +3124,7 @@ def move_campaign(console: Console, *, move_args: tuple[str, ...] | None, cleanu
     handle = None
     request_id = console.next_id
     terminal = inspected = stopped = final_state = final_health = None
+    cleanup_attempts: list[dict] = []
     cleanup = "not_required"
     failure = None
     try:
@@ -3122,7 +3148,8 @@ def move_campaign(console: Console, *, move_args: tuple[str, ...] | None, cleanu
             cleanup = "unknown"
             if console.synchronized and handle.accepted:
                 try:
-                    stopped = console.command("stop", stop_policy=cleanup_stop, address=address, timeout_s=timeout_s)
+                    cleanup_attempts = cleanup_stop_attempts(console, policy=cleanup_stop, address=address, timeout_s=timeout_s)
+                    stopped = cleanup_attempts[-1]
                     if not stopped["ok"]:
                         raise BenchError("cleanup stop was rejected or failed")
                     final_state = observe_stopped(console, address=address, timeout_s=timeout_s)
@@ -3145,7 +3172,7 @@ def move_campaign(console: Console, *, move_args: tuple[str, ...] | None, cleanu
                         {"velocities_attempted": 1, "velocity_result": terminal} if command == "velocity" else
                         {"moves_attempted": 1, "move_result": terminal}),
                      retained_inspection=inspected, cleanup_policy=cleanup_stop, cleanup=cleanup,
-                     stop_result=stopped, final_state=final_state, final_health=final_health,
+                     stop_result=stopped, cleanup_attempts=cleanup_attempts, final_state=final_state, final_health=final_health,
                      physical_observation="not_supplied", ok=failure is None and cleanup_error is None,
                      error=failure, cleanup_error=cleanup_error)
         if failure is None and cleanup_error is not None:

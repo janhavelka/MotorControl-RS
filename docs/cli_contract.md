@@ -173,11 +173,34 @@ interrupted operation and stop outcomes. Requested deceleration and device
 queue policy must be supported; bus failure cannot guarantee physical stopping.
 Stop interrupts simple preparation only after urgent admission succeeds.
 
-Cancellation ends unsent work/local waiting, settles physical TX/DE and retains
-uncertain transmitted effects. It does not reverse a write or erase evidence.
+A transport fault does not refuse a stop. A stop that has not been transmitted is
+accepted with an operation ID, starts or joins one bounded recovery and is sent once
+after `RECOVERED`. Its deadline is fixed at admission and includes a recovery
+allowance. If recovery fails or expires, the stop ends with
+`execution=not_transmitted` and an explicit outcome, with no retry. A transmitted
+stop whose reply is lost stays `execution=unknown` and only a new explicit stop sends
+again. Nothing else resumes after recovery. Discovery and commissioning ownership and
+host configuration blocks still refuse with their existing results.
+
+`stop fast` can escalate a running `stop normal`: the old stop's unsent write and later
+polls end, and both results stay retained. `recover` releases a delivered terminal
+recovery result; an undelivered one still returns `results_full`.
+
+Cancellation ends unsent work/local waiting. An in-flight frame settles naturally, so
+An advanced `move` that holds an established coordinate reference needs an idle axis,
+so run `monitor off` first; it is rejected before TX otherwise.
+
+`cancel` of a move, velocity, home, action, setting or typed read and `monitor off` do
+not interlock the bus. Uncertain transmitted effects stay retained. It does not reverse
+a write or erase evidence.
 No timeout, startup, recovery, discovery or polling path automatically replays
 motor commands. ACK is distinct from observed completion; old completion flags
 cannot satisfy a new operation.
+
+`version` still reports `outstanding_capacity: 10` for protocol 3; the stop-escalation
+correlation is additional. `drv` adds `stop_evidence_overwritten` and
+`automatic_recovery_operation_id`. An automatic recovery has no command correlation and
+emits no report; `result ID` inspects it until the next recovery replaces it.
 
 `result ID` is non-consuming. Explicit correlated/API and failed/uncertain
 results remain retained until released. Delivered successful human-command

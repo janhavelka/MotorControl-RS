@@ -209,4 +209,18 @@ void commonAndNativeRoutes() {
     saved.check(unchanged);
 }
 } // namespace
-int main() { inventoryAndPreparation(); exactReplyAndUnknownIdentity(); rejectedEnvelopes(); failureEvidence(); commonAndNativeRoutes(); }
+int main() {
+    inventoryAndPreparation(); exactReplyAndUnknownIdentity(); rejectedEnvelopes(); failureEvidence(); commonAndNativeRoutes();
+    // K-06: a reply to a query not fully transmitted cannot report a responder.
+    ESS_RS::PreparedProbe prepared; assert(ESS_RS::prepareProbe(prepared, target(), 5, 100, 1000));
+    uint8_t reply[] = {1, 3, 2, 0, 9, 0, 0};
+    const uint16_t value = ESS_RS::calcCrc16(reply, 5); reply[5] = static_cast<uint8_t>(value); reply[6] = static_cast<uint8_t>(value >> 8);
+    for (std::size_t accepted : {std::size_t(0), std::size_t(7)}) {
+        auto e = frame(prepared, reply, sizeof(reply)); e.txAccepted = accepted;
+        ESS_RS::ProbeObservation unchanged; unchanged.rawModel = 0xA55A; Saved<ESS_RS::ProbeObservation> saved(unchanged);
+        const Status status = ESS_RS::checkProbe(prepared, e, 230, unchanged);
+        assert(!status && status.detail == static_cast<int32_t>(ReadError::INVALID_EVENT)); saved.check(unchanged);
+    }
+    ESS_RS::ProbeObservation responder; assert(ESS_RS::checkProbe(prepared, frame(prepared, reply, sizeof(reply)), 230, responder));
+    assert(responder.outcome == ProbeOutcome::RESPONDER && responder.rawModel == 9);
+}

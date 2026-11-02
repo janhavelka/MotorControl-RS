@@ -20,7 +20,7 @@ const uint8_t relativeIgnore[] = {1, 6, 0, 0x27, 0, 1, 0xF8, 0x01};
 const uint8_t absoluteIgnore[] = {1, 6, 0, 0x27, 0, 5, 0xF9, 0xC2};
 const uint8_t relativeInterrupt[] = {1, 6, 0, 0x27, 0, 9, 0xF9, 0xC7};
 const uint8_t absoluteInterrupt[] = {1, 6, 0, 0x27, 0, 13, 0xF8, 0x04};
-const uint32_t originalId = 40, replacementId = 41, targetBits = 0x12345678;
+const uint32_t originalId = 40, replacementId = 41, targetBits = 0x01234567;
 
 template<class T> struct Saved {
     unsigned char bytes[sizeof(T)];
@@ -119,8 +119,8 @@ void admittedNativeSnapshot() {
             assert(!c.prepared.endpointKnown && !c.prepared.displacementKnown && !c.reference.nativeKnown);
             assert(!c.prerequisites.readinessQualified && !c.observationKnown && !c.runningObserved);
             assert(c.words[0] == 100 && c.words[1] == 120 && c.words[2] == 60);
-            assert(c.words[3] == (order == E::WordOrder::HIGH_WORD_FIRST ? 0x1234 : 0x5678));
-            assert(c.words[4] == (order == E::WordOrder::HIGH_WORD_FIRST ? 0x5678 : 0x1234));
+            assert(c.words[3] == (order == E::WordOrder::HIGH_WORD_FIRST ? 0x0123 : 0x4567));
+            assert(c.words[4] == (order == E::WordOrder::HIGH_WORD_FIRST ? 0x4567 : 0x0123));
             intent.stored.qualified = false; intent.stored.maximumAgeUs = 1;
             intent.stored.profile.targetBits = 0; intent.interruption = E::PositionInterruption::IGNORE;
             E::PreparedMove work;

@@ -58,14 +58,18 @@ void wait(MoveContext& c, uint64_t nowUs) {
     const uint64_t remaining = c.deadlineUs - nowUs;
     c.eligibleUs = c.options.pollIntervalUs >= remaining ? c.deadlineUs : nowUs + c.options.pollIntervalUs;
 }
-ActionExecution execution(const ActionEvidence& evidence) {
-    if (!evidence.txAccepted && !evidence.executionUnknown) return ActionExecution::NOT_TRANSMITTED;
-    if (evidence.event == ReadEventKind::FRAME && evidence.qualified && evidence.responseConfirmed) {
-        if (evidence.status) return ActionExecution::ACKNOWLEDGED;
-        if (evidence.status.code == Err::EXCEPTION && evidence.status.detail >= 1 && evidence.status.detail <= 7)
-            return ActionExecution::REJECTED;
-    }
-    return ActionExecution::UNKNOWN;
+// Function manual p70 prints the 0x0024/25 range as -0xFFFFFFF ~ 0xFFFFFFFF, and p12
+// answers out-of-range data with exception 07. That row is malformed: its bounds differ
+// in width. The symmetric +/-0x0FFFFFFF used here is an interpretation of the row, not
+// a measured drive limit. It narrows the signed 32-bit wire encoding.
+constexpr int64_t MAXIMUM_TARGET_MAGNITUDE = 0x0FFFFFFF;
+bool targetInRange(int64_t native) {
+    return native >= -MAXIMUM_TARGET_MAGNITUDE && native <= MAXIMUM_TARGET_MAGNITUDE;
+}
+bool targetBitsInRange(uint32_t bits) {
+    // Two's-complement view: bits above the positive bound are negative magnitudes.
+    return bits <= static_cast<uint32_t>(MAXIMUM_TARGET_MAGNITUDE) ||
+        bits >= 0u - static_cast<uint32_t>(MAXIMUM_TARGET_MAGNITUDE);
 }
 void beginMove(MoveContext& c, const ReadTarget& target, uint32_t id,
                uint64_t now, uint64_t deadline, const ActionOptions& options) {
@@ -124,7 +128,8 @@ Status parsePositionProfile(const uint8_t* frame, std::size_t length, uint8_t ad
 }
 std::size_t buildWritePositionProfile(uint8_t address, const PositionProfile& profile,
                                      WordOrder order, uint8_t* out, std::size_t capacity) noexcept {
-    if (profile.accelerationTime > 2000 || profile.decelerationTime > 2000 || profile.speed > 3000)
+    if (profile.accelerationTime > 2000 || profile.decelerationTime > 2000 || profile.speed > 3000 ||
+        !targetBitsInRange(profile.targetBits))
         return 0;
     uint16_t words[5] = {profile.accelerationTime, profile.decelerationTime, profile.speed, 0, 0};
     if (!encodeUint32(profile.targetBits, order, words + 3, 2)) return 0;
@@ -150,7 +155,7 @@ static Status prepareNative(MoveContext& output, const PositionCommand& command,
         (command.interruption == PositionInterruption::INTERRUPT_CURRENT && command.setup != MoveSetup::USE_STORED))
         return invalid(MoveError::INVALID_OPTIONS, "position interruption requires native stored-profile setup");
     if (!command.speedRpm || command.speedRpm > 3000 || command.accelerationTime > 2000 ||
-        command.decelerationTime > 2000 || (relative && !bits))
+        command.decelerationTime > 2000 || (relative && !bits) || !targetBitsInRange(bits))
         return invalid(MoveError::INVALID_REQUEST, "invalid native position parameters");
     const Status limits = checkPositionLimits(command.subdivision, command.speedRpm,
         command.accelerationTime, command.decelerationTime, command.limits);
@@ -221,8 +226,11 @@ static Status prepareMove(MoveContext& output, const AxisConfig& axis, const Axi
     // An unwrapped absolute device-native target needs no current-position
     // reference. Arithmetic/limits decide when metadata is actually required;
     // absent reference leaves displacement unknown rather than inventing one.
-    if (!request.position.relative && reference && (!reference->nativeKnown || reference->basis != RelativeBasis::ACTUAL || !reference->stationary))
-        return invalid(MoveError::READINESS, "supplied move reference must be stationary actual command coordinates");
+    // A relative move also consumes an established reference, for its endpoint and limits.
+    if (reference && (reference->nativeKnown ?
+            reference->basis != RelativeBasis::ACTUAL || !reference->stationary || !reference->idle :
+            !request.position.relative))
+        return invalid(MoveError::READINESS, "supplied move reference must be idle stationary actual command coordinates");
     if (request.ramp != MoveRamp::VERIFIED_CONFIGURED || !prerequisites.configuredRampVerified ||
         prerequisites.accelerationTime > 2000 || prerequisites.decelerationTime > 2000)
         return invalid(MoveError::UNRESOLVED_RAMP, "verified configured native ramps are required");
@@ -265,8 +273,8 @@ static Status prepareMove(MoveContext& output, const AxisConfig& axis, const Axi
     if (prepared.prepared.zeroDisplacement)
         return failed(MoveError::INVALID_REQUEST, "effective relative displacement is zero");
     const int64_t native = prepared.prepared.effectiveNative;
-    if (native < std::numeric_limits<int32_t>::min() || native > std::numeric_limits<int32_t>::max())
-        return failed(MoveError::INVALID_REQUEST, "target exceeds the supported signed 32-bit subset");
+    if (!targetInRange(native))
+        return failed(MoveError::INVALID_REQUEST, "target exceeds the +/-0x0FFFFFFF position range");
     if (native < 0 && !prerequisites.negativeTwosComplementVerified)
         return invalid(MoveError::UNRESOLVED_SIGN, "negative ESS position encoding is unresolved");
     prepared.words[0] = prerequisites.accelerationTime;
@@ -384,9 +392,9 @@ Status advanceMove(MoveContext& c, const ActionEvent& supplied, uint64_t nowUs) 
         c.verificationLength = event.length < sizeof(c.verificationRaw) ? event.length : sizeof(c.verificationRaw);
         if (c.verificationLength) std::memcpy(c.verificationRaw, event.frame, c.verificationLength);
     } else if (setting) {
-        c.stagingEvidence = evidence; c.setupExecution = execution(evidence);
+        c.stagingEvidence = evidence; c.setupExecution = Detail::classifyWrite(evidence);
         c.stagingApplied = c.setupExecution == ActionExecution::ACKNOWLEDGED;
-    } else if (triggering) { c.triggerEvidence = evidence; c.execution = execution(evidence); }
+    } else if (triggering) { c.triggerEvidence = evidence; c.execution = Detail::classifyWrite(evidence); }
     c.servicedUs = nowUs;
     if (event.kind == ReadEventKind::CANCEL) finish(c, ActionOutcome::CANCELLED, evidence.status);
     else if (event.kind == ReadEventKind::DEADLINE) finish(c, ActionOutcome::DEADLINE, evidence.status);
@@ -395,7 +403,8 @@ Status advanceMove(MoveContext& c, const ActionEvent& supplied, uint64_t nowUs) 
         failed(MoveError::TIMING_UNQUALIFIED, "move closure timing is unqualified"));
     else if (event.latestUs > stepDeadline(c)) finish(c, ActionOutcome::DEADLINE, expiredStep(c));
     else if (!evidence.status) finish(c, ActionOutcome::REPLY_ERROR, evidence.status);
-    else if (!supplied.responseConfirmed && (!triggering || c.admission == MoveAdmission::NATIVE_INTENT))
+    else if ((!supplied.responseConfirmed || ((setting || triggering) && event.executionUnknown)) &&
+             (!triggering || c.admission == MoveAdmission::NATIVE_INTENT))
         finish(c, ActionOutcome::UNCONFIRMED_RESPONSE,
         failed(MoveError::UNCONFIRMED_RESPONSE, "frame source is not confirmed as the drive"));
     else if (triggering && c.admission == MoveAdmission::NATIVE_INTENT)
@@ -440,6 +449,10 @@ Status advanceMove(MoveContext& c, const ActionEvent& supplied, uint64_t nowUs) 
         } else if (c.runningObserved && (words[1] & ARRIVED) &&
                    (!c.prerequisites.positionFeedbackMatchesCommand || !c.observedSpeed)) {
             c.completion = ActionCompletion::OBSERVED;
+            // Reported, never a failure: tested moves report delta 99 for 100 commands,
+            // and the 0x010B window's unit is undocumented, so no tolerance is applied.
+            c.positionMismatch = c.prerequisites.positionFeedbackMatchesCommand && c.prepared.endpointKnown &&
+                c.observedPosition != c.prepared.endpointNative;
             finish(c, ActionOutcome::OBSERVED, Ok());
         }
         if (c.state == ActionState::ACTIVE && endpointMatch) {

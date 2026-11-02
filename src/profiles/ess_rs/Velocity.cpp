@@ -37,15 +37,6 @@ Status expiry(const VelocityContext& c) {
     return stepDeadline(c) < c.stopDueUs ? failed(VelocityError::READINESS, "velocity readiness expired") :
         failed(VelocityError::DEADLINE_EXPIRED, "velocity step deadline expired");
 }
-ActionExecution execution(const ActionEvidence& e) {
-    if (!e.txAccepted && !e.executionUnknown) return ActionExecution::NOT_TRANSMITTED;
-    if (e.event == ReadEventKind::FRAME && e.qualified && e.responseConfirmed) {
-        if (e.status) return ActionExecution::ACKNOWLEDGED;
-        if (e.status.code == Err::EXCEPTION && e.status.detail >= 1 && e.status.detail <= 7)
-            return ActionExecution::REJECTED;
-    }
-    return ActionExecution::UNKNOWN;
-}
 void finish(VelocityContext& c, ActionOutcome outcome, Status status) {
     c.outcome = outcome; c.status = status;
     c.state = outcome == ActionOutcome::OBSERVED ? ActionState::SUCCEEDED : ActionState::FAILED;
@@ -99,6 +90,10 @@ Status prepareVelocity(VelocityContext& output, const AxisConfig& axis, uint32_t
         return invalid(VelocityError::INVALID_DEADLINE, "finite velocity duration needs an additional stop budget");
     if (!options.pollIntervalUs || !options.maxPolls || options.maxPolls > ACTION_MAX_POLLS)
         return invalid(VelocityError::INVALID_OPTIONS, "invalid bounded velocity observation policy");
+    // Polls are at least one interval apart, so this product covers the duration
+    // and no run ends early. Unlike a move, a run has no later completion to await.
+    if (static_cast<uint64_t>(options.maxPolls) * options.pollIntervalUs < request.durationUs)
+        return invalid(VelocityError::INVALID_OPTIONS, "poll budget cannot cover the finite velocity duration");
     if (!sameTarget(axis.target, p.target) || !axis.generation || axis.generation != p.configurationGeneration ||
         request.configurationGeneration != axis.generation)
         return invalid(VelocityError::STALE_CONFIGURATION, "velocity configuration binding mismatch");
@@ -268,10 +263,10 @@ Status advanceVelocity(VelocityContext& c, const ActionEvent& supplied, uint64_t
     else if (event.kind == ReadEventKind::DEADLINE) evidence.status = expiry(c);
     else evidence.status = failed(VelocityError::TRANSPORT_FAILURE, "velocity transport failed");
     if (c.phase == VelocityPhase::STAGING) {
-        c.stagingEvidence = evidence; c.setupExecution = execution(evidence);
+        c.stagingEvidence = evidence; c.setupExecution = Detail::classifyWrite(evidence);
         c.stagingApplied = c.setupExecution == ActionExecution::ACKNOWLEDGED;
     } else if (c.phase == VelocityPhase::TRIGGER) {
-        c.triggerEvidence = evidence; c.execution = execution(evidence);
+        c.triggerEvidence = evidence; c.execution = Detail::classifyWrite(evidence);
         c.needsStop = c.execution == ActionExecution::ACKNOWLEDGED || c.execution == ActionExecution::UNKNOWN;
     }
     c.servicedUs = now;
@@ -284,9 +279,13 @@ Status advanceVelocity(VelocityContext& c, const ActionEvent& supplied, uint64_t
     else if (event.kind == ReadEventKind::TRANSPORT_FAILURE) failStep(c, ActionOutcome::TRANSPORT_ERROR, evidence.status, evidence, now);
     else if (!event.qualified) failStep(c, ActionOutcome::TIMING_UNQUALIFIED,
         failed(VelocityError::TIMING_UNQUALIFIED, "velocity closure timing is unqualified"), evidence, now);
-    else if (event.latestUs > stepDeadline(c)) failStep(c, ActionOutcome::DEADLINE, expiry(c), evidence, now);
+    // A write closing late has failed its budget. An observation closing after
+    // stopDueUs merely ended the budget: its checked words still decide below.
+    else if (c.phase != VelocityPhase::OBSERVING && event.latestUs > stepDeadline(c))
+        failStep(c, ActionOutcome::DEADLINE, expiry(c), evidence, now);
     else if (!evidence.status) failStep(c, ActionOutcome::REPLY_ERROR, evidence.status, evidence, now);
-    else if (!supplied.responseConfirmed) failStep(c, ActionOutcome::UNCONFIRMED_RESPONSE,
+    else if (!supplied.responseConfirmed || (c.phase != VelocityPhase::OBSERVING && event.executionUnknown))
+        failStep(c, ActionOutcome::UNCONFIRMED_RESPONSE,
         failed(VelocityError::UNCONFIRMED_RESPONSE, "frame source is not confirmed as the drive"), evidence, now);
     else if (c.phase == VelocityPhase::STAGING) {
         if (now >= stepDeadline(c)) failStep(c, ActionOutcome::DEADLINE, expiry(c), evidence, now);
@@ -307,9 +306,9 @@ Status advanceVelocity(VelocityContext& c, const ActionEvent& supplied, uint64_t
                 if (!c.runningObserved) c.activityEvidence = evidence;
                 c.runningObserved = true;
             }
-            if (c.polls >= c.options.maxPolls) failStep(c, ActionOutcome::OBSERVATION_LIMIT,
-                failed(VelocityError::OBSERVATION_LIMIT, "bounded velocity observation budget exhausted"), evidence, now);
-            else if (now >= c.stopDueUs) beginStop(c, now);
+            // Preparation made maxPolls * pollIntervalUs cover the duration, and polls are
+            // at least one interval apart, so the duration ends first, even on the last poll.
+            if (now >= c.stopDueUs) beginStop(c, now);
             else wait(c, now);
         }
     }

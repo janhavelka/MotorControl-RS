@@ -611,11 +611,14 @@ void testStopUsesReservedCapacityAndFullAdmissionPreservesWork() {
     using namespace MotorControlRS;
     fresh(); timerCapture(); qualifyActions();
     const uint32_t active = actionAdmission(ActionKind::ENABLE);
-    App::Record occupied; occupied.action.request.kind = ActionKind::STOP;
+    App::Record occupied[STOP_RECORDS];
     ESS::ActionContext stopContext; ReadTarget target; target.id = target.address = target.generation = 1;
     assert(ESS::prepareNormalStop(stopContext, target, 999, nowUs(), nowUs() + REQUEST_US));
     ESS::PreparedAction work; assert(ESS::nextAction(stopContext, nowUs(), work));
-    assert(admitActionStep(*app, occupied, work, nowUs()) == Rtu::BusAdmission::ACCEPTED);
+    for (auto& slot : occupied) {
+        slot.action.request.kind = ActionKind::STOP;
+        assert(admitActionStep(*app, slot, work, nowUs()) == Rtu::BusAdmission::ACCEPTED);
+    }
     const auto pending = app->owner.pending();
     ActionRequest stop; stop.kind = ActionKind::STOP; stop.stop.behavior = StopBehavior::DIRECT;
     uint32_t unchanged = 777;
@@ -646,7 +649,6 @@ void testRepeatedStopPreservesEvidenceAndReservedCapacity() {
         command("@20 stop normal\n"); const uint32_t previous = view(0).operationId;
         ActionRequest stop; stop.kind = ActionKind::STOP; stop.stop.behavior = StopBehavior::DIRECT;
         uint32_t next = 777;
-        assert(startAction(app, 21, 1, stop, next) == Probe::Action::RESULTS_FULL && next == 777);
         if (failure) {
             std::vector<uint8_t> exception = {1, 0x86, static_cast<uint8_t>(failure == 1 ? 0xE7 : 2)};
             const auto crc = ESS::calcCrc16(exception.data(), exception.size());
@@ -659,24 +661,21 @@ void testRepeatedStopPreservesEvidenceAndReservedCapacity() {
         assert(findRecord(*app, previous)->delivered && !view(previous).pending);
         const auto saved = *view(previous).actionContext;
         const unsigned writes = hardware.writes;
+        // Stop admission never depends on ordinary capacity (A-05): a failed
+        // stop keeps its dedicated slot whether or not ordinary results are full.
+        assert(hardware.writes == writes);
         const auto admitted = startAction(app, 22, 1, stop, next);
-        if (full && failure) {
-            assert(admitted == Probe::Action::RESULTS_FULL && next == 777);
-            assert(view(previous).actionContext->execution == saved.execution);
-            assert(axisReserved(*app, 1) == (failure == 1) && hardware.writes == writes);
-        } else {
-            assert(admitted == Probe::Action::OK && next != previous && next != 777);
-            Probe::ResultView old;
-            assert(lookup(app, previous, old) == (!full && failure != 0));
-            if (!full && failure) {
-                assert(old.actionContext->operationId == saved.operationId);
-                assert(old.actionContext->execution == saved.execution && old.actionContext->outcome == saved.outcome);
-                assert(findRecord(*app, previous) != &app->records[REQUEST_CAPACITY + 1]);
-            }
-            actionStep(next); actionStep(next, registerReply({0, 0}));
-            assert(!axisReserved(*app, 1));
-            if (!full && failure) assert(view(previous).actionContext->execution == saved.execution);
+        assert(admitted == Probe::Action::OK && next != previous && next != 777);
+        Probe::ResultView old;
+        assert(lookup(app, previous, old) == (failure != 0));
+        if (failure) {
+            assert(old.actionContext->operationId == saved.operationId);
+            assert(old.actionContext->execution == saved.execution && old.actionContext->outcome == saved.outcome);
+            assert(findRecord(*app, previous) == &app->records[REQUEST_CAPACITY + 1]);
         }
+        actionStep(next); actionStep(next, registerReply({0, 0}));
+        assert(!axisReserved(*app, 1));
+        if (failure) assert(view(previous).actionContext->execution == saved.execution);
         if (full) for (auto id : retained) assert(view(id).probe.outcome == Rtu::Outcome::SUCCESS);
     }
 }
@@ -707,12 +706,14 @@ void testRepeatedStopCannotDiscardUndeliveredResult() {
     actionStep(previous); actionStep(previous, registerReply({0, 0}));
     assert(!view(previous).pending && !findRecord(*app, previous)->delivered);
     ActionRequest stop; stop.kind = ActionKind::STOP; stop.stop.behavior = StopBehavior::DIRECT;
-    uint32_t next = 777;
-    assert(startAction(app, 3, 1, stop, next) == Probe::Action::RESULTS_FULL && next == 777);
+    // The escalation record admits a new stop; the undelivered report stays.
+    uint32_t next = 777, third = 777;
+    assert(startAction(app, 3, 1, stop, next) == Probe::Action::OK);
     assert(view(previous).actionContext->completion == ActionCompletion::OBSERVED);
+    assert(startAction(app, 4, 1, stop, third) == Probe::Action::RESULTS_FULL && third == 777);
     Serial.writeCapacity = 64; pump(6000);
     assert(findRecord(*app, previous)->delivered);
-    assert(startAction(app, 4, 1, stop, next) == Probe::Action::OK);
+    assert(startAction(app, 5, 1, stop, third) == Probe::Action::OK);
     Probe::ResultView old; assert(!lookup(app, previous, old));
 }
 void testRepeatedStopAdmissionFailureKeepsPreviousResult() {
@@ -721,11 +722,14 @@ void testRepeatedStopAdmissionFailureKeepsPreviousResult() {
     command("@1 stop normal\n"); const auto previous = view(0).operationId;
     actionStep(previous); actionStep(previous, registerReply({0, 0})); pump(1000);
     const auto saved = *view(previous).actionContext;
-    App::Record occupied; occupied.action.request.kind = ActionKind::STOP;
+    App::Record occupied[STOP_RECORDS];
     ESS::ActionContext stopContext; ReadTarget target; target.id = target.address = target.generation = 1;
     assert(ESS::prepareNormalStop(stopContext, target, 999, nowUs(), nowUs() + REQUEST_US));
     ESS::PreparedAction work; assert(ESS::nextAction(stopContext, nowUs(), work));
-    assert(admitActionStep(*app, occupied, work, nowUs()) == Rtu::BusAdmission::ACCEPTED);
+    for (auto& slot : occupied) {
+        slot.action.request.kind = ActionKind::STOP;
+        assert(admitActionStep(*app, slot, work, nowUs()) == Rtu::BusAdmission::ACCEPTED);
+    }
     ActionRequest stop; stop.kind = ActionKind::STOP; stop.stop.behavior = StopBehavior::DIRECT;
     uint32_t next = 777;
     assert(startAction(app, 2, 1, stop, next) == Probe::Action::RESULTS_FULL && next == 777);
@@ -853,20 +857,17 @@ void testAcceptedStopRetainsBothResultsWhenInterruptedWriteLaterFails() {
         const auto failed = *view(original).actionContext;
         assert(failed.execution == ActionExecution::UNKNOWN);
         assert(failed.outcome == (badReply ? ActionOutcome::REPLY_ERROR : ActionOutcome::TRANSPORT_ERROR));
-        assert(app->owner.needsRecovery() && app->owner.pending() == 1 && hardware.writes == 1);
+        // D1: the never-transmitted stop holds through one automatic recovery and
+        // is then sent once. Both results stay independent; the write is not replayed.
         pump(100); assert(hardware.writes == 1 && view(stopping).pending);
-        uint32_t recovery = 0; assert(recover(app, 3, recovery) == Probe::Action::OK);
-        for (unsigned i = 0; i < 80000 && app->owner.recovering(); ++i) step();
-        pump(100);
-        assert(!app->owner.needsRecovery() && hardware.writes == 1);
-        const auto cancelled = *view(stopping).actionContext;
-        assert(cancelled.outcome == ActionOutcome::CANCELLED && cancelled.execution == ActionExecution::NOT_TRANSMITTED);
+        assert(findRecord(*app, stopping)->stopHeld && app->owner.recovering() && app->recovery.automatic);
+        for (unsigned i = 0; i < 80000 && hardware.writes == 1; ++i) step();
+        assert(hardware.writes == 2 && !app->owner.needsRecovery());
         assert(view(original).actionContext->outcome == failed.outcome);
         assert(view(original).actionContext->execution == failed.execution && view(original).interruptedByStop);
         assert(axisReserved(*app, 1));
-        assert(release(app, stopping) == Probe::Action::OK);
-        const uint32_t explicitStop = actionAdmission(ActionKind::STOP, 4);
-        actionStep(explicitStop); actionStep(explicitStop, registerReply({0, 0}));
+        actionStep(stopping); actionStep(stopping, registerReply({0, 0}));
+        assert(view(stopping).actionContext->completion == ActionCompletion::OBSERVED);
         assert(!axisReserved(*app, 1) && hardware.writes == 3);
         assert(view(original).actionContext->execution == ActionExecution::UNKNOWN);
     }
@@ -1201,7 +1202,7 @@ void testStateCacheRetainsValuesAcrossFailureAndGenerationChange() {
     ESS::ReadContext failed; assert(ESS::prepareState(failed, target, 11, 600, 2000));
     const uint8_t exception[] = {1, 0x83, 2, 0xC0, 0xF1};
     MotorControlRS::ReadEvent event; event.target = target; event.operationId = 11;
-    event.frame = exception; event.length = sizeof(exception); event.qualified = true;
+    event.frame = exception; event.length = sizeof(exception); event.qualified = true; event.txAccepted = 8;
     event.earliestUs = 700; event.latestUs = 710;
     assert(ESS::advanceRead(failed, event, 720)); Probe::stateResult(cache, failed, 0, 650);
     assert(cache.blocks[0].valid && !cache.blocks[0].lastAttemptOk);

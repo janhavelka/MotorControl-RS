@@ -305,14 +305,15 @@ void reservedStopAndBlockedOutput() {
     send(console, "@501 stop fast\n");
     assert(fake.actions == 1);
     const Admission stop = fake.admitted.back();
+    // A second stop is attempted and answered too; other commands stay discarded.
     send(console, "stop normal\n@502 status\n");
-    assert(fake.actions == 1 && console.inputDropped() >= 2);
+    assert(fake.actions == 2 && console.inputDropped() >= 1);
     auto stopped = actionResult(stop);
     assert(!console.reportAction(stop.command, stop.operation, stopped));
     const auto before = fake.lines.size();
     fake.blocked = false;
     assert(console.serviceOutput());
-    assert(fake.lines.size() == before + 2);
+    assert(fake.lines.size() == before + 3);
     assert(!json(fake.lines[before])); // Retained human terminal is immutable.
     assert(json(fake.lines[before + 1])); // Deferred stop admission keeps @501.
     contains(fake.lines[before + 1], "\"id\":501");

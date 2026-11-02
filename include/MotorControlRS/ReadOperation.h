@@ -71,7 +71,7 @@ struct ReadEvent {
     uint64_t earliestUs = 0;
     uint64_t latestUs = 0;
     int32_t transportDetail = 0; ///< Application-defined transport evidence/reason.
-    std::size_t txAccepted = 0; ///< Accepted prefix, 0..prepared request length; not drive acknowledgement.
+    std::size_t txAccepted = 0; ///< Accepted prefix, 0..prepared request length; not drive acknowledgement. FRAME requires the full length.
     bool executionUnknown = false; ///< Supplied application uncertainty, retained verbatim.
 };
 

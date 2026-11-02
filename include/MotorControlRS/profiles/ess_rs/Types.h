@@ -329,7 +329,7 @@ enum class HomingMethod : int16_t {
     METHOD_14 = 14,
     /** Method 17: reference negative limit; use cited diagrams for starting-state-dependent paths. */
     METHOD_17 = 17,
-    /** Method 18: reference positive limit; use cited diagrams for starting-state-dependent paths. Figure labels negative limit conflict with positive-limit prose; retain discrepancy. */
+    /** Method 18: reference positive limit; use cited diagrams for starting-state-dependent paths. Prose and drawn trajectory agree on the positive limit; only the figure captions say negative. Confirm on a switch fixture. */
     METHOD_18 = 18,
     /** Method 19: reference origin input; use cited diagrams for starting-state-dependent paths. */
     METHOD_19 = 19,

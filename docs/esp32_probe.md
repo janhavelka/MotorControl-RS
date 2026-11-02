@@ -318,7 +318,7 @@ human text; `@1..4294967295` selects correlated JSONL, for example:
 Command correlation IDs and operation IDs are separate. Acceptance is followed
 by one asynchronous terminal carrying the original correlation. Duplicate
 outstanding IDs fail before admission. The console allows nine ordinary
-correlations and one reserved stop; actual bus/frontend admission also depends
+correlations and two reserved stops; actual bus/frontend admission also depends
 on its queue and retained-result capacity. `drv` reports both.
 
 `result ID` inspects without consuming. Ordinary successful human results may
@@ -368,7 +368,8 @@ admitted handles can interleave. `wait(handle)` retains the terminal by default.
 `command("probe")` and `command("recover")` wait and send a separate correlated
 `release` acknowledgement. Inspection/cancellation/release take `operation_id`;
 they do not reuse the command correlation ID. The host tracks at most eleven
-handles: eight ordinary operations, recovery, reserved stop and one local query.
+handles: eight ordinary operations, recovery, reserved stop and one local query,
+plus one stop escalation.
 Result quotas remain independent; mismatches poison the session.
 
 `probe` performs one explicit model read. `stress` repeats that same read a

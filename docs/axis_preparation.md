@@ -25,6 +25,8 @@ known invalidation remain checked; elapsed time never proves continuous power.
 
 Native absolute targets bypass host origin. Other absolute targets use a known host origin or the separate encoder-zero relation. Relative displacement never acquires an origin offset. ACTUAL, COMMANDED and QUEUED are distinct; unsupported policy bits fail explicitly. A supplied established reference can report an endpoint/displacement. Endpoint soft limits require fresh matching reference/basis; an unavailable limit check fails. Requested and effective relative displacement must satisfy native range independently of the endpoint. Starting reference, requested endpoint and effective endpoint are also checked against applicable limits; there is no clamping or automatic inward-recovery exception.
 
+The native range therefore acts as both a coordinate range and a displacement range. A one-sided range such as `nativeMinimum = 0` cannot reverse: every negative relative displacement rejects, even from a position well inside it. Keep the native range symmetric around zero and express a one-sided coordinate constraint with soft limits, which apply to endpoints only.
+
 ## Absolute positions and wrapped orientations
 
 Ordinary absolute preparation preserves all turns: `720 deg` means two selected-frame turns from the host origin. `wrapped=true` instead requires an absolute angular request in an explicit MOTOR or LOAD frame, a known host origin and fresh multi-turn native evidence whose basis matches the request. Native-frame, linear and relative wrapped requests reject before arithmetic. A single-turn/raw unsigned feedback value does not establish that reference.

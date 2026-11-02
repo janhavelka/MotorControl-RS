@@ -233,8 +233,7 @@ void testAllPreparationGatesLeaveOutputUnchanged() {
     assert(!Ess::prepareMoveRelative(c, a, nullptr, 12, request(), p, 100, 10000)); saved.check(c);
 }
 void testSignWordOrderAndRange() {
-    for (int64_t target : {int64_t(std::numeric_limits<int32_t>::min()), int64_t(-25), int64_t(25),
-                          int64_t(std::numeric_limits<int32_t>::max())}) {
+    for (int64_t target : {int64_t(-0x0FFFFFFF), int64_t(-25), int64_t(25), int64_t(0x0FFFFFFF)}) {
         for (Ess::WordOrder order : {Ess::WordOrder::HIGH_WORD_FIRST, Ess::WordOrder::LOW_WORD_FIRST}) {
             auto p = prerequisites(); p.negativeTwosComplementVerified = true; p.wordOrder = order;
             Ess::MoveContext c; assert(Ess::prepareMoveRelative(c, axis(), nullptr, 1, request(target), p, 100, 10000));
@@ -246,6 +245,16 @@ void testSignWordOrderAndRange() {
     auto a = axis(); a.nativeMinimum = std::numeric_limits<int64_t>::min(); a.nativeMaximum = std::numeric_limits<int64_t>::max();
     Ess::MoveContext c;
     assert(!Ess::prepareMoveRelative(c, a, nullptr, 1, request(int64_t(std::numeric_limits<int32_t>::max()) + 1), prerequisites(), 100, 10000));
+    // K-04: the function manual p70 range, read as a symmetric +/-0x0FFFFFFF, narrows int32.
+    auto negative = prerequisites(); negative.negativeTwosComplementVerified = true;
+    const Saved<Ess::MoveContext> untouched(c);
+    for (int64_t target : {int64_t(0x10000000), int64_t(-0x10000000), int64_t(std::numeric_limits<int32_t>::max()),
+                           int64_t(std::numeric_limits<int32_t>::min())}) {
+        const Status status = Ess::prepareMoveRelative(c, a, nullptr, 1, request(target), negative, 100, 10000);
+        assert(!status && status.detail == static_cast<int32_t>(MoveError::INVALID_REQUEST)); untouched.check(c);
+        auto absolute = request(target); absolute.position.relative = false;
+        assert(!Ess::prepareMoveAbsolute(c, a, nullptr, 1, absolute, negative, 100, 10000)); untouched.check(c);
+    }
 }
 void testAdmittedPrerequisitesAreCopied() {
     auto p = prerequisites(); Ess::MoveContext c;
@@ -370,7 +379,7 @@ void testBorrowedEvidenceInput() {
     assert(c.stagingEvidence.status && c.stagingEvidence.status.detail == 0);
     assert(!*c.stagingEvidence.status.msg);
     assert(c.stagingEvidence.frameError == Ess::FrameError::NONE);
-    assert(c.setupExecution == ActionExecution::ACKNOWLEDGED);
+    assert(c.setupExecution == ActionExecution::UNKNOWN && !c.stagingApplied); // K-02: uncertainty outranks the echo.
 }
 void testFreshCompletionLimitsAndDelayedService() {
     auto c = move(); trigger(c);
@@ -498,7 +507,7 @@ void testWriteDeadlinesRetainReadinessAndOperationBudgets() {
 void testConsumedReferenceUsesOperationTimeAndCoversWrites() {
     auto a = axis(); a.softLimitsKnown = true; a.softMinimum = -100; a.softMaximum = 100;
     AxisReference reference; reference.target = a.target; reference.configurationGeneration = a.generation;
-    reference.nativeKnown = true; reference.source = ScaleSource::QUALIFIED;
+    reference.nativeKnown = reference.stationary = reference.idle = true; reference.source = ScaleSource::QUALIFIED;
     reference.observedUs = 80; reference.nowUs = 100; reference.maximumAgeUs = 1000;
     auto p = prerequisites(); auto c = move();
     const Saved<AxisReference> savedReference(reference);
@@ -542,7 +551,7 @@ void testAbsoluteAndAngleReuseSequenceAndRetainReference() {
     auto a = axis(); a.originKnown = true; a.originSource = ScaleSource::QUALIFIED;
     a.units.commandStepsPerMotorTurn = UnitScale(1000, 1, ScaleSource::QUALIFIED);
     AxisReference ref; ref.target = a.target; ref.configurationGeneration = a.generation;
-    ref.nativeKnown = ref.stationary = true; ref.source = ScaleSource::QUALIFIED;
+    ref.nativeKnown = ref.stationary = ref.idle = true; ref.source = ScaleSource::QUALIFIED;
     ref.nativePosition = 1990; ref.observedUs = 80; ref.maximumAgeUs = 1000; ref.nowUs = 1;
     auto r = request(); r.position.relative = false; r.position.frame = CoordinateFrame::MOTOR;
     r.position.unit = PositionUnit::DEGREES; r.position.value = Rational(720);
@@ -608,8 +617,10 @@ void testTypedPositionProfile() {
         bytes.back()^=1; assert(!Ess::parsePositionProfile(bytes.data(),bytes.size(),1,order,parsed)); saved.check(parsed);
         bytes.back()^=1; assert(!Ess::parsePositionProfile(bytes.data(),bytes.size(),2,order,parsed)); saved.check(parsed);
         assert(!Ess::parsePositionProfile(bytes.data(),bytes.size(),1,static_cast<Ess::WordOrder>(2),parsed)); saved.check(parsed);
-        for (unsigned fault=0;fault<5;++fault) {
+        for (unsigned fault=0;fault<7;++fault) {
             auto bad=profile; auto wordOrder=order; std::size_t capacity=sizeof(frame);
+            if(fault==5) bad.targetBits=0x10000000;
+            if(fault==6) bad.targetBits=0xF0000000;
             if(fault==0) bad.accelerationTime=2001;
             if(fault==1) bad.decelerationTime=2001;
             if(fault==2) bad.speed=3001;
@@ -622,7 +633,7 @@ void testTypedPositionProfile() {
     }
 }
 void testNativeAbsoluteTargetsAndReadiness() {
-    for (int64_t target : {int64_t(0), int64_t(1), int64_t(2147483647)}) {
+    for (int64_t target : {int64_t(0), int64_t(1), int64_t(0x0FFFFFFF)}) {
         auto a=axis(); auto r=request(target); r.position.relative=false;
         Ess::MoveContext c;
         assert(Ess::prepareMoveAbsolute(c,a,nullptr,12,r,prerequisites(),100,10000));
@@ -650,10 +661,10 @@ void testNativeAbsoluteTargetsAndReadiness() {
 void testAbsoluteReferenceAndZeroGatesPreserveOutput() {
     auto a = axis(); a.originKnown = true; a.originSource = ScaleSource::QUALIFIED;
     AxisReference ref; ref.target = a.target; ref.configurationGeneration = a.generation;
-    ref.nativeKnown = ref.stationary = true; ref.source = ScaleSource::QUALIFIED;
+    ref.nativeKnown = ref.stationary = ref.idle = true; ref.source = ScaleSource::QUALIFIED;
     ref.observedUs = 80; ref.maximumAgeUs = 1000;
     auto r = request(); r.position.relative = false; auto c = move(); const Saved<Ess::MoveContext> saved(c);
-    for (unsigned fault = 0; fault < 11; ++fault) {
+    for (unsigned fault = 0; fault < 12; ++fault) {
         auto bad = ref; auto config = a; auto req = r;
         switch (fault) {
         case 0: bad.nativeKnown = false; break;
@@ -666,6 +677,7 @@ void testAbsoluteReferenceAndZeroGatesPreserveOutput() {
         case 7: bad.basis = RelativeBasis::COMMANDED; break;
         case 8: config.originKnown = false; req.position.frame = CoordinateFrame::MOTOR; break;
         case 9: req.position.value = Rational(0); break;
+        case 11: bad.idle = false; break;
         case 10: req.position.value = Rational(1, 2); req.position.rounding = Rounding::NEAREST;
             req.position.maximumQuantizationError = 1; break; // Ties-to-even gives zero displacement.
         }
@@ -699,7 +711,7 @@ static Ess::MoveContext prepareEndpointMove(Ess::WordOrder order = Ess::WordOrde
                                             int32_t baseline = 100) {
     auto p = prerequisites(); p.positionFeedbackMatchesCommand = true; p.wordOrder = order;
     AxisReference ref; ref.target = axis().target; ref.configurationGeneration = axis().generation;
-    ref.nativeKnown = ref.stationary = true; ref.nativePosition = baseline;
+    ref.nativeKnown = ref.stationary = ref.idle = true; ref.nativePosition = baseline;
     ref.basis = RelativeBasis::ACTUAL; ref.source = ScaleSource::READBACK;
     ref.observedUs = 80; ref.nowUs = 100; ref.maximumAgeUs = 1000;
     Ess::MoveContext c; auto o = options(); o.maxPolls = 10;
@@ -746,6 +758,75 @@ static void testShortMoveEndpointEvidence() {
     Ess::MoveContext untouched; const Saved<Ess::MoveContext> saved(untouched);
     assert(!Ess::prepareMoveRelative(untouched, axis(), nullptr, 12, request(), p, 100, 10000)); saved.check(untouched);
 }
+// K-01: a known contradiction is exposed without failing tested motion.
+static void testRunningCompletionReportsEndpointMismatch() {
+    auto far = prepareEndpointMove(); observeEndpointMove(far, 110, 4); observeEndpointMove(far, 200);
+    assert(far.state == ActionState::SUCCEEDED && far.outcome == ActionOutcome::OBSERVED && far.completion == ActionCompletion::OBSERVED);
+    assert(far.positionMismatch && !far.positionConfirmed && far.observedPosition == 200 && !far.uncertain);
+    auto delta = prepareEndpointMove(); observeEndpointMove(delta, 110, 4); observeEndpointMove(delta, 124);
+    assert(delta.state == ActionState::SUCCEEDED && delta.positionMismatch && !delta.positionConfirmed);
+    auto exact = prepareEndpointMove(); observeEndpointMove(exact, 110, 4); observeEndpointMove(exact, 125);
+    assert(exact.state == ActionState::SUCCEEDED && !exact.positionMismatch);
+    auto confirmed = prepareEndpointMove(); observeEndpointMove(confirmed, 125); observeEndpointMove(confirmed, 125);
+    assert(confirmed.positionConfirmed && !confirmed.positionMismatch);
+    auto moving = prepareEndpointMove(); observeEndpointMove(moving, 110, 4);
+    assert(moving.state == ActionState::ACTIVE && !moving.positionMismatch); // In transit is not a contradiction.
+    auto alarmed = prepareEndpointMove(); observeEndpointMove(alarmed, 110, 4); observeEndpointMove(alarmed, 200, 9);
+    assert(alarmed.state == ActionState::FAILED && !alarmed.positionMismatch);
+    auto policyOff = move(); trigger(policyOff); consume(policyOff, 4); consume(policyOff, 1);
+    assert(policyOff.state == ActionState::SUCCEEDED && !policyOff.positionMismatch);
+}
+// K-02: one write-reply classification across staging and trigger.
+static void testWriteReplyClassification() {
+    for (uint8_t code : {1, 2, 3, 4, 5, 6, 7, 8, 0x7F}) {
+        const auto expected = code <= 7 && code != 5 ? ActionExecution::REJECTED : ActionExecution::UNKNOWN;
+        auto staged = move(); std::vector<uint8_t> b = {1, 0x90, code}; crc(b); uint64_t at = staged.eligibleUs + 20;
+        assert(Ess::advanceMove(staged, frame(staged, b, at), at + 20));
+        assert(staged.setupExecution == expected && staged.outcome == ActionOutcome::REPLY_ERROR && !staged.stagingApplied);
+        noMoreWork(staged);
+        auto started = move(); consume(started); b = {1, 0x86, code}; crc(b); at = started.eligibleUs + 20;
+        assert(Ess::advanceMove(started, frame(started, b, at), at + 20));
+        assert(started.execution == expected && started.outcome == ActionOutcome::REPLY_ERROR && started.uncertain);
+        noMoreWork(started);
+    }
+    // A staging echo with supplied uncertainty cannot lead to a start.
+    auto staged = move(); auto bytes = reply(staged); auto at = staged.eligibleUs + 20;
+    auto e = frame(staged, bytes, at); e.transport.executionUnknown = true;
+    assert(Ess::advanceMove(staged, e, at + 20));
+    assert(staged.setupExecution == ActionExecution::UNKNOWN && !staged.stagingApplied);
+    assert(staged.outcome == ActionOutcome::UNCONFIRMED_RESPONSE && staged.execution == ActionExecution::NOT_TRANSMITTED);
+    noMoreWork(staged);
+    // A start echo with it stays UNKNOWN; read-only observation may continue, as for an unconfirmed FC06.
+    auto started = move(); consume(started); bytes = reply(started); at = started.eligibleUs + 20;
+    e = frame(started, bytes, at); e.transport.executionUnknown = true;
+    assert(Ess::advanceMove(started, e, at + 20));
+    assert(started.execution == ActionExecution::UNKNOWN && started.state == ActionState::ACTIVE && started.step == 2);
+}
+// K-03: a relative move consumes an established reference just as an absolute one does.
+static void testRelativeMoveChecksConsumedReference() {
+    auto a = axis(); a.softLimitsKnown = true; a.softMinimum = -1000; a.softMaximum = 1000;
+    AxisReference ref; ref.target = a.target; ref.configurationGeneration = a.generation;
+    ref.nativeKnown = ref.stationary = ref.idle = true; ref.nativePosition = 900;
+    ref.source = ScaleSource::READBACK; ref.observedUs = 80; ref.nowUs = 100; ref.maximumAgeUs = 1000;
+    Ess::MoveContext c; const Saved<Ess::MoveContext> saved(c);
+    for (unsigned fault = 0; fault < 4; ++fault) {
+        auto bad = ref;
+        if (fault == 0) bad.stationary = false;
+        if (fault == 1) bad.idle = false;
+        if (fault == 2) bad.stationary = bad.idle = false;
+        if (fault == 3) bad.basis = RelativeBasis::COMMANDED;
+        const Status status = Ess::prepareMoveRelative(c, a, &bad, 12, request(50), prerequisites(), 100, 10000);
+        assert(!status && status.detail == static_cast<int32_t>(MoveError::READINESS)); saved.check(c);
+    }
+    assert(Ess::prepareMoveRelative(c, a, &ref, 12, request(50), prerequisites(), 100, 10000));
+    assert(c.prepared.endpointKnown && c.prepared.endpointNative == 950);
+    // Absent established coordinates remain irrelevant to a native relative move, unlike absolute.
+    auto unknown = ref; unknown.nativeKnown = unknown.stationary = unknown.idle = false;
+    assert(Ess::prepareMoveRelative(c, axis(), &unknown, 12, request(50), prerequisites(), 100, 10000));
+    auto absolute = request(50); absolute.position.relative = false;
+    const Saved<Ess::MoveContext> kept(c);
+    assert(!Ess::prepareMoveAbsolute(c, axis(), &unknown, 12, absolute, prerequisites(), 100, 10000)); kept.check(c);
+}
 void testOperatingLimitsCommonParity() {
     auto p=prerequisites(); p.subdivision=51200;
     auto r=request(); r.speedRpm=234;
@@ -767,6 +848,7 @@ void testOperatingLimitsCommonParity() {
     assert(!axis().originKnown && !axis().units.commandStepsPerMotorTurn.numerator);
 }
 int main() {
+    testRunningCompletionReportsEndpointMismatch(); testWriteReplyClassification(); testRelativeMoveChecksConsumedReference();
     testOperatingLimitsCommonParity();
     testShortMoveEndpointEvidence();
     testOptionalAgePolicy();

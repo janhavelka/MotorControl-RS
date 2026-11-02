@@ -102,8 +102,10 @@ ACKNOWLEDGED, REJECTED or UNKNOWN). An acknowledged command still has
 NOT_OBSERVED completion until a later checked status matches the requested
 effect. Partial/full TX without a confirmed reply remains UNKNOWN. Later read
 failure preserves write acknowledgement and the last valid raw observation.
-Only documented ESS exception codes 01–07 establish rejection. An undocumented
-exception retains its raw byte and codec status with UNKNOWN execution, keeping
+Only documented ESS exception codes 01–07 other than 05 establish rejection. Code
+05 is a read-range error (function manual p12), so on a write it remains UNKNOWN.
+An undocumented exception also retains its raw byte and codec status with UNKNOWN
+execution, as does a matching echo with supplied execution uncertainty, keeping
 the application's conflict reservation. The bus owner's checked-response evidence
 does not itself supply that profile-specific interpretation.
 Contexts copy bounded write, last-observation and failure evidence; borrowed
@@ -121,8 +123,8 @@ A physical-address uncertainty bit survives result release, reset and host
 recovery. An uncertain command or acknowledged command without observed effect
 blocks another ordinary action on that address. Explicit stop can reconcile the
 conflict after a checked stopped-state report, without changing the historical
-interrupted outcome. Releasing a failed stop's result frees the dedicated stop
-record so a later explicit stop can run; it does not clear the uncertainty bit.
+interrupted outcome. Releasing a failed stop's result frees its dedicated stop
+record; it does not clear the uncertainty bit.
 
 The first actual or possible action TX invalidates earlier cached state with an
 explicit `invalidated_us` watermark while preserving raw observations. Release
@@ -130,13 +132,38 @@ and device position clear also invalidate host origin/reference generation. Reje
 unsent cancellation leave those assumptions intact. Fresh explicit reads can
 restore current state; action result observations keep their own provenance.
 
-Stop policy and all capacity checks precede supersession. One dedicated frontend
-record, one console correlation and the owner's urgent transaction/result quota
-are reserved for stop. Rejected/unsupported/full admission leaves active work
-and its queue intact. Accepted stop cancels only unsent same-address action work
-through `cancelUnsent`; an in-flight transaction settles and its evidence remains
-retained. Its unsent continuation is then cancelled. Stop uses priority admission
-without a readiness refresh. Transport faults still require explicit recovery.
+Stop policy and all capacity checks precede supersession. Two dedicated frontend
+records, two console correlations and the owner's urgent transaction/result quota
+of two are reserved for stop, so `stop fast` can escalate a running `stop normal`.
+Rejected/unsupported/full admission leaves active work and its queue intact.
+Accepted stop cancels only unsent same-address action work, including an older
+stop's unsent write and polls, through `cancelUnsent`; an in-flight transaction
+settles and its evidence remains retained. Its unsent continuation is then cancelled.
+Stop uses priority admission without a readiness refresh.
+
+Stop storage does not depend on ordinary result capacity. The next stop replaces a
+delivered confirmed stop, then uses a free stop record, then overwrites the oldest
+delivered failed stop and increments `stop_evidence_overwritten`. A running or
+undelivered stop is never replaced; if both records hold one, the stop returns
+`results_full`.
+
+Stop does not require a prior probe of the selected axis, so a controller reset cannot
+block it. Another address still needs checked knowledge of that target.
+
+A transport fault holds a never-transmitted stop rather than refusing it. This covers
+a stop submitted while recovery is needed, a stop queued when an in-flight transaction
+faults, and a stop submitted during a running recovery. The application runs the
+existing recovery path once, with its usual invalidations, then prepares the stop
+against the new binding and sends it once after `RECOVERED`. `started_us` reports that
+preparation; the deadline stays the one fixed at admission, which includes
+`REQUEST_US + 2 s` for recovery. Failed or expired recovery ends the stop with
+`execution=not_transmitted` and `outcome=transport_error` or `deadline`, without a
+retry. Sending it afterwards is a first transmission, not a replay. A stop whose TX was
+accepted is never held or resent: a lost reply stays `execution=unknown` until a new
+explicit stop. Nothing else resumes, and an interrupted operation's result, uncertainty
+and raw evidence stay independent. A stop during a discovery scan keeps the scan's
+explicit recover-then-restore route.
+
 `interrupted_by_stop` remains explicit even if an already in-flight final
 observation establishes completion before settlement; actual completion and the
 accepted interruption are both retained.
@@ -161,11 +188,12 @@ different observations; no input changes occur implicitly. Use the explicit
 local cancellation, `recover` host transport recovery and `stats reset` local counters.
 Admission replies and terminal `action` JSON lines have independent command and
 operation IDs. `result` inspects retained evidence without consuming it. The
-console retains a stop admission reply under output pressure as compact fields,
-then emits it after the currently blocked line and before terminal delivery.
-Ordinary output/correlation pressure cannot consume its reserved slot or erase
-either action outcome. Additional stops reject or are counted as dropped before
-effects if their reserved output slot is still occupied.
+console retains stop admission replies under output pressure as compact fields,
+then emits them after the currently blocked line and before terminal delivery.
+Ordinary output/correlation pressure cannot consume their reserved slots or erase
+either action outcome. Every stop is attempted and answered. Only when all three
+retained replies are occupied does the newest replace the last, counted in
+`drv.input_dropped`.
 
 The Python harness offers explicit one-attempt action commands and strict
 terminal validation. It does not add actions to read/load campaigns or retry

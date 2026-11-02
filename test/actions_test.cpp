@@ -286,7 +286,9 @@ void testBadRepliesAndExceptionPreserveEvidence() {
     checkActionTransportEvidence(confirmed.writeEvidence, acknowledged, 0, 220);
     assert(confirmed.writeEvidence.status && confirmed.writeEvidence.status.detail == 0 && !*confirmed.writeEvidence.status.msg);
     assert(confirmed.writeEvidence.frameError == Ess::FrameError::NONE);
-    assert(confirmed.execution == ActionExecution::ACKNOWLEDGED && confirmed.writeEvidence.executionUnknown);
+    // K-02: supplied execution uncertainty outranks a matching echo; the frame stays retained.
+    assert(confirmed.execution == ActionExecution::UNKNOWN && confirmed.writeEvidence.executionUnknown);
+    assert(confirmed.state == ActionState::ACTIVE && confirmed.step == 1); // Read-only observation may continue.
     auto c = action(); acknowledge(c); observe(c, 0x55, 0x8004);
     const auto last = c.lastObservation; auto bad = motion(0, 0); bad.back() ^= 1;
     assert(Ess::advanceAction(c, frame(c, bad.data(), bad.size(), c.eligibleUs), c.eligibleUs + 20));
@@ -301,7 +303,8 @@ void testExceptionExecutionUsesOnlyDocumentedRejections() {
         assert(Ess::advanceAction(c, frame(c, bytes.data(), bytes.size(), 200), 220));
         assert(c.state == ActionState::FAILED && c.outcome == ActionOutcome::REPLY_ERROR);
         assert(c.status.code == Err::EXCEPTION && c.status.detail == code);
-        const bool documentedRejection = code >= 1 && code <= 7;
+        // Function manual p12: 05 is a read-range error, not a refusal of this write.
+        const bool documentedRejection = code >= 1 && code <= 7 && code != 5;
         assert(c.execution == (documentedRejection ? ActionExecution::REJECTED : ActionExecution::UNKNOWN));
         assert(c.completion == ActionCompletion::NOT_OBSERVED && !c.observationKnown);
         assert(c.writeEvidence.status.code == Err::EXCEPTION && c.writeEvidence.status.detail == code);
@@ -364,7 +367,7 @@ void testBorrowedEvidenceInput() {
     assert(c.writeEvidence.status && c.writeEvidence.status.detail == 0);
     assert(!*c.writeEvidence.status.msg);
     assert(c.writeEvidence.frameError == Ess::FrameError::NONE);
-    assert(c.execution == ActionExecution::ACKNOWLEDGED);
+    assert(c.execution == ActionExecution::UNKNOWN); // K-02: uncertainty outranks the echo.
     auto bytes = motion(0, 0);
     e = frame(c, bytes.data(), bytes.size(), c.eligibleUs);
     const auto delivered = c.eligibleUs + 20;
@@ -390,9 +393,12 @@ void testZeroOnlyDeviceClearNeedsQualifiedFreshReadback() {
     acknowledge(c); assert(!c.observationKnown && c.completion == ActionCompletion::NOT_OBSERVED);
     assert(Ess::nextAction(c, c.eligibleUs, work) && !work.write && work.reg == 0xA && work.count == 2);
     observe(c, 0, 1); assert(c.state == ActionState::ACTIVE && c.rawPosition == 1);
+    assert(c.rawPositionWords[0] == 0 && c.rawPositionWords[1] == 1);
     assert(c.rawAlarm == 0 && c.rawMotion == 0); // These words are position, not motor status.
     observe(c, 1, 0); assert(c.state == ActionState::ACTIVE && c.rawPosition == 0x10000);
+    assert(c.rawPositionWords[0] == 1 && c.rawPositionWords[1] == 0); // Wire order, whichever 0x0019 selects.
     observe(c, 0, 0); assert(c.state == ActionState::SUCCEEDED && c.rawPosition == 0);
+    assert(c.rawPositionWords[0] == 0 && c.rawPositionWords[1] == 0);
     assert(c.completion == ActionCompletion::OBSERVED && c.execution == ActionExecution::ACKNOWLEDGED);
     assert(c.lastObservation.step > c.writeEvidence.step && c.lastObservation.earliestUs > c.writeEvidence.latestUs);
     const Saved<Ess::ActionContext> completed(c);

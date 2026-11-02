@@ -802,6 +802,16 @@ void testHomingParameterCorrelationDeadlineAndCancellation() {
         assert(!advanceRead(c,frame(c,HOMING_PARAMETERS,sizeof(HOMING_PARAMETERS)),1200)); terminal.check(c);
     }
 }
+// K-06: a reply to a request not fully transmitted cannot publish a read.
+void testFrameRequiresFullTransmission() {
+    for (std::size_t accepted : {std::size_t(0), std::size_t(1), std::size_t(7)}) {
+        auto c = identity(); ReadEvent e = frame(c, IDENTITY, sizeof(IDENTITY)); e.txAccepted = accepted;
+        const Saved<ReadContext> saved(c);
+        const Status status = ESS_RS::advanceRead(c, e, 230);
+        assert(!status && status.detail == static_cast<int32_t>(ReadError::INVALID_EVENT)); saved.check(c);
+    }
+    auto c = identity(); assert(ESS_RS::advanceRead(c, frame(c, IDENTITY, sizeof(IDENTITY)), 230));
+}
 void testCapabilitiesAndFixedStorage() {
     const ReadCapabilities caps = readCapabilities();
     assert(caps.probe && caps.identity && caps.config && caps.state && caps.velocityParameters && caps.homingParameters && caps.maxSteps == 5 && caps.maxReplyBytes <= 37);
@@ -815,7 +825,7 @@ int main() {
     testPartialFailuresPreservePreviousObservation(); testDeadlineUsesQualifiedClosureAndNeverRenewsBudget();
     testUnknownEnumsAndZeroEncoderRemainRawEvidence(); testMalformedRepliesRetainFailureWithoutPublishing();
     testTransportProvenanceIsBoundedOwnedAndNotAcknowledgement(); testUnknownIdentityAndBoundaryTargetsArePreserved();
-    testCapabilitiesAndFixedStorage();
+    testCapabilitiesAndFixedStorage(); testFrameRequiresFullTransmission();
     testStateWindowsBitfieldsAndAbsentFeedback();testStateConfiguredPairsAndUnknownAlarms();
     testStatePartialFailureAndConfigurationCorrelation();
     testVelocityParameterWindowAndOwnedObservation(); testVelocityParameterUnknownAndNativeBoundaryWords();

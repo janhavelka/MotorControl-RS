@@ -309,7 +309,7 @@ void testFullResultsAndBlockedOutputDuringInterruptStop() {
     assert(hardware.writes==writes+1 && !view(old).pending);
     const auto stopping=stop(); const auto stopDeadline=view(stopping).actionContext->deadlineUs;
     assert(stopping!=old && stopping!=replacement && view(stopping).pending);
-    assert(stopDeadline==view(stopping).actionContext->startedUs+3000000);
+    assert(stopDeadline==view(stopping).actionContext->startedUs+NORMAL_STOP_US+STOP_RECOVERY_US);
     assert(findRecord(*app,stopping)==&app->records[REQUEST_CAPACITY+1]);
     assert(!app->owner.txAccepted(findRecord(*app,stopping)->requestId));
     assert(hardware.time<physicalEnd && hardware.writes==writes+1);

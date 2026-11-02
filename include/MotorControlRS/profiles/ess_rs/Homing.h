@@ -18,7 +18,11 @@ enum class HomeInput : uint8_t { ORIGIN = 1, POSITIVE_LIMIT = 2, NEGATIVE_LIMIT 
  * function 2 for every starting location; only 7..10 require index.
  * Methods 11..14 and 27..30 require both origin/function 1 and negative-limit/
  * function 3 for every starting location; only 11..14 require index.
- * Index is internal motor Z; methods 33/34 need no external input terminal. */
+ * Index is internal motor Z; methods 33/34 need no external input terminal.
+ * With checked inputs, every method except 35 fails on an active assigned limit
+ * outside requiredInputs; an unrequired origin is never a fault. On every method
+ * release/stop/emergency-stop functions 4..6 fail while active; motion triggers
+ * 7..13 must be declared unconnected and inactive; selectors 14..17 are ignored. */
 struct HomeMethodDescriptor {
     HomingMethod method;
     HomeSupport support;
@@ -105,7 +109,8 @@ struct HomeContext {
     bool homedLowObserved = false, observationKnown = false;
     bool qualificationRevoked = false, inputsObserved = false;
     uint16_t rawInputs = 0;
-    uint16_t words[6] = {}, rawAlarm = 0, rawMotion = 0, rawPositionWords[2] = {};
+    uint16_t words[6] = {}, rawAlarm = 0, rawMotion = 0;
+    uint16_t rawPositionWords[2] = {}; ///< Qualified confirmed on-time zero-check frame only; zeroEvidence retains any other.
     uint64_t startedUs = 0, deadlineUs = 0, servicedUs = 0, eligibleUs = 0;
     uint64_t completionObservedUs = 0; ///< Eligibility of the completing status read, not reply closure/delivery.
     uint64_t lowObservedUs = 0; ///< First post-trigger low status read eligibility; baseline-low method35 uses prerequisites instead.

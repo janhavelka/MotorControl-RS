@@ -62,7 +62,9 @@ struct PreparedVelocity {
 /** Fully validates zero/sign/range, configured ramps, readiness and explicit
  * stop before any request is yielded. The target conversion uses the common
  * prepareVelocityTarget. No acceleration formula is established for ESS; an
- * ACCELERATION policy rejects as unsupported. Output unchanged on error. */
+ * ACCELERATION policy rejects as unsupported. A duration that
+ * options.maxPolls * pollIntervalUs cannot cover rejects as INVALID_OPTIONS; the
+ * default options cover 200 ms. Output unchanged on error. */
 Status prepareVelocity(VelocityContext&, const AxisConfig&, uint32_t operationId,
                        const VelocityRequest&, const VelocityPrerequisites&,
                        uint64_t nowUs, uint64_t deadlineUs,

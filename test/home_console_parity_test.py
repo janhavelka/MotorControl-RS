@@ -162,7 +162,8 @@ for executable in sys.argv[2:]:
             # then make it active only in a post-trigger witness.
             for field in ("activity_evidence", "low_evidence", "completion_evidence"):
                 broken = copy.deepcopy(record)
-                unexpected = 3 if record["method"] in positive_methods else 2 if record["method"] in origin_methods + negative_methods else 1
+                # Only a limit outside the path is a contradiction; an assigned origin never is.
+                unexpected = 3 if record["method"] in positive_methods + (2,) else 2
                 slot = 2 if record["method"] in assisted_methods else 1
                 broken["qualification"]["input_functions"][slot] = unexpected
                 broken["qualification"]["input_wiring"][slot] = 2
@@ -195,7 +196,7 @@ for executable in sys.argv[2:]:
                     else:
                         raw[8] = 1 if contradiction == "assigned_input" else 16
                         if contradiction == "assigned_input":
-                            broken["qualification"]["input_functions"][0] = 3 if record["method"] in positive_methods else 2 if record["method"] in origin_methods + negative_methods else 1
+                            broken["qualification"]["input_functions"][0] = 5 # An active stop input contradicts every method.
                     raw[-2:] = wire_crc(raw[:-2]).to_bytes(2, "little")
                     broken[field][2] = raw.hex()
                     if field == "completion_evidence":

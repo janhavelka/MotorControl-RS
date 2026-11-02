@@ -1352,7 +1352,7 @@ const HomingMethodDescriptor HOMING_METHODS[] = {
     {13, 47, true, false, "Method 13: reference motor Z index; use cited diagrams for starting-state-dependent paths."},
     {14, 49, true, false, "Method 14: reference motor Z index; use cited diagrams for starting-state-dependent paths."},
     {17, 50, false, false, "Method 17: reference negative limit; use cited diagrams for starting-state-dependent paths."},
-    {18, 51, false, true, "Method 18: reference positive limit; use cited diagrams for starting-state-dependent paths. Figure labels negative limit conflict with positive-limit prose; retain discrepancy."},
+    {18, 51, false, true, "Method 18: reference positive limit; use cited diagrams for starting-state-dependent paths. Prose and drawn trajectory agree on the positive limit; only the figure captions say negative. Confirm on a switch fixture."},
     {19, 52, false, false, "Method 19: reference origin input; use cited diagrams for starting-state-dependent paths."},
     {20, 52, false, false, "Method 20: reference origin input; use cited diagrams for starting-state-dependent paths."},
     {21, 53, false, false, "Method 21: reference origin input; use cited diagrams for starting-state-dependent paths."},

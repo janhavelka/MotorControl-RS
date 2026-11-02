@@ -36,7 +36,7 @@ Ess::VelocityPrerequisites prerequisites() {
     p.accelerationTime = p.decelerationTime = 100;
     p.observedUs = 80; p.maximumAgeUs = 2000; p.rawMotion = 1; return p;
 }
-ActionOptions options() { ActionOptions o; o.pollIntervalUs = 100; o.maxPolls = 8; return o; }
+ActionOptions options() { ActionOptions o; o.pollIntervalUs = 100; o.maxPolls = 10; return o; } // Exactly covers request()'s 1000 us.
 Ess::VelocityContext velocity() {
     Ess::VelocityContext c;
     assert(Ess::prepareVelocity(c, axis(), 12, request(), prerequisites(), 100, 10000, options())); return c;
@@ -283,7 +283,7 @@ void testBorrowedAndOversizedEvidence() {
     assert(c.stagingEvidence.status && c.stagingEvidence.status.detail == 0);
     assert(!*c.stagingEvidence.status.msg);
     assert(c.stagingEvidence.frameError == Ess::FrameError::NONE);
-    assert(c.setupExecution == ActionExecution::ACKNOWLEDGED);
+    assert(c.setupExecution == ActionExecution::UNKNOWN && !c.stagingApplied); // K-02: uncertainty outranks the echo.
     c = velocity(); bytes = reply(c); bytes.resize(40, 0xA5); e = frame(c, bytes, 120);
     assert(Ess::advanceVelocity(c, e, 140));
     checkActionTransportEvidence(c.stagingEvidence, e, 0, 140);
@@ -454,12 +454,14 @@ void testBoundedStopAndPreservedPrimaryFailure() {
     assert(c.status.detail == originalStatus.detail && c.failureEvidence.step == originalFailure.step);
     assert(c.triggerEvidence.step != c.stop.failureEvidence.step || c.triggerEvidence.deliveredUs != c.stop.failureEvidence.deliveredUs);
     // Both observation phases remain bounded and their global tokens do not wrap.
-    auto r = request(); r.durationUs = 100000; auto o = options(); o.maxPolls = Ess::ACTION_MAX_POLLS;
+    // Preparation now requires the poll budget to cover the duration, so the run
+    // reaches its stop within maxPolls without any retained observation failure.
+    auto r = request(); r.durationUs = 100000; auto o = options(); o.maxPolls = Ess::ACTION_MAX_POLLS; o.pollIntervalUs = 1600;
     auto p = prerequisites(); p.maximumAgeUs = 200000;
     assert(Ess::prepareVelocity(c, axis(), 12, r, p, 100, 300000, o)); trigger(c);
-    for (unsigned i = 0; i < Ess::ACTION_MAX_POLLS; ++i) consume(c, 4);
-    assert(c.phase == Ess::VelocityPhase::STOPPING && c.polls == Ess::ACTION_MAX_POLLS);
-    assert(c.outcome == ActionOutcome::OBSERVATION_LIMIT && c.needsStop);
+    while (c.phase == Ess::VelocityPhase::OBSERVING) consume(c, 4);
+    assert(c.phase == Ess::VelocityPhase::STOPPING && c.polls <= Ess::ACTION_MAX_POLLS);
+    assert(c.outcome == ActionOutcome::NONE && c.needsStop);
     consume(c); // Stop echo alone cannot settle velocity.
     for (unsigned i = 0; i < Ess::ACTION_MAX_POLLS; ++i) consume(c, 4);
     assert(c.state == ActionState::FAILED && c.needsStop && c.step < 255);
@@ -501,7 +503,102 @@ static void testOptionalAgePolicy() {
     assert(Ess::serviceVelocity(c, deadline) && c.state == ActionState::FAILED);
     assert(c.stop.completion == ActionCompletion::NOT_OBSERVED);
 }
+// K-02: one write-reply classification; exception 05 is not a rejection.
+static void testWriteReplyClassification() {
+    for (uint8_t code : {1, 2, 3, 4, 5, 6, 7, 8, 0x7F}) {
+        const bool rejected = code <= 7 && code != 5;
+        auto c = velocity(); consume(c);
+        std::vector<uint8_t> b = {1, 0x86, code}; crc(b);
+        const uint64_t at = c.eligibleUs + 20;
+        assert(Ess::advanceVelocity(c, frame(c, b, at), at + 20));
+        assert(c.execution == (rejected ? ActionExecution::REJECTED : ActionExecution::UNKNOWN));
+        assert(c.needsStop == !rejected && c.outcome == ActionOutcome::REPLY_ERROR && c.status.detail == code);
+        if (rejected) { assert(c.state == ActionState::FAILED); noWork(c); }
+        else {
+            // A possibly started run keeps its finite stop obligation.
+            assert(c.state == ActionState::ACTIVE && c.phase == Ess::VelocityPhase::STOPPING);
+            Ess::PreparedVelocity stop; assert(Ess::nextVelocity(c, c.eligibleUs, stop));
+            assert(stop.write && stop.urgent && stop.reg == 0x27 && stop.value == 0x100);
+        }
+        auto staged = velocity(); b = {1, 0x90, code}; crc(b);
+        const uint64_t stagedAt = staged.eligibleUs + 20;
+        assert(Ess::advanceVelocity(staged, frame(staged, b, stagedAt), stagedAt + 20));
+        assert(staged.setupExecution == (rejected ? ActionExecution::REJECTED : ActionExecution::UNKNOWN));
+        assert(staged.state == ActionState::FAILED && !staged.needsStop && staged.execution == ActionExecution::NOT_TRANSMITTED);
+    }
+    // Supplied execution uncertainty outranks a matching echo at either write.
+    auto staged = velocity(); auto bytes = reply(staged); auto at = staged.eligibleUs + 20;
+    auto e = frame(staged, bytes, at); e.transport.executionUnknown = true;
+    assert(Ess::advanceVelocity(staged, e, at + 20));
+    assert(staged.setupExecution == ActionExecution::UNKNOWN && !staged.stagingApplied && staged.state == ActionState::FAILED);
+    assert(staged.outcome == ActionOutcome::UNCONFIRMED_RESPONSE && staged.execution == ActionExecution::NOT_TRANSMITTED);
+    auto started = velocity(); consume(started); bytes = reply(started); at = started.eligibleUs + 20;
+    e = frame(started, bytes, at); e.transport.executionUnknown = true;
+    assert(Ess::advanceVelocity(started, e, at + 20));
+    assert(started.execution == ActionExecution::UNKNOWN && started.needsStop && started.phase == Ess::VelocityPhase::STOPPING);
+}
+// Runs a 10 ms poll loop whose replies take 5 ms, as on the serial bus.
+static Ess::VelocityContext runWithSlowReplies(uint32_t durationUs, uint16_t lastAlarm = 0) {
+    auto r = request(); r.durationUs = durationUs;
+    ActionOptions o; o.pollIntervalUs = 10000; o.maxPolls = Ess::ACTION_MAX_POLLS;
+    auto p = prerequisites(); p.maximumAgeUs = 0;
+    Ess::VelocityContext c; assert(Ess::prepareVelocity(c, axis(), 12, r, p, 100, 10000000, o));
+    const auto close = [&c](uint16_t flags, uint16_t alarm) {
+        const auto bytes = reply(c, flags, alarm); const uint64_t at = c.eligibleUs;
+        auto e = frame(c, bytes, at); e.transport.latestUs = at + 5000;
+        assert(Ess::advanceVelocity(c, e, at + 5000));
+    };
+    close(4, 0); close(4, 0);
+    while (c.phase == Ess::VelocityPhase::OBSERVING) {
+        if (c.eligibleUs >= c.stopDueUs) { assert(Ess::serviceVelocity(c, c.eligibleUs)); break; }
+        const bool last = c.eligibleUs + 5000 > c.stopDueUs;
+        close(4, last ? lastAlarm : 0);
+    }
+    assert(c.phase == Ess::VelocityPhase::STOPPING);
+    close(4, 0); close(1, 0);
+    return c;
+}
+// K-05: durations near a poll boundary must not differ in outcome.
+static void testObservationClosingAfterDurationEndsTheBudget() {
+    for (uint32_t duration : {uint32_t(90000), uint32_t(98000), uint32_t(100000), uint32_t(102000)}) {
+        const auto c = runWithSlowReplies(duration);
+        assert(c.state == ActionState::SUCCEEDED && c.outcome == ActionOutcome::OBSERVED);
+        assert(c.status && !c.serviceMissed && !c.needsStop && c.completion == ActionCompletion::OBSERVED);
+    }
+    // 98 ms is the one that closes after the duration; its alarm word still counts.
+    const auto alarmed = runWithSlowReplies(98000, 3);
+    assert(alarmed.state == ActionState::FAILED && alarmed.outcome == ActionOutcome::REPLY_ERROR);
+    assert(alarmed.status.detail == static_cast<int32_t>(VelocityError::DRIVE_FAULT) && alarmed.rawAlarm == 3);
+    assert(alarmed.completion == ActionCompletion::OBSERVED && !alarmed.needsStop);
+    // A closure far beyond the service bound remains a missed stop obligation.
+    auto r = request(); r.durationUs = 1000; auto c = velocity(); (void)r; consume(c); consume(c);
+    const auto bytes = reply(c); const uint64_t at = c.eligibleUs;
+    auto e = frame(c, bytes, at); e.transport.latestUs = c.stopDueUs + 101;
+    assert(Ess::advanceVelocity(c, e, c.stopDueUs + 101));
+    assert(c.serviceMissed && c.outcome == ActionOutcome::DEADLINE && c.phase == Ess::VelocityPhase::STOPPING);
+}
+// K-07: a duration the poll budget cannot cover never reaches the wire.
+static void testPollBudgetMustCoverDuration() {
+    const auto prepare = [](Ess::VelocityContext& c, uint32_t duration, const ActionOptions& o) {
+        auto r = request(); r.durationUs = duration; auto p = prerequisites(); p.maximumAgeUs = 0;
+        return Ess::prepareVelocity(c, axis(), 12, r, p, 100, 100000000, o);
+    };
+    Ess::VelocityContext c; const Saved<Ess::VelocityContext> saved(c);
+    const ActionOptions defaults;
+    Status rejected = prepare(c, 5000000, defaults);
+    assert(!rejected && rejected.detail == static_cast<int32_t>(VelocityError::INVALID_OPTIONS)); saved.check(c);
+    assert(!prepare(c, 200001, defaults)); saved.check(c);
+    ActionOptions tight; tight.pollIntervalUs = 100; tight.maxPolls = 9;
+    assert(!prepare(c, 901, tight)); saved.check(c);
+    Ess::VelocityContext admitted;
+    assert(prepare(admitted, 900, tight));
+    assert(prepare(admitted, 200000, defaults));
+    // The standalone application's own budget for its 1 s maximum duration.
+    ActionOptions application; application.pollIntervalUs = 20000; application.maxPolls = Ess::ACTION_MAX_POLLS;
+    assert(prepare(admitted, 1000000, application));
+}
 int main() {
+    testWriteReplyClassification(); testObservationClosingAfterDurationEndsTheBudget(); testPollBudgetMustCoverDuration();
     testOptionalAgePolicy();
     testGoldenFramesCommonParityAndFiniteStop(); testRejectedParametersUnchanged(); testSignRangesAndLatchedSettings();
     testFailuresAndLocalCancellation(); testCheckedRepliesAndEnvelopePreservation(); testDeadlinesActivityAndDelayedService();

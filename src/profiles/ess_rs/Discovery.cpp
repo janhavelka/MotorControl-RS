@@ -65,7 +65,7 @@ Status checkProbe(const PreparedProbe& prepared, const ReadEvent& event,
     if (event.kind > ReadEventKind::DEADLINE || event.txAccepted > prepared.length)
         return invalid(ReadError::INVALID_EVENT, "invalid probe event");
     if (event.kind == ReadEventKind::FRAME) {
-        if (!event.frame || (event.qualified && (event.earliestUs < prepared.startedUs ||
+        if (!event.frame || event.txAccepted != prepared.length || (event.qualified && (event.earliestUs < prepared.startedUs ||
             event.earliestUs > event.latestUs || event.latestUs > nowUs)) ||
             (!event.qualified && (event.earliestUs || event.latestUs)))
             return invalid(ReadError::INVALID_EVENT, "invalid probe frame envelope");
