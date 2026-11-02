@@ -1,7 +1,8 @@
 # LC57BK-R / RC promptset audit: corrections to apply before stage 01
 
-Audited 2 November 2026 at `363255a`. Product source last changed at `c0f124b`;
-later commits are documentation only. Recheck line numbers if the branch has advanced.
+Audited 2 November 2026 at `363255a`. Part 5 status was rechecked at `3b9411a`, after
+`6ff2374` and `ba20c8b` changed the ESS code. Line numbers elsewhere are from `363255a`,
+so recheck them before editing.
 
 **This is a work order.** Apply Part 1 and Part 2 to the promptset and evidence
 files, then start stage 01. Part 3 holds decided procedures and wire windows to copy
@@ -26,9 +27,10 @@ something, this audit reuses that decision so the two profiles do not diverge.
   reply behaviour is undocumented, misses the only documented fault-mask value and a
   documented recovery sequence, and treats target words as PA_016 pulses although
   no page says so.
-- **ESS code has defects that break the first physical switch-homing test.** They
-  contradict the "no confirmed runtime defect" result in the
-  [ESS final audit](../../reports/2026-11-02_ess_final_audit.md). See Part 5.
+- **ESS code had defects that broke the first physical switch-homing test.** They
+  contradicted the "no confirmed runtime defect" result in the
+  [ESS final audit](../../reports/2026-11-02_ess_final_audit.md). C2, C6 and C10 have
+  since been fixed; the status table in Part 5 lists what remains.
 - **The prompts describe prohibitions, not code.** They list what to avoid at length
   and rarely name what to build, which invites parallel ledgers and hand-typed tables.
 
@@ -53,6 +55,9 @@ them derived in tests.
 - `ProbeApp.cpp` binds `Rtu::essValidator()` at seven sites, holds six ESS contexts in
   every record, and `sizeof(App)` is already 206528 bytes (`docs/esp_idf_probe.md:99`).
 - `DiscoveryApp.h:103-118` and `DiscoveryScan.h` are ESS-bound.
+- `StateCache.h` and its 20 `ESS::StateBlock` indexes in `ProbeApp.cpp` are ESS-typed.
+  So is the model policy at `ProbeApp.cpp:1593` (`0x4EEA`, address 1), which an `lc57`
+  route must not inherit.
 - `docs/cli_contract.md:9-10,17` deliberately removed `profile ...` grammar, and
   `check_ess_operations.py:79-80` rejects it. **S11 item 1's "selected-profile"
   handling conflicts with both.**
@@ -69,11 +74,15 @@ TL57 audit's B1 decision:
    the second appends. Fix `ess_rs/Discovery.h:59-64`, which checks only that the
    profile exists and then always builds an ESS frame: once a second inventory entry
    exists, `prepareProbe(essOutput, LICHUAN_LC57BK, ...)` silently emits an ESS probe.
-   Guard `profile == ESS_RS`. `test/discovery_test.cpp:42,47,55` and
-   `bench_probe.py:2072` pin the single-profile inventory; update them deliberately.
+   Guard `profile == ESS_RS` and `capabilities.probe`, have `DiscoveryApp` return
+   UNSUPPORTED for an unrouted profile, and add a regression.
+   `test/discovery_test.cpp:42,47,55` and `bench_probe.py:2072` pin the single-profile
+   inventory; update them deliberately.
 2. Add `examples/common/LichuanRtuValidator.{h,cpp}` on the pattern of
    `EssRtuValidator.cpp`. It re-reads FC10 words from the request, because `Expectation`
-   carries no payload. Add `test/lichuan_owner_test.cpp`. No owner change is needed.
+   carries no payload. Return `Err::EXCEPTION` only for a checked exception, because
+   that is the only result that avoids the interlock (`RtuBusOwner.cpp:157-160`). Add
+   `test/lichuan_owner_test.cpp`. No owner change is needed.
 3. Add a separate console family, `examples/probe_cli/Lc57Console.{h,cpp}`, with an
    `lc57 ...` command root and its own JSON profile field. Do not parameterize the
    3000-line ESS console; existing commands keep their ESS meaning. Update
@@ -83,6 +92,11 @@ TL57 audit's B1 decision:
 5. Reject a target whose serial tuple differs from the active one. Mixed-tuple
    scheduling is out of scope: one `Timing` is retuned only while idle
    (`RtuRunner.h:82-92`), so a stop to another tuple would first need an idle bus.
+   Keep allowed tuples per profile, separate from host UART capability. `lc57` admits
+   the DIP bauds the host supports: 9600, 19200 and 38400. 4800 stays UNSUPPORTED until
+   added to `reviewedHostTuple` (`HostSerial.h:29-32`) with a timing review. 115200 is
+   not a documented LC57BK rate, and admitting it would inherit the ESS 304 µs reply-gap
+   exception, which `HostSerial.h:65` selects by tuple, not by profile.
 
 Then amend S03..S10 to require, per stage, "an owner-backed app route using the real
 sequence, real `BusOwner`, fake port and Lichuan validator, plus a CLI family command
@@ -93,6 +107,9 @@ isolation audit. Rewrite `README.md:16-17` and `docs/prompts/README.md:30` as
 Do not add LC57BK contexts side by side in `App::Record`. Give each profile its own
 statically allocated axis state, keyed by a common record header holding operation id,
 tuple, generations and reservations, and route completions by the admitted profile.
+S11 item 3's "fairness" has nothing behind it yet: the firmware has one producer
+(`ProbeApp.cpp:72`), although the owner supports several. Give each profile family a
+producer slot, or drop the word from S11.
 
 ### B2 (Blocker): completion depends on a mapping nothing can resolve in time
 
@@ -135,7 +152,8 @@ PA_077 (E10).
 > `ProbeConsole.cpp:635`, which labels everything other than normal as `"fast"`.
 
 The acknowledgement is not a stopped observation. See Part 3.4 for the observed-stop
-rule. Also fix the stop-capacity limits in C11 before copying that admission path.
+rule. Stop records are still not per axis (C11); settle that before a second axis uses
+this admission path.
 
 ### Major
 
@@ -145,7 +163,7 @@ rule. Also fix the stop-capacity limits in C11 before copying that admission pat
 | P2 | S03 items 4-5, tests | Scan tests have nothing to exercise: scanning lives in ESS-bound app code and `ProbeConsole.cpp:1062` rejects other profiles. | S03 covers inventory plus `prepareProbe`/`checkProbe` and `lc57 probe`. Move scan tests to S11. |
 | P3 | S03 item 1, S04 items 2, 4 | S04 relies on `0x2413/14`, `0x0008`, `0x001E`, none in S03's read list. S05 needs PA_016; S08 needs DI assignments, `0x0016`, `0x0017` and `0x0300`. | Replace S03 item 1's list with the Part 3.5 windows. |
 | P4 | S05 items 3-4, S06 item 3, S07 items 1, 4 | S05 and S07 both implement the record, bit 7, clear and start. `0x3m/0x5m` in S06 depends on segment records that S07 introduces, but README:35 lists only 04-05. | S05 adds one record type in the profile's segment header; S07 generalizes it to indexes and paths. Move `0x3m/0x5m` to S07. |
-| P5 | S05 item 1, S06 item 1 | "Qualify any mapping" invites an invented rpm/s formula. `MoveRequest` has only `speedRpm` and policy enums (`MoveOperation.h:10-19`), and S05 never names `MoveSetup`, `MoveRamp` or `RelativeBasis`. | Specify: reject `VelocityRamp::ACCELERATION` as UNSUPPORTED. Ramp words are native ms values in a profile struct, used with `VERIFIED_CONFIGURED`. The ramp's reference speed is a recorded limit. Name the supported `MoveSetup` values and reject the others. |
+| P5 | S05 item 1, S06 item 1 | "Qualify any mapping" invites an invented rpm/s formula. `MoveRequest` has only `speedRpm` and policy enums (`MoveOperation.h:10-19`), and S05 never names `MoveSetup`, `MoveRamp` or `RelativeBasis`. | Specify: reject `VelocityRamp::ACCELERATION` as UNSUPPORTED. Ramp words are native ms values in a profile struct, used with `VERIFIED_CONFIGURED`. The ramp's reference speed is a recorded limit. Name the supported `MoveSetup` values and reject the others. The jog and segment speed rows allow 0, but `prepareVelocityTarget` rejects zero (`Axis.cpp:654`). Keep that rejection for motion requests; a zero word is reachable only as a native setting. |
 | P6 | S05 item 4 | Relative moves need a basis. The manual says only 「相对位置」 "relative position". | Follow TL57 P5: a caller-supplied `relativeBasisVerified`; without it the endpoint is unknown and relative moves report ACK only. Record the basis as Q7. |
 | P7 | S06 item 2 vs TL S06 | LC only says to "distinguish" continuous jog; TL57 requires the common finite contract. `axis_contract.md:70` excludes unbounded velocity and ESS requires `durationUs` (`Velocity.cpp:98`). | Copy TL57's wording: the sequence yields `0x00` at expiry, and success requires a qualified stop. Use the C1 deadline rule. Do not offer an unbounded jog API. |
 | P8 | S03 item 2, S05, S08 item 4 | **Encoder presence cannot be read.** No model register exists, and PA_021 reports the configured loop mode, which an RC motor can set to open. "Encoderless variant" therefore has no source. | Add a caller-declared `Variant` (`OPEN_LOOP_R` / `CLOSED_LOOP_RC`) to the profile configuration in S03. `R` blocks encoder publication and modes 16..19. `RC` with PA_021=0 reports its configured mode without an encoder claim. |
@@ -155,6 +173,8 @@ rule. Also fix the stop-capacity limits in C11 before copying that admission pat
 | P12 | EC:28, S02 item 1, S12 | "Byte/CRC helpers only" forces a clone of `checkReply`, `checkEcho` and `joinWords` (`Codec.cpp:47-66`). | Follow TL57 P9: permit moving the reply envelope to `src/rtu/Frame.h` with an ESS regression. Extract the Part 5 helpers before the second copy. Add a reuse audit to S12. Keep sequence contexts in the profile namespace; do not hoist types speculatively. |
 | P13 | EC:91, `docs/backlog.md:206`, `docs/roadmap.md:104`, `architecture.md:30-31,515`, `AGENTS.md:45` | The backlog says to select actual motors first, and architecture says to require hardware evidence "before advertising another profile". A coder can legitimately stop there. | Add to EC and align those files: "Implementation may proceed from the preserved manuals. LC57BK is not advertised as supported in `README.md` or the release scope until a fixture passes S12B." |
 | P14 | All stages, EC | The contract has 18 prohibition phrases, and no stage names its ESS analogue, target types or test suite. | Give each stage a short **Deliver** list: headers, context types, suite name and ESS analogue. Keep shared rules in EC only. Part 3.6 is the starting layout. |
+| P22 | S03 item 4, `ReadOperation.h:45-54` | "Truthful capabilities" has no target: `ReadOperation.h` holds only types, and `ReadCapabilities` lists the read families ESS consumes. | LC57BK needs its own `Reads` API. Fill the fields that apply, leave the rest false and report the rest through profile-local types. Do not rename the common fields for this profile. |
+| P23 | `README.md:56`, `docs/prompts/README.md:19-20`, `docs/backlog.md:220-221` | These state 12 stages and LC-D01..LC-D15, which stops being true once 02b and LC-D16..D19 land. | Update all three in the same commit as those changes. |
 
 ### Minor
 
@@ -197,10 +217,11 @@ rule. Also fix the stop-capacity limits in C11 before copying that admission pat
 | E16 | R13:80-81, S09 item 1 | LC-OP p. 4: PA_017/018（电流出厂默认已经设置好，不需要修改） "factory-set, no need to change". Guard current setters with this. Unit is unstated; range to 6000 against 5 A peak stays unresolved. |
 | E17 | S09 item 1 | PA_019 is an RW encoder-line setting. Writing a wrong value on a closed-loop drive is hazardous (inference); do not offer it as an ordinary tuning field. Record the p. 19 whine remedy: PA_006=0 and 重新驱动器 (verb missing, presumably restart), then reduce PA_009/010, then PA_011/013. |
 | E18 | R13:124, S06 item 3 | "Continuous until stopped" is inference; the manual shows only start and 停止报文. `0x3m/0x5m` use 第m段速度; their ramp source is unstated. |
-| E19 | LC-D05 (R13:178), S02 item 4 | Add the p. 17 caption typos 第21寄存器, 第9字节 and the exception meanings 地址非法, 数据非法, 拒绝执行. Derived fixture: `01 86 04 43 A3`. Treat 02..04 as REJECTED. Keep any other CRC-valid exception raw with execution UNKNOWN; do not classify undocumented codes (C10). |
-| E20 | REG | R13:34 calls these original cells, but they contain extraction noise. A stray `_` line: PA_037, 039, 047, 054, 058, 087, 095, 103, 111, 119, 127, 135. `PA 034` for `PA_034`: PA_036, 038, 040, 048, 086, 094, 102, 110, 118, 126, 134. Clean them. |
+| E19 | LC-D05 (R13:178), S02 item 4 | Add the p. 17 caption typos 第21寄存器, 第9字节 and the exception meanings 地址非法, 数据非法, 拒绝执行. Derived fixture: `01 86 04 43 A3`. Treat 02..04 as REJECTED. Keep any other CRC-valid exception raw with execution UNKNOWN; do not classify undocumented codes (C10). The runner expects a 5-byte reply only when the function has `0x80` set (`RtuRunner.cpp:285-288`), so a real reply in the printed `01 06 04 10 00` form would end as LENGTH and interlock the bus. Q1 settles the form. Do not change the runner before then; if Q1 finds the printed form, the change must be profile-specific. |
+| E20 | REG | R13:34 calls these original cells, but they contain extraction noise. A stray `_` line: PA_037, 039, 047, 054, 058, 087, 095, 103, 111, 119, 127, 135. A lost underscore, such as `PA 034` for `PA_034`: PA_036, 038, 040, 048, 058, 086, 094, 102, 110, 118, 126, 134. Clean them. |
 | E21 | Models JSON | The product page lists brake body lengths (125.7, 151.7, 169.7, 179.7 mm), φ8/φ10 shafts and 82N230 at 2.3 Nm, 1.23 kg. Add them as candidate attributes. PA_028/029 and DO function 4 apply only with a brake. Listing screenshots are not preserved in the repository, so listing claims cannot be rechecked. |
 | E22 | R13:112 | PA_016 is the proposed probe; add that it has no identity value. Also note the published FC03 example reads only two words: longer windows in Part 3.5 are host policy, not demonstrated. |
+| E23 | Sources manifest | `visually_reviewed_pdf_pages` for LC-OP lists only pp. 3, 4 and 6, though E14 and Part 3.2 rely on pp. 5 and 7. This audit viewed every page of both manuals as images, so update the list. |
 
 ## Part 3: decided procedures and windows
 
@@ -308,10 +329,10 @@ still applies. Q1..Q2 are read-only. Q3 onward moves a free shaft by small finit
 | Q | Question | Method | Closes |
 | --- | --- | --- | --- |
 | Q1 | Transport and termination | Record nameplate and DIP positions. Measure across A/B unpowered, with SW6 both ways (SW6 is undocumented; TL-USER p. 9 says 120 Ω for a sister family, hypothesis only). 38400 8N1 `0x0010/1`. Provoke one exception with *derived* `01 03 00 04 00 01 C5 CB`, reading a hole: is the form `01 83 xx`? | LC-D05, D06 |
-| Q2 | Pre-motion state | Read and retain every Part 3.5 window, including `0x2401`, `0x2403`, PA_023, PA_008, PA_030, PA_031, DI functions, `0x0300`, `0x030B`, `0x0013`, `0x0015`. Write nothing. If an input looks active, report it. Stop if PA_023=1 and a power cycle is planned | LC-D01, D08, D15, D17, D18 |
+| Q2 | Pre-motion state | Read and retain every Part 3.5 window, including `0x2401`, `0x2403`, PA_023, PA_008, PA_030, PA_031, DI functions, `0x0300`, `0x030B`, `0x0013`, `0x0015`. Write nothing. If an input looks active, report it. Stop if PA_023=1 and a power cycle is planned. TL57 documents function 0 as no function; that is a hypothesis for LC57BK, so do not write it | LC-D01, D08, D15, D17, D18 |
 | Q3 | Status address | Poll `0x2401` and `0x2403` during a small segment 0 move. **No write to `0x2403` is needed.** The address whose bits change with motion is status. Record how Bit2 behaves, and whether a fast move can skip its low phase | LC-D02 |
 | Q4 | Encoder | Compare `0x0013` with the 1000 and 4096 claims; compare the `0x0314/2` delta over one turn | LC-D01 |
-| Q5 | Units | Command one PA_016 of displacement, then check `0x0312/2`, `0x0314/2` and a shaft mark. Repeat with a second PA_016 value, restoring after | LC-D16 |
+| Q5 | Units | Command one PA_016 of displacement, then check `0x0312/2`, `0x0314/2` and a shaft mark. Repeat with a second PA_016 value, restoring after. TL57's table labels its target 定位目标(脉冲) "target, pulses"; that is a hypothesis here, not evidence | LC-D16 |
 | Q6 | Windows and pairs | Read each long window. Do `0x0314/2` reads stay coherent while moving? Record latency and turnaround | LC-D15 |
 | Q7 | Relative and busy | Relative basis, with and without following error. Same start value with no clear; a start while moving; a clear while moving; read `0x2402` after a start | LC-D07 |
 | Q8 | Negative values | Stage only: *derived* `01 10 26 01 00 02 04 FC 18 FF FF 31 E5` (−1000, low word first). Exception 03 means the range is enforced; two's complement may be unsupported. Read back, trigger only if accepted, by a small amount. TL-OP p. 8 is a hypothesis, not evidence | LC-D04 |
@@ -322,9 +343,36 @@ still applies. Q1..Q2 are read-only. Q3 onward moves a free shaft by small finit
 
 ## Part 5: existing ESS code
 
-Part of the audit brief, and relevant because LC57BK stages copy these patterns. No
-code was changed. No new behaviour has run on hardware. Record each item in the
-[backlog](../../backlog.md) when fixed.
+Part of the audit brief, and relevant because LC57BK stages copy these patterns. This
+audit changed no code. Record each item in the [backlog](../../backlog.md) when fixed.
+
+### Status at `3b9411a`
+
+Read from source and the changelog. The fixes were not re-run for this table, and none
+of them has run on hardware. Details below describe the code at `363255a`.
+
+| ID | Status | Now |
+| --- | --- | --- |
+| C1 | Partly fixed | `6ff2374` lets a stop proceed after a transport fault, and a poll closing past the duration no longer fails. An OBSERVING poll still gets `stopDueUs` as its deadline (`Velocity.cpp:27-35`). Rerun the TL57 scenario before the first physical velocity test |
+| C2 | Fixed `ba20c8b` | `moveTimeoutMs` and `runningPollIntervalUs`. LC57BK must still derive its budget from travel |
+| C3 | Not rechecked | See the TL57 audit |
+| C4 | Fixed `6ff2374` | Relative moves reject a non-idle reference |
+| C5 | Fixed `6ff2374` | `Reads.cpp:185`, `Discovery.cpp:68` |
+| C6 | Fixed `ba20c8b` | `ProbeConsole.cpp:854` includes `home` |
+| C7 | Open | `Homing.cpp:317`. Decide from bench evidence under H-02 |
+| C8 | Open | `Homing.cpp:345`. Decide from bench evidence under H-02 |
+| C9 | Open for homing | `Homing.cpp:309` ends the home. Velocity's `failStep` can send a stop, so recheck that path |
+| C10 | Fixed `6ff2374` | `classifyWrite` in `ActionEvidence.h` |
+| C11 | Mostly fixed `6ff2374` | Two stop records, and fast can escalate normal. Records are not yet per axis, which matters before B1's second axis |
+| C12 | Open | `ProbeApp.h` still has no stop call |
+| C13 | Partly fixed `ba20c8b` | Typed routes open the home, velocity and position-clear gates. `driverInputsQualified` still has no setter (`ProbeApp.cpp:182,1556`). `s.timingQualified = false` (`:532`) and `Action::TIMING_UNQUALIFIED` (only labelled at `ProbeConsole.cpp:685`) remain |
+
+**H-02** in the [standalone audit](../../reports/2026-11-02_standalone_promptset_audit.md)
+landed after this audit and decides C7 and C8: do not relax these gates from reasoning.
+Run method 35 first, retain the raw words at every poll, and decide from that evidence.
+Where the C7 and C8 fixes below differ, H-02 wins.
+
+### Findings as audited
 
 **Already in the TL57 audit, and confirmed independently here:** C1, C2 and C5, and
 the `Discovery.h` route in B1. C3 and C4 are not re-derived. C1 extends: a healthy final poll
@@ -343,8 +391,8 @@ between calls (`Position.h:106`).
 raises "home acceptance is not explicit" after motion was queued. The test fake at
 `test/bench_probe_test.py:572` emits `accepted`, so nothing catches the mismatch.
 `ConsoleText.cpp:415` also prints `[OK] home` for a pending operation.
-**Fix:** add `home` to the list and correct line 1741. Fix C2 and C6 before any physical
-homing test: each breaks a home campaign alone.
+**Fix:** add `home` to the list and correct line 1741. C2 and C6 each broke a home
+campaign alone.
 
 ### Medium
 
@@ -371,20 +419,27 @@ includes. Add:
 - `Communication.cpp:174-180` and `Persistence.cpp:160-166` hand-copy `copyActionEvidence`.
 - `prepareVelocityParameters` and `prepareHomingParameters` differ only by kind
   (`Reads.cpp:135-160`).
-- Dead: `HomeInput` (`Homing.h:13`, the table uses magic 1..5), `METHOD_UNIMPLEMENTED`,
+- Dead: `HomeSupport::UNIMPLEMENTED`, `METHOD_UNIMPLEMENTED`,
   `DriverProgress.activeKnown/active`, `ConfigObservation.inputLevelKnown/inputLevel`.
   `Actions.cpp:60-67` `observed(alarm, motion)` receives position words for clear-position.
+- Redundant or stale: `HomePhase::STAGING/TRIGGER` mirror `step` 0/1, and the
+  `Homing.h:134` comment on future methods is out of date, because unresolved methods
+  return UNSUPPORTED.
 - Common wrappers injecting ESS types into `MotorControlRS` (`Actions.h:104-129`,
   `Position.h:251-270`, `Homing.h:165-171`, `Velocity.h:89-96`): ADL already finds them.
   Remove them, or keep them as per-profile overloads, but do not add a second set by habit.
-- `ProbeApp.cpp`: 7 `BusRequest` builders plus 5 in `*App.h`, 15 copies of one serial
-  admission guard, 5 `check*Write` tails. `Console::dispatch` is 1257 lines. Split
-  before B1 grows them: app state, bus work, admission, driver policy, advance, delivery
-  and public API; `check_ess_operations.py:21,63` parses `COMMANDS` from
-  `ProbeConsole.cpp`, so move the table with its parser. Tests include `ProbeApp.cpp`
-  directly; keep it as an umbrella at first.
+- `ProbeApp.cpp`: 7 `BusRequest` builders plus 5 in `*App.h`, 9 record-allocation loops
+  plus 2, 15 copies of one serial admission guard, 5 `check*Write` tails, 12
+  `switch (kind)` sites and the event-kind mapping twice. `Console::dispatch` is 1257
+  lines. Split before B1 grows them: app state, bus work, admission, driver policy,
+  advance, delivery and public API. Split `ProbeConsole.cpp` into a command table plus
+  per-family parser and format pairs, following `HomeConsoleParser`;
+  `check_ess_operations.py:21,63` parses `COMMANDS` from `ProbeConsole.cpp`, so move the
+  table with its parser. Tests include `ProbeApp.cpp` directly; keep it as an umbrella at
+  first.
 - `bench_probe.py`: class `Console` is 2090 lines and `_check_driver` 319. Split into
-  transport, per-family checks, campaigns and CLI. Add LC57BK tooling as a new module.
+  transport, per-family checks, campaigns and CLI, and split `_bench_evidence.py` by
+  operation family. Add LC57BK tooling as a new module.
 
 **Do not refactor before need:** `Axis.h`, `Units.h`, `MoveOperation.h` and
 `VelocityOperation.h` carry rpm-named and int16 fields, but those fit LC57BK's 0..3000
@@ -407,8 +462,10 @@ gcc and clang, full Arduino and full IDF; `RtuBusOwner` neutrality; `SequenceId`
 not a reservation; FieldCore 21 TX, 192 RX, 8N1, 9600..115200 at `5ad9292`. 38400 is an
 accepted host baud; 4800 is not (`HostSerial.h:31`). The 23-byte frame fits the firmware's TX
 buffer; it exceeds only `EssRtuValidator.cpp:14`'s local limit and FieldCore's 21.
-Interrupt handoff, stale-completion rejection, no-replay, method table inputs, word
-order and buffer sizes in ESS were traced without a defect.
+Interrupt handoff, stale-completion rejection, no-replay, the method table's required
+inputs, word order and buffer sizes in ESS were traced without a defect. This does not
+cover the poll-time input check: the standalone audit's H-01 found that it aborted limit
+methods on an origin crossing, and `6ff2374` fixed it.
 
 ## Part 7: tooling
 
@@ -432,6 +489,11 @@ pp. 4-5 and LC-OP p. 3 as images, recomputed every CRC quoted here, re-ran the C
 C7..C9 reproducers, confirmed the 16515 arithmetic, product-page text and `9217` font,
 and read the code at C2, C6, C9..C11 and the discovery route.
 
+A later completeness pass compared this file with all four reviewers' reports, recomputed
+the derived CRCs and the mask arithmetic, checked every Part 3.5 FC03 window for holes
+against REG (FC10 windows were not rechecked), rechecked Part 5 at `3b9411a`, and added
+the items they had dropped.
+
 **Passed offline:** `prepare_lichuan_references.py --check`,
 `generate_ess_registers.py --check`, `test/lichuan_reference_test.py`.
 
@@ -448,11 +510,11 @@ Editing the promptset and evidence is documentation work, so run
 `python scripts/prepare_lichuan_references.py --check`,
 `python test/lichuan_reference_test.py` and `python scripts/check_repository.py`.
 Part 7's T1 and any Part 5 code fix are major changes: run quick verification and
-terminal CI on the exact final commit. Fix C2 and C6 before the first ESS physical homing
-test and C1 before the first physical velocity test. Record each finding's disposition
-here or in the backlog.
+terminal CI on the exact final commit. Settle C7 and C8 under H-02 during the first ESS
+physical homing test, and recheck C1 before the first physical velocity test. Record each
+finding's disposition here or in the backlog.
 
-Suggested order: C1, C2, C6 and the Part 5 helpers, then Part 1 and Part 2 edits (B1..B3
+Suggested order: the open Part 5 items and helpers, then Part 1 and Part 2 edits (B1..B3
 first), then new issues LC-D16..D19 and Part 3 into R13, then S01. Coordinate B1 and
 the enum in B3 with TL57: whichever family lands first owns them.
 
@@ -460,14 +522,17 @@ the enum in B3 with TL57: whichever family lands first owns them.
 | --- | --- |
 | S01 | B2, P9, P13, P15, E1..E13 dispositions, T1 |
 | S02 | P12, P18, E19, T7, Part 3.5 |
-| 02b (new) | B1 |
-| S03 | B2, P2, P3, P8, E4, E5, E14, E22 |
+| 02b (new) | B1, P23 |
+| S03 | B2, P2, P3, P8, P22, E4, E5, E14, E22 |
 | S04 | B3, P19, E9, E10, E11, Part 3.3 |
-| S05 | B2, P4, P5, P6, E3, Part 3.1, 3.4 |
-| S06 | P4, P5, P7, E18, C1 |
+| S05 | B2, P4, P5, P6, P18, P19, E3, Part 3.1, 3.4 |
+| S06 | P4, P5, P7, P19, E18, C1 |
 | S07 | P4, P10, Part 3.5 |
-| S08 | B2, E8, E13, C2, C7, C8 |
+| S08 | B2, P10, P19, E8, E13, C2, C7, C8 |
 | S09 | P10, P11, E7, E8, E16, E17 |
 | S10 | P10, E12, E15 |
 | S11 | B1, P2, P11, C11 |
 | S12 | P1, P12, Part 4 |
+| Promptset and contract, before S01 | P14, P16, P17, P20, P21 |
+| Reference files, with S01 | E20, E21, E23, T6, T8 |
+| ESS code, not a stage | C1, C3, C7..C9, C11..C13, helpers. Already fixed: C2, C4..C6, C10 |
