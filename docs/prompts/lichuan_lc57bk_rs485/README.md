@@ -3,6 +3,9 @@
 Prepared 2026-10-23. **Source collection and prompt preparation complete.
 All implementation stages are NOT STARTED; Lichuan hardware is NOT TESTED.**
 
+**Before stage 01, apply the [2 November audit](audit.md):** it adds a required
+stage 02b, replaces the status and stop gates and corrects the evidence review.
+
 Add the requested Lichuan backpack RS485 family as an independent concrete profile
 inside **MotorControl-RS**, preserving ESS behavior and the existing framework
 independent core. Start from the [engineering evidence review](../../reference/13_lichuan_lc57bk_rs485.md),
