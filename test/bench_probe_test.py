@@ -1304,8 +1304,120 @@ class Framing(unittest.TestCase):
         self.assertEqual(len(self.port.writes), 1)
         parsed = bench.arguments(["--port", "FAKE", "--log", "unused", "home", *self.HOME_ARGS, "--cleanup-stop", "normal"])
         self.assertEqual(parsed.home_args, self.HOME_ARGS)
-        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-            bench.arguments(["--port", "FAKE", "--log", "unused", "home", "33", *self.HOME_ARGS[1:], "--cleanup-stop", "normal"])
+        self.assertEqual(parsed.home_facts, ())
+
+    FACTS = ("mechanics", "rates", "ramp", "zero-offset", "auxiliary", "inputs")
+
+    def home_arguments(self, *tokens):
+        return bench.arguments(["--port", "FAKE", "--log", "unused", "home", *tokens, "--cleanup-stop", "normal"])
+
+    def test_home_mode_accepts_33_34_35_and_keeps_switch_methods_explicit(self):
+        # Methods 33 and 34 are now reachable (owner decision D3); each fact stays the caller's.
+        for method in ("33", "34", "35"):
+            parsed = self.home_arguments(method, *self.HOME_ARGS[1:], "--fact", "mechanics")
+            self.assertEqual(parsed.home_args[0], method); self.assertEqual(parsed.home_facts, ("mechanics",))
+        for rejected in (("18", *self.HOME_ARGS[1:]), ("15", *self.HOME_ARGS[1:]), ("-1", *self.HOME_ARGS[1:]),
+                         ("3", *self.HOME_ARGS[1:]), ("3", *self.HOME_ARGS[1:], "--fact", "inputs"),
+                         ("3", *self.HOME_ARGS[1:], "--wiring", "x0", "connected"),
+                         ("35", *self.HOME_ARGS[1:], "--fact", "everything"),
+                         ("35", *self.HOME_ARGS[1:], "--fact", "rates", "--fact", "rates"),
+                         ("35", *self.HOME_ARGS[1:], "--wiring", "x9", "connected")):
+            with self.subTest(rejected=rejected), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                self.home_arguments(*rejected)
+        parsed = self.home_arguments("3", *self.HOME_ARGS[1:], "--fact", "inputs", "--wiring", "x0", "connected")
+        self.assertEqual(parsed.home_wiring, (("x0", "connected"),))
+
+    def home_console(self, install=None):
+        """A real home terminal behind real read fixtures and a scripted install reply."""
+        typed, home = TypedSerial(), HomeSerial()
+        homed = []
+        def handler(i, command, args):
+            if command == "wiring":
+                return encoded(reply(i, command, result="done", target=17, address=1, generation=9,
+                                     configuration_generation=3, inputs=[2, 0, 0, 0], outputs=[0] * 2, bus_traffic=False))
+            if command == "home" and args[:1] == ["qualification"]:
+                return encoded(install(i) if install else reply(i, "home-qualification-install", result="done"))
+            if not homed and (command == "read" or (command == "home" and args[:1] == ["read"])):
+                return typed(i, command, args)
+            if command == "release" and int(args[0]) in typed.retained:
+                return typed(i, command, args)
+            if command == "home": homed.append(i)
+            return home(i, command, args)
+        return self.session(handler)
+
+    def test_home_campaign_installs_exactly_the_stated_facts_before_one_home(self):
+        console = self.home_console()
+        bench.home_campaign(console, home_args=self.HOME_ARGS, facts=self.FACTS, wiring=(),
+                            cleanup_stop="normal", timeout_s=3, address=1)
+        lines = [line.decode() for line in self.port.writes]
+        commands = [" ".join(line.split()[1:]) for line in lines]
+        self.assertEqual([next(j for j, line in enumerate(commands) if line.startswith(name)) < commands.index("home qualification install 35 60 30 100 " + " ".join(self.FACTS))
+                          for name in ("read config", "read state", "home read")], [True, True, True])
+        install = next(line for line in commands if line.startswith("home qualification install"))
+        self.assertEqual(install, "home qualification install 35 60 30 100 " + " ".join(self.FACTS))
+        self.assertLess(commands.index(install), next(i for i, line in enumerate(commands) if line.startswith("home 35")))
+        self.assertEqual(sum(line.startswith("home 35") for line in commands), 1)
+        self.assertEqual(self.events[-1]["homes_attempted"], 1)
+
+    def test_home_campaign_declares_wiring_before_its_reads(self):
+        console = self.home_console()
+        bench.home_campaign(console, home_args=self.HOME_ARGS, facts=self.FACTS, wiring=(("x0", "connected"),),
+                            cleanup_stop="normal", timeout_s=3, address=1)
+        commands = [" ".join(line.decode().split()[1:]) for line in self.port.writes]
+        self.assertEqual(commands[1], "wiring x0 connected")
+        self.assertTrue(commands[2].startswith("read config"))
+
+    def test_home_campaign_without_facts_asserts_none(self):
+        def handler(i, command, args):
+            if command == "home":
+                return encoded(reply(i, command, ok=False, result="qualification_required", address=1, operation_id=0))
+            return Serial.normal(i, command, args)
+        console = self.session(handler)
+        with self.assertRaises(bench.BenchError) as raised:
+            bench.home_campaign(console, home_args=self.HOME_ARGS, facts=(), wiring=(),
+                                cleanup_stop="normal", timeout_s=3, address=1)
+        self.assertIn("qualification_required", str(raised.exception))
+        self.assertEqual([line.decode().split()[1:] for line in self.port.writes][1:], [["home", *self.HOME_ARGS, "1"]])
+        self.assertEqual(self.events[-1]["cleanup"], "not_required")
+
+    def test_refused_install_names_its_reason_and_sends_no_home(self):
+        for fields in (dict(result="missing_fact", fact="index"), dict(result="reads_required", read_first="home read"),
+                       dict(result="stored_offset_nonzero")):
+            console = self.home_console(lambda i: reply(i, "home-qualification-install", ok=False, **fields))
+            with self.subTest(fields=fields), self.assertRaises(bench.BenchError) as raised:
+                bench.home_campaign(console, home_args=self.HOME_ARGS, facts=self.FACTS, wiring=(),
+                                    cleanup_stop="normal", timeout_s=3, address=1)
+            self.assertIn(fields["result"], str(raised.exception))
+            self.assertTrue(console.synchronized)
+            self.assertFalse(any(line.decode().split()[1:3] == ["home", "35"] for line in self.port.writes))
+
+    def test_qualification_route_replies_are_exact(self):
+        for fields in (dict(ok=True, result="accepted"), dict(ok=True, result="done", fact="index"),
+                       dict(ok=False, result="made_up"), dict(ok=False, result="missing_fact"),
+                       dict(ok=False, result="reads_required"), dict(ok=False, result="busy", fact="index"),
+                       dict(ok=True, result="done", operation_id=7)):
+            def handler(i, command, args):
+                if command == "velocity": return encoded(reply(i, "velocity-qualification-install", **fields))
+                return Serial.normal(i, command, args)
+            console = self.session(handler)
+            with self.subTest(fields=fields), self.assertRaises(bench.BenchError):
+                console.command("velocity-qualification-install", host_args=("rpm", "ramp", "inputs"))
+        console = self.session()
+        for command, tokens in (("velocity-qualification-install", ("rpm", "rpm")), ("velocity-qualification-install", ("bogus",)),
+                                ("position-clear-qualification-install", ("rpm",)), ("home-qualification-install", ("35", "60")),
+                                ("home-qualification-revoke", ("extra",)), ("motion-profile-start-speed-relation", ("30",)),
+                                ("motion-profile-start-speed-relation", ("3001", "20")), ("motion-profile-start-speed-relation", ("30", "0"))):
+            with self.subTest(command=command, tokens=tokens), self.assertRaises(ValueError):
+                console.begin(command, host_args=tokens)
+        self.assertEqual(len(self.port.writes), 1)
+
+    def test_qualification_required_is_a_recognized_refusal(self):
+        def handler(i, command, args):
+            if command == "velocity": return encoded(reply(i, "velocity", ok=False, result="qualification_required", address=1, operation_id=0))
+            return Serial.normal(i, command, args)
+        console = self.session(handler)
+        result = console.command("velocity", velocity_args=("30", "rpm", "native", "200", "configured", "normal"), address=1)
+        self.assertEqual(result["result"], "qualification_required"); self.assertTrue(console.synchronized)
 
     def test_home_qualification_gate_is_one_attempt_with_no_cleanup_write(self):
         def handler(i, command, args):

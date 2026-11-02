@@ -19,6 +19,9 @@ DEFAULT = {"implementation": "NOT_IMPLEMENTED", "cli": "NOT_REACHABLE",
 IMPLEMENTATION = {"NOT_IMPLEMENTED", "IN_PROGRESS", "IMPLEMENTED", "UNSUPPORTED"}
 EVIDENCE = {"NOT_RUN", "PASS", "FAIL", "NOT_APPLICABLE"}
 CONSOLE = ROOT / "examples/probe_cli/ProbeConsole.cpp"
+ROUTE_SOURCES = {"grammar": ROOT / "examples/probe_cli/QualificationConsole.h",
+                 "handler": ROOT / "examples/probe_cli/QualificationApp.h",
+                 "api": ROOT / "examples/probe_cli/ProbeApp.h"}
 PUBLIC_DECLARATION = re.compile(
     r"^(?:(?:inline|constexpr)\s+)*(?:const\s+)?[A-Za-z_][\w:]*(?:\s*\*)?\s+([A-Za-z_]\w*)\s*\(", re.MULTILINE)
 
@@ -141,6 +144,37 @@ def check_cli_route(command, metadata, operation_kind):
         raise ValueError("invalid operation CLI prefix: " + command)
 
 
+def check_host_routes(routes, keys):
+    """Console routes that change only host qualification state, never a register.
+
+    Each must be a real production route: its grammar is printed by help, its reply
+    name is produced by the console, its facts are in the parser's table, and its
+    handler calls the declared application API. Removing one needs an edit here too.
+    """
+    console = CONSOLE.read_text(encoding="utf-8")
+    grammar, handler, api = (ROUTE_SOURCES[name].read_text(encoding="utf-8") for name in ("grammar", "handler", "api"))
+    produced = set(re.findall(r'"([a-z-]+-qualification-(?:install|revoke)|motion-profile-start-speed-relation)"', console))
+    listed = set()
+    for route in routes:
+        keys(route, "route wire_command syntax api facts reason", "host route")
+        name = route.get("wire_command")
+        if name in listed or not route.get("reason"):
+            raise ValueError("duplicate or unexplained host route: " + str(name))
+        listed.add(name)
+        if name not in produced or route.get("route", "").replace(" ", "-") != name:
+            raise ValueError("host route has no producing console reply: " + str(name))
+        if route.get("syntax") not in {part.strip() for literal in re.findall(r'"([^"]*)"', console) for part in literal.split("|")}:
+            raise ValueError("host route grammar absent from production help: " + str(name))
+        symbol = route.get("api", "")
+        if not re.search(r"\b" + re.escape(symbol) + r"\s*\(", api) or not re.search(r"\b" + re.escape(symbol) + r"\s*\(", handler):
+            raise ValueError("host route handler does not call its application API: " + str(name))
+        for fact in route.get("facts", []):
+            if '{"' + fact + '", &QualificationCommand::' not in grammar:
+                raise ValueError("host route fact absent from the parser: " + str(fact))
+    if listed != produced:
+        raise ValueError("console qualification routes differ from host_routes: " + ", ".join(sorted(listed ^ produced)))
+
+
 def local_file(value):
     """Evidence/API references must designate files inside this checkout."""
     if not isinstance(value, str) or not value or Path(value).is_absolute():
@@ -158,7 +192,8 @@ def check(inventory, ledger):
         if not isinstance(value, dict) or set(value) - set(allowed.split()):
             raise ValueError("unknown fields or invalid object: " + label)
 
-    keys(inventory, "schema_version register_ledger scope default_disposition model_availability shared_records operations coverage_notes gaps public_surface non_operation_choices", "inventory")
+    keys(inventory, "schema_version register_ledger scope default_disposition model_availability shared_records operations coverage_notes gaps public_surface non_operation_choices host_routes", "inventory")
+    check_host_routes(inventory.get("host_routes", []), keys)
     if inventory.get("schema_version") != 1 or inventory.get("register_ledger") != "docs/reference/ess_rs_registers.json":
         raise ValueError("unsupported inventory or register ledger")
     if inventory.get("default_disposition") != DEFAULT:
@@ -418,6 +453,7 @@ def check(inventory, ledger):
     summary["choice_coverage_kind"] = dict(Counter(choice["coverage_kind"] for choice in choices.values()))
     summary["named_gaps"] = len(gap_ids)
     summary["classified_public_functions"] = len(surfaced)
+    summary["host_routes"] = len(inventory.get("host_routes", []))
     for kind in ("read", "write", "action"):
         summary[kind] = dict(Counter(record["obligations"][kind] for record in records.values()))
     return {"summary": summary, "records": list(records.values()), "named_choices": list(choices.values()),

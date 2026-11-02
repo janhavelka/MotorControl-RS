@@ -59,7 +59,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include(CTest)
     # Distributed source packages contain the core; repository tests stay here.
     if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test")
-        foreach(suite stop_path_app human_console console_text debug_session discovery discovery_app discovery_console persistence persistence_console persistence_app traffic motion_profile_app position_start_speed_app homing_auxiliary_app communication communication_console communication_app commissioning_owner units axis registers codec reads actions position position_command position_interrupt velocity homing driver_settings segments control_settings control_app tuning tuning_app host_app host_console io io_app driver_app home_app runner bus_owner bus_scheduling probe_console esp32_uart probe_app probe_app_monitor_control move_app position_interrupt_app simple_motion_app velocity_app capture_service)
+        foreach(suite stop_path_app qualification_routes_app human_console console_text debug_session discovery discovery_app discovery_console persistence persistence_console persistence_app traffic motion_profile_app position_start_speed_app homing_auxiliary_app communication communication_console communication_app commissioning_owner units axis registers codec reads actions position position_command position_interrupt velocity homing driver_settings segments control_settings control_app tuning tuning_app host_app host_console io io_app driver_app home_app runner bus_owner bus_scheduling probe_console esp32_uart probe_app probe_app_monitor_control move_app position_interrupt_app simple_motion_app velocity_app capture_service)
             add_executable(${suite}_test "test/${suite}_test.cpp")
             target_link_libraries(${suite}_test PRIVATE MotorControlRS)
             set_target_properties(${suite}_test PROPERTIES
@@ -106,19 +106,19 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 examples/probe_cli/ConsoleText.cpp examples/common/RtuBusOwner.cpp
                 examples/common/EssRtuValidator.cpp)
         endforeach()
-        foreach(suite discovery_app persistence_app motion_profile_app position_start_speed_app homing_auxiliary_app communication_app esp32_uart probe_app probe_app_monitor_control move_app position_interrupt_app simple_motion_app velocity_app driver_app home_app stop_path_app io_app control_app tuning_app host_app capture_service)
+        foreach(suite discovery_app persistence_app motion_profile_app position_start_speed_app homing_auxiliary_app communication_app esp32_uart probe_app probe_app_monitor_control move_app position_interrupt_app simple_motion_app velocity_app driver_app home_app stop_path_app qualification_routes_app io_app control_app tuning_app host_app capture_service)
             target_sources(${suite}_test PRIVATE examples/common/Esp32S3Uart.cpp examples/common/RtuRunner.cpp
                 test/fakes/esp32_uart/FakeEsp.cpp)
             target_include_directories(${suite}_test PRIVATE test/fakes/esp32_uart)
             target_compile_definitions(${suite}_test PRIVATE CONFIG_IDF_TARGET_ESP32S3=1)
         endforeach()
-        foreach(suite discovery_app persistence_app motion_profile_app position_start_speed_app homing_auxiliary_app communication_app probe_app probe_app_monitor_control move_app position_interrupt_app simple_motion_app velocity_app driver_app home_app stop_path_app io_app control_app tuning_app host_app)
+        foreach(suite discovery_app persistence_app motion_profile_app position_start_speed_app homing_auxiliary_app communication_app probe_app probe_app_monitor_control move_app position_interrupt_app simple_motion_app velocity_app driver_app home_app stop_path_app qualification_routes_app io_app control_app tuning_app host_app)
             target_sources(${suite}_test PRIVATE test/fakes/esp32_uart/FakeUsb.cpp
                 examples/probe_cli/DebugSession.cpp)
         endforeach()
         foreach(suite probe_app probe_app_monitor_control move_app position_interrupt_app simple_motion_app
                       motion_profile_app position_start_speed_app homing_auxiliary_app velocity_app driver_app control_app
-                      host_app tuning_app io_app home_app stop_path_app)
+                      host_app tuning_app io_app home_app stop_path_app qualification_routes_app)
             target_sources(${suite}_test PRIVATE examples/probe_cli/ProbeConsole.cpp
                 examples/probe_cli/HomeConsoleParser.cpp examples/probe_cli/HomeConsoleFormat.cpp
                 examples/probe_cli/ConsoleText.cpp examples/common/RtuBusOwner.cpp

@@ -1266,7 +1266,7 @@
         ],
         "reason": "Physical homing/reference/return need independent electrical/source timing, active auxiliary7, native rate/ramp/zero semantics and method/index/mechanics qualification. No switch fixture or I/O reassignment is provided."
       },
-      "reason": "Ordinary submitHome/copyHomeResult and home route consume public install/inspect/revoke qualification bound to checked CONFIG/MOTION/IO/HOMING_PARAMETERS. Explicit start after checked staging, qualified transitions and stopped/arrival plus zero. Copied revokeHome cancels before new reference publication while retaining settled zero/effects; stop uses existing urgent path. Methods1/2/17/33/34/35 use the same production path; sampled I/O does not establish every physical edge or internal Z passage.",
+      "reason": "Ordinary submitHome/copyHomeResult and home route consume install/inspect/revoke qualification, from the public API or the typed console routes in host_routes, bound to checked CONFIG/MOTION/IO/HOMING_PARAMETERS. Explicit start after checked staging, qualified transitions and stopped/arrival plus zero. Copied revokeHome cancels before new reference publication while retaining settled zero/effects; stop uses existing urgent path. Methods1/2/17/33/34/35 use the same production path; sampled I/O does not establish every physical edge or internal Z passage.",
       "choices": [
         "MotionCommandBit.START_HOMING"
       ]
@@ -3569,6 +3569,80 @@
     {
       "id": "AuxiliaryCommand.INVALID",
       "reason": "Documented zero invalid/no-operation value; no callable device action is required or claimed."
+    }
+  ],
+  "host_routes": [
+    {
+      "route": "home qualification install",
+      "wire_command": "home-qualification-install",
+      "syntax": "home qualification install METHOD SEARCH RETURN RAMP mechanics rates ramp zero-offset auxiliary inputs [index] [reference]",
+      "api": "installHomeQualification",
+      "facts": [
+        "mechanics",
+        "rates",
+        "ramp",
+        "zero-offset",
+        "auxiliary",
+        "inputs",
+        "index",
+        "reference"
+      ],
+      "reason": "Each fact is stated by name and copied into HomePrerequisites; live checks stay in homeReadiness. Stored auxiliary must be 7 and the offset zero; stored method, rates and ramp may differ because home staging overwrites them."
+    },
+    {
+      "route": "home qualification revoke",
+      "wire_command": "home-qualification-revoke",
+      "syntax": "home qualification revoke",
+      "api": "revokeHomeQualification",
+      "facts": [],
+      "reason": "Clears future admission and revokes any active home; no bus traffic or physical stop."
+    },
+    {
+      "route": "velocity qualification install",
+      "wire_command": "velocity-qualification-install",
+      "syntax": "velocity qualification install rpm ramp inputs [negative]",
+      "api": "installVelocityQualification",
+      "facts": [
+        "rpm",
+        "ramp",
+        "inputs",
+        "negative"
+      ],
+      "reason": "Facts map to VelocityPrerequisites with ramp words from a checked velocity read; the application's finite speed and duration envelope stays."
+    },
+    {
+      "route": "velocity qualification revoke",
+      "wire_command": "velocity-qualification-revoke",
+      "syntax": "velocity qualification revoke",
+      "api": "revokeVelocityQualification",
+      "facts": [],
+      "reason": "Clears future admission; an admitted run keeps its snapshot and stop."
+    },
+    {
+      "route": "position-clear qualification install",
+      "wire_command": "position-clear-qualification-install",
+      "syntax": "position-clear qualification install clear-semantics",
+      "api": "installPositionClearQualification",
+      "facts": [
+        "clear-semantics"
+      ],
+      "reason": "States the zero-only clear's semantics. Fresh stopped, enabled, alarm-free state is still required for each clear."
+    },
+    {
+      "route": "position-clear qualification revoke",
+      "wire_command": "position-clear-qualification-revoke",
+      "syntax": "position-clear qualification revoke",
+      "api": "revokePositionClearQualification",
+      "facts": [],
+      "reason": "Clears the stated semantics; no bus traffic."
+    },
+    {
+      "route": "motion-profile start-speed relation",
+      "wire_command": "motion-profile-start-speed-relation",
+      "syntax": "motion-profile start-speed relation RAW_WORD MIN_RPM",
+      "api": "installPositionStartSpeedRelation",
+      "facts": [],
+      "reason": "Binds the stated minimum rpm to the exact word of a fresh profile read. Held in RAM: a controller restart forgets the requirement and uses the stored word under the startup policy."
     }
   ]
 }

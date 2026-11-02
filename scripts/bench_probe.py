@@ -37,12 +37,15 @@ MAX_LINE = 8192
 MAX_INPUT = 32768
 MAX_TRAFFIC_INPUT = 1048576  # Independent finite diagnostic budget per command/drain.
 COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "health", "memory", "stats", "load",
-                      "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "communication", "persistence", "motion-profile", "motion-profile-start-speed", "home-auxiliary", "debug",
+                      "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "communication", "persistence", "motion-profile", "motion-profile-start-speed", "motion-profile-start-speed-relation", "home-auxiliary", "debug",
+                      "home-qualification-install", "home-qualification-revoke", "velocity-qualification-install", "velocity-qualification-revoke",
+                      "position-clear-qualification-install", "position-clear-qualification-revoke",
                       "read-identity", "read-config", "read-state", "velocity-read", "home-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "position-interrupt", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list"})
 MAX_COMMANDS = 11  # Eight ordinary operations, recovery, reserved stop and local query.
 MAX_OPERATIONS = 10  # Eight ordinary operations, one recovery and one reserved stop.
 MAX_STOPS = 2  # The reserved stop plus one escalation, beyond the protocol-3 advertised capacity.
 STOP_TERMINAL_S = 6.0  # Firmware's fixed stop budget, including one bounded recovery.
+HOME_TERMINAL_S = 32.0  # Firmware's largest home deadline (moveTimeoutMs) plus settlement.
 MAX_PROBES = 8
 TYPED_READS = {"read-identity": "identity", "read-config": "config", "read-state": "state",
                "velocity-read": "velocity_parameters", "home-read": "homing_parameters"}
@@ -50,8 +53,49 @@ READ_COMMANDS = ("probe", "capture-read", *TYPED_READS)
 HOST_FORMATS = ("8N1", "8N2", "8E1", "8O1")
 ADMISSION_FAILURES = frozenset({"busy", "recovery_required", "unavailable", "failed", "queue_full", "results_full",
     "ids_exhausted", "invalid", "already_terminal", "timing_unqualified", "unsupported", "axis_conflict",
-    "unresolved", "unimplemented", "invalid_arguments", "invalid_address", "invalid_value", "invalid_field",
+    "unresolved", "unimplemented", "qualification_required", "invalid_arguments", "invalid_address", "invalid_value", "invalid_field",
     "unsupported_policy", "invalid_axis_configuration", "output_full", "output_capacity"})
+
+
+# The operator states each commissioning fact by name; this harness never supplies one.
+HOME_FACTS = ("mechanics", "rates", "ramp", "zero-offset", "auxiliary", "inputs", "index", "reference")
+VELOCITY_FACTS = ("rpm", "ramp", "inputs", "negative")
+POSITION_CLEAR_FACTS = ("clear-semantics",)
+QUALIFICATION_ROUTES = {"home-qualification-install": "home qualification install",
+                        "home-qualification-revoke": "home qualification revoke",
+                        "velocity-qualification-install": "velocity qualification install",
+                        "velocity-qualification-revoke": "velocity qualification revoke",
+                        "position-clear-qualification-install": "position-clear qualification install",
+                        "position-clear-qualification-revoke": "position-clear qualification revoke",
+                        "motion-profile-start-speed-relation": "motion-profile start-speed relation"}
+QUALIFICATION_FACT_REFUSALS = frozenset({"missing_fact", "unknown_fact", "duplicate_fact", "fact_not_applicable"})
+QUALIFICATION_REFUSALS = QUALIFICATION_FACT_REFUSALS | frozenset({
+    "reads_required", "stored_auxiliary_differs", "stored_offset_nonzero", "drive_not_ready",
+    "stored_ramp_out_of_range", "stored_word_differs", "axis_configuration_unknown", "qualification_rejected",
+    "busy", "axis_conflict", "unavailable", "invalid", "unresolved", "unimplemented", "invalid_arguments", "failed"})
+SWITCH_HOME_METHODS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30)
+
+
+def qualification_arguments(command: str, tokens: tuple[str, ...]) -> None:
+    """Exact console grammar for one route; the firmware names any missing fact."""
+    if not isinstance(tokens, tuple) or any(type(token) is not str for token in tokens):
+        raise ValueError("qualification requires a tuple of tokens")
+    if command.endswith("-revoke"):
+        if tokens:
+            raise ValueError("qualification revoke takes no arguments")
+        return
+    if command == "motion-profile-start-speed-relation":
+        if (len(tokens) != 2 or any(not re.fullmatch(r"[0-9]+", token) for token in tokens) or
+                int(tokens[0]) > 3000 or not 1 <= int(tokens[1]) <= 3000):
+            raise ValueError("start-speed relation requires a raw word 0..3000 and a minimum rpm 1..3000")
+        return
+    if command == "home-qualification-install":
+        home_arguments((*tokens[:4], "zero"))
+        facts, known = tokens[4:], HOME_FACTS
+    else:
+        facts, known = tokens, VELOCITY_FACTS if command == "velocity-qualification-install" else POSITION_CLEAR_FACTS
+    if len(facts) != len(set(facts)) or any(fact not in known for fact in facts):
+        raise ValueError("qualification facts must be distinct names from " + ", ".join(known))
 
 
 def discovery_arguments(tokens: tuple[str, ...]) -> dict:
@@ -1817,6 +1861,19 @@ class Console:
             raise BenchError("useaddr reply claims a bus operation or different target")
 
     @staticmethod
+    def _check_qualification(item: dict) -> None:
+        """A local statement: accepted, or refused naming the fact or read it lacks."""
+        result, fact, read = item.get("result"), item.get("fact"), item.get("read_first")
+        if item["ok"]:
+            valid = result == "done" and fact is None and read is None
+        else:
+            valid = (result in QUALIFICATION_REFUSALS and (result in QUALIFICATION_FACT_REFUSALS) == (fact is not None) and
+                     (fact is None or (type(fact) is str and bool(fact))) and
+                     (read is None or (type(read) is str and bool(read))) and (result != "reads_required" or read is not None))
+        if not valid or item.get("operation_id") is not None:
+            raise BenchError("qualification reply is not an exact local disposition")
+
+    @staticmethod
     def _check_wiring(handle: Command, item: dict) -> None:
         """A local declaration/query carries bounded context and never an operation."""
         requested = wiring_arguments(handle.host_args)
@@ -2067,6 +2124,8 @@ class Console:
             self._check_useaddr(handle, item)
         if handle.command == "wiring":
             self._check_wiring(handle, item)
+        if handle.command in QUALIFICATION_ROUTES:
+            self._check_qualification(item)
         if handle.command == "profile-list" and item["ok"]:
             expected = dict(manufacturer="stepperonline", manufacturer_name="STEPPERONLINE", profile="ess_rs", name="ESS-RS",
                             probe=True, identity=True, nonchanging=True, exact_model=False, firmware=False,
@@ -2380,6 +2439,8 @@ class Console:
             raise ValueError("stop requires explicit normal or fast policy")
         if command == "stop":
             timeout_s = max(timeout_s, STOP_TERMINAL_S)
+        if command == "home":
+            timeout_s = max(timeout_s, HOME_TERMINAL_S)
         if command == "host":
             host_args = () if host_args is None else host_args
             host_arguments(host_args)
@@ -2400,6 +2461,9 @@ class Console:
             homing_auxiliary_arguments(host_args)
         elif command == "position-interrupt":
             position_interrupt_arguments(host_args)
+        elif command in QUALIFICATION_ROUTES:
+            host_args = () if host_args is None else host_args
+            qualification_arguments(command, host_args)
         elif command == "wiring":
             host_args = () if host_args is None else host_args
             wiring_arguments(host_args)
@@ -2510,6 +2574,7 @@ class Console:
             if command == "velocity-read": wire_command = "velocity read"
             if command == "home-read": wire_command = "home read"
             if command == "motion-profile-start-speed": wire_command = "motion-profile start-speed"
+            if command in QUALIFICATION_ROUTES: wire_command = QUALIFICATION_ROUTES[command]
             if command == "home-auxiliary": wire_command = "home auxiliary"
             if command == "position-interrupt": wire_command = "position interrupt"
             if command == "profile-list": wire_command = "profile list"
@@ -3179,6 +3244,29 @@ def move_campaign(console: Console, *, move_args: tuple[str, ...] | None, cleanu
             raise BenchError(cleanup_error)
 
 
+def home_campaign(console: Console, *, home_args: tuple[str, ...], facts: tuple[str, ...],
+                  wiring: tuple[tuple[str, str], ...], cleanup_stop: str, timeout_s: float, address: int) -> None:
+    """Declare wiring, take the reads, install exactly the stated facts, then one home.
+
+    Facts come only from the caller. With none stated nothing is installed, and the
+    firmware answers the home itself. A refused install stops here with no motion.
+    """
+    for terminal, state in wiring:
+        if not console.command("wiring", host_args=(terminal, state), timeout_s=timeout_s)["ok"]:
+            raise BenchError(f"wiring {terminal} {state} rejected")
+    if facts:
+        for read in ("read-config", "read-state", "home-read"):
+            result = console.command(read, address=address, timeout_s=timeout_s)
+            if not result["ok"]:
+                raise BenchError(f"{read} failed before home qualification: " + str(result.get("result", result.get("outcome"))))
+        result = console.command("home-qualification-install", host_args=(*home_args[:4], *facts), timeout_s=timeout_s)
+        if not result["ok"]:
+            raise BenchError("home qualification refused: " + str(result.get("result")) +
+                             "".join(f" {name}={result[name]}" for name in ("fact", "read_first") if name in result))
+    move_campaign(console, command="home", move_args=None, home_args=home_args,
+                  cleanup_stop=cleanup_stop, timeout_s=timeout_s, address=address)
+
+
 def velocity_campaign(console: Console, *, velocity_args: tuple[str, ...], cleanup_stop: str,
                       timeout_s: float, address: int) -> None:
     """One finite velocity attempt; explicit stop cleanup on success or failure.
@@ -3380,13 +3468,17 @@ def arguments(argv: list[str] | None) -> argparse.Namespace:
         move.add_argument("--approximation-error", help="explicit positive native error allowance for radians")
         if name == "move-relative": move.add_argument("--basis", choices=("actual", "commanded", "queued"))
         move.add_argument("--cleanup-stop", required=True, choices=("normal", "fast"))
-    home = sub.add_parser("home", help="one current-position reference attempt with explicit stop cleanup")
-    home.add_argument("method", choices=("35",))
+    home = sub.add_parser("home", help="one home attempt with explicit stop cleanup: methods 33, 34, 35; switch methods need --fact inputs and --wiring")
+    home.add_argument("method")
     home.add_argument("search_native")
     home.add_argument("return_native")
     home.add_argument("ramp_native")
     home.add_argument("offset", choices=("zero",))
     home.add_argument("--cleanup-stop", required=True, choices=("normal", "fast"))
+    home.add_argument("--fact", dest="facts", action="append", default=[], choices=HOME_FACTS,
+                      help="commissioning fact you state for this installation; repeat for each. None is ever assumed")
+    home.add_argument("--wiring", action="append", default=[], nargs=2, metavar=("TERMINAL", "STATE"),
+                      help="declare one terminal's wiring first, for example x0 connected")
     velocity = sub.add_parser("velocity", help="one finite signed velocity with explicit stop cleanup; never replayed")
     sub.add_parser("driver-read", help="one checked four-window drive-settings read with retained inspection; no writes")
     segment = sub.add_parser("segment", help="indexed stored record read/update; no external execution")
@@ -3497,8 +3589,17 @@ def arguments(argv: list[str] | None) -> argparse.Namespace:
     result.home_args = None
     if result.mode == "home":
         result.home_args = (result.method, result.search_native, result.return_native, result.ramp_native, result.offset)
-        try: home_arguments(result.home_args)
+        result.home_facts = tuple(result.facts)
+        result.home_wiring = tuple(tuple(pair) for pair in result.wiring)
+        try:
+            method = home_arguments(result.home_args)[0]
+            qualification_arguments("home-qualification-install", (*result.home_args[:4], *result.home_facts))
+            for pair in result.home_wiring: wiring_arguments(pair)
         except ValueError as exc: parser.error(str(exc))
+        if method not in (33, 34, 35) and method not in SWITCH_HOME_METHODS:
+            parser.error("home supports methods 33, 34, 35 and explicitly wired switch methods")
+        if method in SWITCH_HOME_METHODS and ("inputs" not in result.home_facts or not result.home_wiring):
+            parser.error("a switch method needs --fact inputs and an explicit --wiring declaration")
     result.velocity_args = None
     if result.mode == "velocity":
         tokens = [result.value, result.unit, result.frame, str(result.duration_ms), result.ramp, result.stop]
@@ -3593,7 +3694,7 @@ def main(argv: list[str] | None = None) -> int:
                         if not result["ok"]:
                             raise BenchError("action rejected or failed: " + str(result.get("result", result.get("outcome"))))
                     elif args.mode == "home":
-                        move_campaign(console, command="home", move_args=None, home_args=args.home_args,
+                        home_campaign(console, home_args=args.home_args, facts=args.home_facts, wiring=args.home_wiring,
                                       cleanup_stop=args.cleanup_stop, timeout_s=args.timeout, address=args.address)
                     elif args.mode == "driver-read":
                         driver_read_campaign(console, timeout_s=args.timeout, address=args.address)

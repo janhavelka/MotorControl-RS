@@ -107,6 +107,9 @@ physical qualification; final stage evidence is recorded in that report.
   actual logical input observations and cancellation precedence over final zero.
   [Stage08 evidence](reports/2026-10-29_ess_homing_foundation.md); no new method or
   physical qualification is claimed.
+- [x] Reach home, velocity, position-clear and the start-speed relation from the
+  ordinary image through [named-fact console routes](cli_contract.md#qualification-routes)
+  (owner decision D2). Native evidence only; physical runs remain open below.
 - [ ] Resolve shared-start 1: native 0-to-1 write read back 0 on the bench.
   Preserve that FAIL/uncertain result; no retry or assumed FC06 semantics.
   [Stored-record evidence](archive/reports/ess_release_16_2026-10-04.md).

@@ -331,12 +331,15 @@ void testBootDefaultsManufacturerRangeAndLongerMove() {
     const auto child=app->simple.view.moveOperationId; assert(child);
     auto& move=findRecord(*app,child)->move;
     assert(move.request.speedRpm==90 && move.prepared.effectiveNative==1000);
-    assert(move.deadlineUs-move.startedUs==30000000 && move.options.pollIntervalUs==20000);
+    assert(move.deadlineUs-move.startedUs==30000000 && move.options.pollIntervalUs==20000 && move.options.runningPollIntervalUs==500000);
     moveStep(child); moveStep(child);
     const auto started=hardware.time;
     moveStep(child,simpleObservation(child,4));
-    assert(move.runningObserved && move.options.pollIntervalUs==500000);
-    for(unsigned i=0;i<13;++i) moveStep(child,simpleObservation(child,4));
+    // The poll after the first RUNNING stays prompt to catch a short move; later ones slow.
+    assert(move.runningObserved && move.options.pollIntervalUs==20000 && move.eligibleUs-hardware.time<=20000);
+    moveStep(child,simpleObservation(child,4));
+    assert(move.eligibleUs-hardware.time>400000 && move.eligibleUs-hardware.time<=500000);
+    for(unsigned i=0;i<12;++i) moveStep(child,simpleObservation(child,4));
     assert(hardware.time-started>5000000 && view(child).pending);
     moveStep(child,simpleObservation(child,1)); pump(1000);
     assert(app->simple.view.ok && app->simple.view.delivered);

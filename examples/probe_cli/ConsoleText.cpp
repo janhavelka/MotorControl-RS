@@ -325,6 +325,9 @@ bool hint(Writer& writer, const Value& report) {
         return writer.text("Hint: recover restores host transport only; inspect status afterward.\n");
     if (equal(error, "results_full") || equal(result, "results_full"))
         return writer.text("Hint: inspect result, then release a reviewed terminal operation by its ID.\n");
+    if (equal(result, "qualification_required") && (equal(member(report, "command"), "home") || equal(member(report, "command"), "velocity")))
+        return writer.text("Hint: state the facts with ") && writer.string(member(report, "command")) &&
+            writer.text(" qualification install; help ") && writer.string(member(report, "command")) && writer.text(" lists them.\n");
     if (equal(error, "unknown_command")) return writer.text("Hint: help lists commands; help COMMAND shows syntax.\n");
     if (operation.begin && !equal(operation, "0")) {
         if (!writer.text("Details: result ") || !writer.scalar(operation) || !writer.text(".\n")) return false;
@@ -340,8 +343,11 @@ bool hint(Writer& writer, const Value& report) {
         if (command.end - command.begin >= 5 && !std::memcmp(command.begin, "move-", 5)) command = key("move");
         if (command.end - command.begin >= 5 && !std::memcmp(command.begin, "read-", 5)) command = key("read");
         if (equal(command, "home-read") || equal(command, "home-auxiliary")) command = key("home");
+        if (equal(command, "home-qualification-install") || equal(command, "home-qualification-revoke")) command = key("home");
+        if (equal(command, "velocity-qualification-install") || equal(command, "velocity-qualification-revoke")) command = key("velocity");
+        if (equal(command, "position-clear-qualification-install") || equal(command, "position-clear-qualification-revoke")) command = key("position-clear");
         if (equal(command, "velocity-read")) command = key("velocity");
-        if (equal(command, "motion-profile-start-speed")) command = key("motion-profile");
+        if (equal(command, "motion-profile-start-speed") || equal(command, "motion-profile-start-speed-relation")) command = key("motion-profile");
         return writer.text("Hint: help ") && writer.string(command) && writer.text(" shows syntax and prerequisites.\n");
     }
     return true;
@@ -459,6 +465,7 @@ const char* motionReason(const Value& reason) {
     if (equal(reason, "axis_conflict")) return "the motor has active or unresolved work; a confirmed stop is required before a new move";
     if (equal(reason, "queue_full")) return "the request queue is full";
     if (equal(reason, "results_full")) return "retained results are full; inspect and release a terminal result";
+    if (equal(reason, "qualification_required")) return "clear semantics are not stated; use position-clear qualification install clear-semantics";
     if (equal(reason, "recovery_required")) return "host transport needs explicit recovery";
     if (equal(reason, "invalid") || equal(reason, "invalid_arguments")) return "check the arguments, motor setup and readiness";
     if (equal(reason, "unsupported") || equal(reason, "unavailable") || equal(reason, "unresolved")) return "this request is not supported with the current setup";
@@ -774,6 +781,17 @@ bool renderHuman(const char* json, char* output, std::size_t capacity) noexcept 
     for (const auto name : SUMMARY) {
         const Value value = member(report, name);
         if (value.begin && !field(writer, key(name), value, 0)) { output[0] = '\0'; return false; }
+    }
+    // A failed home may have started; only a checked stop settles this.
+    if (equal(member(report, "home"), "true") && equal(member(report, "uncertain"), "true") &&
+        !writer.text("The drive may still be moving: nothing stops it automatically. Use stop, then read state.\n")) {
+        output[0] = '\0'; return false;
+    }
+    // Sending the staging frame consumed the qualification and expired the state read.
+    if (equal(member(report, "home"), "true") && member(report, "setup_execution").begin &&
+        !equal(member(report, "setup_execution"), "not_transmitted") &&
+        !writer.text("For another home: read state, home read, then home qualification install again.\n")) {
+        output[0] = '\0'; return false;
     }
     const Value context = member(report, "context");
     if (context.kind == Kind::OBJECT) {

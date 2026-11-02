@@ -35,7 +35,11 @@ struct ActionRequest {
 struct ActionOptions {
     uint32_t pollIntervalUs = 10000;
     uint8_t maxPolls = 20;
-
+    /** Move and home only; zero keeps pollIntervalUs. Applies once a poll follows
+     * an earlier RUNNING report, so the poll after the first report still comes
+     * promptly and catches a short motion. The deadline and maxPolls never extend.
+     * Must be zero or at least pollIntervalUs. */
+    uint32_t runningPollIntervalUs = 0;
 };
 /** Response storage is borrowed only for advanceAction. responseConfirmed must
  * mean the application excluded local echo/foreign/late-response ambiguity;

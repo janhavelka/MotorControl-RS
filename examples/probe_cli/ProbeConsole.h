@@ -10,6 +10,7 @@
 #include "SimpleMotion.h"
 #include "MoveRelation.h"
 #include "DiscoveryScan.h"
+#include "QualificationConsole.h"
 #include "MotorControlRS/profiles/ess_rs/Codec.h"
 #include "MotorControlRS/profiles/ess_rs/Reads.h"
 #include "MotorControlRS/profiles/ess_rs/Actions.h"
@@ -35,7 +36,7 @@ constexpr uint16_t CAPTURE_FIRST = 0x0130, CAPTURE_WORDS = 16;
 /** Host action result; admitted reads and recovery complete asynchronously. */
 enum class Action : uint8_t { OK, BUSY, RECOVERY_REQUIRED, UNAVAILABLE, FAILED,
     QUEUE_FULL, RESULTS_FULL, IDS_EXHAUSTED, INVALID, ALREADY_TERMINAL,
-    TIMING_UNQUALIFIED, UNSUPPORTED, AXIS_CONFLICT, UNRESOLVED, UNIMPLEMENTED };
+    TIMING_UNQUALIFIED, UNSUPPORTED, AXIS_CONFLICT, UNRESOLVED, UNIMPLEMENTED, QUALIFICATION_REQUIRED };
 
 enum class DebugMode : uint8_t { OFF, RAW, DECODED };
 /** Presentation only; @ID commands always select JSON independently. */
@@ -330,6 +331,9 @@ struct Host {
     Action (*startHome)(void*, uint32_t commandId, uint8_t address,
                        const MotorControlRS::ESS_RS::HomeRequest&, uint32_t& operationId) = nullptr;
     bool (*inspectHomeQualification)(void*, MotorControlRS::ESS_RS::HomePrerequisites&, bool& valid) = nullptr;
+    /** Typed commissioning facts from the console; synchronous and never bus traffic.
+     * Calls the same install/revoke operations as the application API. */
+    QualificationReply (*qualification)(void*, const QualificationCommand&) = nullptr;
     Action (*recover)(void*, uint32_t commandId, uint32_t& operationId) = nullptr;
     void (*resetStats)(void*) = nullptr;
     Action (*load)(void*, const LoadSettings* requested, LoadSnapshot&) = nullptr;
@@ -422,6 +426,8 @@ private:
     void error(uint32_t id, const char* command, const char* reason) noexcept;
     void action(uint32_t id, const char* command, Action result, uint8_t address = 0, uint32_t operationId = 0) noexcept;
     void parameterRead(uint32_t id, MotorControlRS::ESS_RS::ReadKind, const char* address) noexcept;
+    void qualificationRoute(uint32_t id, QualificationRoute, const char* const* tokens, std::size_t count) noexcept;
+    void qualificationReply(uint32_t id, const char* command, const char* result, const char* label, const char* value, bool ok = false) noexcept;
     void emit(uint32_t terminalOperation = 0, bool humanText = false) noexcept;
     bool outstanding(uint32_t id) const noexcept;
     std::size_t availableSlot(bool stop = false) const noexcept;

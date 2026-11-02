@@ -37,6 +37,10 @@ namespace {
 constexpr uint32_t BAUD = 115200;
 constexpr uint32_t REQUEST_US = 500000, RECOVER_US = 500000, RECOVERY_BUDGET_US = 2000000;
 constexpr uint32_t NORMAL_STOP_US = 2000000 + 2 * REQUEST_US, NORMAL_STOP_POLL_US = 50000;
+// Move and home completion polls once RUNNING was reported. 64 of them cover the
+// largest ApplicationOptions::moveTimeoutMs; polls spent before RUNNING reduce this.
+constexpr uint32_t RUNNING_POLL_US = 500000;
+static_assert(static_cast<uint64_t>(ESS::ACTION_MAX_POLLS) * RUNNING_POLL_US >= 30000000, "polls must cover the largest move timeout");
 // Every stop deadline is fixed at admission and never renewed. This allowance
 // lets an in-flight transaction settle and one bounded recovery finish while a
 // never-transmitted stop still has its own request budget.
@@ -792,7 +796,7 @@ Probe::Action startAction(void* context, uint32_t commandId, uint8_t address,
     }
     if (request.kind == ActionKind::CLEAR_POSITION) {
         if (request.devicePosition != 0) return Probe::Action::UNSUPPORTED;
-        if (!a.positionClearQualified) return Probe::Action::UNAVAILABLE;
+        if (!a.positionClearQualified) return Probe::Action::QUALIFICATION_REQUIRED;
         const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
         const uint64_t age = a.observationAgeUs();
         if (a.axis.target.address != address || !Probe::fresh(motion, a.axis.target, now, age) ||
@@ -987,6 +991,7 @@ Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
     ESS::MoveContext& prepared = record->move;
     const uint64_t deadline = now + static_cast<uint64_t>(a.options.moveTimeoutMs) * 1000;
     ActionOptions options; options.maxPolls = ESS::ACTION_MAX_POLLS; options.pollIntervalUs = 20000;
+    options.runningPollIntervalUs = RUNNING_POLL_US;
     const auto prepare = request.position.wrapped ? ESS::prepareMoveAngle :
         request.position.relative ? ESS::prepareMoveRelative : ESS::prepareMoveAbsolute;
     const Status checked = prepare(prepared, a.axis, reference.nativeKnown ? &reference : nullptr,
@@ -1030,6 +1035,13 @@ Probe::Action admitVelocityStep(App& a, App::Record& record, const ESS::Prepared
     return admissionResult(prepared.urgent ? a.owner.admitUrgent(request, now, record.requestId) :
         a.owner.admit(request, now, record.requestId));
 }
+// Stated facts still stand for the selected axis. Live readiness is checked separately.
+bool velocityQualificationPresent(const App& a) {
+    const auto& p = a.velocityPrerequisites;
+    return p.target.id && Probe::sameTarget(p.target, a.axis.target) && a.axis.generation &&
+        p.configurationGeneration == a.axis.generation && p.nativeRpmVerified && p.configuredRampVerified &&
+        p.serialInputsPermit && p.readinessQualified;
+}
 Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
                             const MotorControlRS::VelocityRequest& supplied, uint32_t& operationId) {
     using namespace MotorControlRS;
@@ -1046,6 +1058,7 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
     if (a.owner.needsRecovery() || uart.needsRecovery()) return Probe::Action::RECOVERY_REQUIRED;
     if (axisReserved(a, address)) return Probe::Action::AXIS_CONFLICT;
     if (a.owner.active() || a.owner.pending()) return Probe::Action::BUSY;
+    if (!velocityQualificationPresent(a)) return Probe::Action::QUALIFICATION_REQUIRED;
     if (a.axis.target.address != address || !a.configuration.operationId ||
         !Probe::sameTarget(a.configuration.target, a.axis.target)) return Probe::Action::UNAVAILABLE;
     App::Record* record = nullptr;
@@ -1062,9 +1075,9 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
         prerequisites.rawAlarm = motion.value.rawAlarm; prerequisites.rawMotion = motion.value.rawMotion;
         prerequisites.observedUs = motion.observedEarliestUs;
     }
-    // Proposed finite free-shaft envelope only; commissioning flags remain
-    // false in production. Setup consumes duration; the normal-stop observation
-    // budget covers the same legal ramp as an independently requested stop.
+    // Proposed finite free-shaft envelope only; commissioning flags stay false until
+    // an operator or API caller states them. Setup consumes duration; the normal-stop
+    // observation budget covers the same legal ramp as an independently requested stop.
     const bool normalStop = supplied.stop.behavior == StopBehavior::CONFIGURED_DECELERATION;
     const uint64_t deadline = now + supplied.durationUs + (normalStop ? NORMAL_STOP_US : 2000000);
     ActionOptions options; options.maxPolls = ESS::ACTION_MAX_POLLS; options.pollIntervalUs = 20000;
@@ -1109,10 +1122,11 @@ bool homeReadiness(const App& a, ESS::HomePrerequisites& p, uint64_t now) {
         !Probe::sameTarget(config.target, p.target) || config.unknownPolarityBits ||
         !parameters.operationId || parameters.configurationGeneration != p.configurationGeneration ||
         !Probe::sameTarget(parameters.target, p.target) ||
+        // Staging overwrites stored method, rates and ramp before the trigger, so their
+        // prior values do not matter. It never writes auxiliary, and would silently erase
+        // a stored offset whose interpretation is unresolved.
         parameters.rawAuxiliary != static_cast<uint16_t>(p.auxiliary) ||
-        parameters.rawMethod != static_cast<uint16_t>(p.qualifiedMethod) ||
-        parameters.rawSearchSpeed != p.qualifiedSearchSpeed || parameters.rawReturnSpeed != p.qualifiedReturnSpeed ||
-        parameters.rawRampTime != p.qualifiedRampTime || parameters.rawOffsetWords[0] || parameters.rawOffsetWords[1] ||
+        parameters.rawOffsetWords[0] || parameters.rawOffsetWords[1] ||
         p.inputPolarity != config.raw.inputPolarity) return false;
     for (uint8_t i = 0; i < 4; ++i)
         if (!config.inputFunctionKnown[i] || p.inputFunctions[i] != config.raw.inputFunctions[i] ||
@@ -1137,6 +1151,13 @@ bool homeReadiness(const App& a, ESS::HomePrerequisites& p, uint64_t now) {
     p.rawAlarm = motion.value.rawAlarm; p.rawMotion = motion.value.rawMotion;
     p.rawInputs = io.value.rawInputs; p.observeInputs = true;
     return ESS::checkHomeQualification(p, now).isOk();
+}
+// Stated facts still stand for the selected axis. Live reads are checked by homeReadiness.
+bool homeQualificationPresent(const App& a) {
+    const auto& p = a.homePrerequisites;
+    return p.target.id && Probe::sameTarget(p.target, a.axis.target) && a.axis.generation &&
+        p.configurationGeneration == a.axis.generation && p.methodQualified && p.nativeRatesQualified &&
+        p.nativeRampQualified && p.zeroOffsetQualified && p.auxiliaryQualified && p.inputsQualified && p.readinessQualified;
 }
 void revokeActiveHomes(App& a, uint64_t now) {
     for (auto& r : a.records) if (r.kind == App::OperationKind::HOME && r.home.state == MotorControlRS::ActionState::ACTIVE) {
@@ -1192,6 +1213,7 @@ Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
     if (a.owner.needsRecovery() || uart.needsRecovery()) return Probe::Action::RECOVERY_REQUIRED;
     if (axisReserved(a, address)) return Probe::Action::AXIS_CONFLICT;
     if (a.owner.active() || a.owner.pending()) return Probe::Action::BUSY;
+    if (!homeQualificationPresent(a)) return Probe::Action::QUALIFICATION_REQUIRED;
     if (a.axis.target.address != address || !a.configuration.operationId ||
         !Probe::sameTarget(a.configuration.target, a.axis.target)) return Probe::Action::UNAVAILABLE;
     App::Record* record = nullptr;
@@ -1203,8 +1225,10 @@ Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
     if (!homeReadiness(a, prerequisites, now)) return Probe::Action::UNAVAILABLE;
     ESS::HomeRequest request = supplied;
     if (!request.configurationGeneration) request.configurationGeneration = a.axis.generation;
-    const uint64_t deadline = now + 3000000;
+    // A search lasts as long as its travel, so it gets the same budget as a move.
+    const uint64_t deadline = now + static_cast<uint64_t>(a.options.moveTimeoutMs) * 1000;
     ActionOptions options; options.maxPolls = ESS::ACTION_MAX_POLLS; options.pollIntervalUs = 20000;
+    options.runningPollIntervalUs = RUNNING_POLL_US;
     const auto checked = ESS::prepareHome(record->home, a.axis, a.nextOperationId, request, prerequisites, now, deadline, options);
     if (!checked) { clearRecord(*record); return checked.code == Err::UNSUPPORTED ? Probe::Action::UNSUPPORTED : Probe::Action::INVALID; }
     ESS::PreparedHome work;
@@ -1903,12 +1927,11 @@ void reconcileHomingParameters(App& a, const App::Record& record) {
         prior.configurationGeneration == observed.configurationGeneration;
     const bool auxiliaryChanged = (same && prior.rawAuxiliary != observed.rawAuxiliary) ||
         (p.auxiliaryQualified && observed.rawAuxiliary != static_cast<uint16_t>(p.auxiliary));
-    const bool methodChanged = (same && prior.rawMethod != observed.rawMethod) ||
-        (p.methodQualified && observed.rawMethod != static_cast<uint16_t>(p.qualifiedMethod));
-    const bool ratesChanged = (same && (prior.rawSearchSpeed != observed.rawSearchSpeed || prior.rawReturnSpeed != observed.rawReturnSpeed)) ||
-        (p.nativeRatesQualified && (observed.rawSearchSpeed != p.qualifiedSearchSpeed || observed.rawReturnSpeed != p.qualifiedReturnSpeed));
-    const bool rampChanged = (same && prior.rawRampTime != observed.rawRampTime) ||
-        (p.nativeRampQualified && observed.rawRampTime != p.qualifiedRampTime);
+    // A stored word differing from the candidate is expected before staging; one changing
+    // between reads of this generation means something else wrote it.
+    const bool methodChanged = same && prior.rawMethod != observed.rawMethod;
+    const bool ratesChanged = same && (prior.rawSearchSpeed != observed.rawSearchSpeed || prior.rawReturnSpeed != observed.rawReturnSpeed);
+    const bool rampChanged = same && prior.rawRampTime != observed.rawRampTime;
     const bool offsetChanged = (same && (prior.rawOffsetWords[0] != observed.rawOffsetWords[0] || prior.rawOffsetWords[1] != observed.rawOffsetWords[1])) ||
         (p.zeroOffsetQualified && (observed.rawOffsetWords[0] || observed.rawOffsetWords[1]));
     if (auxiliaryChanged) p.auxiliaryQualified = false;
@@ -2282,10 +2305,6 @@ void advanceActions(App& a, uint64_t now) {
             }
             observeCommunication(a, *result);
             if (record.kind == App::OperationKind::MOVE) {
-                // Capture short RUNNING transitions promptly; once observed,
-                // use bounded slower completion polls for longer moves. The
-                // original absolute deadline and 64-poll cap never extend.
-                if (record.move.runningObserved) record.move.options.pollIntervalUs = 500000;
                 const auto& move = record.move;
                 if (record.storedPosition.target.id && move.execution == MotorControlRS::ActionExecution::ACKNOWLEDGED &&
                     !move.uncertain && (move.stagingApplied || move.verificationKnown ||
@@ -2796,6 +2815,7 @@ Probe::Action debugCommand(void* context, const Probe::DebugMode* requested,
                            Probe::DebugSnapshot& out) {
     return static_cast<App*>(context)->debug.command(requested, out);
 }
+#include "QualificationApp.h"
 Probe::Host host(App* a) {
     Probe::Host h; h.context = a; h.emitLine = emit; h.snapshot = snapshot;
     h.startProbe = probe; h.startCaptureRead = captureRead; h.recover = recover; h.resetStats = reset;
@@ -2808,6 +2828,7 @@ Probe::Host host(App* a) {
         auto checked = a.homePrerequisites;
         valid = homeReadiness(a, checked, nowUs()); output = a.homePrerequisites; return true;
     };
+    h.qualification = qualificationCommand;
     h.startPositionInterrupt = startPositionInterrupt;
     h.simpleMotion = simpleMotion;
     h.monitor = monitor; h.motionProfile = motionProfileCommand; h.debug = debugCommand;
@@ -2821,12 +2842,38 @@ Probe::Host host(App* a) {
 #endif
     return h;
 }
+// Both delivered to the person, and a later checked stop has settled the motion.
+// The original reads failed and uncertain only because this replacement took over
+// its observation; any other failure or uncertainty keeps both until explicit release.
+bool settledInterruptPair(const App::Record& replacement, const App::Record& original) {
+    using namespace MotorControlRS;
+    const auto delivered = [](const App::Record& r) {
+        return r.kind == App::OperationKind::MOVE && r.interactive && r.delivered && !r.programmaticMove && !r.simpleChild &&
+            !r.axisReserved && !r.motionUnresolved && !r.interruptedByStop;
+    };
+    return delivered(replacement) && delivered(original) &&
+        replacement.moveRelation.observationSuperseded && original.moveRelation.observationSuperseded &&
+        original.moveRelation.replacementOperationId == replacement.operationId &&
+        replacement.move.state == ActionState::SUCCEEDED && !replacement.move.uncertain &&
+        replacement.move.outcome == ActionOutcome::ACKNOWLEDGED && replacement.move.execution == ActionExecution::ACKNOWLEDGED &&
+        original.move.outcome == ActionOutcome::CANCELLED && original.move.execution == ActionExecution::ACKNOWLEDGED &&
+        original.move.setupExecution != ActionExecution::UNKNOWN;
+}
 void recycleInteractiveResults(void* context) {
     App& a = *static_cast<App*>(context);
     // The terminal text must have left both bounded output queues. Detailed
     // JSON/API results and failures remain explicitly retained.
     if (a.outputCount || a.console.outputPending()) return;
     for (auto& r : a.records) {
+        if (r.moveRelation.replacementOperationId == r.operationId && r.operationId) {
+            auto* original = findRecord(a, r.moveRelation.originalOperationId);
+            if (original && settledInterruptPair(r, *original) &&
+                (!r.requestId.owner || a.owner.release(r.requestId)) &&
+                (!original->requestId.owner || a.owner.release(original->requestId))) {
+                clearRecord(*original); clearRecord(r);
+            }
+            continue;
+        }
         if (!r.interactive || !r.delivered || r.simpleChild || r.programmaticRead || r.programmaticSettings || r.programmaticHome ||
             r.moveRelation.originalOperationId || r.axisReserved || r.motionUnresolved) continue;
         bool success = false;
@@ -3147,6 +3194,44 @@ MotorControlRS::Status installPositionStartSpeedRelation(const PositionStartSpee
         return Status(Err::INVALID_CONFIG, 0, "start-speed relation requires exact current binding, raw word and qualification age");
     a.positionStartSpeedRelation = relation;
     a.positionStartSpeedRelationRequired = true;
+    return Ok();
+}
+MotorControlRS::Status installVelocityQualification(const ESS::VelocityPrerequisites& supplied) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    App& a = *app;
+    if (!qualificationIdle(a))
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(Probe::Action::BUSY), "velocity qualification requires idle application");
+    const auto& observed = a.velocityParameters;
+    if (!supplied.target.id || !Probe::sameTarget(supplied.target, a.axis.target) || !a.axis.generation ||
+        supplied.configurationGeneration != a.axis.generation || !supplied.nativeRpmVerified ||
+        !supplied.configuredRampVerified || !supplied.serialInputsPermit || !supplied.readinessQualified ||
+        !observed.operationId || !Probe::sameTarget(observed.target, a.axis.target) ||
+        observed.configurationGeneration != a.axis.generation ||
+        supplied.accelerationTime != observed.rawAccelerationTime || supplied.decelerationTime != observed.rawDecelerationTime ||
+        supplied.accelerationTime > 2000 || supplied.decelerationTime > 2000)
+        return Status(Err::INVALID_CONFIG, 0, "velocity qualification requires stated facts and matching checked velocity parameters");
+    a.velocityPrerequisites = supplied;
+    return Ok();
+}
+MotorControlRS::Status revokeVelocityQualification() {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    app->velocityPrerequisites = ESS::VelocityPrerequisites();
+    return Ok();
+}
+MotorControlRS::Status installPositionClearQualification() {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    if (!qualificationIdle(*app))
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(Probe::Action::BUSY), "position-clear qualification requires idle application");
+    app->positionClearQualified = true;
+    return Ok();
+}
+MotorControlRS::Status revokePositionClearQualification() {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    app->positionClearQualified = false;
     return Ok();
 }
 bool copySettingsResult(uint32_t operationId, MotorControlRS::ESS_RS::DriverContext& output) {

@@ -124,9 +124,11 @@ void finish(HomeContext& c, ActionOutcome outcome, Status status) {
         (c.stagingEvidence.txAccepted || c.stagingEvidence.executionUnknown ||
          c.triggerEvidence.txAccepted || c.triggerEvidence.executionUnknown);
 }
-void wait(HomeContext& c, uint64_t nowUs) {
+void wait(HomeContext& c, uint64_t nowUs, bool runningEarlier = false) {
     ++c.step;
-    c.eligibleUs = c.options.pollIntervalUs >= c.deadlineUs - nowUs ? c.deadlineUs : nowUs + c.options.pollIntervalUs;
+    const uint32_t interval = runningEarlier && c.options.runningPollIntervalUs ?
+        c.options.runningPollIntervalUs : c.options.pollIntervalUs;
+    c.eligibleUs = interval >= c.deadlineUs - nowUs ? c.deadlineUs : nowUs + interval;
 }
 } // namespace
 const HomeMethodDescriptor* homeMethodAt(uint8_t index) noexcept {
@@ -175,7 +177,8 @@ Status prepareHome(HomeContext& output, const AxisConfig& axis, uint32_t id,
         return invalid(HomeError::INVALID_TARGET, "invalid home target");
     if (!id) return invalid(HomeError::INVALID_OPERATION, "zero home id");
     if (deadlineUs <= nowUs) return invalid(HomeError::INVALID_DEADLINE, "expired home deadline");
-    if (!options.pollIntervalUs || !options.maxPolls || options.maxPolls > ACTION_MAX_POLLS)
+    if (!options.pollIntervalUs || !options.maxPolls || options.maxPolls > ACTION_MAX_POLLS ||
+        (options.runningPollIntervalUs && options.runningPollIntervalUs < options.pollIntervalUs))
         return invalid(HomeError::INVALID_OPTIONS, "invalid bounded home observation policy");
     const auto* method = homeMethod(request.method);
     if (!method) return invalid(HomeError::INVALID_METHOD, "undocumented home method");
@@ -315,6 +318,7 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
             failed(HomeError::ZERO_NOT_OBSERVED, "fresh position pair does not report zero"));
         else { c.completion = ActionCompletion::OBSERVED; finish(c, ActionOutcome::OBSERVED, Ok()); }
     } else {
+        const bool runningEarlier = c.runningObserved;
         ++c.polls; c.lastObservation = evidence; c.observationKnown = true;
         c.rawAlarm = words[0]; c.rawMotion = words[1];
         if (c.prerequisites.observeInputs) { c.inputsObserved = true; c.rawInputs = words[2]; }
@@ -348,7 +352,7 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
                 finish(c, ActionOutcome::OBSERVATION_LIMIT, failed(HomeError::OBSERVATION_LIMIT, "fresh homing transition was not observed"));
             else if (nowUs >= c.deadlineUs) finish(c, ActionOutcome::DEADLINE,
                 failed(HomeError::DEADLINE_EXPIRED, "no budget for next home observation"));
-            else wait(c, nowUs);
+            else wait(c, nowUs, runningEarlier);
         }
     }
     if (c.state == ActionState::FAILED) c.failureEvidence = evidence;

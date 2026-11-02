@@ -4,6 +4,7 @@
 #include "MoveRelation.h"
 #include <MotorControlRS/profiles/ess_rs/Position.h>
 #include <MotorControlRS/profiles/ess_rs/Reads.h>
+#include <MotorControlRS/profiles/ess_rs/Velocity.h>
 #include <MotorControlRS/profiles/ess_rs/DriverSettings.h>
 #include <MotorControlRS/profiles/ess_rs/Homing.h>
 
@@ -130,6 +131,9 @@ struct PositionStartSpeedRelation {
  * witness; no bus traffic or motion occurs. A possible start-speed write or a
  * contradictory observation revokes it. Fresh reads alone never recreate it.
  * Required after a possible start-speed change before ordinary moves resume.
+ * The requirement lives in RAM: a controller restart forgets it and uses the
+ * stored word under the startup policy. The console route is
+ * `motion-profile start-speed relation RAW_WORD MIN_RPM`.
  */
 MotorControlRS::Status installPositionStartSpeedRelation(const PositionStartSpeedRelation&);
 /** Explicit selected-axis homing auxiliary choice (0..11 enumeration). Uses the
@@ -150,8 +154,9 @@ MotorControlRS::Status submitHomingAuxiliary(MotorControlRS::ESS_RS::HomingAuxil
 bool copySettingsResult(uint32_t operationId, MotorControlRS::ESS_RS::DriverContext& output);
 /** Install exact externally supplied fixture/method/native-word qualification
  * against current checked CONFIG, MOTION, IO and HOMING_PARAMETERS reads.
- * Call from the service task while idle. Stored method/rates/ramp must already
- * match; reads never supply mechanical, index or reference qualification.
+ * Call from the service task while idle. Stored auxiliary must be 7 and the stored
+ * offset zero. Stored method, rates and ramp may differ, because home staging writes
+ * them. Reads never supply mechanical, index or reference qualification.
  * Replacement during an active home rejects without changing its snapshot. */
 MotorControlRS::Status installHomeQualification(const MotorControlRS::ESS_RS::HomePrerequisites&);
 /** Passive future-slot inspection. Absent returns false and preserves outputs.
@@ -162,6 +167,17 @@ bool inspectHomeQualification(MotorControlRS::ESS_RS::HomePrerequisites& output,
  * single-use consumption. Unsent work is cancelled; transmitted work settles
  * with its evidence intact. No physical stop or automatic replay occurs. */
 MotorControlRS::Status revokeHomeQualification();
+/** Install supplied velocity facts against a checked velocity-parameter read, from
+ * the service task while idle. Rejection preserves the previous witness; no traffic
+ * or motion occurs. Fresh stationary state is still checked at each submission, and
+ * this application keeps its finite free-shaft speed and duration envelope. */
+MotorControlRS::Status installVelocityQualification(const MotorControlRS::ESS_RS::VelocityPrerequisites&);
+/// Clear future velocity admission. An admitted run keeps its snapshot and its stop.
+MotorControlRS::Status revokeVelocityQualification();
+/** State that the zero-only position clear's semantics are qualified for this
+ * axis. Each clear still needs fresh stopped, enabled, alarm-free state. */
+MotorControlRS::Status installPositionClearQualification();
+MotorControlRS::Status revokePositionClearQualification();
 /** Ordinary selected-axis home route. Zero generation selects current config;
  * nonzero is checked. Rejection preserves operationId. Results are retained
  * until releaseOperation; the console uses the same admission/owner path. */

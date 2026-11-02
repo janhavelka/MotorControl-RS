@@ -744,7 +744,7 @@ void testPositionClearApiCliAndUncertainInvalidation() {
     for (bool lost : {false, true}) {
         fresh(); qualify(); coordinates(); uint32_t unchanged = 77;
         ActionRequest clear; clear.kind = ActionKind::CLEAR_POSITION; clear.positionClearQualified = true;
-        assert(host(app).startAction(app, 1, 1, clear, unchanged) == Probe::Action::UNAVAILABLE);
+        assert(host(app).startAction(app, 1, 1, clear, unchanged) == Probe::Action::QUALIFICATION_REQUIRED);
         assert(unchanged == 77 && hardware.writes == 0); // Caller cannot bypass app qualification.
         app->positionClearQualified = true;
         clear.devicePosition = 1;

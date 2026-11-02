@@ -6,8 +6,28 @@ the original vendor PDFs and retained bench evidence. Line numbers refer to comm
 `363255a`; no code changed between the start of the audit and that commit. Recheck them
 before editing, because concurrent work continues on `main`.
 
-Nothing was changed by this audit except this file and its index entries. No
-hardware, firmware flash or remote CI was run.
+The audit itself changed nothing except this file and its index entries, and ran no
+hardware, firmware flash or remote CI. The findings below describe the code as audited.
+See "Status" for what has since been fixed.
+
+## Status (2 November 2026)
+
+| Work | State |
+| --- | --- |
+| Stop and recovery: A-01 to A-03, A-05 to A-07, A-11, the `ProbeConsole.cpp:1800` row of A-10 | Fixed, with regressions in `test/stop_path_app_test.cpp`. After a bus fault, the stop reaches the wire after about 0.5 s of recovery settlement. |
+| Core and homing logic: H-01, H-03, H-04, K-01 to K-10 | Fixed. K-08 is documentation only. K-04's bound narrows int32 and rests on an interpretation of a malformed manual row. |
+| Promptset corrections and V-01 | Applied. |
+| Reachability: A-04, A-08, A-09, remaining A-10 rows | Fixed: typed qualification routes for home, velocity, position clear and the start-speed relation. |
+| Bench: first-run plan, H-02 | **NOT RUN.** The recorded USB device is absent. H-02's gates stay unchanged until method 35 evidence exists. |
+| Maintainability: M-01 to M-12 | Not started. |
+
+Known limits left by these fixes:
+
+- K-01: a mismatched move stays OBSERVED with `position_mismatch`. A repeated `moveto` to that target can still report "already satisfied" while the drive reports in position, because the `0x010B` unit is unknown and small differences must not retrigger motion. Stage 08 owns the window measurement.
+- D1: if two stop reports are undelivered, or two stops are running, a third stop returns `results_full` or `busy` under a sustained USB stall.
+- A-04: polls before the first RUNNING report reduce the 64-poll coverage. A home that never reports RUNNING ends `observation_limit` after about 1.3 s, uncertain, without a stop.
+- An advanced `move` holding an established reference now needs `monitor off`.
+- The stored `sizeof(App)` in `docs/esp_idf_probe.md` predates these changes; remeasure it on the next IDF build.
 
 ## Bottom line
 

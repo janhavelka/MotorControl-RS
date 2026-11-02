@@ -1742,7 +1742,7 @@ void testHomeFirstErrorOrder(bool fixtures = false) {
     // The same correlation can be used after every rejected command.
     f.axisStatus = MotorControlRS::Ok(); f.axisConfig.generation = 3;
     check(f, c, "@75 home 35 60 30 100 zero 1\n",
-        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":75,\"command\":\"home\",\"ok\":true,\"result\":\"done\",\"address\":1,\"operation_id\":100}", "rejected_id_reused");
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":75,\"command\":\"home\",\"ok\":true,\"result\":\"accepted\",\"address\":1,\"operation_id\":100}", "rejected_id_reused");
     assert(f.homes == 1 && f.axisCalls == 2 && f.homeRequest.configurationGeneration == 3);
     check(f, c, "@75 home bad 0 0 0 nonzero 0\n",
         "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":75,\"command\":\"input\",\"ok\":false,\"result\":\"duplicate_id\"}", "correlation_before_grammar");
