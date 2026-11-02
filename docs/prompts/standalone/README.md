@@ -3,6 +3,8 @@
 Prepared 2026-10-23 from current source, callers, tests, operation inventory and
 dated bench evidence. **Status: prepared; numbered implementation/physical
 stages have not been executed.** The preparation audit is complete.
+Apply the [2 November code and promptset audit](../../reports/2026-11-02_standalone_promptset_audit.md)
+before dispatching a stage; it corrects these prompts and lists stop-path defects.
 
 The dedicated [ESS software set](../ess_software/README.md) now owns N01, N02,
 N04, N05, N07 and the 27 switch-method portion of N08. Its bounded stages are
