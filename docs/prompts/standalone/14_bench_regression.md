@@ -26,25 +26,37 @@ docs/hardware_bench.md, bench_scenarios.md, functional_bench.md, cli_contract.md
 This regresses the delivered ESS software, which has not reached hardware. It
 runs under AGENTS' standing bench authorization and owner decision D3.
 
-Flash `bench_s3_load_timer` by name, not the default environment (A-10). Record
-the image hash, then inspect `memory` after each new route, because home and
-interrupt have no on-target stack watermark.
+Flash `bench_s3_load_timer`, naming the environment explicitly. Record the image
+hash, then inspect `memory` after each new route, because home and interrupt have
+no on-target stack watermark.
 
 1. Existing regression: `probe`, `read identity|config|state`, one short `moveby`,
    `stop normal`, `stop fast`.
 2. New reads: `velocity read`, `home read`. Compare raw words with the manual's
    defaults.
-3. Interruption: `position interrupt ORIGINAL_ID` on a small finite move, keeping
-   both results. ACK is not arrival. This exercises the delivered route; it is not
-   the N05 evidence of stage 03.
-4. Settings: `home auxiliary` with a saved prior and readback, restoring the
-   original. Skip `motion-profile start-speed` while A-09 applies to the flashed
-   image, unless a reboot is acceptable.
-5. Homing: requires the D2 route on the flashed image; without it, record NOT RUN.
-   Run method 35 first, retaining raw `0x0006..0x0008` and `0x000A/2` at each poll
-   to settle H-02. Then run 33 and 34 at low speed on the free shaft. Check A-04
-   and H-01 against the flashed commit first. Switch methods need a real fixture
-   and are outside this stage.
+3. Interruption: after `motion-profile read`, start
+   `move relative N steps native RPM configured`, not `moveby`: a simple-session
+   move cannot be interrupted (`PositionInterruptApp.h`). Make it long enough to
+   still be running, then `position interrupt ORIGINAL_ID`, keeping both results.
+   ACK is not arrival. This exercises the delivered route; it is not the N05
+   evidence of stage 03.
+4. Settings and homing, in this order, because a restored auxiliary makes install
+   return `stored_auxiliary_differs`. Homing requires the D2 route on the flashed
+   image; without it, record NOT RUN. Check A-04 and H-01 against the flashed
+   commit first. After `read config` and `read state`, save `home read`. Then
+   `home auxiliary 7`, `release` its result, `read config`, `read state`,
+   `home read`,
+   `home qualification install 35 S R RAMP mechanics rates ramp zero-offset auxiliary inputs`,
+   then `home 35 S R RAMP zero`, retaining raw `0x0006..0x0008` and `0x000A/2` at
+   each poll to settle H-02. For 33 and 34 at low speed on the free shaft add
+   `index`. Each home consumes the qualification, so repeat `read state`,
+   `home read` and install before the next. Restore auxiliary last, after fresh
+   `read config` and `read state`. Staged method, rates and ramp have no restore
+   route: record them as changed until a controller or drive restart, and do not
+   claim restoration. Switch methods need a real fixture and are outside this
+   stage.
+5. `motion-profile start-speed` latches move admission until
+   `motion-profile start-speed relation RAW_WORD MIN_RPM`; test it last.
 
 ## Bench rules for images without the stop fixes
 
@@ -63,7 +75,8 @@ no longer apply; use the stop behavior in the current CLI contract.
 Record a result for `position_interrupt_stored`, `home_parameters`,
 `home_zero_offset`, `home_start`, `homing_auxiliary_write` and
 `position_start_speed_write`, using NOT RUN with the reason where a step did not
-execute. Keep raw traffic, timing, memory readings and restored settings. Follow
+execute. Keep raw traffic, timing, memory readings, restored settings and settings
+left changed. Follow
 AGENTS for a failing scenario, and never replay an uncertain write. A short
 regression does not replace soak, electrical or switch-fixture qualification.
 Update the inventory's hardware fields only from this evidence.

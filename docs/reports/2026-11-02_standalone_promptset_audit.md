@@ -14,20 +14,67 @@ See "Status" for what has since been fixed.
 
 | Work | State |
 | --- | --- |
-| Stop and recovery: A-01 to A-03, A-05 to A-07, A-11, the `ProbeConsole.cpp:1800` row of A-10 | Fixed, with regressions in `test/stop_path_app_test.cpp`. After a bus fault, the stop reaches the wire after about 0.5 s of recovery settlement. |
-| Core and homing logic: H-01, H-03, H-04, K-01 to K-10 | Fixed. K-08 is documentation only. K-04's bound narrows int32 and rests on an interpretation of a malformed manual row. |
+| Stop and recovery: A-01 to A-03, A-05 to A-07, A-11, the `ProbeConsole.cpp:1800` row of A-10 | Fixed, except A-01 is partial (R-02, R-03). Regressions are in `test/stop_path_app_test.cpp`. A stop behind a lost poll reached the fixture's wire 0.70 s after admission, about 0.5 s of it recovery settlement. |
+| Core and homing logic: H-01, H-03, H-04, K-01 to K-10 | Fixed, except K-01 and K-02 are partial (see re-audit). K-08 is documentation only. K-04's bound narrows int32 and is corroborated by p73 and p75 but unmeasured. |
 | Promptset corrections and V-01 | Applied. |
-| Reachability: A-04, A-08, A-09, remaining A-10 rows | Fixed: typed qualification routes for home, velocity, position clear and the start-speed relation. |
+| Reachability: A-04, A-08, A-09, remaining A-10 rows except bench constants (M-07) | Fixed: typed qualification routes for home, velocity, position clear and the start-speed relation. |
 | Bench: first-run plan, H-02 | **NOT RUN.** The recorded USB device is absent. H-02's gates stay unchanged until method 35 evidence exists. |
 | Maintainability: M-01 to M-12 | Not started. |
 
 Known limits left by these fixes:
 
 - K-01: a mismatched move stays OBSERVED with `position_mismatch`. A repeated `moveto` to that target can still report "already satisfied" while the drive reports in position, because the `0x010B` unit is unknown and small differences must not retrigger motion. Stage 08 owns the window measurement.
-- D1: if two stop reports are undelivered, or two stops are running, a third stop returns `results_full` or `busy` under a sustained USB stall.
-- A-04: polls before the first RUNNING report reduce the 64-poll coverage. A home that never reports RUNNING ends `observation_limit` after about 1.3 s, uncertain, without a stop.
-- An advanced `move` holding an established reference now needs `monitor off`.
+- D1: if two stop reports are undelivered, or two stops are running or queued, a third stop returns `results_full` or `busy`, even without a USB stall.
+- A-04: polls before the first RUNNING report reduce the 64-poll coverage: a 30 s budget ends at 29.985 s with none, 26.7 s with 10, 17.1 s with 30. A home that never reports RUNNING ends `observation_limit` after about 1.75 s in the fixture, uncertain, without a stop.
+- An advanced `move` holding an established reference now needs `monitor off`, relative or absolute, and otherwise replies a generic `invalid` (R-07).
 - The stored `sizeof(App)` in `docs/esp_idf_probe.md` predates these changes; remeasure it on the next IDF build.
+
+## Re-audit (2 November 2026)
+
+Every finding was rechecked individually by independent reviewers trying to disprove it, against code frozen at `363255a`, the code at `513251d`, and rendered PDF pages.
+No finding was rejected outright. Corrections are applied in place above and below, and to the prompts. Limits of that check: no hardware, firmware flash, UBSan or MSVC, and evidence ZIPs over 60 MB were not scanned.
+
+| Finding | True of `363255a` | At `513251d` |
+| --- | --- | --- |
+| A-01 | Yes | **Partial:** R-02, R-03 |
+| A-02 | Yes, severity lowered to Medium (window under 200 ms) | Fixed; R-04 remains |
+| A-03, A-05, A-06, A-07 | Yes (A-06 wording corrected; A-07 lowered to Low) | Fixed |
+| A-04 | Yes (wording corrected; lowered to Medium) | Fixed, depends on RUNNING being reported (H-02) |
+| A-08 | Yes | Fixed |
+| A-09 | Yes, position moves only | Fixed; the reboot bypass remains, documented |
+| A-10 | Yes, all rows | Fixed, except the bench-constant row (M-07) |
+| A-11 | Yes, lowered to Medium (finite moves end themselves) | Fixed |
+| H-01 | Yes, two bullets corrected | Fixed; a limit outside the method's path still fails, which is a fail-closed choice rather than a manual rule |
+| H-02 | Yes, table corrected and one row added | Open by design until method 35 evidence |
+| H-03, H-04, V-01 | Yes | Fixed (the restart check for V-01 is NOT RUN) |
+| K-01 | Logic bug yes; its bench rationale was wrong and is corrected | **Partial:** exposed as `position_mismatch`, which is true even at delta 1; a far miss still returns `ok:true`; window judgement open (stage 08) |
+| K-02 | Yes, plus `DriverSettings` | **Partial:** only 3 of 7 modules use the closure rule, so a late trigger echo gives ACK with a DEADLINE outcome. Safe |
+| K-03, K-05, K-06, K-07, K-08, K-09, K-10 | Yes (K-07, K-10 wording corrected) | Fixed |
+| K-04 | Yes (wording corrected) | Fixed in typed paths; R-08 |
+| P-01 to P-07, P-20 and all prompt rows | Yes, with citation corrections | Applied, then corrected by this re-audit; stage 14's flow and stage 08's quantization conclusion were wrong and are fixed |
+| M-01 to M-12 | Yes, with count corrections below | Open |
+
+Two statements of this audit were wrong and are corrected: stage 08's "encoder quantization is a weak explanation", and the "only known printed errors" list.
+
+### New findings (open, unfixed)
+
+| ID | Sev | Location | Problem | Fix | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| R-01 | Medium | `MotionReadinessApp.h:76` | An active origin blocks ordinary session moves and interrupts. Methods 20, 22, 24, 25, 28, 29 end with the origin active as drawn, so moves can be refused right after a successful home. A function above 3 is rejected even where `home` now admits it. Same error as H-01, in the move path | Apply the homing rule: active limits and functions 4-6 block; origin and selectors do not. Regression: origin active at rest, then `moveby` | READ, traced, not run |
+| R-02 | Medium | `ProbeApp.cpp` `holdStop` | Falls short of D1. Bus noise during the stop's quiet wait hits BUS_TIMEOUT; the result is already READY, so `cancelUnsent` returns false and the stop is not held. It ends `transport_error`, `not_transmitted`, `FC06=0`, with no recovery. A new stop works | Treat a terminal stop with zero accepted bytes as held, once | RUN |
+| R-03 | Low | `ProbeApp.cpp` `startAction` | During a discovery interlock, stop returns `recovery_required`; after `recover` it is accepted and then never reaches the wire, ending `deadline`, `not_transmitted`. During a commissioning lease it returns `busy`. The comment "never refuses a stop" is false here. Predates the fixes | Decide scan-owned stop behavior; correct the comment | REPORTED, run by reviewer |
+| R-04 | Low | `ProbeApp.cpp` `cancel` | Cancelling an in-flight `probe` still uses `owner.cancel` and interlocks, and `read state` is refused. A later stop self-recovers after 0.44 s | Use `cancelUnsent` there too | REPORTED, run by reviewer |
+| R-05 | Low | Stop observation | A UART fault after a stop's ACK leaves it pending to its full deadline (3.003 s), where it used to be 0.5 s | End observation on an interlocked bus | REPORTED, run by reviewer |
+| R-06 | Low | `scripts/bench_probe.py:2331` | Raises on a third unreleased stop that firmware has accepted, so its terminal report goes uncollected | Align the harness quota with overwriting | REPORTED, read only |
+| R-07 | Low | Console | A monitor-on advanced move replies generic `invalid` for a fixable condition | Return `busy` or a named reason | RUN by reviewer |
+| R-08 | Low | `motion-profile restore` | A stored target above the bound parses but cannot be restored: FAILED, no TX. If a drive ever holds such a value, that also disproves the bound | Report a specific reason | Read; fails closed |
+| R-09 | Low | `ProbeApp.cpp:3228` | Position-clear qualification is a bare flag, not bound to a target or generation. It survives `recover`; home and velocity are generation-bound. State checks still apply | Bind it like the others | READ |
+| R-10 | Low | `Communication.cpp` (K-09) | A rejected write followed by `readback == previous` sets `uncertain=1`; `communication_test.cpp` pins this | Limit the K-09 change to contradictions | RUN by reviewer |
+| R-11 | Low | `Homing.cpp:72`, `:89`, `:91`, `docs/ess_homing.md` | "Contradicts the path" and "interrupt whichever method is running" state fail-closed choices as facts. No direction awareness: method 1 parked on the positive limit moves away yet is rejected | Reword as "undocumented start, fail closed" | READ by reviewer |
+| R-12 | Low | `Position.cpp:52-54` | The confirmed "Suspected" note below; the console prints "Execution is unknown" beside `execution=rejected` | Limit `uncertain` to staged work | RUN by reviewer |
+| R-13 | Low | `QualificationApp.h:5-9`, `homeFirstRead`, new tests | `qualificationIdle` repeats an existing guard, `homeFirstRead` restates `homeReadiness` (drift risk), and new tests add harness and CRC copies | Add a parity test; include in M-08 | REPORTED |
+| R-14 | Low | `serviceOutput` | Now nests up to the 3 retained stop replies; stack not measured | Check `memory` on the first bench run | REPORTED |
+| R-15 | Low | D1-D5 | Recorded in this audit and the execution contract, not in `AGENTS.md`, which an agent reads first | Owner's choice | READ |
 
 ## Bottom line
 
@@ -113,7 +160,7 @@ then one fresh stop, and have the console name that sequence in its error.
 Regression: in-flight poll with no reply, stop admitted. Assert the stop FC06 reaches the
 wire, or an explicit `not_transmitted` plus the recovery instruction.
 
-### A-02 High, RUN: `cancel` or `monitor off` blocks the next stop
+### A-02 Medium, RUN: `cancel` or `monitor off` blocks the next stop
 
 `ProbeApp.cpp:2441`, `:2454` and `:2490` call `owner.cancel`. Cancelling an in-flight
 transaction becomes a fault in `RtuRunner.cpp:644` and `:679`, so `needsRecovery=1` and
@@ -140,13 +187,12 @@ the recorded measurements from [stage 14](2026-11-02_ess_portability.md).
 
 Regression: normal stop acknowledged and still running; a fast stop's FC06 reaches the wire.
 
-### A-04 High once homing is reachable, RUN: supervision ends while the drive still searches
+### A-04 Medium, RUN: supervision ends while the drive still searches
 
 `ProbeApp.cpp:1183` sets a 3 s deadline with 20 ms polls, and `Homing.cpp:336` ends at 64 polls.
 Result with the drive reporting RUNNING: terminal at 1.890 s, `observation_limit`, `uncertain=1`,
 then 0 frames in the next 20 s, with no stop and no observation. Moves avoid this by slowing to
-500 ms polls after RUNNING (`ProbeApp.cpp:2213`); homing does not. Existing fixtures finish in
-3 or 4 polls, so no test exercises elapsed search time.
+500 ms polls after RUNNING (`ProbeApp.cpp:2213`); homing does not. No test exercises elapsed search time; the 64-poll exhaustion tests are scripted without it.
 
 Fix: derive the home deadline from configured travel (`moveTimeoutMs` or an explicit option) and
 widen the poll interval after RUNNING so 64 polls cover it. Do not add an automatic stop. State
@@ -166,14 +212,14 @@ count the overwrite. Stop must never depend on ordinary capacity.
 ### A-06 Medium, RUN: the first stop after a controller reset returns `unavailable`
 
 `ProbeApp.cpp:778`: `knownTargets` is empty after boot, so a watchdog reset that leaves the motor
-running blocks `stop` until a `probe`. `invalidateSerialConfidence` (`:2546`) clears the same bitmap
-after `host` or `useaddr` changes.
+running blocks `stop` until any checked reply (such as a `probe`). `invalidateSerialConfidence` (`:2546`) clears the same bitmap
+after `host` or `useaddr` changes, as do communication and persistence.
 
 Fix: skip this gate for STOP when the address equals the selected axis.
 
 Regression: `fresh()`, then stop, then assert one FC06 to `0x0027`.
 
-### A-07 Medium, RUN: a second `recover` fails until the first result is released
+### A-07 Low, RUN: a second `recover` fails until the first result is released
 
 `ProbeApp.cpp:2308`; `recycleInteractiveResults` never covers recovery. Combined with A-01, `recover`
 says full and `stop` says recovery required until the operator runs `release ID`.
@@ -195,7 +241,7 @@ ordinary firmware. Stage 05's physical work has no route either.
 
 Fix: apply D2. Regardless of D2, return a specific `qualification_required` instead of `unavailable`.
 
-### A-09 Medium, READ: `motion-profile start-speed` locks out all moves until reboot
+### A-09 Medium, READ: `motion-profile start-speed` locks out position moves until reboot
 
 `ProbeApp.cpp:1643` and `MotionReadinessApp.h:17` latch `positionStartSpeedRelationRequired`.
 `installPositionStartSpeedRelation` is API-only. Writing the original value back does not clear the
@@ -215,7 +261,7 @@ and decide what boot does. Regression: set the word, restore it, assert the defi
 | `ProbeApp.cpp:2213` | Mutates `record.move.options.pollIntervalUs` mid-operation, contrary to the header's "read-only between calls" | Add an explicit sequencer option for the slower interval | READ |
 | `HostSerial.h:65`, `ProbeApp.cpp:238`, `:1546`, `BoardPins.h:29` | Bench assumptions in shared example code; all fail closed | Name them as bench constants (M-07) | REPORTED |
 
-### A-11 High, READ: bench cleanup does not handle a refused stop
+### A-11 Medium, READ: bench cleanup does not handle a refused stop
 
 This is the host side of A-01. In `scripts/bench_probe.py:3125-3127`, a rejected cleanup stop raises,
 which leaves `cleanup = "unknown"` and the motor possibly running. Add one bounded `recover`, wait and fresh
@@ -230,10 +276,9 @@ this on every poll. X0 = origin is the factory default (function manual p73-74).
 limit wired, polled while the origin is active, gives FAILED, `REPLY_ERROR`, detail 13, `uncertain=1`, with no stop issued,
 so the drive continues while the host has abandoned the home.
 
-- Methods 1, 2, 17, 33 and 34 have no origin in their documented path, and 35 uses no sensor, yet admission rejects them
-  while an assigned origin or limit is active.
-- `:73` rejects any terminal function above 3, so a wired stop or emergency-stop input (function 5 or 6, p27) makes all
-  observed homing impossible.
+- Methods 1, 2, 17, 33 and 34 have no origin in their documented path, yet admission rejects them while an assigned origin is active.
+  Method 35 uses no sensor, yet any active assigned sensor rejects it.
+- `:73` rejects any terminal function above 3, wired or not, so any assignment of functions 4-17 makes all observed homing impossible.
 
 Fix: replace the check with a per-method forbidden-input mask. The opposite limit stays a fault where relevant. The origin is
 never a fault for 1, 2, 17, 18, 33 and 34. Method 35 forbids nothing. Admit functions 5 and 6 on unused terminals and treat them
@@ -243,16 +288,17 @@ Regression: an origin pulse during methods 1, 2 and 17 completes. The opposite l
 
 ### H-02 Medium, READ for code, REPORTED for manual silence: completion rests on undocumented behavior
 
-`Homing.cpp:205`, `:303` and `:329-330` assume the following. The manual (p68, p28) does not state what these bits do during a
+`Homing.cpp:205`, `:303` and `:329-330` assume the following. The manual (p68, p28, section 4.3 and Appendix 1) does not state what these bits do during a
 home. All fail closed, so nothing unsafe follows, but the feature may not work at all.
 
 | Assumption | If false on the drive |
 | --- | --- |
 | ARRIVED is set after homing, including non-moving method 35 | Every home ends OBSERVATION_LIMIT |
-| HOMED falls after the trigger | A repeated method 35 cannot pass |
-| Position reads exactly 0 | ZERO_NOT_OBSERVED. p69 says closed-loop position is encoder feedback; p78 gives a positioning window of 5; raw delta 99 is on record for 100-command moves |
-| Bits 5 and 6 are soft-limit only | Methods 1, 2, 7-14, 17 and 23-30 abort at their own reversal |
-| INPUT_STATUS is polarity-corrected (`Homing.h:79`) | Wrong input interpretation |
+| HOMED falls after the trigger | A repeated method 35 cannot pass, and a moving method that sees HOMED high throughout ends OBSERVATION_LIMIT |
+| RUNNING is reported during homing | A home that never reports it ends OBSERVATION_LIMIT after about 1.75 s, uncertain, without a stop |
+| Position reads exactly 0 | ZERO_NOT_OBSERVED. p72 value 7 says "current position is 0 after completion", but p69 says closed-loop position is encoder feedback, and p78 prints a positioning error range of 5 with no unit, so whether a later read is exactly 0 is unstated |
+| Bits 5 and 6 are soft-limit only (named on p68; p29 ties soft limits to `0x0018` and completed return) | Methods 1, 2, 7-14, 17 and 23-30 abort at their own reversal. `0x0017` over-limit parking (p70, default free) is the only hint at a limit reaction, and is unstated for homing |
+| INPUT_STATUS is polarity-corrected (`Homing.h:79`; p69 "level valid/invalid", p27 and p73 favor this, but nothing links `0x0008` to `0x0040`) | Wrong input interpretation |
 
 Also, p25 describes stop for positioning and speed modes only. Stop during homing, and which deceleration applies, is undocumented.
 
@@ -281,9 +327,9 @@ switch-fixture check, because firmware that really used function 3 would run pas
 position 200, the result is `outcome=OBSERVED`, `completion=OBSERVED`, `positionConfirmed=0`. The `moveby`/`moveto` session enables this policy
 (`ProbeApp.cpp:962`). `docs/axis_contract.md:36` says known contradictions remain invalid.
 
-**Do not fix this by requiring exact equality.** Physically tested moves reported raw delta 99 for 100 commands
-([platform audit](../archive/reports/ess_release_25_26_audit_2026-10-05.md), line 107), and this path is what lets them pass. Exact equality would
-break working motion.
+**Do not require exact equality without bench evidence.** Advanced moves reported a stable raw delta 99 for 100 commands
+([platform audit](../archive/reports/ess_release_25_26_audit_2026-10-05.md), line 107). Those runs predate `positionFeedbackMatchesCommand`, so this path did not
+pass them, and all 30 retained flag-on records scanned are exact. Whether the same delta can occur with the flag on is unknown until measured.
 
 Fix: compare against a bounded arrival window. The candidate is register `0x010B` (p78, default 5, unit unspecified), so qualify its unit first. An error
 beyond the window is a failure. Until the unit is established, keep OBSERVED but expose an explicit mismatch field in the result, console and host
@@ -291,7 +337,7 @@ evidence. Regression: running then arrived at a far position does not read as cl
 
 ### K-02 Medium, RUN: sibling sequencers classify write replies differently
 
-`Velocity.cpp:44`, `Position.cpp:65`, `Homing.cpp:117`, `Actions.cpp:196` and `DriverSettings.cpp:699` treat exception 1..7 as REJECTED.
+`Velocity.cpp:44`, `Position.cpp:65`, `Homing.cpp:117`, `Actions.cpp:196` and `DriverSettings.cpp:699` treat exception 1..7 as REJECTED; `DriverSettings` also lets an echo override `executionUnknown`.
 `Communication.cpp:196` and `Persistence.cpp:175` exclude 05, because p12 defines it as a read-range error. So exception 05 on a velocity trigger gives
 `execution=REJECTED`, `needsStop=0`, and no stop is issued. Separately, a matching echo overrides `executionUnknown=true` to ACKNOWLEDGED in
 velocity, position, homing and actions, while communication and persistence refuse it. The app's owner never sets that flag on success, so this exposure
@@ -312,16 +358,16 @@ at `test/position_test.cpp:653` needs `idle=true`.
 
 | ID | Location | Problem | Fix | Evidence |
 | --- | --- | --- | --- | --- |
-| K-04 | `Position.cpp:268`, `:125-131`, `:152` | Admits the full int32 range; p70 prints `-0xFFFFFFF ~ 0xFFFFFFFF`, and p12 says out-of-range data returns exception 07 | Reject magnitude above `0x0FFFFFFF` before traffic in every path; record the upper bound as an interpretation of the malformed row | REPORTED |
+| K-04 | `Position.cpp:268`, `:125-131`, `:152` | Admits the full int32 range; p70 prints `-0xFFFFFFF ~ 0xFFFFFFFF`, and p12 says out-of-range data returns exception 07 | Reject magnitude above `0x0FFFFFFF` before traffic in every typed path. p73 and p75 print `-0xFFFFFFF ~ 0xFFFFFFF` for sibling pairs and p70's upper bound is malformed, so this is corroborated but unmeasured. Generic FC10 stays raw | REPORTED |
 | K-05 | `Velocity.cpp:287` versus `:280` | A poll closing after `stopDueUs` fails a clean run (98 ms duration fails, 100 ms passes) | Treat that closure as the end of the observation budget and call `beginStop`; alarm and fault words still count | RUN |
 | K-06 | `Reads.cpp:182-188`, `Discovery.cpp:65-71` | FRAME with `txAccepted=0` publishes a read and a probe RESPONDER; every other sequencer rejects it | Require full TX for FRAME | RUN |
-| K-07 | `Velocity.cpp:98-101`, `Position.cpp:209`, `ActionOperation.h:32-35` | Default options (10 ms x 20 polls) admit a 5 s velocity, truncated at about 310 ms | Reject when the poll budget cannot cover the duration; state the default budget in Doxygen | RUN |
+| K-07 | `Velocity.cpp:98-101`, `Position.cpp:209`, `ActionOperation.h:32-35` | Default options (10 ms x 20 polls) admit a 5 s velocity, truncated at about 310 ms | Reject velocity when the poll budget cannot cover the duration. Moves stay admitted and only their default budget is documented | RUN |
 | K-08 | `Axis.cpp:541`, `:565`, `:582`, `Axis.h:32` | Displacement is checked against coordinate bounds, so one-sided ranges cannot reverse. Documented deliberately in `docs/axis_preparation.md:26`, but the header says "coordinates" | Add a separate displacement range, or correct the header and warn | RUN |
 | K-09 | `Communication.cpp:224-228` | After CONFIRMED, a later READBACK_MISMATCH leaves `uncertain=false` | Set `uncertain=true` on mismatch when effects are possible | REPORTED |
-| K-10 | `Actions.cpp:220` | Position-clear evidence hardcodes high-word-first, though p30 makes `0x000A` order-configurable. The zero check is unaffected | Keep the raw words, or take the order as input | REPORTED |
+| K-10 | `Actions.cpp:220` | `rawPosition` hardcodes high-word-first, though p30 makes `0x000A` order-configurable. It was documented as a wire concatenation, so this is an exposure rather than a mis-decode, and the zero check is unaffected | Keep the raw words, or take the order as input | REPORTED |
 
-Suspected, not confirmed: `Position.cpp:52-54` and `Homing.cpp:105-107` set `uncertain` even for a confirmed rejected start with no setup. It looks
-over-conservative and is harmless to safety. Trace the application consequences before changing it.
+Confirmed for position only (R-12): `Position.cpp:52-54` sets `uncertain` for a confirmed rejected `USE_STORED` start with no staging, and the next move then returns AXIS_CONFLICT
+until a checked stop. `Homing.cpp` always stages first, so it has no such case. Safe but over-conservative.
 
 ### V-01 Low: unrecorded source conflict on input defaults
 
@@ -521,31 +567,31 @@ Rules until A-01 to A-03 and A-06 are fixed:
 
 ## Maintainability
 
-The priority order is M-01, M-05, M-06, M-11, M-08, then M-03, M-04, M-02. Keep output, frames, error precedence and protocol-3 grammar byte-identical. Measurements come
+The order is M-01, M-05, M-06, M-11, M-08, then M-03, M-04, M-02, because low-risk cleanups come first despite the P labels. Keep output, frames, error precedence and protocol-3 grammar byte-identical. Measurements come
 from ctags and a normalized-line detector; line deltas are estimates. All REPORTED.
 
 | ID | Pri | Location and evidence | Change | Check |
 | --- | --- | --- | --- | --- |
-| M-01 | P1 | `admitAxisWrite` (`ProbeApp.cpp:874-891`) has no production caller; only tests use it, and `docs/ess_position.md:463` wrongly says writers use it | First confirm the production TX-effect path covers invalidation. Then delete it, retarget the tests to `checkAxisWrite` and `owner.admit`, and fix the doc | `move_app_test`, `velocity_app_test` |
-| M-02 | P1 | `Console::dispatch` (`ProbeConsole.cpp:1018-2273`) is 1,256 lines, with 159 `error(id,` calls | `struct Invocation` plus same-file `handleSettings`, `handleHome`, `handleMove`, `handleMonitor`, `handleHelp`, `handleCommunication`, `handleMotionProfile`, `handleDiscover`, `handleVelocity`, `handlePersistence`, `handleHost`. No new translation units | `probe_console_test`, `human_console_test`, parity tests |
+| M-01 | P1 | `admitAxisWrite` (`ProbeApp.cpp:874-891`) has no production caller; only tests use it, and `docs/ess_position.md:463` wrongly says writers use it | Confirmed: every production writer invalidates at TX acceptance (`ProbeApp.cpp:2152-2182`, `MotionProfileApp.h:95-104`, `PersistenceApp.h:78-87`, `CommunicationApp.h:152`). Delete it. `move_app_test:225-229` and the final UNAVAILABLE assert exercise dead code and go with it; only the AXIS_CONFLICT asserts retarget to `checkAxisWrite`. Fix the comment at `ProbeApp.cpp:857-859` and `ess_position.md:463-465` | `move_app_test`, `velocity_app_test` |
+| M-02 | P1 | `Console::dispatch` (`ProbeConsole.cpp:1018-2273`) is 1,256 lines, with 159 `error(id,` calls (1,275 now). The backlog requires formatting and error characterization first | `struct Invocation` plus same-file `handleSettings`, `handleHome`, `handleMove`, `handleMonitor`, `handleHelp`, `handleCommunication`, `handleMotionProfile`, `handleDiscover`, `handleVelocity`, `handlePersistence`, `handleHost`. No new translation units | `probe_console_test`, `human_console_test`, parity tests |
 | M-03 | P1 | `advanceActions` (`ProbeApp.cpp:2117-2303`, nesting 6) and `deliver` (`:2736-2863`, nesting 7) | Extract `applyTxAcceptedEffects`, `completionEvent`, `retainMoveCompletion`, `admitNextStep`, `absorbConfigObservation`, `absorbProbeObservation`, `markDelivered`, keeping statement order | App tests |
-| M-04 | P1 | `startDriver` (`ProbeApp.cpp:1463-1632`), `serviceSimpleMotion` (`SimpleMotionApp.h:140-385`) | Extract `qualifyDriverUpdate`, `passiveInputEvidence`, `serviceSubdivisionPhase`, `serviceReadPhase`, `admitSimpleMove`, `bootReference` | Driver, I/O, control, tuning, simple-motion tests |
-| M-05 | P1 | Repeated in `ProbeApp`: `freeRecord` (8 sites), state block lookup (33), `busNeedsRecovery` (28), request fill bodies at `:722`, `:894`, `:996`, `:1066`, `:1320` | Small helpers and `template<class P> transactionRequest`. **Do not centralize guard chains**: their order differs, and error precedence is a contract | All `*_app_test` |
-| M-06 | P1 | 8 `report*` functions repeat slot setup, and 8 sites repeat `available/beginWork/track` | `reportSlot`, `startTracked` | `probe_console_test` |
+| M-04 | P1 | `startDriver` (`ProbeApp.cpp:1463-1632`), `serviceSimpleMotion` (`SimpleMotionApp.h:140-392`) | Extract `qualifyDriverUpdate`, `passiveInputEvidence`, `serviceSubdivisionPhase`, `serviceReadPhase`, `admitSimpleMove`, `bootReference` | Driver, I/O, control, tuning, simple-motion tests |
+| M-05 | P1 | Repeated in the app: `freeRecord` (10 sites), state block lookup (34), `busNeedsRecovery` (28 app-wide, 18 in `ProbeApp.cpp`), request fill bodies at `:722`, `:894`, `:996`, `:1066`, `:1320` | Small helpers and `template<class P> transactionRequest`. **Do not centralize guard chains**: their order differs, and error precedence is a contract | All `*_app_test` |
+| M-06 | P1 | 10 `report*` functions repeat slot setup, and 10 sites repeat `available/beginWork/track` | `reportSlot`, `startTracked` | `probe_console_test` |
 | M-07 | P2 | Magic values: timeouts `3000000`, `2000000`, `500000`; raw indexes `raw[7]`, `raw[8+i]`; identity `0x4EEA/0x0029/20261004` (`ProbeApp.cpp:1546`); register literals (`MotionProfileApp.h:28`, `ProbeConsole.cpp:1296-1305`) | Named constants and generated register names | Byte-identical frames |
-| M-08 | P2 | 17 test files define `step`/`fresh`, 15 copy `crc`; `homing_auxiliary_app_test` and `position_start_speed_app_test` share a 59-line run | `test/fakes/esp32_uart/AppHarness.h` with one independent CRC. Keep `homing_test.cpp:445`, an independent oracle | CTest count unchanged |
+| M-08 | P2 | 17 test files define `step`/`fresh`, 25 copy `crc` (27 now); `homing_auxiliary_app_test` and `position_start_speed_app_test` share a run of 55 exact lines | `test/fakes/esp32_uart/AppHarness.h` with one independent CRC. Keep `homing_test.cpp:445`, an independent oracle | CTest count unchanged |
 | M-09 | P2 | Small clones: `submitVelocityParameterRead`/`submitHomingParameterRead`, `submitPositionStartSpeed`/`submitHomingAuxiliary`, four `programmatic*` flags | `submitParameterRead`, `submitSingleSetting`, one `programmatic` flag. No session template; the heavier sessions are not near-identical | App tests |
 | M-10 | P2 | `require` has 18 copies and `integer` 11 in the Python tools; `_check_driver` 319 lines, `check_move` 352, `check_home` 238; `CMakeLists.txt` repeats console units 6 times | `requirer(prefix)` in `_bench_evidence.py`, in-place splits, `set(CONSOLE_SOURCES ...)` | `bench_probe_test.py` |
-| M-11 | P2 | Space-stripped digits in living docs (`stage12`, `original27`, `only1-14`, `auxiliary7`): `progress.md` about 138, `ess_homing.md` 27, `backlog.md` 25, `roadmap.md` 21, plus `Homing.h:147`. Stage narrative is repeated between `backlog.md` and `roadmap.md`. Counts like "five named" are repeated across 15 docs | Fix the typos and add a `check_repository.py` regex with an allowlist. Move stage narrative to `CHANGELOG.md` and `progress.md`. Keep counts in `releases/1.0.0.md` and checker output, and link elsewhere | `check_repository.py` |
-| M-12 | P3 | Readability: `ProbeApp.cpp` 318 multi-statement lines and 175 over 120 columns; `ProbeConsole.cpp` 332 and 575; `ESS::` 349 uses versus `Ess::` 154 | Apply one statement per line and 120 columns only to functions touched above; no mass reformat. Unify the alias | Blame preserved |
+| M-11 | P2 | Space-stripped digits in living docs (`stage12`, `original27`, `only1-14`, `auxiliary7`): `progress.md` about 138, `ess_homing.md` 27, `backlog.md` 25, `roadmap.md` 21, plus `Homing.h:147`. Stage narrative is repeated between `backlog.md` and `roadmap.md`. "Five named" appears in 17 files, 11 of them dated reports. The typo counts are detector-dependent (about 199-206, 23-37, 23-39, 25-31 in the same order) | Fix the typos and add a `check_repository.py` regex with an allowlist. Move stage narrative to `CHANGELOG.md` and `progress.md`. Keep current counts in checker output and `ess_api_cli_coverage.md`, and link from living docs. Leave dated reports, the 1.0.0 release and AGENTS.md alone | `check_repository.py` |
+| M-12 | P3 | Readability: `ProbeApp.cpp` 318 multi-statement lines and 175 over 120 columns; `ProbeConsole.cpp` 332 and 575; `ESS::` 349 lines versus `Ess::` 154 | Apply one statement per line and 120 columns only to functions touched above; no mass reformat. Unify the alias only in those functions | Blame preserved |
 
 No action: `METHODS` is properly table-driven, `advanceMove`/`advanceHome`/`Runner::poll` are long but linear, `ProbeApp` has no clean file seam, installed public functions without in-repo callers
-stay, and `-Wall -Wextra -Wunused` is clean on `src/`. Evidence ZIPs stay in place; store new evidence over about 1 MB as release assets with a hash in the report.
+stay, and `-Wall -Wextra -Wunused` is clean on `src/`. Evidence ZIPs stay in place. A size rule for new evidence needs its own contract text, because the execution contract today requires `<same>_evidence.zip` and no release just to close a prompt.
 
 ## Verified correct: do not re-audit
 
 - Ledger: all 77 descriptors, 3 indexed groups and enums against p68-79 (address, width, access, signedness, default, range, gaps). `generate_ess_registers.py --check` passes. REPORTED.
-- Frames: FC03/06/10 layouts and all p7-26 example frames with an independent CRC. Only known printed errors differ (p8 figure `B9 56`, p11 `61 C1`, p16 request). REPORTED.
+- Frames: FC03/06/10 layouts and all p7-26 example frames with an independent CRC. Printed errors: p8 figure `B9 56` (prose `FD 12` is right), p11 `61 C1`, p11 `01 06 FF 00 0B 58 0B` (7 bytes, not a valid FC06), p16 request, and p10's deliberate `85 C1`, whose printed reply contradicts its "does not return any data" prose. Re-checked: 45 frames on p6-27.
 - Command words `0x0027` (1, 5, 9, D, 2, 0x10, 0x100, 0x200), bit 3 limited to positioning (p16), `0x002D` values, stopped-only save and restore (p26). REPORTED.
 - All 35 homing descriptors against every drawing on p32-67, including method 28's exchanged drawings and the caption conflicts at 10, 13, 14, 26, 29, 30. REPORTED. Method 18: READ.
 - Arithmetic: 400k position and wrapped cases and 200k velocity cases against an `__int128` oracle, 0 mismatches. All time is uint64 with saturating age deadlines. REPORTED.

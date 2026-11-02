@@ -113,12 +113,20 @@ physical qualification; final stage evidence is recorded in that report.
 - [ ] Resolve shared-start 1: native 0-to-1 write read back 0 on the bench.
   Preserve that FAIL/uncertain result; no retry or assumed FC06 semantics.
   [Stored-record evidence](archive/reports/ess_release_16_2026-10-04.md).
-- [ ] Resolve output function 11 ('User defined 2', which has no defined `0x004F`
-  bit on the two-output ESS) and crossmapped custom actuation. No external trigger/selector edges are synthesized by serial
+- [ ] Resolve output function 11 ('User defined 2'; p28 ties functions 9-11 to
+  `0x004F`, but p74 defines only terminal bits 0-1) and crossmapped custom actuation. No external trigger/selector edges are synthesized by serial
   settings. [I/O contract](ess_io.md).
 - [ ] Resolve the earlier collision registers 0x003B/0x003C and later collision
   values 0/0 outside documented ranges on firmware 0x0029. Keep unknown values
   raw. [Tuning evidence](archive/reports/ess_release_18_2026-10-04.md).
+
+## Open re-audit findings
+
+- [ ] Fix R-01 (an active origin blocks ordinary moves, including right after a
+  successful home) and R-02 (a never-transmitted stop lost to bus noise during its
+  quiet wait, short of decision D1), then the low-severity R-03 to R-15, and finish
+  K-01's window judgement and K-02's closure rule.
+  [Findings and evidence](reports/2026-11-02_standalone_promptset_audit.md#re-audit-2-november-2026).
 
 ## Exact-drive behavior and motion evidence
 

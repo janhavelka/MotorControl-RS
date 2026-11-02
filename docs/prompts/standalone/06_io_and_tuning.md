@@ -21,8 +21,9 @@ src/profiles/ess_rs/DriverSettings.cpp, Segments.cpp, ControlSettings.cpp, Tunin
 1. Investigate shared-start 1's recorded write/readback mismatch. Preserve the
    original FAIL and before/after words; never retry until a match is obtained
    and then call it a pass.
-2. Resolve output function 11 ('User defined 2'), which has no defined `0x004F`
-   bit on the two-output ESS, and crossmapped actuation.
+2. Resolve output function 11 and crossmapped actuation. p28 ties functions 9-11
+   to `0x004F`, but p74 defines only terminal bits 0-1 (Bit0 Y0, Bit1 Y1), so how
+   function 11 ('User defined 2') selects a bit is undocumented.
    Serial assignment is not a physical edge or serial record-trigger API.
 3. Keep 0x003B/0x003C access unresolved until authoritative evidence establishes
    it. Do not alias them to 0x0122/0x0123. The recorded raw out-of-range 0/0 values

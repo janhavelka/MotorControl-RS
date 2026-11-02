@@ -14,7 +14,7 @@ Q13: board and current image only. Q12: explicit instruction, with default `Posi
 Paths are relative to the repository root. Read implementations, callers and
 existing tests, not just declarations or old reports:
 
-docs/reports/2026-10-07_overnight_hil.md, 2026-10-06_firmware_health.md; examples/probe_cli/Esp32UsbConsole.cpp, scripts/bench_probe.py and current host campaign scripts; native console tests and test/bench_probe_test.py.
+docs/reports/2026-10-07_overnight_hil.md, 2026-10-06_firmware_health.md; examples/probe_cli/Esp32UsbConsole.cpp, scripts/bench_probe.py, scripts/bench_session.py and current host campaign scripts; native console tests and test/bench_probe_test.py.
 
 ## Work
 

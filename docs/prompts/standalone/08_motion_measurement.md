@@ -22,10 +22,15 @@ src/Axis.cpp, Units.cpp; src/profiles/ess_rs/Position.cpp, Velocity.cpp, Homing.
    configured subdivision, encoder feedback and raw algorithm 3. Test the
    documented p69 mapping (closed loop: subdivision equivalent of encoder
    feedback), which is conditional because the bench reads algorithm 3 and p77
-   documents only 1 or 2, and the p78 arrival window (`0x010B`, default 5, unit
-   unspecified) as candidate explanations for raw delta 99. Neither is proven. One
-   increment is 4 counts at subdivision 1000, so simple encoder quantization is a
-   weak explanation. See K-01. Resolve sign and scale by measurement instead of
+   documents only 1 or 2, and `0x010B` 'Positioning error range' (p78, 1~256,
+   default 5, no printed unit; its arrival link is inferred) as candidate
+   explanations for raw delta 99. Neither is proven. The delta 99 runs came from
+   `ess_release_25_26_audit` raw evidence on an advanced `move-relative`, before
+   `positionFeedbackMatchesCommand` existed. One increment is 4 counts at
+   subdivision 1000. Integer rounding with a small settling error can still read
+   99, and retained matrices show routine +/-1 endpoint differences at several
+   subdivisions (position_limits subdivision 1000: -1:1, 0:11, +1:5). Measure it;
+   do not rank it. See K-01. Resolve sign and scale by measurement instead of
    changing conversion ratios because of that delta.
 2. Measure ramps, positive/negative velocity, origins and position clear. Keep
    host coordinate arithmetic separate from physical device interpretation.

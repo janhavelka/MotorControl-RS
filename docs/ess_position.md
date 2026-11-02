@@ -68,6 +68,8 @@ wire ranges still apply. With `USE_STORED`, supplied values must match the activ
 profile; preparation cannot discover unknown settings. Raw
 `buildWritePositionProfile`, `buildStartPosition` and register codecs retain their
 wire/field contracts: they are low-level access, not policy-checked movement.
+`buildWritePositionProfile` also rejects targets beyond +/-0x0FFFFFFF; see
+[Target range](#target-range).
 A drive reset can invalidate volatile settings; applications still own
 configuration freshness, stop/recovery and no uncertain replay.
 
@@ -277,7 +279,7 @@ qualification and cannot be identified by core IDs alone.
 
 See the [core evidence](reports/2026-10-29_ess_position_interrupt_core.md) and
 [application evidence](reports/2026-10-29_ess_position_interrupt_owner.md).
-The raw builder validates wire shape/intent only; it does not perform application admission.
+The raw `buildStartPosition` builder validates wire shape/intent only; it does not perform application admission.
 
 ### Application admission and retained results
 
@@ -583,11 +585,11 @@ of the core may explicitly supply the qualified prerequisites described above.
 ## Target range
 
 Typed preparation, `PositionCommand` and `buildWritePositionProfile` reject a target
-magnitude above `0x0FFFFFFF` before any traffic. Function manual p70 prints the
-`0x0024/25` range as `-0xFFFFFFF ~ 0xFFFFFFFF`, whose bounds differ in width, and p12
-answers out-of-range data with exception 07. The symmetric bound is an interpretation
-of that malformed row, not a measured limit, and it narrows the signed 32-bit encoding.
-Raw codecs still validate wire shape only.
+magnitude above `0x0FFFFFFF` before any traffic. Function manual p70, p73 and p75 print
+that bound as the range, though p70's upper bound is malformed (`-0xFFFFFFF ~ 0xFFFFFFFF`),
+and p12 answers out-of-range data with exception 07. The bound is not a measured limit,
+and it narrows the signed 32-bit encoding. Generic FC10 to `0x0024/2` remains raw: it
+validates wire shape only.
 
 Any established reference supplied to a relative or absolute preparation must be idle,
 stationary ACTUAL evidence. A relative request can still omit it when it needs no endpoint.

@@ -27,11 +27,14 @@ examples/common/RtuRunner.cpp, RtuBusOwner.cpp, Esp32S3Uart.cpp; test/runner_tes
    0x0024/2, 0x001D/3 and 0x0031/6 (13/15/21-byte requests). A later functional
    selective-update pass for 0x0024/2 already exists; test its remaining timing
    obligation instead of claiming no prior hardware use. FM p11 documents FC03
-   exception frames that change nothing: `01 03 00 1C 00 01 45 CC` gives code 03,
+   exception frames: `01 03 00 1C 00 01 45 CC` gives code 03,
    `01 03 00 20 00 20 45 D8` gives code 05, `01 03 00 27 00 01 34 01` gives code
-   06. These exercise the five-byte shape on the ordinary bench, through a bounded
-   audited path. Never use the p11 `01 06 00 27 FF FF` example, because it is a
-   motion-register write. No FC10 exception example exists.
+   06. These exercise the five-byte shape on the ordinary bench. They are documented
+   as non-changing, unobserved on `0x0029`, and cover only the FC03 exception row.
+   This stage owns that read-only path; `capture-read` is fixed at `0x0130/16` and
+   doesn't provide it. Never use the p12 `01 06 00 27 FF FF` example, because it is
+   a motion-register write; p70 lists 0~65535 for `0x0027`, so its code 07 is itself
+   contradictory. No FC10 exception example exists.
 4. Investigate malformed F9/E5 observations, actual UART error bits and
    mismatched tuples. Qualify alternate motor tuples, duplicate responders and
    any undocumented drive communication watchdog, if evidence shows one, only
