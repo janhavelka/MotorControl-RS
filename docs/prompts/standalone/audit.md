@@ -3,7 +3,7 @@
 Implementation routing update: the detailed [ESS software set](../ess_software/README.md)
 now owns N01, N02, N04, N05, N07 and the 27 switch-method portion of N08.
 The stage numbers below identify this original broad plan; redirected stage
-files point to the current owner. This dated audit does not mark any feature
+files point to the current owner. The 2026-10-23 columns do not mark any feature
 implemented. N03, N06, N09, unresolved method 18/collision semantics and physical
 work retain their separate owners.
 
@@ -56,7 +56,7 @@ missing standalone-library implementation. The
 > Current: five gaps (`position_profile_candidate_staging`, `homing_methods_remaining`, `homing_nonzero_offset`, `earlier_collision_access`, `position_interrupt`).
 
 The [checked ledger](../../reference/ess_rs_operations.json) and
-[coverage guide](../../ess_api_cli_coverage.md) retain nine named gaps, nine
+[coverage guide](../../ess_api_cli_coverage.md) retained then nine named gaps, nine
 missing read records, two missing write records, three partial write records
 and 18 guarded paired writes. These categories overlap; do not add them into a
 single count of distinct missing features. Raw codecs/catalogue metadata do
@@ -81,8 +81,8 @@ not count as a typed operation or console route.
 
 | ID | Finding, evidence and limit | Next stage |
 | --- | --- | --- |
-| Q01 | Two soft-limit pairs and sixteen stored-position pairs lack qualified write forms; signed target/home interpretation also remains conditional. [Codec.cpp](../../../src/profiles/ess_rs/Codec.cpp) rejects unreviewed FC10 windows and paired FC06 halves; [paired policy](../../ess_pair_writes.md) explains the 18 guarded setters. The manual's worked examples (p8, p30, p70, p75) document word layout for the target, limit and stored pairs; they do not establish FC10 acceptance. Preserve these guards. | 04 |
-| Q02 | Shared-start 0-to-1 read back 0 in the [stored-record experiment](../../archive/reports/ess_release_16_2026-10-04.md). Output function 11 ("User defined 2", with no defined `0x004F` bit on the two-output ESS) and crossmapped actuation remain unresolved in the [I/O contract](../../ess_io.md). No serial settings path creates external selector/trigger edges. | 06 |
+| Q01 | Two soft-limit pairs and sixteen stored-position pairs lack qualified write forms; signed target/home interpretation also remains conditional. [Codec.cpp](../../../src/profiles/ess_rs/Codec.cpp) rejects unreviewed FC10 windows and paired FC06 halves; [paired policy](../../ess_pair_writes.md) explains the 18 guarded setters. Word order for the target, limit and stored pairs is documented by inference: p30 '0: high position first', the high/low labels (p30, p70, p75, and p29, p73 for limits) and the p8 frame `00 00 13 88`. p30's big-endian prose is byte-level. p70 prints the default 0. Value 1 ('High position at the back') has no worked example. Offset access (RW, p73) and high/low labels are printed; word order is not documented: it is absent from p30 although p29 calls that table all high and low parameters, and its only frame has zero words (p20). None of this establishes FC10 acceptance. Preserve these guards. | 04 |
+| Q02 | Shared-start 0-to-1 read back 0 in the [stored-record experiment](../../archive/reports/ess_release_16_2026-10-04.md). Output function 11 and crossmapped actuation remain unresolved in the [I/O contract](../../ess_io.md): p28 ties functions 9-11 to `0x004F`, but p74 defines only terminal bits 0-1 (Bit0 Y0, Bit1 Y1), so how function 11 ('User defined 2') selects a bit is undocumented. No serial settings path creates external selector/trigger edges. | 06 |
 | Q03 | [Tuning evidence](../../archive/reports/ess_release_18_2026-10-04.md) records later collision values 0/0 outside documented ranges on firmware 0x0029. [Control evidence](../../archive/reports/ess_release_17_2026-10-04.md) does not qualify current-percentage denominator or physical lock/filter/gain/collision effects. Unknown raw values must survive decoding. | 06,08 |
 | Q04 | Reset-like loss of volatile settings occurred above and below 200,000 command increments/s in the [rate investigation](../../reports/2026-10-07_rate_boundary.md). Supply transient versus drive firmware remains unproven. The datasheet's "MAX. INPUT FREQUENCY 200KHZ" row names no input and this product has no step/dir port, so the row neither establishes nor excludes a serial-motion limit. | 07 |
 | Q05 | Persistent RUNNING and normal-stop failure have recorded high-speed/subdivision cases in the [completion investigation](../../reports/2026-10-07_position_completion.md). [Conservative defaults](../../reports/2026-10-07_position_limits.md) bound preparation; they are not a firmware repair or universal qualification. | 07 |

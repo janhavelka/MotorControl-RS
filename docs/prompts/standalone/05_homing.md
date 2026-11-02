@@ -22,8 +22,8 @@ Inspect current homing core/app/tests, typed parameter/setting/qualification
 paths delivered by the software set, `docs/ess_homing_methods.md`,
 `docs/prompts/ess_software/homing_matrix.md`, the pair guide, original PDF
 diagrams and exact model/firmware evidence. Reconcile current code first. Carry
-the caption conflicts of methods 10, 13, 14, 26, 28, 29 and 30 into the physical
-checklist.
+the caption conflicts of 10, 13, 14, 26, 29, 30, and method 28's exchanged drawings
+into the physical checklist.
 
 ## Work
 
@@ -46,9 +46,11 @@ checklist.
    (V-01), the >10 ms input pulse requirement (hardware p9), each initial-location
    branch, actual search/return/index behavior, bounded travel, stop and origin
    evidence. Record H-02's assumptions as bench observations: ARRIVED after
-   homing, HOMED falling after the trigger, position reading exactly 0, the
-   meaning of bits 5 and 6, and INPUT_STATUS polarity. The drive executes the trajectory; sampled software state does not prove
-   every physical transition.
+   homing, RUNNING is reported during homing, HOMED falling after the trigger,
+   position reading exactly 0, the meaning of bits 5 and 6, and INPUT_STATUS
+   polarity. `0x0017` over-limit parking (p70, default free) is the only hint at a
+   limit reaction, unstated for homing. The drive executes the trajectory; sampled
+   software state does not prove every physical transition.
 5. Keep raw failures, uncertain writes, interrupted results and remaining limits.
    No automatic replay or motion restart. No FieldCore/product changes here.
 

@@ -34,33 +34,36 @@ not change the reviewed start/count.
 
 ## Documented word layout and pulse unit
 
-The manual's worked examples settle these facts; do not re-derive them:
+The manual prints these facts:
 
 | Page | What it documents |
 | --- | --- |
 | p8 | `01 10 00 24 00 02 04 00 00 13 88`, "setting the pulse number high register and the pulse number low register respectively" |
 | p22 | Stored target: "the unit is pulse" |
-| p30 | `0x0019` default 0 is high first. The list covers `0x000A`, `0x0024`, `0x0037-0x003A` and `0x0060-0x00BB`, and omits `0x0035` |
-| p70 | `0x0024/25`: 100000 pulses has high bit `0x0001`, low bit `0x86A0`, written value `0x000186A0` |
+| p30 | `0x0019` value 0 is "high position first"; the big-endian prose is byte-level. The list covers `0x000A/0B`, `0x0024/25`, `0x0037-3A` and segment pulse pairs `0x0060/61` to `0x00BA/BB`, elided, and omits `0x0035` |
+| p70 | `0x0019` default 0. `0x0024/25`: 100000 pulses has high bit `0x0001`, low bit `0x86A0`, written value `0x000186A0` |
 | p75 | `0x0060/61`, marked RW: the same 100000-pulse example |
 
-So access (RW), 32-bit width and word order are documented for the target, limit
-and stored pairs: at `0x0019=0` the lower address holds the high word (p8, p30,
-p70, p75). Target units are pulses (p16, p22, p70, p75). This does not calibrate
-pulses to shaft motion.
+So access (RW) and 32-bit width are printed for the target, limit and stored
+pairs. Their word order, with the high word at the lower address at `0x0019=0`,
+is documented by inference: p30 "0: high position first", the high/low labels
+(p30, p70, p75, and p29, p73 for limits) and the p8 frame `00 00 13 88`. Value 1
+("High position at the back") has no worked example. Target units are pulses
+(p16, p22, p70, p75). This does not calibrate pulses to shaft motion.
 
 These pages do not establish FC10 acceptance, and every guard below stays. Still
 unresolved: negative wire encoding, soft-limit and offset units, FC10 acceptance
 and atomicity for the limit and stored pairs, and confirmation on firmware
-`0x0029`. The homing offset is excluded from all of this: it has labels only
-(p19, p73), is absent from p30, and its only frame has zero words (p20).
+`0x0029`. Homing offset: offset access (RW, p73) and high/low labels are printed;
+word order is not documented: it is absent from p30 although p29 calls that table
+all high and low parameters, and its only frame has zero words (p20).
 
 ## Per-pair disposition
 
 | Field | Pair addresses | Source range and signed meaning | Word order | Admissible write / remaining proof |
 | --- | --- | --- | --- | --- |
-| Active position target | `0x0024–0x0025` | Unit pulses (p16, p70). p16 gives positive/negative direction; p70 prints malformed `-0xFFFFFFF` to `0xFFFFFFFF`. Negative wire encoding and applicable device bounds remain unresolved. | Configurable by `0x0019`, p30; high word at the lower address at `0x0019=0`, p8/p30/p70 | `0x0024/2` or containing `0x0021/5`; the typed move sequence selects a reviewed window under its setup policy. |
-| Homing offset | `0x0035–0x0036` | p73: `-0xFFFFFFF` to `0xFFFFFFF`; negative encoding and native scale unresolved. | High/low labels on p19/p73; configurable behavior unresolved | Only containing `0x0031/6` is reviewed. Standalone offset write and a typed homing setter remain unavailable. |
+| Active position target | `0x0024–0x0025` | Unit pulses (p16, p70). p16 gives positive/negative direction; p70 prints malformed `-0xFFFFFFF` to `0xFFFFFFFF`. Negative wire encoding and applicable device bounds remain unresolved. | Configurable by `0x0019`, p30; high word at the lower address at `0x0019=0` by inference, p8/p30/p70 | `0x0024/2` or containing `0x0021/5`; the typed move sequence selects a reviewed window under its setup policy. |
+| Homing offset | `0x0035–0x0036` | p73: `-0xFFFFFFF` to `0xFFFFFFF`; negative encoding and native scale unresolved. | High/low labels on p19/p73; word order not documented (absent from p30) | Only containing `0x0031/6` is reviewed. Standalone offset write and a typed homing setter remain unavailable. |
 | Positive software limit | `0x0037–0x0038` | p73: `-0xFFFFFFF` to `0xFFFFFFF`; negative encoding and native scale unresolved. | Configurable, p30 | No established admissible write window. Applies only after homing, p29/p73. |
 | Negative software limit | `0x0039–0x003A` | Same p73 range and uncertainties | Configurable, p30 | No established admissible write window. Applies only after homing, p29/p73. |
 

@@ -25,12 +25,16 @@ docs/reports/2026-10-07_rate_boundary.md, 2026-10-07_position_completion.md, 202
 2. Name each historical case and its explicit `PositionLimits` policy (D5). Run
    one case at a time. D5 authorizes named cases above the defaults, for example
    the reset case at 2,700 rpm and 4,000 subdivision. These are not "small finite"
-   tests. The datasheet's 'MAX. INPUT FREQUENCY 200KHZ' and the hardware manual's
-   'Pulse frequency' row name no input. The row neither establishes nor excludes a
-   limit on serial motion. The sub-200k counterexample applies only to reset-like
-   loss (2,700 rpm at 4,000 subdivision, 180,000/s). Recorded persistent-RUNNING
-   cases are all at or above 256,000/s, yet some higher rates passed, so an
-   internal rate constraint is not ruled out for that symptom.
+   tests. This stage owns a typed `PositionLimits` route on the ordinary image
+   before any D5 case. None exists today: `ApplicationOptions` has none and
+   `ProbeApp.cpp` assigns no limits. Without it record PARTIAL. The datasheet's
+   'MAX. INPUT FREQUENCY 200KHZ' and the hardware manual's 'Pulse frequency' row
+   name no input. The row neither establishes nor excludes a limit on serial
+   motion. The sub-200k counterexample applies only to reset-like loss (2,700 rpm
+   at 4,000 subdivision, 180,000/s). Recorded persistent-RUNNING cases all have
+   requested rates at or above 256,000/s (short moves may not reach the requested
+   rate), yet some higher rates passed, so an internal rate constraint is not ruled
+   out for that symptom.
 3. Investigate persistent RUNNING and normal-stop failures independently of the
    already corrected host stop observation budget. Retain stop and original
    motion outcomes separately.
