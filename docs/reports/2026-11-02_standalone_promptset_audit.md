@@ -14,6 +14,14 @@ See "Status" for what has since been fixed.
 
 Everything learned on the real motor is recorded here. Each run's detail is in its own report.
 
+### Overnight stress run, 2-3 November 2026
+
+Autonomous run on branch `overnight-stress-20261102` (worktree `../MotorControl-RS-overnight`), authorized by the owner, who was absent. Harness: `scripts/bench_stress.py`, finite moves within default limits. Newest entries first.
+
+<!-- overnight entries -->
+
+**HW-11, fixed on the branch (`c53f6d3`): a finished home was reported as a failure.** After a plain move was stopped (fast or normal) the drive sits at status `2`, HOMED without IN_POSITION. A following home ran correctly and ended with position exactly 0, but IN_POSITION stayed clear. The core required it, so polling continued to the 30 s deadline and reported `deadline`, uncertain, axis conflict. Cause: my unverified assumption in `Homing.cpp` (H-02 row 1). The manual defines bit 1 as return to origin completed and ties bit 0 to positioning. Fix: completion is HOMED after a witnessed low, not RUNNING, then position exactly 0. Recheck on hardware: same trial went from 30.06 s `deadline` to 2.18 s `observed`, position 0; other prior states unchanged. Native: 90/90.
+
 ### 2 November 2026 afternoon: first hardware run
 
 [Report and raw evidence](2026-11-02_standalone_14_bench_regression.md). Fixture: COM13, ESS23-RS20 firmware word `0x0029`, subdivision 1000, free shaft, X/Y terminals unconnected.
