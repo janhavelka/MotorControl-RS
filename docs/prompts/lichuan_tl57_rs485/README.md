@@ -41,6 +41,8 @@ evidence-gated. A guard is not implementation completion. The per-stage handoff
 must enumerate implemented, unsupported, unresolved and hardware-tested behavior.
 See the [23 October correctness audit](../../reports/2026-10-23_lichuan_promptset_audit.md)
 for source-checked corrections; the implementation stages remain unstarted.
+**Before stage 01, apply the [2 November audit](audit.md):** it adds a required
+stage 02b, replaces the stop gate and corrects the evidence review.
 
 ## Prepared artifacts
 
