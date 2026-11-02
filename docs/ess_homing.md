@@ -257,7 +257,8 @@ automatic replay. Partial or uncertain setup remains visible on failure.
 ## Completion, stop and reference
 
 Every implemented moving method requires fresh post-trigger RUNNING and HOMED-low observations,
-then stopped/in-position HOMED-high. Method 35 requires HOMED-low to high; its
+then stopped HOMED-high. IN_POSITION is not required: on firmware `0x0029` a home begun
+with it clear ends with it clear. Method 35 requires HOMED-low to high; its
 fresh admission baseline may supply low because no search motion is required.
 Old HOMED-high, a missed transition, start echo or interrupted search cannot
 establish a new reference. Retained low/activity/completion evidence records
@@ -469,7 +470,7 @@ The drive executes each trajectory. Host I/O samples support admission and
 diagnostics; they cannot prove every edge, reversal, Z passage or physical travel.
 Do not add a host trajectory controller or require a complete sampled edge trace.
 Moving methods retain fresh post-trigger RUNNING and HOMED-low, followed by
-stopped/in-position HOMED-high and checked zero words. A missed required status
+stopped HOMED-high and checked zero words. A missed required status
 transition remains unobserved; a missed I/O edge alone is not failure when the
 qualified status/zero completion contract is met. Fault, release and motion-status
 soft-limit flags retain bounded failure. Required physical limit-input activation
