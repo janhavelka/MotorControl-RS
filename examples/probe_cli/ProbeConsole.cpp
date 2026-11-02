@@ -2278,6 +2278,14 @@ void Console::dispatch() noexcept {
             static_cast<unsigned long long>(data.ownerWatchdogFeedUs), static_cast<unsigned long long>(data.ownerCompletedLoops),
             static_cast<unsigned long>(data.resetReason));
         if (written < 0 || static_cast<std::size_t>(written) >= sizeof(output_)) { error(id, entry->name, "output_full"); return; }
+        std::size_t used = static_cast<std::size_t>(written) - 1;
+        if (!ConsoleReport::append(output_, sizeof(output_), used,
+                ",\"usb_stall\":{\"count\":%lu,\"nudges\":%lu,\"longest_us\":%llu,\"active\":%s,\"int_raw\":%lu,\"int_ena\":%lu,\"in_fifo\":%lu,\"endpoint\":%lu,\"connected\":%s}}",
+                static_cast<unsigned long>(data.usbStallCount), static_cast<unsigned long>(data.usbStallNudges),
+                static_cast<unsigned long long>(data.usbStallLongestUs), boolean(data.usbStallActive),
+                static_cast<unsigned long>(data.usbInterruptRaw), static_cast<unsigned long>(data.usbInterruptEnable),
+                static_cast<unsigned long>(data.usbInFifoState), static_cast<unsigned long>(data.usbEndpoint),
+                boolean(data.usbConnected))) { error(id, entry->name, "output_full"); return; }
         break;
     }
     case Command::CONFIG:

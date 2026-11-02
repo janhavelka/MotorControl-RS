@@ -162,6 +162,12 @@ struct App {
     std::size_t outputHead = 0, outputCount = 0;
     uint32_t nextOperationId = 1, latestOperationId = 0, cacheOperationId = 0, modelOperationId = 0;
     uint64_t stopEvidenceOverwritten = 0; ///< Delivered failed stop results replaced by a newer explicit stop.
+    struct UsbStall {
+        uint64_t progressUs = 0, startedUs = 0, longestUs = 0;
+        uint32_t count = 0, nudges = 0;
+        bool active = false, nudged = false;
+        Platform::ConsoleUsbSample sample;
+    } usbStall;
     uint64_t outputBlocked = 0, outputShortWrites = 0, inputBytes = 0, inputLines = 0;
     uint64_t observedEarliestUs = 0, observedLatestUs = 0, deliveredUs = 0, recoveryGuardUntilUs = 0;
     uint8_t address = 1, modelAddress = 0;
@@ -266,8 +272,26 @@ bool emit(void* context, const char* text, std::size_t size) {
     std::memcpy(line.text, text, size); line.text[size] = '\n'; line.size = size + 1; line.offset = 0;
     ++a.outputCount; return true;
 }
+// Output queued with no accepted byte: the host is not draining USB, or a wakeup was lost.
+void watchUsbOutput(App& a, bool progress) {
+    auto& stall = a.usbStall;
+    const uint64_t now = nowUs();
+    if (progress || !a.outputCount) {
+        if (stall.active) stall.longestUs = std::max(stall.longestUs, now - stall.startedUs);
+        stall.active = stall.nudged = false; stall.progressUs = now;
+        return;
+    }
+    if (!stall.active && now - stall.progressUs > 300000) {
+        stall.active = true; stall.startedUs = stall.progressUs; ++stall.count;
+        Platform::sampleConsole(stall.sample);
+    }
+    if (stall.active && !stall.nudged && now - stall.startedUs > 1000000) {
+        stall.nudged = true;
+        if (Platform::nudgeConsole()) ++stall.nudges;
+    }
+}
 void drainOutput(App& a) {
-    if (!a.outputCount) return;
+    if (!a.outputCount) { watchUsbOutput(a, false); return; }
     RuntimeWitness::mark(RuntimeWitness::OUTPUT_SPACE);
     const int available = Platform::writableConsole();
     if (available <= 0) { ++a.outputBlocked; return; }
@@ -278,6 +302,7 @@ void drainOutput(App& a) {
     if (written < count) ++a.outputShortWrites;
     line.offset += written;
     if (line.offset == line.size) { a.outputHead = (a.outputHead + 1) % OUTPUT_LINES; --a.outputCount; }
+    watchUsbOutput(a, written > 0);
 }
 App::Record* findRecord(App& a, uint32_t operation) {
     for (auto& record : a.records) if (record.operationId && record.operationId == operation) return &record;
@@ -526,6 +551,11 @@ void snapshot(void* context, Probe::Snapshot& s) {
     s.ownerWatchdogError = OwnerWatchdog::error;
     s.ownerWatchdogTimeoutMs = OwnerWatchdog::TIMEOUT_MS;
     s.resetReason = OwnerWatchdog::resetReason;
+    s.usbStallCount = a.usbStall.count; s.usbStallNudges = a.usbStall.nudges;
+    s.usbStallLongestUs = a.usbStall.longestUs; s.usbStallActive = a.usbStall.active;
+    s.usbInterruptRaw = a.usbStall.sample.interruptRaw; s.usbInterruptEnable = a.usbStall.sample.interruptEnable;
+    s.usbInFifoState = a.usbStall.sample.inFifoState; s.usbEndpoint = a.usbStall.sample.endpoint;
+    s.usbConnected = a.usbStall.sample.connected;
     s.ownerCompletedLoops = OwnerWatchdog::completedLoops;
     s.ownerWatchdogFeedUs = OwnerWatchdog::lastFeedUs;
     s.replyGapUs = a.serial.timing.replyGapUs; s.gap15Us = a.serial.timing.runner.gap15Us; s.gap35Us = a.serial.timing.runner.gap35Us;
