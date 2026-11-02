@@ -186,6 +186,8 @@ class Run:
         self.counts = collections.Counter()
         self.anomalies = []
         self.usb_stalls = []
+        self.health = None
+        self.refused = None
         self.started = time.time()
         self.moved = 0
         self.last = None
@@ -289,7 +291,81 @@ class Run:
 
     def case_interrupt_finish(self):
         """The failing shape: interrupt, let it finish, then a checked stop."""
-        steps, rpm = self.random.choice([1000, 3000, 3000, 3000]), self.random.choice([60, 60, 60, 120])
+        return self.interrupt_finish(self.random.choice([1000, 3000, 3000, 3000]), self.random.choice([60, 60, 60, 120]))
+
+    def case_fast_interrupt(self):
+        """The same shape near the rate limit: 2,000 rpm is 33,333 increments/s at subdivision 1000."""
+        return self.interrupt_finish(self.random.choice([10000, 30000]), self.random.choice([600, 1000, 2000]))
+
+    def case_fast_plain(self):
+        steps, rpm = self.random.choice([3000, 10000, 30000]), self.random.choice([600, 1000, 2000])
+        before = self.prepare()
+        reply = self.start_move(steps, rpm)
+        item = self.console.terminal(reply, self.duration(steps, rpm) + 5)
+        self.check_terminal(item, "MOVE")
+        after = self.state()
+        delta = (after["position"] - before["position"]) & 0xFFFFFFFF
+        if abs(delta - steps) > 20 or after["raw_motion"] & RUNNING:
+            raise Anomaly("POSITION", {"steps": steps, "rpm": rpm, "delta": delta, "motion": after["raw_motion"], "speed": after.get("raw_speed")})
+        self.moved += steps
+        return f"steps={steps} rpm={rpm} delta={delta}"
+
+    def case_double_interrupt(self):
+        """Interrupts the restarted move again. Refusal is a valid outcome and is counted."""
+        steps, rpm = 3000, self.random.choice([60, 120])
+        duration = self.duration(steps, rpm)
+        before = self.prepare()
+        reply = self.start_move(steps, rpm)
+        current = reply["operation_id"]
+        interrupts = 0
+        for _ in range(self.random.choice([2, 2, 3])):
+            self.console.pump(self.random.uniform(0.05, duration * 0.8))
+            interrupt = self.console.send(f"position interrupt {current}")
+            if not interrupt.get("ok"):
+                self.counts["interrupt_refused"] += 1
+                self.refused = interrupt.get("result")
+                break
+            interrupts += 1
+            current = interrupt["operation_id"]
+            self.console.terminal(interrupt, 2.0)
+        self.settle(duration * (interrupts + 1) + 3)
+        settled = self.state()
+        delta = (settled["position"] - before["position"]) & 0xFFFFFFFF
+        if not steps - 20 <= delta <= (interrupts + 1) * steps + 60:
+            raise Anomaly("POSITION", {"steps": steps, "delta": delta, "interrupts": interrupts})
+        self.stop("normal")
+        after = self.state()
+        if after["raw_motion"] & RUNNING:
+            raise Anomaly("RUNNING_AFTER_STOP", after)
+        self.console.release_all()
+        self.moved += delta
+        return f"rpm={rpm} interrupts={interrupts} delta={delta} refused={self.refused}"
+
+    def case_mcu_reset(self):
+        """Controller reset while idle or during a finite move. The drive owns the move and finishes it."""
+        moving = self.random.random() < 0.7
+        steps, rpm = 3000, 60
+        before = self.prepare()
+        if moving:
+            self.start_move(steps, rpm)
+            self.console.pump(self.random.uniform(0.05, 2.5))
+        self.console.reset_mcu()
+        self.t0 = time.time()
+        self.console.send("debug " + self.args.debug, 3.0)
+        self.console.send("probe", 3.0)
+        self.console.pump(0.3)
+        self.read("config")
+        self.settle(self.duration(steps, rpm) + 3)
+        after = self.state()
+        delta = (after["position"] - before["position"]) & 0xFFFFFFFF
+        expected = steps if moving else 0
+        if abs(delta - expected) > 20:
+            raise Anomaly("POSITION", {"expected": expected, "delta": delta, "motion": after["raw_motion"]})
+        self.moved += delta
+        self.prepare_auxiliary()
+        return f"moving={moving} delta={delta}"
+
+    def interrupt_finish(self, steps, rpm):
         duration = self.duration(steps, rpm)
         delay = self.random.uniform(0.05, 0.95) * duration
         before = self.prepare()
@@ -546,9 +622,18 @@ class Run:
         log.append(("ladder", ladder, healthy))
         return healthy, log
 
+    def sample_health(self):
+        """Keeps the firmware's own counters, which show trouble that caused no failed case."""
+        try:
+            reply = self.console.send("drv", 2.0)
+            self.health = {k: reply.get(k) for k in ("output_blocked", "output_short_writes", "input_dropped", "stop_evidence_overwritten", "reset_reason", "usb_stall")}
+            self.health["memory"] = self.console.send("memory", 2.0)
+        except Unresponsive:
+            pass
+
     def summary(self, final=None):
         data = dict(elapsed_s=round(time.time() - self.started), moved_increments=self.moved, counts=dict(self.counts),
-                    anomalies=self.anomalies, usb_stalls=self.usb_stalls, final=final, seed=self.args.seed)
+                    anomalies=self.anomalies, usb_stalls=self.usb_stalls, health=self.health, final=final, seed=self.args.seed)
         (self.out / "summary.json").write_text(json.dumps(data, indent=1))
         return data
 
@@ -556,6 +641,14 @@ class Run:
         cases = [("interrupt_finish", self.case_interrupt_finish, 50), ("plain", self.case_plain, 20),
                  ("interrupt_stop", self.case_interrupt_stop, 10), ("stop_moving", self.case_stop_moving, 10),
                  ("home", self.case_home, 7), ("release_enable", self.case_release_enable, 3)]
+        if self.args.mix == "extended":
+            cases = [("interrupt_finish", self.case_interrupt_finish, 25), ("plain", self.case_plain, 10),
+                     ("interrupt_stop", self.case_interrupt_stop, 10), ("stop_moving", self.case_stop_moving, 10),
+                     ("home", self.case_home, 7), ("release_enable", self.case_release_enable, 3),
+                     ("fast_plain", self.case_fast_plain, 12), ("fast_interrupt", self.case_fast_interrupt, 12),
+                     ("double_interrupt", self.case_double_interrupt, 10), ("mcu_reset", self.case_mcu_reset, 1)]
+        if self.args.only:
+            cases = [c for c in cases if c[0] == self.args.only]
         names = [c[0] for c in cases]
         weights = [c[2] for c in cases]
         table = {c[0]: c[1] for c in cases}
@@ -610,7 +703,9 @@ class Run:
                 rest = time.time() + 1200
             if self.counts.total() // 100 != written:
                 written = self.counts.total() // 100
+                self.sample_health()
                 self.summary()
+        self.sample_health()
         return 0
 
 
@@ -622,6 +717,8 @@ def main():
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--debug", choices=("off", "raw", "decoded"), default="off")
     parser.add_argument("--recover", action="store_true")
+    parser.add_argument("--mix", choices=("standard", "extended"), default="standard")
+    parser.add_argument("--only", help="run one case repeatedly, for a targeted reproduction")
     args = parser.parse_args()
     keep_awake()
     run = Run(args)
