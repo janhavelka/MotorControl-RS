@@ -16,7 +16,7 @@ start of each test session; old readback is not fresh admission evidence.
 | UART / pins | UART2; TX GPIO47, RX GPIO48, combined DE/RE GPIO21, high for transmit |
 | Motor serial link | Address 1, 115200 baud, 8N1 in the recorded campaigns |
 | Host console | COM13; ordinary MotorControl-RS firmware, not a transparent RTU bridge |
-| USB identity | Espressif `303A:1001`, serial `3C:0F:02:CD:6B:98`; never open or flash another device. Absent at the [2 November final audit](reports/2026-11-02_ess_final_audit.md) |
+| USB identity | Espressif `303A:1001`, serial `3C:0F:02:CD:6B:98`; never open or flash another device. COM15 (`303A:1002`) is a separate device. |
 
 The user authorized communication and motion tests on 2 October and reconfirmed
 the fixture and bounded unattended free-shaft testing on 4 October. Routine
@@ -41,6 +41,10 @@ authorization; they do not change the default short-test scope or authorize a
 new unattended soak during maintenance.
 
 ## Latest recorded image and settings
+
+The [2 November bench regression](reports/2026-11-02_standalone_14_bench_regression.md) is the latest session: image `bench_s3_load_timer`
+from `c21bd18`, SHA-256 `FF84F5D261894A3B204FBAF263A924792F80FD3061ACF63D40F1A90A35A82B2B`, subdivision 1000, ending position 559. Its homing words and profile target were left changed in drive
+RAM with no save. The table below is the older 7 October ending state, kept for its retained evidence.
 
 The [7 October default-position boundary report](reports/2026-10-07_position_limits.md)
 records the latest retained image and final readback:

@@ -32,7 +32,8 @@ docs/reports/2026-10-07_rate_boundary.md, 2026-10-07_position_completion.md, 202
    name no input. The row neither establishes nor excludes a limit on serial
    motion. The sub-200k counterexample applies only to reset-like loss (2,700 rpm
    at 4,000 subdivision, 180,000/s). Recorded persistent-RUNNING cases all have
-   requested rates at or above 256,000/s (short moves may not reach the requested
+   requested rates at or above 256,000/s, except one at 1,000/s on
+   [2 November](../../reports/2026-11-02_standalone_14_bench_regression.md) (short moves may not reach the requested
    rate), yet some higher rates passed, so an internal rate constraint is not ruled
    out for that symptom.
 3. Investigate persistent RUNNING and normal-stop failures independently of the
