@@ -229,11 +229,25 @@ void testActiveOwnerUnderUsbBackpressureRetainsOneTerminal() {
 
 void testSharedCompleteInventoryAndRejectedRequestsNoTx() {
     fresh(); startOwner(); command("@1 help\n");
-    for (const char* name : {"discover", "debug", "motion-profile", "host", "wiring", "communication", "persistence", "read", "profile", "driver", "io", "segment", "control", "tuning", "home", "move", "velocity", "monitor", "axis", "prepare", "result", "cancel", "recover", "load"})
+    for (const char* name : {"discover", "debug", "motion-profile", "host", "wiring", "communication", "persistence", "read", "profile", "driver", "io", "segment", "control", "tuning", "home", "move", "velocity", "position-clear", "monitor", "axis", "prepare", "result", "cancel", "recover", "load"})
         contains((std::string("\"") + name + "\"").c_str());
+    for (const char* route : {"home qualification install METHOD SEARCH RETURN RAMP mechanics rates ramp zero-offset auxiliary inputs [index] [reference]",
+                              "home qualification revoke"}) {
+        command("@7 help home\n"); contains(route);
+    }
+    for (const char* route : {"velocity qualification install rpm ramp inputs [negative]", "velocity qualification revoke"}) {
+        command("@7 help velocity\n"); contains(route);
+    }
+    for (const char* route : {"position-clear qualification install clear-semantics", "position-clear qualification revoke"}) {
+        command("@7 help position-clear\n"); contains(route);
+    }
+    command("@7 help motion-profile\n"); contains("motion-profile start-speed relation RAW_WORD MIN_RPM");
     command("@2 caps\n");
-    for (const char* field : {"\"io_settings\":true", "\"control_settings\":true", "\"tuning\":true", "\"persistence\":true", "\"discovery\":true", "\"segment_execution\":\"external_input\""}) contains(field);
-    for (const char* invalid : {"@3 io set x4 none\n", "@4 segment position 17 read\n", "@5 tuning collision set current 1\n", "@6 move relative 1.25 steps native 60 configured\n"}) {
+    for (const char* field : {"\"io_settings\":true", "\"control_settings\":true", "\"tuning\":true", "\"persistence\":true", "\"discovery\":true", "\"segment_execution\":\"external_input\"",
+                              "\"qualification_routes\":{\"home\":true,\"velocity\":true,\"position_clear\":true,\"start_speed_relation\":true}"}) contains(field);
+    for (const char* invalid : {"@3 io set x4 none\n", "@4 segment position 17 read\n", "@5 tuning collision set current 1\n", "@6 move relative 1.25 steps native 60 configured\n",
+                                "@8 home qualification install 35 60 30 100 mechanics\n", "@9 velocity qualification install rpm\n", "@10 position-clear qualification install\n",
+                                "@11 motion-profile start-speed relation 30\n", "@12 home qualification install 35 60 30 100 all\n"}) {
         command(invalid); contains("\"ok\":false"); assert(hardware.writes == 0);
     }
 }

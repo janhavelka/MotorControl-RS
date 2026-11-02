@@ -408,6 +408,29 @@ void testUnknownMotionCannotEstablishReference() {
         }
     }
 }
+void testRunningPollInterval() {
+    const auto method = Ess::HomingMethod::METHOD_33;
+    auto o = options(); o.runningPollIntervalUs = 5000;
+    auto start = [&](uint64_t deadline) {
+        Ess::HomeContext c;
+        assert(Ess::prepareHome(c, axis(), 12, request(method), prerequisites(method), 100, deadline, o));
+        trigger(c); return c;
+    };
+    auto c = start(100000);
+    consume(c, 3); assert(c.eligibleUs - c.servicedUs == 100); // Slower only once RUNNING was reported.
+    consume(c, 4); assert(c.eligibleUs - c.servicedUs == 100); // The next poll stays prompt.
+    consume(c, 4); assert(c.eligibleUs - c.servicedUs == 5000);
+    consume(c, 1); assert(c.eligibleUs - c.servicedUs == 5000); // Stays slow through a later stopped report.
+    c = start(1000); consume(c, 4); consume(c, 4);
+    assert(c.eligibleUs == c.deadlineUs); // The deadline never extends.
+    c = start(100000); while (c.state == ActionState::ACTIVE) consume(c, 4);
+    assert(c.outcome == ActionOutcome::OBSERVATION_LIMIT && c.polls == o.maxPolls && c.uncertain); // Nor does the poll budget.
+    o.runningPollIntervalUs = 0;
+    c = start(100000); consume(c, 4); consume(c, 4); assert(c.eligibleUs - c.servicedUs == 100); // Zero is off.
+    o.runningPollIntervalUs = 99; Ess::HomeContext unchanged; unchanged.operationId = 77;
+    const auto refused = Ess::prepareHome(unchanged, axis(), 12, request(method), prerequisites(method), 100, 100000, o);
+    assert(!refused && refused.detail == static_cast<int32_t>(Ess::HomeError::INVALID_OPTIONS) && unchanged.operationId == 77);
+}
 void testMaximumPollBoundary() {
     for (const bool observeInputs : {false, true}) {
         auto p = prerequisites(Ess::HomingMethod::METHOD_33);
@@ -1207,6 +1230,7 @@ int main() {
     testCorrelatedTransitions(); testFailuresAndEnvelopes(); testReadinessAndDelayedEvidence();
     testUnknownMotionCannotEstablishReference();
     testMaximumPollBoundary();
+    testRunningPollInterval();
     testBorrowedAndOversizedEvidence();
     testLimitBranchesAndVectors(); testOriginBranchesAndVectors(); testPositiveBranchesAndVectors();
     testNegativeBranchesAndVectors(); testNegativeCancellationAndUnrelatedEvents();

@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from bench_probe import BenchError, Console, MAX_LINE, unique_object, wire_crc
+from bench_probe import ADMISSION_FAILURES, BenchError, Console, MAX_LINE, QUALIFICATION_ROUTES, unique_object, wire_crc
 from bench_probe_test import check_fixture_routes
 
 expected = {"current_origin", "index_origin", "stale_homed", "lost_trigger_ack", "cancelled", "deadline", "unconfirmed_trigger", "exception", "late_trigger_echo",
@@ -230,6 +230,31 @@ for executable in sys.argv[2:]:
     frontend_records.append(records)
 assert frontend_records[0] == frontend_records[1], "Arduino/IDF home evidence differs"
 print("PASS: both real application frontends, all30 methods, revoked final-zero and unqualified status evidence")
+
+qualification_replies = []
+for executable in sys.argv[2:]:
+    records = [json.loads(line, object_pairs_hook=unique_object) for line in
+               subprocess.check_output([executable, "--emit-qualification-replies"], text=True, timeout=20).splitlines() if line.startswith("{")]
+    records = [r for r in records if r.get("id", 0) >= 800]
+    assert [r["id"] for r in records] == list(range(800, 816))
+    assert [r["result"] for r in records] == ["qualification_required"] * 3 + ["reads_required", "reads_required", "reads_required",
+        "missing_fact", "unknown_fact", "duplicate_fact", "fact_not_applicable", "stored_offset_nonzero", "done", "done", "done", "done", "done"]
+    for record in records[:3]:
+        assert record["result"] in ADMISSION_FAILURES and record["operation_id"] == 0 and record["ok"] is False
+    for record in records[3:]:
+        assert record["command"] in QUALIFICATION_ROUTES, record
+        assert len(json.dumps(record, separators=(",", ":"))) < MAX_LINE
+        Console._check_qualification(record)
+    assert records[3]["read_first"] == "read config" and records[5]["read_first"] == "read config"
+    assert records[6]["fact"] == "rates" and records[7]["fact"] == "bogus" and records[9]["fact"] == "index"
+    for reply in (dict(ok=True, result="accepted"), dict(ok=False, result="missing_fact"), dict(ok=False, result="reads_required"),
+                  dict(ok=False, result="invented"), dict(ok=True, result="done", operation_id=4)):
+        try: Console._check_qualification(reply)
+        except BenchError: pass
+        else: raise AssertionError((reply, "forged qualification reply accepted"))
+    qualification_replies.append(records)
+assert qualification_replies[0] == qualification_replies[1], "Arduino/IDF qualification replies differ"
+print("PASS: both real application frontends, every qualification route refusal and acceptance")
 
 integration_records = []
 for executable in sys.argv[2:]:

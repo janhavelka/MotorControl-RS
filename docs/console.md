@@ -290,15 +290,19 @@ produce no traffic. Inspect/release its retained operation ID normally. It does
 not start motion, save parameters or qualify physical scaling/active behavior.
 A possible write expires readiness; fresh configuration/state/profile evidence
 must rebuild live evidence before a move. After a possible start-speed change,
-firmware must also install an independently qualified, raw-word/binding-matched
-`PositionStartSpeedRelation`; fresh reads alone do not establish the relation.
-Its minimum compatible move speed is checked without adjusting desired speed. Profile restore still excludes this word; see
+moves stay locked until you state an independently qualified relation: after fresh
+reads and `motion-profile read`, `motion-profile start-speed relation RAW_WORD MIN_RPM`
+binds the exact stored word to the minimum compatible move speed. Fresh reads alone do
+not establish it, and writing the old value back does not clear the lock. The lock
+lives in RAM: a controller restart forgets it and uses the stored word under the
+startup policy, unchecked. Its minimum is checked without adjusting desired speed. Profile restore still excludes this word; see
 [position setting and restoration limits](ess_position.md#native-position-start-speed-setting).
 
 ## Limit- and origin-reference homing
 
 `home methods` and `caps` list implemented methods1–14/17/19–30/33–35. After ordinary
-checked reads and application `installHomeQualification`, use
+checked reads and [stating the facts](cli_contract.md#qualification-routes) with
+`home qualification install`, use
 `home 1|2|17 SEARCH_NATIVE RETURN_NATIVE RAMP_NATIVE zero [address]` with one
 method number. Origin methods use the same syntax, for example
 `home 20 60 30 100 zero`. Method1 requires a connected negative limit plus internal Z,
@@ -315,7 +319,9 @@ only11–14 require Z. For example, `home 28 60 30 100 zero` uses the same quali
 application route. Method28's drawings are associated by spatial path, not their
 exchanged a/b labels. `caps` lists all30 implemented choices and separately
 reports method18 and collision homing as unresolved.
-`home qualification` inspects supplied facts; it cannot install or invent them.
+`home qualification` inspects supplied facts and changes nothing. A home that
+fails after a possible trigger reports that the drive may still be moving; nothing
+stops it automatically, so use `stop`, then `read state`.
 See [admission, completion and evidence limits](ess_homing.md).
 
 ## Homing auxiliary configuration

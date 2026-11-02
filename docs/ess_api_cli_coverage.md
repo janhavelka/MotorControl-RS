@@ -84,6 +84,7 @@ the installed core performs no UART, clock, retry, queue, heap or logging work.
 | Velocity | `velocity` | Common target preparation and ESS velocity sequence; unresolved acceleration mapping rejected |
 | Homing auxiliary | `home auxiliary CHOICE` | One-field checked prior/FC06/readback API, all twelve stored choices; active-policy qualification remains independent |
 | Homing parameters | `home read [address]` | ESS `Reads.h` single seven-word read, raw result, explicit interpretation/support and ordinary application submit/copy/release |
+| Qualification routes | `home qualification install`/`revoke`, `velocity qualification install`/`revoke`, `position-clear qualification install`/`revoke`, `motion-profile start-speed relation` | Named facts to `installHomeQualification`/`revokeHomeQualification`, `installVelocityQualification`/`revokeVelocityQualification`, `installPositionClearQualification`/`revokePositionClearQualification` and `installPositionStartSpeedRelation`; local, no register effect |
 | Homing | `home methods`, `home qualification`, `home ...` | `installHomeQualification`/`inspectHomeQualification`/`revokeHomeQualification`, `submitHome`/`copyHomeResult` and ESS bounded sequence; only1-14/17/19-30/33-35 implemented; qualification inspection performs no device operation |
 | Driver and optional I/O | `driver read|set`, `io read|set` | ESS whole-candidate driver preparation and checked readback |
 | Stored records | `segment position|speed|start INDEX read|set` | One indexed helper per real layout; no serial record trigger |

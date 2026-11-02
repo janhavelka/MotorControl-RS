@@ -86,8 +86,22 @@ and `approx ERROR` use strict exact-number parsing; optional final address is
 1..247. This reference limits requested/effective speed to +/-60 native RPM and
 duration to 1..1000 ms, with an additional immutable 2 s stop budget, 20 ms observation
 interval and 64 polls. This is a proposed software envelope, not physical
-qualification. Production qualification flags remain false and have no CLI
-bypass. These commands reject before TX on the current bench.
+qualification. Qualification starts false and `velocity` replies
+`qualification_required` until the facts are stated:
+
+```
+velocity read
+velocity qualification install rpm ramp inputs [negative]
+velocity qualification revoke
+```
+
+`rpm`, `ramp` and `inputs` map to `nativeRpmVerified`, `configuredRampVerified` and
+`serialInputsPermit`; optional `negative` maps to `negativeTwosComplementVerified`,
+and without it negative speeds reject. The ramp words come from the checked `velocity
+read`, which the route names when it is missing; a later read reporting other ramps
+removes the statement. `installVelocityQualification` is the same operation for an
+application. The facts widen neither the envelope above nor the requirement for
+fresh stationary state. See [qualification routes](cli_contract.md#qualification-routes).
 
 Preparation rejects a duration that `maxPolls * pollIntervalUs` cannot cover; the
 `ActionOptions` defaults cover 200 ms. A poll closing after the duration ends the

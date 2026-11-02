@@ -53,10 +53,12 @@ void finish(MoveContext& c, ActionOutcome outcome, Status status) {
         (c.stagingEvidence.txAccepted || c.stagingEvidence.executionUnknown ||
          c.triggerEvidence.txAccepted || c.triggerEvidence.executionUnknown);
 }
-void wait(MoveContext& c, uint64_t nowUs) {
+void wait(MoveContext& c, uint64_t nowUs, bool runningEarlier = false) {
     ++c.step;
     const uint64_t remaining = c.deadlineUs - nowUs;
-    c.eligibleUs = c.options.pollIntervalUs >= remaining ? c.deadlineUs : nowUs + c.options.pollIntervalUs;
+    const uint32_t interval = runningEarlier && c.options.runningPollIntervalUs ?
+        c.options.runningPollIntervalUs : c.options.pollIntervalUs;
+    c.eligibleUs = interval >= remaining ? c.deadlineUs : nowUs + interval;
 }
 // Function manual p70 prints the 0x0024/25 range as -0xFFFFFFF ~ 0xFFFFFFFF, and p12
 // answers out-of-range data with exception 07. That row is malformed: its bounds differ
@@ -211,7 +213,8 @@ static Status prepareMove(MoveContext& output, const AxisConfig& axis, const Axi
         return invalid(MoveError::INVALID_TARGET, "invalid move target");
     if (!operationId) return invalid(MoveError::INVALID_OPERATION, "zero move id");
     if (deadlineUs <= nowUs) return invalid(MoveError::INVALID_DEADLINE, "expired move deadline");
-    if (!options.pollIntervalUs || !options.maxPolls || options.maxPolls > ACTION_MAX_POLLS)
+    if (!options.pollIntervalUs || !options.maxPolls || options.maxPolls > ACTION_MAX_POLLS ||
+        (options.runningPollIntervalUs && options.runningPollIntervalUs < options.pollIntervalUs))
         return invalid(MoveError::INVALID_OPTIONS, "invalid bounded move observation policy");
     if (request.position.relative && request.position.basis != RelativeBasis::ACTUAL)
         return Status(Err::UNSUPPORTED, static_cast<int32_t>(MoveError::UNRESOLVED_BASIS),
@@ -430,6 +433,7 @@ Status advanceMove(MoveContext& c, const ActionEvent& supplied, uint64_t nowUs) 
         else if (setting) { ++c.step; c.eligibleUs = nowUs; }
         else wait(c, nowUs);
     } else {
+        const bool runningEarlier = c.runningObserved;
         ++c.polls; c.lastObservation = evidence; c.observationKnown = true;
         c.rawAlarm = words[0]; c.rawMotion = words[1];
         bool endpointMatch = false;
@@ -466,7 +470,7 @@ Status advanceMove(MoveContext& c, const ActionEvent& supplied, uint64_t nowUs) 
                 failed(MoveError::OBSERVATION_LIMIT, "fresh move completion was not observed"));
             else if (nowUs >= c.deadlineUs) finish(c, ActionOutcome::DEADLINE,
                 failed(MoveError::DEADLINE_EXPIRED, "no budget for another move observation"));
-            else wait(c, nowUs);
+            else wait(c, nowUs, runningEarlier);
         }
     }
     if (c.state == ActionState::FAILED) c.failureEvidence = evidence;

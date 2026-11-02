@@ -183,7 +183,9 @@ storage reject before traffic. Programmatic results require explicit terminal
 configuration/state/I/O/profile transfer must rebuild live evidence after a
 possible write. Fresh stored reads alone cannot qualify the changed start-speed
 relationship. Firmware must also supply independent qualification through
-`installPositionStartSpeedRelation(const PositionStartSpeedRelation&)`.
+`installPositionStartSpeedRelation(const PositionStartSpeedRelation&)` or the console's
+`motion-profile start-speed relation RAW_WORD MIN_RPM`. The requirement lives in RAM:
+a controller restart forgets it and uses the stored word under the startup policy.
 No physical RPM conversion is inferred by the library.
 The relation retains exact `target`, `configurationGeneration`, `rawStartSpeed`
 (0..3000), `minimumPositionSpeedRpm` (1..3000 in the existing move-request units)

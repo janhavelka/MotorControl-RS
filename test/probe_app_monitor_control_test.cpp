@@ -197,7 +197,7 @@ void testHomeAvailabilityReasonsBeforeTraffic() {
     assert(startHome(app, 1, 1, request, operation) == Probe::Action::UNRESOLVED);
     for (const int method : {1,2,3,4,5,6,7,8,9,10,11,12,13,14,17,19,20,21,22,23,24,25,26,27,28,29,30,33,34,35}) {
         request.method = static_cast<ESS::HomingMethod>(method);
-        assert(startHome(app, 1, 1, request, operation) == Probe::Action::UNAVAILABLE);
+        assert(startHome(app, 1, 1, request, operation) == Probe::Action::QUALIFICATION_REQUIRED);
     }
     request.method = ESS::HomingMethod::METHOD_35; request.offset = 1;
     assert(startHome(app, 1, 1, request, operation) == Probe::Action::UNRESOLVED);

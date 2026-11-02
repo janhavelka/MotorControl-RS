@@ -241,7 +241,9 @@ The application reserves the same axis across setup, trigger, waits and reads.
 `nextHome` repeatedly yields the same token until an event advances the state.
 Readiness limits cap setup/trigger deadlines without renewal; the immutable
 operation deadline and `ActionOptions` poll interval/count bound observation
-work. `PreparedHome` owns its 21-byte request buffer. Applications preserve
+work. `runningPollIntervalUs`, when nonzero, spaces polls once a poll follows an
+earlier RUNNING report, so a long search stays observed within the same poll count.
+It extends neither bound. `PreparedHome` owns its 21-byte request buffer. Applications preserve
 the supplied token's target, operation, step, expectation and deadline through
 queueing, physical transmission and response validation.
 
@@ -443,10 +445,13 @@ settled frame/status remains in phase/failure evidence, even a valid zero reply.
 Actual `ConfigObservation` supplies functions/polarity, `StateBlock::IO` supplies
 live logical levels and `MOTION` supplies readiness. A current parameter read
 supplies stored auxiliary/method/rate/offset facts; it does not qualify them.
-Installation and submission conservatively require the stored method/search/
-return/ramp to match the exact supplied candidate, auxiliary7 and both offset
-words zero. Thus this first application path does not qualify an arbitrary
-new candidate while stored parameters differ. All five CONFIG frames and the
+Installation and submission require a current read with auxiliary7 and both offset
+words zero. Home never writes auxiliary, and staging would silently erase a stored
+offset whose interpretation is unresolved. Stored method, search, return and ramp
+need not match the candidate, because the `0x0031/6` staging overwrites them before
+the trigger. A later read in this generation that shows one of them changed still
+revokes the installed facts, and so does any read differing from an active home's
+words, since every such read follows its staging on the bus. All five CONFIG frames and the
 parameter read must have checked provenance; their oldest request timestamp
 becomes `readbackObservedUs`. MOTION and IO must reference that exact CONFIG
 observation. Input functions/polarity and declared wiring must match both the
@@ -484,7 +489,8 @@ Latest checked ordinary MOTION/IO/parameter contradictions cancel unsent work
 even after own staging consumed the slot. Existing in-flight frames settle.
 
 To use the standalone route, perform ordinary `read config`, `read state` and
-`home read`, construct `HomePrerequisites` from independently qualified fixture
+`home read`, then state the facts with `home qualification install` and run `home`.
+Programmatically, construct `HomePrerequisites` from independently qualified fixture
 facts and exact observed mapping/native words, then call
 `installHomeQualification` followed by `submitHome`. Service the application,
 inspect `copyHomeResult`, and call `releaseOperation` when terminal. Reinstall
@@ -501,6 +507,9 @@ The command calls the public preparation/execution API:
 ```text
 home methods
 home qualification
+home qualification install 35 60 30 100 mechanics rates ramp zero-offset auxiliary inputs
+home qualification install 33 60 30 100 mechanics rates ramp zero-offset auxiliary inputs index reference
+home qualification revoke
 home 35 60 30 100 zero [address]
 home 33 60 30 100 zero [address]
 home 1 60 30 100 zero [address]
@@ -516,14 +525,36 @@ inspection preserve acknowledgement, completion, raw flags, generations,
 uncertainty and bounded evidence.
 `home qualification` passively shows future-slot presence, validity, exact
 binding/native words and independent qualification age. It accepts no extra
-tokens and cannot install facts. Terminal/result JSON adds `qualification`,
+tokens and cannot install facts. `home qualification install` states each fact by
+name, as the [qualification routes](cli_contract.md#qualification-routes) list; a
+missing or unknown fact is refused by name, and missing reads name what to run first.
+A fresh drive stores method 24 and auxiliary 0 per the manual (p72), so it first needs
+`home auxiliary 7`, then new reads; it is refused with `stored_auxiliary_differs` until
+then, and a nonzero offset with `stored_offset_nonzero`. With no qualification
+installed, `home` replies `qualification_required`.
+
+Sending the staging frame consumes the qualification and expires cached state. A `home
+read` after the run shows the staged words and restores nothing. For another home,
+run `read state` and `home read`, then `home qualification install` again; the human
+terminal report and each refusal's `read_first` say so. Installation does not stage
+anything, so a stored word changes only when that next home runs.
+
+The deadline is `ApplicationOptions::moveTimeoutMs` (30 s by default), as for moves,
+polling every 20 ms until RUNNING is reported and every 500 ms from the second poll
+after it. Sixty-four polls cover that deadline only if RUNNING arrives early; a search
+slow to report it can end `observation_limit` first. No automatic stop follows
+either end. A failed home after a possible trigger ends uncertain, the human report
+says the drive may still be moving, and the axis stays interlocked until a checked stop.
+
+Terminal/result JSON adds `qualification`,
 `qualification_revoked`, `inputs_observed` and `raw_inputs`; settled phase
 evidence remains independent of cancellation status. Python validates both the
 legacy two-word core path and the application's three-word observation path.
 
-The finite Python `home` scenario offers method 35 with an explicit normal/direct
-cleanup stop, retained-result inspection and final state/health reads. Methods
-33/34 need independently qualified index/mechanics before a physical campaign.
-The current firmware has no qualified homing method/parameter fixture;
-no physical homing or independent zero/return measurement is established by
+The finite Python `home` scenario offers methods 33, 34 and 35 with an explicit
+normal/direct cleanup stop, retained-result inspection and final state/health reads.
+Repeat `--fact NAME` for each fact you state; the script takes the reads, installs
+exactly those facts, and with none installs nothing. Switch methods also need
+`--fact inputs` and `--wiring TERMINAL STATE`. The current firmware has no qualified
+homing method/parameter fixture; no physical homing or independent zero/return measurement is established by
 native tests or a read-only bench regression.

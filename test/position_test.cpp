@@ -76,6 +76,27 @@ void noMoreWork(const Ess::MoveContext& c) {
     Ess::PreparedMove p; assert(Ess::nextMove(c, c.servicedUs, p));
     assert(p.kind == Ess::ActionWork::DONE && p.length == 0);
 }
+void testRunningPollInterval() {
+    auto o = options(); o.maxPolls = 8; o.runningPollIntervalUs = 5000;
+    auto start = [&](uint64_t deadline) {
+        Ess::MoveContext c;
+        assert(Ess::prepareMoveRelative(c, axis(), nullptr, 12, request(), prerequisites(), 100, deadline, o));
+        trigger(c); return c;
+    };
+    auto c = start(100000);
+    consume(c, 0); assert(c.eligibleUs - c.servicedUs == 100); // Slower only once RUNNING was reported.
+    consume(c, 4); assert(c.eligibleUs - c.servicedUs == 100); // The next poll stays prompt.
+    consume(c, 4); assert(c.eligibleUs - c.servicedUs == 5000);
+    c = start(1000); consume(c, 4); consume(c, 4);
+    assert(c.eligibleUs == c.deadlineUs); // The deadline never extends.
+    c = start(100000); while (c.state == ActionState::ACTIVE) consume(c, 4);
+    assert(c.outcome == ActionOutcome::OBSERVATION_LIMIT && c.polls == o.maxPolls); // Nor does the poll budget.
+    o.runningPollIntervalUs = 0;
+    c = start(100000); consume(c, 4); consume(c, 4); assert(c.eligibleUs - c.servicedUs == 100); // Zero is off.
+    o.runningPollIntervalUs = 99; Ess::MoveContext unchanged; unchanged.operationId = 77;
+    const auto refused = Ess::prepareMoveRelative(unchanged, axis(), nullptr, 12, request(), prerequisites(), 100, 100000, o);
+    assert(!refused && refused.detail == static_cast<int32_t>(MoveError::INVALID_OPTIONS) && unchanged.operationId == 77);
+}
 void testExactStageTriggerAndCommonParity() {
     auto c = move(); Ess::PreparedMove p;
     assert(Ess::nextMove(c, 100, p) && p.kind == Ess::ActionWork::TRANSACTION);
@@ -848,6 +869,7 @@ void testOperatingLimitsCommonParity() {
     assert(!axis().originKnown && !axis().units.commandStepsPerMotorTurn.numerator);
 }
 int main() {
+    testRunningPollInterval();
     testRunningCompletionReportsEndpointMismatch(); testWriteReplyClassification(); testRelativeMoveChecksConsumedReference();
     testOperatingLimitsCommonParity();
     testShortMoveEndpointEvidence();

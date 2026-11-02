@@ -10,4 +10,6 @@ namespace MotorControlRSExample { namespace Probe { namespace HomeConsole {
 const char* parse(const char* const* arguments, std::size_t count,
                   MotorControlRS::ESS_RS::HomeRequest& request,
                   uint8_t& address, bool& explicitAddress) noexcept;
+// Method and native words from the first four tokens; output changes only on success.
+bool parseWords(const char* const* arguments, MotorControlRS::ESS_RS::HomeRequest& request) noexcept;
 }}}

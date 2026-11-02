@@ -33,7 +33,8 @@ unresolved semantics and physical qualification. Detailed help, menu description
 and error usage for velocity/home families reflect read, setting and motion callbacks
 independently. Human parameter results name unresolved interpretations; numeric
 JSON resolution codes remain unchanged. Setter capability booleans reflect
-their actual driver/snapshot callbacks; delivered setters are not reported in
+their actual driver/snapshot callbacks; `caps.qualification_routes` reports the
+typed qualification routes the same way; delivered setters are not reported in
 the unimplemented list.
 
 Input/output use fixed capacities and bounded service work. Reject truncated
@@ -62,10 +63,12 @@ guides define complete arguments and prerequisites.
 | `move relative\|absolute\|angle` | Detailed [finite moves](ess_position.md) with explicit frame/setup/rounding |
 | `velocity read [address]` | One checked native JOG-parameter read; canonical `velocity-read`, no writes or qualification |
 | `velocity` | [Finite velocity](ess_velocity.md) with explicit duration and stop policy |
+| `home qualification install METHOD SEARCH RETURN RAMP FACT...`, `home qualification revoke`, `velocity qualification install FACT...`, `velocity qualification revoke`, `position-clear qualification install clear-semantics`, `position-clear qualification revoke` | [Named commissioning facts](#qualification-routes), local and on the ordinary image |
+| `motion-profile start-speed relation RAW_WORD MIN_RPM` | State the minimum speed for the stored start-speed word |
 | `enable`, `motor-release`, `alarm-clear`, `position-clear`, `stop normal\|fast` | Explicit [drive actions](ess_actions.md) |
 | `home read [address]` | One checked seven-word native parameter read; canonical `home-read`, no writes or qualification |
 | `home auxiliary CHOICE` | Explicit stored auxiliary choice0..11; canonical `home-auxiliary`, prior/echo/readback and independent active qualification |
-| `home methods`, `home qualification`, `home ...` | Method inventory, passive qualification inspection and qualified [homing](ess_homing.md) |
+| `home methods`, `home qualification`, `home ...` | Method inventory, passive qualification inspection and qualified [homing](ess_homing.md); home acceptance replies `accepted`, then one terminal `home` line |
 | `driver`, `io`, `segment`, `control`, `tuning` | Typed reads/whole-candidate updates; [driver](ess_driver_settings.md), [I/O](ess_io.md), [segments](ess_segments.md), [control](ess_control_settings.md), [tuning](ess_tuning.md) |
 | `motion-profile read\|inspect\|restore\|forget` / `motion-profile start-speed NATIVE` | Retained position-parameter snapshot and explicit restoration |
 | `communication ...`, `persistence ...` | Explicit [drive communication](ess_communication.md) and [save/restore](ess_persistence.md) workflows |
@@ -231,7 +234,7 @@ none of these support lists imply physical qualification.
 | 04 | `motion-profile start-speed <native>` | `submitPositionStartSpeed` -> bounded prior-read/settings update |
 | 05 | `home auxiliary <0..11>` | `submitHomingAuxiliary` -> bounded prior-read/settings update |
 | 07 | `position interrupt <original-id>` | `submitPositionInterrupt` -> exact retained native stored-profile start-or-interrupt |
-| 08-12 | Existing `home <method> ... zero` | Public `submitHome` -> current owner, using independently installed qualification |
+| 08-12 | Existing `home <method> ... zero` | Public `submitHome` -> current owner, using qualification from the [console route](#qualification-routes) or API |
 
 These initial new read/setting routes use the selected axis. They do not accept
 an address that would silently acquire the selected axis's configuration
@@ -270,18 +273,68 @@ and retained `result` carry `position_interrupt:true`, `stored` qualification,
 Even confirmed `acknowledged` has `ok:false`, no known endpoint/displacement,
 no observed running/arrival and no borrowed old position baseline. Pending
 results retain the discriminator and relation. The interrupted original retains
-its own setup/trigger/observation evidence. Related results require explicit
+its own setup/trigger/observation evidence. In a correlated JSON session related results require explicit
 release after both operations settle; ACK and release do not clear possible
 motion. `caps` exposes the stored subset separately from unavailable new-target
 replacement and observed completion. Human help states these same limits.
 
-Home qualification is supplied through the ordinary application install/inspect/
-revoke API with the [documented lifecycle](ess_homing.md#planned-auxiliary-setting-and-switch-method-integration-not-implemented).
-There is no all-true CLI qualification switch, inferred fixture or hidden test
-backend. Extend `home methods` and retained result presentation only alongside
-actual method implementations.
-`home qualification` inspects the future slot without installing facts or
-renewing age. Programmatic `submitHome`/`copyHomeResult` and console home use
+In human mode a delivered pair is recycled like other successes, once a later checked stop
+has settled the motion and the original's only failure is being superseded by an
+acknowledged replacement. Any other failure or uncertainty keeps both.
+
+## Qualification routes
+
+`home`, `velocity` and `position-clear` need commissioning facts that no read can
+supply. Each fact is stated by name through a typed console route on the ordinary
+image, or through the same application install API. There is no all-true switch,
+inferred fixture or hidden test backend, and every route is local: no bus traffic.
+Missing facts leave the operation refused with `qualification_required`.
+
+| Route | Facts | Stated fact |
+| --- | --- | --- |
+| `home qualification install METHOD SEARCH RETURN RAMP` | `mechanics` | Method trajectory, direction and travel suit this installation |
+| | `rates`, `ramp` | The exact native search/return and ramp words |
+| | `zero-offset` | Zero offset is the intended reference offset |
+| | `auxiliary` | Stored auxiliary 7 is the active policy |
+| | `inputs` | Terminal assignments and levels suit this method |
+| | `index` | Internal Z is usable; required only by methods 1-14, 33, 34, refused elsewhere |
+| | `reference` | Optional: homing zero maps to command coordinates. Without it no reference is published |
+| `velocity qualification install` | `rpm`, `ramp`, `inputs` | Native signed rpm, the stored ramp words, serial inputs permit motion |
+| | `negative` | Optional: two's-complement negative speed. Without it negative speeds are refused |
+| `position-clear qualification install` | `clear-semantics` | The zero-only clear's effect is understood for this axis |
+
+Replies use the command names `home-qualification-install`,
+`home-qualification-revoke` and their `velocity-` and `position-clear-` equivalents,
+with `result` `done` on success. A refusal is named:
+
+| `result` | Added field | Meaning |
+| --- | --- | --- |
+| `missing_fact`, `unknown_fact`, `duplicate_fact`, `fact_not_applicable` | `fact` | The offending fact, or `unprintable` for an unsafe token |
+| `reads_required` | `read_first` | Run this command first: `read config`, `read state`, `home read`, `velocity read` or `motion-profile read` |
+| `stored_auxiliary_differs` | | Home needs stored auxiliary 7, which it never writes; use `home auxiliary 7`, then read again |
+| `stored_offset_nonzero` | | Staging would erase a stored offset whose interpretation is unresolved |
+| `stored_ramp_out_of_range`, `stored_word_differs` | | The velocity ramp words exceed 2000, or the start-speed word differs from the fresh profile read |
+| `drive_not_ready` | `read_first` | Fresh state shows an alarm, motion or release |
+| `axis_conflict`, `busy` | | Unresolved motion needs a checked stop, or work is still running |
+
+Stated facts have no age: a setting or configuration change, a contradictory read,
+a rebind or a revoke removes them. Live checks are unchanged: fresh checked
+configuration, state and parameter reads are still required at each admission, and
+own home staging consumes the home qualification, so another home needs `read state`,
+`home read` and a new install. Stored home method, rates and ramp may differ from the
+candidate, because staging writes them. Revoking cancels unsent home work
+and never stops the motor.
+
+`motion-profile start-speed relation RAW_WORD MIN_RPM` lifts the move lock that
+`motion-profile start-speed` sets. It requires a fresh `motion-profile read` showing
+that exact word, under the existing `installPositionStartSpeedRelation` rules. The
+lock lives in RAM: a controller restart forgets it and uses the stored word under the
+startup policy, without checking the relation again.
+
+Home qualification keeps its [documented lifecycle](ess_homing.md#planned-auxiliary-setting-and-switch-method-integration-not-implemented).
+Extend `home methods` and retained result presentation only alongside actual method
+implementations. `home qualification` inspects the future slot without installing
+facts or renewing age. Programmatic `submitHome`/`copyHomeResult` and console home use
 the same owner route. Protocol3 retains independent fixture/live ages, logical
 inputs and copied revocation; a settled final-zero reply cannot override a
 revoked admission. Methods1–14/17/19–30/33–35 are the implemented subset. Switch methods require the

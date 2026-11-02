@@ -56,8 +56,11 @@ this is a conservative application policy. The manual's explicit stopped-state
 note on pages26/71 applies to factory restore/save, not position clear. The
 standalone also requires new, matching, enabled/stopped/alarm-free readiness
 and, when age expiry is enabled, caps the request deadline by that retained
-readiness age. Its separate
-`positionClearQualified` commissioning flag remains false on the actual board.
+readiness age. Its separate `positionClearQualified` commissioning flag starts false,
+so `position-clear` replies `qualification_required` until it is stated with
+`position-clear qualification install clear-semantics` or
+`installPositionClearQualification`. `position-clear qualification revoke` clears it.
+The fresh state above is still required for every clear.
 
 The checked, source-confirmed acknowledgement is followed by bounded new FC03
 `0x000A/2` observations. Both words must be zero; old cached zero and the echo
@@ -180,7 +183,7 @@ different observations; no input changes occur implicitly. Use the explicit
 | `enable [address]` | Enable windings, then observe flags |
 | `motor-release [address]` | Release windings, then observe flags |
 | `alarm-clear [address]` | Clear resettable alarms |
-| `position-clear [address]` | Explicitly zero the device counter |
+| `position-clear [address]` | Explicitly zero the device counter, once [qualified](cli_contract.md#qualification-routes) |
 | `stop normal [address]` | Stop using configured deceleration |
 | `stop fast [address]` | ESS emergency stop without the ramp |
 

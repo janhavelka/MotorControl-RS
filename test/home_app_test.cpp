@@ -49,7 +49,14 @@ std::vector<uint8_t> words(std::initializer_list<uint16_t> values) {
 }
 std::vector<uint8_t> words(uint16_t a, uint16_t b) { return crc({1,3,4,static_cast<uint8_t>(a >> 8),static_cast<uint8_t>(a),static_cast<uint8_t>(b >> 8),static_cast<uint8_t>(b)}); }
 std::vector<uint8_t> observed(uint16_t motion, uint16_t inputs = 0, uint16_t alarm = 0) { return words({alarm,motion,inputs}); }
+// Cross an idle observation wait in one hop; nothing can reach the bus during it.
+void crossPollWait(uint32_t id) {
+    const auto* record = findRecord(*app,id);
+    if (record->kind == App::OperationKind::HOME && !record->requestId.owner && record->home.eligibleUs > hardware.time)
+        advanceHardware(record->home.eligibleUs);
+}
 void waitTx(uint32_t id) {
+    crossPollWait(id);
     for (unsigned i = 0; i < 25000 && !app->owner.txAccepted(findRecord(*app,id)->requestId); ++i) step();
     assert(app->owner.txAccepted(findRecord(*app,id)->requestId));
 }
@@ -68,6 +75,14 @@ void reply(uint32_t id, const std::vector<uint8_t>& given = {}) {
     }
     const auto result = view(id);
     assert(!result.pending || (result.homeContext ? result.homeContext->step : result.actionContext->step) != token);
+}
+// Answer every remaining poll with one frame until the operation ends itself.
+void serveUntilTerminal(uint32_t id, const std::vector<uint8_t>& frame) {
+    while (view(id).pending) {
+        crossPollWait(id); serviceApplication();
+        for (unsigned i = 0; i < 1000 && view(id).pending && !app->owner.txAccepted(findRecord(*app,id)->requestId); ++i) step();
+        if (view(id).pending) reply(id,frame);
+    }
 }
 ESS::HomeRequest request(int method = 35) {
     ESS::HomeRequest r; r.method = static_cast<ESS::HomingMethod>(method); r.configurationGeneration = app->axis.generation; return r;
@@ -575,7 +590,9 @@ void switchObservationBounds() {
     for (const int method : {3,4,5,6,7,8,9,10,11,12,13,14,19,20,21,22,23,24,25,26,27,28,29,30}) for (unsigned scenario = 0; scenario < 6; ++scenario) {
         const bool assisted = (method >= 7 && method <= 14) || (method >= 23 && method <= 30);
         const uint16_t level = scenario == 1 ? (assisted ? 3 : 1) : 0;
-        fresh(); qualify(true,method,level); const auto id = admit(method);
+        fresh(); qualify(true,method,level);
+        app->options.moveTimeoutMs = 2000; // Keeps the deadline scenarios below short.
+        const auto id = admit(method);
         reply(id); reply(id);
         if (scenario < 2) {
             // Constant inactive or active samples can miss the source trajectory's
@@ -585,11 +602,15 @@ void switchObservationBounds() {
                 copiedHome(id).rawInputs == level && app->coordinateReference.nativeKnown);
         } else {
             reply(id,observed(scenario == 2 ? 6 : scenario == 3 ? 1 : 4));
-            for (unsigned poll = 1; poll < ESS::ACTION_MAX_POLLS && view(id).pending; ++poll)
-                reply(id,observed(scenario == 4 ? 2 : scenario == 5 ? 4 : 3));
+            // Once RUNNING is reported the slower polls outlast the deadline, so
+            // only a search that never reports RUNNING can use all 64 polls.
+            if (scenario == 3)
+                for (unsigned poll = 1; poll < ESS::ACTION_MAX_POLLS && view(id).pending; ++poll) reply(id,observed(3));
+            else serveUntilTerminal(id,observed(scenario == 4 ? 2 : scenario == 5 ? 4 : 3));
             const auto result = copiedHome(id);
-            assert(!view(id).pending && result.outcome == ActionOutcome::OBSERVATION_LIMIT &&
-                result.polls == ESS::ACTION_MAX_POLLS && !app->coordinateReference.nativeKnown && !result.zeroEvidence.length);
+            assert(!view(id).pending && result.uncertain && !app->coordinateReference.nativeKnown && !result.zeroEvidence.length);
+            if (scenario == 3) assert(result.outcome == ActionOutcome::OBSERVATION_LIMIT && result.polls == ESS::ACTION_MAX_POLLS);
+            else assert(result.outcome == ActionOutcome::DEADLINE && result.polls < ESS::ACTION_MAX_POLLS);
             if (scenario == 2) assert(result.runningObserved && !result.homedLowObserved);
             if (scenario == 3) assert(!result.runningObserved && result.homedLowObserved);
         }
@@ -602,25 +623,31 @@ void qualificationLifecycleAndBindings() {
     assert(!inspectHomeQualification(missing,valid) && missing.qualifiedSearchSpeed == 999 && valid);
     assert(!installHomeQualification(supplied()) && !sentCount());
     qualify(); const auto original = installed();
-    for (unsigned fault = 0; fault < 17; ++fault) {
+    // Staging overwrites stored method, rates and ramp, so they do not bind a candidate.
+    for (unsigned word = 0; word < 4; ++word) {
+        auto other = original;
+        if (word == 0) other.qualifiedMethod = ESS::HomingMethod::METHOD_33;
+        if (word == 1) ++other.qualifiedSearchSpeed;
+        if (word == 2) ++other.qualifiedReturnSpeed;
+        if (word == 3) ++other.qualifiedRampTime;
+        assert(installHomeQualification(other) && !sentCount());
+    }
+    assert(installHomeQualification(original));
+    for (unsigned fault = 0; fault < 13; ++fault) {
         auto changed = original;
         if (fault == 0) ++changed.target.address;
         if (fault == 1) ++changed.target.generation;
         if (fault == 2) ++changed.configurationGeneration;
-        if (fault == 3) changed.qualifiedMethod = ESS::HomingMethod::METHOD_33;
-        if (fault == 4) ++changed.qualifiedSearchSpeed;
-        if (fault == 5) ++changed.qualifiedReturnSpeed;
-        if (fault == 6) ++changed.qualifiedRampTime;
-        if (fault == 7) changed.auxiliary = static_cast<ESS::HomingAuxiliary>(6);
-        if (fault == 8) changed.zeroOffsetQualified = false;
-        if (fault == 9) changed.nativeRatesQualified = false;
-        if (fault == 10) changed.readinessQualified = false;
-        if (fault == 11) changed.qualifiedUs = hardware.time + 1;
-        if (fault == 12) { changed.qualifiedUs = 1; changed.qualificationMaximumAgeUs = 1; }
-        if (fault == 13) changed.inputFunctions[0] = 1;
-        if (fault == 14) changed.inputPolarity = 1;
-        if (fault == 15) changed.inputWiring[0] = InputWiring::UNKNOWN;
-        if (fault == 16) changed.inputPolarity = 16;
+        if (fault == 3) changed.auxiliary = static_cast<ESS::HomingAuxiliary>(6);
+        if (fault == 4) changed.zeroOffsetQualified = false;
+        if (fault == 5) changed.nativeRatesQualified = false;
+        if (fault == 6) changed.readinessQualified = false;
+        if (fault == 7) changed.qualifiedUs = hardware.time + 1;
+        if (fault == 8) { changed.qualifiedUs = 1; changed.qualificationMaximumAgeUs = 1; }
+        if (fault == 9) changed.inputFunctions[0] = 1;
+        if (fault == 10) changed.inputPolarity = 1;
+        if (fault == 11) changed.inputWiring[0] = InputWiring::UNKNOWN;
+        if (fault == 12) changed.inputPolarity = 16;
         assert(!installHomeQualification(changed) && !sentCount());
         const auto kept = installed();
         assert(kept.qualifiedUs == original.qualifiedUs && kept.qualifiedMethod == original.qualifiedMethod &&
@@ -1319,6 +1346,35 @@ void parameterReadHumanTerminal() {
         assert(releaseOperation(id));
     }
 }
+// Actual replies from every qualification route, for the host parser's parity check.
+void emitQualificationReplies() {
+    const auto emit = [](const std::string& line) {
+        command(line + "\n"); pump(64); std::fwrite(Serial.output.data(),1,Serial.output.size(),stdout);
+    };
+    fresh(); writeResponseConfirmed = true;
+    const std::string facts = "mechanics rates ramp zero-offset auxiliary inputs";
+    emit("@800 home 35 60 30 100 zero");
+    emit("@801 velocity 30 rpm native 200 configured normal");
+    emit("@802 position-clear");
+    emit("@803 home qualification install 35 60 30 100 " + facts);
+    emit("@804 velocity qualification install rpm ramp inputs");
+    emit("@805 motion-profile start-speed relation 30 20");
+    checkedBaseline();
+    emit("@806 home qualification install 35 60 30 100 mechanics");
+    emit("@807 home qualification install 35 60 30 100 " + facts + " bogus");
+    emit("@808 home qualification install 35 60 30 100 " + facts + " rates");
+    emit("@809 home qualification install 35 60 30 100 " + facts + " index");
+    uint32_t offset = 0; assert(submitHomingParameterRead(offset));
+    readReply(offset,words({7,35,60,30,100,0,5})); pump(64); assert(releaseOperation(offset));
+    emit("@810 home qualification install 35 60 30 100 " + facts);
+    assert(submitHomingParameterRead(offset));
+    readReply(offset,words({7,35,60,30,100,0,0})); pump(64); assert(releaseOperation(offset));
+    emit("@811 home qualification install 35 60 30 100 " + facts);
+    emit("@812 home qualification revoke");
+    emit("@813 velocity qualification revoke");
+    emit("@814 position-clear qualification install clear-semantics");
+    emit("@815 position-clear qualification revoke");
+}
 void emitConsoleResults() {
     for (const int method : {1,2,3,4,5,6,7,8,9,10,11,12,13,14,17,19,20,21,22,23,24,25,26,27,28,29,30,33,34,35}) {
         fresh(); qualify(false,method); const auto id = admit(method); reply(id); reply(id);
@@ -1344,6 +1400,7 @@ void emitConsoleResults() {
 }
 int main(int argc, char** argv) {
     if (argc == 2 && !std::strcmp(argv[1],"--emit-console-results")) { emitConsoleResults(); return 0; }
+    if (argc == 2 && !std::strcmp(argv[1],"--emit-qualification-replies")) { emitQualificationReplies(); return 0; }
     if (argc == 2 && !std::strcmp(argv[1],"--emit-integration-results")) {
         settingsAndDelayedParameterReads(true); lostSettingAckAcrossRecoveryAndNewAdmission(true); oldReadAfterRebind(true); return 0;
     }

@@ -2,8 +2,36 @@
 
 ## Unreleased
 
+### Added
+
+- Typed console routes state commissioning facts on the ordinary image, with no bus
+  traffic: `home qualification install|revoke`, `velocity qualification install|revoke`,
+  `position-clear qualification install|revoke` and `motion-profile start-speed relation`.
+  A missing or unknown fact is refused by name, and a missing read is named. `caps`
+  reports them under `qualification_routes`. `installVelocityQualification`,
+  `installPositionClearQualification` and their revokes join the application API.
+- `ActionOptions::runningPollIntervalUs` spaces move and home polls after RUNNING.
+- `bench_probe.py home` accepts methods 33 and 34, plus switch methods with explicit
+  `--fact inputs` and `--wiring`. It takes the reads and installs only `--fact` values.
+
 ### Changed
 
+- `home`, `velocity` and `position-clear` reply `qualification_required` when their
+  qualification is absent, in place of `unavailable` or `invalid`.
+- Home supervision uses `moveTimeoutMs` (30 s by default), not 3 s, and polls every
+  500 ms once a poll follows RUNNING, so a long search stays observed. There is still
+  no automatic stop; a home that ends uncertain now says the drive may still be moving.
+- Move poll timing is unchanged but set through the new option, not by changing the
+  admitted options mid-operation.
+- Home qualification no longer requires stored method, rates and ramp to match the
+  candidate, because staging overwrites them. Auxiliary 7 and zero offset are still
+  required, so a drive at factory defaults can home after `home auxiliary 7`.
+- Home admission replies `accepted`, as other operations do. It replied `done`, which
+  `bench_probe.py` rejects.
+- Human mode recycles a delivered, settled interrupt pair, so repeated `position
+  interrupt` no longer fills every result slot. Failed or uncertain results stay.
+- `platformio.ini` now defaults to the documented console image `bench_s3_load_timer`,
+  so a bare upload no longer flashes the console-less preview.
 - A transport fault no longer refuses or loses a stop. A never-transmitted stop is
   accepted, runs one bounded recovery through the existing path and is sent once under
   a deadline fixed at admission. Failed recovery ends it `not_transmitted`. A transmitted

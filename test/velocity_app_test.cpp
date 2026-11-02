@@ -87,8 +87,8 @@ VelocityRequest request() {
     r.stop.behavior = StopBehavior::CONFIGURED_DECELERATION; return r;
 }
 void qualify() {
-    // Deliberately simulated qualifications. Production has no corresponding
-    // console control and starts with every verification flag false.
+    // Deliberately simulated qualifications. Production starts with every flag
+    // false until stated; qualification_routes_app_test covers the console route.
     writeResponseConfirmed = true;
     app->knownTargets[0] |= 2;
     app->axis.nativeMinimum = -1000; app->axis.nativeMaximum = 1000;

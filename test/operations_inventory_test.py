@@ -33,6 +33,23 @@ class Coverage(unittest.TestCase):
             if "update" in group["id"] and group["id"] != "tuning_input_filter_update":
                 self.assertEqual(group["hardware"]["state"], "NOT_RUN")
 
+    def test_qualification_routes_are_real_producing_routes(self):
+        routes = {route["wire_command"]: route for route in INVENTORY["host_routes"]}
+        self.assertEqual(len(routes), 7)
+        self.assertEqual(operations.check(INVENTORY, LEDGER)["summary"]["host_routes"], 7)
+        self.assertEqual(routes["home-qualification-install"]["api"], "installHomeQualification")
+        self.rejected(lambda value: value["host_routes"].pop())
+        self.rejected(lambda value: value["host_routes"].append(dict(value["host_routes"][0], wire_command="home-qualification-all", route="home qualification all")))
+        self.rejected(lambda value: value["host_routes"].append(copy.deepcopy(value["host_routes"][0])))
+        self.rejected(lambda value: value["host_routes"][0].update(syntax="home qualification install all"))
+        self.rejected(lambda value: value["host_routes"][0].update(api="installEverything"))
+        self.rejected(lambda value: value["host_routes"][0]["facts"].append("all"))
+        self.rejected(lambda value: value["host_routes"][0].update(reason=""))
+        self.rejected(lambda value: value["host_routes"][0].update(unexpected=True))
+        # Each route changes only host state, so it cannot claim register coverage.
+        for route in INVENTORY["host_routes"]:
+            self.assertFalse({"records", "choices", "implementation", "hardware"} & set(route))
+
     def test_pair_write_dispositions_do_not_create_implementation_credit(self):
         records = {row["id"]: row for row in operations.check(INVENTORY, LEDGER)["records"]}
         pairs = [row for row in records.values() if "pair_write_policy" in row]

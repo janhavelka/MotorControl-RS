@@ -537,7 +537,12 @@ const char* helpExample(Command command, const Host& host) {
     case Command::PROFILE: return "profile list";
     case Command::AXIS: return "axis config";
     case Command::PREPARE: return "prepare relative 100 steps native actual";
-    case Command::HOME: return "home methods";
+    case Command::HOME:
+        return host.qualification ? "home methods\n  home qualification install 35 60 30 100 mechanics rates ramp zero-offset auxiliary inputs" : "home methods";
+    case Command::VELOCITY:
+        return host.qualification ? "velocity read\n  velocity qualification install rpm ramp inputs" : nullptr;
+    case Command::POSITION_CLEAR:
+        return host.qualification ? "position-clear qualification install clear-semantics" : nullptr;
     default: return nullptr;
     }
 }
@@ -585,6 +590,10 @@ HelpText helpText(const Entry& entry, const Host& host) {
         }
         if (host.inspectHomeQualification && reads && motion && setter)
             text.syntax = "home methods | home qualification | home read [address] | home auxiliary <0..11> | home method search_native return_native ramp_native zero [address]";
+        if (host.qualification && host.inspectHomeQualification && reads && motion && setter) {
+            text.syntax = "home methods | home qualification | home qualification install METHOD SEARCH RETURN RAMP mechanics rates ramp zero-offset auxiliary inputs [index] [reference] | home qualification revoke | home read [address] | home auxiliary <0..11> | home method search_native return_native ramp_native zero [address]";
+            text.description = "Read homing parameters, state qualification facts, select auxiliary configuration, list methods or request qualified homing.";
+        }
     } else if (entry.command == Command::VELOCITY) {
         const bool motion = host.startVelocity && host.snapshot && host.axis;
         text.bus = reads || motion;
@@ -596,6 +605,14 @@ HelpText helpText(const Entry& entry, const Host& host) {
             text.syntax = "velocity value rpm|steps/s|fullsteps/s|counts/s|turns/s|deg/s|rad/s|mm/s native|motor|load duration_ms configured normal|fast [round mode error [approx error]] [address]";
             text.description = "Request finite velocity with an explicit stop policy.";
             text.effect = "finite_serial_velocity_with_explicit_stop";
+        } else if (reads && motion && host.qualification) {
+            text.syntax = "velocity read [address] | velocity qualification install rpm ramp inputs [negative] | velocity qualification revoke | velocity value rpm|steps/s|fullsteps/s|counts/s|turns/s|deg/s|rad/s|mm/s native|motor|load duration_ms configured normal|fast [round mode error [approx error]] [address]";
+            text.description = "Read native velocity parameters, state qualification facts or request finite velocity with an explicit stop policy.";
+        }
+    } else if (entry.command == Command::POSITION_CLEAR) {
+        if (host.qualification) {
+            text.syntax = "position-clear [address] | position-clear qualification install clear-semantics | position-clear qualification revoke";
+            text.description = "Explicitly set the drive position counter to zero, after stating that its clear semantics are qualified.";
         }
     } else if (entry.command == Command::MOTION_PROFILE) {
         const bool setter = host.startDriver && host.snapshot;
@@ -607,6 +624,9 @@ HelpText helpText(const Entry& entry, const Host& host) {
             text.syntax = "motion-profile start-speed <native>";
             text.description = "Explicitly set the native position start-speed word.";
             text.effect = "explicit_native_start_speed_setting";
+        } else if (host.qualification) {
+            text.syntax = "motion-profile read|inspect|restore|forget | motion-profile start-speed <native> | motion-profile start-speed relation RAW_WORD MIN_RPM";
+            text.description = "Read, inspect or restore position parameters; explicitly set native start speed; a set locks moves until start-speed relation states the minimum rpm for the stored word. A controller restart forgets that lock and uses the stored word under the startup policy.";
         }
     } else if (entry.command == Command::STATS) {
         if (!host.snapshot) text.syntax = "stats reset";
@@ -667,6 +687,7 @@ const char* actionName(Action value) {
     case Action::AXIS_CONFLICT: return "axis_conflict";
     case Action::UNRESOLVED: return "unresolved";
     case Action::UNIMPLEMENTED: return "unimplemented";
+    case Action::QUALIFICATION_REQUIRED: return "qualification_required";
     }
     return "failed";
 }
@@ -830,7 +851,7 @@ void Console::error(uint32_t id, const char* command, const char* reason) noexce
 
 void Console::action(uint32_t id, const char* command, Action result, uint8_t address, uint32_t operationId) noexcept {
     const bool typed = std::strcmp(command, "read-identity") == 0 || std::strcmp(command, "read-config") == 0 || std::strcmp(command, "read-state") == 0 || std::strcmp(command, "velocity-read") == 0 || std::strcmp(command, "home-read") == 0;
-    const bool motor = std::strcmp(command, "position-interrupt") == 0 || std::strcmp(command, "home-auxiliary") == 0 || std::strcmp(command, "motion-profile-start-speed") == 0 || std::strcmp(command, "enable") == 0 || std::strcmp(command, "motor-release") == 0 || std::strcmp(command, "alarm-clear") == 0 || std::strcmp(command, "position-clear") == 0 || std::strcmp(command, "stop") == 0 || std::strncmp(command, "move-", 5) == 0 || std::strcmp(command, "velocity") == 0 || std::strcmp(command, "driver") == 0 || (std::strcmp(command, "io") == 0 || std::strcmp(command, "segment") == 0 || std::strcmp(command, "control") == 0 || std::strcmp(command, "tuning") == 0);
+    const bool motor = std::strcmp(command, "position-interrupt") == 0 || std::strcmp(command, "home-auxiliary") == 0 || std::strcmp(command, "motion-profile-start-speed") == 0 || std::strcmp(command, "enable") == 0 || std::strcmp(command, "motor-release") == 0 || std::strcmp(command, "alarm-clear") == 0 || std::strcmp(command, "position-clear") == 0 || std::strcmp(command, "stop") == 0 || std::strncmp(command, "move-", 5) == 0 || std::strcmp(command, "velocity") == 0 || std::strcmp(command, "home") == 0 || std::strcmp(command, "driver") == 0 || (std::strcmp(command, "io") == 0 || std::strcmp(command, "segment") == 0 || std::strcmp(command, "control") == 0 || std::strcmp(command, "tuning") == 0);
     std::snprintf(output_, sizeof(output_),
         "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":%s,\"result\":\"%s\",\"address\":%u,\"operation_id\":%lu%s}",
         static_cast<unsigned long>(id), command, boolean(result == Action::OK),
@@ -1016,6 +1037,48 @@ void Console::parameterRead(uint32_t id, Ess::ReadKind kind, const char* supplie
     if (result == Action::OK) track(id, operationId);
     action(id, command, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0);
 }
+void Console::qualificationReply(uint32_t id, const char* command, const char* result,
+                                 const char* label, const char* value, bool ok) noexcept {
+    std::size_t used = 0;
+    const bool fits = append(output_, sizeof(output_), used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":%s,\"result\":\"%s\"",
+        static_cast<unsigned long>(id), command, boolean(ok), result) &&
+        (!label || append(output_, sizeof(output_), used, ",\"%s\":\"%s\"", label, value)) &&
+        append(output_, sizeof(output_), used, "}");
+    if (!fits) { error(id, command, "output_full"); return; }
+    emit();
+}
+// Every route is local: a refusal or an accepted statement causes no bus traffic.
+void Console::qualificationRoute(uint32_t id, QualificationRoute route, const char* const* tokens, std::size_t count) noexcept {
+    QualificationCommand request;
+    request.route = route;
+    const bool relation = route == QualificationRoute::START_SPEED_RELATION;
+    request.revoke = !relation && count == 1 && !std::strcmp(tokens[0], "revoke");
+    const char* const installNames[] = {"home-qualification-install", "velocity-qualification-install", "position-clear-qualification-install", "motion-profile-start-speed-relation"};
+    const char* const revokeNames[] = {"home-qualification-revoke", "velocity-qualification-revoke", "position-clear-qualification-revoke", "motion-profile-start-speed-relation"};
+    const char* command = (request.revoke ? revokeNames : installNames)[static_cast<uint8_t>(route)];
+    if (!host_.qualification) { error(id, command, "unavailable"); return; }
+    const char* rejected = nullptr;
+    const char* named = nullptr;
+    if (relation) {
+        uint32_t raw = 0, minimum = 0;
+        if (count != 2 || !number(tokens[0], raw) || raw > 3000 || !number(tokens[1], minimum) || !minimum || minimum > 3000) rejected = "invalid_arguments";
+        request.rawStartSpeed = static_cast<uint16_t>(raw); request.minimumRpm = static_cast<uint16_t>(minimum);
+    } else if (!request.revoke) {
+        if (!count || std::strcmp(tokens[0], "install")) rejected = "invalid_arguments";
+        else if (route == QualificationRoute::HOME) rejected = parseHomeQualification(tokens + 1, count - 1, request, named);
+        else if (route == QualificationRoute::VELOCITY)
+            rejected = QualificationFacts::parse(tokens + 1, count - 1, QualificationFacts::VELOCITY,
+                sizeof(QualificationFacts::VELOCITY) / sizeof(QualificationFacts::VELOCITY[0]), request, named);
+        else rejected = QualificationFacts::parse(tokens + 1, count - 1, QualificationFacts::POSITION_CLEAR,
+                sizeof(QualificationFacts::POSITION_CLEAR) / sizeof(QualificationFacts::POSITION_CLEAR[0]), request, named);
+    }
+    if (rejected) { qualificationReply(id, command, rejected, named ? "fact" : nullptr, named); return; }
+    const QualificationReply reply = host_.qualification(host_.context, request);
+    if (reply.result == Action::OK) { qualificationReply(id, command, "done", nullptr, nullptr, true); return; }
+    qualificationReply(id, command, reply.reason ? reply.reason : actionName(reply.result),
+        reply.readFirst ? "read_first" : nullptr, reply.readFirst);
+}
 void Console::dispatch() noexcept {
     char* tokens[22] = {}; // Full-width rationals, path policies and bounded preview options.
     std::size_t count = 0;
@@ -1148,8 +1211,19 @@ void Console::dispatch() noexcept {
         else error(id,"debug","output_capacity");
         return;
     }
+    if ((entry->command == Command::HOME || entry->command == Command::VELOCITY || entry->command == Command::POSITION_CLEAR) &&
+        count > first + 2 && !std::strcmp(tokens[first + 1], "qualification")) {
+        if (outputPending()) { ++inputDropped_; return; }
+        qualificationRoute(id, entry->command == Command::HOME ? QualificationRoute::HOME : entry->command == Command::VELOCITY ?
+            QualificationRoute::VELOCITY : QualificationRoute::POSITION_CLEAR, tokens + first + 2, count - first - 2);
+        return;
+    }
     if (entry->command == Command::MOTION_PROFILE) {
         if (outputPending()) { ++inputDropped_; return; }
+        if (count >= first + 3 && !std::strcmp(tokens[first + 1], "start-speed") && !std::strcmp(tokens[first + 2], "relation")) {
+            qualificationRoute(id, QualificationRoute::START_SPEED_RELATION, tokens + first + 3, count - first - 3);
+            return;
+        }
         if (count >= first + 2 && !std::strcmp(tokens[first + 1], "start-speed")) {
             const char* command = "motion-profile-start-speed";
             if (!host_.startDriver || !host_.snapshot) { error(id, command, "unavailable"); return; }
@@ -2064,8 +2138,9 @@ void Console::dispatch() noexcept {
             error(id,"caps","output_capacity");return;
         }
         used=std::strlen(output_); if(used) --used;
-        if(!append(output_,sizeof(output_),used,",\"position_interrupt_stored\":%s,\"position_interrupt_completion\":\"not_observed\",\"position_interrupt_new_target\":false}",
-            boolean(callable(Command::POSITION)))) { error(id,"caps","output_capacity"); return; }
+        const bool routes = host_.qualification != nullptr;
+        if(!append(output_,sizeof(output_),used,",\"position_interrupt_stored\":%s,\"position_interrupt_completion\":\"not_observed\",\"position_interrupt_new_target\":false,\"qualification_routes\":{\"home\":%s,\"velocity\":%s,\"position_clear\":%s,\"start_speed_relation\":%s}}",
+            boolean(callable(Command::POSITION)), boolean(routes), boolean(routes), boolean(routes), boolean(routes))) { error(id,"caps","output_capacity"); return; }
         emit(); return;
     }
     if (entry->command == Command::STATS && arg) {
