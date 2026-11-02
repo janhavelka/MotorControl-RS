@@ -20,6 +20,8 @@ Autonomous run on branch `overnight-stress-20261102` (worktree `../MotorControl-
 
 <!-- overnight entries -->
 
+**Segment 3, 18:17-21:17, clean: 2,441 cases, 5.25 M increments, no anomaly.** Firmware `e36027c`. 1,224 interrupted moves left to finish, 682 of them the exact HW-01 shape (relative 3,000 at 60 rpm, interrupt anywhere from 0.05 to 3.0 s, sampled or silent), plus 498 plain, 249 interrupt then stop, 224 stop while moving, 167 homes, 79 release/enable. HW-01 did not recur, now about 1,600 clean interrupted moves on this motor power-up against 1 in 4 on the failing power-up. That points away from the interrupt sequence alone and toward something specific to that power-up, but it does not prove it: a power cycle is not available tonight (HW-10), so all of this ran on one power-up. HW-12 also did not recur: the firmware's own counter reads `usb_stall.count` 0 over 3 hours, so not even a 300 ms stall happened. HW-12 stays unexplained. Next: more console output (`debug raw`), rates up to the 2,000 rpm limit, repeated interrupts, and MCU resets during moves.
+
 **HW-12, under investigation: USB console output stalled** after 52 minutes and about 700 clean cases (18:12). Firmware kept running: no reboot, command processed on time, motor healthy at status `3`, zero transport faults. Queued replies appeared only when the host reopened the port 20 s later. This is the class of failure as the October HWCDC stall, now on the shared IDF driver, which had no overnight qualification. Added a diagnostic (`usb_stall` in `drv`) and a one-packet nudge to separate a lost device wakeup from a host not reading.
 
 **Clean so far:** 373 interrupted moves left to finish, with no persistent RUNNING recurrence (HW-01 stays unexplained).
