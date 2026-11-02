@@ -417,10 +417,10 @@ unexercised on hardware. "Run" below means a host program with a fake UART; its
 rates show the mechanism and rough size, not a hardware rate.
 
 **H-02** in the [standalone audit](../../reports/2026-11-02_standalone_promptset_audit.md)
-governs C7 and C8: do not relax these gates from reasoning. Run method 35 first, retain the
-raw words at every poll, and decide from that evidence. Home polls read only `0x0006/3` and
-keep only the last observation, and `0x000A/2` is read only at the zero check, so plan a
-traffic capture for that run.
+governs what remains of C7 and C8: do not relax these gates from reasoning. Retain the raw
+words at every poll and decide from that evidence. Home polls read only `0x0006/3` and keep
+only the last observation, and `0x000A/2` is read only at the zero check, so plan a traffic
+capture for those runs.
 
 ### Open
 
