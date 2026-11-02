@@ -8,7 +8,7 @@
 namespace MotorControlRS { namespace ESS_RS {
 constexpr uint8_t SEGMENT_RECORD_COUNT = 16;
 enum class SegmentKind : uint8_t { POSITION, SPEED, START_SPEED };
-/** Raw native words retain unresolved scale, signed encoding and activation.
+/** Raw native words retain unresolved signed encoding and activation; targets are in pulses.
  * PT records contain a reserved sixth word which is never read or written.
  * Starting speed is shared by PT/PV, separately from active position speed. */
 struct SegmentObservation {
@@ -20,7 +20,7 @@ struct SegmentObservation {
     uint16_t pulseWords[2] = {};
     bool pairOrderKnown = false;
     uint32_t pulseBits = 0; ///< Ordered unsigned bits, never a guessed signed pulse count.
-    const char* unresolved = "native scale and signed encoding not qualified";
+    const char* unresolved = "signed encoding not qualified";
     DriverEvidence provenance;
 };
 /** These wrappers use DriverContext/nextDriver/advanceDriver, not another

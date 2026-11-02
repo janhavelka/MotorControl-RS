@@ -94,7 +94,8 @@ physical qualification; final stage evidence is recorded in that report.
 - [ ] Resolve signed stored-target encoding, admissible limit/stored-target
   write forms, and home-offset order/sign/scale before exposing their setters.
 - [ ] Resolve external-switch homing and collision methods, including method 18's
-  conflicting limit diagram and negative collision encoding. Internal-index
+  conflicting signal captions and the collision methods' missing trajectory and
+  wire encoding. Internal-index
   methods 33/34, current-position35, limit-reference1/2/17 and origin-reference
   3/4/5/6/19/20/21/22 plus positive-limit-assisted7/8/9/10/23/24/25/26 have bounded
   software, together with negative-limit-assisted11/12/13/14/27/28/29/30.
@@ -109,8 +110,8 @@ physical qualification; final stage evidence is recorded in that report.
 - [ ] Resolve shared-start 1: native 0-to-1 write read back 0 on the bench.
   Preserve that FAIL/uncertain result; no retry or assumed FC06 semantics.
   [Stored-record evidence](archive/reports/ess_release_16_2026-10-04.md).
-- [ ] Resolve output function 11, custom function 2 and crossmapped custom
-  actuation. No external trigger/selector edges are synthesized by serial
+- [ ] Resolve output function 11 ('User defined 2', which has no defined `0x004F`
+  bit on the two-output ESS) and crossmapped custom actuation. No external trigger/selector edges are synthesized by serial
   settings. [I/O contract](ess_io.md).
 - [ ] Resolve the earlier collision registers 0x003B/0x003C and later collision
   values 0/0 outside documented ranges on firmware 0x0029. Keep unknown values
@@ -123,14 +124,18 @@ This does not establish a universal model/firmware/DIP mapping. Small finite
 positioning, normal/fast stops, selected settings and discovery have recorded
 functional evidence; independent shaft calibration remains absent.
 
+- [ ] Run the short regression of delivered ESS software on the bench:
+  [standalone stage 14](prompts/standalone/14_bench_regression.md), finding Q16.
+  Physical checks are NOT RUN because the recorded USB device
+  `3C:0F:02:CD:6B:98` is absent; do not substitute another device.
 - [ ] Distinguish supply transients from internal firmware failure in the
   reproduced reset-like loss of volatile settings. Failure occurred both above
   and below 200,000 command increments/s; ramp comparisons narrow the case but
   do not identify its cause. [Boundary experiment](reports/2026-10-07_rate_boundary.md).
 - [ ] Resolve persistent RUNNING and normal-stop failure at the recorded high
   speed/subdivision combinations. Obtain firmware mapping/update information
-  and vendor clarification of the 200 kHz external pulse-input rating's
-  applicability to serial positioning. [Completion investigation](reports/2026-10-07_position_completion.md).
+  and vendor clarification of the datasheet's 'MAX. INPUT FREQUENCY 200KHZ' row,
+  which names no input, and its applicability to serial positioning. [Completion investigation](reports/2026-10-07_position_completion.md).
   The conservative [position defaults](reports/2026-10-07_position_limits.md)
   do not repair or universally qualify the drive firmware.
 - [ ] Establish algorithm 3, feedback sign/source/scale, arrival precision and
@@ -156,8 +161,9 @@ functional evidence; independent shaft calibration remains absent.
 ## Transport, endurance and platform qualification
 
 - [ ] Repeat overnight qualification on the shared USB-driver image. The
-  captured HWCDC lost-event stall has a reproduced cause and fix; the earlier
-  no-dump stall is not conclusively attributed. Keep both failed campaigns.
+  captured lost-TX-wakeup stall has one proven matching HWCDC race and a replacement
+  driver; its actual trigger was not traced, and the earlier no-dump stall is not
+  conclusively attributed. Keep both failed campaigns.
   [Overnight investigation](reports/2026-10-07_overnight_hil.md),
   [earlier health investigation](reports/2026-10-06_firmware_health.md).
   Four hours of accumulated active testing in the narrower position envelope
@@ -175,7 +181,7 @@ functional evidence; independent shaft calibration remains absent.
 - [ ] Resolve malformed F9/E5 responses and UART errors at mismatched host
   tuples using the missing raw error bitmap and wire measurements. Diagnostic
   recovery/restoration passing does not turn strict no-response experiments
-  into PASS. [Host tuple evidence](archive/reports/ess_release_19_2026-10-04.md).
+  into PASS. [Host tuple evidence](archive/reports/ess_release_19_audit_2026-10-04.md).
 - [ ] Qualify alternate motor tuples, duplicate physical responders and
   undocumented watchdog interactions. A valid discovery response cannot
   exclude collisions. [Discovery contract](ess_discovery.md).

@@ -2,9 +2,13 @@
 
 Read root [AGENTS.md](../../../AGENTS.md), [architecture](../../architecture.md),
 [axis](../../axis_contract.md), [profile](../../profile_contract.md),
-[CLI](../../cli_contract.md), [verification](../../verification.md) and the
-[audit](audit.md). Reinspect actual sources and affected callers/tests before
-each stage; the audit is a dated baseline, not authority over later code.
+[CLI](../../cli_contract.md), [verification](../../verification.md),
+[hardware bench guide](../../hardware_bench.md) and the [audit](audit.md).
+Inspect the relevant current FieldCore source read-only, as AGENTS requires.
+Reinspect actual sources and affected callers/tests before each stage; the audit
+is a dated baseline, not authority over later code. Finding labels A-, H-, K-,
+V-, P- and D- refer to the
+[2 November audit](../../reports/2026-11-02_standalone_promptset_audit.md).
 
 ## Scope and ownership
 
@@ -18,9 +22,32 @@ each stage; the audit is a dated baseline, not authority over later code.
   Add an abstraction only for a concrete caller and test. Keep C++11 installed
   headers/core, fixed storage, output-on-error guarantees and protocol-3 CLI
   compatibility unless a separately justified API/protocol change is required.
-- Keep operation inventory identifiers stable. Its numeric owner fields refer
-  to historical ESS delivery stages, not the numbers in this directory; use the
-  audit mapping for this set.
+- Keep operation inventory identifiers stable.
+
+Stage numbers collide, so use these names:
+
+| Name | Location | Meaning |
+| --- | --- | --- |
+| Stage NN, standalone NN | `docs/prompts/standalone/NN_*.md` | This set |
+| ESS software NN | `docs/archive/prompts/ess_software/NN_*.md` | Delivered bounded software stages; handoff in `docs/prompts/ess_software/` |
+| Inventory `owner` | `gaps` in `docs/reference/ess_rs_operations.json` | Historical ESS delivery stages, not either number above |
+| `ess_release_NN` | `docs/archive/reports/ess_release_NN_*` | Dated reports of the archived ESS delivery sequence |
+
+For the current owner of a finding, use the Current disposition / owner column
+in the [audit](audit.md).
+
+## Owner decisions
+
+The owner decided these on 2 November 2026. Treat them as settled. A decision is
+not delivered code: check the flashed commit before relying on one.
+
+| ID | Decision |
+| --- | --- |
+| D1 | A stop may start bounded recovery by itself. A stop that was never transmitted is sent once after recovery settles; a stop that was transmitted and lost stays UNKNOWN and needs a new explicit stop. Assigned to the stop-path work. |
+| D2 | `home`, `velocity` and `position-clear` get explicit typed console routes that state each commissioning fact and call the existing install APIs, on the same image. The all-true switch stays banned. |
+| D3 | Standing bench authorization covers homing method 35, then 33 and 34 at low speed on the free shaft. Switch methods need a real switch fixture. |
+| D4 | Stage 04 may test exactly FC10 start `0x0060`, count 2, with a positive asymmetric value, saved before-value and verified restoration, through a fixture-only route rather than a production setter. Any other start or count needs its own explicit user instruction. |
+| D5 | Stage 07 may reproduce named cases above the default limits, each with its explicit `PositionLimits` policy, one case at a time. These are not "small finite" tests. |
 
 ## Protocol and evidence
 
@@ -44,13 +71,18 @@ do not ask again for already authorized bounded work. Preparation of this set
 does not start a campaign. The previously deferred several-hour/overnight run
 needs an explicit resumed instruction. Loaded mechanisms, new wiring, external
 inputs, power control and persistent/destructive changes require their actual
-fixture facts and applicable authorization before execution.
+fixture facts and applicable authorization before execution. "Admitted" in these
+prompts means: fixture facts recorded, and covered by AGENTS standing
+authorization or an explicit user instruction. Use only the bench with the USB
+identity recorded in the [bench guide](../../hardware_bench.md); never open or
+flash another device.
 
 Record commit, image hash, SDK, adapter, model/firmware words, UART tuple,
 wiring, mechanism/load, independent instruments, limits and duration. Read/save
 original configuration before allowed changes and define a verified restoration
-route. Stop at an unexpected result; a later successful cleanup cannot change
-the original failure to PASS. No hardware gate may be satisfied by a fake,
+route. Stop the current sequence safely, preserve evidence, then reproduce
+deliberately per AGENTS; never replay an uncertain write automatically. A later
+successful cleanup cannot change the original failure to PASS. No hardware gate may be satisfied by a fake,
 compile-only target, cached status or unrelated earlier run.
 
 ## Verification and delivery
@@ -65,8 +97,13 @@ python scripts/verify.py --mode quick --build-dir build/<fresh-stage-directory>
 Use a new directory. This includes all registered native/Python suites,
 generators, inventory, reference checks, documentation links and packaged
 source/install consumers. Firmware changes also require the four Arduino
-environments and affected native-IDF targets via the full verifier with its
-pinned SDK; see the verification guide for existing toolchain setup.
+environments and affected native-IDF targets via the local full verifier or the
+exact-commit Arduino and IDF CI jobs; report which. See the verification guide
+for existing toolchain setup.
+
+`scripts/verify.py` fails any `test/*_test.cpp` without a CTest entry, and
+application suites appear in several `CMakeLists.txt` lists. Register every new
+suite in those lists, and in `verify.py` where fixture-specific.
 
 Follow current AGENTS.md's impact-based CI policy. Major behavior/API,
 integration, persistence, dependency, toolchain or workflow changes require
@@ -74,6 +111,10 @@ terminal CI evidence for the exact final commit. Documentation-only edits need
 appropriate local checks, without an extra remote dispatch/wait. Never bypass
 checks, reuse an older green commit as proof, retag v1.0.0 or publish a release
 just to close a prompt.
+
+Report at `docs/reports/YYYY-MM-DD_standalone_NN_topic.md`, indexed in
+`docs/reports/README.md`. Raw evidence in `<same>_evidence.zip`. The backlog keeps
+open items; the README keeps status.
 
 Update the owning guides, checked inventory, backlog and this index with actual
 results and remaining gates. Preserve failed raw evidence. Commit/push completed

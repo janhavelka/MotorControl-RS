@@ -3,11 +3,11 @@
 Read [README](README.md), [execution contract](execution_contract.md) and the
 [audit finding map](audit.md) together with this prompt.
 
-Findings: **Q14, Q15**. Status: **NOT EXECUTED**.
+Findings: **Q14, Q15**.
 
 ## Entry gate
 
-Actual S2 hardware for UART claims; exact tool/ROM/stub reproducer for the flash-read issue.
+Actual S2 hardware for UART claims. Flash-read issue gate: bench S3 in bootloader mode with esptool 5.3.0.
 
 ## Inspect before editing
 
@@ -18,9 +18,10 @@ platformio.ini; examples/probe_idf and common UART adapters; test/idf_consumer, 
 
 ## Work
 
-1. Preserve existing S2 compile-only evidence. For an admitted S2 adapter,
-   build the pinned examples, verify actual pin/UART/DE/capture behavior and
-   repeat the relevant bounded functional/transport checks.
+1. Preserve existing S2 compile-only evidence. An S2 adapter does not exist.
+   Implementing one is new work requiring actual S2 hardware. With that adapter,
+   verify actual pin/UART/DE/capture behavior and repeat the relevant bounded
+   functional/transport checks.
 2. Treat another SDK version as a separate compatibility target. Record exact
    versions and test differences without silently moving the pinned baseline
    or inheriting S3 hardware qualification.

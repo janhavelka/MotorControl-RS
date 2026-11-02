@@ -3,18 +3,18 @@
 Read [README](README.md), [execution contract](execution_contract.md) and the
 [audit finding map](audit.md) together with this prompt.
 
-Findings: **Q12, Q13**. Status: **NOT EXECUTED**.
+Findings: **Q12, Q13**.
 
 ## Entry gate
 
-Current fixed shared USB image, 07's admitted motion envelope, and an explicit instruction resuming the deferred long campaign.
+Q13: board and current image only. Q12: explicit instruction, with default `PositionLimits` or a broader 07 envelope.
 
 ## Inspect before editing
 
 Paths are relative to the repository root. Read implementations, callers and
 existing tests, not just declarations or old reports:
 
-docs/reports/2026-10-07_overnight_hil.md, 2026-10-06_firmware_health.md; shared console/USB adapter and current host campaign scripts; native console, serial-session and stress harness tests.
+docs/reports/2026-10-07_overnight_hil.md, 2026-10-06_firmware_health.md; examples/probe_cli/Esp32UsbConsole.cpp, scripts/bench_probe.py and current host campaign scripts; native console tests and test/bench_probe_test.py.
 
 ## Work
 

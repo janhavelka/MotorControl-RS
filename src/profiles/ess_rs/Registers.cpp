@@ -156,10 +156,10 @@ const RegisterDescriptor CATALOGUE[] = {
      ""},
     // Function PDF pages 70, 14, 16, 30.
     {0x0024, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Eu, 70,
+     RegisterWordOrder::CONFIGURABLE, 0x0000000Au, 70,
      "POSITION_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFFF (as printed)", "5000 (combined pair)", "RW",
-     "Positive/negative direction documented; two-register width documented; full signed range/negative encoding unresolved."},
+     "Positive/negative direction documented; two-register width documented; full signed range/negative encoding unresolved. Unit pulse and word layout are documented by worked examples: at 0x0019=0 the lower address holds the high word (p8, p30, p70; 100000 pulses is high 0x0001, low 0x86A0)."},
     // Function PDF pages 70, 71, 13, 14, 16, 18, 19, 25.
     {0x0027, 1, RegisterAccess::WRITE_ONLY, RegisterSignedness::BITFIELD,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000500u, 70,
@@ -240,28 +240,28 @@ const RegisterDescriptor CATALOGUE[] = {
      "Bits 0-3 default 0 / inverted 1; bits 4-15 reserved."},
     // Function PDF pages 73, 74, 14, 27.
     {0x0041, 1, RegisterAccess::READ_WRITE, RegisterSignedness::ENUMERATED,
-     RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 73,
+     RegisterWordOrder::SINGLE_REGISTER, 0x00000100u, 73,
      "INPUT_X0_FUNCTION", "unspecified",
      "0-17", "1", "RW",
-     "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins."},
+     "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins. Source conflict: hardware manual p9 says X0-X3 default to the unspecified state at each power-on, with the input signal invalid; function manual p73-74 print defaults 1/2/3/0."},
     // Function PDF pages 73, 74, 14, 27.
     {0x0042, 1, RegisterAccess::READ_WRITE, RegisterSignedness::ENUMERATED,
-     RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 73,
+     RegisterWordOrder::SINGLE_REGISTER, 0x00000100u, 73,
      "INPUT_X1_FUNCTION", "unspecified",
      "0-17", "2", "RW",
-     "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins."},
+     "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins. Source conflict: hardware manual p9 says X0-X3 default to the unspecified state at each power-on, with the input signal invalid; function manual p73-74 print defaults 1/2/3/0."},
     // Function PDF pages 73, 74, 14, 27.
     {0x0043, 1, RegisterAccess::READ_WRITE, RegisterSignedness::ENUMERATED,
-     RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 73,
+     RegisterWordOrder::SINGLE_REGISTER, 0x00000100u, 73,
      "INPUT_X2_FUNCTION", "unspecified",
      "0-17", "3", "RW",
-     "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins."},
+     "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins. Source conflict: hardware manual p9 says X0-X3 default to the unspecified state at each power-on, with the input signal invalid; function manual p73-74 print defaults 1/2/3/0."},
     // Function PDF pages 73, 74, 14, 27.
     {0x0044, 1, RegisterAccess::READ_WRITE, RegisterSignedness::ENUMERATED,
-     RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 73,
+     RegisterWordOrder::SINGLE_REGISTER, 0x00000100u, 73,
      "INPUT_X3_FUNCTION", "unspecified",
      "0-17", "0", "RW",
-     "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins."},
+     "Only X0-X3 in ESS appendix; generic prose 0x0041-0x0047 is not additional ESS pins. Source conflict: hardware manual p9 says X0-X3 default to the unspecified state at each power-on, with the input signal invalid; function manual p73-74 print defaults 1/2/3/0."},
     // Function PDF pages 74.
     {0x004B, 1, RegisterAccess::READ_WRITE, RegisterSignedness::BITFIELD,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 74,
@@ -300,10 +300,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Value 1 required to mix multivelocity and multiposition fixed-length interruption."},
     // Function PDF pages 75, 22, 23, 76.
     {0x0060, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 75,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 75,
      "POSITION_SEGMENT_01_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 75, 22, 23, 76.
     {0x0062, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 75,
@@ -330,10 +330,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Explicit reserve row; metadata access is RESERVED despite printedRW/S; no writes offered."},
     // Function PDF pages 75, 22, 23, 76.
     {0x0066, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 75,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 75,
      "POSITION_SEGMENT_02_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "not separately stated; first-segment template: high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 75, 22, 23, 76.
     {0x0068, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 75,
@@ -360,10 +360,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Explicit reserve row; metadata access is RESERVED despite printedRW/S; no writes offered."},
     // Function PDF pages 75, 22, 23, 76.
     {0x006C, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 75,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 75,
      "POSITION_SEGMENT_03_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "not separately stated; first-segment template: high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 75, 22, 23, 76.
     {0x006E, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 75,
@@ -390,10 +390,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Explicit reserve row; metadata access is RESERVED despite printedRW/S; no writes offered."},
     // Function PDF pages 75, 22, 23, 76.
     {0x0072, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 75,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 75,
      "POSITION_SEGMENT_04_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "not separately stated; first-segment template: high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 75, 22, 23, 76.
     {0x0074, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 75,
@@ -420,10 +420,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Explicit reserve row; metadata access is RESERVED despite printedRW/S; no writes offered."},
     // Function PDF pages 75, 22, 23, 76.
     {0x0078, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 75,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 75,
      "POSITION_SEGMENT_05_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "not separately stated; first-segment template: high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 75, 22, 23, 76.
     {0x007A, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 75,
@@ -450,10 +450,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Explicit reserve row; metadata access is RESERVED despite printedRW/S; no writes offered."},
     // Function PDF pages 75, 22, 23, 76.
     {0x007E, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 75,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 75,
      "POSITION_SEGMENT_06_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "not separately stated; first-segment template: high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 75, 22, 23, 76.
     {0x0080, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 75,
@@ -480,10 +480,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Explicit reserve row; metadata access is RESERVED despite printedRW/S; no writes offered."},
     // Function PDF pages 75, 22, 23, 76.
     {0x0084, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 75,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 75,
      "POSITION_SEGMENT_07_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "not separately stated; first-segment template: high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 75, 22, 23, 76.
     {0x0086, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 75,
@@ -510,10 +510,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Explicit reserve row; metadata access is RESERVED despite printedRW/S; no writes offered."},
     // Function PDF pages 75, 22, 23, 76.
     {0x008A, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 75,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 75,
      "POSITION_SEGMENT_08_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "not separately stated; first-segment template: high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 75, 22, 23, 76.
     {0x008C, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 75,
@@ -540,10 +540,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Explicit reserve row; metadata access is RESERVED despite printedRW/S; no writes offered."},
     // Function PDF pages 76, 22, 23, 75.
     {0x0090, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 76,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 76,
      "POSITION_SEGMENT_09_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "not separately stated; first-segment template: high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 76, 22, 23, 75.
     {0x0092, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 76,
@@ -570,10 +570,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Explicit reserve row; metadata access is RESERVED despite printedRW/S; no writes offered."},
     // Function PDF pages 76, 22, 23, 75.
     {0x0096, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 76,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 76,
      "POSITION_SEGMENT_10_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "not separately stated; first-segment template: high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 76, 22, 23, 75.
     {0x0098, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 76,
@@ -600,10 +600,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Explicit reserve row; metadata access is RESERVED despite printedRW/S; no writes offered."},
     // Function PDF pages 76, 22, 23, 75.
     {0x009C, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 76,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 76,
      "POSITION_SEGMENT_11_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "not separately stated; first-segment template: high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 76, 22, 23, 75.
     {0x009E, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 76,
@@ -630,10 +630,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Explicit reserve row; metadata access is RESERVED despite printedRW/S; no writes offered."},
     // Function PDF pages 76, 22, 23, 75.
     {0x00A2, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 76,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 76,
      "POSITION_SEGMENT_12_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "not separately stated; first-segment template: high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 76, 22, 23, 75.
     {0x00A4, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 76,
@@ -660,10 +660,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Explicit reserve row; metadata access is RESERVED despite printedRW/S; no writes offered."},
     // Function PDF pages 76, 22, 23, 75.
     {0x00A8, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 76,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 76,
      "POSITION_SEGMENT_13_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "not separately stated; first-segment template: high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 76, 22, 23, 75.
     {0x00AA, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 76,
@@ -690,10 +690,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Explicit reserve row; metadata access is RESERVED despite printedRW/S; no writes offered."},
     // Function PDF pages 76, 22, 23, 75.
     {0x00AE, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 76,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 76,
      "POSITION_SEGMENT_14_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "not separately stated; first-segment template: high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 76, 22, 23, 75.
     {0x00B0, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 76,
@@ -720,10 +720,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Explicit reserve row; metadata access is RESERVED despite printedRW/S; no writes offered."},
     // Function PDF pages 76, 22, 23, 75.
     {0x00B4, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 76,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 76,
      "POSITION_SEGMENT_15_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "not separately stated; first-segment template: high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 76, 22, 23, 75.
     {0x00B6, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 76,
@@ -750,10 +750,10 @@ const RegisterDescriptor CATALOGUE[] = {
      "Explicit reserve row; metadata access is RESERVED despite printedRW/S; no writes offered."},
     // Function PDF pages 76, 22, 23, 75.
     {0x00BA, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
-     RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 76,
+     RegisterWordOrder::CONFIGURABLE, 0x00000008u, 76,
      "POSITION_SEGMENT_16_PULSES", "pulse",
      "-0xFFFFFFF to 0xFFFFFFF", "not separately stated; first-segment template: high 0; low 5000", "RW",
-     "Defaults explicitly listed for first segment only; later instance defaults not independently stated."},
+     "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30)."},
     // Function PDF pages 76, 22, 23, 75.
     {0x00BC, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000005u, 76,
