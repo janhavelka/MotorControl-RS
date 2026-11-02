@@ -10,6 +10,37 @@ The audit itself changed nothing except this file and its index entries, and ran
 hardware, firmware flash or remote CI. The findings below describe the code as audited.
 See "Status" for what has since been fixed.
 
+## HARDWARE FINDINGS (live section, newest first)
+
+Everything learned on the real motor is recorded here. Each run's detail is in its own report.
+
+### 2 November 2026 afternoon: first hardware run
+
+[Report and raw evidence](2026-11-02_standalone_14_bench_regression.md). Fixture: COM13, ESS23-RS20 firmware word `0x0029`, subdivision 1000, free shaft, X/Y terminals unconnected.
+
+| ID | Finding | State |
+| --- | --- | --- |
+| HW-01 | **Persistent RUNNING at low rate.** After an interrupted relative 3,000 at 60 rpm (1,000 increments/s, 0.5% of the limit), status stayed `4` at speed 0, position frozen, alarm 0. `stop normal` and `stop fast` were acknowledged and did not clear it. Seen once in four runs of an interrupted move left to finish | **Open, cause unknown** |
+| HW-02 | **The stuck state is in the drive.** A controller reset did not change it. Release then enable cleared the flag | Established |
+| HW-03 | **Release and enable do not fully recover it.** Afterward relative 3,000 stopped after exactly 112 increments on two runs, missed one reply about 1.6 s in, then alarm 5 (out of tolerance). Relative 500 moved 603 and stuck again. Only a motor power cycle restored normal behavior | Established for this occurrence |
+| HW-04 | Release and enable are harmless on a healthy drive: 500 and 3000 landed exactly afterward | Established |
+| HW-05 | **Position interrupt restarts the stored relative move** from the current position. Interrupted relative 3,000 moved 4,935, 4,445, 4,876, 4,751 | Established for this case; evidence for N05 |
+| HW-06 | **Homing 35, 34, 33 work.** Status ends `3`, position reads exactly 0. On 33 and 34 HOMED falls and RUNNING is reported. Answers H-02 for these methods | Established |
+| HW-07 | Stop during a method 34 search works: stopped, status `1`, not homed, no reference published. Frame on the wire within about 60 ms | Established |
+| HW-08 | `alarm-clear` clears alarm 5 over serial, although hardware manual p12 lists re-power | Established |
+| HW-09 | Stored parameter reads after power-on: homing ramp and velocity ramps read 100, supporting the manual's parenthesized "(100ms)"; search speed 120 does not follow the same reading | Observation |
+| HW-10 | The drive has no software restart: `0x002D` lists release, enable, alarm clear, position clear, factory restore and save (function manual p71). Nothing on the board switches motor power | Established; limits autonomous recovery |
+
+Open code findings from that run:
+
+| ID | Sev | Finding |
+| --- | --- | --- |
+| R-16 | Medium | Homing applies no command-rate limit: search up to 3,000 rpm at subdivision 51,200 is 2.56 M increments/s against the 200,000/s policy (`Homing.cpp:196`) |
+| R-17 | Medium | With the drive stuck, the failed stop leaves motion unresolved, so `motor-release`, `enable` and `alarm-clear` return `axis_conflict`. Only a controller reset gets past it |
+| R-18 | Low | A correlated JSON session fills retained results, refusing `read state` with `results_full` until released |
+
+Also open from the re-audit: R-01 and R-02 and the rest of R-03 to R-15 below, none exercised by this run.
+
 ## Status (2 November 2026)
 
 | Work | State |
