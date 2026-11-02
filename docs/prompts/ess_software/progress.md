@@ -10,8 +10,8 @@ homing qualification/observation with final verification complete. Stage09
 implements limit-reference1/2/17 with final verification complete. Stages10-12
 complete the 27 planned switch methods. Stage13 verified cross-operation
 faults and ordinary-route parity; stage14 completed portable/build/storage
-verification. Stage15's independent review is complete; final verification is
-in progress. Completed numbered instructions are archived; the active handoff
+verification. Stage15's independent audit and final verification are complete.
+Completed numbered instructions are archived; the active handoff
 retains the broader software objective as PARTIAL, not fully implemented.
 N08 stays PARTIAL and broader N05 remains PARTIAL pending
 active staging and completion-attribution evidence.
@@ -32,7 +32,7 @@ active staging and completion-attribution evidence.
 | 12 | SOFTWARE COMPLETE | `96ebf18`; [negative-limit methods and exact-commit verification](../../reports/2026-11-01_ess_negative_limit_homing.md) | NOT RUN: recorded bench absent; no switch fixture |
 | 13 | SOFTWARE COMPLETE | `bfa2e91`; [cross-operation traces, review and verification](../../reports/2026-11-01_ess_integration_faults.md); fresh88-suite quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |
 | 14 | SOFTWARE COMPLETE | `c0f124b`; [portable consumers/storage](../../reports/2026-11-02_ess_portability.md), [independent audit/correction](../../reports/2026-11-02_ess_portability_audit.md); fresh88-suite quick/package and all four exact-commit CI jobs PASS | NOT RUN: software/build scope only |
-| 15 | IN PROGRESS | [Independent final audit](../../reports/2026-11-02_ess_final_audit.md); fresh88-suite quick/package PASS; exact-commit CI pending | NOT RUN: recorded bench absent |
+| 15 | SOFTWARE COMPLETE | `b74a917`; [independent final audit](../../reports/2026-11-02_ess_final_audit.md); fresh88-suite quick/package and all four exact-commit CI jobs PASS; broader objective PARTIAL | NOT RUN: recorded bench absent |
 
 Use NOT STARTED, IN PROGRESS, SOFTWARE COMPLETE, PARTIAL or BLOCKED;
 CONTRACTS COMPLETE applies only to documentation stage 01. A blocked
@@ -636,3 +636,45 @@ gap remains. Local full firmware and physical checks NOT RUN; hosted CI supplies
 the matrix. Runtime/physical qualification labels stay unchanged, with stage15
 receiving the correction and independent evidence. The following evidence-only
 checkpoint uses local consistency checks.
+
+## Stage 15 independent final audit (2026-11-02)
+
+Started at clean, synchronized `2642c30`. Three independent read-only reviewers
+used inherited settings and actual source/diffs, original PDF figures, current
+FieldCore contracts and real parser/core/owner traces. They traced all nine read
+records, both setters, the bounded interruption route, all 27 planned switch
+methods / 70 starting branches and existing 33/34/35. No confirmed in-scope
+runtime, API, host-validator or package defect was found. The lead corrected
+stale method/gap counts, I/O qualification wording and current navigation.
+All 15 completed numbered instructions are archived with original wording and
+rebased links; shared contracts, progress and exact N05 next evidence stay active.
+The broader software objective remains PARTIAL, not fully implemented.
+
+Independent focused suites pass 11/11, 16/16 and 18/18; 35 inventory negatives,
+86 actual frontend records / 606 rejected mutations, fresh source/installed
+consumers 3/3 each and all 28 isolated headers pass. Additional public-API sweeps
+and actual-route late-fault/final-zero-revocation probes pass; the lead inspected
+and reran them. Investigated reserved MOTION-bit tolerance preserves the existing
+position policy and is not a confirmed bug. Final source/API and documentation/
+archive reviews pass. [Detailed findings and artifacts](../../reports/2026-11-02_ess_final_audit.md).
+
+Fresh final `python scripts/verify.py --mode quick --build-dir
+build/ess_software_15_final` passes 88 suites and all 15 checks, with 88/3/3
+completed native/source/installed cases retained in detailed logs. Repository,
+reference, inventory, catalogue, archive-preservation and whitespace checks pass.
+Audit checkpoint `b74a9177f204d222e2b4916c45486792bf3dc4c4` passes exact-commit
+[CI41435302288](https://github.com/janhavelka/MotorControl-RS/actions/runs/41435302288):
+GCC, Clang, Arduino 4/4 and IDF app/core-S3/core-S2/portable-S2 all SUCCESS.
+Downloaded summaries each report 88 suites and zero failed checks. Verified ZIP
+digests, terminal JSON and artifacts are under `build/ess_software_15_ci/`.
+Stage 15 is SOFTWARE COMPLETE; the final evidence-only checkpoint uses local
+consistency checks and changes no implementation/build/package input.
+
+Coverage stays 54 producing operations, 121 implemented choices, 144 classified
+functions, five named gaps, 18 guarded pairs and 30 implemented / five unresolved
+home methods. N05 arbitrary active replacement/completion, unresolved N08 methods,
+N03/N06/N09 and separate physical work remain open. Local full firmware and
+physical checks are NOT RUN; the recorded bench USB identity is absent, and
+hosted CI supplies the supported build matrix. No release/tag or FieldCore
+dependency change was made. Concurrent `8c24c31` only added `CLAUDE.md`; it was
+preserved outside the audit's owned edits.
