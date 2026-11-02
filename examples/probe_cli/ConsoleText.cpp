@@ -511,6 +511,8 @@ bool motionReport(Writer& writer, const Value& report, const char* subject) {
             !std::strcmp(subject, "Motor release") ? "Drive reported released." :
             !std::strcmp(subject, "Alarm clear") ? "Drive reported alarm cleared." : "Drive position reset was read back.";
         if (!writer.text(observation) || !writer.character('\n')) return false;
+        if (equal(member(report, "position_mismatch"), "true") &&
+            !writer.text("Final position differs from the requested endpoint; the drive still reported arrival.\n")) return false;
     } else {
         const Value message = member(report, "message");
         Value reason = member(report, "error");

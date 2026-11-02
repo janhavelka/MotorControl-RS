@@ -28,7 +28,10 @@ struct ActionRequest {
  * and finite positioning permit read-only observations after a checked FC06
  * frame even when its source remains unconfirmed; execution stays UNKNOWN.
  * Read observations and FC10 staging still require confirmed response evidence.
- * No policy infers acknowledgement from identical bytes or replays a write. */
+ * No policy infers acknowledgement from identical bytes or replays a write.
+ * The defaults allow 20 polls 10 ms apart, about 200 ms of observation. Finite
+ * velocity preparation rejects a duration beyond maxPolls * pollIntervalUs; a move
+ * or home is not compared with it and ends OBSERVATION_LIMIT on exhaustion. */
 struct ActionOptions {
     uint32_t pollIntervalUs = 10000;
     uint8_t maxPolls = 20;

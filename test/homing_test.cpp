@@ -332,7 +332,9 @@ void testBorrowedAndOversizedEvidence() {
     assert(c.stagingEvidence.status && c.stagingEvidence.status.detail == 0);
     assert(!*c.stagingEvidence.status.msg);
     assert(c.stagingEvidence.frameError == Ess::FrameError::NONE);
-    assert(c.setupExecution == ActionExecution::ACKNOWLEDGED);
+    // K-02: the copied frame stays intact, while supplied uncertainty outranks its echo.
+    assert(c.setupExecution == ActionExecution::UNKNOWN && !c.stagingApplied);
+    assert(c.outcome == ActionOutcome::UNCONFIRMED_RESPONSE && c.execution == ActionExecution::NOT_TRANSMITTED);
     c = home(); bytes = reply(c); bytes.resize(40, 0xA5); e = frame(c, bytes, 120);
     assert(Ess::advanceHome(c, e, 140));
     checkActionTransportEvidence(c.stagingEvidence, e, 0, 140);
@@ -857,8 +859,9 @@ template<size_t N> void testSwitchAdmission(const SwitchCase (&cases)[N]) {
             case 31: p.qualifiedMethod = Ess::HomingMethod::METHOD_35; break;
             case 32: ++p.target.id; break;
             case 33: {
+                // H-01: only a limit outside the method's path contradicts it; an origin never does.
                 const uint8_t slot = source.functions[1] ? 2 : 1;
-                p.inputFunctions[slot] = source.functions[1] ? (source.functions[1] == 2 ? 3 : 2) : source.functions[0] == 1 ? 2 : 1;
+                p.inputFunctions[slot] = source.functions[1] ? (source.functions[1] == 2 ? 3 : 2) : source.functions[0] == 2 ? 3 : 2;
                 p.inputWiring[slot] = InputWiring::CONNECTED;
                 p.availableInputs |= uint8_t(1u << (p.inputFunctions[slot] - 1));
                 p.rawInputs = uint16_t(1u << slot); break;
@@ -932,7 +935,7 @@ template<size_t N> void testSwitchIncompleteAndFailedEvidence(const SwitchCase (
         assert(c.status.detail == static_cast<int32_t>(Ess::HomeError::INPUT_REQUIRED)); done(c);
         auto p = switchPrerequisites(source);
         const uint8_t unexpectedSlot = source.functions[1] ? 2 : 1;
-        p.inputFunctions[unexpectedSlot] = source.functions[1] ? (source.functions[1] == 2 ? 3 : 2) : source.functions[0] == 1 ? 2 : 1;
+        p.inputFunctions[unexpectedSlot] = source.functions[1] ? (source.functions[1] == 2 ? 3 : 2) : source.functions[0] == 2 ? 3 : 2;
         p.inputWiring[unexpectedSlot] = InputWiring::CONNECTED;
         p.availableInputs |= uint8_t(1u << (p.inputFunctions[unexpectedSlot] - 1));
         assert(Ess::prepareHome(c, axis(), 12, request(source.method), p, 100, 10000, options()));
@@ -995,6 +998,144 @@ void testNegativeCancellationAndUnrelatedEvents() {
         assert(!Ess::advanceHome(c, event, at + 21)); saved.check(c); done(c);
     }
 }
+}
+// X0 origin, X1 positive limit, X2 negative limit, X3 none: the factory defaults (p73-74).
+static Ess::HomePrerequisites factoryInputs(Ess::HomingMethod method, uint8_t required, uint16_t inputs = 0) {
+    auto p = prerequisites(method); p.observeInputs = true; p.ioObservedUs = p.readbackObservedUs = 80;
+    p.inputFunctions[0] = 1; p.inputFunctions[1] = 2; p.inputFunctions[2] = 3;
+    for (uint8_t i = 0; i < 3; ++i)
+        p.inputWiring[i] = required & (1u << i) ? InputWiring::CONNECTED : InputWiring::UNCONNECTED;
+    p.inputWiring[3] = InputWiring::UNCONNECTED;
+    p.availableInputs = required; p.rawInputs = inputs; p.rawMotion = 3;
+    return p;
+}
+// Completes after the supplied input sample appears during the run.
+static void completesWithSample(Ess::HomeContext& c, bool moving, uint16_t sample) {
+    trigger(c);
+    consumeInputs(c, moving ? 4 : 1, sample); assert(c.state == ActionState::ACTIVE);
+    consumeInputs(c, 3, 0); assert(c.phase == Ess::HomePhase::ZERO_CHECK);
+    consume(c); assert(c.state == ActionState::SUCCEEDED && c.completion == ActionCompletion::OBSERVED);
+}
+// H-01: which assigned limits each documented path may never meet, transcribed from
+// the trajectories on function manual p32-67 rather than from the implementation.
+static void testPerMethodForbiddenInputs() {
+    using M = Ess::HomingMethod;
+    const uint16_t ORIGIN = 1, POSITIVE = 2, NEGATIVE = 4;
+    const struct { M method; uint8_t required; uint16_t forbidden; } rows[] = {
+        {M::METHOD_1, 4, POSITIVE}, {M::METHOD_2, 2, NEGATIVE}, {M::METHOD_17, 4, POSITIVE},
+        {M::METHOD_3, 1, 6}, {M::METHOD_4, 1, 6}, {M::METHOD_5, 1, 6}, {M::METHOD_6, 1, 6},
+        {M::METHOD_19, 1, 6}, {M::METHOD_20, 1, 6}, {M::METHOD_21, 1, 6}, {M::METHOD_22, 1, 6},
+        {M::METHOD_7, 3, NEGATIVE}, {M::METHOD_8, 3, NEGATIVE}, {M::METHOD_9, 3, NEGATIVE}, {M::METHOD_10, 3, NEGATIVE},
+        {M::METHOD_23, 3, NEGATIVE}, {M::METHOD_24, 3, NEGATIVE}, {M::METHOD_25, 3, NEGATIVE}, {M::METHOD_26, 3, NEGATIVE},
+        {M::METHOD_11, 5, POSITIVE}, {M::METHOD_12, 5, POSITIVE}, {M::METHOD_13, 5, POSITIVE}, {M::METHOD_14, 5, POSITIVE},
+        {M::METHOD_27, 5, POSITIVE}, {M::METHOD_28, 5, POSITIVE}, {M::METHOD_29, 5, POSITIVE}, {M::METHOD_30, 5, POSITIVE},
+        {M::METHOD_33, 0, 6}, {M::METHOD_34, 0, 6}, {M::METHOD_35, 0, 0},
+    };
+    for (const auto& row : rows) {
+        const bool moving = row.method != M::METHOD_35;
+        for (const uint16_t input : {ORIGIN, POSITIVE, NEGATIVE}) {
+            const bool forbidden = row.forbidden & input;
+            Ess::HomeContext c; const Saved<Ess::HomeContext> saved(c);
+            const Status admitted = Ess::prepareHome(c, axis(), 12, request(row.method), factoryInputs(row.method, row.required, input), 100, 10000, options());
+            if (forbidden) { assert(!admitted && admitted.detail == static_cast<int32_t>(Ess::HomeError::INPUT_REQUIRED)); saved.check(c); }
+            else assert(admitted);
+            assert(Ess::prepareHome(c, axis(), 12, request(row.method), factoryInputs(row.method, row.required), 100, 10000, options()));
+            if (forbidden) {
+                trigger(c); consumeInputs(c, 4, input);
+                assert(c.state == ActionState::FAILED && c.outcome == ActionOutcome::REPLY_ERROR && c.uncertain);
+                assert(c.status.detail == static_cast<int32_t>(Ess::HomeError::INPUT_REQUIRED) && c.completion == ActionCompletion::NOT_OBSERVED);
+                done(c); // No stop or other traffic is added.
+            } else completesWithSample(c, moving, input);
+        }
+    }
+    // Audit scenario: method 17 with origin and negative limit wired, polled on the origin.
+    auto p = factoryInputs(M::METHOD_17, 4); p.inputWiring[0] = InputWiring::CONNECTED; p.availableInputs = 5;
+    Ess::HomeContext c; assert(Ess::prepareHome(c, axis(), 12, request(M::METHOD_17), p, 100, 10000, options()));
+    completesWithSample(c, true, 1);
+}
+// H-01: release/stop inputs interrupt, triggers must be undriven, selectors are inert.
+static void testNonHomingInputFunctions() {
+    using M = Ess::HomingMethod;
+    const auto withFunction = [](M method, uint8_t required, uint16_t function, InputWiring wiring, uint16_t inputs) {
+        auto p = factoryInputs(method, required, inputs);
+        p.inputFunctions[3] = function; p.inputWiring[3] = wiring; return p;
+    };
+    const auto rejected = [](M method, const Ess::HomePrerequisites& p) {
+        Ess::HomeContext c; const Saved<Ess::HomeContext> saved(c);
+        const Status status = Ess::prepareHome(c, axis(), 12, request(method), p, 100, 10000, options());
+        assert(!status && status.detail == static_cast<int32_t>(Ess::HomeError::INPUT_REQUIRED)); saved.check(c);
+    };
+    const struct { M method; uint8_t required; bool moving; } methods[] = {
+        {M::METHOD_17, 4, true}, {M::METHOD_33, 0, true}, {M::METHOD_35, 0, false}};
+    for (const auto& m : methods) {
+        for (const uint16_t function : {uint16_t(4), uint16_t(5), uint16_t(6)}) {
+            // Inactive is admitted; active is an interrupt condition at admission and in a poll.
+            rejected(m.method, withFunction(m.method, m.required, function, InputWiring::CONNECTED, 8));
+            Ess::HomeContext c;
+            assert(Ess::prepareHome(c, axis(), 12, request(m.method), withFunction(m.method, m.required, function, InputWiring::CONNECTED, 0), 100, 10000, options()));
+            Ess::HomeContext interrupted = c; trigger(interrupted); consumeInputs(interrupted, m.moving ? 4 : 1, 8);
+            assert(interrupted.state == ActionState::FAILED && interrupted.uncertain);
+            assert(interrupted.status.detail == static_cast<int32_t>(Ess::HomeError::INPUT_REQUIRED));
+            done(interrupted); // Reports the condition; adds no stop.
+            completesWithSample(c, m.moving, 0);
+        }
+        for (uint16_t function = 7; function <= 13; ++function) {
+            rejected(m.method, withFunction(m.method, m.required, function, InputWiring::CONNECTED, 0));
+            rejected(m.method, withFunction(m.method, m.required, function, InputWiring::UNKNOWN, 0));
+            rejected(m.method, withFunction(m.method, m.required, function, InputWiring::UNCONNECTED, 8));
+            Ess::HomeContext c;
+            assert(Ess::prepareHome(c, axis(), 12, request(m.method), withFunction(m.method, m.required, function, InputWiring::UNCONNECTED, 0), 100, 10000, options()));
+            Ess::HomeContext interrupted = c; trigger(interrupted); consumeInputs(interrupted, m.moving ? 4 : 1, 8);
+            assert(interrupted.state == ActionState::FAILED);
+            completesWithSample(c, m.moving, 0);
+        }
+        for (uint16_t function = 14; function <= 17; ++function) {
+            Ess::HomeContext c;
+            assert(Ess::prepareHome(c, axis(), 12, request(m.method), withFunction(m.method, m.required, function, InputWiring::CONNECTED, 8), 100, 10000, options()));
+            completesWithSample(c, m.moving, 8);
+        }
+        rejected(m.method, withFunction(m.method, m.required, 18, InputWiring::UNCONNECTED, 0)); // Outside X0..X3's documented 0..17.
+    }
+}
+// H-03: published words come only from a frame the zero decision could use.
+static void testZeroWordsPublishOnlyQualifiedFrames() {
+    std::vector<uint8_t> nonzero = {1, 3, 4, 0x12, 0x34, 0x56, 0x78}; crc(nonzero);
+    for (unsigned fault = 0; fault < 3; ++fault) {
+        auto c = home(); trigger(c); consume(c, 3); assert(c.phase == Ess::HomePhase::ZERO_CHECK);
+        const auto at = c.eligibleUs + 20; auto e = frame(c, nonzero, at); uint64_t now = at + 20;
+        if (fault == 0) e.responseConfirmed = false;
+        if (fault == 1) { e.transport.latestUs = c.deadlineUs + 1; now = c.deadlineUs + 2; }
+        if (fault == 2) { e.transport.qualified = false; e.transport.earliestUs = e.transport.latestUs = 0; }
+        assert(Ess::advanceHome(c, e, now));
+        const ActionOutcome expected[] = {ActionOutcome::UNCONFIRMED_RESPONSE, ActionOutcome::DEADLINE, ActionOutcome::TIMING_UNQUALIFIED};
+        assert(c.outcome == expected[fault] && c.state == ActionState::FAILED);
+        assert(!c.rawPositionWords[0] && !c.rawPositionWords[1]);
+        assert(c.zeroEvidence.length == nonzero.size() && !std::memcmp(c.zeroEvidence.raw, nonzero.data(), nonzero.size()));
+    }
+    auto c = home(); trigger(c); consume(c, 3);
+    const auto at = c.eligibleUs + 20;
+    assert(Ess::advanceHome(c, frame(c, nonzero, at), at + 20));
+    assert(c.status.detail == static_cast<int32_t>(Ess::HomeError::ZERO_NOT_OBSERVED));
+    assert(c.rawPositionWords[0] == 0x1234 && c.rawPositionWords[1] == 0x5678);
+}
+// K-02: exception 05 on either write does not establish a refusal.
+static void testWriteReplyClassification() {
+    for (uint8_t code : {1, 2, 3, 4, 5, 6, 7, 8, 0x7F}) {
+        const auto expected = code <= 7 && code != 5 ? ActionExecution::REJECTED : ActionExecution::UNKNOWN;
+        auto staged = home(); std::vector<uint8_t> b = {1, 0x90, code}; crc(b); auto at = staged.eligibleUs + 20;
+        assert(Ess::advanceHome(staged, frame(staged, b, at), at + 20));
+        assert(staged.setupExecution == expected && staged.outcome == ActionOutcome::REPLY_ERROR && !staged.stagingApplied);
+        auto started = home(); consume(started); b = {1, 0x86, code}; crc(b); at = started.eligibleUs + 20;
+        assert(Ess::advanceHome(started, frame(started, b, at), at + 20));
+        assert(started.execution == expected && started.outcome == ActionOutcome::REPLY_ERROR && started.uncertain);
+    }
+    auto started = home(); consume(started); auto bytes = reply(started); auto at = started.eligibleUs + 20;
+    auto e = frame(started, bytes, at); e.transport.executionUnknown = true;
+    assert(Ess::advanceHome(started, e, at + 20));
+    assert(started.execution == ActionExecution::UNKNOWN && started.outcome == ActionOutcome::UNCONFIRMED_RESPONSE && started.uncertain);
+    // H-04: method 18 stays guarded; only its explanation changes.
+    const auto* method18 = Ess::homeMethod(Ess::HomingMethod::METHOD_18);
+    assert(method18 && method18->support == Ess::HomeSupport::UNRESOLVED && std::strstr(method18->reason, "caption"));
 }
 static void testOptionalAgePolicy() {
     const uint64_t now = 100000, deadline = 110000;
@@ -1060,6 +1201,7 @@ int main() {
         const Saved<Ess::HomeContext> retained(c); assert(Ess::revokeHome(c)); retained.check(c);
         done(c);
     }
+    testPerMethodForbiddenInputs(); testNonHomingInputFunctions(); testZeroWordsPublishOnlyQualifiedFrames(); testWriteReplyClassification();
     testOptionalAgePolicy();
     testDescriptorsAndNoTraffic(); testPreparationAndBounds(); testExactQualificationCannotBeReused(); testExactWireAndReference();
     testCorrelatedTransitions(); testFailuresAndEnvelopes(); testReadinessAndDelayedEvidence();

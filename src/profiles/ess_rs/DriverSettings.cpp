@@ -2,6 +2,7 @@
 #include "MotorControlRS/profiles/ess_rs/DriverSettings.h"
 #include "MotorControlRS/profiles/ess_rs/Registers.h"
 #include "MotorControlRS/profiles/ess_rs/Tuning.h"
+#include "ActionEvidence.h"
 #include <cstring>
 #include <new>
 
@@ -689,16 +690,9 @@ Status advanceDriver(DriverContext& c, const ActionEvent& supplied, uint64_t now
         evidence.status = failure(DriverError::CANCELLED, "driver update locally cancelled");
     else evidence.status = failure(DriverError::DEADLINE_EXPIRED, "driver-settings deadline expired");
     if (evidence.write) {
-        if (event.txAccepted || event.executionUnknown) {
-            c.effects |= static_cast<uint32_t>(progress->field); progress->execution = ActionExecution::UNKNOWN;
-        }
-        if (event.kind == ReadEventKind::FRAME && event.qualified &&
-            event.latestUs <= transactionDeadline && supplied.responseConfirmed) {
-            if (evidence.status) {
-                progress->acknowledged = true; progress->execution = ActionExecution::ACKNOWLEDGED;
-            } else if (evidence.status.code == Err::EXCEPTION && evidence.status.detail >= 1 && evidence.status.detail <= 7)
-                progress->execution = ActionExecution::REJECTED;
-        }
+        if (event.txAccepted || event.executionUnknown) c.effects |= static_cast<uint32_t>(progress->field);
+        progress->execution = Detail::classifyWrite(evidence, event.latestUs <= transactionDeadline);
+        progress->acknowledged = progress->execution == ActionExecution::ACKNOWLEDGED;
     }
     c.observations[c.step] = evidence; c.servicedUs = nowUs;
     if (event.kind == ReadEventKind::CANCEL) finish(c, DriverOutcome::CANCELLED, evidence.status);

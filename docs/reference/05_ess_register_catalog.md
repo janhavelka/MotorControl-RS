@@ -586,7 +586,7 @@ Semantic method numbers, NOT a negative-value wire encoder. Modes 1-14, 33, 34 r
 | `METHOD_13` | 13 | Method 13: reference motor Z index; use cited diagrams for starting-state-dependent paths. | 47, 48, 49 |
 | `METHOD_14` | 14 | Method 14: reference motor Z index; use cited diagrams for starting-state-dependent paths. | 49, 50 |
 | `METHOD_17` | 17 | Method 17: reference negative limit; use cited diagrams for starting-state-dependent paths. | 50, 51 |
-| `METHOD_18` | 18 | Method 18: reference positive limit; use cited diagrams for starting-state-dependent paths. Figure labels negative limit conflict with positive-limit prose; retain discrepancy. | 51 |
+| `METHOD_18` | 18 | Method 18: reference positive limit; use cited diagrams for starting-state-dependent paths. Prose and drawn trajectory agree on the positive limit; only the figure captions say negative. Confirm on a switch fixture. | 51 |
 | `METHOD_19` | 19 | Method 19: reference origin input; use cited diagrams for starting-state-dependent paths. | 52 |
 | `METHOD_20` | 20 | Method 20: reference origin input; use cited diagrams for starting-state-dependent paths. | 52, 53 |
 | `METHOD_21` | 21 | Method 21: reference origin input; use cited diagrams for starting-state-dependent paths. | 53, 54 |

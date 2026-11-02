@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "MotorControlRS/profiles/ess_rs/Persistence.h"
 #include "MotorControlRS/profiles/ess_rs/Registers.h"
+#include "ActionEvidence.h"
 #include <cstring>
 #include <limits>
 #include <new>
@@ -169,12 +170,7 @@ Status advancePersistence(PersistenceContext& c, const ActionEvent& supplied, ui
     else if (e.kind == ReadEventKind::CANCEL) evidence.status = failed(PersistenceError::CANCELLED, "persistence locally cancelled");
     else if (e.kind == ReadEventKind::DEADLINE) evidence.status = failed(PersistenceError::DEADLINE_EXPIRED, "persistence deadline expired");
     else evidence.status = failed(PersistenceError::TRANSPORT_FAILURE, "persistence transport failed");
-    c.execution = e.txAccepted || e.executionUnknown ? ActionExecution::UNKNOWN : ActionExecution::NOT_TRANSMITTED;
-    if (e.kind == ReadEventKind::FRAME && e.qualified && e.latestUs <= c.deadlineUs && supplied.responseConfirmed && !e.executionUnknown) {
-        if (evidence.status) c.execution = ActionExecution::ACKNOWLEDGED;
-        else if (evidence.status.code == Err::EXCEPTION && evidence.status.detail >= 1 && evidence.status.detail <= 7 && evidence.status.detail != 5)
-            c.execution = ActionExecution::REJECTED;
-    }
+    c.execution = Detail::classifyWrite(evidence, e.latestUs <= c.deadlineUs);
     c.effects = e.txAccepted || e.executionUnknown;
     c.uncertain = c.execution == ActionExecution::UNKNOWN;
     c.configurationInvalidated = c.effects;

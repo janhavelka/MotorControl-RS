@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "MotorControlRS/profiles/ess_rs/Communication.h"
 #include "MotorControlRS/profiles/ess_rs/Registers.h"
+#include "ActionEvidence.h"
 #include <cstring>
 
 namespace MotorControlRS { namespace ESS_RS {
@@ -186,17 +187,10 @@ Status advanceCommunication(CommunicationContext& c, const ActionEvent& supplied
     else if (e.kind == ReadEventKind::DEADLINE) wire.status = failed(CommunicationError::DEADLINE_EXPIRED, "communication deadline expired");
     else wire.status = failed(CommunicationError::TRANSPORT_FAILURE, "communication transport failed");
     if (c.step == 0) {
-        c.execution = e.txAccepted || e.executionUnknown ? ActionExecution::UNKNOWN : ActionExecution::NOT_TRANSMITTED;
-        if (e.kind == ReadEventKind::FRAME && e.qualified && e.latestUs <= c.deadlineUs &&
-            supplied.responseConfirmed && !e.executionUnknown) {
-            if (wire.status && c.request.field != CommunicationField::ADDRESS) c.execution = ActionExecution::ACKNOWLEDGED;
-            // Function PDF p12: 05 is a read-count error, hence an unexpected
-            // response to FC06. Other documented codes describe validation
-            // rejection. Raw effects are retained even for those rejections.
-            else if (wire.status.code == Err::EXCEPTION && wire.status.detail >= 1 && wire.status.detail <= 7 &&
-                     wire.status.detail != 5)
-                c.execution = ActionExecution::REJECTED;
-        }
+        c.execution = Detail::classifyWrite(wire, e.latestUs <= c.deadlineUs);
+        // An address echo does not establish acknowledgement under its unresolved activation rule.
+        if (c.execution == ActionExecution::ACKNOWLEDGED && c.request.field == CommunicationField::ADDRESS)
+            c.execution = ActionExecution::UNKNOWN;
         // Retain accepted-write effects even for a checked rejection, as the
         // other settings engines do; only execution classification is resolved.
         c.effects = e.txAccepted || e.executionUnknown;
@@ -224,8 +218,12 @@ Status advanceCommunication(CommunicationContext& c, const ActionEvent& supplied
         if (readback == c.requested) {
             c.uncertain = false;
             finish(c, CommunicationOutcome::CONFIRMED, Ok());
-        } else finish(c, CommunicationOutcome::READBACK_MISMATCH,
-            failed(CommunicationError::READBACK_MISMATCH, "communication register differs from candidate"));
+        } else {
+            // A later contradiction reopens an earlier confirmation or rejection.
+            if (c.effects) c.uncertain = true;
+            finish(c, CommunicationOutcome::READBACK_MISMATCH,
+                failed(CommunicationError::READBACK_MISMATCH, "communication register differs from candidate"));
+        }
     }
     if (c.step == 0) c.writeEvidence = evidence;
     else c.confirmationEvidence[c.step - 1] = evidence;

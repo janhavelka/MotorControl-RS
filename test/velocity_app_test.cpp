@@ -240,22 +240,29 @@ void urgentPressureDefersWithinOriginalDeadline() {
         r.wire.deadlineUs=nowUs()+REQUEST_US;
         r.expected.address=r.expected.target=2; r.expected.targetGeneration=app->bindingGeneration;
         r.expected.function=3; r.expected.count=1; r.validator=Rtu::essValidator(); Rtu::RequestId reserved;
+        Rtu::RequestId reservedAgain; // Both urgent results stay occupied (stop escalation capacity).
         assert(app->owner.admitUrgent(r,nowUs(),reserved) == Rtu::BusAdmission::ACCEPTED);
         for (unsigned i=0;i<25000 && !app->owner.txAccepted(reserved);++i) step();
         scheduleReply(hardware.time+2000,registers(2,{0x4EEA}));
         for (unsigned i=0;i<25000 && !app->owner.result(reserved);++i) step();
         assert(app->owner.result(reserved));
+        r.wire.deadlineUs=nowUs()+REQUEST_US;
+        assert(app->owner.admitUrgent(r,nowUs(),reservedAgain) == Rtu::BusAdmission::ACCEPTED);
+        for (unsigned i=0;i<25000 && !app->owner.txAccepted(reservedAgain);++i) step();
+        scheduleReply(hardware.time+2000,registers(2,{0x4EEA}));
+        for (unsigned i=0;i<25000 && !app->owner.result(reservedAgain);++i) step();
+        assert(app->owner.result(reservedAgain));
         const uint64_t deadline=view(id).velocityContext->deadlineUs;
         advanceHardware(view(id).velocityContext->stopDueUs); serviceApplication();
         assert(view(id).pending && view(id).velocityContext->phase == ESS::VelocityPhase::STOPPING);
         assert(!findRecord(*app,id)->requestId.owner && !app->owner.needsRecovery());
         if (releaseReserved) {
-            assert(app->owner.release(reserved)); serviceApplication();
+            assert(app->owner.release(reserved) && app->owner.release(reservedAgain)); serviceApplication();
             velocityStep(id); velocityStep(id,registers(1,{0,1}));
             assert(!view(id).pending && !view(id).velocityContext->needsStop);
         } else {
             advanceHardware(deadline); serviceApplication();
-            assert(!view(id).pending && view(id).velocityContext->needsStop && hardware.writes == 4);
+            assert(!view(id).pending && view(id).velocityContext->needsStop && hardware.writes == 5);
             assert(view(id).velocityContext->stop.outcome == ActionOutcome::DEADLINE);
         }
         assert(view(id).velocityContext->deadlineUs == deadline);

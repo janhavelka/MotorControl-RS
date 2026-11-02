@@ -165,7 +165,7 @@ int main() {
     const uint8_t velocityReply[] = {1,3,6,0,0x3C,0,0x32,0,0x64,0xD1,0x54};
     ReadEvent velocityEvent; velocityEvent.target = target; velocityEvent.operationId = 17;
     velocityEvent.frame = velocityReply; velocityEvent.length = sizeof(velocityReply);
-    velocityEvent.qualified = true; velocityEvent.earliestUs = 200; velocityEvent.latestUs = 220;
+    velocityEvent.qualified = true; velocityEvent.earliestUs = 200; velocityEvent.latestUs = 220; velocityEvent.txAccepted = 8;
     VelocityParametersObservation velocityParameters;
     if (!advanceRead(velocityRead, velocityEvent, 230) || !getVelocityParameters(velocityRead, velocityParameters) ||
         velocityParameters.configurationGeneration != 3 || velocityParameters.rawSpeed != 60 ||
@@ -177,7 +177,7 @@ int main() {
     const uint8_t homingReply[] = {1,3,14,0,7,0,24,0,60,0,30,0,100,0x12,0x34,0xAB,0xCD,0xEE,0x29};
     ReadEvent homingEvent; homingEvent.target = target; homingEvent.operationId = 18;
     homingEvent.frame = homingReply; homingEvent.length = sizeof(homingReply);
-    homingEvent.qualified = true; homingEvent.earliestUs = 200; homingEvent.latestUs = 220;
+    homingEvent.qualified = true; homingEvent.earliestUs = 200; homingEvent.latestUs = 220; homingEvent.txAccepted = 8;
     HomingParametersObservation homingParameters;
     if (!advanceRead(homingRead,homingEvent,230) || !getHomingParameters(homingRead,homingParameters) ||
         homingParameters.rawAuxiliary != 7 || homingParameters.rawMethod != 24 ||
@@ -313,7 +313,7 @@ int main() {
     axis.originKnown = true; axis.originSource = ScaleSource::QUALIFIED;
     axis.units.commandStepsPerMotorTurn = UnitScale(1000, 1, ScaleSource::QUALIFIED);
     AxisReference reference; reference.target = target; reference.configurationGeneration = axis.generation;
-    reference.nativeKnown = reference.stationary = true; reference.source = ScaleSource::QUALIFIED;
+    reference.nativeKnown = reference.stationary = reference.idle = true; reference.source = ScaleSource::QUALIFIED;
     reference.nativePosition = 1990; reference.observedUs = 1900; reference.maximumAgeUs = 1000;
     move.position.relative = false; move.position.unit = PositionUnit::DEGREES;
     move.position.frame = CoordinateFrame::MOTOR; move.position.value = Rational(720);

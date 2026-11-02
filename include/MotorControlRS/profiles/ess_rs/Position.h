@@ -64,6 +64,7 @@ Status parsePositionProfile(const uint8_t*, std::size_t, uint8_t address,
                             WordOrder, PositionProfile&) noexcept;
 /** Stage only the reviewed 0x0021/5 profile. Does not change start speed or
  * trigger motion. Caller owns stationary admission, saved values and readback.
+ * targetBits is read as two's complement and limited to +/-0x0FFFFFFF.
  * Returns zero without changing the buffer for invalid values/order/capacity. */
 std::size_t buildWritePositionProfile(uint8_t address, const PositionProfile&,
                                      WordOrder, uint8_t*, std::size_t) noexcept;
@@ -128,6 +129,11 @@ struct MoveContext {
     ActionCompletion completion = ActionCompletion::NOT_OBSERVED;
     bool stagingApplied = false, uncertain = false, runningObserved = false, observationKnown = false;
     bool positionConfirmed = false;
+    /** RUNNING-then-ARRIVED completion under positionFeedbackMatchesCommand whose
+     * final feedback differs from the known endpoint. Completion stays OBSERVED:
+     * this exposes the difference without judging it, since the unit of the
+     * 0x010B arrival window is undocumented. Never set by positionConfirmed. */
+    bool positionMismatch = false;
     int32_t observedPosition = 0;
     uint16_t observedSpeed = 0;
     ActionEvidence positionMatchEvidence; ///< First of two consecutive exact stopped endpoint reports.
@@ -168,6 +174,8 @@ struct PreparedMove {
  * compatibility. It neither enables nor saves/clears anything implicitly.
  * targetBits are the exact device-native 32-bit target encoding. In particular,
  * supplying two's-complement bits is not qualification of negative motion.
+ * Their magnitude is limited to 0x0FFFFFFF, an interpretation of the malformed
+ * range printed on function manual p70; larger values reject before traffic.
  * Generic units/limits and observation-aware admission use prepareMove* instead.
  * The context retains NATIVE_INTENT; its prerequisites/reference/PreparedTarget
  * do not pretend that observations or coordinate conversion took place.
@@ -208,7 +216,12 @@ struct PositionCommand {
  * A consumed native reference is checked at nowUs, not its cached nowUs. Its
  * freshness must cover the capped write deadline; refresh it or reduce the
  * readiness budget/operation deadline before preparation. No reference is needed
- * for an otherwise valid native displacement without endpoint limits. */
+ * for an otherwise valid native displacement without endpoint limits. A supplied
+ * established reference must be idle, stationary and ACTUAL for relative and
+ * absolute moves alike. The target magnitude is limited to 0x0FFFFFFF.
+ * Observation is bounded by ActionOptions and the deadline; defaults allow 20 polls
+ * 10 ms apart, about 200 ms. A longer move ends OBSERVATION_LIMIT unless the caller
+ * supplies a larger budget; admission does not compare it with the expected travel. */
 Status prepareMoveRelative(MoveContext&, const AxisConfig&, const AxisReference*,
                            uint32_t operationId, const MoveRequest&, const MovePrerequisites&,
                            uint64_t nowUs, uint64_t deadlineUs,
@@ -235,7 +248,8 @@ Status nextMove(const MoveContext&, uint64_t nowUs, PreparedMove&) noexcept;
  * consecutive exact endpoint/zero-speed/arrived reports when the caller has
  * qualified feedback coordinates and supplied a fresh stationary baseline.
  * The latter requires an acknowledged trigger and a changed endpoint; it never
- * accepts an old arrival flag or an arbitrary position change. Cancellation never sends stop,
+ * accepts an old arrival flag or an arbitrary position change. The RUNNING path
+ * retains a differing final report in positionMismatch. Cancellation never sends stop,
  * truncates TX or retries setup/trigger. Wrong envelopes leave state unchanged.
  * A write deadline may expire before the retained operation deadline, reporting
  * READINESS. The caller must honor yielded deadlines through queue/setup/TX.

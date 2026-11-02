@@ -3507,7 +3507,7 @@
         {
           "name": "METHOD_18",
           "value": 18,
-          "description": "Method 18: reference positive limit; use cited diagrams for starting-state-dependent paths. Figure labels negative limit conflict with positive-limit prose; retain discrepancy.",
+          "description": "Method 18: reference positive limit; use cited diagrams for starting-state-dependent paths. Prose and drawn trajectory agree on the positive limit; only the figure captions say negative. Confirm on a switch fixture.",
           "pages": [
             51
           ]

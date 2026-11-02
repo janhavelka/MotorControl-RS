@@ -82,7 +82,7 @@ const Entry COMMANDS[] = {
     {"enable", Command::ENABLE, "enable [address]", "request_enable_then_observe_flags", true, "Request motor enable and observe the resulting flags."},
     {"motor-release", Command::MOTOR_RELEASE, "motor-release [address]", "request_release_then_observe_flags", true, "Request motor release and observe the resulting flags."},
     {"alarm-clear", Command::ALARM_CLEAR, "alarm-clear [address]", "request_clear_resettable_alarm_then_observe_flags", true, "Request alarm clearing and check the drive flags."},
-    {"stop", Command::STOP, "stop normal|fast [address]", "priority_stop_with_explicit_policy_then_observe_flags", true, "normal: stop with deceleration; fast: ESS emergency stop without the ramp."},
+    {"stop", Command::STOP, "stop normal|fast [address]", "priority_stop_with_explicit_policy_then_observe_flags", true, "normal: stop with deceleration; fast: ESS emergency stop without the ramp. A transport fault starts one bounded recovery, then one send. A sent stop whose reply is lost is never resent; stop fast can escalate a running stop normal."},
     {"move", Command::MOVE, "move relative|absolute value unit frame native_rpm configured [setup write|verify|stored] [basis actual|commanded|queued] [round mode error [approx error]] [address] | move angle value unit frame positive|negative|shortest reject|positive|negative native_rpm configured [setup write|verify|stored] [round mode error [approx error]] [address]", "finite_move_through_public_coordinate_preparation", true, "Advanced move: explicit frame, rounding and setup policy; ordinary moves use moveby/moveto."},
     {"position-clear", Command::POSITION_CLEAR, "position-clear [address]", "explicit_device_position_zero_only", true, "Explicitly set the drive position counter to zero."},
     {"velocity", Command::VELOCITY, "velocity read [address] | velocity value rpm|steps/s|fullsteps/s|counts/s|turns/s|deg/s|rad/s|mm/s native|motor|load duration_ms configured normal|fast [round mode error [approx error]] [address]", "checked_parameter_read_or_finite_serial_velocity_with_explicit_stop", true, "Read native velocity parameters or request finite velocity with an explicit stop policy."},
@@ -90,7 +90,7 @@ const Entry COMMANDS[] = {
     {"caps", Command::CAPS, "caps", "show_implemented_routes_and_explicit_capability_gaps", false, "Show implemented operations and unsupported or unresolved capabilities."},
     {"axis", Command::AXIS, "axis config [set field value [maximum]] | axis origin exact_native", "configure_host_coordinates_only", false, "Configure host coordinates, units and origin without motor traffic."},
     {"prepare", Command::PREPARE, "prepare absolute value unit frame [round [max_error [radian_error]]] | prepare relative value unit frame basis [round [max_error [radian_error]]] | prepare angle value unit frame path tie [round [max_error [radian_error]]]", "preview_public_target_arithmetic_without_motion", false, "Preview coordinate conversion and rounding without moving the motor."},
-    {"recover", Command::RECOVER, "recover", "recover_host_transport_only", false, "Recover the host transport; this does not stop or reset the motor."},
+    {"recover", Command::RECOVER, "recover", "recover_host_transport_only", false, "Recover the host transport; this does not stop or reset the motor. A held stop is sent afterwards; nothing else resumes."},
     {"memory", Command::MEMORY, "memory", "show_cached_memory", false, "Show cached memory and stack measurements."},
     {"load", Command::LOAD, "load [work_us owner_delay_us console_bytes]", "configure_or_report_host_load", false, "Show or configure the optional host workload used for timing checks."},
     {"drv", Command::DRV, "drv", "show_owner_queue_and_output", false, "Show the bus owner, queues, retained results and console pressure."},
@@ -749,7 +749,7 @@ bool Console::reportTraffic(const Core::TrafficRecord& record, DebugMode mode,
 }
 
 bool Console::outstanding(uint32_t id) const noexcept {
-    if (stopReply_.pending && stopReply_.id == id) return true;
+    for (const auto& reply : stopReplies_) if (reply.pending && reply.id == id) return true;
     for (const auto& item : outstanding_) if (item.commandId == id) return true;
     return false;
 }
@@ -760,14 +760,14 @@ bool Console::humanResult(uint32_t operationId) const noexcept {
 }
 std::size_t Console::availableSlot(bool stop) const noexcept {
     const std::size_t begin = stop ? OUTSTANDING_CAPACITY - 1 : 0;
-    const std::size_t end = stop ? OUTSTANDING_CAPACITY : OUTSTANDING_CAPACITY - 1;
+    const std::size_t end = stop ? OUTSTANDING_SLOTS : OUTSTANDING_CAPACITY - 1;
     for (std::size_t i = begin; i < end; ++i)
         if (!outstanding_[i].commandId) return i;
-    return OUTSTANDING_CAPACITY;
+    return OUTSTANDING_SLOTS;
 }
 bool Console::track(uint32_t id, uint32_t operationId, bool stop) noexcept {
     const std::size_t slot = availableSlot(stop);
-    if (slot == OUTSTANDING_CAPACITY) return false;
+    if (slot == OUTSTANDING_SLOTS) return false;
     auto& item = outstanding_[slot];
     item.commandId = id; item.operationId = operationId; item.format = outputFormat_;
     return true;
@@ -799,12 +799,13 @@ bool Console::serviceOutput() noexcept {
         if (pendingTerminalOperation_) untrack(pendingTerminalOperation_);
         pendingTerminalOperation_ = 0;
     }
-    if (stopReply_.pending) {
-        const StopReply reply = stopReply_;
-        stopReply_ = StopReply();
+    if (stopReplies_[0].pending) {
+        const StopReply reply = stopReplies_[0];
+        for (std::size_t i = 0; i + 1 < STOP_REPLY_CAPACITY; ++i) stopReplies_[i] = stopReplies_[i + 1];
+        stopReplies_[STOP_REPLY_CAPACITY - 1] = StopReply();
         outputFormat_ = reply.format;
-        // action emits at most this one additional line. The cleared pending
-        // field bounds serviceOutput's nested call to one level.
+        // action emits at most this one additional line. Each nested call
+        // removes one retained reply, so the depth is bounded by their capacity.
         action(reply.id, "stop", reply.result, reply.address, reply.operationId);
         return !outputPending_;
     }
@@ -1007,7 +1008,7 @@ void Console::parameterRead(uint32_t id, Ess::ReadKind kind, const char* supplie
         if (!number(suppliedAddress, address)) { error(id, command, "invalid_arguments"); return; }
     } else { Snapshot snapshot; host_.snapshot(host_.context, snapshot); address = snapshot.address; }
     if (address < 1 || address > 247) { error(id, command, "invalid_address"); return; }
-    const bool available = availableSlot() != OUTSTANDING_CAPACITY;
+    const bool available = availableSlot() != OUTSTANDING_SLOTS;
     uint32_t operationId = 0;
     if (available) beginWork();
     const Action result = available ? host_.startTypedRead(host_.context, id, static_cast<uint8_t>(address),
@@ -1158,7 +1159,7 @@ void Console::dispatch() noexcept {
                 !Ess::preparePositionStartSpeed(request, native)) { error(id, command, "invalid_arguments"); return; }
             Snapshot snapshot; host_.snapshot(host_.context, snapshot);
             uint32_t operationId = 0;
-            const bool available = availableSlot() != OUTSTANDING_CAPACITY;
+            const bool available = availableSlot() != OUTSTANDING_SLOTS;
             if (available) beginWork();
             const Action result = available ? host_.startDriver(host_.context, id, snapshot.address,
                 Ess::DriverKind::UPDATE, request, operationId) : Action::BUSY;
@@ -1366,7 +1367,7 @@ void Console::dispatch() noexcept {
             }
             Snapshot snapshot; host_.snapshot(host_.context, snapshot);
             uint32_t operationId = 0;
-            const bool available = availableSlot() != OUTSTANDING_CAPACITY;
+            const bool available = availableSlot() != OUTSTANDING_SLOTS;
             if (available) beginWork();
             const Action result = available ? host_.startDriver(host_.context, id, snapshot.address,
                 Ess::DriverKind::UPDATE, request, operationId) : Action::BUSY;
@@ -1394,7 +1395,7 @@ void Console::dispatch() noexcept {
         query.kind = AxisCommandKind::QUERY;
         if (!host_.axis(host_.context, query, axis)) { error(id, "home", "unavailable"); return; }
         request.configurationGeneration = axis.configuration.generation;
-        const bool available = availableSlot() != OUTSTANDING_CAPACITY;
+        const bool available = availableSlot() != OUTSTANDING_SLOTS;
         uint32_t operationId = 0;
         if (available) beginWork();
         const Action result = available ? host_.startHome(host_.context, id, static_cast<uint8_t>(address), request, operationId) : Action::BUSY;
@@ -1544,7 +1545,7 @@ void Console::dispatch() noexcept {
         }
         if (!hasAddress) { Snapshot snapshot; host_.snapshot(host_.context, snapshot); address = snapshot.address; }
         if (address < 1 || address > 247) { error(id, command, "invalid_address"); return; }
-        const bool available = availableSlot() != OUTSTANDING_CAPACITY;
+        const bool available = availableSlot() != OUTSTANDING_SLOTS;
         uint32_t operationId = 0;
         if (available) beginWork();
         const Action result = available ? host_.startDriver(host_.context, id, static_cast<uint8_t>(address),
@@ -1587,7 +1588,7 @@ void Console::dispatch() noexcept {
         AxisCommand query; AxisView axis;
         if (!host_.axis(host_.context, query, axis)) { error(id, "velocity", "invalid_axis_configuration"); return; }
         request.configurationGeneration = axis.configuration.generation;
-        const bool available = availableSlot() != OUTSTANDING_CAPACITY;
+        const bool available = availableSlot() != OUTSTANDING_SLOTS;
         uint32_t operationId = 0;
         if (available) beginWork();
         const Action result = available ? host_.startVelocity(host_.context, id, static_cast<uint8_t>(address), request, operationId) : Action::BUSY;
@@ -1660,7 +1661,7 @@ void Console::dispatch() noexcept {
                 request.nativeValue = static_cast<uint16_t>(value.numerator);
             }
         }
-        const bool available = availableSlot() != OUTSTANDING_CAPACITY;
+        const bool available = availableSlot() != OUTSTANDING_SLOTS;
         SimpleMotionView view;
         if (session && available) beginWork();
         const auto result = session && !available ? Action::BUSY : host_.simpleMotion(host_.context, id, &request, view);
@@ -1706,7 +1707,7 @@ void Console::dispatch() noexcept {
         }
         if (!host_.startPositionInterrupt || !host_.snapshot) { error(id, "position-interrupt", "unavailable"); return; }
         Snapshot snapshot; host_.snapshot(host_.context, snapshot);
-        const bool available = availableSlot() != OUTSTANDING_CAPACITY;
+        const bool available = availableSlot() != OUTSTANDING_SLOTS;
         uint32_t operationId = 0;
         if (available) beginWork();
         const auto result = available ? host_.startPositionInterrupt(host_.context, id, originalId, operationId) : Action::BUSY;
@@ -1768,7 +1769,7 @@ void Console::dispatch() noexcept {
         AxisCommand query; AxisView axis;
         if (!host_.axis(host_.context, query, axis)) { error(id, command, "invalid_axis_configuration"); return; }
         move.position.configurationGeneration = axis.configuration.generation;
-        const bool available = availableSlot() != OUTSTANDING_CAPACITY;
+        const bool available = availableSlot() != OUTSTANDING_SLOTS;
         uint32_t operationId = 0;
         if (available) beginWork();
         const Action result = available ? host_.startMove(host_.context, id, static_cast<uint8_t>(address), move, operationId) : Action::BUSY;
@@ -1797,7 +1798,7 @@ void Console::dispatch() noexcept {
     }
     if (actionCommand) {
         const bool stop = request.kind == Core::ActionKind::STOP;
-        if ((outputPending() && !stop) || stopReply_.pending) { ++inputDropped_; return; }
+        if (outputPending() && !stop) { ++inputDropped_; return; }
         if (!host_.startAction || !host_.snapshot) { error(id, actionCommand, "unavailable"); return; }
         Snapshot snapshot; host_.snapshot(host_.context, snapshot);
         uint32_t address = snapshot.address;
@@ -1805,16 +1806,22 @@ void Console::dispatch() noexcept {
             error(id, actionCommand, "invalid_arguments"); return;
         }
         if (address < 1 || address > 247) { error(id, actionCommand, "invalid_address"); return; }
-        const bool available = availableSlot(stop) != OUTSTANDING_CAPACITY;
+        const bool available = availableSlot(stop) != OUTSTANDING_SLOTS;
         uint32_t operationId = 0;
         if (available) beginWork();
         const Action result = available ? host_.startAction(host_.context, id, static_cast<uint8_t>(address), request, operationId) : Action::BUSY;
         if (result == Action::OK) track(id, operationId, stop);
-        if (stop && outputPending_) {
-            stopReply_.pending = true; stopReply_.id = id;
-            stopReply_.address = static_cast<uint8_t>(address); stopReply_.result = result;
-            stopReply_.operationId = result == Action::OK ? operationId : 0;
-            stopReply_.format = outputFormat_;
+        if (stop && outputPending()) {
+            // Every stop is attempted and answered. Only when all reply slots are
+            // full does the newest reply replace the last, counted as dropped.
+            std::size_t slot = 0;
+            while (slot + 1 < STOP_REPLY_CAPACITY && stopReplies_[slot].pending) ++slot;
+            if (stopReplies_[slot].pending) ++inputDropped_;
+            StopReply& reply = stopReplies_[slot];
+            reply.pending = true; reply.id = id;
+            reply.address = static_cast<uint8_t>(address); reply.result = result;
+            reply.operationId = result == Action::OK ? operationId : 0;
+            reply.format = outputFormat_;
         } else action(id, actionCommand, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0);
         return;
     }
@@ -2065,7 +2072,7 @@ void Console::dispatch() noexcept {
         host_.resetStats(host_.context); action(id, entry->name, Action::OK); return;
     }
     if (entry->command == Command::RECOVER) {
-        if (availableSlot() == OUTSTANDING_CAPACITY) { action(id, entry->name, Action::BUSY); return; }
+        if (availableSlot() == OUTSTANDING_SLOTS) { action(id, entry->name, Action::BUSY); return; }
         const Action result = host_.recover(host_.context, id, operationId);
         if (result == Action::OK) track(id, operationId);
         action(id, entry->name, result, 0, result == Action::OK ? operationId : 0); return;
@@ -2153,7 +2160,7 @@ void Console::dispatch() noexcept {
     if (readCommand) {
         if (!arg) address = data.address;
         if (address < 1 || address > 247) { error(id, entry->name, "invalid_address"); return; }
-        if (availableSlot() == OUTSTANDING_CAPACITY) { action(id, entry->name, Action::BUSY); return; }
+        if (availableSlot() == OUTSTANDING_SLOTS) { action(id, entry->name, Action::BUSY); return; }
         const auto start = entry->command == Command::CAPTURE_READ ? host_.startCaptureRead : host_.startProbe;
         beginWork();
         const Action result = typedCommand ? host_.startTypedRead(host_.context, id, static_cast<uint8_t>(address),
@@ -2174,7 +2181,7 @@ void Console::dispatch() noexcept {
     switch (entry->command) {
     case Command::DRV: {
         const int written = std::snprintf(output_, sizeof(output_),
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"drv\",\"ok\":true,\"phase\":\"%s\",\"busy\":%s,\"transmit_enabled\":%s,\"recovery_required\":%s,\"pending\":%u,\"retained\":%u,\"reserved\":%u,\"pending_capacity\":%u,\"result_capacity\":%u,\"outstanding_capacity\":%u,\"operation_id\":%lu,\"output_queued\":%u,\"output_blocked\":%llu,\"output_short_writes\":%llu,\"input_bytes\":%llu,\"input_lines\":%llu,\"input_dropped\":%llu,\"recovery_guard_until_us\":%llu,\"request_deadline_us\":%llu,\"capture_mode\":\"%s\",\"read_budget\":%lu,\"model_address\":%s,\"model_operation_id\":%lu,\"observed_earliest_us\":%llu,\"observed_latest_us\":%llu,\"delivered_us\":%llu,\"previous_runtime\":{\"valid\":%s,\"stage\":%lu,\"uptime_ms\":%lu,\"loops\":%lu,\"input_lines\":%lu,\"output_queued\":%lu,\"output_blocked\":%lu},\"owner_watchdog\":{\"subscribed\":%s,\"error\":%ld,\"timeout_ms\":%lu,\"last_feed_us\":%llu,\"completed_loops\":%llu},\"reset_reason\":%lu}",
+            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"drv\",\"ok\":true,\"phase\":\"%s\",\"busy\":%s,\"transmit_enabled\":%s,\"recovery_required\":%s,\"pending\":%u,\"retained\":%u,\"reserved\":%u,\"pending_capacity\":%u,\"result_capacity\":%u,\"outstanding_capacity\":%u,\"operation_id\":%lu,\"output_queued\":%u,\"output_blocked\":%llu,\"output_short_writes\":%llu,\"input_bytes\":%llu,\"input_lines\":%llu,\"input_dropped\":%llu,\"stop_evidence_overwritten\":%llu,\"automatic_recovery_operation_id\":%lu,\"recovery_guard_until_us\":%llu,\"request_deadline_us\":%llu,\"capture_mode\":\"%s\",\"read_budget\":%lu,\"model_address\":%s,\"model_operation_id\":%lu,\"observed_earliest_us\":%llu,\"observed_latest_us\":%llu,\"delivered_us\":%llu,\"previous_runtime\":{\"valid\":%s,\"stage\":%lu,\"uptime_ms\":%lu,\"loops\":%lu,\"input_lines\":%lu,\"output_queued\":%lu,\"output_blocked\":%lu},\"owner_watchdog\":{\"subscribed\":%s,\"error\":%ld,\"timeout_ms\":%lu,\"last_feed_us\":%llu,\"completed_loops\":%llu},\"reset_reason\":%lu}",
             static_cast<unsigned long>(id), Rtu::phaseName(data.phase), boolean(data.busy),
             boolean(data.transmitEnabled), boolean(data.recoveryRequired),
             static_cast<unsigned>(data.pending), static_cast<unsigned>(data.retained), static_cast<unsigned>(data.reserved),
@@ -2183,6 +2190,7 @@ void Console::dispatch() noexcept {
             static_cast<unsigned>(data.outputQueued), static_cast<unsigned long long>(data.outputBlocked),
             static_cast<unsigned long long>(data.outputShortWrites), static_cast<unsigned long long>(data.inputBytes),
             static_cast<unsigned long long>(data.inputLines), static_cast<unsigned long long>(data.inputDropped),
+            static_cast<unsigned long long>(data.stopEvidenceOverwritten), static_cast<unsigned long>(data.automaticRecoveryOperationId),
             static_cast<unsigned long long>(data.recoveryGuardUntilUs),
             static_cast<unsigned long long>(data.deadlineUs), data.timerCapture ? "timer" : "poll",
             static_cast<unsigned long>(data.readBudget), modelAddress, static_cast<unsigned long>(data.modelOperationId),
@@ -2503,10 +2511,13 @@ bool Console::formatAction(uint32_t id, uint32_t commandId, uint32_t operationId
         actionEvidence(output_, sizeof(output_), used, context.failureEvidence) &&
         append(output_, sizeof(output_), used, ",\"interrupted_by_stop\":%s", boolean(interruptedByStop));
     if (context.request.kind == Core::ActionKind::CLEAR_POSITION) {
-        char position[16] = "null";
-        if (context.observationKnown) std::snprintf(position, sizeof(position), "%lu", static_cast<unsigned long>(context.rawPosition));
-        fits = fits && append(output_, sizeof(output_), used, ",\"device_position\":%lld,\"position_clear_qualified\":%s,\"raw_position\":%s",
-            static_cast<long long>(context.request.devicePosition), boolean(context.request.positionClearQualified), position);
+        char position[16] = "null", words[16] = "null";
+        if (context.observationKnown) {
+            std::snprintf(position, sizeof(position), "%lu", static_cast<unsigned long>(context.rawPosition));
+            std::snprintf(words, sizeof(words), "[%u,%u]", context.rawPositionWords[0], context.rawPositionWords[1]);
+        }
+        fits = fits && append(output_, sizeof(output_), used, ",\"device_position\":%lld,\"position_clear_qualified\":%s,\"raw_position\":%s,\"raw_position_words\":%s",
+            static_cast<long long>(context.request.devicePosition), boolean(context.request.positionClearQualified), position, words);
     }
     fits = fits && append(output_, sizeof(output_), used, "}");
     if (!fits) return false; // Keep the complete host result available; never publish partial JSON.
@@ -2626,7 +2637,8 @@ bool Console::formatSimpleMotion(uint32_t id, const SimpleMotionView& view, bool
     }
     if (fits && !view.settingsOnly && !view.subdivisionOnly) {
         --used;
-        fits = append(output_, sizeof(output_), used, ",\"position_confirmed\":%s}", boolean(move && move->positionConfirmed));
+        fits = append(output_, sizeof(output_), used, ",\"position_confirmed\":%s,\"position_mismatch\":%s}",
+            boolean(move && move->positionConfirmed), boolean(move && move->positionMismatch));
     }
     if (fits && !view.settingsOnly && view.targetPrepared) {
         --used;
@@ -2740,8 +2752,8 @@ bool Console::formatMove(uint32_t id, uint32_t commandId, uint32_t operationId,
     if (fits) {
         --used;
         fits = append(output_, sizeof(output_), used,
-            ",\"position_feedback_matches_command\":%s,\"position_confirmed\":%s,\"observed_position\":%ld,\"observed_speed\":%u,\"position_match_evidence\":",
-            boolean(c.prerequisites.positionFeedbackMatchesCommand), boolean(c.positionConfirmed),
+            ",\"position_feedback_matches_command\":%s,\"position_confirmed\":%s,\"position_mismatch\":%s,\"observed_position\":%ld,\"observed_speed\":%u,\"position_match_evidence\":",
+            boolean(c.prerequisites.positionFeedbackMatchesCommand), boolean(c.positionConfirmed), boolean(c.positionMismatch),
             static_cast<long>(c.observedPosition), c.observedSpeed) &&
             actionEvidence(output_, sizeof(output_), used, c.positionMatchEvidence) && append(output_, sizeof(output_), used, "}");
     }

@@ -33,7 +33,9 @@ Observation age expiry is optional and disabled by default. Core
 nonzero values enable the documented age bound. “Fresh” in this contract means
 checked provenance and matching binding/configuration generations, with age
 checked when that policy is enabled. Future timestamps, absent evidence and
-known contradictions remain invalid. The standalone application exposes the
+known contradictions remain invalid. A RUNNING-path move whose final feedback differs
+from its endpoint is exposed as `positionMismatch` rather than invalidated, for the
+reasons in [ESS position](ess_position.md). The standalone application exposes the
 same choice as `ApplicationOptions::observationMaxAgeMs` (zero by default;
 `5000` enables five seconds). This policy does not establish uninterrupted drive
 power or unchanged physical state. Transaction/operation deadlines and required

@@ -44,7 +44,11 @@ struct ActionContext {
     uint16_t reg = 0, value = 0;
     bool observationKnown = false;
     uint16_t rawAlarm = 0, rawMotion = 0; ///< Last valid report, including unknown bits.
-    uint32_t rawPosition = 0; ///< CLEAR_POSITION only: first wire word <<16 | second; zero check needs no word order. No signed-coordinate/origin proof.
+    /** CLEAR_POSITION only: the 0x000A/2 words in wire order. 0x0019 makes their
+     * significance configurable (function manual p30), so these words carry no
+     * signed-coordinate or origin proof; the zero check needs no word order. */
+    uint16_t rawPositionWords[2] = {};
+    uint32_t rawPosition = 0; ///< rawPositionWords[0]<<16 | [1], kept for source compatibility. A wire concatenation, not a decoded position.
     ActionEvidence writeEvidence, lastObservation, failureEvidence;
     Status status;
 };

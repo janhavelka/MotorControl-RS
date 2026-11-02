@@ -89,6 +89,12 @@ interval and 64 polls. This is a proposed software envelope, not physical
 qualification. Production qualification flags remain false and have no CLI
 bypass. These commands reject before TX on the current bench.
 
+Preparation rejects a duration that `maxPolls * pollIntervalUs` cannot cover; the
+`ActionOptions` defaults cover 200 ms. A poll closing after the duration ends the
+observation budget and starts the stop without a failure, though alarm and fault
+words in that frame still count. A stop still due more than one poll interval
+late is a missed service obligation.
+
 The Python `velocity` scenario validates strict command/operation correlation,
 finite duration and raw checked evidence. It shares the finite move scenario's
 bounded cleanup: normal/error exit requests explicit stop for an admitted

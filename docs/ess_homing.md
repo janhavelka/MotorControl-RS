@@ -40,13 +40,40 @@ The supplied method qualification covers both admitted starting branches,
 direction, travel and rate/ramp behavior; it is not inferred from sensor level.
 Logical levels already include drive polarity and must not be inverted again.
 
-Required limit activation is expected, while an unexpected active assigned
-origin/opposite limit, alarm or motion-status soft-limit flag rejects or fails.
+Required limit activation is expected, while an active assigned opposite limit,
+alarm or motion-status soft-limit flag rejects or fails. An assigned origin is
+never a fault here: these paths do not use it and may pass it, including factory-default
+X0. See [input levels](#input-levels-during-home) for the rule shared by every method.
 An unchanged sampled limit does not prove a stuck sensor: missed input edges
 are tolerated when the qualified status/zero completion contract below is met.
 If RUNNING or the fresh HOMED transition is missing, poll/deadline exhaustion
 leaves completion unobserved. No atomic input/status snapshot is promised.
 Method 18 remains unresolved independently of method 17.
+
+## Input levels during home
+
+With `observeInputs=true`, the same rule applies at admission and on every poll,
+to logical levels sampled at that moment. Terminal functions follow the function
+manual's list (p27, p73-74). A failure is `INPUT_REQUIRED` with raw evidence retained.
+Failing a poll ends observation only: the host issues no stop, and the outcome
+stays uncertain until an explicit stop reconciles it.
+
+| Assigned function | While active | Reason |
+| --- | --- | --- |
+| 1 Origin | Never a fault | Required by origin methods, passed or irrelevant on the others |
+| 2/3 limit the method requires | Allowed | Part of the trajectory; distinct from a soft-limit flag |
+| 2/3 limit the method does not require | Fails, except method 35 | Contradicts the documented path |
+| 4 Release, 5 Stop, 6 Emergency stop | Fails on every method | Interrupts the drive |
+| 7..13 Motion and segment triggers | Fails on every method | Starts motion the host cannot attribute |
+| 14..17 Segment selectors | Ignored | Act only through a trigger |
+| Above 17 | Always rejects | Outside the documented X0..X3 range |
+
+Motion triggers 7..13 must also be declared `UNCONNECTED` even while inactive,
+because an edge can fall between polls. Functions 4..6 may stay wired. Limits are
+forbidden during 33 and 34 too: the documented Z search uses none, so an active limit
+is a contradiction rather than a branch. Method 35 has no search trajectory, so it
+forbids no sensor level, but a release or stop input still fails it. The manual does not
+say whether a stop input affects a home at all; this rule is a conservative choice.
 
 ## Origin-reference methods
 
@@ -70,8 +97,8 @@ direction convention, not a measured shaft direction.
 Each row was independently reviewed against its original diagram. Methods
 5 and 21 repeat the paragraph label `a)` for the active branch; both its text
 and drawing identify the active state. These methods have no documented
-limit-assisted branch. The required origin may be active; an unexpected active
-assigned limit fails. Input samples are logical, already interpreted by the
+limit-assisted branch. The required origin may be active; an active assigned
+limit fails. Input samples are logical, already interpreted by the
 drive polarity. They need not capture every edge or end at the diagram's final
 level because input/status samples are not atomic. Missing required status
 transitions still fail within the poll/deadline bound. Internal Z and physical
@@ -119,7 +146,7 @@ constant samples alone cannot establish a stuck switch or prove a reversal.
 Completion still requires the qualified fresh status transition/activity and
 checked zero contract below; neither HOMED nor zero alone proves the physical
 path, internal Z or wiring. Missing required status evidence fails within the
-poll/deadline bounds. Unexpected active assigned negative-limit input remains
+poll/deadline bounds. An active assigned negative limit remains
 a failure, as do alarm and soft-limit status. No new write or automatic retry
 is introduced.
 
@@ -159,7 +186,7 @@ Separate (c) captions for 13 p48, 14 p50, 29 p65 (drawing p66) and 30 p67 say
 retained explicitly. The active captions for 11, 12, 27 and 28 say **valid**.
 
 The drive owns every intermediate movement. Required negative-limit activation
-is distinct from a soft-limit fault; unexpected active assigned positive limit
+is distinct from a soft-limit fault; an active assigned positive limit
 still fails. Missing/constant samples do not prove a stuck sensor, a reversal,
 or a completed physical edge. Fresh qualified status/activity and subsequent
 checked zero remain necessary under the shared contract below. No extra writes,
@@ -233,7 +260,8 @@ fresh admission baseline may supply low because no search motion is required.
 Old HOMED-high, a missed transition, start echo or interrupted search cannot
 establish a new reference. Retained low/activity/completion evidence records
 the relevant observations. A subsequent checked current-position pair must
-contain two zero words before completion is published.
+contain two zero words before completion is published. `rawPositionWords` publishes
+only a qualified, confirmed, on-time zero-check frame; `zeroEvidence` retains any other.
 
 Only MOTION bits 0..6 have documented meanings (function manual physical p68).
 Unknown bits reject admission or fail a checked poll with `READINESS`; raw
@@ -427,7 +455,7 @@ All observations must match the admitted binding/configuration and retain their
 separate acquisition intervals. Require functions 1/2/3 for origin/positive/
 negative limit, known polarity and declared wiring for the method's inputs.
 INPUT_STATUS is already logical valid/invalid; never invert it again. Preserve
-unrelated assigned stops/limits and reject unresolved interference. An initially
+unrelated assigned stops/limits and apply the [input rule](#input-levels-during-home). An initially
 inactive origin does not distinguish its two spatial sides: qualification must
 cover both admitted regions, including the appropriate limit for assisted methods.
 

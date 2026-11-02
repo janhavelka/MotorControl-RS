@@ -29,8 +29,11 @@ enum class AxisError : int32_t {
     APPROXIMATION_REQUIRED, AMBIGUOUS, GENERATION_EXHAUSTED,
     UNIT_ERROR_BASE = 100 ///< Unit errors use this base plus UnitError; Err/msg are preserved.
 };
-/** Host interpretation only. Native/soft bounds are inclusive command-register
- * coordinates. Optional scales/origins are required only when actually used. */
+/** Host interpretation only. Optional scales/origins are required only when
+ * actually used. Native/soft bounds are inclusive and checked against endpoints.
+ * The native bounds are additionally checked against a relative displacement, so
+ * a one-sided range such as 0..N rejects every negative relative move. Keep the
+ * native range symmetric and use soft limits to bound coordinates one-sidedly. */
 struct AxisConfig {
     ReadTarget target;
     uint32_t generation = 1;

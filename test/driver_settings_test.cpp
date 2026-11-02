@@ -257,6 +257,9 @@ void testProgressNoRollbackAndCopiedStorage() {
     assert(rejected.effects == 3 && !rejected.uncertain && rejected.progress[0].readbackKnown);
     auto unknownException = update(); exception = {1, 0x86, 0x7F}; crc(exception); supply(unknownException, exception);
     assert(unknownException.uncertain && unknownException.progress[0].execution == ActionExecution::UNKNOWN);
+    // K-02: 05 is a read-range error, so it cannot establish that this write was refused.
+    auto readRange = update(); exception = {1, 0x86, 5}; crc(exception); supply(readRange, exception);
+    assert(readRange.uncertain && readRange.progress[0].execution == ActionExecution::UNKNOWN && !readRange.progress[0].acknowledged);
 }
 void testFaultsCancellationAndExpiry() {
     for (unsigned step = 0; step < 4; ++step) {

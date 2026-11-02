@@ -24,7 +24,9 @@ namespace MotorControlRSExample { namespace Probe {
 
 constexpr std::size_t LINE_CAPACITY = 128;
 constexpr std::size_t OUTPUT_CAPACITY = 8192;
-constexpr std::size_t OUTSTANDING_CAPACITY = 10; // Nine ordinary correlations plus one stop.
+constexpr std::size_t OUTSTANDING_CAPACITY = 10; // Advertised by protocol 3: nine ordinary correlations plus one stop.
+constexpr std::size_t OUTSTANDING_SLOTS = OUTSTANDING_CAPACITY + 1; // Adds the stop-escalation correlation.
+constexpr std::size_t STOP_REPLY_CAPACITY = 3; // Admission replies retained under output pressure.
 constexpr std::size_t PROBE_TX_CAPACITY = 8;
 constexpr std::size_t PROBE_RX_CAPACITY = 64;
 // Fixed non-consuming FC03 timing fixture; function manual physical p77.
@@ -209,6 +211,8 @@ struct Snapshot {
     std::size_t pendingCapacity = 0, resultCapacity = 0, outstandingCapacity = OUTSTANDING_CAPACITY;
     std::size_t outputQueued = 0;
     uint64_t outputBlocked = 0, outputShortWrites = 0, inputBytes = 0, inputLines = 0, inputDropped = 0;
+    uint64_t stopEvidenceOverwritten = 0; ///< Delivered failed stop results replaced by a newer stop.
+    uint32_t automaticRecoveryOperationId = 0; ///< Latest retained recovery started by a held stop, or zero.
     bool previousRuntimeValid = false;
     bool ownerWatchdog = false;
     int32_t ownerWatchdogError = 0;
@@ -277,7 +281,7 @@ struct ResultView {
  * human text may contain embedded newlines. The sink adds the final newline. It must not call
  * back into the console. Return false without copying any bytes for backpressure.
  * The console retains one complete blocked line. With that line pending,
- * valid cancel, monitor off and one reserved stop can dispatch; other complete commands and local
+ * valid cancel, monitor off and stop can dispatch; other complete commands and local
  * cancel replies are discarded and counted by inputDropped(). Terminal lines
  * remain retained and are never replaced by a discarded command reply.
  * snapshot only reads cached state and must not touch the
@@ -382,7 +386,7 @@ public:
      * and one reserved stop can dispatch. Other commands are counted and discarded. */
     void feed(char value) noexcept;
     bool serviceOutput() noexcept;
-    bool outputPending() const noexcept { return outputPending_ || stopReply_.pending; }
+    bool outputPending() const noexcept { return outputPending_ || stopReplies_[0].pending; }
     uint64_t inputDropped() const noexcept { return inputDropped_; }
     /** True transfers the terminal line to the console/sink; false changes nothing.
      * A blocked sink retains exactly one line. Never retry a transferred result. */
@@ -463,7 +467,7 @@ private:
     MotorControlRS::ESS_RS::DriverObservation driverView_;
     std::size_t length_ = 0;
     uint32_t nextId_ = 1;
-    struct Outstanding { uint32_t commandId = 0, operationId = 0; bool transferred = false; Format format = Format::HUMAN; } outstanding_[OUTSTANDING_CAPACITY];
+    struct Outstanding { uint32_t commandId = 0, operationId = 0; bool transferred = false; Format format = Format::HUMAN; } outstanding_[OUTSTANDING_SLOTS];
     uint32_t pendingTerminalOperation_ = 0;
     // Retain one stop admission under output pressure without a second line buffer.
     struct StopReply {
@@ -472,7 +476,7 @@ private:
         uint8_t address = 0;
         Action result = Action::FAILED;
         Format format = Format::HUMAN;
-    } stopReply_;
+    } stopReplies_[STOP_REPLY_CAPACITY];
     uint64_t inputDropped_ = 0;
     bool outputPending_ = false;
     bool overflow_ = false;

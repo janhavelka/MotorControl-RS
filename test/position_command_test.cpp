@@ -79,14 +79,23 @@ void rejectionAndRawAccess() {
     assert(!m.prepareRelative(out, 1, 100, 10, 10));
     for (auto order : {E::WordOrder::HIGH_WORD_FIRST, E::WordOrder::LOW_WORD_FIRST}) {
         m.wordOrder = order;
-        assert(m.prepareAbsolute(out, 1, 0x12345678, 10, 1000000));
+        assert(m.prepareAbsolute(out, 1, 0x01234567, 10, 1000000));
         assert(!out.prepared.displacementKnown && !out.reference.nativeKnown);
-        assert(out.words[3] == (order == E::WordOrder::HIGH_WORD_FIRST ? 0x1234 : 0x5678));
+        assert(out.words[3] == (order == E::WordOrder::HIGH_WORD_FIRST ? 0x0123 : 0x4567));
         reply(out); E::PreparedMove work;
         assert(E::nextMove(out, out.servicedUs, work) && work.value == 5);
     }
     assert(m.prepareAbsolute(out, 1, 0, 10, 1000000));
     assert(m.prepareAbsolute(out, 1, UINT32_MAX, 10, 1000000)); // Raw bits, not negative-motion qualification.
+    // K-04: two's-complement magnitude is limited to 0x0FFFFFFF before any traffic.
+    for (uint32_t bits : {uint32_t(0x0FFFFFFF), uint32_t(0xF0000001)}) {
+        assert(m.prepareAbsolute(out, 1, bits, 10, 1000000) && m.prepareRelative(out, 1, bits, 10, 1000000));
+    }
+    for (uint32_t bits : {uint32_t(0x10000000), uint32_t(0x12345678), uint32_t(0x7FFFFFFF), uint32_t(0x80000000), uint32_t(0xF0000000)}) {
+        unsigned char before[sizeof(out)]; std::memcpy(before, &out, sizeof(out));
+        assert(!m.prepareAbsolute(out, 1, bits, 10, 1000000) && !m.prepareRelative(out, 1, bits, 10, 1000000));
+        assert(!std::memcmp(before, &out, sizeof(out)));
+    }
     uint8_t bytes[8]; std::memset(bytes, 0xAA, sizeof(bytes));
     assert(!E::buildStartPosition(1, true, bytes, 7) && bytes[0] == 0xAA);
     assert(E::buildStartPosition(1, true, bytes, sizeof(bytes)) == 8);
@@ -137,7 +146,7 @@ void setupPolicies() {
         for (unsigned difference = 0; difference < 7; ++difference) {
             auto m = motor(); m.setup = MoveSetup::VERIFY_AND_UPDATE; m.wordOrder = order;
             E::MoveContext c; E::PreparedMove w;
-            assert(m.prepareRelative(c, 1, 0x12345678, 10, 100000));
+            assert(m.prepareRelative(c, 1, 0x01234567, 10, 100000));
             assert(E::nextMove(c, 10, w) && w.function == 3 && w.reg == 0x21 && w.count == 5 && !w.write);
             uint16_t old[5]; std::memcpy(old, c.words, sizeof(old));
             if (difference && difference <= 5) ++old[difference - 1];
@@ -237,4 +246,16 @@ void operatingBoundary() {
     m.limits=custom; m.accelerationTime=m.decelerationTime=0; m.speedRpm=2700;
     assert(m.prepareAbsolute(c,1,100,10,1000)); // Explicit caller policy, no default bypass.
 }
-int main() { operatingBoundary(); setupPolicies(); intentSnapshotAndNormalSequence(); rejectionAndRawAccess(); failuresNeverStartOrReplay(); acknowledgementEvidence(); }
+// K-02: uncertainty at the start never ends a native move as acknowledged.
+void uncertainStartIsNotAcknowledged() {
+    auto m = motor(); E::MoveContext c; assert(m.prepareRelative(c, 1, 100, 10, 1000000));
+    reply(c); assert(c.step == 1);
+    auto b = crc({1, 6, 0, 0x27, 0, 1});
+    ActionEvent e; auto& t = e.transport;
+    t.target = c.target; t.operationId = c.operationId; t.step = c.step; t.frame = b.data(); t.length = b.size();
+    t.txAccepted = 8; t.qualified = e.txComplete = e.responseConfirmed = true; t.executionUnknown = true;
+    t.earliestUs = c.eligibleUs + 1; t.latestUs = c.eligibleUs + 2;
+    assert(E::advanceMove(c, e, t.latestUs + 1));
+    assert(c.execution == ActionExecution::UNKNOWN && c.outcome == ActionOutcome::UNCONFIRMED_RESPONSE && c.uncertain);
+}
+int main() { operatingBoundary(); setupPolicies(); intentSnapshotAndNormalSequence(); rejectionAndRawAccess(); failuresNeverStartOrReplay(); acknowledgementEvidence(); uncertainStartIsNotAcknowledged(); }

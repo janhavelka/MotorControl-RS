@@ -147,10 +147,11 @@ conflict. An uncertain write is never automatically retried.
 
 The next explicit stop replaces a delivered successful stop result in its
 reserved slot, so repeated successful stops do not fill ordinary storage.
-A failed/unknown stop is retained in a free ordinary slot before admitting
-another stop; if none exists, inspect and release a terminal result first.
-Active or undelivered stops cannot be replaced. Local cancellation, `stats reset`
-and `recover` never substitute for a confirmed motor stop.
+Stops have two reserved result slots. A failed or unknown stop stays retained in
+its slot; once both are in use, the next stop overwrites the oldest delivered failed
+result and counts it in `drv.stop_evidence_overwritten`. Active or undelivered stops
+are not replaced. Local cancellation, `stats reset` and `recover` never substitute for
+a confirmed motor stop.
 
 For basic communication inspection:
 
@@ -189,7 +190,13 @@ when execution is unknown.
 configured deceleration ramp. `stop normal` uses that ramp. Both use the existing
 priority stop path after the in-flight bus transaction settles. A serial stop
 requires working communication and is not a hardwired emergency-stop circuit.
-`cancel` does not send either stop command.
+`cancel` does not send either stop command, and it leaves an in-flight frame to settle.
+
+Stop does not need a prior `probe` of the selected axis or a manual `recover`. After a
+transport fault, the stop is accepted, starts one bounded recovery and is sent once.
+If recovery fails, the stop reports `not_transmitted`. A stop that was sent and lost its
+reply reports `unknown` and is not resent; send a new stop to try again. `stop fast` can
+escalate a running `stop normal`.
 
 `help stop` and `help motion-profile` describe the exact typed routes.
 Use `help move` for the full advanced move grammar (`@1 help move` for JSON). Existing `move relative|absolute|angle`
@@ -197,7 +204,9 @@ commands and public C++ requests remain available.
 These commands keep the same prerequisites and sequence as the regular library
 API. No motion or setting changes occur merely by opening the console or asking
 for help. `recover` repairs host transport only, and `stats reset` clears host counters.
-Neither command replays a motor write or erases an uncertain outcome.
+Neither command replays a motor write or erases an uncertain outcome. A stop already
+waiting for recovery is sent afterwards, for the first time. A new `recover` releases
+the previous delivered recovery result.
 
 ## Diagnostics
 
@@ -260,7 +269,7 @@ request completed at subdivision 1600 / 2000 rpm and 51200 / 60 rpm. Use
 `subdivision 1600` for the tested 2000-rpm path; changing subdivision explicitly establishes a new session zero.
 The exact drive cause remains [open with evidence](archive/reports/2026-10-06_completion_discrepancy.md).
 
-Normal stop allows up to three seconds of bounded status observation so the documented two-second deceleration can finish. Fast stop keeps its existing policy. A deadline still means completion was not established; no stop is replayed automatically. See the [measured stop correction](archive/reports/2026-10-06_normal_stop_budget.md).
+Normal stop allows at least three seconds of bounded status observation so the documented two-second deceleration can finish. Both stops have a fixed deadline that also allows one recovery. A deadline still means completion was not established; no stop is replayed automatically. See the [measured stop correction](archive/reports/2026-10-06_normal_stop_budget.md).
 
 ### Default speed boundary
 

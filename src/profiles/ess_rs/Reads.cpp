@@ -182,7 +182,7 @@ Status advanceRead(ReadContext& context, const ReadEvent& event, uint64_t nowUs)
     if (event.txAccepted > READ_REQUEST_LEN)
         return invalid(ReadError::INVALID_EVENT, "invalid transport evidence envelope");
     if (event.kind == ReadEventKind::FRAME) {
-        if (!event.frame || (event.qualified && (event.earliestUs < context.servicedUs ||
+        if (!event.frame || event.txAccepted != READ_REQUEST_LEN || (event.qualified && (event.earliestUs < context.servicedUs ||
             event.earliestUs > event.latestUs || event.latestUs > nowUs)) ||
             (!event.qualified && (event.earliestUs || event.latestUs)))
             return invalid(ReadError::INVALID_EVENT, "invalid frame event envelope");

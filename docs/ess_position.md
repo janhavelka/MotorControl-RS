@@ -558,7 +558,16 @@ RUNNING is accepted. The usual RUNNING path also requires zero reported speed
 when feedback is available. The window is not documented as an atomic internal
 snapshot; the two reports do not claim exact drive sample timing.
 
-`positionConfirmed`, `observedPosition`, `observedSpeed` and
+The RUNNING path has no such exact requirement, because physically tested moves
+report raw delta 99 for 100 commands. When it completes with a final report that
+differs from the known endpoint, `MoveContext::positionMismatch` is set, JSON
+`position_mismatch` is `true` and the human report says so. Completion stays
+`OBSERVED` and `positionConfirmed` keeps its meaning: this exposes the difference
+without judging it. No tolerance is applied, since the `0x010B` window (function
+manual p78, default 5) has no documented unit. Python accepts and retains the field,
+checking only that it agrees with the checked feedback.
+
+`positionConfirmed`, `positionMismatch`, `observedPosition`, `observedSpeed` and
 `positionMatchEvidence` preserve this proof. `ActionEvidence` retains up to 19
 bytes, covering the full reply. JSON exposes the policy, confirmation and both
 reports; Python checks CRC, correlation, ordering and endpoint agreement.
@@ -568,6 +577,18 @@ standalone's boot-coordinate convention and a known stationary reference.
 Direct C++ `moveBy`/`moveTo`/`submitMove` and advanced CLI moves leave this
 fallback disabled; they require the observed RUNNING transition. Direct users
 of the core may explicitly supply the qualified prerequisites described above.
+
+## Target range
+
+Typed preparation, `PositionCommand` and `buildWritePositionProfile` reject a target
+magnitude above `0x0FFFFFFF` before any traffic. Function manual p70 prints the
+`0x0024/25` range as `-0xFFFFFFF ~ 0xFFFFFFFF`, whose bounds differ in width, and p12
+answers out-of-range data with exception 07. The symmetric bound is an interpretation
+of that malformed row, not a measured limit, and it narrows the signed 32-bit encoding.
+Raw codecs still validate wire shape only.
+
+Any established reference supplied to a relative or absolute preparation must be idle,
+stationary ACTUAL evidence. A relative request can still omit it when it needs no endpoint.
 
 The [firmware 0x0029 investigation](reports/2026-10-07_position_completion.md)
 records short-move success and remaining high-subdivision failures. Exact

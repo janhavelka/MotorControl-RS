@@ -194,6 +194,21 @@ void rejectionAndUncertainty() {
     b = reply(1, 1); e = frame(c, b.data(), b.size(), 350); e.transport.executionUnknown = true;
     assert(Ess::advanceCommunication(c, e, 370));
     assert(c.outcome == Ess::CommunicationOutcome::UNCONFIRMED_RESPONSE && !c.readbackKnown && !c.observedActiveKnown && c.uncertain);
+    // K-09: a later contradiction reopens uncertainty whenever effects are possible.
+    c = operation(); ack(c); confirm(c, false, 1);
+    assert(c.outcome == Ess::CommunicationOutcome::CONFIRMED && !c.uncertain);
+    assert(Ess::prepareCommunicationConfirmation(c, c.beforeTarget, c.beforeSerial, 1400, 2000));
+    b = reply(1, 0);
+    assert(Ess::advanceCommunication(c, frame(c, b.data(), b.size(), 1500), 1520));
+    assert(c.outcome == Ess::CommunicationOutcome::READBACK_MISMATCH && c.uncertain && c.effects);
+    c = operation(); b = {1, 0x86, 3}; crc(b);
+    assert(Ess::advanceCommunication(c, frame(c, b.data(), b.size()), 220));
+    assert(c.execution == ActionExecution::REJECTED && !c.uncertain);
+    confirm(c, false, 0);
+    assert(c.outcome == Ess::CommunicationOutcome::READBACK_MISMATCH && c.uncertain);
+    c = operation(); assert(Ess::advanceCommunication(c, event(c, ReadEventKind::CANCEL), 120)); assert(!c.effects);
+    confirm(c, false, 0);
+    assert(c.outcome == Ess::CommunicationOutcome::READBACK_MISMATCH && !c.uncertain); // Never transmitted.
     c = operation(); e = event(c, ReadEventKind::CANCEL); e.transport.txAccepted = 3;
     assert(Ess::advanceCommunication(c, e, 120)); assert(c.effects && c.execution == ActionExecution::UNKNOWN);
     c = operation(); e = event(c, ReadEventKind::CANCEL);

@@ -463,7 +463,8 @@ void testRejectedAndAcceptedStopDuringPreparation() {
     fresh(); command("@1 moveby 100\n");
     ActionRequest stop; stop.kind=ActionKind::STOP; stop.stop.behavior=StopBehavior::CONFIGURED_DECELERATION;
     uint32_t stopId=0;
-    assert(startAction(app,2,1,stop,stopId)==Probe::Action::UNAVAILABLE);
+    // A refused stop for an unknown other address leaves the preparation running.
+    assert(startAction(app,2,2,stop,stopId)==Probe::Action::UNAVAILABLE);
     assert(!app->simple.cancelled && app->simple.view.pending);
     simpleReadStep(); // First checked reply establishes the physical target.
     assert(startAction(app,3,1,stop,stopId)==Probe::Action::OK);
@@ -793,6 +794,21 @@ void testShortMoveUsesFreshExactEndpoint() {
     assert(app->simple.view.ok && c.positionConfirmed && !c.runningObserved);
     assert(Serial.output.find("Final position verified twice") != std::string::npos);
 }
+void testRunningCompletionReportsEndpointMismatch() {
+    // K-01: tested moves report delta 99 for 100 commands, so this stays a success, but visibly.
+    fresh(); command("@7 moveby 10 steps\n"); prepareSimple(true,100);
+    const auto child = app->simple.view.moveOperationId; assert(child);
+    const auto& c = findRecord(*app,child)->move;
+    moveStep(child); moveStep(child);
+    moveStep(child,simpleObservation(child,4)); assert(app->simple.view.pending);
+    moveStep(child,registers(1,{0,1,0,0,0,109,0})); pump(1000);
+    assert(app->simple.view.ok && c.outcome == ActionOutcome::OBSERVED);
+    assert(c.positionMismatch && !c.positionConfirmed && c.observedPosition == 109);
+    assert(Serial.output.find("\"position_mismatch\":true") != std::string::npos);
+    assert(Serial.output.find("\"position_confirmed\":false") != std::string::npos);
+    Serial.output.clear(); command("@8 result " + std::to_string(child) + "\n");
+    assert(Serial.output.find("\"position_mismatch\":true,\"observed_position\":109") != std::string::npos);
+}
 void testDefaultPositionBoundary() {
     for (const char* settings : {"speed 2001\n", "accel 99\n", "decel 99\n"}) {
         fresh(); command(settings); command("moveby 90 deg\n"); prepareSimple(); pump(1000);
@@ -835,5 +851,6 @@ int main() {
     testDesiredScaleDoesNotCrossTargets();
     testExplicitAxisScaleSupersedesSimpleDeclaration();
     testFailedReadIsInspectableAndOwned();
+    testRunningCompletionReportsEndpointMismatch();
     std::puts("Simple motion application tests passed");
 }

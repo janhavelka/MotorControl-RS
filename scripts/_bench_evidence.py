@@ -58,6 +58,24 @@ def evidence_age_deadline(observed_us: int, maximum_age_us: int) -> int:
     return min(2**64 - 1, observed_us + maximum_age_us) if maximum_age_us else 2**64 - 1
 
 
+def write_rejected(code: int) -> bool:
+    """Function manual p12 documents 01..07, but 05 is a read-range error, not a refused write."""
+    return 1 <= code <= 7 and code != 5
+
+
+def home_inputs_permit(method: int, required: int, functions, wiring, inputs: int) -> bool:
+    """Forbidden logical inputs, independent of which physical branch the drive takes."""
+    for i, (function, wire) in enumerate(zip(functions, wiring)):
+        active = inputs & (1 << i)
+        if function in (2, 3) and active and method != 35 and not required & (1 << (function - 1)):
+            return False  # A limit outside the path contradicts it; an unneeded origin does not.
+        if 4 <= function <= 6 and active:
+            return False  # Release, stop and emergency stop interrupt any method.
+        if 7 <= function <= 13 and (active or wire != 1):
+            return False  # A motion trigger must be declared undriven.
+    return True
+
+
 def wire_crc(data: bytes) -> int:
     """Check retained read-only fixture bytes independently of firmware parsing."""
     crc = 0xFFFF
@@ -704,6 +722,7 @@ def check_action(item: dict, command: str, address: int | None, policy: str | No
         require(type(item.get("device_position")) is int and item["device_position"] == 0 and item.get("position_clear_qualified") is True,
                 "device position clear was not zero-only and qualified")
         require(item["observation_known"] or item.get("raw_position") is None, "absent clear observation publishes a counter")
+        require(item["observation_known"] or item.get("raw_position_words") is None, "absent clear observation publishes words")
     evidence = {}
     for name in ("write_evidence", "last_observation", "failure_evidence"):
         entry = item.get(name)
@@ -765,7 +784,7 @@ def check_action(item: dict, command: str, address: int | None, policy: str | No
                     "write echo differs from requested action")
         else:
             require(len(raw) == 5 and raw[:2] == bytes((item["address"], 0x86))
-                    and 1 <= raw[2] <= 7 and write["detail"] == raw[2]
+                    and write_rejected(raw[2]) and write["detail"] == raw[2]
                     and write["status"] == "EXCEPTION" and write["frame_error"] == 10,
                     "device rejection lacks checked documented exception")
     elif item["execution"] == "not_transmitted":
@@ -773,7 +792,7 @@ def check_action(item: dict, command: str, address: int | None, policy: str | No
     else:
         require(write["tx_accepted"] > 0 or write["execution_unknown"], "unknown execution lacks transmission uncertainty")
         require(not (write["qualified"] and write["response_confirmed"]
-                     and (write["status"] == "OK" or (write["status"] == "EXCEPTION" and 1 <= write["detail"] <= 7))),
+                     and (write["status"] == "OK" or (write["status"] == "EXCEPTION" and write_rejected(write["detail"])))),
                 "unknown execution contradicts a checked acknowledgement or documented rejection")
     if item["observation_known"]:
         obs, raw = evidence["last_observation"]
@@ -789,6 +808,8 @@ def check_action(item: dict, command: str, address: int | None, policy: str | No
             require(item.get("raw_alarm") is None and item.get("raw_motion") is None and
                     type(item.get("raw_position")) is int and item["raw_position"] == (alarm << 16 | motion),
                     "clear-position observation differs from retained RX")
+            require("raw_position_words" not in item or item["raw_position_words"] == [alarm, motion],
+                    "clear-position words differ from retained RX")
             observed = item["raw_position"] == 0
         else:
             require(type(item.get("raw_alarm")) is int and item["raw_alarm"] == alarm
@@ -883,7 +904,7 @@ def check_position_interrupt(item: dict, address: int | None, original_id: int |
     require(not any(key in item for key in ("polls", "last_observation", "activity_evidence", "staging_evidence",
                 "verification_evidence", "requested", "reference", "prerequisites", "raw_alarm", "raw_motion",
                 "endpoint_native", "displacement_native", "effective_native", "observed_position", "observed_speed",
-                "position_confirmed", "position_feedback_matches_command", "position_match_evidence", "raw_position")),
+                "position_confirmed", "position_mismatch", "position_feedback_matches_command", "position_match_evidence", "raw_position")),
             "native retrigger includes observed-move evidence")
     require(type(item.get("interrupted_by_stop")) is bool and type(item.get("uncertain")) is bool and
             integer(item.get("trigger_step"), 1, 1), "state evidence is missing")
@@ -965,7 +986,7 @@ def check_position_interrupt(item: dict, address: int | None, original_id: int |
         execution = "not_transmitted"
     elif trigger["event"] == 0 and trigger["qualified"] and trigger["response_confirmed"] and trigger["status"] == "OK":
         execution = "acknowledged"
-    elif trigger["event"] == 0 and trigger["qualified"] and trigger["response_confirmed"] and trigger["status"] == "EXCEPTION" and 1 <= trigger["detail"] <= 7:
+    elif trigger["event"] == 0 and trigger["qualified"] and trigger["response_confirmed"] and trigger["status"] == "EXCEPTION" and write_rejected(trigger["detail"]):
         execution = "rejected"
     else:
         execution = "unknown"
@@ -1234,13 +1255,13 @@ def check_move(item: dict, address: int | None, arguments: tuple[str, ...] | Non
             require(not empty and entry["qualified"] and entry["response_confirmed"] and entry["tx_complete"] and
                     entry["status"] == "EXCEPTION" and entry["frame_error"] == 10 and len(raw) == 5 and
                     raw[:2] == bytes((item["address"], (stage_function | 0x80) if execution == "setup_execution" else 0x86)) and
-                    1 <= raw[2] <= 7 and raw[2] == entry["detail"] and wire_crc(raw) == 0, name + " rejection is unproven")
+                    write_rejected(raw[2]) and raw[2] == entry["detail"] and wire_crc(raw) == 0, name + " rejection is unproven")
         elif item[execution] == "not_transmitted":
             require(entry["tx_accepted"] == 0 and not entry["execution_unknown"], name + " contradicts non-transmission")
         else:
             require(not empty and (entry["tx_accepted"] > 0 or entry["execution_unknown"]), name + " uncertainty lacks TX")
             require(not (entry["event"] == 0 and entry["qualified"] and entry["response_confirmed"] and
-                (entry["status"] == "OK" or (entry["status"] == "EXCEPTION" and 1 <= entry["detail"] <= 7))),
+                (entry["status"] == "OK" or (entry["status"] == "EXCEPTION" and write_rejected(entry["detail"])))),
                 name + " unknown execution contradicts checked acknowledgement/rejection")
     require(item["staging_applied"] == (item["setup_execution"] == "acknowledged"), "staging validity differs")
     stage, trigger = evidence["staging_evidence"][0], evidence["trigger_evidence"][0]
@@ -1301,6 +1322,14 @@ def check_move(item: dict, address: int | None, arguments: tuple[str, ...] | Non
                 int.from_bytes(match_raw[3:5], "big") == 0 and int.from_bytes(match_raw[5:7], "big") & 0x7D == 1 and
                 match_raw[11:17] == raw[11:17] and item["observed_speed"] == 0 and
                 item["observed_position"] == item["endpoint_native"], "completion lacks two exact stopped endpoint reports")
+    # Additive evidence: a differing final report is retained, never a rejection.
+    # Tested moves report delta 99 for 100 commands and the arrival window's unit is undocumented.
+    position_mismatch = item.get("position_mismatch", False)
+    require(type(position_mismatch) is bool and
+            (not position_mismatch or (item["ok"] and position_feedback and not position_confirmed)), "invalid endpoint mismatch policy")
+    if "position_mismatch" in item and position_feedback and item["ok"]:
+        require(position_mismatch == (item["observed_position"] != item["endpoint_native"]),
+                "endpoint mismatch differs from checked feedback")
     if item["ok"]:
         require(not position_feedback or item["observed_speed"] == 0, "completion reports nonzero speed")
         require((position_confirmed or (item["running_observed"] and activity["delivered_us"] < observed["earliest_us"])) and item["observation_known"] and item["uncertain"] is False and
@@ -1446,10 +1475,10 @@ def check_velocity(item: dict, address: int | None, arguments: tuple[str, ...] |
         elif execution == "unknown":
             require(not empty and (e["tx_accepted"] > 0 or e["execution_unknown"]) and not
                     (e["event"] == 0 and e["qualified"] and e["response_confirmed"] and
-                     (e["status"] == "OK" or (e["status"] == "EXCEPTION" and 1 <= e["detail"] <= 7))), name + " uncertainty absent or contradicts checked reply")
+                     (e["status"] == "OK" or (e["status"] == "EXCEPTION" and write_rejected(e["detail"])))), name + " uncertainty absent or contradicts checked reply")
         else:
             require(not empty and e["qualified"] and e["response_confirmed"] and e["status"] == "EXCEPTION" and e["frame_error"] == 10 and
-                    len(raw) == 5 and raw[:2] == bytes((item["address"], prefix[1] | 128)) and 1 <= raw[2] <= 7 and e["detail"] == raw[2] and wire_crc(raw) == 0,
+                    len(raw) == 5 and raw[:2] == bytes((item["address"], prefix[1] | 128)) and write_rejected(raw[2]) and e["detail"] == raw[2] and wire_crc(raw) == 0,
                     name + " rejection absent")
     require(item["staging_applied"] == (item["setup_execution"] == "acknowledged"), "staging validity differs")
     if item["execution"] != "not_transmitted": require(item["staging_applied"], "start without applied setup")
@@ -1585,14 +1614,13 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
             require(uint(q.get("input_polarity"), 15) and uint(q.get("raw_inputs"), 15) and
                     uint(q.get("available_inputs"), 7), "input binding is invalid")
             functions, wiring = q.get("input_functions"), q.get("input_wiring")
-            require(isinstance(functions, list) and len(functions) == 4 and all(uint(v, 3) for v in functions) and
+            require(isinstance(functions, list) and len(functions) == 4 and all(uint(v, 17) for v in functions) and
                     isinstance(wiring, list) and len(wiring) == 4 and all(uint(v, 2) for v in wiring), "input configuration is invalid")
             available = 0
             for function, wire in zip(functions, wiring):
-                if function and wire == 2: available |= 1 << (function - 1)
+                if 1 <= function <= 3 and wire == 2: available |= 1 << (function - 1)
             require(available == q["available_inputs"] and available & required_inputs == required_inputs and
-                    not any(function and not required_inputs & (1 << (function - 1)) and
-                            q["raw_inputs"] & (1 << i) for i, function in enumerate(functions)),
+                    home_inputs_permit(item["method"], required_inputs, functions, wiring, q["raw_inputs"]),
                     "input qualification contradicts required method signals")
         require(not revoked or (not item["ok"] and item["outcome"] == "cancelled" and item.get("detail") == 33),
                 "revocation did not prevent success")
@@ -1603,8 +1631,7 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
     def inputs_permit(raw):
         if not observe_inputs: return True
         inputs = int.from_bytes(raw[7:9], "big")
-        return inputs <= 15 and not any(function and not required_inputs & (1 << (function - 1)) and inputs & (1 << i)
-                                       for i, function in enumerate(q["input_functions"]))
+        return inputs <= 15 and home_inputs_permit(item["method"], required_inputs, q["input_functions"], q["input_wiring"], inputs)
     def observation_permits_continuation(raw):
         if len(raw) != status_length or raw[:3] != bytes((item["address"], 3, status_bytes)) or wire_crc(raw): return False
         motion = int.from_bytes(raw[5:7], "big")
@@ -1659,7 +1686,7 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
         elif execution == "rejected":
             require(e["qualified"] and e["response_confirmed"] and e["tx_complete"] and e["event"] == 0 and
                     e["status"] == "EXCEPTION" and e["frame_error"] == 10 and len(raw) == 5 and raw[:2] == bytes((item["address"], prefix[1] | 128)) and
-                    1 <= raw[2] <= 7 and raw[2] == e["detail"] and wire_crc(raw) == 0, field + " lacks documented exception")
+                    write_rejected(raw[2]) and raw[2] == e["detail"] and wire_crc(raw) == 0, field + " lacks documented exception")
         else: require(e["tx_accepted"] > 0 or e["execution_unknown"], field + " lacks uncertainty")
         if e["qualified"] and e["status"] == "OK":
             late = e["latest_us"] > write_cap

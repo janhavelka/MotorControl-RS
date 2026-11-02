@@ -200,8 +200,11 @@ alone cannot bound elapsed time. Measure service, capture and cleanup budgets
 on the actual consumer and workload; the [bench reports](hardware_bench.md)
 record finite observations, not universal upper bounds.
 
-A fault requires explicit bounded recovery and fresh urgent submission; recovery
-cancels queued urgent work, so the old request has no delivery bound. Full urgent
+Inside the owner, a fault requires explicit bounded recovery and fresh urgent
+submission; recovery cancels queued urgent work, so the old request has no delivery
+bound. The standalone application performs that sequence for a stop: it holds a
+never-transmitted stop, starts one bounded recovery and submits the stop once, under
+the deadline fixed at admission. See [ESS actions](ess_actions.md). Full urgent
 reservations, expiry, stalled TX/DE, unbounded service/capture gaps or an unresolved
 uncertain operation can prevent delivery. The owner schedules typed
 [ESS stop operations](ess_actions.md) supplied by the application; it does not

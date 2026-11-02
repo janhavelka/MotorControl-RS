@@ -1006,6 +1006,46 @@ class Framing(unittest.TestCase):
         bad=copy.deepcopy(t);bad["position_match_evidence"]["delivered_us"]=4100
         with self.assertRaises(bench.BenchError): bench.Console._check_move(bad,1,None)
 
+    def test_running_completion_retains_endpoint_mismatch(self):
+        t = move_terminal(1)
+        t.update(position_feedback_matches_command=True, position_confirmed=False, position_mismatch=True,
+                 observed_position=1099, observed_speed=0, endpoint_known=True, endpoint_native=1100)
+        t["reference"].update(target=1, generation=9, configuration_generation=3, native_known=True,
+                             native_position=100, source=1, observed_us=900, maximum_age_us=10000)
+        def position_frame(e, pos, speed, flags):
+            raw = bytes([1,3,14,0,0,0,flags,0,0,0,0]) + pos.to_bytes(4,'big') + speed.to_bytes(2,'big')
+            raw += bench.wire_crc(raw).to_bytes(2,'little')
+            e.update(raw_hex=raw.hex(), received_length=len(raw))
+        position_frame(t["activity_evidence"], 500, 60, 4); position_frame(t["last_observation"], 1099, 0, 1)
+        bench.Console._check_move(t,1,None)  # Retained and accepted, never a rejection.
+        older = copy.deepcopy(t); del older["position_mismatch"]
+        bench.Console._check_move(older,1,None)  # Records without the additive field stay readable.
+        for field, value in (("position_mismatch",False),("position_mismatch",1),("position_feedback_matches_command",False)):
+            bad=copy.deepcopy(t);bad[field]=value
+            with self.assertRaises(bench.BenchError): bench.Console._check_move(bad,1,None)
+        bad=copy.deepcopy(t);bad["position_confirmed"]=True;bad["position_match_evidence"]=copy.deepcopy(t["last_observation"])
+        with self.assertRaises(bench.BenchError): bench.Console._check_move(bad,1,None)
+        same=copy.deepcopy(t);same["endpoint_native"]=1099
+        with self.assertRaises(bench.BenchError): bench.Console._check_move(same,1,None)
+
+    def test_home_input_rule_follows_each_method_path(self):
+        import _bench_evidence as evidence
+        permit = lambda method, required, function, wiring, level: evidence.home_inputs_permit(
+            method, required, [function], [wiring], level)
+        CONNECTED, UNCONNECTED = 2, 1
+        for method, required in ((1, 4), (2, 2), (17, 4), (33, 0), (34, 0), (35, 0), (19, 1)):
+            self.assertTrue(permit(method, required, 1, UNCONNECTED, 1), "origin is never a fault")
+        self.assertFalse(permit(17, 4, 2, CONNECTED, 1)); self.assertTrue(permit(17, 4, 3, CONNECTED, 1))
+        self.assertFalse(permit(2, 2, 3, CONNECTED, 1)); self.assertFalse(permit(33, 0, 2, CONNECTED, 1))
+        self.assertTrue(permit(35, 0, 2, CONNECTED, 1)); self.assertTrue(permit(35, 0, 3, CONNECTED, 1))
+        for function in (4, 5, 6):
+            self.assertTrue(permit(17, 4, function, CONNECTED, 0))
+            for method, required in ((17, 4), (35, 0)): self.assertFalse(permit(method, required, function, CONNECTED, 1))
+        for function in range(7, 14):
+            self.assertTrue(permit(35, 0, function, UNCONNECTED, 0))
+            self.assertFalse(permit(35, 0, function, CONNECTED, 0)); self.assertFalse(permit(35, 0, function, UNCONNECTED, 1))
+        for function in range(14, 18): self.assertTrue(permit(17, 4, function, CONNECTED, 1))
+
     HOME_ARGS = ("35", "60", "30", "100", "zero")
 
     def test_evidence_limits_stop_with_one_retained_failure_record(self):
@@ -2516,6 +2556,82 @@ class Framing(unittest.TestCase):
         self.assertEqual(events[-1][1]["cleanup"], "not_required")
         self.assertFalse(events[-1][1]["ok"])
 
+    def refused_cleanup_session(self, refusals, recover_ok=True):
+        fixture = MoveSerial()
+        def handler(request_id, command, args):
+            if command == "stop" and refusals:
+                return encoded(reply(request_id, "stop", ok=False, result=refusals.pop(0), address=1))
+            if command == "recover" and not recover_ok:
+                return encoded(reply(request_id, "recover", ok=False, result="results_full"))
+            return fixture(request_id, command, args)
+        console = self.session(handler)
+        events = []; console.emit = lambda event, **data: events.append((event, data))
+        return console, events
+
+    def test_move_cleanup_refused_stop_does_one_recover_and_one_fresh_stop(self):
+        console, events = self.refused_cleanup_session(["busy"])
+        bench.move_campaign(console, move_args=self.MOVE_ARGS, cleanup_stop="fast", timeout_s=3, address=1)
+        commands = [line.decode().split()[1] for line in self.port.writes]
+        self.assertEqual(commands.count("move"), 1)  # The original is never replayed.
+        self.assertEqual(commands.count("stop"), 2)
+        self.assertEqual(commands.count("recover"), 1)
+        self.assertLess(commands.index("recover"), len(commands) - 1 - commands[::-1].index("stop"))
+        summary = events[-1][1]
+        attempts = summary["cleanup_attempts"]
+        self.assertEqual([item.get("result") for item in attempts[:1]], ["busy"])
+        self.assertEqual(attempts[1]["type"], "recovery")
+        self.assertEqual(attempts[2]["type"], "action")
+        self.assertIs(summary["stop_result"], attempts[2])
+        self.assertEqual(summary["cleanup"], "drive_reported_standstill")
+        self.assertTrue(summary["ok"])
+
+    def test_move_cleanup_second_refusal_ends_without_a_third_stop(self):
+        console, events = self.refused_cleanup_session(["busy", "busy", "busy"])
+        with self.assertRaises(bench.BenchError):
+            bench.move_campaign(console, move_args=self.MOVE_ARGS, cleanup_stop="fast", timeout_s=3, address=1)
+        commands = [line.decode().split()[1] for line in self.port.writes]
+        self.assertEqual((commands.count("move"), commands.count("stop"), commands.count("recover")), (1, 2, 1))
+        summary = events[-1][1]
+        self.assertEqual(len(summary["cleanup_attempts"]), 3)
+        self.assertEqual(summary["cleanup"], "unknown")
+        self.assertFalse(summary["ok"])
+
+    def test_move_cleanup_refused_recover_sends_no_fresh_stop(self):
+        console, events = self.refused_cleanup_session(["busy"], recover_ok=False)
+        with self.assertRaises(bench.BenchError):
+            bench.move_campaign(console, move_args=self.MOVE_ARGS, cleanup_stop="normal", timeout_s=3, address=1)
+        commands = [line.decode().split()[1] for line in self.port.writes]
+        self.assertEqual((commands.count("stop"), commands.count("recover")), (1, 1))
+        self.assertEqual(len(events[-1][1]["cleanup_attempts"]), 2)
+        self.assertEqual(events[-1][1]["cleanup"], "unknown")
+
+    def test_move_cleanup_accepted_failed_stop_is_never_resent(self):
+        fixture = MoveSerial()
+        def handler(request_id, command, args):
+            if command == "stop":
+                terminal = action_terminal(request_id, "stop", args[0])
+                terminal.update(ok=False, state="failed", outcome="transport_error", execution="unknown", completion="not_observed", status="ILLEGAL_VALUE")
+                fixture.retained[request_id + 100] = terminal
+                return encoded(reply(request_id, "stop", result="accepted", operation_id=request_id + 100, address=1)) + encoded(terminal)
+            return fixture(request_id, command, args)
+        console = self.session(handler)
+        events = []; console.emit = lambda event, **data: events.append((event, data))
+        with self.assertRaises(bench.BenchError):
+            bench.move_campaign(console, move_args=self.MOVE_ARGS, cleanup_stop="fast", timeout_s=3, address=1)
+        commands = [line.decode().split()[1] for line in self.port.writes]
+        self.assertEqual((commands.count("stop"), commands.count("recover")), (1, 0))
+
+    def test_recover_and_stop_quotas_follow_firmware_release_and_escalation(self):
+        console = self.session(MoveSerial())
+        first = console.begin("recover"); console.wait(first)
+        second = console.begin("recover"); console.wait(second)  # Firmware released the first.
+        self.assertTrue(first.released)
+        normal = console.begin("stop", address=1, stop_policy="normal"); console.wait(normal)
+        fast = console.begin("stop", address=1, stop_policy="fast"); console.wait(fast)
+        self.assertEqual(len(console.operations), 3)
+        with self.assertRaisesRegex(bench.BenchError, "quota"):
+            console.begin("stop", address=1, stop_policy="fast")
+
     def test_move_campaign_poisoned_reply_retains_unknown_cleanup(self):
         console = self.session(MoveSerial(lambda t: t.update(running_observed=False)))
         events = []; console.emit = lambda event, **data: events.append((event, data))
@@ -3297,11 +3413,11 @@ class Framing(unittest.TestCase):
         self.assertLess(result["last_observation"]["latest_us"], result["deadline_us"])
 
     def test_action_exception_classification_preserves_unknown_codes(self):
-        for code in (0, 1, 7, 8, 255):
+        for code in (0, 1, 5, 7, 8, 255):
             def exception(t):
                 raw = bytes((1, 0x86, code))
                 t.update(ok=False, state="failed", outcome="reply_error",
-                    execution="rejected" if 1 <= code <= 7 else "unknown", completion="not_observed",
+                    execution="rejected" if code in (1, 2, 3, 4, 6, 7) else "unknown", completion="not_observed",
                     observation_known=False, raw_alarm=None, raw_motion=None, polls=0, serviced_us=1250,
                     last_observation=copy.deepcopy(t["failure_evidence"]))
                 t["write_evidence"].update(raw_hex=(raw + bench.wire_crc(raw).to_bytes(2, "little")).hex(),
@@ -3311,7 +3427,7 @@ class Framing(unittest.TestCase):
                 console = self.session(ActionSerial(exception))
                 result = console.command("enable", address=1)
                 self.assertEqual(result["write_evidence"]["detail"], code)
-                if code not in range(1, 8):
+                if code not in (1, 2, 3, 4, 6, 7):
                     result["execution"] = "rejected"
                     with self.assertRaises(bench.BenchError): bench.Console._check_action(result, "enable", 1, None)
                 else:

@@ -15,6 +15,8 @@ constexpr uint16_t FAULTS = static_cast<uint16_t>(MotionStatusBit::ALARM) |
     static_cast<uint16_t>(MotionStatusBit::RELEASED) |
     static_cast<uint16_t>(MotionStatusBit::POSITIVE_SOFT_LIMIT) |
     static_cast<uint16_t>(MotionStatusBit::NEGATIVE_SOFT_LIMIT);
+constexpr uint8_t LIMIT_ROLES = static_cast<uint8_t>(HomeInput::POSITIVE_LIMIT) |
+    static_cast<uint8_t>(HomeInput::NEGATIVE_LIMIT);
 constexpr const char* COLLISION_UNRESOLVED = "negative method encoding, collision trajectory and conflicting parameter mappings are unresolved";
 // Explicit descriptors; numeric membership never enables an operation.
 const HomeMethodDescriptor METHODS[HOME_METHOD_COUNT] = {
@@ -37,7 +39,7 @@ const HomeMethodDescriptor METHODS[HOME_METHOD_COUNT] = {
     {HomingMethod::METHOD_13, HomeSupport::IMPLEMENTED, 5, true, true, "origin rising then first internal Z in positive low-speed direction; qualified origin and negative limit and index required"},
     {HomingMethod::METHOD_14, HomeSupport::IMPLEMENTED, 5, true, true, "origin falling then first internal Z in negative low-speed direction; qualified origin and negative limit and index required"},
     {HomingMethod::METHOD_17, HomeSupport::IMPLEMENTED, 4, false, true, "negative-limit release in positive low-speed direction; qualified limit required, no index"},
-    {HomingMethod::METHOD_18, HomeSupport::UNRESOLVED, 2, false, true, "positive-limit prose conflicts with negative-limit diagram labels"},
+    {HomingMethod::METHOD_18, HomeSupport::UNRESOLVED, 2, false, true, "heading, prose and trajectory say positive limit; negative-limit figure captions look like a caption error; sampled firmware input needs a switch fixture"},
     {HomingMethod::METHOD_19, HomeSupport::IMPLEMENTED, 1, false, true, "origin falling in negative low-speed direction; qualified origin required, no index"},
     {HomingMethod::METHOD_20, HomeSupport::IMPLEMENTED, 1, false, true, "origin rising in positive low-speed direction; qualified origin required, no index"},
     {HomingMethod::METHOD_21, HomeSupport::IMPLEMENTED, 1, false, true, "origin falling in positive low-speed direction; qualified origin required, no index"},
@@ -67,17 +69,33 @@ Status inputReadiness(const HomePrerequisites& p, uint16_t inputs) {
     if (p.inputPolarity & ~uint16_t(15) || inputs & ~uint16_t(15))
         return invalid(HomeError::INPUT_REQUIRED, "unknown input polarity or logical level bits");
     const auto* method = homeMethod(p.qualifiedMethod);
+    // A method's documented path uses only its required inputs. A limit outside them
+    // contradicts that path, while an origin it does not need is simply passed.
+    // Method 35 has no search trajectory, so no sensor level contradicts it.
+    const uint8_t forbidden = p.qualifiedMethod == HomingMethod::METHOD_35 ? 0 :
+        uint8_t(LIMIT_ROLES & ~method->requiredInputs);
     uint8_t available = 0;
     for (uint8_t i = 0; i < 4; ++i) {
         const uint16_t function = p.inputFunctions[i];
-        if (function > 3 || p.inputWiring[i] > InputWiring::CONNECTED)
-            return invalid(HomeError::INPUT_REQUIRED, "unqualified interfering input assignment or wiring");
-        const uint8_t role = function ? uint8_t(1u << (function - 1)) : 0;
-        if (role && p.inputWiring[i] == InputWiring::CONNECTED) available |= role;
+        if (function > 17 || p.inputWiring[i] > InputWiring::CONNECTED)
+            return invalid(HomeError::INPUT_REQUIRED, "unqualified input assignment or wiring");
         // INPUT_STATUS already represents logical validity. Physical limit
         // activation required by a trajectory is not a soft-limit fault.
-        if ((inputs & (1u << i)) && role && !(method->requiredInputs & role))
-            return invalid(HomeError::INPUT_REQUIRED, "unexpected active assigned input");
+        const bool active = inputs & (1u << i);
+        if (function && function <= 3) {
+            const uint8_t role = uint8_t(1u << (function - 1));
+            if (p.inputWiring[i] == InputWiring::CONNECTED) available |= role;
+            if (active && (forbidden & role))
+                return invalid(HomeError::INPUT_REQUIRED, "active limit input contradicts the method path");
+        } else if (function >= 4 && function <= 6) {
+            // Release, stop and emergency stop interrupt whichever method is running.
+            if (active) return invalid(HomeError::INPUT_REQUIRED, "active release or stop input interrupts home");
+        } else if (function >= 7 && function <= 13) {
+            // Position, speed, jog, home and segment triggers start motion the host cannot
+            // attribute, and an edge can fall between polls, so nothing may drive them.
+            if (active || p.inputWiring[i] != InputWiring::UNCONNECTED)
+                return invalid(HomeError::INPUT_REQUIRED, "motion trigger input is active or may be driven");
+        } // 0 has no function; segment selectors 14..17 act only through a trigger.
     }
     if (available != p.availableInputs || (available & method->requiredInputs) != method->requiredInputs)
         return invalid(HomeError::INPUT_REQUIRED, "required input function and declared wiring do not match qualification");
@@ -109,15 +127,6 @@ void finish(HomeContext& c, ActionOutcome outcome, Status status) {
 void wait(HomeContext& c, uint64_t nowUs) {
     ++c.step;
     c.eligibleUs = c.options.pollIntervalUs >= c.deadlineUs - nowUs ? c.deadlineUs : nowUs + c.options.pollIntervalUs;
-}
-ActionExecution execution(const ActionEvidence& evidence) {
-    if (!evidence.txAccepted && !evidence.executionUnknown) return ActionExecution::NOT_TRANSMITTED;
-    if (evidence.event == ReadEventKind::FRAME && evidence.qualified && evidence.responseConfirmed) {
-        if (evidence.status) return ActionExecution::ACKNOWLEDGED;
-        if (evidence.status.code == Err::EXCEPTION && evidence.status.detail >= 1 && evidence.status.detail <= 7)
-            return ActionExecution::REJECTED;
-    }
-    return ActionExecution::UNKNOWN;
 }
 } // namespace
 const HomeMethodDescriptor* homeMethodAt(uint8_t index) noexcept {
@@ -266,12 +275,14 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
     else if (event.kind == ReadEventKind::DEADLINE) evidence.status = expired(c);
     else evidence.status = failed(HomeError::TRANSPORT_FAILURE, "home transport failed");
     if (c.step == 0) {
-        c.stagingEvidence = evidence; c.setupExecution = execution(evidence);
+        c.stagingEvidence = evidence; c.setupExecution = Detail::classifyWrite(evidence);
         c.stagingApplied = c.setupExecution == ActionExecution::ACKNOWLEDGED;
-    } else if (c.step == 1) { c.triggerEvidence = evidence; c.execution = execution(evidence); }
+    } else if (c.step == 1) { c.triggerEvidence = evidence; c.execution = Detail::classifyWrite(evidence); }
     else if (c.phase == HomePhase::ZERO_CHECK) {
         c.zeroEvidence = evidence;
-        if (event.kind == ReadEventKind::FRAME && evidence.status) {
+        // Publish only what the zero decision below may use; zeroEvidence keeps every frame.
+        if (event.kind == ReadEventKind::FRAME && evidence.status && event.qualified && supplied.responseConfirmed &&
+            event.latestUs <= stepDeadline(c)) {
             c.rawPositionWords[0] = words[0]; c.rawPositionWords[1] = words[1];
         }
     } else if (c.qualificationRevoked) {
@@ -292,7 +303,7 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
         failed(HomeError::TIMING_UNQUALIFIED, "home closure timing is unqualified"));
     else if (event.latestUs > stepDeadline(c)) finish(c, ActionOutcome::DEADLINE, expired(c));
     else if (!evidence.status) finish(c, ActionOutcome::REPLY_ERROR, evidence.status);
-    else if (!supplied.responseConfirmed) finish(c, ActionOutcome::UNCONFIRMED_RESPONSE,
+    else if (!supplied.responseConfirmed || (c.step < 2 && event.executionUnknown)) finish(c, ActionOutcome::UNCONFIRMED_RESPONSE,
         failed(HomeError::UNCONFIRMED_RESPONSE, "frame source is not confirmed as the drive"));
     else if (c.step < 2) {
         if (nowUs >= c.deadlineUs) finish(c, ActionOutcome::DEADLINE, failed(HomeError::DEADLINE_EXPIRED, "no budget for next home step"));

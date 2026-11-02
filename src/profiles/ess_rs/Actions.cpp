@@ -186,16 +186,7 @@ Status advanceAction(ActionContext& c, const ActionEvent& supplied, uint64_t now
     } else evidence.status = failed(ActionError::DEADLINE_EXPIRED, "action deadline expired");
     if (c.step == 0) {
         c.writeEvidence = evidence;
-        c.execution = event.txAccepted || event.executionUnknown ? ActionExecution::UNKNOWN : ActionExecution::NOT_TRANSMITTED;
-        if (event.kind == ReadEventKind::FRAME && event.qualified && supplied.responseConfirmed) {
-            if (evidence.status) c.execution = ActionExecution::ACKNOWLEDGED;
-            // Function manual p12 defines only 01..07 as request errors. An
-            // undocumented exception retains its raw code without establishing
-            // that the drive rejected execution.
-            else if (evidence.status.code == Err::EXCEPTION &&
-                     evidence.status.detail >= 1 && evidence.status.detail <= 7)
-                c.execution = ActionExecution::REJECTED;
-        }
+        c.execution = Detail::classifyWrite(evidence);
     }
     c.servicedUs = nowUs;
     if (event.kind == ReadEventKind::CANCEL) finish(c, ActionOutcome::CANCELLED, evidence.status);
@@ -216,9 +207,10 @@ Status advanceAction(ActionContext& c, const ActionEvent& supplied, uint64_t now
     } else {
         ++c.polls;
         c.lastObservation = evidence; c.observationKnown = true;
-        if (c.request.kind == ActionKind::CLEAR_POSITION)
+        if (c.request.kind == ActionKind::CLEAR_POSITION) {
+            c.rawPositionWords[0] = words[0]; c.rawPositionWords[1] = words[1];
             c.rawPosition = (static_cast<uint32_t>(words[0]) << 16) | words[1];
-        else { c.rawAlarm = words[0]; c.rawMotion = words[1]; }
+        } else { c.rawAlarm = words[0]; c.rawMotion = words[1]; }
         if (observed(c, words[0], words[1])) {
             c.completion = ActionCompletion::OBSERVED;
             finish(c, ActionOutcome::OBSERVED, Ok());

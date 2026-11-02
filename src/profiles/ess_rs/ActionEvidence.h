@@ -26,4 +26,23 @@ inline void copyActionEvidence(ActionEvidence& evidence, const ActionEvent& supp
     evidence.length = event.length < ACTION_MAX_REPLY_BYTES ? event.length : ACTION_MAX_REPLY_BYTES;
     if (evidence.length) std::memcpy(evidence.raw, event.frame, evidence.length);
 }
+/** Shared classification of one settled ESS write reply. Evidence needs only the
+ * transport fields common to ActionEvidence and DriverEvidence. An echo proves
+ * acknowledgement only from a confirmed qualified frame without supplied execution
+ * uncertainty. Function manual p12 documents 01..07, but 05 is a read-range error:
+ * it is an unexpected reply to a write and does not establish that the drive refused
+ * it. Undocumented codes likewise retain UNKNOWN. onTime is the caller's own closure
+ * rule; modules without one treat a late checked reply as evidence of that reply. */
+template <class Evidence>
+inline ActionExecution classifyWrite(const Evidence& evidence, bool onTime = true) noexcept {
+    if (!evidence.txAccepted && !evidence.executionUnknown) return ActionExecution::NOT_TRANSMITTED;
+    if (evidence.event == ReadEventKind::FRAME && evidence.qualified && evidence.responseConfirmed &&
+        !evidence.executionUnknown && onTime) {
+        if (evidence.status) return ActionExecution::ACKNOWLEDGED;
+        if (evidence.status.code == Err::EXCEPTION && evidence.status.detail >= 1 &&
+            evidence.status.detail <= 7 && evidence.status.detail != 5)
+            return ActionExecution::REJECTED;
+    }
+    return ActionExecution::UNKNOWN;
+}
 }}} // namespace MotorControlRS::ESS_RS::Detail

@@ -1052,16 +1052,20 @@ void testActionRoutesAndStopPressure() {
     send(console, "enable\n"); assert(fake.actions == 0); fake.contains("busy");
     fake.blocked = true; send(console, "@500 status\n"); assert(console.outputPending());
     send(console, "@501 stop fast\n"); assert(fake.actions == 1);
-    send(console, "@502 stop normal\n"); assert(fake.actions == 1); // Reserved admission reply cannot be overwritten.
+    send(console, "@502 stop normal\n"); assert(fake.actions == 2); // Attempted, with its own retained admission reply.
     Ess::ActionContext stopped; stopped.operationId = fake.nextOperation - 1; stopped.request = fake.actionRequest;
+    stopped.operationId = fake.nextOperation - 2;
     stopped.state = Core::ActionState::SUCCEEDED; stopped.completion = Core::ActionCompletion::OBSERVED;
     assert(!console.reportAction(501, stopped.operationId, stopped));
     const auto before = fake.lines.size(); fake.blocked = false; assert(console.serviceOutput());
-    assert(fake.lines.size() == before + 2); fake.contains("\"id\":501"); fake.contains("accepted");
+    assert(fake.lines.size() == before + 3 && fake.lines[before + 1].find("\"id\":501") != std::string::npos);
+    fake.contains("\"id\":502"); fake.contains("accepted");
     assert(console.reportAction(501, stopped.operationId, stopped)); fake.contains("\"completion\":\"observed\"");
+    stopped.operationId = fake.nextOperation - 1;
+    assert(console.reportAction(502, stopped.operationId, stopped));
     // Failed stop admission is also retained under pressure and has no terminal.
     fake.actionResult = Probe::Action::TIMING_UNQUALIFIED; fake.blocked = true;
-    send(console, "@600 status\n@601 stop normal\n"); assert(fake.actions == 2);
+    send(console, "@600 status\n@601 stop normal\n"); assert(fake.actions == 3);
     fake.blocked = false; assert(console.serviceOutput()); fake.contains("timing_unqualified");
 }
 
@@ -1357,7 +1361,7 @@ void velocityFixtures() {
     prerequisites.accelerationTime = prerequisites.decelerationTime = 100;
     prerequisites.observedUs = 80; prerequisites.maximumAgeUs = 2000;
     prerequisites.rawMotion = 1;
-    ActionOptions options; options.pollIntervalUs = 100; options.maxPolls = 8;
+    ActionOptions options; options.pollIntervalUs = 100; options.maxPolls = 10; // Covers the 1000 us duration.
     const auto prepare = [&](uint64_t readinessAge, bool radians) {
         auto p = prerequisites; p.maximumAgeUs = readinessAge;
         auto r = request;

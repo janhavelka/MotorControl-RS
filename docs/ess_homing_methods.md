@@ -59,8 +59,12 @@ method's prerequisites, even if a favourable starting point can reach the
 origin without encountering it. The original diagrams define intermediate
 decelerations/reversals; the compact table does not replace those paths.
 Several `c)` captions incorrectly say the origin is inactive while depicting
-it active. Method 18 labels the figures “negative limit” despite a positive
-heading/prose; that discrepancy remains unresolved.
+it active. Method 18's heading, Origin and Deceleration lines, both prose branches
+and drawn trajectory (H forward then -L reverse, the shape of method 2 and the
+mirror of method 17) all say positive limit. Only its figure captions say
+“negative limit”, which reads as a caption error. Its support stays unresolved
+until a switch fixture confirms the input the firmware samples, because firmware
+that really used function 3 would run past the switch at high speed.
 
 The maintained inactive-caption/active-drawing conflicts are method 10 p43, 13 p48, 14 p50,
 26 p61, 29 p65 and 30 p67. Method 28 has a separate discrepancy: the p63(a)

@@ -551,6 +551,26 @@ void switchFailuresAndInterruption() {
         assert(copiedHome(id).outcome == result.outcome && sentCount() == writes);
     }
 }
+// H-01 through the application: terminals outside the method's path, on real readback.
+void limitHomeToleratesOriginAndReportsStopInput() {
+    const auto admitted = [](uint16_t second) {
+        fresh(); command("@89 wiring x0 connected\n");
+        checkedBaseline(17,true,0,3,0,second);
+        auto qualification = supplied(17); qualification.availableInputs = 4; qualification.indexQualified = false;
+        assert(installHomeQualification(qualification));
+        const auto id = admit(17); reply(id); reply(id); return id;
+    };
+    auto id = admitted(1); // X1 is an assigned origin the path passes.
+    reply(id,observed(4,2)); assert(view(id).pending);
+    reply(id,observed(3,0)); assert(view(id).homeContext->phase == ESS::HomePhase::ZERO_CHECK);
+    reply(id,words(0,0)); assert(copiedHome(id).state == ActionState::SUCCEEDED);
+    id = admitted(5); // X1 is a stop input: it interrupts, and the host adds no stop of its own.
+    reply(id,observed(4,2));
+    const auto interrupted = copiedHome(id);
+    assert(!view(id).pending && interrupted.state == ActionState::FAILED && interrupted.uncertain &&
+        interrupted.status.detail == static_cast<int32_t>(ESS::HomeError::INPUT_REQUIRED));
+    const auto writes = sentCount(); pump(); assert(sentCount() == writes);
+}
 void switchObservationBounds() {
     for (const int method : {3,4,5,6,7,8,9,10,11,12,13,14,19,20,21,22,23,24,25,26,27,28,29,30}) for (unsigned scenario = 0; scenario < 6; ++scenario) {
         const bool assisted = (method >= 7 && method <= 14) || (method >= 23 && method <= 30);
@@ -1331,6 +1351,7 @@ int main(int argc, char** argv) {
     limitAssistedBranchesThroughRoutes(POSITIVE_BRANCHES,3,2);
     limitAssistedBranchesThroughRoutes(NEGATIVE_BRANCHES,5,3); limitAssistedAdmissionUsesBothInputs();
     switchAdmissionUsesCheckedFacts(); switchFailuresAndInterruption(); switchObservationBounds();
+    limitHomeToleratesOriginAndReportsStopInput();
     qualificationLifecycleAndBindings(); qualificationMappingAndLogicalInputs(); revocationAndCancellationConserveEvidence();
     qualificationConsoleInspection();
     queuedReadContradictionPreventsTrigger(); movingMethodsAndInsufficientObservations();

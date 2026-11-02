@@ -2,7 +2,53 @@
 
 ## Unreleased
 
+### Changed
+
+- A transport fault no longer refuses or loses a stop. A never-transmitted stop is
+  accepted, runs one bounded recovery through the existing path and is sent once under
+  a deadline fixed at admission. Failed recovery ends it `not_transmitted`. A transmitted
+  stop whose reply is lost stays `unknown` and is never resent automatically.
+- `cancel` and `monitor off` leave an in-flight frame to settle, so they do not interlock
+  the bus. Probe and capture transactions keep their existing cancellation.
+- `stop fast` can escalate a running `stop normal`, including past an undelivered report.
+  The firmware has two stop records, correlations and urgent slots; protocol 3 still
+  advertises `outstanding_capacity: 10`.
+- Stop admission no longer depends on ordinary result capacity. Delivered failed stop
+  evidence is overwritten, oldest first, and counted in `drv.stop_evidence_overwritten`.
+- The first stop for the selected axis does not need a prior probe.
+- A new `recover` releases a delivered terminal recovery result. An automatic recovery
+  has no report and is visible through `drv.automatic_recovery_operation_id` and `result`.
+- A second stop arriving while a stop reply is pending is attempted and answered.
+- `bench_probe.py` cleanup answers a refused stop with one `recover` and one fresh stop,
+  retaining every result in `cleanup_attempts`. Stop commands wait for the firmware's
+  longer stop budget.
+- Homing input checks are per method, at admission and on every poll. An assigned
+  origin is never a fault for 1, 2, 17, 33 and 34; a limit outside the method's
+  path still fails; method 35 forbids no sensor. Unused terminals may hold release
+  or stop functions, which fail while active, and undriven motion triggers.
+- A write reply is classified in one place. Exception 05 is now UNKNOWN rather than
+  REJECTED for position, velocity, homing, action and driver writes, so a velocity
+  start answered with 05 stops. Supplied execution uncertainty is never ACKNOWLEDGED;
+  a position, velocity or homing setup step carrying it does not lead to a start.
+- Typed position targets reject a magnitude above `0x0FFFFFFF` before traffic,
+  narrowing the signed 32-bit range. The bound interprets a malformed manual row.
+- Relative moves reject a supplied established reference that is not idle, stationary
+  ACTUAL evidence, as absolute moves did.
+- Finite velocity preparation rejects a duration that `maxPolls * pollIntervalUs`
+  cannot cover. An observation closing after the duration now ends the budget without
+  a failure, unless its alarm or fault words report one.
+- Typed read and probe frames require the full request to have been transmitted.
+- After a confirmation, a later readback mismatch makes a communication write uncertain.
+- `rawPositionWords` in a home result only reports a qualified, confirmed, on-time frame.
+- Method 18's reason describes its negative-limit captions as a likely caption error.
+  Its support remains unresolved.
+
 ### Added
+
+- `MoveContext::positionMismatch` and JSON `position_mismatch`: RUNNING-path completion
+  whose final feedback differs from the known endpoint. It stays OBSERVED.
+- `ActionContext::rawPositionWords` and JSON `raw_position_words`: position-clear
+  words in wire order, which carry no assumed word significance.
 
 - Portable source/installed consumer checks for both native scalar setters and
   representative admitted homing families, preserving strict C++11/C++17,

@@ -85,7 +85,7 @@ Probe::Action communication(void* context, const Probe::CommunicationCommand* co
     if (command->kind == Kind::BEGIN) {
         if (a.owner.commissioningOwned() || a.serial.blocked || !a.serial.activeKnown ||
             a.owner.active() || a.owner.pending() || reading(a) || acting(a) ||
-            a.monitorState.settings.enabled || a.recovery.operationId || axisReserved(a)) return Probe::Action::BUSY;
+            a.monitorState.settings.enabled || (a.recovery.operationId && !a.recovery.automatic) || axisReserved(a)) return Probe::Action::BUSY;
         if (!a.nextOperationId || a.serial.generation == UINT32_MAX || a.bindingGeneration == UINT32_MAX)
             return Probe::Action::IDS_EXHAUSTED;
         // Qualifications are application-owned evidence. No CLI flag manufactures a restart route.
