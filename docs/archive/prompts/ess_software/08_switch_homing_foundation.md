@@ -1,10 +1,10 @@
 # 08 - Make homing qualification and observation usable
 
-Execute the [shared contract](execution_contract.md) and
-[verification rules](verification.md). Requirement: shared prerequisite for N08.
+Execute the [shared contract](../../../prompts/ess_software/execution_contract.md) and
+[verification rules](../../../prompts/ess_software/verification.md). Requirement: shared prerequisite for N08.
 Prerequisites: 03,05 and 01's reviewed observation contract.
 
-Implement the [stage 01 lifecycle and observation decisions](../../ess_homing.md#planned-auxiliary-setting-and-switch-method-integration-not-implemented).
+Implement the [stage 01 lifecycle and observation decisions](../../../ess_homing.md#planned-auxiliary-setting-and-switch-method-integration-not-implemented).
 Keep caller qualification age separate from refreshed MOTION/IO times. Explicit
 revocation cancels unsent work and prevents new reference publication, while
 own-staging single-use clearing is not revocation of the immutable admitted
@@ -22,7 +22,7 @@ Keep expected physical limit-input activation distinct from soft-limit faults.
 Read `HomePrerequisites`, `HomeContext`, `prepareHome/nextHome/advanceHome`,
 `getHomeReference`, configuration/state reads, `StateCache.h`,
 `ProbeApp.cpp::startHome` and `admitHomeStep`, parser/formatter and home tests.
-Read the original diagrams and [method matrix](homing_matrix.md).
+Read the original diagrams and [method matrix](../../../prompts/ess_software/homing_matrix.md).
 Lead owns shared contracts/application state. Spawn a read-only source/observation
 reviewer and a separate admission/stop reviewer. Delegate one disjoint fixture
 slice after interfaces freeze; serialize coupled changes.

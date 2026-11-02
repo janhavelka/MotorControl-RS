@@ -1,16 +1,14 @@
 # Implementation prompts
 
-The active [ESS software completion set](ess_software/README.md) contains
-15 bounded stages for the verified missing parameter reads, start-speed and
-homing-auxiliary setters, serial position interruption and 27 switch homing
-methods. It includes a source audit, exhaustive method matrix, concrete agent
-assignments, acceptance cases and implementation progress. Prepared on
-23 October 2026. Stage 01's [contract decisions](../reports/2026-10-29_ess_software_contracts.md)
-were completed on 29 October; stages02-06 software is complete, including the
-restricted interrupt core subset. Stages07-15 remain NOT STARTED. Initial
-interruption is a restricted native stored-profile subset; broader N05 retains
-its staging/attribution evidence gate. See the [live progress](ess_software/progress.md)
-for delivered behavior and its separate physical evidence.
+The [ESS software handoff](ess_software/README.md) records delivery of all 15
+bounded stages: parameter reads, start-speed and homing-auxiliary setters,
+restricted position interruption, 27 switch homing methods and their verification.
+Completed numbered instructions are [archived](../archive/prompts/ess_software/README.md).
+The broader software objective remains PARTIAL: N05 arbitrary active replacement
+and attributable completion still need exact source/firmware evidence. Its
+[active next steps](ess_software/README.md#remaining-n05-work-and-next-evidence)
+and [progress](ess_software/progress.md) retain that obligation and separate
+physical limits; do not rerun the completed bounded stages.
 
 The broader [standalone ESS set](standalone/README.md) retains archived-profile
 staging, unresolved vendor semantics and physical qualification work. Its

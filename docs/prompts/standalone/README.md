@@ -5,9 +5,11 @@ dated bench evidence. **Status: prepared; numbered implementation/physical
 stages have not been executed.** The preparation audit is complete.
 
 The dedicated [ESS software set](../ess_software/README.md) now owns N01, N02,
-N04, N05, N07 and the 27 switch-method portion of N08. Use that set's detailed
-stages for implementation. Redirected work below is not completed work. This
-set retains N03 candidate staging, unresolved semantics and physical campaigns.
+N04, N05, N07 and the 27 switch-method portion of N08. Its bounded stages are
+delivered and archived; its active handoff retains broader N05 replacement
+staging/completion evidence work. REDIRECTED below identifies ownership, not
+the current implementation status. See its progress for delivered subsets.
+This set retains N03 candidate staging, unresolved semantics and physical campaigns.
 
 Read the [audit](audit.md) and [execution contract](execution_contract.md) with
 each dispatched prompt. This set covers the reusable MotorControl-RS library,

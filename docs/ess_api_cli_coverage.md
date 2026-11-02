@@ -180,7 +180,7 @@ The remaining gaps are tracked by feature, independently of hardware evidence:
 | --- | --- | --- |
 | Position | Native ignore-versus-interrupt position command | PARTIAL: typed bit-3 core and ordinary owner/app/CLI admit only qualified exact native stored retrigger, ACK-only, with independent retained results and stop priority. Broader staging/completion attribution remains evidence-gated. |
 | Position | Arbitrary native five-word profile candidates and archived restoration | Typed builder exists, but CLI restoration accepts only the volatile original snapshot; finite-move staging is not standalone parameter access |
-| Homing | Remaining homing trajectories | Six methods implemented, 24 unimplemented, five unresolved; I/O configuration does not implement a switch trajectory |
+| Homing | Unresolved homing methods | 30 implemented, zero unimplemented, five unresolved (18 and -4..-1); physical switch/index qualification remains separate from software support |
 | Homing | Nonzero homing offset and additional paired-write forms | Zero-only reviewed staging does not resolve offset order, signedness or units |
 | Settings | Limit and stored-position paired setters | Reviewed write restrictions stay in the source denominator; no split FC06 workaround |
 | Tuning | Earlier collision entries `0x003B/0x003C` | Unspecified access stays unresolved; no alias to the later collision pair |

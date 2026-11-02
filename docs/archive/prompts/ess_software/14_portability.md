@@ -1,7 +1,7 @@
 # 14 - Verify portable consumers, builds and storage bounds
 
-Execute the [shared contract](execution_contract.md) and
-[verification rules](verification.md). Prerequisite: 13.
+Execute the [shared contract](../../../prompts/ess_software/execution_contract.md) and
+[verification rules](../../../prompts/ess_software/verification.md). Prerequisite: 13.
 Scope: prove the delivered features remain consumable on supported software
 platforms; this is not a dependency upgrade or physical timing campaign.
 

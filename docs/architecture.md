@@ -510,7 +510,7 @@ enable/cancel with physical drive enable/stop, or import sensor replay policy.
    and wider motion cases retain their own unperformed qualification gates.
 5. Arduino and native ESP-IDF S3 consumers share the application and implemented
    command semantics. S2 core/portable fixtures compile without claiming a
-   physical adapter. Complete native ESS coverage remains open: nine named
+   physical adapter. Complete native ESS coverage remains open: five named
    gaps and guarded paired writes remain in the inventory. Obtain concrete
    hardware and model/firmware evidence before advertising another profile.
 6. Integrate into FieldCore when requested, through its own contract/owner

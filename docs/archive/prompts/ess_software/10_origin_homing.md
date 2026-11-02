@@ -1,7 +1,7 @@
 # 10 - Implement origin-reference homing methods
 
-Execute the [shared contract](execution_contract.md) and
-[verification rules](verification.md), including stage 08's observation contract.
+Execute the [shared contract](../../../prompts/ess_software/execution_contract.md) and
+[verification rules](../../../prompts/ess_software/verification.md), including stage 08's observation contract.
 Requirement: N08 subset **3,4,5,6,19,20,21,22**.
 Prerequisite: 09's integrated review of the shared homing path.
 

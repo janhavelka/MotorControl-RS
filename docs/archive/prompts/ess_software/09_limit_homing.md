@@ -1,7 +1,7 @@
 # 09 - Implement limit-reference homing methods 1, 2 and 17
 
-Execute the [shared contract](execution_contract.md) and
-[verification rules](verification.md), including stage 08's observation contract.
+Execute the [shared contract](../../../prompts/ess_software/execution_contract.md) and
+[verification rules](../../../prompts/ess_software/verification.md), including stage 08's observation contract.
 Requirement: N08 subset **1,2,17**. Prerequisite: 08.
 
 ## Inspect and assign

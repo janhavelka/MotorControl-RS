@@ -4,7 +4,7 @@ Date: 29 October 2026. Scope: N01, N02, N04, N05, N07 and N08.
 Stage 01 settles planned contracts only. No public declaration, implementation,
 operation-ledger entry, support flag, firmware image or hardware setting changed.
 Stages 02-15 remain NOT STARTED. The next executable implementation is
-[02, velocity parameter reads](../prompts/ess_software/02_velocity_reads.md).
+[02, velocity parameter reads](../archive/prompts/ess_software/02_velocity_reads.md).
 
 ## Revision and source evidence
 

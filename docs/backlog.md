@@ -254,3 +254,11 @@ coverage counts do not change, and physical qualification remains separate.
 exported-source/installed consumer coverage and records measured host/Xtensa
 layout and stack deltas. Supported build evidence, runtime memory watermarks
 and physical qualification remain separate; no native gap or platform is added.
+
+[Stage15 final review](reports/2026-11-02_ess_final_audit.md) confirms the delivered
+bounded APIs/routes and corrects stale documentation. The broader software
+objective stays PARTIAL: arbitrary active profile/target replacement and
+attributable completion require the exact evidence in the
+[active N05 handoff](prompts/ess_software/README.md#remaining-n05-work-and-next-evidence).
+All27 planned switch methods are implemented; method18/-4..-1, nonzero offsets,
+N03/N09, guarded paired setters and physical qualification remain open.

@@ -4,7 +4,7 @@ Read [README](README.md), [execution contract](execution_contract.md) and the
 [audit finding map](audit.md) together with this prompt.
 
 Finding: **N03**. Status: **NOT EXECUTED**. N04 is owned exclusively by
-[ESS software 04](../ess_software/04_position_start_speed.md).
+[ESS software 04](../../archive/prompts/ess_software/04_position_start_speed.md).
 
 ## Entry gate
 

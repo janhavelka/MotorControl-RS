@@ -1,7 +1,7 @@
 # 15 - Independently audit and close the delivered software scope
 
-Execute the [shared contract](execution_contract.md) and
-[verification rules](verification.md). Prerequisites: 14 and a factual
+Execute the [shared contract](../../../prompts/ess_software/execution_contract.md) and
+[verification rules](../../../prompts/ess_software/verification.md). Prerequisites: 14 and a factual
 disposition for every earlier stage. This stage includes fixing confirmed
 in-scope defects, not merely writing a report.
 

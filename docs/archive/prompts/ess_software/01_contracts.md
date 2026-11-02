@@ -1,7 +1,7 @@
 # 01 - Revalidate evidence and settle operation contracts
 
-Execute the [shared contract](execution_contract.md) and
-[verification rules](verification.md). Status belongs in [progress](progress.md).
+Execute the [shared contract](../../../prompts/ess_software/execution_contract.md) and
+[verification rules](../../../prompts/ess_software/verification.md). Status belongs in [progress](../../../prompts/ess_software/progress.md).
 Scope: N01,N02,N04,N05,N07,N08. This stage makes concrete source/API decisions;
 it does not claim to implement the missing features.
 

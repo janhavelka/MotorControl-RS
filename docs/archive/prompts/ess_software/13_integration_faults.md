@@ -1,7 +1,7 @@
 # 13 - Verify cross-operation faults and ordinary-route parity
 
-Execute the [shared contract](execution_contract.md) and
-[verification rules](verification.md). Scope: interactions among delivered
+Execute the [shared contract](../../../prompts/ess_software/execution_contract.md) and
+[verification rules](../../../prompts/ess_software/verification.md). Scope: interactions among delivered
 02-12 features. Prerequisites: their actual contracts and explicit dispositions;
 blocked features remain excluded visibly, never substituted by fake success.
 
