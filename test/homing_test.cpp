@@ -242,6 +242,11 @@ void testCorrelatedTransitions() {
         consume(c, 4); assert(c.lowEvidence.length == 9 && c.lowEvidence.step == c.step - 1);
         consume(c, 3); assert(c.phase == Ess::HomePhase::ZERO_CHECK);
         consume(c); assert(c.state == ActionState::SUCCEEDED); done(c);
+        // Bench evidence: after a fast stop of a plain move the drive completes a home at
+        // status 2, HOMED without IN_POSITION. Position zero still has to be read.
+        c = home(method); trigger(c); consume(c, 4); consume(c, 2);
+        assert(c.phase == Ess::HomePhase::ZERO_CHECK);
+        consume(c); assert(c.state == ActionState::SUCCEEDED); done(c);
         c = home(method); trigger(c); consume(c, 1); consume(c, 3);
         assert(c.phase == Ess::HomePhase::OBSERVING); // No new search activity.
     }
