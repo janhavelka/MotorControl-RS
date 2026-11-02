@@ -55,6 +55,8 @@ tool/input, unregistered suite, empty/skipped test or failing command is a
 failure. Registration checks require the actual interpreter, script, native
 executable and check arguments; per-test Python optimization overrides fail.
 CTest properties that turn a failing exit into PASS are also rejected.
+Both summary and detailed logs must contain a completed CTest result; empty,
+command-only, listing-only or incomplete summary logs fail verification.
 Reference checks are offline; original vendor bytes remain separately
 licensed. Local links are checked in maintained documents, active/archived
 prompts and report/archive indexes. Dated report bodies and PDF extracts keep

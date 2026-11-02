@@ -610,3 +610,18 @@ and physical tests NOT RUN; no physical/platform/coverage flags change.
 Stage14 is SOFTWARE COMPLETE; stage15 receives the report/artifacts and explicit
 runtime/physical limits. The following evidence-only checkpoint uses local
 consistency checks and does not alter the verified implementation.
+
+## Independent stage14 audit (2026-11-02)
+
+IN PROGRESS: [fresh code/diff audit](../../reports/2026-11-02_ess_portability_audit.md)
+from `4d7bef7`, with three read-only consumer, bounds and header/build reviewers.
+One confirmed verifier gap accepts empty/incomplete CTest logs; the correction
+requires a completed result and preserves skip rejection. New regressions fail
+before the fix and the focused suite passes13 cases afterward. IDF descriptions
+now distinguish exported sources from the separate installed consumer.
+No API, storage, counter, platform or scope defect was confirmed. Independent
+consumer/link mutations and fresh host/Xtensa measurements match actual source.
+Final corrected quick/package passes88 suites and15 checks, source/installed
+consumers3/3 each, with complete detailed logs and final ZIP/source bytes matched
+in `build/audit14_final`. Exact-commit matrix is pending; physical and runtime
+qualification labels remain unchanged.

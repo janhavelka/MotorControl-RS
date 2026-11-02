@@ -1,7 +1,7 @@
 # ESP32-S2 portable application consumer
 
-This native-IDF compile/link fixture consumes the staged installed core and the
-actual platform-neutral `RtuRunner`, `RtuBusOwner`, `EssRtuValidator` and
+This native-IDF compile/link fixture consumes the staged exported core sources
+and the actual platform-neutral `RtuRunner`, `RtuBusOwner`, `EssRtuValidator` and
 `ProbeConsole` sources. It uses fixed caller-owned storage and an explicitly
 missing port. There is no ESP32-S3 UART adapter, GPIO/pin selection, clock, USB,
 PSRAM policy or motor callback. Unsupported console motor routes remain

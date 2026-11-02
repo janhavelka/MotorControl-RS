@@ -162,12 +162,27 @@ class VerificationFailures(unittest.TestCase):
     def test_skips_and_zero_work(self):
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / "LastTest.log"
+            summary = "1/1 Test #1: smoke ................ Passed 0.01 sec\n"
             for text in ("OK (skipped=1)", "Ran 0 tests", "***Not Run", "***NotRun", "Skipped", "***Not Run (Disabled)", "DISABLED"):
-                log.write_text(text, encoding="utf-8")
+                log.write_text(summary + text, encoding="utf-8")
                 with self.assertRaisesRegex(RuntimeError, "skipped or empty"):
                     verify.check_test_log(log)
-            log.write_text("Ran 3 tests\nOK", encoding="utf-8")
-            verify.check_test_log(log)
+            for text in (summary, "1/1 Testing: smoke\nTest Passed.\n"):
+                log.write_text(text, encoding="utf-8")
+                verify.check_test_log(log)
+
+    def test_missing_ctest_results(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "LastTest.log"
+            for text in ("", " \n\t", '["ctest", "--output-on-failure"]\n',
+                         "Start testing: Nov 02 12:00\n---\nEnd testing: Nov 02 12:00\n",
+                         "1/1 Test #1: smoke ................\n",
+                         "1/1 Test #1: smoke ................ Passed\n",
+                         "1/1 Test #1: Passed smoke\n",
+                         "Ran 3 tests\nOK\n"):
+                log.write_text(text, encoding="utf-8")
+                with self.subTest(content=text), self.assertRaisesRegex(RuntimeError, "skipped or empty"):
+                    verify.check_test_log(log)
 
 
 if __name__ == "__main__":

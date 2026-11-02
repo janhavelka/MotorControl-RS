@@ -7,6 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [Independent stage14 portability audit](2026-11-02_ess_portability_audit.md) | Fresh consumer/header/bounds review; verifier rejects empty/incomplete CTest evidence, and IDF source-package wording is precise. Physical and runtime limits stay unchanged. |
 | [ESS portable consumers and storage bounds](2026-11-02_ess_portability.md) | Stage14 source/install API fixtures, independent headers/symbols and measured host/Xtensa layout/stack deltas; pinned firmware verification and physical limits remain separate. |
 | [ESS cross-operation faults and parity](2026-11-01_ess_integration_faults.md) | Delayed reads, settings, homing qualification, interruption/stop pressure and recovery retain exact outcomes; producer/definition coverage guards corrected. |
 | [Independent homing stages10–12 audit](2026-11-01_ess_homing_10_12_audit.md) | Fresh source/core/app review; host validation now rejects interrupted success, with actual-result regressions across30 methods. Coverage and physical qualification limits are unchanged. |

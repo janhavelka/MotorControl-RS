@@ -104,7 +104,13 @@ def check_inventory(root, listing, build):
 
 def check_test_log(path):
     content = path.read_text(encoding="utf-8", errors="replace")
-    if re.search(r"\bSkipped\b|\bDISABLED\b|\bDisabled\b|\*\*\*Not\s*Run|OK \(skipped=|Ran 0 tests", content):
+    # A CTest listing can leave only headers in LastTest.log. Require a result
+    # in either the console summary or the detailed test log.
+    completed = re.search(
+        r"^\s*\d+/\d+ Test\s+#\s*\d+:[^\r\n]*"
+        r"(?:Passed|\*\*\*Failed)\s+\d+(?:\.\d+)? sec\b|^Test (?:Passed|Failed)\.",
+        content, re.M)
+    if not completed or re.search(r"\bSkipped\b|\bDISABLED\b|\bDisabled\b|\*\*\*Not\s*Run|OK \(skipped=|Ran 0 tests", content):
         raise RuntimeError(f"a required test was skipped or empty: {path}")
 
 

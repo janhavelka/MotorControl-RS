@@ -1,5 +1,9 @@
 # ESS portable consumers and storage bounds — 2 November 2026
 
+The subsequent [independent stage14 audit](2026-11-02_ess_portability_audit.md)
+records a verifier evidence correction and fresh checks. This report retains
+the original implementation and measurement checkpoint.
+
 Stage 14 started from `f5f600e`, with stage 13 complete. This stage verifies
 software consumption and resources; it changes no drive behavior, SDK, platform
 support or physical qualification. Final local integrated verification and

@@ -79,6 +79,10 @@
 
 ### Fixed
 
+- Verification now rejects empty or incomplete CTest evidence, including
+  listing-only detailed logs, while preserving skipped/disabled-test rejection.
+  IDF fixture descriptions distinguish exported source from installed packages.
+
 - Completion-operation coverage now requires the actual producing API and
   definitions; unrelated getters, raw codecs and declaration-only bodies cannot
   claim implementation. Cross-operation regressions cover delayed reads,

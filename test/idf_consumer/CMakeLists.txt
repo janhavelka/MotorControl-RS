@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-# The caller stages only the installed core's CMakeLists.txt/include/src in a
+# The caller stages the exported core's CMakeLists.txt/include/src in a
 # directory named MotorControlRS. This application never sees example/vendor
 # include paths and never imports the standalone firmware component.
 if(NOT MOTORCONTROLRS_COMPONENT_PATH)
