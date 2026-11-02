@@ -96,7 +96,7 @@ not count as a typed operation or console route.
 | Q13 | Incoming USB saturation remains unqualified: the pinned SDK exposes no RX-ring overflow indication, so console discard counts do not establish loss-free transport. Keep explicit inconclusive outcomes. | 11 |
 | Q14 | S2 core/portable application builds are compile evidence; S2 physical UART and other SDKs remain unqualified. [Platform report](../../archive/reports/ess_release_26_2026-10-05.md) qualifies only the recorded S3 paths. | 12 |
 | Q15 | [Platform-scope audit](../../archive/reports/2026-10-03_platform_scope_audit.md) records esptool 5.3.0 flash-read truncation at 188,416 bytes. Firmware is not running in bootloader mode; no MotorControl runtime defect is established. | 12 |
-| Q16 | Added 2 November 2026. The short regression of delivered software that AGENTS requires has not run. `position_interrupt_stored`, `home_parameters`, `home_zero_offset`, `home_start`, `homing_auxiliary_write` and `position_start_speed_write` are NOT_RUN in the [operation inventory](../../reference/ess_rs_operations.json), and the recorded bench USB device is absent. | 14 |
+| Q16 | Added 2 November 2026. The short regression of delivered software that AGENTS requires [ran the same day](../../reports/2026-11-02_standalone_14_bench_regression.md). Its routes pass; one persistent RUNNING failure at 1,000 increments/s stays unresolved. | 14 |
 
 ## Findings not carried as unfinished implementation
 

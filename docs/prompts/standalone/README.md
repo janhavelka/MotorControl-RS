@@ -41,7 +41,7 @@ keeps those distinctions. Use the audit's Current owner column; Next stage is hi
 | 11 | [USB saturation and renewed overnight qualification](11_usb_and_overnight.md) | Q13: board and current image. Q12: explicit instruction, with default `PositionLimits` or a broader 07 envelope | NOT STARTED |
 | 12 | [S2/SDK and flash-read qualification](12_platforms.md) | Actual S2 hardware for UART claims; bench S3 in bootloader mode with esptool 5.3.0 | NOT STARTED |
 | 13 | [Coverage and release-scope reconciliation](13_closeout.md) | Every other stage has an explicit disposition, with rows for the N05 remainder and stage 14 | NOT STARTED |
-| 14 | [Delivered-software bench regression](14_bench_regression.md) | Recorded bench USB device present; no analyzer | BLOCKED(recorded USB device absent) |
+| 14 | [Delivered-software bench regression](14_bench_regression.md) | Recorded bench USB device present; no analyzer | PARTIAL: [routes pass, one persistent RUNNING failure unresolved](../../reports/2026-11-02_standalone_14_bench_regression.md) |
 
 This table is the single status record. Statuses are NOT STARTED, PARTIAL,
 BLOCKED(input), COMPLETE and REDIRECTED.

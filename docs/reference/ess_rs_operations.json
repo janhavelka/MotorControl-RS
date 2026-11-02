@@ -531,9 +531,10 @@
         ]
       },
       "hardware": {
-        "state": "NOT_RUN",
-        "evidence": [],
-        "reason": "No physical bit-3 interruption test; software evidence is scripted owner/application traffic."
+        "state": "PASS",
+        "evidence": [
+          "docs/reports/2026-11-02_standalone_14_bench_regression.md"
+        ]
       },
       "reason": "Restricted exact native stored-profile start-or-interrupt through the ordinary application/owner and console, with independent original/replacement/stop results. ACK-only; no active staging/new-target or completion attribution. Broader N05 remains PARTIAL."
     },
@@ -854,9 +855,10 @@
         ]
       },
       "hardware": {
-        "state": "NOT_RUN",
-        "evidence": [],
-        "reason": "New typed producing route has no hardware read evidence yet. No velocity/sign/ramp conversion or motion qualification inferred."
+        "state": "PASS",
+        "evidence": [
+          "docs/reports/2026-11-02_standalone_14_bench_regression.md"
+        ]
       },
       "reason": "One checked non-changing FC03 0x001D/3 read preserves raw words, independent native ramp range flags, unresolved speed/ramp scaling, admitted configuration generation and copied evidence. Shared ordinary application and console result paths do not stage or qualify motion."
     },
@@ -1109,11 +1111,11 @@
         ]
       },
       "hardware": {
-        "state": "NOT_RUN",
+        "state": "PASS",
         "evidence": [
-          "docs/archive/reports/ess_release_14_2026-10-04.md"
+          "docs/reports/2026-11-02_standalone_14_bench_regression.md"
         ],
-        "reason": "Physical homing/reference/return need independent electrical/source timing, active auxiliary7, native rate/ramp/zero semantics and method/index/mechanics qualification. No switch fixture or I/O reassignment is provided."
+        "reason": "Exact FC10 0x0031/6 staging for methods 33, 34, 35 only; no switch method on hardware."
       },
       "reason": "Qualified native-word staging supports methods1-14/17/19-30/33-35. Positive-limit-assisted7-10/23-26 require origin/function1 and positive-limit/function2; negative-limit-assisted11-14/27-30 require origin/function1 and negative-limit/function3 on every branch. Methods1-14 require internal Z. All switch methods require exact function/polarity/wiring/logical-level qualification. Whole candidate validates before exact0x0031/6 zero-offset staging; auxiliary7 is an active-policy prerequisite.",
       "choices": [
@@ -1178,11 +1180,11 @@
         ]
       },
       "hardware": {
-        "state": "NOT_RUN",
+        "state": "PASS",
         "evidence": [
-          "docs/archive/reports/ess_release_14_2026-10-04.md"
+          "docs/reports/2026-11-02_standalone_14_bench_regression.md"
         ],
-        "reason": "Physical homing/reference/return need independent electrical/source timing, active auxiliary7, native rate/ramp/zero semantics and method/index/mechanics qualification. No switch fixture or I/O reassignment is provided."
+        "reason": "Zero words staged within 0x0031/6 and position read 0 after homing; no nonzero offset."
       },
       "reason": "Only zero pair in exact reviewed0x0031/6 staging is implemented; nonzero offset signedness/order/scale remain unresolved. No standalone/split/pair setter is exposed."
     },
@@ -1223,9 +1225,10 @@
         ]
       },
       "hardware": {
-        "state": "NOT_RUN",
-        "evidence": [],
-        "reason": "New producing seven-word read has no physical evidence. No homing, signed/ordered offset, physical speed/ramp or calibrated origin qualification inferred."
+        "state": "PASS",
+        "evidence": [
+          "docs/reports/2026-11-02_standalone_14_bench_regression.md"
+        ]
       },
       "reason": "One checked non-changing FC03 0x0030/7 read preserves six records/seven raw words, positive method membership separately from existing execution support, native range flags, unresolved physical/offset interpretation, admitted configuration generation and owned19-byte provenance. Shared ordinary application and console reads do not stage or qualify homing."
     },
@@ -1260,11 +1263,11 @@
         ]
       },
       "hardware": {
-        "state": "NOT_RUN",
+        "state": "PASS",
         "evidence": [
-          "docs/archive/reports/ess_release_14_2026-10-04.md"
+          "docs/reports/2026-11-02_standalone_14_bench_regression.md"
         ],
-        "reason": "Physical homing/reference/return need independent electrical/source timing, active auxiliary7, native rate/ramp/zero semantics and method/index/mechanics qualification. No switch fixture or I/O reassignment is provided."
+        "reason": "Methods 33, 34 and 35 and stop during a method 34 search on a free shaft; switch methods NOT RUN."
       },
       "reason": "Ordinary submitHome/copyHomeResult and home route consume install/inspect/revoke qualification, from the public API or the typed console routes in host_routes, bound to checked CONFIG/MOTION/IO/HOMING_PARAMETERS. Explicit start after checked staging, qualified transitions and stopped/arrival plus zero. Copied revokeHome cancels before new reference publication while retaining settled zero/effects; stop uses existing urgent path. Methods1/2/17/33/34/35 use the same production path; sampled I/O does not establish every physical edge or internal Z passage.",
       "choices": [
@@ -2723,9 +2726,10 @@
         ]
       },
       "hardware": {
-        "state": "NOT_RUN",
-        "evidence": [],
-        "reason": "No new-image physical start-speed or activation evidence."
+        "state": "PASS",
+        "evidence": [
+          "docs/reports/2026-11-02_standalone_14_bench_regression.md"
+        ]
       },
       "reason": "Explicit native0..3000 FC06 update through the ordinary reserved prior-read/update/readback session. Stored state, effects and uncertainty are retained separately; no motion, save, replay, rollback or widened0021/5 window."
     },
@@ -2776,8 +2780,10 @@
       },
       "hardware": {
         "state": "NOT_RUN",
-        "evidence": [],
-        "reason": "Stored policy write/readback is not active-policy, offset or physical homing qualification."
+        "evidence": [
+          "docs/reports/2026-11-02_standalone_14_bench_regression.md"
+        ],
+        "reason": "Choices 0 and 7 were written and read back on hardware; the other ten choices are not exercised."
       },
       "reason": "All12 source-supported scalar choices through explicit reserved prior-read/FC06/readback session. Confirmed ACK required; no home trigger, staging, input reassignment, save, replay or rollback. Possible effects revoke dependent qualification; matching7 never qualifies activepolicy."
     }

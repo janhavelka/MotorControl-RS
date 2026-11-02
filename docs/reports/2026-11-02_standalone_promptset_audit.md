@@ -18,7 +18,7 @@ See "Status" for what has since been fixed.
 | Core and homing logic: H-01, H-03, H-04, K-01 to K-10 | Fixed, except K-01 and K-02 are partial (see re-audit). K-08 is documentation only. K-04's bound narrows int32 and is corroborated by p73 and p75 but unmeasured. |
 | Promptset corrections and V-01 | Applied. |
 | Reachability: A-04, A-08, A-09, remaining A-10 rows except bench constants (M-07) | Fixed: typed qualification routes for home, velocity, position clear and the start-speed relation. |
-| Bench: first-run plan, H-02 | **NOT RUN.** The recorded USB device is absent. H-02's gates stay unchanged until method 35 evidence exists. |
+| Bench: first-run plan, H-02 | [Run on 2 November](2026-11-02_standalone_14_bench_regression.md). Routes pass. H-02 is answered for methods 33, 34 and 35; its gates stay. One persistent RUNNING failure is unresolved. New findings R-16 to R-18 are in that report. |
 | Maintainability: M-01 to M-12 | Not started. |
 
 Known limits left by these fixes:

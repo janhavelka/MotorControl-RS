@@ -316,7 +316,7 @@ class Coverage(unittest.TestCase):
         read = next(row for row in INVENTORY["operations"] if row["id"] == "velocity_parameter_read")
         self.assertEqual(read["cli_commands"], ["velocity read"])
         self.assertEqual(read["api"]["symbols"], ["prepareVelocityParameters", "nextRead", "advanceRead", "getVelocityParameters"])
-        self.assertEqual(read["hardware"]["state"], "NOT_RUN")
+        self.assertEqual(read["hardware"]["state"], "PASS")
         for name in ("JOG_SPEED", "JOG_ACCELERATION_TIME", "JOG_DECELERATION_TIME"):
             self.assertEqual(records[name]["obligations"]["read"], "IMPLEMENTED")
             self.assertEqual(records[name]["read_operations"], ["velocity_parameter_read"])
@@ -336,7 +336,7 @@ class Coverage(unittest.TestCase):
         read = next(row for row in INVENTORY["operations"] if row["id"] == "homing_parameter_read")
         self.assertEqual(read["cli_commands"], ["home read"])
         self.assertEqual(read["api"]["symbols"], ["prepareHomingParameters", "nextRead", "advanceRead", "getHomingParameters"])
-        self.assertEqual(read["hardware"]["state"], "NOT_RUN")
+        self.assertEqual(read["hardware"]["state"], "PASS")
         self.assertEqual(len(read["records"]), 6)
         for name in read["records"]:
             self.assertEqual(records[name]["obligations"]["read"], "IMPLEMENTED")
@@ -376,7 +376,7 @@ class Coverage(unittest.TestCase):
         self.assertEqual(rows["POSITION_START_SPEED"].get("gaps", []), [])
         setter = next(row for row in INVENTORY["operations"] if row["id"] == "position_start_speed_write")
         self.assertEqual(setter["cli_commands"], ["motion-profile start-speed NATIVE"])
-        self.assertEqual(setter["hardware"]["state"], "NOT_RUN")
+        self.assertEqual(setter["hardware"]["state"], "PASS")
         for route in ("motion-profile restore", "driver set", "home",
                       "motion-profile inspect", "motion-profile forget", "motion-profile start-speed",
                       "motion-profile start-speed INTEGER extra", "motion-profile start-speed garbage"):
@@ -473,7 +473,7 @@ class Coverage(unittest.TestCase):
     def test_stored_interrupt_route_keeps_broader_gap_open(self):
         operation = next(row for row in INVENTORY["operations"] if row["id"] == "position_interrupt_stored")
         self.assertEqual(operation["cli_commands"], ["position interrupt ORIGINAL_ID"])
-        self.assertEqual(operation["hardware"]["state"], "NOT_RUN")
+        self.assertEqual(operation["hardware"]["state"], "PASS")
         for route in ("position", "position interrupt", "position interrupt ORIGINAL_ID extra",
                       "position interrupt TARGET", "stop normal", "move relative", "profile position"):
             self.rejected(lambda value: next(row for row in value["operations"]

@@ -128,6 +128,10 @@ physical qualification; final stage evidence is recorded in that report.
   K-01's window judgement and K-02's closure rule.
   [Findings and evidence](reports/2026-11-02_standalone_promptset_audit.md#re-audit-2-november-2026).
 
+- [ ] Resolve the [2 November persistent RUNNING failure](reports/2026-11-02_standalone_14_bench_regression.md#the-failure): once in four
+  interrupted moves at 1,000 increments/s, far below earlier cases, clearing only with a power cycle. Capture supply voltage and continuous status on a rerun.
+- [ ] Fix R-16 (home has no command-rate limit) and R-17 (a stuck drive leaves no release route without a controller reset).
+
 ## Exact-drive behavior and motion evidence
 
 The bench is user-identified ESS23-RS20, model word 0x4EEA, firmware word 0x0029.
@@ -135,8 +139,9 @@ This does not establish a universal model/firmware/DIP mapping. Small finite
 positioning, normal/fast stops, selected settings and discovery have recorded
 functional evidence; independent shaft calibration remains absent.
 
-- [ ] Run the short regression of delivered ESS software on the bench:
+- [x] Run the short regression of delivered ESS software on the bench:
   [standalone stage 14](prompts/standalone/14_bench_regression.md), finding Q16.
+  [Result](reports/2026-11-02_standalone_14_bench_regression.md): routes pass; one failure below stays open.
   Physical checks are NOT RUN because the recorded USB device
   `3C:0F:02:CD:6B:98` is absent; do not substitute another device.
 - [ ] Distinguish supply transients from internal firmware failure in the
