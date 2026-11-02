@@ -26,8 +26,9 @@ must not be reopened, and Part 7 lists tooling fixes.
   power-up shaft lock, the save rule, the reserved-address rule and the subdivision
   default. Some "unresolved" labels are already answered.
 - **One ESS stop defect remains open: C1.** With a healthy simulated drive, about 6%
-  of finite velocity runs never send the stop. Fix it before the first physical
-  velocity test. See Part 5.
+  of finite velocity runs never send the stop, and any transport fault during a run has
+  the same effect. The fix and the recovery policy are decided; apply both before the
+  first physical velocity test. See Part 5.
 
 Abbreviations: **R14** = [engineering review](../../reference/14_lichuan_tl57_rs485.md);
 **S01..S12** = numbered stages in this folder; **EC** = [execution contract](execution_contract.md);
@@ -351,16 +352,44 @@ fix A2, same sweep: runs=301 faulted=0  (0.00%) started_and_stop_never_sent=0  m
 owner. This cleared all 1000 durations at reply gaps from 486 us to 20 ms. Stop latency
 rises from 3.85 ms to 8.35 ms, and only `test/velocity_test.cpp:484` needs changing. Add
 the sweep as a regression. A guard against late polls is not recommended: the core has no
-bus timing, so the guard is a guess or kills short runs. **Apply the same rule to TL57 JOG
-in S06.**
+bus timing, so the guard is a guess or kills short runs. **Apply this rule and the decision
+below to TL57 JOG in S06.**
 
-**Owner decision still open:** this fix does not cover a lost reply. One unanswered poll
-in a 200 ms run still leaves the motor running with no stop sent, because of the same gate
-at `:2339`. Routing the finite stop through the existing held-stop path fixed that in a
-scratch trial (FC06 about 504 ms after the stop time), but it contradicts
-`docs/ess_velocity.md:62-63`, "Faults cannot be bypassed, automatically recovered", although
-`6ff2374` already recovers automatically for explicit stops. Recommended: take the held-stop
-route for finite stops and update that document.
+**Decided (2 November 2026): a run's never-transmitted stop takes the held-stop path.** The
+deadline fix does not cover a lost reply: one unanswered poll or start echo still leaves the
+motor running with no stop sent, because of the same gate at `:2339`. Apply both fixes. The
+stop follows the rules explicit stops already follow since `6ff2374`: one bounded recovery,
+sent once, under a deadline fixed at admission, and a failed recovery ends it
+`not_transmitted`. It is a first transmission, so it does not breach no-replay. A stop already
+on the wire stays UNKNOWN and is never resent, and a lost start echo stays UNKNOWN. This is the
+same decision as C14 in the [LC57BK audit](../lichuan_lc57bk_rs485/audit.md).
+
+Required with it:
+
+- Route VELOCITY records into the held-stop path; `holdStop` accepts only ACTION records
+  (`ProbeApp.cpp:2168`). Handle a refused stop admission; the scratch patch below ignored it.
+- Link the stop's result to the run. The run's own result stays failed with `needs_stop:true`
+  after the stop is sent, so an operator reading it alone would think no stop went out.
+- Change `test/velocity_app_test.cpp:296` to expect exactly one stop frame and no repeated
+  start, and add lost-poll and lost-start regressions.
+- Replace "Faults cannot be bypassed, automatically recovered or replayed to obtain success" at
+  `docs/ess_velocity.md:62-63` with: "A fault cannot be bypassed or replayed to obtain success.
+  A finite stop with no accepted byte waits for one bounded recovery and is then sent once,
+  under a deadline fixed at admission; if recovery fails it ends `not_transmitted`."
+
+Both fixes together were trialled in a scratch tree, with the drive never answering the lost
+frame and later frames as stated:
+
+```text
+Lost second poll, 200 ms run:  today no stop; with both fixes FC06 stop at due+627 ms, driveRunning=0
+Lost third poll, 200 ms run:   today no stop; with both fixes FC06 stop at due+684 ms, driveRunning=0
+Lost start echo:               today no stop; with both fixes one FC06 stop 705 ms after the start, no second start
+Same healthy sweep as above:   runs=301 faulted=0 succeeded=301 max_stop_after_due=8252 us
+```
+
+`velocity_test` (with `:484` changed), `velocity_app_test`, `stop_path_app_test` and
+`qualification_routes_app_test` pass with both fixes, before the required test changes above.
+Until this lands, an operator must send `stop` after a faulted run.
 
 ### C2 (fixed by `ba20c8b`): application homing budget
 
@@ -473,6 +502,7 @@ against page images of the PDFs and against the code at `513251d`. **54 findings
   block motion or add an unpublished write. TL-EX p. 7's worked decode shows bit 4 = 0 at target.
 - **C1 is worse than first stated:** about 6% of healthy runs, reachable on the production console
   path. Its "explicit stop is refused" and "shipped firmware cannot reach this" claims are stale.
+  The lost-reply policy it left open is now decided: the held-stop path.
 - **C3 is withdrawn,** and its fix would have broken three test suites.
 - **P6** stated an unverified drive reply as fact. **E20** would have mistyped targets and speeds.
   **E23** contradicted E17. **E19** treated DOCOM as a terminal. **E24** cited S07, which has no such
@@ -502,5 +532,5 @@ Editing the promptset and evidence is documentation work, so run
 `python scripts/prepare_lichuan_tl57_references.py --check`,
 `python test/lichuan_reference_test.py` and `python scripts/check_repository.py`.
 T1 and any Part 5 code fix are major changes: run quick verification and terminal
-CI on the exact final commit. Fix C1 before the first ESS physical velocity test. Record
+CI on the exact final commit. Apply both C1 fixes before the first ESS physical velocity test. Record
 each finding's disposition here or in the backlog.
