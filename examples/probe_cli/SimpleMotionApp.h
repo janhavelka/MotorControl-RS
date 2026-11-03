@@ -292,14 +292,16 @@ void serviceSimpleMotion(App& a, uint64_t now) {
             }
         }
         if (v.subdivisionVerified) { a.bootOriginPending = true; a.bootCoordinates = false; }
+        int64_t native = 0;
+        const bool usable = signedFeedback(feedback.value.rawPosition, native);
         if (a.bootOriginPending) {
             // The standalone bench uses subdivision-equivalent feedback as its
             // command-coordinate convention. Keep this explicit ASSUMED host
-            // policy outside the profile; high-bit signed encoding is unresolved.
-            if (!a.axis.originKnown && feedback.value.rawPosition <= INT32_MAX) {
+            // policy outside the profile. Feedback is signed 32-bit (bench, firmware 0x0029).
+            if (!a.axis.originKnown && usable) {
                 auto evidence = axisReference(a);
                 evidence.nativeKnown = true;
-                evidence.nativePosition = feedback.value.rawPosition;
+                evidence.nativePosition = native;
                 evidence.source = ScaleSource::ASSUMED;
                 evidence.observedUs = std::min(motion.observedEarliestUs, feedback.observedEarliestUs);
                 const auto status = setAxisOrigin(a.axis, evidence.nativePosition, evidence);
@@ -309,10 +311,10 @@ void serviceSimpleMotion(App& a, uint64_t now) {
             a.bootOriginPending = false;
         }
         if (a.bootCoordinates && a.axis.originKnown) {
-            if (feedback.value.rawPosition > INT32_MAX) invalidateAxis(a);
+            if (!usable) invalidateAxis(a);
             else {
                 auto evidence = axisReference(a);
-                evidence.nativeKnown = true; evidence.nativePosition = feedback.value.rawPosition;
+                evidence.nativeKnown = true; evidence.nativePosition = native;
                 evidence.source = ScaleSource::ASSUMED;
                 evidence.observedUs = std::min(motion.observedEarliestUs, feedback.observedEarliestUs);
                 a.coordinateReference = evidence;
@@ -378,10 +380,6 @@ void serviceSimpleMotion(App& a, uint64_t now) {
         v.completion = ActionCompletion::OBSERVED;
         finishSimpleMotion(a, Ok(), "Requested target already satisfied; no new motion command was sent", ActionOutcome::OBSERVED);
         return;
-    }
-    if (target.effectiveNative < 0) { // Admission refuses it too; name the reason here.
-        finishSimpleMotion(a, Status(Err::INVALID_CONFIG, static_cast<int32_t>(MoveError::UNRESOLVED_SIGN), "negative native target"),
-            "Negative native targets are refused until the drive's signed encoding is verified; moveto a lower target moves back"); return;
     }
     if (enableSettling(a, v.address, now)) return; // Waits out ENABLE_SETTLE_US instead of refusing.
     const auto admitted = startMove(&a, v.commandId, v.address, request, v.moveOperationId);

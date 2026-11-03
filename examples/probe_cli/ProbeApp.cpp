@@ -783,6 +783,12 @@ Rtu::BusAdmission admitActionStep(App& a, App::Record& record, const ESS::Prepar
 bool enableSettling(const App& a, uint8_t address, uint64_t now) {
     return a.enableSettleAddress == address && now < a.enableSettleUntilUs;
 }
+// The pair reads high bits set below zero; the move sequence decodes it the same way.
+// Beyond the +/-0x0FFFFFFF target range (function manual p70) it is no usable zero.
+bool signedFeedback(uint32_t raw, int64_t& native) {
+    native = raw > INT32_MAX ? static_cast<int64_t>(raw) - (int64_t(1) << 32) : static_cast<int64_t>(raw);
+    return native >= -0x0FFFFFFF && native <= 0x0FFFFFFF;
+}
 #include "MotionReadinessApp.h"
 #include "MotionProfileApp.h"
 void cancelSimplePreparation(App&, uint8_t, uint64_t);

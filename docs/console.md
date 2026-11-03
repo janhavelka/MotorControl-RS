@@ -101,8 +101,8 @@ clear that declaration. Millimetres (`mm`) require configured load travel;
 the simple commands establish a RAM-only zero from the first checked stationary
 feedback before movement in that boot session. No motor counter is cleared and
 no axis position is saved in ESP NVS. The feedback-to-command coordinate relation
-is an explicit standalone ASSUMED convention, restricted to nonnegative signed
-32-bit values. This is not homing or calibrated position proof. Motion occurring
+is an explicit standalone ASSUMED convention over signed 32-bit feedback within
+the +/-0x0FFFFFFF target range. This is not homing or calibrated position proof. Motion occurring
 before that first observation cannot be reconstructed. Completed finite moves
 keep the zero. Interrupting our move and then confirming a stop also keeps
 that fixed offset, but requires fresh position feedback before the next move.
@@ -114,8 +114,8 @@ Motor release, unexpected running, counter clear or interpretation changes
 invalidate it without silently choosing a new zero.
 
 The advanced `move absolute ... steps native ...` route retains explicit device
-counter semantics. Negative encoding remains unavailable unless
-its existing profile prerequisite is established.
+counter semantics. The standalone establishes the profile's negative-encoding
+prerequisite for firmware `0x0029` from bench evidence (3 November 2026).
 
 `help` is one complete grouped menu, covering everyday control and diagnostics.
 Each command has one spelling. `help COMMAND` shows detailed syntax and examples.

@@ -159,8 +159,10 @@ functional evidence; independent shaft calibration remains absent.
   Two requested 100-increment moves reported raw delta 99; do not change scale
   or completion thresholds from that observation alone.
   [Platform audit](archive/reports/ess_release_25_26_audit_2026-10-05.md).
-- [ ] Qualify physical angle/travel equivalence, origins/device clear,
-  negative encoding and loaded mechanisms separately from pure conversions.
+- [ ] Qualify physical angle/travel equivalence, origins/device clear
+  and loaded mechanisms separately from pure conversions. Direct-positioning
+  negative targets and signed feedback are bench-verified on firmware `0x0029`
+  (3 November 2026); stored segment targets and home offsets stay open above.
   Linear travel needs an actual configured mechanism.
 - [ ] Qualify homing/return/zero methods on their actual fixtures, dynamic stop
   latency and external input/output activation/precedence. Unwired terminals

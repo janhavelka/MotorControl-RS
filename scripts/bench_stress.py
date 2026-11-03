@@ -182,6 +182,12 @@ def keep_awake():
         ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)
 
 
+def offset(delta, expected):
+    """Distance between two 32-bit positions, so negative moves compare like positive ones."""
+    d = (delta - expected) & 0xFFFFFFFF
+    return min(d, 0x100000000 - d)
+
+
 def state_fields(item):
     """Flatten one read-state terminal."""
     out = {}
@@ -350,18 +356,19 @@ class Run:
 
     # Cases
     def case_plain(self):
-        steps, rpm = self.random.choice([100, 500, 1000, 3000]), self.random.choice([60, 60, 120, 300])
+        steps = self.random.choice([100, 500, 1000, 3000]) * self.random.choice([1, -1])
+        rpm = self.random.choice([60, 60, 120, 300])
         before = self.prepare()
         reply = self.start_move(steps, rpm)
-        item = self.console.terminal(reply, self.duration(steps, rpm) + 5)
+        item = self.console.terminal(reply, self.duration(abs(steps), rpm) + 5)
         self.check_terminal(item, "MOVE")
         if item.get("position_mismatch"):
             self.counts["position_mismatch"] += 1
         after = self.state()
         delta = (after["position"] - before["position"]) & 0xFFFFFFFF
-        if abs(delta - steps) > self.tolerance or after["raw_motion"] & RUNNING:
+        if offset(delta, steps) > self.tolerance or after["raw_motion"] & RUNNING:
             raise Anomaly("POSITION", {"steps": steps, "delta": delta, "motion": after["raw_motion"], "speed": after.get("raw_speed")})
-        self.moved += steps
+        self.moved += abs(steps)
         return f"steps={steps} rpm={rpm} delta={delta}"
 
     def case_interrupt_finish(self):
@@ -373,16 +380,17 @@ class Run:
         return self.interrupt_finish(self.random.choice([10000, 30000]), self.random.choice([600, 1000, 2000]))
 
     def case_fast_plain(self):
-        steps, rpm = self.random.choice([3000, 10000, 30000]), self.random.choice([600, 1000, 2000])
+        steps = self.random.choice([3000, 10000, 30000]) * self.random.choice([1, -1])
+        rpm = self.random.choice([600, 1000, 2000])
         before = self.prepare()
         reply = self.start_move(steps, rpm)
-        item = self.console.terminal(reply, self.duration(steps, rpm) + 5)
+        item = self.console.terminal(reply, self.duration(abs(steps), rpm) + 5)
         self.check_terminal(item, "MOVE")
         after = self.state()
         delta = (after["position"] - before["position"]) & 0xFFFFFFFF
-        if abs(delta - steps) > 20 or after["raw_motion"] & RUNNING:
+        if offset(delta, steps) > self.tolerance or after["raw_motion"] & RUNNING:
             raise Anomaly("POSITION", {"steps": steps, "rpm": rpm, "delta": delta, "motion": after["raw_motion"], "speed": after.get("raw_speed")})
-        self.moved += steps
+        self.moved += abs(steps)
         return f"steps={steps} rpm={rpm} delta={delta}"
 
     def case_double_interrupt(self):
@@ -459,12 +467,12 @@ class Run:
         """The ordinary route: stated speed and ramps, then moveby, with ramps across the admitted range."""
         ramps = self.simple_ramps()
         before = self.state()
-        steps = self.random.choice([100, 1000, 3000])  # A negative moveby is refused until its encoding is resolved.
+        steps = self.random.choice([100, 1000, 3000]) * self.random.choice([1, -1])
         self.simple_move(f"moveby {steps}", steps, ramps)
         after = self.state()
         delta = (after["position"] - before["position"]) & 0xFFFFFFFF
         expected = steps & 0xFFFFFFFF
-        if min((delta - expected) & 0xFFFFFFFF, (expected - delta) & 0xFFFFFFFF) > self.tolerance or after["raw_motion"] & RUNNING:
+        if offset(delta, expected) > self.tolerance or after["raw_motion"] & RUNNING:
             raise Anomaly("POSITION", {"steps": steps, "ramps": ramps, "delta": delta, "motion": after["raw_motion"]})
         self.moved += abs(steps)
         return f"moveby {steps} ramps={ramps}"
@@ -475,7 +483,7 @@ class Run:
         self.console.send("debug " + self.args.debug, 3.0)
         ramps = self.simple_ramps()
         zero = self.state()["position"]
-        for target in sorted([self.random.randrange(100, 3000), self.random.randrange(100, 3000)]) + [0]:
+        for target in sorted([self.random.randrange(-3000, 3000), self.random.randrange(-3000, 3000)]) + [0]:
             self.simple_move(f"moveto {target}", 3000, ramps)
             after = self.state()
             offset = (after["position"] - zero) & 0xFFFFFFFF
