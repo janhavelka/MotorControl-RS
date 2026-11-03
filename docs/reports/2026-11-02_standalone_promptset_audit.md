@@ -20,6 +20,37 @@ Autonomous run on branch `overnight-stress-20261102` (worktree `../MotorControl-
 
 <!-- overnight entries -->
 
+**Follow-up on 3 November (owner present), newest work first.**
+
+**HW-14 deeper: documented settings, conventional subdivisions, same failure.** Datasheet check: the function manual documents subdivision `0x0011` (printed p67) as a continuous range "400~51200", default 1000. It gives no list of allowed values and no granularity. Every other parameter was also inside its documented range: speed `0x0023` 0 to 3000 rpm (2,000 used), ramps `0x0021`/`0x0022` 0 to 2000 ms (500 and 200 used), start speed `0x0020` 30 (the default). The only figure that resembles a rate limit is the hardware manual's 200 kHz pulse frequency (p3) and the datasheet's "MAX. INPUT FREQUENCY 200KHZ". These describe the pulse input. Neither says whether internal serial positioning is good up to that rate. So no setting was undocumented. The one undocumented question is the internal command rate, and that is where it fails.
+
+Matrix with conventional microstep values, 30 trials each, `stop normal` swept across the band where the braking ramp would end at the target:
+
+| Subdivision | rpm | Rate (increments/s) | Failed stops |
+| --- | ---: | ---: | ---: |
+| 1600 | 2000 | 53,333 | 0 / 30 |
+| 3200 | 2000 | 106,667 | 5 / 30 |
+| 4000 | 2000 | 133,333 | 15 / 30 |
+| 5000 | 2000 | 166,667 | 10 / 30 |
+| 6400 | 1875 | 200,000 | 13 / 30 |
+| 12800 | 937 | 199,893 | 12 / 30 |
+| 25600 | 468 | 199,680 | 11 / 30 |
+| 51200 | 234 | 199,680 | 9 / 30 |
+| 6000, 200 ms ramps | 2000 | 200,000 | 1 / 30 |
+| 1000, 200 ms ramps | 2000 | 33,333 | 0 / 30 |
+
+Rows 1 to 4 used the night's trajectory (10 turns, 500 ms ramps). Rows 5 to 8 scaled the target so the band falls 0.4 s into the ramp. It fails at the conventional binary and decimal values alike, and at subdivision 51200 already at 234 rpm, so shaft speed plays no part. A shorter 200 ms ramp still failed. The stuck state also creeps at a constant 52 to 56 increments/s at every subdivision (2000, 2400, 3000, 6000), not at a constant rpm. That places the fault in the drive's internal command generation, in increment units. Combined with the night: no failure at or below 60,000 increments/s (0 of 300 across 1000, 1500, 1600 and 600 rpm at 6000), and failures from 66,667 upward. The recommendation stands: a default ceiling of 50,000 increments/s, plus `stop fast` escalation after a failed `stop normal`. Evidence: `build/stress/25_hw14_matrix/`.
+
+**HW-13, done on the branch (`2b7a2b2`): negative moves are enabled.** Bench verification first, after a position clear and an MCU reset so the RAM boot zero was exactly 0. Staged targets were two's complement (`FFFFFF9C` for -100, `FFFFFC18`, `FFFFF830`, `FFFE7960` for -100,000). Each moved backwards by the commanded amount, and feedback below zero read back the same way (`FFFFFF9C`, `FFFFF3E4`, ...). Covered: `moveby`, `moveto` to negative boot coordinates, advanced relative and absolute, and 100 turns at 2,000 rpm, 11/11 within 2 increments. Code: the standalone now states the profile's existing `negativeTwosComplementVerified` prerequisite. The old sign gate and the HW-13 refusal message are gone. The RAM boot zero reads feedback as signed 32-bit, so it survives crossing zero. Feedback beyond the documented +/-0x0FFFFFFF target range (p70) still gives no zero. Native regressions: two's-complement staging, and `moveto -300` from negative feedback. 90/90 pass, and `verify.py --mode quick` passes. Soak: 20 minutes, 305 cases, 46 of them negative, plus a boot zero taken at -2,793, no anomaly. Not changed: velocity (its own `negative` qualification fact), stored segment targets and home offsets (backlog).
+
+**HW-15, behavior and limits of the fix.** After an `enable` frame goes out, the application holds motion starts on that address for 1 s. A `moveby`/`moveto` waits out the second inside its 5 s preparation deadline. An advanced `move`, `velocity` or `home` answers `busy` without bus traffic. Stops, releases, alarm clears and reads are never held. Limits:
+- The 1 s is a margin over 0.6 s, measured on one drive (firmware `0x0029`) for position starts. Home and velocity starts after an enable are guarded but not measured.
+- There is one slot. On a shared bus, enabling a second drive within the second replaces the first drive's guard.
+- It knows only enables this firmware sent. An MCU reset inside the window, an enable by another master, and the state after a drive power-up are not covered.
+- Not measured: an enable sent to an already-enabled drive, and an alarm clear with a real alarm latched. An alarm clear on a healthy drive opens no window: 0 of 25 moves sent 0.06 to 0.48 s after it failed.
+
+**HW-12, compared with FieldCore-node (read only).** FieldCore has no fix for a stall on the ESP-IDF USB Serial/JTAG driver, the stack this firmware uses. Its product CLI (`src/cli/SerialCli.cpp`) uses zero-tick writes under one 1 s response deadline. Output that is not accepted stays queued and is retried later, never flushed or dropped. Counters record incomplete responses, and the tooling resynchronizes after a missing end marker (`docs/guidelines/cli.md:1647`). That is the same model as here, where the harness reopens the port. FieldCore records the same class of failure as unresolved: an overnight endurance run failed after a USB output stall (`docs/reports/rodtester_library_audit_20261010.md:424`), and HIL-20260726-05 stopped mid-row. Its one proven root cause is in Arduino HWCDC: the interrupt handler acknowledged IN_EMPTY after checking the FIFO, so a completion in between was lost. A reordered handler drained on all three boards. I read the IDF v5.5 and v5.5.1 driver source: its handler acknowledges first, so that race is absent. It has one documented gap: when the FIFO is not writable at the interrupt, it waits for the next interrupt. Its own comment names ROM print routines as the cause. Here only the boot-failure path uses `esp_rom_printf`, before the driver exists, and logging is off. So HW-12 stays unexplained. The `usb_stall` diagnostic is the way to capture the register state if it recurs. Its one-packet nudge only acts when the FIFO is free, so it would not help in that IDF case.
+
 **Morning summary, 3 November 06:15.** From 18:17 to 06:14, about 11 hours of harness segments ran 9,212 cases and about 46 M increments on the free shaft. About 790 more trials were deliberate reproductions. One motor power-up throughout, no motor power cycle (HW-10).
 
 | Finding | State | Where |
