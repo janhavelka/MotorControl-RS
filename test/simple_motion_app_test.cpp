@@ -844,6 +844,12 @@ void testMoveWaitsOutEnableSettling() {
     for (unsigned i = 0; i < 2000000 && hardware.time <= app->enableSettleUntilUs; ++i) step();
     pump(); assert(app->simple.view.moveAdmitted);
     completeSimple(); assert(app->simple.view.ok);
+    // Other starts answer busy, so a caller retries instead of reading a fault.
+    app->enableSettleUntilUs = hardware.time + 1000000; Serial.output.clear();
+    const auto idle = hardware.writes;
+    command("@9 move relative 100 steps native 60 configured\n");
+    assert(Serial.output.find("\"id\":9,")!=std::string::npos && Serial.output.find("\"result\":\"busy\"")!=std::string::npos);
+    pump(); assert(hardware.writes == idle);
 }
 int main() {
     testMoveWaitsOutEnableSettling();

@@ -989,6 +989,7 @@ Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
     // Begin on a quiescent bus so an earlier producer's admitted write cannot
     // remain queued across our staging reservation. Reads may join afterward.
     if (a.owner.active() || a.owner.pending()) return Probe::Action::BUSY;
+    if (enableSettling(a, address, uart.sample())) return Probe::Action::BUSY; // HW-15: the drive ignores an early start.
     if (a.axis.target.address != address || !a.configuration.operationId ||
         !Probe::sameTarget(a.configuration.target, a.axis.target)) return Probe::Action::UNAVAILABLE;
     App::Record* record = nullptr;
@@ -999,8 +1000,7 @@ Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
     ESS::MovePrerequisites prerequisites = a.movePrerequisites;
     if (!prerequisites.commandUnitsVerified && !moveRequirements(a, supplied, now, prerequisites)) return Probe::Action::UNAVAILABLE;
     const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
-    if (!Probe::fresh(motion, a.axis.target, now, prerequisites.maximumAgeUs) || enableSettling(a, address, now))
-        prerequisites.readinessQualified = false;
+    if (!Probe::fresh(motion, a.axis.target, now, prerequisites.maximumAgeUs)) prerequisites.readinessQualified = false;
     else {
         prerequisites.rawAlarm = motion.value.rawAlarm; prerequisites.rawMotion = motion.value.rawMotion;
         prerequisites.observedUs = motion.observedEarliestUs;
@@ -1097,6 +1097,7 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
     if (a.owner.needsRecovery() || uart.needsRecovery()) return Probe::Action::RECOVERY_REQUIRED;
     if (axisReserved(a, address)) return Probe::Action::AXIS_CONFLICT;
     if (a.owner.active() || a.owner.pending()) return Probe::Action::BUSY;
+    if (enableSettling(a, address, uart.sample())) return Probe::Action::BUSY; // HW-15: the drive ignores an early start.
     if (!velocityQualificationPresent(a)) return Probe::Action::QUALIFICATION_REQUIRED;
     if (a.axis.target.address != address || !a.configuration.operationId ||
         !Probe::sameTarget(a.configuration.target, a.axis.target)) return Probe::Action::UNAVAILABLE;
@@ -1109,8 +1110,7 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
     prerequisites.minimumRpm = std::max<int16_t>(prerequisites.minimumRpm,-60);
     prerequisites.maximumRpm = std::min<int16_t>(prerequisites.maximumRpm,60);
     const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
-    if (!Probe::fresh(motion, a.axis.target, now, prerequisites.maximumAgeUs) || enableSettling(a, address, now))
-        prerequisites.readinessQualified = false;
+    if (!Probe::fresh(motion, a.axis.target, now, prerequisites.maximumAgeUs)) prerequisites.readinessQualified = false;
     else {
         prerequisites.rawAlarm = motion.value.rawAlarm; prerequisites.rawMotion = motion.value.rawMotion;
         prerequisites.observedUs = motion.observedEarliestUs;
@@ -1167,7 +1167,7 @@ bool homeReadiness(const App& a, ESS::HomePrerequisites& p, uint64_t now) {
         // a stored offset whose interpretation is unresolved.
         parameters.rawAuxiliary != static_cast<uint16_t>(p.auxiliary) ||
         parameters.rawOffsetWords[0] || parameters.rawOffsetWords[1] ||
-        p.inputPolarity != config.raw.inputPolarity || enableSettling(a, p.target.address, now)) return false;
+        p.inputPolarity != config.raw.inputPolarity) return false;
     for (uint8_t i = 0; i < 4; ++i)
         if (!config.inputFunctionKnown[i] || p.inputFunctions[i] != config.raw.inputFunctions[i] ||
             p.inputWiring[i] != config.wiring[i] || p.inputWiring[i] != a.inputWiring[i]) return false;
@@ -1253,6 +1253,7 @@ Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
     if (a.owner.needsRecovery() || uart.needsRecovery()) return Probe::Action::RECOVERY_REQUIRED;
     if (axisReserved(a, address)) return Probe::Action::AXIS_CONFLICT;
     if (a.owner.active() || a.owner.pending()) return Probe::Action::BUSY;
+    if (enableSettling(a, address, uart.sample())) return Probe::Action::BUSY; // HW-15: the drive ignores an early start.
     if (!homeQualificationPresent(a)) return Probe::Action::QUALIFICATION_REQUIRED;
     if (a.axis.target.address != address || !a.configuration.operationId ||
         !Probe::sameTarget(a.configuration.target, a.axis.target)) return Probe::Action::UNAVAILABLE;

@@ -617,6 +617,7 @@ class Run:
         if after["raw_motion"] & (RUNNING | RELEASED):
             raise Anomaly("RELEASE_ENABLE", after)
         self.console.release_all()
+        self.console.pump(1.1)  # Starts answer busy for 1 s after an enable (HW-15).
         return "ok"
 
     def prepare_auxiliary(self):
