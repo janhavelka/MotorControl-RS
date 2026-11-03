@@ -104,7 +104,7 @@ error; zero displacement after rounding yields no motion write. A negative nativ
 target is refused before any write, with that reason, until the drive's signed
 encoding is verified; `moveto` a lower target moves back. For 1 s after an
 enable is transmitted, simple moves wait and other position, velocity and home
-starts are refused: firmware `0x0029` echoed and ignored starts sent up to 0.6 s
+starts answer `busy`: firmware `0x0029` echoed and ignored starts sent up to 0.6 s
 after enable, and no status bit shows when it is ready. Detailed
 requests default to EXACT and expose explicit rounding/approximation choices.
 Angles and travel require the corresponding scale, frame and origin.
