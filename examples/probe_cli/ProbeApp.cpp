@@ -45,6 +45,9 @@ static_assert(static_cast<uint64_t>(ESS::ACTION_MAX_POLLS) * RUNNING_POLL_US >= 
 // lets an in-flight transaction settle and one bounded recovery finish while a
 // never-transmitted stop still has its own request budget.
 constexpr uint32_t STOP_RECOVERY_US = REQUEST_US + RECOVERY_BUDGET_US;
+// Bench, 3 November 2026: firmware 0x0029 echoed and ignored starts sent up to
+// 0.6 s after an enable frame, with no status bit showing readiness. Not documented.
+constexpr uint32_t ENABLE_SETTLE_US = 1000000;
 constexpr std::size_t REQUEST_CAPACITY = 8, ORDINARY_PENDING = 4, STOP_RECORDS = 2, OUTPUT_LINES = 8;
 DRAM_ATTR Esp32S3Uart uart; // Internal driver/ISR state; App storage is PSRAM.
 #if MOTORCONTROLRS_LOAD_FIXTURE
@@ -189,6 +192,8 @@ struct App {
     MotorControlRS::AxisConfig axis;
     bool commandPolarityKnown = true; // Host declaration; invalidated by possible device-direction changes.
     MotorControlRS::AxisReference coordinateReference; // Qualified command-coordinate evidence; never inferred from an unsigned/raw zero.
+    uint64_t enableSettleUntilUs = 0; // No motion start to this address before then (ENABLE_SETTLE_US).
+    uint8_t enableSettleAddress = 0;
     bool bootOriginPending = true; // RAM-only, consumed once before the first simple move.
     bool bootCoordinates = false; // Explicit standalone feedback/command coordinate convention.
     bool simpleEndpointKnown = false;
@@ -775,6 +780,9 @@ Rtu::BusAdmission admitActionStep(App& a, App::Record& record, const ESS::Prepar
     return record.action.request.kind == MotorControlRS::ActionKind::STOP ?
         a.owner.admitUrgent(request, now, record.requestId) : a.owner.admit(request, now, record.requestId);
 }
+bool enableSettling(const App& a, uint8_t address, uint64_t now) {
+    return a.enableSettleAddress == address && now < a.enableSettleUntilUs;
+}
 #include "MotionReadinessApp.h"
 #include "MotionProfileApp.h"
 void cancelSimplePreparation(App&, uint8_t, uint64_t);
@@ -991,7 +999,8 @@ Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
     ESS::MovePrerequisites prerequisites = a.movePrerequisites;
     if (!prerequisites.commandUnitsVerified && !moveRequirements(a, supplied, now, prerequisites)) return Probe::Action::UNAVAILABLE;
     const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
-    if (!Probe::fresh(motion, a.axis.target, now, prerequisites.maximumAgeUs)) prerequisites.readinessQualified = false;
+    if (!Probe::fresh(motion, a.axis.target, now, prerequisites.maximumAgeUs) || enableSettling(a, address, now))
+        prerequisites.readinessQualified = false;
     else {
         prerequisites.rawAlarm = motion.value.rawAlarm; prerequisites.rawMotion = motion.value.rawMotion;
         prerequisites.observedUs = motion.observedEarliestUs;
@@ -1100,7 +1109,8 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
     prerequisites.minimumRpm = std::max<int16_t>(prerequisites.minimumRpm,-60);
     prerequisites.maximumRpm = std::min<int16_t>(prerequisites.maximumRpm,60);
     const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
-    if (!Probe::fresh(motion, a.axis.target, now, prerequisites.maximumAgeUs)) prerequisites.readinessQualified = false;
+    if (!Probe::fresh(motion, a.axis.target, now, prerequisites.maximumAgeUs) || enableSettling(a, address, now))
+        prerequisites.readinessQualified = false;
     else {
         prerequisites.rawAlarm = motion.value.rawAlarm; prerequisites.rawMotion = motion.value.rawMotion;
         prerequisites.observedUs = motion.observedEarliestUs;
@@ -1157,7 +1167,7 @@ bool homeReadiness(const App& a, ESS::HomePrerequisites& p, uint64_t now) {
         // a stored offset whose interpretation is unresolved.
         parameters.rawAuxiliary != static_cast<uint16_t>(p.auxiliary) ||
         parameters.rawOffsetWords[0] || parameters.rawOffsetWords[1] ||
-        p.inputPolarity != config.raw.inputPolarity) return false;
+        p.inputPolarity != config.raw.inputPolarity || enableSettling(a, p.target.address, now)) return false;
     for (uint8_t i = 0; i < 4; ++i)
         if (!config.inputFunctionKnown[i] || p.inputFunctions[i] != config.raw.inputFunctions[i] ||
             p.inputWiring[i] != config.wiring[i] || p.inputWiring[i] != a.inputWiring[i]) return false;
@@ -2307,6 +2317,9 @@ void advanceActions(App& a, uint64_t now) {
                 if (record.kind == App::OperationKind::ACTION && (record.action.request.kind == MotorControlRS::ActionKind::RELEASE ||
                     record.action.request.kind == MotorControlRS::ActionKind::CLEAR_POSITION) &&
                     a.axis.target.address == record.address) invalidateAxis(a);
+                if (record.kind == App::OperationKind::ACTION && record.action.request.kind == MotorControlRS::ActionKind::ENABLE) {
+                    a.enableSettleAddress = record.address; a.enableSettleUntilUs = now + ENABLE_SETTLE_US;
+                }
             }
             const auto* result = a.owner.result(record.requestId); if (!result) continue;
             const auto kind = result->transport.reason == Rtu::Reason::FRAME ? ReadEventKind::FRAME :

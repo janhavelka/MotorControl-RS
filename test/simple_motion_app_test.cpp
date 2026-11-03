@@ -833,7 +833,20 @@ void testNegativeRelativeMoveNamesUnresolvedSign() {
     command("@2 moveby 100\n"); prepareSimple(); completeSimple();
     assert(app->simple.view.ok); // Rejection cannot pin the motor reservation.
 }
+void testMoveWaitsOutEnableSettling() {
+    // HW-15: firmware 0x0029 echoed and ignored a start sent within 0.6 s of an enable.
+    // The wait fits the 5 s preparation deadline; no start is sent before the window ends.
+    fresh(); app->enableSettleAddress = 1; app->enableSettleUntilUs = hardware.time + 1000000;
+    command("@1 moveby 100\n"); prepareSimple(false);
+    const auto writes = hardware.writes; pump(10);
+    assert(hardware.time < app->enableSettleUntilUs);
+    assert(app->simple.view.pending && !app->simple.view.moveAdmitted && hardware.writes == writes);
+    for (unsigned i = 0; i < 2000000 && hardware.time <= app->enableSettleUntilUs; ++i) step();
+    pump(); assert(app->simple.view.moveAdmitted);
+    completeSimple(); assert(app->simple.view.ok);
+}
 int main() {
+    testMoveWaitsOutEnableSettling();
     testNegativeRelativeMoveNamesUnresolvedSign();
     testDefaultPositionBoundary();
     testShortMoveUsesFreshExactEndpoint();
