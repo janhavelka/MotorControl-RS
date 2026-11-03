@@ -379,6 +379,10 @@ void serviceSimpleMotion(App& a, uint64_t now) {
         finishSimpleMotion(a, Ok(), "Requested target already satisfied; no new motion command was sent", ActionOutcome::OBSERVED);
         return;
     }
+    if (target.effectiveNative < 0) { // Admission refuses it too; name the reason here.
+        finishSimpleMotion(a, Status(Err::INVALID_CONFIG, static_cast<int32_t>(MoveError::UNRESOLVED_SIGN), "negative native target"),
+            "Negative native targets are refused until the drive's signed encoding is verified; moveto a lower target moves back"); return;
+    }
     const auto admitted = startMove(&a, v.commandId, v.address, request, v.moveOperationId);
     a.latestOperationId = v.operationId;
     if (admitted != Probe::Action::OK) {

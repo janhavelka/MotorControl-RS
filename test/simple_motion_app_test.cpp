@@ -823,7 +823,18 @@ void testDefaultPositionBoundary() {
         assert(app->simple.view.ok); // Rejection cannot pin the motor reservation.
     }
 }
+void testNegativeRelativeMoveNamesUnresolvedSign() {
+    // HW-13: the bench refused moveby -100 with a generic prerequisites message.
+    fresh(); command("@1 moveby -100\n"); prepareSimple(); pump(1000);
+    assert(!app->simple.view.ok && !app->simple.view.moveAdmitted);
+    assert(hardware.writes==9); // Only prerequisite reads, no stage/start.
+    assert(app->simple.view.status.detail==static_cast<int>(MoveError::UNRESOLVED_SIGN));
+    assert(Serial.output.find("signed encoding is verified")!=std::string::npos);
+    command("@2 moveby 100\n"); prepareSimple(); completeSimple();
+    assert(app->simple.view.ok); // Rejection cannot pin the motor reservation.
+}
 int main() {
+    testNegativeRelativeMoveNamesUnresolvedSign();
     testDefaultPositionBoundary();
     testShortMoveUsesFreshExactEndpoint();
     testOneCommandSubdivisionAndFollowingMove();
