@@ -100,7 +100,9 @@ counter or write NVS. `stepsperturn` changes host interpretation only;
 
 Simple moves use nearest-command-step quantization with ties to even and at
 most half a step of error. Results retain effective native value and rounding
-error; zero displacement after rounding yields no motion write. Detailed
+error; zero displacement after rounding yields no motion write. A negative native
+target is refused before any write, with that reason, until the drive's signed
+encoding is verified; `moveto` a lower target moves back. Detailed
 requests default to EXACT and expose explicit rounding/approximation choices.
 Angles and travel require the corresponding scale, frame and origin.
 
