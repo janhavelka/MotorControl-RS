@@ -20,6 +20,21 @@ Autonomous run on branch `overnight-stress-20261102` (worktree `../MotorControl-
 
 <!-- overnight entries -->
 
+**Morning summary, 3 November 06:15.** From 18:17 to 06:14, about 11 hours of harness segments ran 9,212 cases and about 46 M increments on the free shaft. About 790 more trials were deliberate reproductions. One motor power-up throughout, no motor power cycle (HW-10).
+
+| Finding | State | Where |
+| --- | --- | --- |
+| HW-11 finished home reported failed | Fixed and rechecked on hardware | `c53f6d3` |
+| HW-12 USB console output stall | Seen once, in the first 52 minutes. Not again in about 10 hours with the firmware counter, which never recorded even a 300 ms stall. **Unresolved** | Diagnostic `e36027c` |
+| HW-13 negative `moveby`: misleading message | Fixed and rechecked on hardware | `98cc6d3` |
+| HW-14 `stop normal` overshoot and endless creep at high command rates | Root cause established and reproduced 42 times. **Fix needs the owner's decision** (rate ceiling and/or `stop fast` escalation) | Evidence only |
+| HW-15 start ignored within about 0.6 s of enable | Fixed and rechecked on hardware: 0/65 against 10/25 and 15/15 before | `3f4b073`, `dea393f`, `ec5b564` |
+| HW-01 persistent RUNNING at 1,000 increments/s | No recurrence in about 3,400 interrupted moves. Still unexplained. HW-14 is a different stuck mode: position creeps, and `stop fast` clears it | Open |
+
+Branch `overnight-stress-20261102` has 13 commits on `3adf25f`. It merges cleanly with current `main`. CI passed on the final commit `ec5b564`. One intermediate commit, `3f4b073`, failed the IDF build on a joined line (`-Werror=misleading-indentation`), fixed in the next commit. Native suite 90/90. Ready to merge: the HW-11, HW-13 and HW-15 fixes and `scripts/bench_stress.py`. Owner's choice: the HW-12 diagnostic. Its `usb_stall` counters in `drv` cost nothing, but its one-packet nudge changes USB behavior once per stall and could hide the stall it is meant to measure. It never fired tonight. Not done tonight: the HW-14 fix, velocity (outside the unattended finite-position rule), negative target encoding, R-01 to R-18 and M-01 to M-12.
+
+Ending state. COM13 runs the branch image `ec5b564` (`bench_s3_load_timer`, SHA-256 `4E095DBC...F53F`), not `main`. Drive: status `3`, alarm 0, position 85,413, subdivision 1000 (restored, the stored value). Left changed in drive RAM: auxiliary 7, homing `34/60/30/100` (power-on `24/120/60/100`), and motion-profile words from the last staged move. No save or factory restore was issued. Power-cycle the motor to return the stored values, then verify by reading.
+
 **HW-15, fixed on the branch (`3f4b073`, `dea393f`) and rechecked: a move started soon after `enable` is acknowledged and never runs.** Found by the final regression at 04:53. `moveby 3000` came about 0.4 s after a release/enable case. Staging and start were echoed and checked, the profile read back exactly as staged, and transport had 0 failures in 324 frames. Yet RUNNING was never reported, position never changed, and status dropped from `1` to `0` (not in position, not running, alarm 0) and stayed there until a `stop normal`. The console failed closed: the move ended `observation_limit`, uncertain, with an axis conflict.
 
 *Reproduction.* After `motor-release` and `enable`, then `moveby 3000` after a varying gap: 10 of 25 failed, every one with the move sent within 0.40 s of the enable completing; all 15 at 0.41 s or later succeeded. Controls: the same gaps without release/enable, 0/15. With release/enable and 100/100 ms ramps instead of 1000/1000, 15/15 failed. At 300 rpm the same cutoff held (failures to 0.404 s, success from 0.408 s). On the wire, failed starts left 335 to 598 ms after the enable frame `0106002D001299CE`. Status sampled every 0.1 s after enable stayed `0` throughout, so no bit shows readiness. The enable action itself completes in about 80 ms.
