@@ -172,7 +172,7 @@ class Console:
                 result = self.send(f"release {op}", 1.0).get("result")
             except Unresponsive:
                 return
-            if result in ("done", "invalid_operation_id"):
+            if result in ("done", "invalid", "invalid_operation_id"):  # invalid: not retained, nothing to release
                 self.retained.remove(op)
 
 
