@@ -823,15 +823,17 @@ void testDefaultPositionBoundary() {
         assert(app->simple.view.ok); // Rejection cannot pin the motor reservation.
     }
 }
-void testNegativeRelativeMoveNamesUnresolvedSign() {
-    // HW-13: the bench refused moveby -100 with a generic prerequisites message.
-    fresh(); command("@1 moveby -100\n"); prepareSimple(); pump(1000);
-    assert(!app->simple.view.ok && !app->simple.view.moveAdmitted);
-    assert(hardware.writes==9); // Only prerequisite reads, no stage/start.
-    assert(app->simple.view.status.detail==static_cast<int>(MoveError::UNRESOLVED_SIGN));
-    assert(Serial.output.find("signed encoding is verified")!=std::string::npos);
-    command("@2 moveby 100\n"); prepareSimple(); completeSimple();
-    assert(app->simple.view.ok); // Rejection cannot pin the motor reservation.
+void testNegativeMovesStageTwosComplementAndKeepBootZero() {
+    // HW-13: negative targets stage two's complement, and negative feedback keeps the boot zero.
+    fresh(); command("@1 moveby -100\n"); prepareSimple();
+    auto child = app->simple.view.moveOperationId; assert(child);
+    const auto& staged = findRecord(*app,child)->move.words;
+    assert(staged[3]==0xFFFF && staged[4]==0xFF9C);
+    completeSimple(); assert(app->simple.view.ok && app->bootCoordinates && app->axis.originKnown);
+    command("@2 moveto -300\n"); prepareSimple(true,0xFFFFFF9CU);
+    child = app->simple.view.moveOperationId; assert(child && app->simple.view.moveAdmitted);
+    assert(findRecord(*app,child)->move.prepared.effectiveNative==-300);
+    completeSimple(); assert(app->simple.view.ok && app->bootCoordinates);
 }
 void testMoveWaitsOutEnableSettling() {
     // HW-15: firmware 0x0029 echoed and ignored a start sent within 0.6 s of an enable.
@@ -853,7 +855,7 @@ void testMoveWaitsOutEnableSettling() {
 }
 int main() {
     testMoveWaitsOutEnableSettling();
-    testNegativeRelativeMoveNamesUnresolvedSign();
+    testNegativeMovesStageTwosComplementAndKeepBootZero();
     testDefaultPositionBoundary();
     testShortMoveUsesFreshExactEndpoint();
     testOneCommandSubdivisionAndFollowingMove();

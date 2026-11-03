@@ -146,8 +146,8 @@ int main() {
     auto request=MoveRequest(); request.position.value=Rational(100); request.position.configurationGeneration=app->axis.generation;
     request.speedRpm=60; request.ramp=MoveRamp::VERIFIED_CONFIGURED;
     ESS::MovePrerequisites p;
-    assert(moveRequirements(*app,request,hardware.time,p) && !p.negativeTwosComplementVerified);
-    request.position.value=Rational(-100); assert(!moveRequirements(*app,request,hardware.time,p));
+    assert(moveRequirements(*app,request,hardware.time,p) && p.negativeTwosComplementVerified);
+    request.position.value=Rational(-100); assert(moveRequirements(*app,request,hardware.time,p)); // HW-13
     request.position.value=Rational(100); app->stateCache.blocks[1].value.inputs[1]=true;
     assert(!moveRequirements(*app,request,hardware.time,p)); app->stateCache.blocks[1].value.inputs[1]=false;
     uint32_t operation=0;

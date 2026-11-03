@@ -55,8 +55,6 @@ bool moveRequirements(const App& a, const MotorControlRS::MoveRequest& request,
                       uint64_t now, ESS::MovePrerequisites& out) {
     using namespace MotorControlRS;
     const auto& profile = a.motionProfile.view;
-    if (request.position.frame == CoordinateFrame::NATIVE && request.position.unit == PositionUnit::STEPS &&
-        (request.position.relative ? request.position.value.numerator <= 0 : request.position.value.numerator < 0)) return false;
     if (!motionProfileBound(a) || !profile.ok || profile.pending || !profile.closureQualified ||
         !MotorControlRS::evidenceAgeValid(profile.closureEarliestUs, now, a.observationAgeUs()) ||
         request.position.wrapped ||
@@ -83,6 +81,9 @@ bool moveRequirements(const App& a, const MotorControlRS::MoveRequest& request,
     out.target = a.axis.target;
     out.configurationGeneration = a.axis.generation;
     out.commandUnitsVerified = out.relativeBasisVerified = true;
+    // Bench, 3 November 2026, firmware 0x0029: two's-complement targets moved back
+    // by the commanded amount, and feedback below zero read back in the same encoding.
+    out.negativeTwosComplementVerified = true;
     out.configuredRampVerified = out.serialInputsPermit = out.readinessQualified = true;
     out.accelerationTime = profile.current[1];
     out.decelerationTime = profile.current[2];

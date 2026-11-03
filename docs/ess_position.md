@@ -403,7 +403,10 @@ the default preparation policy above deliberately admits a narrower envelope.
 These ramp words are reused verbatim, never labelled physical acceleration.
 The implemented mathematical target subset is signed32; negative targets also
 require explicit qualified two's-complement encoding. A caller must establish
-applicable device bounds; the malformed manual range is not qualification.
+applicable device bounds; the malformed manual range is not qualification. The
+standalone states it for firmware `0x0029`: on 3 November 2026, targets of -100
+to -100,000 moved backwards by the commanded amount and feedback read back in
+the same encoding below zero.
 
 Serial positioning needs no home switch or output load. Unconnected inputs
 remain assigned inputs. An affected limit, stop, release or external trigger
