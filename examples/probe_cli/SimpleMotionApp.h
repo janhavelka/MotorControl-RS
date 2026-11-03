@@ -383,6 +383,7 @@ void serviceSimpleMotion(App& a, uint64_t now) {
         finishSimpleMotion(a, Status(Err::INVALID_CONFIG, static_cast<int32_t>(MoveError::UNRESOLVED_SIGN), "negative native target"),
             "Negative native targets are refused until the drive's signed encoding is verified; moveto a lower target moves back"); return;
     }
+    if (enableSettling(a, v.address, now)) return; // Waits out ENABLE_SETTLE_US instead of refusing.
     const auto admitted = startMove(&a, v.commandId, v.address, request, v.moveOperationId);
     a.latestOperationId = v.operationId;
     if (admitted != Probe::Action::OK) {
