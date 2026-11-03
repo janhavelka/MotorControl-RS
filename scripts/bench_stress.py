@@ -208,6 +208,7 @@ class Run:
         self.usb_stalls = []
         self.health = None
         self.refused = None
+        self.subdivision, self.ceiling = 1000, 2000
         self.started = time.time()
         self.moved = 0
         self.last = None
@@ -281,9 +282,63 @@ class Run:
             raise Anomaly("MOVE_REFUSED", reply.get("result"))
         return reply
 
-    @staticmethod
-    def duration(steps, rpm):
-        return steps / (rpm * 1000 / 60) + 0.2
+    def duration(self, steps, rpm):
+        return steps / (rpm * self.subdivision / 60) + 0.2
+
+    @property
+    def tolerance(self):
+        """20 increments at subdivision 1000; one 4,000-count encoder count is subdivision/4000 increments."""
+        return max(20, 2 * self.subdivision // 4000 + 8)
+
+    def set_subdivision(self, value):
+        """Typed drive setting with checked readback, RAM only: no save is issued."""
+        self.read("config")
+        self.state()
+        reply = self.console.send(f"subdivision {value}", 3.0)
+        item = self.console.terminal(reply, 8.0) if reply.get("ok") else None
+        self.console.release_all()
+        if not item or not item.get("ok") or item.get("readback") != value:
+            raise Anomaly("SUBDIVISION", {"requested": value, "reply": reply.get("result"), "item": item})
+        item = self.console.simple("settings", 5.0)
+        self.console.release_all()
+        self.subdivision = value
+        self.ceiling = (item or {}).get("maximum_position_rpm") or 0
+        if self.ceiling != min(2000, 12000000 // value):
+            raise Anomaly("CEILING", {"subdivision": value, "reported": self.ceiling})
+
+    def limit_rpm(self):
+        return self.random.choice([self.ceiling, self.ceiling, self.ceiling - 1, min(600, self.ceiling)])
+
+    def case_limit_plain(self):
+        """At the policy ceiling: min(2000 rpm, 200,000 increments/s)."""
+        turns = self.random.choice([0.25, 1, 5, 20])
+        steps, rpm = int(turns * self.subdivision), self.limit_rpm()
+        before = self.prepare()
+        reply = self.start_move(steps, rpm)
+        item = self.console.terminal(reply, self.duration(steps, rpm) + 5)
+        self.check_terminal(item, "MOVE")
+        after = self.state()
+        delta = (after["position"] - before["position"]) & 0xFFFFFFFF
+        if abs(delta - steps) > self.tolerance or after["raw_motion"] & RUNNING:
+            raise Anomaly("POSITION", {"steps": steps, "rpm": rpm, "subdivision": self.subdivision, "delta": delta, "motion": after["raw_motion"], "speed": after.get("raw_speed")})
+        self.moved += steps
+        return f"sub={self.subdivision} steps={steps} rpm={rpm} rate={rpm * self.subdivision // 60} delta={delta}"
+
+    def case_limit_interrupt(self):
+        return f"sub={self.subdivision} " + self.interrupt_finish(5 * self.subdivision, self.limit_rpm())
+
+    def case_limit_stop(self):
+        steps, rpm = 10 * self.subdivision, self.limit_rpm()
+        self.prepare()
+        self.start_move(steps, rpm)
+        self.console.pump(self.random.uniform(0.05, min(1.5, self.duration(steps, rpm) * 0.8)))
+        policy = self.random.choice(["normal", "fast"])
+        self.stop(policy)
+        after = self.state()
+        if after["raw_motion"] & RUNNING:
+            raise Anomaly("RUNNING_AFTER_STOP", after)
+        self.console.release_all()
+        return f"sub={self.subdivision} policy={policy} rpm={rpm}"
 
     def check_terminal(self, item, kind, allow=()):
         if item is None:
@@ -304,7 +359,7 @@ class Run:
             self.counts["position_mismatch"] += 1
         after = self.state()
         delta = (after["position"] - before["position"]) & 0xFFFFFFFF
-        if abs(delta - steps) > 20 or after["raw_motion"] & RUNNING:
+        if abs(delta - steps) > self.tolerance or after["raw_motion"] & RUNNING:
             raise Anomaly("POSITION", {"steps": steps, "delta": delta, "motion": after["raw_motion"], "speed": after.get("raw_speed")})
         self.moved += steps
         return f"steps={steps} rpm={rpm} delta={delta}"
@@ -386,7 +441,7 @@ class Run:
         return f"moving={moving} delta={delta}"
 
     def simple_ramps(self):
-        rpm = self.random.choice([60, 120, 300, 600])
+        rpm = min(self.random.choice([60, 120, 300, 600]), self.ceiling)
         accel, decel = self.random.choice([100, 200, 500, 1000, 2000]), self.random.choice([100, 200, 500, 1000, 2000])
         for command in (f"speed {rpm}", f"accel {accel}", f"decel {decel}"):
             if not self.console.send(command).get("ok"):
@@ -409,7 +464,7 @@ class Run:
         after = self.state()
         delta = (after["position"] - before["position"]) & 0xFFFFFFFF
         expected = steps & 0xFFFFFFFF
-        if min((delta - expected) & 0xFFFFFFFF, (expected - delta) & 0xFFFFFFFF) > 20 or after["raw_motion"] & RUNNING:
+        if min((delta - expected) & 0xFFFFFFFF, (expected - delta) & 0xFFFFFFFF) > self.tolerance or after["raw_motion"] & RUNNING:
             raise Anomaly("POSITION", {"steps": steps, "ramps": ramps, "delta": delta, "motion": after["raw_motion"]})
         self.moved += abs(steps)
         return f"moveby {steps} ramps={ramps}"
@@ -474,8 +529,8 @@ class Run:
         self.console.pump(extra)
         settled = self.state()
         delta = (settled["position"] - before["position"]) & 0xFFFFFFFF
-        if not steps - 20 <= delta <= 2 * steps + 60:
-            raise Anomaly("POSITION", {"steps": steps, "delta": delta, "delay": delay, "samples": samples[-6:]})
+        if not steps - self.tolerance <= delta <= 2 * steps + 3 * self.tolerance:
+            raise Anomaly("POSITION", {"steps": steps, "rpm": rpm, "delta": delta, "delay": delay, "samples": samples[-6:]})
         self.stop("normal")
         after = self.state()
         if after["raw_motion"] & RUNNING:
@@ -731,6 +786,11 @@ class Run:
                      ("double_interrupt", self.case_double_interrupt, 10), ("mcu_reset", self.case_mcu_reset, 1),
                      ("simple", self.case_simple, 15), ("simple_boot", self.case_simple_boot, 2),
                      ("position_clear", self.case_position_clear, 3)]
+        if self.args.mix == "limit":
+            cases = [("limit_plain", self.case_limit_plain, 30), ("limit_interrupt", self.case_limit_interrupt, 30),
+                     ("limit_stop", self.case_limit_stop, 15), ("interrupt_stop", self.case_interrupt_stop, 7),
+                     ("home", self.case_home, 5), ("release_enable", self.case_release_enable, 3),
+                     ("simple", self.case_simple, 10)]
         if self.args.only:
             cases = [c for c in cases if c[0] == self.args.only]
         names = [c[0] for c in cases]
@@ -741,6 +801,8 @@ class Run:
         self.console.send("probe")
         self.console.pump(0.3)
         self.prepare_auxiliary()
+        if self.args.subdivision:
+            self.set_subdivision(self.args.subdivision)
         end = self.started + self.args.duration
         rest = time.time() + 1200
         written = 0
@@ -790,6 +852,8 @@ class Run:
                 self.sample_health()
                 self.summary()
         self.sample_health()
+        if self.args.subdivision and self.args.restore:
+            self.set_subdivision(self.args.restore)
         return 0
 
 
@@ -801,7 +865,9 @@ def main():
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--debug", choices=("off", "raw", "decoded"), default="off")
     parser.add_argument("--recover", action="store_true")
-    parser.add_argument("--mix", choices=("standard", "extended"), default="standard")
+    parser.add_argument("--mix", choices=("standard", "extended", "limit"), default="standard")
+    parser.add_argument("--subdivision", type=int, help="drive subdivision for this run, set in RAM with readback")
+    parser.add_argument("--restore", type=int, default=1000, help="subdivision restored after a clean run")
     parser.add_argument("--only", help="run one case repeatedly, for a targeted reproduction")
     args = parser.parse_args()
     keep_awake()
