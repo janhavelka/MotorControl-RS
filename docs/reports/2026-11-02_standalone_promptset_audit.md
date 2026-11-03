@@ -20,6 +20,33 @@ Autonomous run on branch `overnight-stress-20261102` (worktree `../MotorControl-
 
 <!-- overnight entries -->
 
+**HW-14, root cause established, policy decision for the owner: `stop normal` near the end of a fast move overshoots the target and leaves the drive creeping forever.** Found at 03:52 by the policy-ceiling soak (subdivision 6000, 16 minutes, 271 cases), then reproduced 42 more times on purpose.
+
+*What happens.* A `stop normal` (FC06 `0x0027=0x0100`) is acknowledged while the move is still accelerating, at the moment where the deceleration ramp would end slightly beyond the target. The drive then runs about 1.1 turns past the target and never stops: status `6` (RUNNING, HOMED), speed word 0, alarm 0, position rising about 0.5 rpm without limit. In the first case it was 6,832 increments past the target 4 s after the stop and still moving 100 s later. The console reported it correctly: stop `observation_limit`, not observed, motion unresolved. One `stop fast` (`0x0200`) stopped every occurrence at once (status `2`, position frozen, alarm 0), and the next moves on the same power-up landed exactly, so unlike HW-01 there was no lasting degradation.
+
+*Reproduction, all with the failing trajectory:* 10 turns at 2,000 rpm, drive ramps 500/500 ms, `stop normal` sent 0.355 to 0.400 s after the move. Shaft motion is identical at every subdivision; only the command-increment rate changes.
+
+| Subdivision | Rate (increments/s) | Failed stops |
+| --- | ---: | ---: |
+| 1000 | 33,333 | 0 / 50 |
+| 1500 | 50,000 | 0 / 40 |
+| 2000 | 66,667 | 1 / 40 |
+| 2400 | 80,000 | 5 / 40 |
+| 3000 | 100,000 | 10 / 50 |
+| 6000 | 200,000 | 11 / 40 |
+
+Every failure on this trajectory falls in a band about 15 ms wide. On the wire, the stop frame `0106002701003851` left 371.6 to 386.6 ms after the start frame `010600270001F801`, most of them 372 to 380 ms, each with an exact echo. Outside the band the move ends on target or, for earlier stops, short of it. At subdivision 6000 the same band also failed at 1,500 rpm (11/40) and 1,000 rpm (4/40), and not at 600 rpm (0/80, 60,000 increments/s, different geometry). `stop fast` in the band: 0/40 failures.
+
+*Cause.* A defect in the drive firmware (word `0x0029`) in how `stop normal` deceleration is planned when it overruns the remaining distance at a high command rate. The cause is the command-increment rate, not shaft speed and not one subdivision: the same trajectory fails at subdivisions 2000, 2400, 3000 and 6000 and never at 1000 or 1500. Not established: the internal mechanism, other ramp lengths, and whether HW-01 is related (HW-01 was 1,000 increments/s with an interrupt, and `stop fast` did not clear it).
+
+*Consequence.* The library's default ceiling of 200,000 increments/s (`Position.h:19`) admits rates where a routine `stop normal` can leave the shaft moving with no end. The application path behaves correctly (fails closed, reports the stop as not observed), but the motor keeps moving until someone sends `stop fast`.
+
+*Fix: not applied, because it changes a default the owner set on 7 October.* Recommended, simplest and safest: lower `PositionLimits::maximumCommandRate` to 50,000 increments/s, the highest rate with no failure here (0/90). This keeps 2,000 rpm up to subdivision 1500, 1,000 rpm at 3000, 500 at 6000, and 58 at 51200. It touches the constant, the `settings` text and about 15 documents. Second, independent of the ceiling: after a `stop normal` that ends `observation_limit` with RUNNING still set, the application should send `stop fast`. The console allows that today, but only by hand. Both need the owner's decision. Recheck after either: rerun the subdivision 6000 band (`build/stress/repro_stop.py`, expected: refused before any write at the new ceiling) and the subdivision 1500 band (expected: 0 failures).
+
+Evidence on the branch worktree: `build/stress/18_limit_6000/` (first occurrence, incident rings), `build/stress/20_hw14/` (each sweep's `trials.jsonl`, with the raw wire traffic of every failed trial).
+
+Also fixed in the harness (`scripts/bench_stress.py`): `release_all` kept every ID the firmware answered `invalid`, so later in a run each case sent dozens of needless `release` commands. This slowed the cases and pushed state reads out of the incident ring. Firmware behavior was correct.
+
 **Segment 5, 00:31-03:31, clean: 2,184 cases, 11.3 M increments, no anomaly.** Adds the ordinary operator route with `debug decoded`: 287 `moveby` with speed 60 to 600 rpm and every ramp pair from 100 to 2,000 ms; 46 boot-zero sessions (MCU reset, then three `moveto` relative to the RAM boot zero, ending at 0, all within tolerance); 57 position clears, each reading exactly 0; plus 425 interrupted moves left to finish, 199 at 600 to 2,000 rpm, 213 fast plain, 199 interrupt then stop, 185 stop while moving, 142 homes, 51 release/enable, 23 MCU resets. Firmware counters, sampled every 100 cases (24 samples): `usb_stall.count` 0 throughout, `output_blocked` 0, `input_dropped` 0, 5 short USB writes under decoded output (handled), owner stack minimum 1,124 bytes free, internal heap minimum 342,212 bytes. The stack margin is the smallest resource figure seen tonight; nothing else is close to a limit.
 
 HW-13 fix on the branch (`98cc6d3`): the simple route now names the unresolved sign before admission (status detail `UNRESOLVED_SIGN`) and says that `moveto` a lower target moves back. Native regression added (it fails without the fix), 90/90 pass. Hardware recheck is pending until the current soak ends.
