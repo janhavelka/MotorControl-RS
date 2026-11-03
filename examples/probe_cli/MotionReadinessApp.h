@@ -56,7 +56,8 @@ bool moveRequirements(const App& a, const MotorControlRS::MoveRequest& request,
     using namespace MotorControlRS;
     const auto& profile = a.motionProfile.view;
     if (request.position.frame == CoordinateFrame::NATIVE && request.position.unit == PositionUnit::STEPS &&
-        (request.position.relative ? request.position.value.numerator <= 0 : request.position.value.numerator < 0)) return false;    if (!motionProfileBound(a) || !profile.ok || profile.pending || !profile.closureQualified ||
+        (request.position.relative ? request.position.value.numerator <= 0 : request.position.value.numerator < 0)) return false;
+    if (!motionProfileBound(a) || !profile.ok || profile.pending || !profile.closureQualified ||
         !MotorControlRS::evidenceAgeValid(profile.closureEarliestUs, now, a.observationAgeUs()) ||
         request.position.wrapped ||
         request.position.basis != RelativeBasis::ACTUAL || !motionProfileStationary(a, now)) return false;
