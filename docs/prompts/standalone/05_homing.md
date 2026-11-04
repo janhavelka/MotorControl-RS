@@ -3,12 +3,10 @@
 Read [README](README.md), [execution contract](execution_contract.md) and the
 [original audit](audit.md).
 
-The [ESS software set](../ess_software/README.md) exclusively owns homing reads
-(stage 03), the auxiliary setter (05), production qualification/admission support
-(08) and the 27 switch methods (09-12). A real switch fixture is not an entry
-requirement for that source-supported software/native-test work. This stage
+Homing reads, the auxiliary setter, qualification/admission and 27 switch methods
+are [implemented](../../ess_homing.md). This stage
 retains N06 nonzero offset, unresolved N08 method 18/collision semantics and Q07
-physical qualification. A redirect is not completion.
+physical qualification.
 
 ## Entry and inspection
 
@@ -19,8 +17,7 @@ use the actual applicable fixture, source-supported implementation and current
 AGENTS authorization. Missing hardware blocks only the physical trial.
 
 Inspect current homing core/app/tests, typed parameter/setting/qualification
-paths delivered by the software set, `docs/ess_homing_methods.md`,
-`docs/prompts/ess_software/homing_matrix.md`, the pair guide, original PDF
+paths, `docs/ess_homing_methods.md`, `docs/ess_homing.md`, the pair guide, original PDF
 diagrams and exact model/firmware evidence. Reconcile current code first. Carry
 the caption conflicts of 10, 13, 14, 26, 29, 30, and method 28's exchanged drawings
 into the physical checklist.
@@ -63,5 +60,5 @@ fixture and independent observations; missing checks remain NOT RUN. Update
 method-by-method software and physical dispositions separately.
 
 Do not reimplement the 27 methods or auxiliary setter under this stage. Use the
-software set's reviewed progress as input, preserve unresolved guards and keep
+dated homing reports as input, preserve unresolved guards and keep
 this remaining work visible until actually completed.

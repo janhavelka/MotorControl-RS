@@ -1,20 +1,11 @@
 # Implementation prompts
 
-The [ESS software handoff](ess_software/README.md) records delivery of all 15
-bounded stages: parameter reads, start-speed and homing-auxiliary setters,
-restricted position interruption, 27 switch homing methods and their verification.
-Completed numbered instructions are [archived](../archive/prompts/ess_software/README.md).
-The broader software objective remains PARTIAL: N05 arbitrary active replacement
-and attributable completion still need exact source/firmware evidence. Its
-[active next steps](ess_software/README.md#remaining-n05-work-and-next-evidence)
-and [progress](ess_software/progress.md) retain that obligation and separate
-physical limits; do not rerun the completed bounded stages.
-
-The broader [standalone ESS set](standalone/README.md) retains archived-profile
-staging, unresolved vendor semantics and physical qualification work. Its
-overlapping software stages redirect to the new set; do not execute both for
-the same feature. The [original audit](standalone/audit.md) remains a dated
-baseline, with software and physical evidence kept separate.
+The [standalone ESS set](standalone/README.md) owns archived-profile staging,
+remaining position-replacement evidence, unresolved vendor semantics and physical
+qualification. Delivered reads, scalar setters, stored retrigger and 27 switch
+homing methods are documented in the [operation guides](../README.md#public-operations).
+Their [final audit](../reports/2026-11-02_ess_final_audit.md) and dated reports retain
+verification. Finished ESS software prompts have been removed; do not repeat them.
 
 The [Lichuan LC57BK-R / RC RS485 set](lichuan_lc57bk_rs485/README.md) contains
 12 implementation and qualification stages for a second manufacturer profile.

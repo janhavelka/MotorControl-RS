@@ -330,6 +330,25 @@ See the [core evidence](reports/2026-10-29_ess_position_interrupt_core.md) and
 [application evidence](reports/2026-10-29_ess_position_interrupt_owner.md).
 The raw `buildStartPosition` builder validates wire shape/intent only; it does not perform application admission.
 
+### Remaining replacement work
+
+N05 remains PARTIAL. The implemented route retriggers the exact qualified stored
+profile and reports ACK, not arrival. New targets or profiles during motion
+still need two kinds of evidence:
+
+- When each profile/target write takes effect, and whether the drive can hold
+  those values until the new trigger. Bit 3 does not prove staging isolation.
+- A completion witness that distinguishes the replacement from old RUNNING,
+  ARRIVED and late replies, with a defined coordinate basis while moving.
+
+Function p16's staging example and p25's pre-motion stop-ramp rule do not settle
+either point. Keep active setup
+writes, changed stored candidates and reference-dependent replacement rejected
+until exact source or firmware evidence supports them. Then extend the existing
+core/owner path and its transport tests. Do not add a second scheduler or infer
+completion from ACK. [Standalone 03](prompts/standalone/03_position_interrupt.md)
+owns this evidence work.
+
 ### Application admission and retained results
 
 `submitPositionInterrupt(originalId, command, targetBits, relative, replacementId)`
@@ -390,12 +409,6 @@ ACK proves neither that interruption occurred nor that the old move was running.
 `moveProgress` remains a compact projection and never reports an ACK-only
 replacement as observed success. Urgent stop keeps its independent result;
 no later result overwrites the old one.
-
-Broader new-target replacement needs evidence of when the drive consumes target/
-profile writes and a supported coordinate/completion attribution contract.
-Function p16's ordinary staging example and p25's pre-motion stop-ramp rule do
-not provide it. The restricted subset leaves N05 **PARTIAL** after delivery;
-the bit-3 route alone must not close the full gap or the whole software set.
 
 ## Observation-aware preparation
 

@@ -230,21 +230,18 @@
 ### Maintenance
 
 - Reconciled prompt status with the November bench results, corrected API comments
-  and added a local Doxygen configuration. Completed ESS instructions stay archived;
-  standalone bench work and both Lichuan sets remain active. CI does not run Doxygen.
+  and added a local Doxygen configuration. CI does not run Doxygen.
+- Removed both finished ESS software prompt folders and the completed read-stage
+  redirect. Useful contracts live in the maintained guides; dated reports retain
+  checks and CI evidence. Standalone 03 owns the remaining N05 evidence work.
+  Removed duplicate delivery history from the backlog and roadmap.
 
 - Independently audited the delivered ESS software scope and corrected stale
-  homing/gap counts, I/O qualification wording and prompt navigation. Completed
-  numbered instructions are archived; broader N05 replacement/completion and
+  homing/gap counts, I/O qualification wording and prompt navigation. Broader
+  N05 replacement/completion and
   separate source/physical gaps remain active and PARTIAL. No runtime behavior
   or coverage count changes follow from this documentation closeout.
 
-- Added a source-audited 15-stage ESS software promptset for native parameter
-  reads, start-speed and homing-auxiliary setters, serial position interruption
-  and 27 switch homing methods. Included concrete agent ownership, independent
-  review, acceptance tests and portability checks; redirected overlapping older
-  prompts and kept physical/source qualification separate. Implementation has
-  not started as part of prompt preparation.
 - Completed and independently audited all seven maintainability stages at their
   specified seams. Archived the finished promptset, complexity review and
   implementation handoffs; corrected stale pending-work claims and consolidated

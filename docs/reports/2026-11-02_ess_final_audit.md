@@ -3,6 +3,10 @@
 Later note: the [code and standalone promptset audit](2026-11-02_standalone_promptset_audit.md) of the same day
 reproduced stop-path and homing defects that this report did not find. This report stays as dated history.
 
+Navigation update, 4 November: the finished prompt files were removed. Current
+contracts are in the operation guides; this report and the other dated reports
+retain delivery and verification evidence.
+
 Audit base: `2642c30`, clean and synchronized on `main`. The lead and three
 independent read-only reviewers inspected actual source and the aggregate diff
 from `bd831c859daa9c8c07b8d27a2dd879bb4e750511`, the original requirements,
@@ -217,7 +221,7 @@ device on COM15 (`94A990398B40`) and Bluetooth ports; the recorded COM13/
 Switch fixtures, independent electrical/shaft measurements, runtime memory
 watermarks, S2 hardware and restart/persistence trials remain unqualified.
 
-The [active handoff](../prompts/ess_software/README.md#remaining-n05-work-and-next-evidence)
+The [active handoff](../ess_position.md#remaining-replacement-work)
 names the missing N05 consumption/isolation, moving-basis and completion
 evidence. Separate N03 archived-profile staging, N06 nonzero offsets, unresolved
 N08 method18/collision semantics, N09 collision access, paired setters and

@@ -3,8 +3,7 @@
 The first release is **1.0.0**, with the bounded ESS subset described in
 [release scope](releases/1.0.0.md). Implementation, native validation and physical
 qualification are separate milestones. The [backlog](backlog.md) owns remaining
-work, organized by the [ESS software promptset](prompts/ess_software/README.md)
-and the [broader standalone plan](prompts/standalone/README.md);
+work, with executable tasks in the [standalone plan](prompts/standalone/README.md);
 [current reports](reports/README.md) and the [archive](archive/README.md)
 retain successful and failed experiments.
 
@@ -66,15 +65,10 @@ post-enable wait; their limits remain in the [backlog](backlog.md).
 2. **Resolve evidence-backed gaps.** Investigate exact-drive failures and source
    ambiguities before extending native access, velocity/ramp semantics, homing,
    paired setters or tuning. Keep the operation inventory current.
-   The [29 October stage 01 decisions](reports/2026-10-29_ess_software_contracts.md)
-   make reads, two one-field settings and 27 qualified zero-offset homing
-   methods concrete software blocks. Stages02-05 now deliver both parameter reads
-   and scalar settings. Stage06 delivers the native stored-profile interrupt
-   core; stage07 delivers application/console/host integration, independent
-   retained results and stop priority. Stored relative retrigger has bench
-   evidence from 2 November; its result remains ACK-only.
-   Broader replacement staging/attribution remains unresolved, so N05 stays
-   PARTIAL. Software completion does not qualify a physical method.
+   Native reads, scalar setters and 27 switch homing methods are implemented.
+   Stored-profile retrigger remains ACK-only. Broader N05 replacement needs
+   [staging and completion evidence](ess_position.md#remaining-replacement-work).
+   Method 18, collision homing and nonzero offsets remain guarded.
 3. **Qualify remaining hardware behavior.** Repeat overnight testing; measure
    independent shaft/electrical behavior; use actual fixtures for external I/O,
    restart/persistence, wire faults and loaded mechanics. The complete list and
@@ -126,58 +120,3 @@ Commit and push each tested block. Major changes need terminal CI results for
 the exact commit; small documentation changes use local checks under the
 [verification policy](verification.md). Native checks never substitute for
 physical qualification.
-
-Native position start-speed software is implemented through the ordinary
-prior-read/FC06/readback API and `motion-profile start-speed` route. Only N04's
-write gap closes. Write/readback and the relation latch passed on the bench;
-physical scaling, activation timing and persistence remain unqualified.
-The profile window/restore stays `0x0021/5`; archived candidate import is separate.
-See [stage 04 evidence](reports/2026-10-29_ess_position_start_speed.md).
-
-Homing auxiliary configuration (N07) now has its explicit twelve-choice typed
-prior/FC06/readback API and ordinary `home auxiliary` route. Stored selection,
-active policy and physical homing remain separate. Choices 0 and 7 passed on the
-2 November bench; the other ten choices were not exercised. Nonzero offsets
-remain guarded. [Stage 05 software evidence](reports/2026-10-29_ess_homing_auxiliary.md).
-
-The [fresh independent settings audit](reports/2026-10-29_ess_settings_audit.md)
-corrects prompts04/05 admission and qualification boundaries: newer observations
-cancel unsent settings; contradictory priors revoke stale readiness; changed
-start speed needs explicit independent relation evidence. Register/method
-coverage counts do not change, and physical qualification remains separate.
-
-Stage08 delivers [ordinary homing qualification and shared observation](reports/2026-10-29_ess_homing_foundation.md):
-independent caller/live ages, exact checked configuration/native parameters,
-logical-input diagnostics and copied revocation that prevents reference publication
-after cancellation. Methods33/34/35 regress through both application frontends.
-Stage09 adds limit-reference1/2/17 with exact input/index qualification and the
-same status/zero completion path. Stage10 adds origin-reference3/4/5/6/19/20/21/22,
-with separate branch fixtures and index qualification only for3–6. Stage11 adds
-7–10/23–26 with three starting-location branches each and mandatory origin plus
-positive limit. Stage12 adds11–14/27–30 with origin plus negative limit and24
-independent spatial branch fixtures. All27 planned switch methods are delivered;
-N08 stays PARTIAL for unresolved18/collision methods and physical qualification.
-Physical switch homing remains NOT RUN; see
-[stage12 evidence](reports/2026-11-01_ess_negative_limit_homing.md).
-The [independent stages10–12 audit](reports/2026-11-01_ess_homing_10_12_audit.md)
-checks all64 family branches and rejects host records claiming interrupted
-success, without expanding coverage or physical qualification.
-Methods 33/34/35 and stop during a search passed on the free shaft on
-2 November. The bench regression remains PARTIAL because its persistent
-RUNNING failure is unresolved; switch-method tests remain NOT RUN.
-The [independent prompts06-08 audit](reports/2026-10-29_ess_06_08_audit.md)
-corrects unknown-status qualification and host transition validation, with
-explicit active-phase replacement, in-flight stop and maximum-poll regressions.
-
-[Stage13](reports/2026-11-01_ess_integration_faults.md) verifies cross-operation
-history, stale observations, recovery and urgent stop under full result storage.
-The checked inventory now requires the actual producers and definitions for
-the delivered completion features; software coverage and physical limits stay
-separate. [Stage14](reports/2026-11-02_ess_portability.md) adds portable consumer
-coverage and measured layout/stack bounds with pinned-matrix verification.
-[Stage15's final audit](reports/2026-11-02_ess_final_audit.md) independently
-checks all delivered requirements and corrects stale scope/navigation claims.
-Completed numbered instructions are archived. The broader software objective
-remains PARTIAL: [active N05 follow-up](prompts/ess_software/README.md#remaining-n05-work-and-next-evidence)
-needs active-write consumption/isolation and replacement completion evidence.
-Runtime headroom and physical labels remain separate from build checks.

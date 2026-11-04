@@ -1,18 +1,10 @@
 # Implementation and qualification backlog
 
-Status reviewed against current source and retained evidence on 4 November 2026. The
-[ESS software promptset](prompts/ess_software/README.md) owns the selected missing
-reads, setters, position interruption and 27 switch homing methods. The
-[broader standalone promptset and finding map](prompts/standalone/README.md)
-retain other application, source-ambiguity and physical work. Prompt preparation
-does not complete the implementation/physical stages.
-This page lists remaining work;
-completed work and historical test dispositions live in the
-[development archive](archive/README.md) and [changelog](../CHANGELOG.md).
-The [release scope](releases/1.0.0.md) and checked
-[operation inventory](ess_api_cli_coverage.md) distinguish implementation,
-native tests and hardware evidence. A successful bench subset does not close
-unrelated commands or fixtures.
+Status reviewed on 4 November 2026. This page lists remaining work. The
+[standalone prompts](prompts/standalone/README.md) define the active ESS tasks;
+the [changelog](../CHANGELOG.md) and [reports](reports/README.md) record delivery.
+The [release scope](releases/1.0.0.md) and [operation inventory](ess_api_cli_coverage.md)
+separate implementation from native and hardware evidence.
 
 ## Maintenance and FieldCore integration
 
@@ -41,79 +33,27 @@ setters**. Their exact membership and source restrictions are maintained in
 [API coverage](ess_api_cli_coverage.md) and [paired writes](ess_pair_writes.md);
 the register catalogue alone is not semantic command coverage.
 
-[Stage 01 contracts](reports/2026-10-29_ess_software_contracts.md) were completed
-on 29 October 2026; no implementation/physical obligation was closed. Stage
-02 implements velocity reads and stage 03 implements homing reads. Stage 04 implements the position start-speed setter; stage 05
-implements homing auxiliary configuration. Stage 06 implements the native
-stored-profile start-or-interrupt core with ACK-only result and no active setup
-writes. [Stage 07](reports/2026-10-29_ess_position_interrupt_owner.md) delivers
-the ordinary application/console/host route, independent result reservations
-and stop arbitration. The [2 November bench regression](reports/2026-11-02_standalone_14_bench_regression.md)
-tested stored relative retrigger. Its ACK-only result does not prove arrival or
-qualify arbitrary replacement.
-Stage08 implements the shared homing qualification/observation contract through
-public application APIs and checked live reads, including final-zero revocation.
-Stage09 implements limit-reference methods1/2/17 through that path; stage10 adds
-origin-reference3/4/5/6/19/20/21/22. Stage11 adds origin/positive-limit methods
-7/8/9/10/23/24/25/26; stage12 adds negative-limit-assisted11/12/13/14/27/28/29/30.
-The planned27 switch methods are implemented in software. N08 remains PARTIAL
-for unresolved18/collision methods and physical qualification. Physical switch
-homing is NOT RUN. See [stage12 evidence](reports/2026-11-01_ess_negative_limit_homing.md).
-The [independent stages10–12 audit](reports/2026-11-01_ess_homing_10_12_audit.md)
-rejects contradictory interrupted-success host evidence; source paths and
-software/physical dispositions are unchanged.
-The [independent prompts06-08 audit](reports/2026-10-29_ess_06_08_audit.md)
-tightens homing status/host evidence and lifecycle regressions; it changes no
-native coverage or physical qualification claims.
-Arbitrary replacement still needs active-register
-consumption and completion-attribution evidence; keep N05 PARTIAL after that
-subset. Method28's exchanged branch drawings are recorded in the method guide.
+Delivered software includes velocity/homing parameter reads, position start
+speed and homing auxiliary setters, stored-profile interruption and all 27
+planned switch homing methods. The [final audit](reports/2026-11-02_ess_final_audit.md)
+records the implementation and checks. The
+[November bench regression](reports/2026-11-02_standalone_14_bench_regression.md)
+exercised reads, settings, home 33/34/35 and ACK-only retrigger.
 
-[Stage13 integration verification](reports/2026-11-01_ess_integration_faults.md)
-adds cross-operation conservation/parity regressions and closes a checker gap
-that credited getters/raw codecs as producers. It adds no native method or
-physical qualification; final stage evidence is recorded in that report.
-
-- [x] Implement native velocity-parameter reads (N01): one checked FC03 `0x001D/3`,
-  copied raw result, application API and `velocity read`. See the
-  [stage 02 report](reports/2026-10-29_ess_velocity_reads.md) and
-  [2 November physical read evidence](reports/2026-11-02_standalone_14_bench_regression.md).
-- [x] Implement native homing-parameter reads (N02): six records/seven raw words,
-  bounded FC03 `0x0030/7`, independent method membership/support, application API
-  and `home read`. The read passed on the 2 November bench. Nonzero offset
-  interpretation stays open. [Stage 03 software evidence](reports/2026-10-29_ess_homing_reads.md).
-- The [fresh independent 02/03 audit](reports/2026-10-29_ess_reads_audit.md) checks
-  implementation and edge cases separately from physical qualification. Its
-  corrections clarify numeric-policy flags and human/partial-host presentation;
-  read/write/method coverage totals do not change.
-- [x] Implement native position start-speed setter (N04): explicit prior read,
-  FC06 echo and separate readback; fresh post-effect motion evidence is required.
-  Write/readback, restoration and the relation admission latch passed on
-  2 November. Physical scaling, activation timing and persistence remain open.
+- [ ] Resolve N05 active profile/target replacement and attributable completion.
+  The existing retrigger remains ACK-only. Establish the
+  [missing staging and observation evidence](ess_position.md#remaining-replacement-work)
+  before extending it; [standalone 03](prompts/standalone/03_position_interrupt.md)
+  owns that work.
 - [ ] Implement remaining standalone native staging, including
   restoring an arbitrary archived position profile without starting motion.
   Host reset loses the RAM backup; never replay a move as restoration.
   [Evidence](archive/reports/ess_release_23_2026-10-05.md).
 - [ ] Resolve signed stored-target encoding, admissible limit/stored-target
   write forms, and home-offset order/sign/scale before exposing their setters.
-- [ ] Resolve external-switch homing and collision methods, including method 18's
-  conflicting signal captions and the collision methods' missing trajectory and
-  wire encoding. Internal-index
-  methods 33/34, current-position35, limit-reference1/2/17 and origin-reference
-  3/4/5/6/19/20/21/22 plus positive-limit-assisted7/8/9/10/23/24/25/26 have bounded
-  software, together with negative-limit-assisted11/12/13/14/27/28/29/30.
-  All27 planned switch methods are delivered; five unresolved methods and
-  physical qualification stay open.
-  [Method dispositions](ess_homing_methods.md).
-- [x] Deliver the shared N08 qualification foundation: exact externally supplied
-  install/inspect/revoke, ordinary submit/result ownership, independent ages,
-  actual logical input observations and cancellation precedence over final zero.
-  [Stage08 evidence](reports/2026-10-29_ess_homing_foundation.md); no new method or
-  physical qualification is claimed.
-- [x] Reach home, velocity, position-clear and the start-speed relation from the
-  ordinary image through [named-fact console routes](cli_contract.md#qualification-routes)
-  (owner decision D2). Home and start-speed relation routes passed on the bench;
-  velocity and position-clear qualification routes need separate hardware evidence.
+- [ ] Resolve method 18's conflicting signal captions and collision methods
+  -4..-1's missing trajectory/encoding. The 30 implemented methods keep their
+  qualification guards. See [method dispositions](ess_homing_methods.md).
 - [ ] Resolve shared-start 1: native 0-to-1 write read back 0 on the bench.
   Preserve that FAIL/uncertain result; no retry or assumed FC06 semantics.
   [Stored-record evidence](archive/reports/ess_release_16_2026-10-04.md).
@@ -184,6 +124,12 @@ functional evidence; independent shaft calibration remains absent.
   input/output activation/precedence. Methods 33/34/35 and stop during a search
   have free-shaft evidence from 2 November. This does not qualify switch methods
   or independent shaft motion. Unwired terminals are not disabled assignments.
+- [ ] Qualify position start-speed scaling, activation timing and persistence.
+  Write/readback, restoration and the relation latch passed on 2 November.
+- [ ] Qualify the remaining homing auxiliary choices. Only 0 and 7 have bench
+  write/readback evidence; setting a value does not qualify its homing behavior.
+- [ ] Record separate hardware evidence for velocity and position-clear
+  qualification routes. Home and start-speed relation routes have bench evidence.
 - [ ] Qualify signed velocity and physical ramp/acceleration mappings before
   broadening their motion claims. Velocity has no rate ceiling; test its
   `stop normal` above 60,000 increments/s first (HW-14 was found in position mode). Same-endpoint in-motion speed changes remain
@@ -281,33 +227,3 @@ functional evidence; independent shaft calibration remains absent.
 - [ ] Treat queued paths, online updates, blending, advanced ramps and
   coordinated axes as explicit capabilities with their own device and bus
   guarantees, not approximations of current finite position commands.
-
-Native position start-speed software is implemented through the ordinary
-prior-read/FC06/readback API and `motion-profile start-speed` route. Only N04's
-write gap closes; physical scaling, activation and persistence remain unqualified.
-The profile window/restore stays `0x0021/5`; archived candidate import is separate.
-See [stage 04 evidence](reports/2026-10-29_ess_position_start_speed.md).
-
-Homing auxiliary configuration (N07) now has its explicit twelve-choice typed
-prior/FC06/readback API and ordinary `home auxiliary` route. Stored selection,
-active policy and physical homing remain separate. No method support, nonzero
-offset or write window is enabled. [Stage05 evidence](reports/2026-10-29_ess_homing_auxiliary.md).
-
-The [fresh independent settings audit](reports/2026-10-29_ess_settings_audit.md)
-corrects prompts04/05 admission and qualification boundaries: newer observations
-cancel unsent settings; contradictory priors revoke stale readiness; changed
-start speed needs explicit independent relation evidence. Register/method
-coverage counts do not change, and physical qualification remains separate.
-
-[Stage14 portable verification](reports/2026-11-02_ess_portability.md) extends
-exported-source/installed consumer coverage and records measured host/Xtensa
-layout and stack deltas. Supported build evidence, runtime memory watermarks
-and physical qualification remain separate; no native gap or platform is added.
-
-[Stage15 final review](reports/2026-11-02_ess_final_audit.md) confirms the delivered
-bounded APIs/routes and corrects stale documentation. The broader software
-objective stays PARTIAL: arbitrary active profile/target replacement and
-attributable completion require the exact evidence in the
-[active N05 handoff](prompts/ess_software/README.md#remaining-n05-work-and-next-evidence).
-All27 planned switch methods are implemented; method18/-4..-1, nonzero offsets,
-N03/N09, guarded paired setters and physical qualification remain open.

@@ -545,7 +545,7 @@ fail admission after each restart, so include this in the restart checks of stag
 | ID | Severity | Problem | Fix |
 | --- | --- | --- | --- |
 | P-01 | High | The short regression of delivered software (AGENTS "Backlog and available bench") has no owner. `position_interrupt_stored`, `home_parameters`, `home_zero_offset`, `home_start`, `homing_auxiliary_write` and `position_start_speed_write` are all NOT_RUN. | Add `14_bench_regression.md` and row Q16, using the first-run plan below. Do not renumber. Stage 13's gate lists it. |
-| P-02 | High | The N05 remainder has no dispatchable owner. `ess_software/README.md` calls it active, its stages are archived, and the standalone contract allows only dispatched stages. | Add to stage 03: "Dispatch only as explicit 'N05 evidence'. Start with source review. Any write during motion needs explicit user confirmation. Without evidence, record PARTIAL and stop." |
+| P-02 | High | At this audit, the former ESS software handoff called N05 active, but its stages were archived and the standalone contract allowed only dispatched stages. | Add to stage 03: "Dispatch only as explicit 'N05 evidence'. Start with source review. Any write during motion needs explicit user confirmation. Without evidence, record PARTIAL and stop." |
 | P-03 | Medium | "Admitted" appears in 04, 06, 08, 11, 12 and the README with no definition, while AGENTS bans an analyzer admission flag. | Define it in the contract: "fixture facts recorded, and covered by AGENTS standing authorization or an explicit user instruction." |
 | P-04 | Medium | Three numberings collide: standalone NN, ESS software NN, and inventory owner fields; `ess_release_NN` reports add a fourth. "ESS reports 16/17/18" in stage 06 reads like software stages. | Add a mapping table to the contract. Write `ess_release_16/17/18`. |
 | P-05 | Medium | Status vocabulary differs (NOT STARTED, NOT EXECUTED, GATED, REDIRECTED). | Make the README the single status table, using NOT STARTED, PARTIAL, BLOCKED(input), COMPLETE, REDIRECTED. Remove status lines from stage headers. |
@@ -642,7 +642,7 @@ Keep testing both orders in line 38, because the order is configurable. Correct 
 | 27 | Medium, READ | Overstates method 18 (H-04) | "Method 18's prose and drawn trajectory agree (positive limit). Only the signal captions say negative. Firmware confirmation of the sampled input remains required." |
 | 28 | Medium | Understates collision methods | "-1..-4 appear only in p72 and the p73 rows. p19 lists 1~14, 17~30, 33~35, and Appendix 1 has no entry. The manual gives no trajectory, no wire encoding and an unsigned printed range. Resolving encoding alone would not make them implementable." |
 | 38 | Medium | Omits fixture facts | Add the X0-X3 default conflict (V-01), the >10 ms input pulse requirement (hardware p9), and H-02's assumptions as bench observations |
-| 21-22 | Low | Unnamed guides | Name `docs/ess_homing_methods.md` and `docs/prompts/ess_software/homing_matrix.md`, and carry the caption conflicts of methods 10, 13, 14, 26, 28, 29, 30 into the physical checklist |
+| 21-22 | Low | Unnamed guides | Use `docs/ess_homing_methods.md` and `docs/ess_homing.md` (the former prompt matrix was consolidated there), and carry the caption conflicts of methods 10, 13, 14, 26, 28, 29, 30 into the physical checklist |
 
 ### 06_io_and_tuning.md
 

@@ -465,7 +465,7 @@ unrelated assigned stops/limits and apply the [input rule](#input-levels-during-
 inactive origin does not distinguish its two spatial sides: qualification must
 cover both admitted regions, including the appropriate limit for assisted methods.
 
-The 27 methods retain the [3 + 8 + 8 + 8 partition](prompts/ess_software/homing_matrix.md).
+The 27 methods retain the [3 + 8 + 8 + 8 partition](ess_homing_methods.md).
 The drive executes each trajectory. Host I/O samples support admission and
 diagnostics; they cannot prove every edge, reversal, Z passage or physical travel.
 Do not add a host trajectory controller or require a complete sampled edge trace.

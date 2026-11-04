@@ -81,6 +81,19 @@ source is changed or qualified by this repository's tests.
 
 ## Tests, packaging and evidence
 
+The delivered ESS feature paths are:
+
+| Operation | Core / application | Focused tests |
+| --- | --- | --- |
+| Velocity and homing parameter reads | `Reads.h/.cpp`; `ProbeApp.h` submit/copy/release APIs | `reads_test.cpp`, `velocity_app_test.cpp`, `home_app_test.cpp`, `probe_console_test.cpp` |
+| Position start speed and homing auxiliary | `DriverSettings.h/.cpp`; `ProbeApp.h` scalar-setting APIs | `driver_settings_test.cpp`, `position_start_speed_app_test.cpp`, `homing_auxiliary_app_test.cpp` |
+| Stored position interruption | `Position.h/.cpp`; `PositionInterruptApp.h` | `position_interrupt_test.cpp`, `position_interrupt_app_test.cpp` |
+| Homing qualification and execution | `Homing.h/.cpp`; `ProbeApp.h/.cpp`, `QualificationApp.h` | `homing_test.cpp`, `home_app_test.cpp`, `qualification_routes_app_test.cpp`, `home_console_parity_test.py` |
+
+Core files use the ESS include/source directories above; application helpers
+live in `examples/probe_cli/`, and tests in `test/`. Current behavior is defined
+in the [operation guides](README.md#public-operations), not old prompt numbers.
+
 The Python host [bench_probe.py](../scripts/bench_probe.py) owns serial sessions,
 framing, correlation and lifecycle policy. Its private
 [_bench_evidence.py](../scripts/_bench_evidence.py) supplies pure read/motion

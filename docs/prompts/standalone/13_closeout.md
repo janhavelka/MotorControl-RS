@@ -11,9 +11,8 @@ Every other stage, including [14](14_bench_regression.md), has a factual complet
 partial, blocked or deferred disposition. Require explicit rows for the N05 remainder
 and the bench regression. The stage is reachable, because blocked and deferred
 dispositions count.
-Use the [ESS software closeout](../../archive/prompts/ess_software/15_final_audit.md) and its actual
-progress as evidence for redirected software work; do not execute its features
-again or treat a redirect as completion.
+Use the [ESS software closeout](../../reports/2026-11-02_ess_final_audit.md) and
+dated delivery reports as evidence; do not implement delivered features again.
 
 ## Inspect before editing
 

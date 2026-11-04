@@ -48,3 +48,21 @@ No serial port was opened and no board was flashed. Broader N05 replacement,
 unresolved homing methods, switch fixtures, HW-01 persistent RUNNING and HW-12
 USB stalls remain in the backlog. This review does not close the other open
 code findings in the standalone or Lichuan audits.
+
+## Follow-up: retire finished ESS prompts
+
+At the user's request, removed all 23 files in the active and archived ESS
+software prompt folders, plus the completed standalone read-stage redirect.
+Two reviewers checked the contents against existing guides and reports.
+All 22 full commit IDs and 20 CI run IDs in the old progress log already appear
+in the dated reports. The contract report now includes its missing local-check
+summary. Source/verification guidance and the remaining N05 evidence requirements
+are in the maintained docs. The backlog and roadmap no longer repeat the
+completed stage history. Raw evidence and vendor files are unchanged.
+
+This follow-up changes documentation only. Repository links/references/metadata,
+catalogue generation, operation inventory, all 36 inventory tests and whitespace
+checks passed. A separate check found no links to deleted files and verified new
+link targets and headings, including report bodies. Both final reviews passed
+after fixing two stale read-guide anchors. No new firmware, hardware or remote
+CI run was required or performed.
