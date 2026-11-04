@@ -102,20 +102,24 @@ and [ownership](docs/architecture.md).
 Typed finite positioning defaults to all of:
 
 - At most **2,000 rpm**.
-- At most **200,000 command increments/s**.
+- At most **50,000 command increments/s**.
 - Native acceleration/deceleration time words **100..2,000 ms**.
 
-The speed ceiling is `min(2000, floor(12000000 / subdivision))` rpm.
-At subdivision 51,200 it is 234 rpm. `settings` displays the current ceiling.
+The speed ceiling is `min(2000, floor(3000000 / subdivision))` rpm: 2,000 up
+to subdivision 1,500, 500 at 6,000 and 58 at 51,200. `settings` displays the
+current ceiling. Above about 60,000 increments/s firmware `0x0029` can turn a
+late `stop normal` into endless creep; see the
+[stop normal report](docs/reports/2026-11-04_stop_normal_rate_ceiling.md).
 Preparations require the active subdivision and reject excess values without
 silent clamping. Explicit caller policies remain possible under the caller's
 qualification responsibility.
 
 These defaults come from one tested motor/firmware and are not universal drive
 ratings. High-speed reset-like events and persistent RUNNING reports remain
-unresolved. [Four-hour testing](docs/reports/2026-10-07_rate_boundary.md) and
-[408 boundary cases](docs/reports/2026-10-07_position_limits.md) support the
-documented envelope. Actual shaft speed, calibrated travel and electrical
+unresolved. [Four-hour testing](docs/reports/2026-10-07_rate_boundary.md),
+[408 boundary cases](docs/reports/2026-10-07_position_limits.md) and the
+[stop normal study](docs/reports/2026-11-04_stop_normal_rate_ceiling.md) support
+the documented envelope. Actual shaft speed, calibrated travel and electrical
 timing were not independently measured.
 
 Observation age expiry defaults to off (`maxAgeUs`/`maximumAgeUs=0`). Missing

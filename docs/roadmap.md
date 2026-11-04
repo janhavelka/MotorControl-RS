@@ -42,8 +42,9 @@ physical qualification. No new homing method or write window is enabled.
 The free-shaft ESS23-RS20 has finite position, normal/fast stop, selected settings,
 read/discovery and Arduino/native-IDF functional evidence. The
 [position boundary checks](reports/2026-10-07_position_limits.md) verify the
-conservative preparation policy: at most 2,000 rpm, 200,000 command increments/s
-and 100..2,000 ms ramps. The [rate experiment](reports/2026-10-07_rate_boundary.md)
+conservative preparation policy: at most 2,000 rpm and 100..2,000 ms ramps. The
+rate ceiling has been 50,000 command increments/s since the
+[stop normal study](reports/2026-11-04_stop_normal_rate_ceiling.md); it was 200,000. The [rate experiment](reports/2026-10-07_rate_boundary.md)
 records four hours and eight seconds of accumulated active testing, 4,145 finite
 moves and 435 planned stop interruptions in its narrower tested envelope.
 

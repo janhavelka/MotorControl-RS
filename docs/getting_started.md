@@ -69,9 +69,10 @@ See [origins and result handling](console.md).
 
 ## Position limits and stop
 
-The default speed ceiling is `min(2000, floor(12000000 / subdivision))` rpm.
-Both native ramp words must be 100..2,000 ms. At 51,200 subdivision the ceiling
-is 234 rpm; at 1,600 it is 2,000 rpm. `settings` displays the current ceiling.
+The default speed ceiling is `min(2000, floor(3000000 / subdivision))` rpm,
+that is at most 50,000 command increments/s. Both native ramp words must be
+100..2,000 ms. At the factory subdivision 1,000 the ceiling is 2,000 rpm; at
+6,000 it is 500 rpm and at 51,200 it is 58 rpm. `settings` displays the current ceiling.
 A larger stored preference causes a clear no-write rejection, not silent slowing.
 
 These are [tested default limits](ess_position.md#default-position-operating-limits)

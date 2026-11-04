@@ -208,8 +208,9 @@ readback failure remain open; passing later reads do not resolve them.
 command increments per revolution. The defaults are:
 
 - At most 2,000 rpm.
-- At most 200,000 command increments/s: maximum integer rpm is
-  `min(2000, floor(12000000 / subdivision))`.
+- At most 50,000 command increments/s: maximum integer rpm is
+  `min(2000, floor(3000000 / subdivision))`. The reason is a `stop normal` defect
+  of firmware `0x0029` ([report](reports/2026-11-04_stop_normal_rate_ceiling.md)).
 - Each acceleration/deceleration word is 100..2,000 native ms.
 
 A failed check publishes no work and does not clamp the request. These are

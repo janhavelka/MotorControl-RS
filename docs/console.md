@@ -45,7 +45,7 @@ after success or a read-only preparation rejection. Actual enable, alarm, encodi
 | `moveby 1/10 turn` | Same angular displacement, expressed exactly. |
 | `moveto 100 steps` | Move to 100 command increments from this boot session's zero. |
 | `moveto 0 deg` | Return to this boot session's zero. |
-| `speed 90` / `speed 90 rpm` / `speed 90rpm` | Store 0..3000 rpm intent; position admission limits it to <=2000 rpm and <=200000 increments/s. Zero prevents a move. |
+| `speed 90` / `speed 90 rpm` / `speed 90rpm` | Store 0..3000 rpm intent; position admission limits it to <=2000 rpm and <=50000 increments/s (`settings` shows the rpm at the current subdivision). Zero prevents a move. |
 | `accel 100 ms` / `decel 100ms` | Store each native ramp time in 0..2000 ms; position admission requires 100..2000 ms. Not acceleration in steps/s^2. |
 | `stepsperturn 1000` | Declare command increments per motor turn in the host; no drive subdivision write. |
 | `stop normal` | Stop using the configured deceleration. |
@@ -192,6 +192,19 @@ priority stop path after the in-flight bus transaction settles. A serial stop
 requires working communication and is not a hardwired emergency-stop circuit.
 `cancel` does not send either stop command, and it leaves an in-flight frame to settle.
 
+If a `stop normal` ends `observation_limit` with RUNNING still reported, the shaft
+may still be moving: send `stop fast`. Nothing escalates automatically. On firmware
+`0x0029` this happened only above about 60,000 increments/s, which the default
+position ceiling refuses ([report](reports/2026-11-04_stop_normal_rate_ceiling.md)).
+
+`enable` holds motion starts on its address for 1 s. `moveby`/`moveto` wait it out;
+advanced `move`, `velocity` and `home` answer `busy` without bus traffic. Firmware
+`0x0029` echoed and ignored starts sent up to 0.6 s after an enable, and no status bit
+shows when it is ready. Stops, releases, alarm clears and reads are not held. Limits:
+the 1 s is a margin over one drive's measurement for position starts; only enables
+this firmware sent are tracked, one address at a time; an MCU reset forgets the
+window; an enable from another master or a drive power-up is not seen.
+
 Stop does not need a prior `probe` of the selected axis or a manual `recover`. After a
 transport fault, the stop is accepted, starts one bounded recovery and is sent once.
 If recovery fails, the stop reports `not_transmitted`. A stop that was sent and lost its
@@ -273,10 +286,11 @@ Normal stop allows at least three seconds of bounded status observation so the d
 
 ### Default speed boundary
 
-`settings` reports **Position speed limit at this subdivision**: 234 rpm at
-51200, 468 at 25600, 937 at 12800, and 2000 at subdivision 6000 or lower. A larger
+`settings` reports **Position speed limit at this subdivision**: 58 rpm at
+51200, 117 at 25600, 234 at 12800, 500 at 6000, and 2000 at subdivision 1500 or
+lower. That is at most 50,000 command increments/s. A larger
 `speed` preference is stored locally but the next move rejects before motor
-writes, with the reason shown. There is no silent slowdown. Use `speed 200`
+writes, with the reason shown. There is no silent slowdown. Use `speed 50`
 with subdivision 51200, or explicitly select a lower subdivision for higher rpm.
 Both ramps must be 100..2000 ms. See [shared policy and evidence](ess_position.md#default-position-operating-limits).
 
