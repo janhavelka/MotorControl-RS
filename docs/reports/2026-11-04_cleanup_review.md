@@ -32,7 +32,17 @@ short, plain engineering language.
   installed consumers. Logs and package are in `build/cleanup_20261104_final/`.
 - Four stress-tool tests passed. The old implementation fails the new tests.
   A second reviewer found no blocking issue in the fix.
-- Exact-commit CI for the cleanup fix: pending.
+- Exact-commit CI: [run 41890938140](https://github.com/janhavelka/MotorControl-RS/actions/runs/41890938140)
+  passed on `a76e7d87fec3f9ba0a3fb983e30da5dd348843e4`. GCC, Clang,
+  Arduino and native ESP-IDF all completed successfully.
+- CI artifacts: `native-gcc`, `native-clang`, `arduino`, `native-idf`.
+  The downloaded Clang artifact passed its SHA-256 check and reports 91 suites
+  and 15 checks. Run/job/artifact records are in `build/cleanup_20261104_ci/`.
+  Its core package SHA-256 is
+  `50feee6914905486b654a65955d919658d732fa568fbb2bc2acbada0d8fa8a7f`.
+
+The final verification entry is a documentation-only follow-up. The tested
+implementation is unchanged.
 
 No serial port was opened and no board was flashed. Broader N05 replacement,
 unresolved homing methods, switch fixtures, HW-01 persistent RUNNING and HW-12
