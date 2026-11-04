@@ -95,6 +95,22 @@ under C++11 and C++17 (RTTI disabled for C++17). See the
 [stage14 storage review](reports/2026-11-02_ess_portability.md) for compiler-specific
 layout/stack deltas and their limits; these do not establish runtime MCU headroom.
 
+## API documentation
+
+Install Doxygen separately, then run from the repository root:
+
+```sh
+doxygen docs/Doxyfile
+```
+
+Open `build/doxygen/html/index.html`. This includes the installed core headers
+and the standalone application/console interfaces. Documentation errors fail
+the command. Undocumented declarations are included; this is not a check that
+every declaration has a comment.
+
+Doxygen is a local check, separate from `verify.py` and CI. CI checks header
+compilation and consumers but does not render API documentation.
+
 ## First release tag
 
 The existing annotated `v1.0.0` tag points to

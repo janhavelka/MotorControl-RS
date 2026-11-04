@@ -2,12 +2,15 @@
 """Autonomous finite-motion stress run for the free-shaft ESS bench.
 
 Runs randomized finite cases through the ordinary console, within the default
-PositionLimits, and classifies every result. On the first anomaly it captures
-the drive state with reads only and exits, unless --recover selects bounded
-recovery (alarm clear, MCU reset, release/enable) with a verification ladder.
+PositionLimits, and classifies every result. A console timeout runs a bounded
+USB check, reopens the port and sends one new normal stop if communication
+returns. It continues only after that stop proves observed standstill. A failed
+USB check or stop ends the run, including with --recover. Other anomalies
+capture the drive state with reads only and exit, unless --recover selects
+bounded recovery (alarm clear, MCU reset, release/enable) with a verification ladder.
 Never replays an uncertain write. A motor power cycle is not available here.
 
-Exit codes: 0 duration reached, 3 anomaly, 4 console unresponsive, 5 still
+Exit codes: 0 duration reached, 3 anomaly, 4 USB check or stop failed, 5 still
 degraded after recovery (needs a motor power cycle).
 """
 import argparse
@@ -647,7 +650,6 @@ class Run:
     def usb_stall(self, detail):
         c = self.console
         begun = time.time()
-        before = len(c.ring)
         arrivals = []
         probe_sent = False
         while time.time() - begun < 20:
@@ -667,7 +669,6 @@ class Run:
         c.pump(1.5)
         drv = None
         try:
-            ident = c.next_id
             reply = c.send("drv", 3.0)
             drv = {k: reply.get(k) for k in ("output_queued", "output_blocked", "output_short_writes", "reset_reason", "usb_stall")}
             status = c.send("status", 2.0)
@@ -675,23 +676,37 @@ class Run:
         except Unresponsive:
             drv = "still unresponsive after reopen"
         record = dict(when=time.strftime("%H:%M:%S"), detail=str(detail), recovered_on_same_handle=not stalled_only,
-                      arrivals=arrivals[:10], drv=drv)
+                      arrivals=arrivals[:10], drv=drv, stop_reply=None, stop_terminal=None,
+                      stop_confirmed=False)
         self.usb_stalls.append(record)
-        path = self.incident("USB_STALL", record)
-        record["file"] = path.name
         self.counts["usb_stall"] += 1
+        if not isinstance(drv, str):
+            # One fresh stop after reconnect; never replay a request lost earlier.
+            c.next_id += 1
+            try:
+                reply = c.send("stop normal 1", 3.0)
+                record["stop_reply"] = reply
+                if reply.get("ok") and reply.get("result") == "accepted":
+                    item = c.terminal(reply, 7.0)
+                    record["stop_terminal"] = item
+                    motion = (item or {}).get("raw_motion")
+                    record["stop_confirmed"] = bool(
+                        item and item.get("ok") is True and item.get("type") == "action"
+                        and item.get("id") == reply.get("_id")
+                        and item.get("command_id") == reply.get("_id")
+                        and reply.get("operation_id") and item.get("operation_id") == reply["operation_id"]
+                        and item.get("action_kind") == "stop" and item.get("stop_policy") == "normal"
+                        and item.get("target") == 1 and item.get("address") == 1
+                        and item.get("state") == "succeeded" and item.get("outcome") == "observed"
+                        and item.get("execution") == "acknowledged" and item.get("completion") == "observed"
+                        and item.get("observation_known") is True and item.get("raw_alarm") == 0
+                        and type(motion) is int and 0 <= motion <= 0xFFFF
+                        and not motion & (RUNNING | ALARM_BIT))
+            except Unresponsive as exc:
+                record["stop_error"] = str(exc)
+        record["file"] = self.incident("USB_STALL", record).name
         self.summary()
-        if isinstance(drv, str):
-            return False
-        # The interrupted case may have left an unresolved operation: settle with a checked stop.
-        c.next_id += 1
-        for attempt in ("stop normal 1",):
-            reply = c.send(attempt, 3.0)
-            if reply.get("ok"):
-                c.terminal(reply, 7.0)
-        c.pump(0.5)
-        c.retained.clear()
-        return True
+        return record["stop_confirmed"]
 
     # Diagnostics
     def incident(self, name, detail):
@@ -841,7 +856,7 @@ class Run:
                 entry = dict(when=time.strftime("%H:%M:%S"), case=name, kind=kind, detail=str(detail), file=path.name, postmortem=postmortem)
                 self.anomalies.append(entry)
                 self.summary()
-                if not self.args.recover:
+                if kind == "CONSOLE_UNRESPONSIVE" or not self.args.recover:
                     return 4 if kind == "CONSOLE_UNRESPONSIVE" else 3
                 try:
                     healthy, log = self.recover()

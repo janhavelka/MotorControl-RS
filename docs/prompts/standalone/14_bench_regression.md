@@ -7,12 +7,15 @@ Finding: **Q16**.
 
 ## Entry gate
 
-The recorded bench USB device is present: Espressif `303A:1001`, serial
-`3C:0F:02:CD:6B:98` ([ESS software progress](../ess_software/progress.md),
-[bench guide](../../hardware_bench.md)). Never open or flash a different device.
-No analyzer is required. On 2 November 2026 the device is absent, so every
-physical check below is NOT RUN until it returns. Record enumeration evidence
-either way.
+Confirm the recorded USB device before a run: Espressif `303A:1001`, serial
+`3C:0F:02:CD:6B:98` ([bench guide](../../hardware_bench.md)). Record enumeration
+and never open or flash a different device. No analyzer is required.
+
+Status is PARTIAL. The [2 November run](../../reports/2026-11-02_standalone_14_bench_regression.md)
+exercised the routes below. HW-01 persistent RUNNING remains unresolved; later
+passing runs do not close it. Use that report and the
+[November follow-up](../../reports/2026-11-02_standalone_promptset_audit.md)
+to select remaining checks rather than repeating the whole first-run plan.
 
 ## Inspect before editing
 
@@ -23,12 +26,12 @@ docs/hardware_bench.md, bench_scenarios.md, functional_bench.md, cli_contract.md
 
 ## Work
 
-This regresses the delivered ESS software, which has not reached hardware. It
-runs under AGENTS' standing bench authorization and owner decision D3.
+This regresses the delivered ESS software under AGENTS' standing bench
+authorization and owner decision D3.
 
 Flash `bench_s3_load_timer`, naming the environment explicitly. Record the image
-hash, then inspect `memory` after each new route, because home and interrupt have
-no on-target stack watermark.
+hash, then inspect `memory` after each new route. Keep fresh stack watermarks;
+earlier minima do not qualify a changed image.
 
 1. Existing regression: `probe`, `read identity|config|state`, one short `moveby`,
    `stop normal`, `stop fast`.
@@ -52,7 +55,7 @@ no on-target stack watermark.
    `index`. Each home consumes the qualification, so repeat `read state`,
    `home read` and install before the next. Restore auxiliary last, after fresh
    `read config` and `read state`. Staged method, rates and ramp have no restore
-   route: record them as changed until a controller or drive restart, and do not
+   route: record them as drive RAM changes until a motor power cycle, and do not
    claim restoration. Switch methods need a real fixture and are outside this
    stage.
 5. `motion-profile start-speed` latches move admission until

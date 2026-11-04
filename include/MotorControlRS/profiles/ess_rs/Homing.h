@@ -147,7 +147,8 @@ Status prepareHome(HomeContext&, const AxisConfig&, uint32_t operationId,
                    uint64_t deadlineUs, const ActionOptions& = ActionOptions()) noexcept;
 Status nextHome(const HomeContext&, uint64_t nowUs, PreparedHome&) noexcept;
 /** Checked start echo only acknowledges. Moving homes need new RUNNING and
- * post-trigger HOMED low then high while stopped/in-position. Method35 needs
+ * post-trigger HOMED low then high with RUNNING clear. IN_POSITION is not required.
+ * Method35 needs
  * HOMED low-to-high; its fresh admission baseline may supply low. A RUNNING
  * report during nonmoving method35 fails with uncertain execution. Missed
  * status transitions remain unobserved. Completion additionally needs new zero

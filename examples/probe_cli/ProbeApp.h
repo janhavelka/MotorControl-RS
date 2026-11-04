@@ -14,7 +14,7 @@ namespace MotorControlRSExample {
  * Transaction deadlines, missing evidence and generation checks always apply. */
 struct ApplicationOptions {
     uint32_t observationMaxAgeMs = 0;
-    uint32_t moveTimeoutMs = 30000; ///< 1..30000 ms, finite movement observation deadline.
+    uint32_t moveTimeoutMs = 30000; ///< 1..30000 ms, move and home observation deadline.
     ApplicationOptions() {
         // Usable nominal convention, explicitly assumed rather than calibrated.
         positionUnits.commandStepsPerMotorTurn = MotorControlRS::UnitScale(1000, 1, MotorControlRS::ScaleSource::ASSUMED);
@@ -39,6 +39,8 @@ void serviceApplication();
  * Scales come from ApplicationOptions::positionUnits or host axis configuration.
  * Optional setup policy defaults to full write. USE_STORED requires a matching
  * remembered profile/binding in this example; it does not detect an unseen reset.
+ * During the 1 s enable settling window, these API calls return BUSY without
+ * traffic. The console's moveby/moveto commands wait through that window.
  */
 // Convenience targets round to nearest command step, ties to even, at most
 // half a step. Use submitMove for explicit EXACT or another rounding policy.
@@ -175,12 +177,15 @@ MotorControlRS::Status installVelocityQualification(const MotorControlRS::ESS_RS
 /// Clear future velocity admission. An admitted run keeps its snapshot and its stop.
 MotorControlRS::Status revokeVelocityQualification();
 /** State that the zero-only position clear's semantics are qualified for this
- * axis. Each clear still needs fresh stopped, enabled, alarm-free state. */
+ * axis. Call from the service task while idle; no traffic or motion occurs.
+ * Each clear still needs fresh stopped, enabled, alarm-free state. */
 MotorControlRS::Status installPositionClearQualification();
+/// Clear future position-clear admission; an admitted action keeps its snapshot.
 MotorControlRS::Status revokePositionClearQualification();
 /** Ordinary selected-axis home route. Zero generation selects current config;
  * nonzero is checked. Rejection preserves operationId. Results are retained
- * until releaseOperation; the console uses the same admission/owner path. */
+ * until releaseOperation; the console uses the same admission/owner path.
+ * Returns BUSY without traffic during the 1 s enable settling window. */
 MotorControlRS::Status submitHome(const MotorControlRS::ESS_RS::HomeRequest&, uint32_t& operationId);
 /// Copy pending/terminal programmatic home evidence. Wrong/missing IDs preserve output.
 bool copyHomeResult(uint32_t operationId, MotorControlRS::ESS_RS::HomeContext& output);

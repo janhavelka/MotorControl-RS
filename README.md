@@ -31,6 +31,12 @@ lists five named gaps and 18 guarded paired setters. Current settings do not
 provide torque/current motion; stored segments require external triggers.
 Other manufacturers and CANopen are not implemented.
 
+Recent work adds native velocity/homing reads, start-speed and homing-auxiliary
+setters, stored-profile interruption and 27 switch homing methods. The console
+can install explicit homing, velocity and position-clear qualification facts;
+installation itself sends no motor command. See the [console guide](docs/console.md).
+The [prompt index](docs/prompts/README.md) separates completed work from open work.
+
 The tested motor is an ESS23-RS20, raw model `0x4EEA`, firmware word `0x0029`,
 at address 1 / 115200 8N1 with a secured free shaft. These raw words are not a
 resolved universal model/version mapping. S3 has recorded hardware evidence;
@@ -133,6 +139,7 @@ No communication-loss stop or industrial certification is claimed.
 - [Native ESP-IDF build/flash](docs/esp_idf_probe.md)
 - [Named finite test scenarios](docs/bench_scenarios.md)
 - [Quick/full verifier and CI](docs/verification.md)
+- [Generate API documentation](docs/verification.md#api-documentation)
 - [Current evidence and open investigations](docs/reports/README.md)
 - [Source map](docs/source_map.md) and [completed development work](docs/archive/README.md)
 

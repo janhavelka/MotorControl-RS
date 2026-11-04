@@ -39,7 +39,7 @@ enum class Action : uint8_t { OK, BUSY, RECOVERY_REQUIRED, UNAVAILABLE, FAILED,
     TIMING_UNQUALIFIED, UNSUPPORTED, AXIS_CONFLICT, UNRESOLVED, UNIMPLEMENTED, QUALIFICATION_REQUIRED };
 
 enum class DebugMode : uint8_t { OFF, RAW, DECODED };
-/** Presentation only; @ID commands always select JSON independently. */
+/** Presentation only; \@ID commands always select JSON independently. */
 enum class Format : uint8_t { HUMAN, JSON };
 struct DebugSnapshot {
     DebugMode mode = DebugMode::OFF;
@@ -374,7 +374,8 @@ struct Host {
  * prefix. Optional @1..4294967295 prefix selects JSON and supplies a host
  * correlation id; plain commands use the configured presentation and
  * monotonically increasing local ids (wrapping to 1), skipping
- * outstanding correlations. Nine ordinary commands and one reserved stop may be outstanding;
+ * outstanding correlations. Nine ordinary commands and two stops may be outstanding;
+ * the second stop slot allows escalation. Protocol 3 still advertises capacity 10.
  * duplicate explicit IDs fail before callbacks. Operation result retention
  * belongs to the host and is released only by its explicit release hook.
  * Host callbacks and terminal reports share one task. Place this object in PSRAM if
@@ -391,7 +392,7 @@ public:
     bool reportTraffic(const MotorControlRS::TrafficRecord&, DebugMode,
                      const MotorControlRS::TrafficRecord* request = nullptr) noexcept;
     /** Consume one character. Under output pressure local cancel, monitor off
-     * and one reserved stop can dispatch. Other commands are counted and discarded. */
+     * and stop can dispatch. Other commands are counted and discarded. */
     void feed(char value) noexcept;
     bool serviceOutput() noexcept;
     bool outputPending() const noexcept { return outputPending_ || stopReplies_[0].pending; }

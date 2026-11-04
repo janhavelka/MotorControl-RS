@@ -7,6 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [Documentation and stress-tool review](2026-11-04_cleanup_review.md) | Corrected stale status and API comments. The stress tool now requires an observed stop before resuming after a USB stall; failed recovery ends the run. |
 | [Stop normal rate ceiling](2026-11-04_stop_normal_rate_ceiling.md) | HW-14: a `stop normal` late in the ramp above about 60,000 increments/s leaves firmware `0x0029` creeping until `stop fast`. Default ceiling now 50,000; 0 of 190 stops failed at it. Velocity, homing and higher caller limits stay untested. |
 | [Delivered-software bench regression](2026-11-02_standalone_14_bench_regression.md) | First hardware run of the ESS delivery and audit fixes. All routes work, including homing 33/34/35 and interruption; one persistent RUNNING failure at 1,000 increments/s is unresolved and needed a power cycle. |
 | [Code and standalone promptset audit](2026-11-02_standalone_promptset_audit.md) | Reproduced stop-path, homing supervision and core defects, vendor corrections and exact fixes for each standalone prompt, owner decisions and first bench plan. Its status section records what is fixed; bench and maintainability work remain. |

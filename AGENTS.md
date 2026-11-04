@@ -1,5 +1,11 @@
 # MotorControl-RS engineering guidance
 
+## Writing
+
+Use short, plain engineering language in code comments, documentation, commit
+messages and reports. State the behavior, evidence and remaining limits directly.
+Keep current instructions separate from dated test records.
+
 ## CI and local verification
 
 - Work with CI in mind from the start: inspect the relevant workflows and checks

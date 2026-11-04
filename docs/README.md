@@ -13,6 +13,7 @@ operations and physical qualification are separate; see the
 - [C++ moveBy / moveTo](move_example.md): example application submissions and service loop.
 - [Arduino ESP32-S3 build](esp32_probe.md) and [native ESP-IDF build](esp_idf_probe.md): board configuration, flash and recovery.
 - [Verification and packaging](verification.md): quick/full checks, clean consumers and CI.
+- [API documentation](verification.md#api-documentation): generate Doxygen from public headers.
 - [Tool index](../scripts/README.md): verification, generators, reference preparation and finite bench utilities.
 - [Python scenarios](bench_scenarios.md): finite checks, retained evidence and cleanup.
 - [Traffic diagnostics](traffic.md): passive raw/decoded observation through the normal owner.
@@ -63,6 +64,8 @@ on one free-shaft ESS23-RS20, raw firmware `0x0029`; it is not a universal motor
 rating or a guarantee of absolute reliability.
 
 - [Default-limit boundary tests](reports/2026-10-07_position_limits.md): 408 motion/stop cases and rejection checks.
+- [November bench regression](reports/2026-11-02_standalone_14_bench_regression.md): reads, setters, homing 33/34/35 and ACK-only interruption; persistent RUNNING remains open.
+- [Current stop ceiling](reports/2026-11-04_stop_normal_rate_ceiling.md): 190 stops at the new limit, with no failure in that test.
 - [Four-hour rate experiment](reports/2026-10-07_rate_boundary.md): tested envelope and retained failures outside it.
 - [High-subdivision source review](reference/12_ess_rs_motion_web_review.md): manuals, vendor information and unresolved drive behavior.
 - [Hardware bench](hardware_bench.md): actual wiring, image and fixture limits.

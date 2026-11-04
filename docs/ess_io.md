@@ -181,6 +181,6 @@ The 128-byte input limit includes the terminator and the 22-token limit includes
 an optional `@ID`. The 32-byte input service and 64-byte output service budgets
 remain; direct API candidates support all nine I/O fields,
 while a CLI candidate must also fit those line/token bounds. The console has nine ordinary
-correlation slots and one separate stop slot; application admission is also
+correlation slots and two separate stop slots; application admission is also
 bounded by eight ordinary retained operation records. The existing dedicated
 stop/monitor records and owner/result bounds apply; inspecting results does not consume them, and release is explicit.

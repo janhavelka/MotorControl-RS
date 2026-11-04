@@ -28,14 +28,10 @@ extraction requires a new dependency/policy review. Necessary timing, exact
 arithmetic and operation-specific uncertainty remain explicit. Completed prompts
 do not close the native-coverage or hardware gates below.
 
-The native velocity-parameter read now has a producing core/application/console
-route and checked copied results; [stage 02 evidence](reports/2026-10-29_ess_velocity_reads.md)
-keeps software checks separate from its unperformed physical read checks.
-
-Native homing-parameter observation now uses one checked seven-word read and
-ordinary application/console results; [stage 03 evidence](reports/2026-10-29_ess_homing_reads.md)
-keeps method implementation and unresolved offset interpretation separate from
-physical qualification. No new homing method or write window is enabled.
+Native velocity and homing parameter reads have checked core, application and
+console results. Their ordinary routes passed on the
+[2 November bench regression](reports/2026-11-02_standalone_14_bench_regression.md).
+Nonzero homing offset interpretation remains unresolved.
 
 ## Current bench evidence
 
@@ -50,9 +46,17 @@ moves and 435 planned stop interruptions in its narrower tested envelope.
 
 Broader experiments reproduced reset-like loss of volatile settings and
 persistent RUNNING/normal-stop failures; their drive-side causes remain open.
-The captured USB lost-event stall has a shared-driver replacement, but its actual
-trigger was not traced and renewed overnight qualification remains due. Historical failed aggregates remain FAIL. There is
-no independent shaft calibration, electrical timing or loaded-machine claim.
+The 2-3 November overnight run found a USB output stall on the replacement
+driver (HW-12). Its cause remains open; later clean segments do not close it.
+The low-rate persistent RUNNING failure (HW-01) is also unresolved. See the
+[current investigation](reports/2026-11-02_standalone_promptset_audit.md#overnight-stress-run-2-3-november-2026).
+Historical failed aggregates remain FAIL. There is no independent shaft
+calibration, electrical timing or loaded-machine claim.
+
+The new reads, settings, stored relative retrigger and homing methods 33/34/35
+have free-shaft evidence. Switch homing needs a real fixture. The 4 November
+image also includes the tested negative-position route and the one-second
+post-enable wait; their limits remain in the [backlog](backlog.md).
 
 ## Next delivery blocks
 
@@ -67,7 +71,8 @@ no independent shaft calibration, electrical timing or loaded-machine claim.
    methods concrete software blocks. Stages02-05 now deliver both parameter reads
    and scalar settings. Stage06 delivers the native stored-profile interrupt
    core; stage07 delivers application/console/host integration, independent
-   retained results and stop priority. Physical interruption remains NOT RUN.
+   retained results and stop priority. Stored relative retrigger has bench
+   evidence from 2 November; its result remains ACK-only.
    Broader replacement staging/attribution remains unresolved, so N05 stays
    PARTIAL. Software completion does not qualify a physical method.
 3. **Qualify remaining hardware behavior.** Repeat overnight testing; measure
@@ -117,19 +122,23 @@ When new behavior reaches the bench, run a short regression and focused feature
 checks, retain failed scenarios and the evidence needed to explain them, and
 record settings restoration. Hardware not performed must remain explicit.
 Read-only/documentation cleanup does not require flashing a working board.
-Commit and push each tested block, then wait for every required CI job on the
-exact commit. Native/software checks never substitute for physical qualification.
+Commit and push each tested block. Major changes need terminal CI results for
+the exact commit; small documentation changes use local checks under the
+[verification policy](verification.md). Native checks never substitute for
+physical qualification.
 
 Native position start-speed software is implemented through the ordinary
 prior-read/FC06/readback API and `motion-profile start-speed` route. Only N04's
-write gap closes; physical scaling, activation and persistence remain unqualified.
+write gap closes. Write/readback and the relation latch passed on the bench;
+physical scaling, activation timing and persistence remain unqualified.
 The profile window/restore stays `0x0021/5`; archived candidate import is separate.
 See [stage 04 evidence](reports/2026-10-29_ess_position_start_speed.md).
 
 Homing auxiliary configuration (N07) now has its explicit twelve-choice typed
 prior/FC06/readback API and ordinary `home auxiliary` route. Stored selection,
-active policy and physical homing remain separate. No method support, nonzero
-offset or write window is enabled. [Stage05 evidence](reports/2026-10-29_ess_homing_auxiliary.md).
+active policy and physical homing remain separate. Choices 0 and 7 passed on the
+2 November bench; the other ten choices were not exercised. Nonzero offsets
+remain guarded. [Stage 05 software evidence](reports/2026-10-29_ess_homing_auxiliary.md).
 
 The [fresh independent settings audit](reports/2026-10-29_ess_settings_audit.md)
 corrects prompts04/05 admission and qualification boundaries: newer observations
@@ -153,7 +162,9 @@ Physical switch homing remains NOT RUN; see
 The [independent stages10–12 audit](reports/2026-11-01_ess_homing_10_12_audit.md)
 checks all64 family branches and rejects host records claiming interrupted
 success, without expanding coverage or physical qualification.
-Physical homing and the absent recorded-bench regression remain NOT RUN.
+Methods 33/34/35 and stop during a search passed on the free shaft on
+2 November. The bench regression remains PARTIAL because its persistent
+RUNNING failure is unresolved; switch-method tests remain NOT RUN.
 The [independent prompts06-08 audit](reports/2026-10-29_ess_06_08_audit.md)
 corrects unknown-status qualification and host transition validation, with
 explicit active-phase replacement, in-flight stop and maximum-poll regressions.

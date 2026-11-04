@@ -1,8 +1,7 @@
 # Motor bench and testing authorization
 
 This guide describes the authorized fixture and its latest **recorded** ending
-state. No live port or motor inspection was performed during the 11 October
-documentation cleanup. Inspect the board, firmware and actual settings at the
+state. Inspect the board, firmware and actual settings at the
 start of each test session; old readback is not fresh admission evidence.
 
 ## Fixture and standing authorization
@@ -51,7 +50,7 @@ used image `c21bd18`, SHA-256 `FF84F5D261894A3B204FBAF263A924792F80FD3061ACF63D4
 The table below is the older 7 October ending state, kept for its retained evidence.
 
 The [7 October default-position boundary report](reports/2026-10-07_position_limits.md)
-records the latest retained image and final readback:
+records this earlier image and final readback:
 
 | Item | Recorded ending value |
 | --- | --- |
@@ -83,7 +82,7 @@ feedback field.
 | --- | --- |
 | [Default-position boundary](reports/2026-10-07_position_limits.md) | 408 finite motion/stop cases passed, plus rejection and ordinary relative/absolute regressions on the recorded Arduino image |
 | [Rate-boundary experiment](reports/2026-10-07_rate_boundary.md) | 4 h 08 s / 4,580 cases passed within its stated envelope; broader tests reproduced four reset-like failures whose cause remains unresolved |
-| [USB and overnight investigation](reports/2026-10-07_overnight_hil.md) | Captured HWCDC stall reproduced and replaced by the shared IDF USB driver; finite query/motion/stop regressions passed, replacement-driver overnight qualification remains open |
+| [USB and overnight investigation](reports/2026-10-07_overnight_hil.md), [November follow-up](reports/2026-11-02_standalone_promptset_audit.md) | The old HWCDC stall led to the shared IDF USB driver. November stress tests found another output stall (HW-12); its cause remains open. Later passing runs do not close it. |
 | [Completion investigation](reports/2026-10-07_position_completion.md) | High-subdivision speed/ramp cases retained persistent RUNNING and stop failures; conservative defaults do not repair the drive firmware |
 | [Arduino/native-IDF parity](archive/reports/ess_release_26_2026-10-05.md) | Matched finite S3 motion/stop/load/settings evidence on those images; later Arduino results do not qualify every native-IDF image |
 | [Stored-record checks](archive/reports/ess_release_16_2026-10-04.md) | Selected settings restored; shared-start 1 write/readback mismatch remains FAIL/uncertain, without replay |
