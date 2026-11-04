@@ -47,7 +47,7 @@ struct Entry { const char* name; Command command; const char* syntax; const char
 const Entry COMMANDS[] = {
     {"moveby", Command::MOVE_BY, "moveby VALUE [steps|deg|turn|mm]", "finite_relative_move_with_readonly_preparation", true, "Move by an amount; default unit is command steps. Round to nearest command step, ties to even."},
     {"moveto", Command::MOVE_TO, "moveto VALUE [steps|deg|turn|mm]", "finite_absolute_move_with_readonly_preparation", true, "Move relative to this boot's stationary zero; no device counter clear or NVS. Round to nearest command step, ties to even. Requires valid position confidence."},
-    {"speed", Command::SPEED, "speed [VALUE [rpm]]", "host_intent_applied_by_next_simple_move", false, "Show or set speed for the next move (0..3000 rpm; default 60; zero prevents a move). Position default: <=2000 rpm and <=200000 increments/s; settings shows subdivision limit."},
+    {"speed", Command::SPEED, "speed [VALUE [rpm]]", "host_intent_applied_by_next_simple_move", false, "Show or set speed for the next move (0..3000 rpm; default 60; zero prevents a move). Position default: <=2000 rpm and <=50000 increments/s; settings shows subdivision limit."},
     {"accel", Command::ACCEL, "accel [VALUE [ms]]", "host_intent_native_ramp_applied_by_next_simple_move", false, "Show or set acceleration ramp time in ms (0..2000 native; position default admits 100..2000)."},
     {"decel", Command::DECEL, "decel [VALUE [ms]]", "host_intent_native_ramp_applied_by_next_simple_move", false, "Show or set deceleration ramp time in ms (0..2000 native; position default admits 100..2000)."},
     {"motion", Command::MOTION, "motion [write|stored]", "inspect_or_select_simple_motion_setup", false, "Choose setup policy: write parameters before start, or explicitly reuse stored parameters."},
@@ -2278,6 +2278,14 @@ void Console::dispatch() noexcept {
             static_cast<unsigned long long>(data.ownerWatchdogFeedUs), static_cast<unsigned long long>(data.ownerCompletedLoops),
             static_cast<unsigned long>(data.resetReason));
         if (written < 0 || static_cast<std::size_t>(written) >= sizeof(output_)) { error(id, entry->name, "output_full"); return; }
+        std::size_t used = static_cast<std::size_t>(written) - 1;
+        if (!ConsoleReport::append(output_, sizeof(output_), used,
+                ",\"usb_stall\":{\"count\":%lu,\"nudges\":%lu,\"longest_us\":%llu,\"active\":%s,\"int_raw\":%lu,\"int_ena\":%lu,\"in_fifo\":%lu,\"endpoint\":%lu,\"connected\":%s}}",
+                static_cast<unsigned long>(data.usbStallCount), static_cast<unsigned long>(data.usbStallNudges),
+                static_cast<unsigned long long>(data.usbStallLongestUs), boolean(data.usbStallActive),
+                static_cast<unsigned long>(data.usbInterruptRaw), static_cast<unsigned long>(data.usbInterruptEnable),
+                static_cast<unsigned long>(data.usbInFifoState), static_cast<unsigned long>(data.usbEndpoint),
+                boolean(data.usbConnected))) { error(id, entry->name, "output_full"); return; }
         break;
     }
     case Command::CONFIG:

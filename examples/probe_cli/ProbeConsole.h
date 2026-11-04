@@ -218,6 +218,10 @@ struct Snapshot {
     bool ownerWatchdog = false;
     int32_t ownerWatchdogError = 0;
     uint32_t resetReason = 0, ownerWatchdogTimeoutMs = 0;
+    uint32_t usbStallCount = 0, usbStallNudges = 0, usbInterruptRaw = 0, usbInterruptEnable = 0;
+    uint32_t usbInFifoState = 0, usbEndpoint = 0;
+    uint64_t usbStallLongestUs = 0;
+    bool usbStallActive = false, usbConnected = false;
     uint64_t ownerCompletedLoops = 0, ownerWatchdogFeedUs = 0;
     uint32_t previousRuntimeStage = 0, previousRuntimeUptimeMs = 0, previousRuntimeLoops = 0;
     uint32_t previousRuntimeInputLines = 0, previousRuntimeOutputQueued = 0, previousRuntimeOutputBlocked = 0;

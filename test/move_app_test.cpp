@@ -1067,14 +1067,14 @@ static void testLocalMoveCancellationInvalidatesRememberedSettings() {
 }
 void testPositionLimitUsesDriveSubdivision() {
     fresh(); qualify(); app->configuration.raw.subdivision=51200;
-    auto r=request(); r.speedRpm=235;
+    auto r=request(); r.speedRpm=59;
     uint32_t id=999; const auto before=hardware.writes;
     assert(host(app).startMove(app,1,1,r,id)==Probe::Action::INVALID);
     assert(id==999 && hardware.writes==before && !app->owner.pending());
-    r.speedRpm=234;
+    r.speedRpm=58;
     assert(host(app).startMove(app,2,1,r,id)==Probe::Action::OK);
     assert(findRecord(*app,id)->move.prerequisites.subdivision==51200);
-    assert(findRecord(*app,id)->move.words[2]==234);
+    assert(findRecord(*app,id)->move.words[2]==58);
     assert(host(app).cancel(app,id)==Probe::Action::OK);
     pump(); assert(hardware.writes==before);
 }

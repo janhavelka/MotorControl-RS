@@ -1707,7 +1707,7 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
         require(item["setup_execution"] == item["execution"] == "acknowledged" and item["homed_low_observed"] and item["observation_known"], "completion lacks fresh transition")
         comp, raw = evidence["completion_evidence"]
         require(len(raw) == status_length and checked("completion_evidence", raw[:-2]) and raw[:3] == bytes((item["address"], 3, status_bytes)) and
-                raw[3:5] == b"\0\0" and int.from_bytes(raw[5:7], "big") == 3 and
+                raw[3:5] == b"\0\0" and int.from_bytes(raw[5:7], "big") in (2, 3) and
                 evidence["trigger_evidence"][0]["delivered_us"] < comp["earliest_us"] and comp["latest_us"] <= item["deadline_us"], "completion lacks stopped homed FC03")
         require(comp["step"] == item["polls"] + 1 and comp["step"] >= 2 and item["phase"] == 3 and
                 item["raw_alarm"] == 0 and item["raw_motion"] == int.from_bytes(raw[5:7], "big") and

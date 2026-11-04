@@ -7,7 +7,6 @@ namespace MotorControlRS { namespace ESS_RS {
 namespace {
 constexpr uint16_t RUNNING = static_cast<uint16_t>(MotionStatusBit::RUNNING);
 constexpr uint16_t HOMED = static_cast<uint16_t>(MotionStatusBit::HOMING_COMPLETE);
-constexpr uint16_t ARRIVED = static_cast<uint16_t>(MotionStatusBit::IN_POSITION);
 constexpr uint16_t UNKNOWN_MOTION = 0xFF80; // Only bits 0..6 are documented; unknown is not a drive fault.
 static_assert(ACTION_MAX_POLLS + 2 < 256, "home setup/trigger/poll/zero step must fit uint8_t");
 static_assert(ACTION_MAX_REPLY_BYTES >= 11, "combined home alarm/motion/input reply must fit evidence");
@@ -342,7 +341,9 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
             }
             const bool needsActivity = c.request.method != HomingMethod::METHOD_35;
             if (c.homedLowObserved && (!needsActivity || c.runningObserved) &&
-                !(words[1] & RUNNING) && (words[1] & HOMED) && (words[1] & ARRIVED)) {
+                !(words[1] & RUNNING) && (words[1] & HOMED)) {
+                // HOMED is the documented completion (function manual p68). ARRIVED is not
+                // required: on firmware 0x0029 a home begun with it clear ends with it clear.
                 c.completionEvidence = evidence; c.completionObservedUs = c.eligibleUs;
                 c.phase = HomePhase::ZERO_CHECK;
             }

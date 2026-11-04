@@ -84,10 +84,13 @@ feedback field.
 | [Arduino/native-IDF parity](archive/reports/ess_release_26_2026-10-05.md) | Matched finite S3 motion/stop/load/settings evidence on those images; later Arduino results do not qualify every native-IDF image |
 | [Stored-record checks](archive/reports/ess_release_16_2026-10-04.md) | Selected settings restored; shared-start 1 write/readback mismatch remains FAIL/uncertain, without replay |
 
-Current default positioning combines at most 2,000 rpm, 200,000 command
+Current default positioning combines at most 2,000 rpm, 50,000 command
 increments/s and native ramp times 100..2,000 ms. At subdivision 51,200 the
-integer ceiling is 234 rpm. This is a tested policy for one motor/firmware,
-not a universal drive rating or proof of absolute reliability.
+integer ceiling is 58 rpm. This is a tested policy for one motor/firmware,
+not a universal drive rating or proof of absolute reliability. The rate was
+200,000 until a late `stop normal` above about 60,000 increments/s was found to
+leave this drive creeping ([report](reports/2026-11-04_stop_normal_rate_ceiling.md)).
+Bench scripts that raise the limit must have `stop fast` ready for that case.
 
 Independent TX/RX/DE timing, shaft speed/displacement, loaded mechanics,
 external I/O, physical homing, broader velocity behavior, alternate motor

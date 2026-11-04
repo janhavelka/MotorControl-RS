@@ -83,8 +83,10 @@ sensor semantics globally or import FieldCore types into the installed core.
 For common `prepareMoveRelative/Absolute/Angle`, supply actual subdivision, the
 axis/configuration generation and qualified word order, ramps, readiness, inputs,
 units and any consumed reference. The default position limits combine 2,000 rpm,
-200,000 command increments/s and 100..2,000-ms native ramp words; subdivision
-51,200 therefore permits at most 234 rpm. Do not feed encoder resolution into the
+50,000 command increments/s and 100..2,000-ms native ramp words; subdivision
+51,200 therefore permits at most 58 rpm. The rate was 200,000 until 4 November
+2026; a consumer that sets its own `PositionLimits` keeps its own value and must
+qualify the [stop normal defect](reports/2026-11-04_stop_normal_rate_ceiling.md). Do not feed encoder resolution into the
 command-subdivision field. Exact endpoint completion is optional and requires the
 qualified feedback-to-command relation and reference; otherwise use the documented
 activity/arrival evidence. Raw algorithm 3 does not become a known algorithm merely
