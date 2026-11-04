@@ -56,8 +56,9 @@ prepares bounded requests and consumes supplied events; it performs no I/O.
 
 ## Tested limits and open work
 
-The current default position policy is at most 2,000 rpm and 200,000 command
-increments/s, with each native ramp time in 100..2,000 ms. It follows testing
+The current default position policy is at most 2,000 rpm and 50,000 command
+increments/s, with each native ramp time in 100..2,000 ms. The rate ceiling
+avoids a [stop normal defect](reports/2026-11-04_stop_normal_rate_ceiling.md). It follows testing
 on one free-shaft ESS23-RS20, raw firmware `0x0029`; it is not a universal motor
 rating or a guarantee of absolute reliability.
 

@@ -309,14 +309,14 @@ class Run:
         self.console.release_all()
         self.subdivision = value
         self.ceiling = (item or {}).get("maximum_position_rpm") or 0
-        if self.ceiling != min(2000, 12000000 // value):
+        if self.ceiling != min(2000, 3000000 // value):
             raise Anomaly("CEILING", {"subdivision": value, "reported": self.ceiling})
 
     def limit_rpm(self):
         return self.random.choice([self.ceiling, self.ceiling, self.ceiling - 1, min(600, self.ceiling)])
 
     def case_limit_plain(self):
-        """At the policy ceiling: min(2000 rpm, 200,000 increments/s)."""
+        """At the policy ceiling: min(2000 rpm, 50,000 increments/s)."""
         turns = self.random.choice([0.25, 1, 5, 20])
         steps, rpm = int(turns * self.subdivision), self.limit_rpm()
         before = self.prepare()

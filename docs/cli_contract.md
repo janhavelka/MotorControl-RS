@@ -110,8 +110,10 @@ requests default to EXACT and expose explicit rounding/approximation choices.
 Angles and travel require the corresponding scale, frame and origin.
 
 Host speed intent accepts 0..3000 rpm and ramp intent accepts 0..2000 ms.
-Position admission additionally enforces at most 2000 rpm, 200000 command
-increments/s and native ramp times 100..2000 ms. A move requires nonzero speed
+Position admission additionally enforces at most 2000 rpm, 50000 command
+increments/s and native ramp times 100..2000 ms. Above about 60000 increments/s
+firmware `0x0029` can turn a late `stop normal` into endless creep
+([report](reports/2026-11-04_stop_normal_rate_ceiling.md)). A move requires nonzero speed
 and actual drive subdivision. `settings` shows the subdivision-dependent speed
 ceiling; excess values reject without clamping. Native ramp time is not
 physical acceleration. These defaults describe the recorded bench envelope.

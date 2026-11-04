@@ -10,13 +10,15 @@ namespace MotorControlRS { namespace ESS_RS {
 constexpr std::size_t MOVE_REQUEST_BYTES = 19;
 /** Conservative position policy, not a vendor rating or a reliability guarantee.
  * Defaults follow the ESS23-RS20 / raw firmware 0x0029 free-shaft study:
- * <=2000 rpm AND <=200000 command increments/s, ramps >=100 native ms.
+ * <=2000 rpm AND <=50000 command increments/s, ramps >=100 native ms.
+ * Above about 60000 increments/s that firmware can turn a late stop normal into
+ * endless creep (docs/reports/2026-11-04_stop_normal_rate_ceiling.md).
  * Other fixtures/firmware need their own qualification. Explicitly changing this
  * policy is caller-owned qualification; wire ranges remain enforced.
  * No speed/ramp is silently clamped. Does not apply to raw codec builders. */
 struct PositionLimits {
     uint16_t maximumRpm = 2000;
-    uint32_t maximumCommandRate = 200000;
+    uint32_t maximumCommandRate = 50000;
     uint16_t minimumRampTime = 100;
 };
 /** Integer RPM ceiling for the supplied active drive subdivision (400..51200).

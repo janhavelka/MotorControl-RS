@@ -850,20 +850,20 @@ static void testRelativeMoveChecksConsumedReference() {
 }
 void testOperatingLimitsCommonParity() {
     auto p=prerequisites(); p.subdivision=51200;
-    auto r=request(); r.speedRpm=234;
+    auto r=request(); r.speedRpm=58;
     Ess::MoveContext c;
     assert(Ess::prepareMoveRelative(c,axis(),nullptr,1,r,p,100,10000));
     const Saved<Ess::MoveContext> before(c);
-    r.speedRpm=235;
+    r.speedRpm=59;
     auto status=MotorControlRS::prepareMoveRelative(c,axis(),nullptr,1,r,p,100,10000);
     assert(!status && status.detail==static_cast<int>(MoveError::OPERATING_LIMIT)); before.check(c);
-    p.subdivision=4000; r.speedRpm=2001;
+    p.subdivision=1000; r.speedRpm=2001;
     assert(!Ess::prepareMoveRelative(c,axis(),nullptr,1,r,p,100,10000)); before.check(c);
     r.speedRpm=2000; p.decelerationTime=99;
     assert(!Ess::prepareMoveRelative(c,axis(),nullptr,1,r,p,100,10000)); before.check(c);
     p.decelerationTime=100; p.subdivision=0;
     assert(!Ess::prepareMoveRelative(c,axis(),nullptr,1,r,p,100,10000)); before.check(c);
-    p.subdivision=4000;
+    p.subdivision=1000;
     assert(Ess::prepareMoveRelative(c,axis(),nullptr,1,r,p,100,10000));
     // Native displacement still needs no host origin, gear or travel scale.
     assert(!axis().originKnown && !axis().units.commandStepsPerMotorTurn.numerator);

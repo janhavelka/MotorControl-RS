@@ -16,6 +16,22 @@
 
 ### Changed
 
+- The default position ceiling is 50,000 command increments/s, down from 200,000
+  (`PositionLimits::maximumCommandRate`). Above about 60,000/s, firmware `0x0029` can
+  turn a `stop normal` sent late in the acceleration ramp into endless creep. 2,000 rpm
+  stays available up to subdivision 1,500; at 51,200 the ceiling is 58 rpm, was 234.
+  An explicit caller `PositionLimits` keeps its own value. See the
+  [stop normal report](docs/reports/2026-11-04_stop_normal_rate_ceiling.md).
+- The standalone moves backwards: `moveby -N`, `moveto` below zero and negative
+  advanced targets. It states `negativeTwosComplementVerified` for firmware `0x0029`,
+  where the encoding was checked on the bench. The RAM boot zero reads feedback as
+  signed, so it survives crossing zero. Negative velocity keeps its own qualification.
+- For 1 s after an `enable` is transmitted, `moveby`/`moveto` wait and advanced move,
+  velocity and home starts answer `busy` without traffic. Firmware `0x0029` echoed and
+  ignored starts sent up to 0.6 s after an enable.
+- A home completes on HOMED seen after a witnessed low, with RUNNING clear and position
+  exactly 0. IN_POSITION is no longer required: firmware `0x0029` leaves it clear when a
+  home follows a stopped move, so a finished home used to end `deadline`.
 - `home`, `velocity` and `position-clear` reply `qualification_required` when their
   qualification is absent, in place of `unavailable` or `invalid`.
 - Home supervision uses `moveTimeoutMs` (30 s by default), not 3 s, and polls every
