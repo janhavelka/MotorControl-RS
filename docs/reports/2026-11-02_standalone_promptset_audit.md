@@ -41,7 +41,7 @@ Not covered, recorded in the report and backlog: velocity and homing have no rat
 | HW-15 start ignored after enable | Closed: 1 s window, limits documented | `3f4b073`, `dea393f`, `ec5b564` |
 | HW-01 persistent RUNNING | Open | |
 
-All of this is on branch `overnight-stress-20261102`, not on `main`, until the branch is merged.
+Branch `overnight-stress-20261102` was merged into `main` on 4 November as `7d2a2f6`, with no conflicts. `verify.py --mode quick` passed on the merged tree, and CI passed on the merge commit (run 41837174358).
 
 **Follow-up on 3 November (owner present), newest work first.**
 
