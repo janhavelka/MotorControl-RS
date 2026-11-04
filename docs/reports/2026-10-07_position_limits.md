@@ -1,5 +1,10 @@
 # Default position operating boundary, 7 October 2026
 
+**Superseded rate:** the 200,000 increments/s ceiling below was lowered to 50,000
+on 4 November 2026, after a late `stop normal` was found to leave firmware `0x0029`
+creeping. See the [stop normal study](2026-11-04_stop_normal_rate_ceiling.md).
+This report's stops came about 0.2 s into each move, before that band.
+
 ## Policy and its meaning
 
 User requested an explicit default after the [four-hour study](2026-10-07_rate_boundary.md).

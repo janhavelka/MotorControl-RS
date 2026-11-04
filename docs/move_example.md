@@ -176,9 +176,9 @@ Status accepted = submitMove(target, 60, operation);
 ```
 
 The standalone example applies the same default position limits as the core:
-maximum 2,000 RPM and 200,000 command increments/s, with each native ramp in
+maximum 2,000 RPM and 50,000 command increments/s, with each native ramp in
 100..2,000 ms. Active subdivision determines the lower RPM ceiling:
-`min(2000, floor(12000000 / subdivision))`. Settings come from checked readback;
+`min(2000, floor(3000000 / subdivision))`. Settings come from checked readback;
 requests outside the policy reject before setup/start. See
 [the shared policy and evidence](ess_position.md#default-position-operating-limits).
 Its motion-observation deadline defaults to 30 seconds (configurable 1..30000 ms). Default angular scale

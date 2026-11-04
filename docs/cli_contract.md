@@ -100,13 +100,20 @@ counter or write NVS. `stepsperturn` changes host interpretation only;
 
 Simple moves use nearest-command-step quantization with ties to even and at
 most half a step of error. Results retain effective native value and rounding
-error; zero displacement after rounding yields no motion write. Detailed
+error; zero displacement after rounding yields no motion write. Negative
+distances and targets move backwards: on firmware `0x0029` the two's-complement
+target and the feedback below zero were verified on the bench. For 1 s after an
+enable is transmitted, simple moves wait and other position, velocity and home
+starts answer `busy`: firmware `0x0029` echoed and ignored starts sent up to 0.6 s
+after enable, and no status bit shows when it is ready. Detailed
 requests default to EXACT and expose explicit rounding/approximation choices.
 Angles and travel require the corresponding scale, frame and origin.
 
 Host speed intent accepts 0..3000 rpm and ramp intent accepts 0..2000 ms.
-Position admission additionally enforces at most 2000 rpm, 200000 command
-increments/s and native ramp times 100..2000 ms. A move requires nonzero speed
+Position admission additionally enforces at most 2000 rpm, 50000 command
+increments/s and native ramp times 100..2000 ms. Above about 60000 increments/s
+firmware `0x0029` can turn a late `stop normal` into endless creep
+([report](reports/2026-11-04_stop_normal_rate_ceiling.md)). A move requires nonzero speed
 and actual drive subdivision. `settings` shows the subdivision-dependent speed
 ceiling; excess values reject without clamping. Native ramp time is not
 physical acceleration. These defaults describe the recorded bench envelope.

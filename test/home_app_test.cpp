@@ -600,13 +600,18 @@ void switchObservationBounds() {
             reply(id,observed(4,level)); reply(id,observed(3,level)); reply(id,words(0,0));
             assert(copiedHome(id).completion == ActionCompletion::OBSERVED &&
                 copiedHome(id).rawInputs == level && app->coordinateReference.nativeKnown);
+        } else if (scenario == 4) {
+            // HOMED without IN_POSITION completes: firmware 0x0029 ends a home this way
+            // when IN_POSITION was clear at its start. Position zero is still required.
+            reply(id,observed(4)); reply(id,observed(2)); reply(id,words(0,0));
+            assert(copiedHome(id).completion == ActionCompletion::OBSERVED && app->coordinateReference.nativeKnown);
         } else {
             reply(id,observed(scenario == 2 ? 6 : scenario == 3 ? 1 : 4));
             // Once RUNNING is reported the slower polls outlast the deadline, so
             // only a search that never reports RUNNING can use all 64 polls.
             if (scenario == 3)
                 for (unsigned poll = 1; poll < ESS::ACTION_MAX_POLLS && view(id).pending; ++poll) reply(id,observed(3));
-            else serveUntilTerminal(id,observed(scenario == 4 ? 2 : scenario == 5 ? 4 : 3));
+            else serveUntilTerminal(id,observed(scenario == 5 ? 4 : 3));
             const auto result = copiedHome(id);
             assert(!view(id).pending && result.uncertain && !app->coordinateReference.nativeKnown && !result.zeroEvidence.length);
             if (scenario == 3) assert(result.outcome == ActionOutcome::OBSERVATION_LIMIT && result.polls == ESS::ACTION_MAX_POLLS);

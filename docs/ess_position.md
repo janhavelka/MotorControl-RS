@@ -3,10 +3,13 @@
 For a user-facing ESP32 function, see [moveBy / moveTo](move_example.md).
 It submits the same observed move sequence; no console-string parsing is needed.
 
-**Known motor limitation:** some high-subdivision speed/ramp combinations leave
+**Known motor limitations:** some high-subdivision speed/ramp combinations leave
 firmware `0x0029` reporting RUNNING after expected travel. See the
 [measured cases](reports/2026-10-07_position_completion.md) and
 [manual, FAQ and forum review](reference/12_ess_rs_motion_web_review.md).
+Above about 60,000 command increments/s, a `stop normal` sent late in the
+acceleration ramp can leave the same firmware creeping without end; the default
+ceiling below refuses those rates ([stop normal study](reports/2026-11-04_stop_normal_rate_ceiling.md)).
 The exact RS hardware manual lists an unexplained 200 kHz pulse-frequency limit;
 its applicability to serial motion remains unresolved. Legal individual fields
 do not qualify all combinations. The default policy below is a conservative
@@ -32,8 +35,8 @@ and stopping for the recorded subset; independent shaft timing remains unmeasure
 `prepareMoveRelative`, `prepareMoveAbsolute`, `prepareMoveAngle` and
 `PositionCommand::prepare*` apply the same `PositionLimits` by default:
 
-- Requested speed <=2,000 rpm **and** subdivision x rpm / 60 <=200,000 command
-  increments/s. Maximum integer speed: `min(2000, 12000000 / subdivision)`.
+- Requested speed <=2,000 rpm **and** subdivision x rpm / 60 <=50,000 command
+  increments/s. Maximum integer speed: `min(2000, 3000000 / subdivision)`.
 - Each native acceleration/deceleration ramp word: 100..2,000 ms.
 - Supply the active drive subdivision in `MovePrerequisites::subdivision` or
   `PositionCommand::subdivision`. Unknown/invalid values reject before work is
@@ -41,11 +44,55 @@ and stopping for the recorded subset; independent shaft timing remains unmeasure
 
 | Drive subdivision | Default maximum rpm |
 | ---: | ---: |
-| 400..6,000 | 2,000 |
-| 6,400 | 1,875 |
-| 12,800 | 937 |
-| 25,600 | 468 |
-| 51,200 | 234 |
+| 400..1,500 | 2,000 |
+| 1,600 | 1,875 |
+| 2,000 | 1,500 |
+| 3,200 | 937 |
+| 4,000 | 750 |
+| 5,000 | 600 |
+| 6,000 | 500 |
+| 6,400 | 468 |
+| 10,000 | 300 |
+| 12,800 | 234 |
+| 25,600 | 117 |
+| 51,200 | 58 |
+
+The factory subdivision 1,000 keeps the full 2,000 rpm (33,333 increments/s).
+
+### Why the rate ceiling is 50,000 increments/s
+
+Until 4 November 2026 the default was 200,000 increments/s. Then the
+[stop normal study](reports/2026-11-04_stop_normal_rate_ceiling.md) found a
+firmware `0x0029` defect. A `stop normal` sent while a move is still
+accelerating, near the moment its braking ramp would end at the target, is
+acknowledged. The drive then overshoots and keeps creeping in the move direction
+without end, at about 52 to 56 increments/s, still reporting RUNNING. Only
+`stop fast` ends it. All tested moves were positive.
+
+- It depends on the command rate, not on shaft speed. It failed at subdivisions
+  2,000 to 51,200, at binary and decimal values alike, and at 51,200 already at
+  234 rpm. It also failed with 200 ms ramps.
+- No failure occurred at or below 60,000 increments/s, in 400 trials. Failures
+  began at 66,667 increments/s. At the new ceiling the same stop geometry gave
+  0 failures in 190 stops at six subdivisions.
+- Every setting involved was inside its documented range. The function manual
+  documents subdivision as a continuous range 400..51,200 and states no rate limit
+  for serial positioning. The only rate figure, the hardware manual's 200 kHz pulse
+  frequency, does not say that it applies to serial positioning.
+
+50,000 is the highest rate with no failure in the failing geometry, and it keeps
+2,000 rpm up to subdivision 1,500. The ceiling limits the requested peak rate,
+which is what admission controls.
+
+What it does not cover:
+
+- An explicit caller `PositionLimits` above 50,000 keeps its value. The caller then
+  owns this defect: treat a `stop normal` that ends `observation_limit` with RUNNING
+  still set as possible endless motion, and send `stop fast`. Nothing escalates
+  automatically.
+- Velocity runs and homing speeds are outside this policy. Their stops at high
+  rates were not tested.
+- Raw codecs, other motors and other firmware.
 
 `positionSpeedLimit` returns the integer ceiling; `checkPositionLimits` is the
 shared pure validator. The standalone uses configuration readback and reports
@@ -54,11 +101,13 @@ Rejection leaves the output unchanged and does not stage, start or clamp the
 request. Correct a rejected simple move's speed/ramp and issue a new move;
 no result release or recovery is required for this no-write rejection.
 
-Defaults follow the [four-hour experiment](reports/2026-10-07_rate_boundary.md)
+The other defaults follow the [four-hour experiment](reports/2026-10-07_rate_boundary.md)
 and [boundary follow-up](reports/2026-10-07_position_limits.md) on the secured,
 free-shaft ESS23-RS20, raw firmware `0x0029`. They are not universal motor ratings
 or proof of absolute reliability. A 2,700 rpm reset-like failure occurred at only
-180,000 increments/s; a rate-only limit was insufficient. Supply transients,
+180,000 increments/s, which is why the rpm cap stays alongside the rate cap. The
+boundary follow-up sent its stops about 0.2 s into ten-turn moves, well before
+the late-ramp band, so it could not see the `stop normal` defect. Supply transients,
 loaded mechanics and the internal failure cause remain unresolved. Very small
 moves can still be unobservable at the feedback resolution. Negative motion,
 continuous velocity and homing gain no qualification from this position policy.
@@ -403,7 +452,10 @@ the default preparation policy above deliberately admits a narrower envelope.
 These ramp words are reused verbatim, never labelled physical acceleration.
 The implemented mathematical target subset is signed32; negative targets also
 require explicit qualified two's-complement encoding. A caller must establish
-applicable device bounds; the malformed manual range is not qualification.
+applicable device bounds; the malformed manual range is not qualification. The
+standalone states it for firmware `0x0029`: on 3 November 2026, targets of -100
+to -100,000 moved backwards by the commanded amount and feedback read back in
+the same encoding below zero.
 
 Serial positioning needs no home switch or output load. Unconnected inputs
 remain assigned inputs. An affected limit, stop, release or external trigger

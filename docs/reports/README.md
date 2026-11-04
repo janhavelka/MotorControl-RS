@@ -7,6 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [Stop normal rate ceiling](2026-11-04_stop_normal_rate_ceiling.md) | HW-14: a `stop normal` late in the ramp above about 60,000 increments/s leaves firmware `0x0029` creeping until `stop fast`. Default ceiling now 50,000; 0 of 190 stops failed at it. Velocity, homing and higher caller limits stay untested. |
 | [Delivered-software bench regression](2026-11-02_standalone_14_bench_regression.md) | First hardware run of the ESS delivery and audit fixes. All routes work, including homing 33/34/35 and interruption; one persistent RUNNING failure at 1,000 increments/s is unresolved and needed a power cycle. |
 | [Code and standalone promptset audit](2026-11-02_standalone_promptset_audit.md) | Reproduced stop-path, homing supervision and core defects, vendor corrections and exact fixes for each standalone prompt, owner decisions and first bench plan. Its status section records what is fixed; bench and maintainability work remain. |
 | [ESS software final audit](2026-11-02_ess_final_audit.md) | Independent source/API, execution/ownership and consumption reviews of all delivered requirements; corrected stale documentation, archived bounded instructions and retained broader N05/source/physical obligations. |
@@ -31,7 +32,7 @@ No report makes its recorded bench state a fresh observation.
 | [ESS velocity parameter reads](2026-10-29_ess_velocity_reads.md) | Single-window typed raw observation, ordinary API/console/host integration and independent tests; physical checks NOT RUN on the absent recorded bench device. |
 | [ESS software stage 01 contracts](2026-10-29_ess_software_contracts.md) | Settles planned reads/settings, restricted interruption and homing qualification/observation; all feature implementation and physical gates remain separate. |
 | [Lichuan promptset audit](2026-10-23_lichuan_promptset_audit.md) | Corrects both prospective RS485 families against original manuals and current code; records remaining source gaps without claiming implementation or hardware qualification. |
-| [Default position boundaries](2026-10-07_position_limits.md) | 408 motion/stop cases and admission checks support the conservative application defaults on the recorded ESS23-RS20. They are not a universal drive rating. |
+| [Default position boundaries](2026-10-07_position_limits.md) | 408 motion/stop cases and admission checks support the conservative application defaults on the recorded ESS23-RS20. They are not a universal drive rating. Its 200,000 increments/s rate was later lowered to 50,000, above. |
 | [Rate-boundary experiment](2026-10-07_rate_boundary.md) | Four hours of accumulated active testing passed in the stated envelope; broader tests reproduced reset-like loss of volatile settings and persistent RUNNING. Their drive-side causes remain unresolved. |
 | [Position-completion investigation](2026-10-07_position_completion.md) | Retains the checked replies behind high-subdivision failures and distinguishes the corrected short-move observation limitation from unresolved drive behavior. |
 | [First overnight failure](2026-10-05_overnight_hil.md) | The requested duration failed and final cleanup is unknown. A later passing subset does not change that aggregate. |

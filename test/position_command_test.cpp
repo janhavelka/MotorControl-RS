@@ -217,8 +217,8 @@ void operatingBoundary() {
     // Exhaust every legal integer subdivision, including non-preset values.
     for (unsigned sub=400; sub<=51200; ++sub) {
         const uint16_t rpm=E::positionSpeedLimit(static_cast<uint16_t>(sub));
-        assert(rpm && rpm<=2000 && uint64_t(sub)*rpm<=12000000);
-        assert(rpm==2000 || uint64_t(sub)*(rpm+1)>12000000);
+        assert(rpm && rpm<=2000 && uint64_t(sub)*rpm<=3000000);
+        assert(rpm==2000 || uint64_t(sub)*(rpm+1)>3000000);
         auto m=motor(); m.subdivision=sub; m.speedRpm=rpm;
         E::MoveContext c;
         assert(m.prepareRelative(c,1,100,10,1000));
@@ -229,6 +229,9 @@ void operatingBoundary() {
         assert(!std::memcmp(&saved,&c,sizeof(c)));
     }
     for (uint16_t sub : {0,399,51201,65535}) assert(!E::positionSpeedLimit(sub));
+    // HW-14 ceiling, as tabulated in docs/ess_position.md.
+    assert(E::positionSpeedLimit(1500)==2000 && E::positionSpeedLimit(1600)==1875);
+    assert(E::positionSpeedLimit(6000)==500 && E::positionSpeedLimit(51200)==58);
     auto m=motor(); E::MoveContext c;
     for (auto setup : {MoveSetup::WRITE_ALL,MoveSetup::VERIFY_AND_UPDATE,MoveSetup::USE_STORED}) {
         m.setup=setup;

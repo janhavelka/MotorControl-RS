@@ -166,7 +166,9 @@ instructions from the vendor before attempting it.
    Separate requested speed, feedback-derived average and independently measured
    peak speed; a short triangular move is not a sustained-rate qualification.
    Plan explicit fast-stop cleanup and restoration, and preserve failures.
-   This review did not run that additional experiment.
+   This review did not run that additional experiment. The later
+   [stop normal study](../reports/2026-11-04_stop_normal_rate_ceiling.md) bracketed
+   the rate for one stop case and found failures from 66,667 increments/s.
 4. Preserve the existing completion contract: fresh correlated stopped endpoint
    evidence can finish a short move whose RUNNING interval was missed. Persistent
    RUNNING cannot be overridden just because feedback is near the target.

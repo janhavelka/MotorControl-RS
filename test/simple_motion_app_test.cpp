@@ -823,7 +823,39 @@ void testDefaultPositionBoundary() {
         assert(app->simple.view.ok); // Rejection cannot pin the motor reservation.
     }
 }
+void testNegativeMovesStageTwosComplementAndKeepBootZero() {
+    // HW-13: negative targets stage two's complement, and negative feedback keeps the boot zero.
+    fresh(); command("@1 moveby -100\n"); prepareSimple();
+    auto child = app->simple.view.moveOperationId; assert(child);
+    const auto& staged = findRecord(*app,child)->move.words;
+    assert(staged[3]==0xFFFF && staged[4]==0xFF9C);
+    completeSimple(); assert(app->simple.view.ok && app->bootCoordinates && app->axis.originKnown);
+    command("@2 moveto -300\n"); prepareSimple(true,0xFFFFFF9CU);
+    child = app->simple.view.moveOperationId; assert(child && app->simple.view.moveAdmitted);
+    assert(findRecord(*app,child)->move.prepared.effectiveNative==-300);
+    completeSimple(); assert(app->simple.view.ok && app->bootCoordinates);
+}
+void testMoveWaitsOutEnableSettling() {
+    // HW-15: firmware 0x0029 echoed and ignored a start sent within 0.6 s of an enable.
+    // The wait fits the 5 s preparation deadline; no start is sent before the window ends.
+    fresh(); app->enableSettleAddress = 1; app->enableSettleUntilUs = hardware.time + 1000000;
+    command("@1 moveby 100\n"); prepareSimple(false);
+    const auto writes = hardware.writes; pump(10);
+    assert(hardware.time < app->enableSettleUntilUs);
+    assert(app->simple.view.pending && !app->simple.view.moveAdmitted && hardware.writes == writes);
+    for (unsigned i = 0; i < 2000000 && hardware.time <= app->enableSettleUntilUs; ++i) step();
+    pump(); assert(app->simple.view.moveAdmitted);
+    completeSimple(); assert(app->simple.view.ok);
+    // Other starts answer busy, so a caller retries instead of reading a fault.
+    app->enableSettleUntilUs = hardware.time + 1000000; Serial.output.clear();
+    const auto idle = hardware.writes;
+    command("@9 move relative 100 steps native 60 configured\n");
+    assert(Serial.output.find("\"id\":9,")!=std::string::npos && Serial.output.find("\"result\":\"busy\"")!=std::string::npos);
+    pump(); assert(hardware.writes == idle);
+}
 int main() {
+    testMoveWaitsOutEnableSettling();
+    testNegativeMovesStageTwosComplementAndKeepBootZero();
     testDefaultPositionBoundary();
     testShortMoveUsesFreshExactEndpoint();
     testOneCommandSubdivisionAndFollowingMove();

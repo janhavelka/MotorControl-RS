@@ -154,19 +154,32 @@ functional evidence; independent shaft calibration remains absent.
   which names no input, and its applicability to serial positioning. [Completion investigation](reports/2026-10-07_position_completion.md).
   The conservative [position defaults](reports/2026-10-07_position_limits.md)
   do not repair or universally qualify the drive firmware.
+- [x] Keep position moves out of the late `stop normal` creep of firmware `0x0029`
+  (HW-14): default rate ceiling 50,000 increments/s, rechecked on the bench.
+  [Stop normal study](reports/2026-11-04_stop_normal_rate_ceiling.md).
+- [ ] Ask the vendor about that creep above about 60,000 increments/s and whether
+  newer firmware fixes it. Raising the ceiling needs a fix or a rerun of the
+  late-stop matrix on the new firmware.
+- [ ] Measure the enable settling time (HW-15) beyond one drive's 0.6 s for
+  position starts: home and velocity starts, other drives or firmware, an enable
+  sent to an enabled drive, and an alarm clear with an alarm latched. The 1 s
+  window is a margin over that one measurement ([console](console.md)).
 - [ ] Establish algorithm 3, feedback sign/source/scale, arrival precision and
   actual speed/ramp behavior using correlated independent shaft measurements.
   Two requested 100-increment moves reported raw delta 99; do not change scale
   or completion thresholds from that observation alone.
   [Platform audit](archive/reports/ess_release_25_26_audit_2026-10-05.md).
-- [ ] Qualify physical angle/travel equivalence, origins/device clear,
-  negative encoding and loaded mechanisms separately from pure conversions.
+- [ ] Qualify physical angle/travel equivalence, origins/device clear
+  and loaded mechanisms separately from pure conversions. Direct-positioning
+  negative targets and signed feedback are bench-verified on firmware `0x0029`
+  (3 November 2026); stored segment targets and home offsets stay open above.
   Linear travel needs an actual configured mechanism.
 - [ ] Qualify homing/return/zero methods on their actual fixtures, dynamic stop
   latency and external input/output activation/precedence. Unwired terminals
   are not disabled assignments; serial-only tests need no optional switches.
 - [ ] Qualify signed velocity and physical ramp/acceleration mappings before
-  broadening their motion claims. Same-endpoint in-motion speed changes remain
+  broadening their motion claims. Velocity has no rate ceiling; test its
+  `stop normal` above 60,000 increments/s first (HW-14 was found in position mode). Same-endpoint in-motion speed changes remain
   unavailable; bare speed writes are not proven smooth updates.
   [Live-speed review](archive/reports/2026-10-06_rounding_and_live_speed.md).
 - [ ] Resolve effective-current limits/percentage denominator and qualify

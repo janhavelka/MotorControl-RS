@@ -4,6 +4,10 @@
 #include <driver/usb_serial_jtag.h>
 #include <hal/usb_serial_jtag_ll.h>
 #include <esp_rom_sys.h>
+#if __has_include(<soc/usb_serial_jtag_struct.h>)
+#include <soc/usb_serial_jtag_struct.h>
+#define MOTORCONTROLRS_USB_REGISTERS 1
+#endif
 
 namespace MotorControlRSExample { namespace Platform {
 namespace {
@@ -56,6 +60,27 @@ std::size_t writeConsole(const uint8_t* data, std::size_t size) {
     const int written = usb_serial_jtag_write_bytes(data, size, 0);
     return written > 0 && static_cast<std::size_t>(written) <= size
         ? static_cast<std::size_t>(written) : 0;
+}
+
+void sampleConsole(ConsoleUsbSample& output) {
+    output = ConsoleUsbSample();
+#ifdef MOTORCONTROLRS_USB_REGISTERS
+    output.interruptRaw = USB_SERIAL_JTAG.int_raw.val;
+    output.interruptEnable = USB_SERIAL_JTAG.int_ena.val;
+    output.inFifoState = USB_SERIAL_JTAG.in_ep1_st.val;
+    output.endpoint = USB_SERIAL_JTAG.ep1_conf.val;
+    output.connected = usb_serial_jtag_is_connected();
+#endif
+}
+
+bool nudgeConsole() {
+#ifdef MOTORCONTROLRS_USB_REGISTERS
+    if (!USB_SERIAL_JTAG.ep1_conf.serial_in_ep_data_free) return false;
+    USB_SERIAL_JTAG.ep1_conf.wr_done = 1;
+    return true;
+#else
+    return false;
+#endif
 }
 
 void bootFailure(const char* reason) {
