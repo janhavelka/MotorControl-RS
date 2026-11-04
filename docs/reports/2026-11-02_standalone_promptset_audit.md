@@ -20,6 +20,29 @@ Autonomous run on branch `overnight-stress-20261102` (worktree `../MotorControl-
 
 <!-- overnight entries -->
 
+﻿**4 November (owner decision): HW-14 fixed by a 50,000 increments/s ceiling; HW-13 and HW-15 closed.**
+
+**HW-14, fixed on the branch (`d3cd883`).** The owner chose the rate ceiling. `PositionLimits::maximumCommandRate` now defaults to 50,000, down from 200,000, so the speed ceiling is `min(2000, floor(3000000 / subdivision))` rpm: 2,000 up to subdivision 1,500 (the factory 1,000 is unaffected), 500 at 6,000, 58 at 51,200. The `settings` text, `speed` help, harness ceiling check and every document that stated 200,000 were updated. A dedicated report holds the whole study, the datasheet check and the evidence archive: `docs/reports/2026-11-04_stop_normal_rate_ceiling.md`. Automatic `stop fast` escalation was not added. Under the default ceiling the failing rates never reach the drive, and the console already lets an operator escalate a running `stop normal`. An automatic second motor write is a policy the caller did not ask for. Recount: the earlier "0 of 300 at or below 60,000/s" is 0 of 400 counting every sweep; 150 of them were in the exact band geometry.
+
+*Recheck on hardware* (image SHA-256 `56F4F0BF...FF27`): the old failing rates and the ceiling plus 1 rpm were refused at subdivisions 6000, 3200 and 51200, through both `move relative` and `moveby`. No FC06 or FC10 frame went out, and `settings` reported 500, 937 and 58 rpm. The failing stop geometry at the new ceiling gave 0 failures in 190 stops: subdivision 1500 at 2,000 rpm 0/40; 3200 at 937, 6000 at 500, 12800 at 234 and 51200 at 58 rpm, each 0/30 with 500 ms ramps; 6000 at 500 rpm with 200 ms ramps 0/30. The stops landed in the same delay windows as the failing runs, and 177 of 190 reached the target, so the band was exercised. Short regression on the same image: the extended mix (8 minutes, 118 cases) and the policy-ceiling mix that first found HW-14, at subdivision 6000 and now 500 rpm (10 minutes, 212 cases), no anomaly and no USB stall. Native 90/90 with spot checks of the tabulated ceilings; `verify.py --mode quick` passes. CI passed on `d3cd883` (run 41828082139).
+
+Not covered, recorded in the report and backlog: velocity and homing have no rate ceiling and their high-rate stops are untested (R-16 proposes the ceiling for homing); an explicit caller limit above 50,000 owns the defect; the vendor has not been asked.
+
+**HW-13 closed.** Negative position moves are enabled and verified (`2b7a2b2`, entry below). Negative velocity, stored segment targets and home offsets were never part of HW-13 and stay in the backlog.
+
+**HW-15 closed.** The 1 s enable window is in place and rechecked (`3f4b073`, `dea393f`, `ec5b564`). Its behavior and limits are now in `docs/console.md` next to the stop commands, in `docs/cli_contract.md` and in the changelog. The unmeasured cases (home and velocity starts, other drives, an enable to an enabled drive, an alarm clear with an alarm latched) are a backlog item.
+
+| Finding | State | Where |
+| --- | --- | --- |
+| HW-11 finished home reported failed | Fixed, rechecked | `c53f6d3` |
+| HW-12 USB console output stall | Unresolved; diagnostic only, never fired again | `e36027c` |
+| HW-13 negative moves | Closed: enabled and verified | `98cc6d3`, `2b7a2b2` |
+| HW-14 late `stop normal` creep | Closed by the ceiling. The drive defect remains above 60,000/s | `d3cd883` |
+| HW-15 start ignored after enable | Closed: 1 s window, limits documented | `3f4b073`, `dea393f`, `ec5b564` |
+| HW-01 persistent RUNNING | Open | |
+
+All of this is on branch `overnight-stress-20261102`, not on `main`, until the branch is merged.
+
 **Follow-up on 3 November (owner present), newest work first.**
 
 **HW-14 deeper: documented settings, conventional subdivisions, same failure.** Datasheet check: the function manual documents subdivision `0x0011` (printed p67) as a continuous range "400~51200", default 1000. It gives no list of allowed values and no granularity. Every other parameter was also inside its documented range: speed `0x0023` 0 to 3000 rpm (2,000 used), ramps `0x0021`/`0x0022` 0 to 2000 ms (500 and 200 used), start speed `0x0020` 30 (the default). The only figure that resembles a rate limit is the hardware manual's 200 kHz pulse frequency (p3) and the datasheet's "MAX. INPUT FREQUENCY 200KHZ". These describe the pulse input. Neither says whether internal serial positioning is good up to that rate. So no setting was undocumented. The one undocumented question is the internal command rate, and that is where it fails.
