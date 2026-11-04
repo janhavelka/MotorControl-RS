@@ -33,8 +33,8 @@ struct ActionRequest {
  * velocity preparation rejects a duration beyond maxPolls * pollIntervalUs; a move
  * or home is not compared with it and ends OBSERVATION_LIMIT on exhaustion. */
 struct ActionOptions {
-    uint32_t pollIntervalUs = 10000;
-    uint8_t maxPolls = 20;
+    uint32_t pollIntervalUs = 10000; ///< Positive interval in microseconds.
+    uint8_t maxPolls = 20; ///< ESS accepts 1..64 observations.
     /** Move and home only; zero keeps pollIntervalUs. Applies once a poll follows
      * an earlier RUNNING report, so the poll after the first report still comes
      * promptly and catches a short motion. The deadline and maxPolls never extend.

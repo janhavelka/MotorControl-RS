@@ -1,6 +1,6 @@
 # Implementation and qualification backlog
 
-Reaudited against current source on 23 October 2026. The
+Status reviewed against current source and retained evidence on 4 November 2026. The
 [ESS software promptset](prompts/ess_software/README.md) owns the selected missing
 reads, setters, position interruption and 27 switch homing methods. The
 [broader standalone promptset and finding map](prompts/standalone/README.md)
@@ -48,7 +48,9 @@ implements homing auxiliary configuration. Stage 06 implements the native
 stored-profile start-or-interrupt core with ACK-only result and no active setup
 writes. [Stage 07](reports/2026-10-29_ess_position_interrupt_owner.md) delivers
 the ordinary application/console/host route, independent result reservations
-and stop arbitration. Physical interruption remains NOT RUN.
+and stop arbitration. The [2 November bench regression](reports/2026-11-02_standalone_14_bench_regression.md)
+tested stored relative retrigger. Its ACK-only result does not prove arrival or
+qualify arbitrary replacement.
 Stage08 implements the shared homing qualification/observation contract through
 public application APIs and checked live reads, including final-zero revocation.
 Stage09 implements limit-reference methods1/2/17 through that path; stage10 adds
@@ -73,20 +75,21 @@ that credited getters/raw codecs as producers. It adds no native method or
 physical qualification; final stage evidence is recorded in that report.
 
 - [x] Implement native velocity-parameter reads (N01): one checked FC03 `0x001D/3`,
-  copied raw result, application API and `velocity read`; physical read evidence
-  NOT RUN because the recorded bench USB device is absent. See the
-  [stage 02 report](reports/2026-10-29_ess_velocity_reads.md).
+  copied raw result, application API and `velocity read`. See the
+  [stage 02 report](reports/2026-10-29_ess_velocity_reads.md) and
+  [2 November physical read evidence](reports/2026-11-02_standalone_14_bench_regression.md).
 - [x] Implement native homing-parameter reads (N02): six records/seven raw words,
   bounded FC03 `0x0030/7`, independent method membership/support, application API
-  and `home read`. Offset interpretation and physical qualification remain open.
-  [Stage 03 evidence](reports/2026-10-29_ess_homing_reads.md).
+  and `home read`. The read passed on the 2 November bench. Nonzero offset
+  interpretation stays open. [Stage 03 software evidence](reports/2026-10-29_ess_homing_reads.md).
 - The [fresh independent 02/03 audit](reports/2026-10-29_ess_reads_audit.md) checks
   implementation and edge cases separately from physical qualification. Its
   corrections clarify numeric-policy flags and human/partial-host presentation;
   read/write/method coverage totals do not change.
 - [x] Implement native position start-speed setter (N04): explicit prior read,
   FC06 echo and separate readback; fresh post-effect motion evidence is required.
-  Physical start-speed/activation checks remain NOT RUN.
+  Write/readback, restoration and the relation admission latch passed on
+  2 November. Physical scaling, activation timing and persistence remain open.
 - [ ] Implement remaining standalone native staging, including
   restoring an arbitrary archived position profile without starting motion.
   Host reset loses the RAM backup; never replay a move as restoration.
@@ -109,7 +112,8 @@ physical qualification; final stage evidence is recorded in that report.
   physical qualification is claimed.
 - [x] Reach home, velocity, position-clear and the start-speed relation from the
   ordinary image through [named-fact console routes](cli_contract.md#qualification-routes)
-  (owner decision D2). Native evidence only; physical runs remain open below.
+  (owner decision D2). Home and start-speed relation routes passed on the bench;
+  velocity and position-clear qualification routes need separate hardware evidence.
 - [ ] Resolve shared-start 1: native 0-to-1 write read back 0 on the bench.
   Preserve that FAIL/uncertain result; no retry or assumed FC06 semantics.
   [Stored-record evidence](archive/reports/ess_release_16_2026-10-04.md).
@@ -142,8 +146,10 @@ functional evidence; independent shaft calibration remains absent.
 - [x] Run the short regression of delivered ESS software on the bench:
   [standalone stage 14](prompts/standalone/14_bench_regression.md), finding Q16.
   [Result](reports/2026-11-02_standalone_14_bench_regression.md): routes pass; one failure below stays open.
-  Physical checks are NOT RUN because the recorded USB device
-  `3C:0F:02:CD:6B:98` is absent; do not substitute another device.
+  The recorded USB device returned on 2 November. The latest image and ending
+  state are in the [bench guide](hardware_bench.md#latest-recorded-image-and-settings).
+  Stage 14 remains PARTIAL because the low-rate persistent RUNNING failure is
+  unresolved.
 - [ ] Distinguish supply transients from internal firmware failure in the
   reproduced reset-like loss of volatile settings. Failure occurred both above
   and below 200,000 command increments/s; ramp comparisons narrow the case but
@@ -174,9 +180,10 @@ functional evidence; independent shaft calibration remains absent.
   negative targets and signed feedback are bench-verified on firmware `0x0029`
   (3 November 2026); stored segment targets and home offsets stay open above.
   Linear travel needs an actual configured mechanism.
-- [ ] Qualify homing/return/zero methods on their actual fixtures, dynamic stop
-  latency and external input/output activation/precedence. Unwired terminals
-  are not disabled assignments; serial-only tests need no optional switches.
+- [ ] Qualify switch homing on actual fixtures, dynamic stop latency and external
+  input/output activation/precedence. Methods 33/34/35 and stop during a search
+  have free-shaft evidence from 2 November. This does not qualify switch methods
+  or independent shaft motion. Unwired terminals are not disabled assignments.
 - [ ] Qualify signed velocity and physical ramp/acceleration mappings before
   broadening their motion claims. Velocity has no rate ceiling; test its
   `stop normal` above 60,000 increments/s first (HW-14 was found in position mode). Same-endpoint in-motion speed changes remain
@@ -189,10 +196,13 @@ functional evidence; independent shaft calibration remains absent.
 
 ## Transport, endurance and platform qualification
 
-- [ ] Repeat overnight qualification on the shared USB-driver image. The
-  captured lost-TX-wakeup stall has one proven matching HWCDC race and a replacement
-  driver; its actual trigger was not traced, and the earlier no-dump stall is not
-  conclusively attributed. Keep both failed campaigns.
+- [ ] Resolve HW-12 and repeat overnight qualification on the shared USB-driver
+  image. The 2-3 November run reached 9,212 cases but found one USB output stall;
+  later clean segments do not close it. See the
+  [current investigation](reports/2026-11-02_standalone_promptset_audit.md#overnight-stress-run-2-3-november-2026).
+  The older captured lost-TX-wakeup stall has one matching HWCDC race and a
+  replacement driver; its actual trigger was not traced. The earlier no-dump
+  stall is also unattributed. Keep each failed campaign.
   [Overnight investigation](reports/2026-10-07_overnight_hil.md),
   [earlier health investigation](reports/2026-10-06_firmware_health.md).
   Four hours of accumulated active testing in the narrower position envelope

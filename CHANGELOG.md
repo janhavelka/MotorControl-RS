@@ -14,81 +14,6 @@
 - `bench_probe.py home` accepts methods 33 and 34, plus switch methods with explicit
   `--fact inputs` and `--wiring`. It takes the reads and installs only `--fact` values.
 
-### Changed
-
-- The default position ceiling is 50,000 command increments/s, down from 200,000
-  (`PositionLimits::maximumCommandRate`). Above about 60,000/s, firmware `0x0029` can
-  turn a `stop normal` sent late in the acceleration ramp into endless creep. 2,000 rpm
-  stays available up to subdivision 1,500; at 51,200 the ceiling is 58 rpm, was 234.
-  An explicit caller `PositionLimits` keeps its own value. See the
-  [stop normal report](docs/reports/2026-11-04_stop_normal_rate_ceiling.md).
-- The standalone moves backwards: `moveby -N`, `moveto` below zero and negative
-  advanced targets. It states `negativeTwosComplementVerified` for firmware `0x0029`,
-  where the encoding was checked on the bench. The RAM boot zero reads feedback as
-  signed, so it survives crossing zero. Negative velocity keeps its own qualification.
-- For 1 s after an `enable` is transmitted, `moveby`/`moveto` wait and advanced move,
-  velocity and home starts answer `busy` without traffic. Firmware `0x0029` echoed and
-  ignored starts sent up to 0.6 s after an enable.
-- A home completes on HOMED seen after a witnessed low, with RUNNING clear and position
-  exactly 0. IN_POSITION is no longer required: firmware `0x0029` leaves it clear when a
-  home follows a stopped move, so a finished home used to end `deadline`.
-- `home`, `velocity` and `position-clear` reply `qualification_required` when their
-  qualification is absent, in place of `unavailable` or `invalid`.
-- Home supervision uses `moveTimeoutMs` (30 s by default), not 3 s, and polls every
-  500 ms once a poll follows RUNNING, so a long search stays observed. There is still
-  no automatic stop; a home that ends uncertain now says the drive may still be moving.
-- Move poll timing is unchanged but set through the new option, not by changing the
-  admitted options mid-operation.
-- Home qualification no longer requires stored method, rates and ramp to match the
-  candidate, because staging overwrites them. Auxiliary 7 and zero offset are still
-  required, so a drive at factory defaults can home after `home auxiliary 7`.
-- Home admission replies `accepted`, as other operations do. It replied `done`, which
-  `bench_probe.py` rejects.
-- Human mode recycles a delivered, settled interrupt pair, so repeated `position
-  interrupt` no longer fills every result slot. Failed or uncertain results stay.
-- `platformio.ini` now defaults to the documented console image `bench_s3_load_timer`,
-  so a bare upload no longer flashes the console-less preview.
-- A transport fault no longer refuses or loses a stop. A never-transmitted stop is
-  accepted, runs one bounded recovery through the existing path and is sent once under
-  a deadline fixed at admission. Failed recovery ends it `not_transmitted`. A transmitted
-  stop whose reply is lost stays `unknown` and is never resent automatically.
-- `cancel` and `monitor off` leave an in-flight frame to settle, so they do not interlock
-  the bus. Probe and capture transactions keep their existing cancellation.
-- `stop fast` can escalate a running `stop normal`, including past an undelivered report.
-  The firmware has two stop records, correlations and urgent slots; protocol 3 still
-  advertises `outstanding_capacity: 10`.
-- Stop admission no longer depends on ordinary result capacity. Delivered failed stop
-  evidence is overwritten, oldest first, and counted in `drv.stop_evidence_overwritten`.
-- The first stop for the selected axis does not need a prior probe.
-- A new `recover` releases a delivered terminal recovery result. An automatic recovery
-  has no report and is visible through `drv.automatic_recovery_operation_id` and `result`.
-- A second stop arriving while a stop reply is pending is attempted and answered.
-- `bench_probe.py` cleanup answers a refused stop with one `recover` and one fresh stop,
-  retaining every result in `cleanup_attempts`. Stop commands wait for the firmware's
-  longer stop budget.
-- Homing input checks are per method, at admission and on every poll. An assigned
-  origin is never a fault for 1, 2, 17, 33 and 34; a limit outside the method's
-  path still fails; method 35 forbids no sensor. Unused terminals may hold release
-  or stop functions, which fail while active, and undriven motion triggers.
-- A write reply is classified in one place. Exception 05 is now UNKNOWN rather than
-  REJECTED for position, velocity, homing, action and driver writes, so a velocity
-  start answered with 05 stops. Supplied execution uncertainty is never ACKNOWLEDGED;
-  a position, velocity or homing setup step carrying it does not lead to a start.
-- Typed position targets reject a magnitude above `0x0FFFFFFF` before traffic,
-  narrowing the signed 32-bit range. The bound interprets a malformed manual row.
-- Relative moves reject a supplied established reference that is not idle, stationary
-  ACTUAL evidence, as absolute moves did.
-- Finite velocity preparation rejects a duration that `maxPolls * pollIntervalUs`
-  cannot cover. An observation closing after the duration now ends the budget without
-  a failure, unless its alarm or fault words report one.
-- Typed read and probe frames require the full request to have been transmitted.
-- After a confirmation, a later readback mismatch makes a communication write uncertain.
-- `rawPositionWords` in a home result only reports a qualified, confirmed, on-time frame.
-- Method 18's reason describes its negative-limit captions as a likely caption error.
-  Its support remains unresolved.
-
-### Added
-
 - `MoveContext::positionMismatch` and JSON `position_mismatch`: RUNNING-path completion
   whose final feedback differs from the known endpoint. It stays OBSERVED.
 - `ActionContext::rawPositionWords` and JSON `raw_position_words`: position-clear
@@ -110,13 +35,13 @@
   bounded core, application and console. Both inputs are required for every
   starting location; only 7–10 require internal Z. Independent vectors cover
   all 24 spatial branches and conservative sampled completion. Physical
-  reversal/index qualification remains NOT RUN; negative-limit methods stay guarded.
+  reversal/index qualification remains NOT RUN.
 
 - Origin-reference homing methods 3–6 and 19–22 through the shared bounded
   core, application qualification and console paths. All require checked origin
   inputs; only 3–6 require internal Z. Independent method/branch fixtures retain
   sampled-evidence limits, status/zero completion and no replay. Physical
-  qualification remains NOT RUN; limit-assisted and unresolved methods stay guarded.
+  qualification remains NOT RUN. Method 18 and negative methods remain unresolved.
 
 - Limit-reference homing methods 1, 2 and 17 through the existing core,
   qualification-install API and ordinary console route. Methods 1/2 require
@@ -130,8 +55,9 @@
   submit/result APIs, with checked configuration, logical inputs and parameter
   readback. Independent fixture age, bounded combined status/input observations
   and copied revocation preserve final-zero evidence while preventing a revoked
-  reference. `home qualification` is passive inspection; physical homing remains
-  unqualified.
+  reference. `home qualification` inspects the retained facts; explicit
+  `install` and `revoke` forms update them without bus traffic. Bench evidence
+  covers 33/34/35; switch methods still need physical qualification.
 
 - Typed serial position interruption in the core: exact independently qualified
   native stored-profile retrigger, copied binding/age evidence and one checked
@@ -167,7 +93,86 @@
   reads do not stage motion or renew qualification. Native tests cover both
   frontends; the Python host validates live and retained results.
 
+### Changed
+
+- The default position ceiling is 50,000 command increments/s, down from 200,000
+  (`PositionLimits::maximumCommandRate`). Above about 60,000/s, firmware `0x0029` can
+  turn a `stop normal` sent late in the acceleration ramp into endless creep. 2,000 rpm
+  stays available up to subdivision 1,500; at 51,200 the ceiling is 58 rpm, was 234.
+  An explicit caller `PositionLimits` keeps its own value. See the
+  [stop normal report](docs/reports/2026-11-04_stop_normal_rate_ceiling.md).
+- The standalone moves backwards: `moveby -N`, `moveto` below zero and negative
+  advanced targets. It states `negativeTwosComplementVerified` for firmware `0x0029`,
+  where the encoding was checked on the bench. The RAM boot zero reads feedback as
+  signed, so it survives crossing zero. Negative velocity keeps its own qualification.
+- For 1 s after an `enable` is transmitted, `moveby`/`moveto` wait and advanced move,
+  velocity and home starts answer `busy` without traffic. Firmware `0x0029` echoed and
+  ignored starts sent up to 0.6 s after an enable.
+- A home completes on HOMED seen after a witnessed low, with RUNNING clear and position
+  exactly 0. IN_POSITION is no longer required: firmware `0x0029` leaves it clear when a
+  home follows a stopped move, so a finished home used to end `deadline`.
+- `home`, `velocity` and `position-clear` reply `qualification_required` when their
+  qualification is absent, in place of `unavailable` or `invalid`.
+- Home supervision uses `moveTimeoutMs` (30 s by default), not 3 s, and polls every
+  500 ms once a poll follows RUNNING, so a long search stays observed. There is still
+  no automatic stop; a home that ends uncertain now says the drive may still be moving.
+- Move poll timing is unchanged but set through the new option, not by changing the
+  admitted options mid-operation.
+- Home qualification no longer requires stored method, rates and ramp to match the
+  candidate, because staging overwrites them. Auxiliary 7 and zero offset are still
+  required, so a drive at factory defaults can home after `home auxiliary 7`.
+- Home admission replies `accepted`, as other operations do. It replied `done`, which
+  `bench_probe.py` rejects.
+- Human mode recycles a delivered, settled interrupt pair, so repeated `position
+  interrupt` no longer fills every result slot. Failed or uncertain results stay.
+- `platformio.ini` now defaults to the documented console image `bench_s3_load_timer`,
+  so a bare upload no longer flashes the console-less preview.
+- An explicit, never-transmitted stop can use one bounded recovery through the
+  existing path and be sent once under its admission deadline. Failed recovery
+  ends it `not_transmitted`. A transmitted stop whose reply is lost stays `unknown`
+  and is never resent automatically. Other stop-path gaps remain in the
+  [audit](docs/reports/2026-11-02_standalone_promptset_audit.md).
+- `cancel` and `monitor off` leave an in-flight frame to settle, so they do not interlock
+  the bus. Probe and capture transactions keep their existing cancellation.
+- `stop fast` can escalate a running `stop normal`, including past an undelivered report.
+  The firmware has two stop records, correlations and urgent slots; protocol 3 still
+  advertises `outstanding_capacity: 10`.
+- Stop admission no longer depends on ordinary result capacity. Delivered failed stop
+  evidence is overwritten, oldest first, and counted in `drv.stop_evidence_overwritten`.
+- The first stop for the selected axis does not need a prior probe.
+- A new `recover` releases a delivered terminal recovery result. An automatic recovery
+  has no report and is visible through `drv.automatic_recovery_operation_id` and `result`.
+- A second stop arriving while a stop reply is pending is attempted and answered.
+- `bench_probe.py` cleanup answers a refused stop with one `recover` and one fresh stop,
+  retaining every result in `cleanup_attempts`. Stop commands wait for the firmware's
+  longer stop budget.
+- Homing input checks are per method, at admission and on every poll. An assigned
+  origin is never a fault for 1, 2, 17, 33 and 34; a limit outside the method's
+  path still fails; method 35 forbids no sensor. Unused terminals may hold release
+  or stop functions, which fail while active, and undriven motion triggers.
+- A write reply is classified in one place. Exception 05 is now UNKNOWN rather than
+  REJECTED for position, velocity, homing, action and driver writes, so a velocity
+  start answered with 05 stops. Supplied execution uncertainty is never ACKNOWLEDGED;
+  a position, velocity or homing setup step carrying it does not lead to a start.
+- Typed position targets reject a magnitude above `0x0FFFFFFF` before traffic,
+  narrowing the signed 32-bit range. The bound interprets a malformed manual row.
+- Relative moves reject a supplied established reference that is not idle, stationary
+  ACTUAL evidence, as absolute moves did.
+- Finite velocity preparation rejects a duration that `maxPolls * pollIntervalUs`
+  cannot cover. An observation closing after the duration now ends the budget without
+  a failure, unless its alarm or fault words report one.
+- Typed read and probe frames require the full request to have been transmitted.
+- After a confirmation, a later readback mismatch makes a communication write uncertain.
+- `rawPositionWords` in a home result only reports a qualified, confirmed, on-time frame.
+- Method 18's reason describes its negative-limit captions as a likely caption error.
+  Its support remains unresolved.
+
 ### Fixed
+
+- The stress tool no longer resumes after a USB stall when its cleanup stop is
+  refused, missing, failed or uncertain. It requires the matching observed-stop
+  result, retains evidence and ends the run on failure even with `--recover`.
+  Offline regressions now run in CI.
 
 - Verification now rejects empty or incomplete CTest evidence, including
   listing-only detailed logs, while preserving skipped/disabled-test rejection.
@@ -223,6 +228,10 @@
   confirmation and uncertainty while keeping each operation's response policy.
 
 ### Maintenance
+
+- Reconciled prompt status with the November bench results, corrected API comments
+  and added a local Doxygen configuration. Completed ESS instructions stay archived;
+  standalone bench work and both Lichuan sets remain active. CI does not run Doxygen.
 
 - Independently audited the delivered ESS software scope and corrected stale
   homing/gap counts, I/O qualification wording and prompt navigation. Completed

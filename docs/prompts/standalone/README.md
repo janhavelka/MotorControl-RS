@@ -1,12 +1,16 @@
 # Standalone ESS completion and qualification
 
-Prepared 2026-10-23 from current source, callers, tests, operation inventory and
-dated bench evidence. **Status: prepared. Stages 02 and 04-14 have not been
-executed; 01 is delivered and 03 is partial through the ESS software set.** The
-preparation audit is complete. The promptset corrections and owner decisions of
+Prepared 2026-10-23; status reviewed 2026-11-04. **Stages 05, 07, 11 and 14 are
+PARTIAL. Stages 02, 04, 06, 08-10, 12 and 13 are NOT STARTED.** Stage 01 is
+delivered through the ESS software set; stage 03 redirects to its implemented
+subset and open N05 work. The promptset corrections and owner decisions of
 the [2 November code and promptset audit](../../reports/2026-11-02_standalone_promptset_audit.md)
 are applied here. That audit also lists stop-path and homing defects; check them
-against current code before bench work.
+against current code before bench work. The [2 November bench regression](../../reports/2026-11-02_standalone_14_bench_regression.md)
+tested the new routes. The later overnight run found an unresolved USB output
+stall. The [4 November stop study](../../reports/2026-11-04_stop_normal_rate_ceiling.md)
+led to the 50,000 increments/s default ceiling. Neither run closes the remaining
+source, drive-fault or fixture work.
 
 The dedicated [ESS software set](../ess_software/README.md) now owns N01, N02,
 N04, N05, N07 and the 27 switch-method portion of N08. Its bounded stages are
@@ -32,13 +36,13 @@ keeps those distinctions. Use the audit's Current owner column; Next stage is hi
 | 02 | [Position candidate/archive staging](02_profile_staging.md) | Existing profile builder. Setter delivered (`DriverSettings.h:266`); candidate staging leaves `0x0020` unchanged. | NOT STARTED |
 | 03 | [Explicit position interrupt policy](03_position_interrupt.md) | ESS software 06/07 own implementation; N05 remainder only as a dispatched "N05 evidence" task | REDIRECTED |
 | 04 | [Paired values and wire forms](04_paired_values.md) | Vendor clarification, or the one fixture-only `0x0060/2` experiment authorized by D4 | NOT STARTED |
-| 05 | [Unresolved homing semantics and physical qualification](05_homing.md) | Software 03/05/08-12 own reads, auxiliary and 27 methods; standalone stage 04 for nonzero offsets; D2 route for physical work; D3 authorizes method 35, then 33 and 34 on the free shaft; real fixture for switch methods | NOT STARTED |
+| 05 | [Unresolved homing semantics and physical qualification](05_homing.md) | Software 03/05/08-12 own reads, auxiliary and 27 methods; standalone stage 04 for nonzero offsets; real fixture for switch methods | PARTIAL: 33/34/35 tested on the free shaft; unresolved methods, offsets and switch fixtures remain |
 | 06 | [Stored records, optional I/O and tuning uncertainties](06_io_and_tuning.md) | Bench for shared-start reproduction; source evidence for semantics; external fixture for selector and trigger behavior | NOT STARTED |
-| 07 | [Drive reset and stop investigations](07_drive_failures.md) | Actual drive; named cases with explicit `PositionLimits` (D5); supply instrument for causal claims on Q04 | NOT STARTED |
+| 07 | [Drive reset and stop investigations](07_drive_failures.md) | Actual drive; named cases with explicit `PositionLimits` (D5); supply instrument for causal claims on Q04 | PARTIAL: late-stop creep bounded by the new ceiling; reset-like loss and low-rate persistent RUNNING remain unresolved |
 | 08 | [Shaft calibration and mechanism qualification](08_motion_measurement.md) | Default `PositionLimits` unless 07 established a broader envelope; independent measurement / actual mechanism | NOT STARTED |
 | 09 | [Physical transport timing and frame coverage](09_transport_timing.md) | Exact supported adapter/image; analyzer for electrical claims only | NOT STARTED |
 | 10 | [Wire faults, communication and persistence](10_faults_and_persistence.md) | Actual restart control, backups and restoration route | NOT STARTED |
-| 11 | [USB saturation and renewed overnight qualification](11_usb_and_overnight.md) | Q13: board and current image. Q12: explicit instruction, with default `PositionLimits` or a broader 07 envelope | NOT STARTED |
+| 11 | [USB saturation and renewed overnight qualification](11_usb_and_overnight.md) | Q13: board and current image. Further overnight runs need explicit instruction | PARTIAL: 2-3 November run found HW-12 USB output stall; its cause and USB saturation limits remain open |
 | 12 | [S2/SDK and flash-read qualification](12_platforms.md) | Actual S2 hardware for UART claims; bench S3 in bootloader mode with esptool 5.3.0 | NOT STARTED |
 | 13 | [Coverage and release-scope reconciliation](13_closeout.md) | Every other stage has an explicit disposition, with rows for the N05 remainder and stage 14 | NOT STARTED |
 | 14 | [Delivered-software bench regression](14_bench_regression.md) | Recorded bench USB device present; no analyzer | PARTIAL: [routes pass, one persistent RUNNING failure unresolved](../../reports/2026-11-02_standalone_14_bench_regression.md) |

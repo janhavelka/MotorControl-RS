@@ -16,7 +16,14 @@ retains the broader software objective as PARTIAL, not fully implemented.
 N08 stays PARTIAL and broader N05 remains PARTIAL pending
 active staging and completion-attribution evidence.
 
-| Stage | Stage status | Commit / evidence | Physical evidence |
+The table records evidence at each stage's completion. Later bench work is in
+the [2 November regression](../../reports/2026-11-02_standalone_14_bench_regression.md)
+and [4 November stop report](../../reports/2026-11-04_stop_normal_rate_ceiling.md).
+Reads, scalar settings, home 33/34/35 and ACK-only interruption have now run on
+the recorded bench. HW-01 persistent RUNNING and HW-12 USB stalls remain open.
+Switch homing still needs a fixture. See the [current backlog](../../backlog.md).
+
+| Stage | Stage status | Commit / evidence | Physical evidence at that stage |
 | --- | --- | --- | --- |
 | 01 | CONTRACTS COMPLETE | [Contract decisions and review](../../reports/2026-10-29_ess_software_contracts.md); no implementation | NOT RUN |
 | 02 | SOFTWARE COMPLETE | `6bede39`; [implementation/review/validation](../../reports/2026-10-29_ess_velocity_reads.md); 80-test quick/package and all four exact-commit CI jobs PASS | NOT RUN: recorded bench USB absent |

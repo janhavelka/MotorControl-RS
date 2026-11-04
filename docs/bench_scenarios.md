@@ -130,3 +130,29 @@ python scripts/bench_probe.py --port COM13 --log build/bench/home-read-new.jsonl
 
 This reads seven words and inspects/releases their checked result. It does not
 qualify or start homing; both offset words remain uninterpreted raw evidence.
+
+## Stress tool
+
+`scripts/bench_stress.py` runs randomized finite cases on the recorded ESS bench.
+It is separate from the named scenarios above and has its own console parser.
+It requires Python 3.10+ and `pyserial`. `--help` opens no port.
+
+The tool checks the USB identity, sets homing auxiliary 7 and can change RAM
+subdivision. `--mix extended` also resets the MCU during a move. The default
+duration is one hour; a new long campaign needs its own test scope.
+
+Use a new `--out` directory. It holds case results, health samples, a summary
+and compressed incident traffic. Subdivision is restored to `--restore`
+(default 1000) only after a clean run. Other RAM settings are left as recorded.
+
+On a motion anomaly, the default path records read-only diagnostics and exits.
+`--recover` permits the separate bounded recovery and verification moves.
+A USB stall has its own path: wait on the same handle, reopen, then try one
+normal stop. Motion resumes only if its matching terminal confirms standstill.
+A refused, missing, failed or uncertain stop ends the run even with `--recover`.
+Stop evidence and retained operation IDs are kept. No uncertain write is replayed.
+
+Offline tests cover this USB-stop decision. They do not qualify the full
+campaign, physical stop behavior or USB driver timing. See the
+[November investigation](reports/2026-11-02_standalone_promptset_audit.md) and
+[rate-ceiling report](reports/2026-11-04_stop_normal_rate_ceiling.md) for actual runs.
