@@ -42,9 +42,13 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
-The [2 November bench regression](reports/2026-11-02_standalone_14_bench_regression.md) is the latest session: image `bench_s3_load_timer`
-from `c21bd18`, SHA-256 `FF84F5D261894A3B204FBAF263A924792F80FD3061ACF63D40F1A90A35A82B2B`, subdivision 1000, ending position 559. Its homing words and profile target were left changed in drive
-RAM with no save. The table below is the older 7 October ending state, kept for its retained evidence.
+The [4 November stop normal recheck](reports/2026-11-04_stop_normal_rate_ceiling.md) is the latest session: image `bench_s3_load_timer`
+from `d3cd883` (the same firmware sources as the merge `7d2a2f6`), SHA-256 `56F4F0BF5B4E35E87663FE7A77CD24D95D259CD61D72A5255D47EC744BAFFF27`,
+subdivision 1000, status 3, alarm 0, ending raw position 121,225. Auxiliary 7, homing words and the profile
+from the last staged move were written to drive RAM in these sessions with no save; a motor power cycle returns
+the stored values. The [2 November bench regression](reports/2026-11-02_standalone_14_bench_regression.md)
+used image `c21bd18`, SHA-256 `FF84F5D261894A3B204FBAF263A924792F80FD3061ACF63D40F1A90A35A82B2B`.
+The table below is the older 7 October ending state, kept for its retained evidence.
 
 The [7 October default-position boundary report](reports/2026-10-07_position_limits.md)
 records the latest retained image and final readback:
