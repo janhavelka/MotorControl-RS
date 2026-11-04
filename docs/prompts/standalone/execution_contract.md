@@ -29,7 +29,7 @@ Stage numbers collide, so use these names:
 | Name | Location | Meaning |
 | --- | --- | --- |
 | Stage NN, standalone NN | `docs/prompts/standalone/NN_*.md` | This set |
-| ESS software NN | `docs/archive/prompts/ess_software/NN_*.md` | Delivered bounded software stages; handoff in `docs/prompts/ess_software/` |
+| ESS software NN | Dated ESS reports in `docs/reports/` | Historical delivery stages; finished instructions removed |
 | Inventory `owner` | `gaps` in `docs/reference/ess_rs_operations.json` | Historical ESS delivery stages, not either number above |
 | `ess_release_NN` | `docs/archive/reports/ess_release_NN_*` | Dated reports of the archived ESS delivery sequence |
 

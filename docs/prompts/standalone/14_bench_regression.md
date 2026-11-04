@@ -22,7 +22,7 @@ to select remaining checks rather than repeating the whole first-run plan.
 Paths are relative to the repository root. Read implementations, callers and
 existing tests, not just declarations or old reports:
 
-docs/hardware_bench.md, bench_scenarios.md, functional_bench.md, cli_contract.md; scripts/bench_probe.py, bench_motion.py, bench_scenarios.py; docs/reference/ess_rs_operations.json; docs/prompts/ess_software/progress.md; docs/reports/2026-11-02_standalone_promptset_audit.md.
+docs/hardware_bench.md, bench_scenarios.md, functional_bench.md, cli_contract.md; scripts/bench_probe.py, bench_motion.py, bench_scenarios.py; docs/reference/ess_rs_operations.json; docs/reports/2026-11-02_ess_final_audit.md; docs/reports/2026-11-02_standalone_promptset_audit.md.
 
 ## Work
 

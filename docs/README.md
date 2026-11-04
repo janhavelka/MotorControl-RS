@@ -109,13 +109,12 @@ The subdirectories have distinct purposes:
 - [Development archive](archive/README.md): completed prompts, superseded drafts,
   implementation/audit reports, candidate artifacts and the historical bench ledger.
 
-The [ESS software handoff](prompts/ess_software/README.md) records delivered
-reads, setters, bounded position interruption and 27 switch homing methods.
-Its completed numbered instructions are archived; broader N05 active replacement
-and attributable completion remain PARTIAL with explicit next evidence.
-The [broader standalone promptset](prompts/standalone/README.md) retains other
-application, unresolved-source and physical qualification work without duplicate
-implementation ownership. Archived reports preserve the versions, failed attempts
-and evidence from their dates;
-their navigation links follow the archive locations. Earlier version numbers
-were development checkpoints, not published releases.
+ESS reads, setters, stored-profile interruption and the 27 switch homing methods
+are covered by the operation guides above. Their
+[final audit](reports/2026-11-02_ess_final_audit.md) and dated reports retain delivery
+evidence. The [standalone prompts](prompts/standalone/README.md) cover remaining
+application, source and physical work. Broader replacement needs the
+[N05 evidence](ess_position.md#remaining-replacement-work).
+
+Archived reports preserve the versions, failed attempts and evidence from their
+dates. Earlier version numbers were development checkpoints, not published releases.

@@ -4,7 +4,7 @@ Date: 29 October 2026. Scope: N01, N02, N04, N05, N07 and N08.
 Stage 01 settles planned contracts only. No public declaration, implementation,
 operation-ledger entry, support flag, firmware image or hardware setting changed.
 Stages 02-15 remain NOT STARTED. The next executable implementation is
-[02, velocity parameter reads](../archive/prompts/ess_software/02_velocity_reads.md).
+[02, velocity parameter reads](2026-10-29_ess_velocity_reads.md).
 
 ## Revision and source evidence
 
@@ -41,8 +41,8 @@ and 18 guarded paired setters remain outside this stage.
 
 | Finding | Current source/caller/test evidence | Planned producing API and normal route | Owning contract / implementation stage |
 | --- | --- | --- | --- |
-| N01 `velocity_parameter_reads` | `Reads.h::ReadKind` only has IDENTITY/CONFIG/STATE; `Velocity.cpp` stages supplied words. `reads_test.cpp`, `velocity_app_test.cpp`, `velocity_console_parity_test.py` contain no producing parameter read. | `prepareVelocityParameters` / `getVelocityParameters`, existing next/advance read; exported `submitVelocityParameterRead`; `velocity read` | [Read contract](../ess_reads.md#planned-parameter-reads-stage-01-decision-not-implemented), 02 |
-| N02 `homing_parameter_reads` | `HomeContext::words` is caller-supplied staging, not a read. `Reads.cpp::words` passes capacity 5. Existing home/read tests do not produce the seven-word family. | `prepareHomingParameters` / `getHomingParameters`; exported `submitHomingParameterRead`; `home read` | [Read contract](../ess_reads.md#planned-parameter-reads-stage-01-decision-not-implemented), 03 |
+| N01 `velocity_parameter_reads` | `Reads.h::ReadKind` only has IDENTITY/CONFIG/STATE; `Velocity.cpp` stages supplied words. `reads_test.cpp`, `velocity_app_test.cpp`, `velocity_console_parity_test.py` contain no producing parameter read. | `prepareVelocityParameters` / `getVelocityParameters`, existing next/advance read; exported `submitVelocityParameterRead`; `velocity read` | [Read contract](../ess_reads.md#native-velocity-parameter-read), 02 |
+| N02 `homing_parameter_reads` | `HomeContext::words` is caller-supplied staging, not a read. `Reads.cpp::words` passes capacity 5. Existing home/read tests do not produce the seven-word family. | `prepareHomingParameters` / `getHomingParameters`; exported `submitHomingParameterRead`; `home read` | [Read contract](../ess_reads.md#native-homing-parameter-read), 03 |
 | N04 `position_start_speed_write` | `Position.cpp::parsePositionProfile` reads `0x0020/6`; `buildWritePositionProfile` writes `0x0021/5`. `MotionProfileApp.h` restores the latter; no setter. | `preparePositionStartSpeed` selects a one-field DriverRequest; existing driver engine; exported prior-read/update session `submitPositionStartSpeed`; `motion-profile start-speed` | [Position contract](../ess_position.md#planned-start-speed-setting-and-interruption-not-implemented), 04 |
 | N07 `homing_auxiliary_write` | Generated choices 0..11 exist; `Homing.cpp::prepareHome` only admits qualified active 7. No setter in ordinary app/home parser. | `prepareHomingAuxiliary` selects a one-field DriverRequest; existing driver engine; exported `submitHomingAuxiliary`; `home auxiliary` | [Home contract](../ess_homing.md#planned-auxiliary-setting-and-switch-method-integration-not-implemented), 05 |
 | N05 `position_interrupt` | `Position.cpp::startValue` emits 1/5; observed `prepareMove` rejects RUNNING. `PositionCommand` is ACK-only. `move_app_test.cpp`, `position_command_test.cpp` cover those existing defaults, not replacement ownership. | Planned `PositionInterruption` on native command/builder; exported `submitPositionInterrupt`; `position interrupt <original-id>`; retained original/replacement/stop results | [Restricted initial contract](../ess_position.md#planned-start-speed-setting-and-interruption-not-implemented), 06/07; broader gap remains PARTIAL after subset |
@@ -133,8 +133,13 @@ PlatformIO 6.1.19 and ESP-IDF v5.5.5. This is documentation-only; the repository
 impact policy calls for local reference/link/inventory checks, not an additional
 remote dispatch or wait. Any push-triggered build is not physical evidence.
 
-Final local commands/results are recorded in
-[stage 01 progress](../prompts/ess_software/progress.md#stage-01-contract-decisions-2026-10-29).
+Local checks passed: `scripts/check_repository.py`,
+`scripts/check_ess_operations.py`, `scripts/generate_ess_registers.py --check`,
+all 29 tests in `test/operations_inventory_test.py`, and `git diff --check`.
+The inventory retained nine gaps and 18 guarded paired setters; generation
+matched 221 descriptors and 242 words. Independent checks covered the
+27-method partition, six CRC vectors and source hashes. Logs were recorded
+under `build/stage01_lead/`.
 Implementation builds, full quick compilation, remote CI dispatch/wait and all
 hardware tests are NOT RUN for this stage. No fixture was changed or qualified.
 Start stage02 from the planned read contract and this unchanged gap baseline;

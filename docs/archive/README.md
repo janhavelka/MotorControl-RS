@@ -14,7 +14,6 @@ remain separately indexed.
 | [ESS delivery sequence](prompts/ess_release/README.md) | Historical implementation sequence and original acceptance requirements. Delivery of a prompt does not close its separately recorded native or hardware gaps. |
 | [Earlier maintenance draft](prompts/maintenance/README.md) | Superseded without execution by the completed [maintainability sequence](prompts/maintainability/README.md). Do not dispatch either set again. |
 | [Maintainability sequence](prompts/maintainability/README.md) | All seven bounded stages implemented and independently audited; [completion review](reports/2026-10-12_maintainability_completion.md). HOME and debug are the deliberately selected console/application seams. |
-| [ESS software stages 01-15](prompts/ess_software/README.md) | Completed bounded instructions; [active handoff](../prompts/ess_software/README.md) keeps broader N05 replacement and separate source/physical gaps PARTIAL. |
 
 Original prompt wording is preserved for provenance, including instructions
 that no longer describe the current implementation.
@@ -51,9 +50,11 @@ clones. Current source navigation lives in the [source map](../source_map.md).
 - Historical prompt directories moved from `docs/prompts/ess_release/` and
   `docs/prompts/maintenance/` to `docs/archive/prompts/` under the same names.
   The completed `maintainability/` sequence now follows the same rule.
-- Completed numbered ESS software instructions moved to `docs/archive/prompts/ess_software/`.
-  Their active remaining-scope handoff, progress and shared source/verification
-  documents stay under `docs/prompts/ess_software/`; broader N05 remains open.
+- The finished ESS software prompts and duplicate planning files were removed
+  on 4 November. The [final audit](../reports/2026-11-02_ess_final_audit.md), dated
+  reports and maintained guides retain useful evidence and contracts. Git commit
+  `76e350e` retains the original instructions. Broader
+  [N05 work](../ess_position.md#remaining-replacement-work) remains open.
 - Archived files moved from `docs/reports/` to `docs/archive/reports/`, preserving
   basenames and the `evidence/` subdirectory. The reports listed in the
   [current evidence index](../reports/README.md) and their artifacts stay under

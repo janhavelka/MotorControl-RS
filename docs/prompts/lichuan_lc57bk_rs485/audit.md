@@ -207,7 +207,7 @@ before a second axis uses this admission path.
 | --- | --- | --- |
 | P3 | S03 item 1 | S03's list omits `0x0008`, `0x0016`, `0x0017`, `0x001E`, `0x0300` and `0x2413/14`, which later stages need. Add them and generate reads from Part 3.5, keeping the typed-field wording. |
 | P13 | EC:96, `docs/architecture.md:30-31`, `docs/backlog.md:215-216` | These two doc lines read as a hardware gate; EC, S01 and AGENTS.md already authorize the work. Align them, and add to EC: "LC57BK may be listed as implemented and hardware-untested, but not as supported, until a fixture passes S12B." |
-| P15 | EC:120, S01 | No `progress.md` exists. S01 creates it with the `ess_software/progress.md` status vocabulary. |
+| P15 | EC:120, S01 | No `progress.md` exists. S01 creates it using NOT STARTED, IN PROGRESS, SOFTWARE COMPLETE, PARTIAL and BLOCKED; record physical evidence separately. |
 | P16 | EC:19-21, R13:197-223, S11 items 4-5 | "Concurrent standalone ESS" is stale; that sequence landed. Name `StoredPositionQualification` (`Position.h:48`), `HomePrerequisites` and the Actions, Reads and Velocity sequencers as design templates, not semantics to copy. Update the `e39c095` and `da94ed52` bases; the FieldCore facts still hold at `5ad9292`. |
 | P17 | README:68-71 | "No build registration changes" is stale: `CMakeLists.txt:234` registers the tooling test. Say "bundle checks unregistered; tooling regression registered". |
 | P18 | S05 item 5, S02 verification | "From all callers" has no referent before S11. "Turn the ledger into tests" is undefined, since the C++ tests have no JSON parser. Say: inline the bytes in C++ and add a Python test cross-checking them against VEC. |

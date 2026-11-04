@@ -95,6 +95,14 @@ under C++11 and C++17 (RTTI disabled for C++17). See the
 [stage14 storage review](reports/2026-11-02_ess_portability.md) for compiler-specific
 layout/stack deltas and their limits; these do not establish runtime MCU headroom.
 
+## Test evidence
+
+Derive expected frames and limits from reviewed sources, independently of the
+code under test. Exercise real core, owner and console paths with scripted
+transport/time. Cover failures at the owning boundary: stale replies, deadlines,
+possible writes, cancellation, result capacity and stop priority. A simulated
+successful outcome is not an operation test or physical evidence.
+
 ## API documentation
 
 Install Doxygen separately, then run from the repository root:
