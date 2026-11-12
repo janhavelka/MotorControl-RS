@@ -18,8 +18,11 @@ command or broadcast frame was sent.
 - **The runner caught every case.** The two frames arrived without a 3.5-character
   gap, so the runner saw one 12-byte reply and failed it with `LENGTH`. No value
   was published from those replies. Each failure needed an explicit `recover`.
-- **Motion and broadcast trials are on hold** until the cause is fixed or the
-  address is changed. See "Risk" below.
+- **Motion and broadcast trials were put on hold** until the cause was fixed or
+  the address changed. See "Risk" below.
+- **After the owner moved the third drive to address 4, the link was clean:**
+  0 failures in 12,000 transactions. The cause of the lost bytes is still
+  unresolved.
 
 ## Fixture
 
@@ -27,7 +30,7 @@ command or broadcast frame was sent.
 | --- | --- |
 | Drives | Three ESS23-RS20 per the owner; all report `0x4EEA` / `0x0029` |
 | Addresses | 1, 2, 3 by DIP switch; DIP words 1, 2, 3 (bench drive 1 earlier read DIP word 0) |
-| Wiring | Short wires in a star, not a daisy chain (owner). Termination switch SW1 states not recorded |
+| Wiring | Short wires in a star, not a daisy chain (owner). One 120 Ω terminator on the controller board; SW1 off on all drives (owner). Board bias not known |
 | Mounting | Bolted down, free shafts, powered (owner) |
 | Board | Existing bench ESP32-S3 on COM13, image not reflashed; uptime about 5 minutes at first contact |
 | Serial | 115200 8N1 |
@@ -112,6 +115,27 @@ not writes. They still risk exception collisions.
    function code used on the bus (avoid 3, 6 and 16). That hides the visible
    symptom but not lost bytes; record it as such.
 
+## Follow-up: drive 3 moved to address 4
+
+The owner reported the termination state: one 120 Ω terminator on the
+controller board, SW1 off on all three drives. The owner then set the third
+drive's DIP address to 4.
+
+- Identity reads (`20_addr4_identity.jsonl`) give active node 4 and DIP word 4
+  for that drive. Drives 1 and 2 are unchanged. Address 3 gives `NO_RESPONSE`
+  (`21_addr3_absent.jsonl`).
+- Link check (`22_link_1_2_4.jsonl`): 1,000 rounds of one probe and one full
+  state read to each of 1, 2 and 4. That is 3,000 probes, 3,000 state reads and
+  12,000 bus transactions. All passed. Runner failures stayed at the session's
+  earlier 9, with 0 RX errors and 0 discarded bytes.
+
+With no drive at 3, 6 or 16, a lost first byte cannot turn any FC03, FC06 or FC10
+reply into a frame addressed to a drive on this bus. The address change hides
+the symptom; it does not show that byte loss stopped. The cause stays
+unresolved. Missing fail-safe bias during the reply turnaround remains the
+leading explanation, and the controller board's bias is the missing measurement.
+Keep addresses 3, 6 and 16 free on this bus until that is resolved.
+
 ## Discovery finding
 
 A range scan stops at the first address that does not answer. The runner treats
@@ -125,11 +149,12 @@ can scan a multi-drive bus in one pass.
 
 ## Evidence
 
-[Evidence archive](2026-11-12_multi_drive_bus_check_evidence.zip): 522,522
-bytes, 13 members, SHA-256
-`45fc95048127370a765a333e43fbd5911cfa1f8ca85a1401d0c5ca96c7ee0260`. It holds
-the JSONL session logs, the two helper scripts and `MANIFEST.sha256`. The
-scripts own COM13 and send probes and `recover` only.
+[Evidence archive](2026-11-12_multi_drive_bus_check_evidence.zip): 5,873,346
+bytes, 16 members, SHA-256
+`703ce9d205442605688c6554019986809363dbbcd5bb0200d20bfd7760a6c5a7`. It holds
+the JSONL session logs, including the follow-up, the two helper scripts and
+`MANIFEST.sha256`. The scripts own COM13 and send probes, state reads and
+`recover` only.
 
 Not run: independent electrical measurement of the bus, writes, motion,
 broadcast frames, termination or bias changes.

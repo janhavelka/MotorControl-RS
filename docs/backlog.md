@@ -196,11 +196,12 @@ shared input edge. The [multi-drive promptset](prompts/ess_multi_drive/README.md
 owns this work. The owner approved D6 and D7 on 12 November and connected two
 more drives (addresses 1, 2 and 3, star wiring).
 
-- [ ] Fix the three-drive link before motion or broadcast trials. Drive 3
-  answered about 0.8% of other drives' FC03 replies with an exception frame
-  ([bus check](reports/2026-11-12_multi_drive_bus_check.md)). Record SW1
-  termination and bias, rerun the read-only link check, and exclude the possible
-  phantom FC06 write from 3-word replies. Owner wiring action first.
+- [ ] Find why a drive loses the first byte of other drives' replies. At
+  address 3 it answered about 0.8% of them with an exception frame
+  ([bus check](reports/2026-11-12_multi_drive_bus_check.md)). With that drive
+  moved to address 4 the link was clean over 12,000 transactions, but the cause
+  is unresolved. Measure the controller board's fail-safe bias. Keep addresses
+  3, 6 and 16 free on this bus until then.
 - [ ] Let discovery scan past a silent address. Today a `NO_RESPONSE` interlocks
   the scan, so a sparse bus needs one scan per address.
 
