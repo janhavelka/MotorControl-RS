@@ -229,6 +229,11 @@
 
 ### Maintenance
 
+- Reviewed the ESS documents for broadcast and multi-drive start. None is
+  documented, and address 0 is only "reserved for the system". Added the
+  six-stage [multi-drive promptset](docs/prompts/ess_multi_drive/README.md) and
+  its backlog items: a broadcast bench test, drive group, free input programming
+  and input-triggered start. No code changed.
 - Reconciled prompt status with the November bench results, corrected API comments
   and added a local Doxygen configuration. CI does not run Doxygen.
 - Removed both finished ESS software prompt folders and the completed read-stage

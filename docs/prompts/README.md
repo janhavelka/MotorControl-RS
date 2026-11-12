@@ -7,6 +7,12 @@ homing methods are documented in the [operation guides](../README.md#public-oper
 Their [final audit](../reports/2026-11-02_ess_final_audit.md) and dated reports retain
 verification. Finished ESS software prompts have been removed; do not repeat them.
 
+The [ESS multi-drive set](ess_multi_drive/README.md) has six stages: the
+broadcast acceptance test, a drive group, broadcast start and stop, free input
+and output programming, input-triggered start and two-drive qualification.
+Prepared on 12 November 2026 from the [broadcast review](../reports/2026-11-12_broadcast_and_sync_review.md);
+no stage has started. Stage 01 waits for owner decision D6 or a vendor answer.
+
 The [Lichuan LC57BK-R / RC RS485 set](lichuan_lc57bk_rs485/README.md) contains
 12 implementation and qualification stages for a second manufacturer profile.
 Its original manuals, extracted register/frame/model ledgers and unresolved

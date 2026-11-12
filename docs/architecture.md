@@ -333,7 +333,9 @@ those timers. ESS supplies no documented maximum response or save-completion
 time; do not turn host defaults into device guarantees.
 
 Use explicit unicast addresses 1-247 for the initial supported surface.
-Broadcast motion and extended vendor address values are deferred. Never
+Broadcast motion and extended vendor address values are deferred. No ESS
+document describes broadcast; the [multi-drive set](prompts/ess_multi_drive/README.md)
+owns the bench test that would admit it ([review](reports/2026-11-12_broadcast_and_sync_review.md)). Never
 borrow a sensor's default address. Device serial settings and host settings
 are distinct; documented ESS defaults are commissioning hints, not detected
 facts. Word order must be read/selected explicitly, not guessed from plausible
