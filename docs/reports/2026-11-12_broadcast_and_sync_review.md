@@ -30,7 +30,7 @@ rendered images.
 
 | Source | How checked | Finding |
 | --- | --- | --- |
-| [Function manual V1.0](../vendor/Modbus-Series-Bus-Product-Function-Manual-V1.0_1_.pdf), first edition 2025-03-05 | Rendered p2, 4-8, 10-14, 16, 18, 20-25, 27, 29, 68-71, 74, 75, 77; contact sheets of p32-67 (homing) and p80-90 (DM-PR); text layer of all 90 pages | No broadcast or sync. Quotes below |
+| [Function manual V1.0](../vendor/Modbus-Series-Bus-Product-Function-Manual-V1.0_1_.pdf), first edition 2025-03-05 | Rendered p2, 4-8, 10-14, 16-18, 20-25, 27, 29, 68-71, 74, 75, 77; contact sheets of p32-67 (homing) and p80-90 (DM-PR); text layer of all 90 pages | No broadcast or sync. FC08 diagnostics are unsupported (exception 02, p11), so no broadcast counter exists. Quotes below |
 | [Hardware manual](../vendor/ESS23-RS1020_Series_Bus_Integrated_Motor_Hardware_Manual.pdf) | All 12 pages rendered | Address 0 "Reserved for the system" (p11). Input electrical limits (p5, p8, p9) |
 | [RS20](../vendor/ESS23-RS20_Full_Datasheet.pdf) and [RS10](../vendor/ESS23-RS10_Full_Datasheet.pdf) datasheets | Rendered | Mechanical and electrical tables only; no communication content |
 | [Debug software V1.2.7](../vendor/software/README.md) | Extracted and read as bytes, never executed | The installer payload could not be decoded; the GUI's own strings were not recovered. No evidence either way |
@@ -76,9 +76,14 @@ ESS manual neither claims nor denies that conformance.
 - A drive that answers address 0 would collide with other drives answering.
   That makes broadcast unusable on a shared bus.
 - The ESS documents give no turnaround delay after a broadcast.
+- The bench drive answers at node 1 with all address DIP switches OFF and
+  custom node `0x0013` = 0
+  ([ess_release_05](../archive/reports/ess_release_05_2026-10-04.md)). A drive
+  whose stored custom node is 0 might treat address 0 as its own. A result
+  therefore applies only to the recorded address configuration.
 
-Stage [01](../prompts/ess_multi_drive/01_broadcast_acceptance.md) defines a
-bounded single-drive test of these points. Use broadcast only where
+[Multi-drive 01](../prompts/ess_multi_drive/01_broadcast_acceptance.md) defines
+a bounded single-drive test of these points. Use broadcast only where
 simultaneity matters, that is start and stop. Settings stay unicast, where
 each write is confirmed.
 
@@ -92,8 +97,12 @@ each write is confirmed.
 2. **Broadcast start after unicast staging.** This is possible only if firmware
    `0x0029` accepts address 0 and stays silent.
 3. **Shared input edge.** Function manual p27 lists:
-   - input function 7, "Position mode movement": on an edge, the drive runs the
-     staged movement parameters;
+   - input function 7, "Position mode movement": the drive runs the staged
+     movement parameters. p17 describes this from standstill and calls it
+     level-active ("When a valid level signal is given to this terminal");
+     p27 calls it edge-active. `0x0050` makes input-started moves relative or
+     absolute (p75). An absolute target is safer, because a repeated trigger
+     then repeats the same target;
    - function 12, PT trigger (edge), and function 13, PV trigger (level), with
      PIN0-PIN3 (functions 14-17) selecting a stored segment;
    - p29, method 1: function 7 switches a speed move into a fixed-length move
@@ -106,7 +115,10 @@ each write is confirmed.
    - are opto-isolated, with a standard signal of 24 V and at least 10 mA of
      drive current (hardware p5, p9);
    - need a level pulse longer than 10 ms (p9);
-   - "default to the unspecified state" at every power-on (p9).
+   - at each power-on: "X0-X3 defaults to the unspecified state. At this time,
+     the input signal is invalid" (p9). The register table lists defaults 1, 2,
+     3, 0 for `0x0041-0x0044` (function p73-74), and the bench read those
+     values. The two statements conflict.
 
    No document gives the delay from input edge to motion.
 
@@ -139,10 +151,11 @@ The owner can send these:
    for FC06 and FC10? Does it stay silent? Which registers or commands apply?
 2. What do "address 0 is reserved for the system" and custom address values 0
    and 248-255 in `0x0013` mean?
-3. Does input function 7 start the staged `0x0021-0x0025` position profile from
-   standstill? What is the delay from input edge to motion start?
+3. Is input function 7 edge-active (p27) or level-active (p17)? Does a held
+   level repeat the move? What is the delay from input edge to motion start?
 4. Do input/output function assignments survive power-up after a save? The
-   hardware manual says X0-X3 "default to the unspecified state" at each power-on.
+   hardware manual says "X0-X3 defaults to the unspecified state" at each
+   power-on, but the register defaults are 1, 2, 3, 0.
 5. Is there any synchronized multi-axis start for the ESS-RS family?
 
 ## Follow-up

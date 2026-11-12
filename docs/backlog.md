@@ -202,25 +202,25 @@ owns this work. Nothing in it has run on hardware with more than one drive.
   D6 allows a bounded single-drive broadcast test. D7 sets the broadcast-start
   admission rule.
 - [ ] Test whether firmware `0x0029` acts on address-0 writes and stays silent
-  ([stage 01](prompts/ess_multi_drive/01_broadcast_acceptance.md)). The library
+  ([multi-drive 01](prompts/ess_multi_drive/01_broadcast_acceptance.md)). The library
   stays unicast-only until it does.
 - [ ] Add a drive group to the standalone application: declaration, per-member
   facts and post-enable wait, sequential start with measured spread, explicit
-  failure policy, group stop and status ([stage 02](prompts/ess_multi_drive/02_drive_group.md)).
-- [ ] Add broadcast start and stop, only if stage 01 is GO ([stage 03](prompts/ess_multi_drive/03_broadcast_operations.md)).
+  failure policy, group stop and status ([multi-drive 02](prompts/ess_multi_drive/02_drive_group.md)).
+- [ ] Add broadcast start and stop, only if multi-drive 01 is GO ([multi-drive 03](prompts/ess_multi_drive/03_broadcast_operations.md)).
   The outcome is always unconfirmed until each drive is read back.
-- [ ] Program inputs and outputs freely: functions 4-17 with stated
+- [ ] Program inputs and outputs as needed: functions 4-17 with stated
   commissioning facts, polarity on assigned terminals, connected outputs, routes
   for `0x0050`/`0x0051`, per-function move readiness, and the power-up state
-  ([stage 04](prompts/ess_multi_drive/04_input_programming.md)). Today the
+  ([multi-drive 04](prompts/ess_multi_drive/04_input_programming.md)). Today the
   console admits only functions 0-3 on unconnected terminals.
 - [ ] Start motion from a shared input edge: function 7 with a staged profile
-  first, then PT segments with PIN selection, observation and stop of
-  input-started motion ([stage 05](prompts/ess_multi_drive/05_input_triggered_start.md)).
+  first (absolute mode preferred), then PT segments with PIN selection, the
+  negative PV speed encoding, and observation and stop of input-started motion ([multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)).
   Depends on standalone 02, 04 and 06.
 - [ ] Qualify two drives on one bus: addressing, start spread for sequential,
   broadcast and trigger starts, and group stops
-  ([stage 06](prompts/ess_multi_drive/06_two_drive_qualification.md)). Needs a
+  ([multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md)). Needs a
   second drive and trigger wiring.
 
 ## Release and future profiles
