@@ -29,15 +29,16 @@ examples and their host tools. FieldCore-node stays read-only.
 | M02 | The standalone application has one selected axis. `useaddr` is idle-only rebinding that clears the previous drive's knowledge. The post-enable wait has one address slot (`ProbeApp.cpp:196`). There is no group staging, start, stop or status. | 02 |
 | M03 | Console I/O admission is narrow. Input functions 0-3 only, and only on terminals declared unconnected (`ProbeApp.cpp:1294-1302`). Polarity only with function 0. Outputs only when unconnected. `io` always uses echo-readback, which accepts only unconnected terminals (`DriverSettings.cpp:467-474`). `driver set position-mode/interruption` is always refused. An input function above 3 blocks moves, segment writes and some setters (`MotionReadinessApp.h:73-74`). The core admits functions 0-17 (`DriverSettings.cpp:96`). | 04 |
 | M04 | No input-started motion route exists. Function 7 needs a staged profile written without a start ([standalone 02](../standalone/02_profile_staging.md)). PT trigger 12 needs stored target writes ([standalone 04](../standalone/04_paired_values.md)) and the shared-start mismatch resolved ([standalone 06](../standalone/06_io_and_tuning.md)). PV trigger 13 needs the negative-speed encoding, which multi-drive 05 owns. p17 calls function 7 level-active and p27 edge-active. `0x0050` makes input-started moves relative or absolute (p75). Nothing observes or stops input-started motion as an operation. | 05 |
-| M05 | Since 12 November the bench has three drives (1, 2, 3) on short star wiring, with power and RS485 only. There is no trigger wire or wired input. | 06; physical gates of 01-05 |
+| M05 | Since 12 November the bench has three drives (1, 2, 4) on short star wiring, with power and RS485 only. There is no trigger wire or wired input. | 06; physical gates of 01-05 |
 | M06 | Vendor questions are not yet sent: address 0 and broadcast, function 7 from standstill, edge-to-motion delay, and whether I/O assignments survive power-up. Hardware p9 says "X0-X3 defaults to the unspecified state" at each power-on, while the register defaults are 1, 2, 3, 0 (p73-74). The [review](../../reports/2026-11-12_broadcast_and_sync_review.md#questions-for-the-vendor) has the text. | Owner; 01, 04, 05 |
 
 ## Owner decisions
 
 The owner approved D6 and D7 on 12 November 2026. The bench now has three drives
-(addresses 1, 2 and 3), so a D6 broadcast reaches all three. Read every drive
+(addresses 1, 2 and 4), so a D6 broadcast reaches all three. Read every drive
 back after each trial. The [bus check](../../reports/2026-11-12_multi_drive_bus_check.md)
-found drive 3 answering other drives' replies. Fix that before the trials.
+found a drive at address 3 answering other drives' replies. At address 4 the
+link was clean; keep addresses 3, 6 and 16 free on this bus.
 
 | ID | Proposal |
 | --- | --- |
@@ -48,7 +49,7 @@ found drive 3 answering other drives' replies. Fix that before the trials.
 
 | Stage | Deliverable | Starting gate | Status |
 | --- | --- | --- | --- |
-| 01 | [Broadcast acceptance test](01_broadcast_acceptance.md) | D6 approved (done); clean three-drive link | BLOCKED(input) |
+| 01 | [Broadcast acceptance test](01_broadcast_acceptance.md) | D6 approved; three-drive link clean at addresses 1, 2 and 4 | NOT STARTED |
 | 02 | [Drive group in the standalone application](02_drive_group.md) | None for software; standalone 02 to stage every member before the starts; second drive for multi-drive claims | NOT STARTED |
 | 03 | [Broadcast start and stop](03_broadcast_operations.md) | 01 outcome GO, D7 approved, 02 delivered; standalone 02 for staging without a start | NOT STARTED |
 | 04 | [Input and output programming](04_input_programming.md) | None for software; wired inputs for physical claims | NOT STARTED |
