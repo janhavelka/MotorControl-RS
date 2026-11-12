@@ -7,6 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [Broadcast and multi-drive start review](2026-11-12_broadcast_and_sync_review.md) | No ESS document describes broadcast, sync or group addressing; address 0 is only "reserved for the system". The documented simultaneous start is a shared input edge (function 7, or PT/PV triggers). The console admits only passive input functions. Source review only; nothing was sent. |
 | [Documentation and stress-tool review](2026-11-04_cleanup_review.md) | Corrected stale status and API comments. The stress tool now requires an observed stop before resuming after a USB stall; failed recovery ends the run. |
 | [Stop normal rate ceiling](2026-11-04_stop_normal_rate_ceiling.md) | HW-14: a `stop normal` late in the ramp above about 60,000 increments/s leaves firmware `0x0029` creeping until `stop fast`. Default ceiling now 50,000; 0 of 190 stops failed at it. Velocity, homing and higher caller limits stay untested. |
 | [Delivered-software bench regression](2026-11-02_standalone_14_bench_regression.md) | First hardware run of the ESS delivery and audit fixes. All routes work, including homing 33/34/35 and interruption; one persistent RUNNING failure at 1,000 increments/s is unresolved and needed a power cycle. |

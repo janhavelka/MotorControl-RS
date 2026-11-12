@@ -58,3 +58,6 @@ work within AGENTS' standing authorization without asking again.
 
 Optional architectural refactoring, new drive families, CANopen and RodTester
 implementation are outside this set. Preserve their separate backlog entries.
+Multi-drive starts, broadcast and free input programming belong to the
+[multi-drive set](../ess_multi_drive/README.md). Its input-triggered starts
+depend on stages 02, 04 and 06 here.

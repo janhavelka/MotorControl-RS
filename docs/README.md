@@ -90,7 +90,7 @@ The subdirectories have distinct purposes:
 | [reports](reports/README.md) | Evidence supporting current limits and unresolved investigations |
 | [releases](releases/1.0.0.md) | Maintained release scope and qualification limits |
 | [archive](archive/README.md) | Finished instructions, dated implementation/audit handoffs and superseded plans |
-| [prompts](prompts/README.md) | Standalone ESS completion and Lichuan RS485 profile prompts, with source evidence |
+| [prompts](prompts/README.md) | Standalone ESS completion, ESS multi-drive and Lichuan RS485 profile prompts, with source evidence |
 
 - [Document inventory](reference/00_document_inventory.md), [implementation reference](reference/01_implementation_reference.md) and [source manifest](reference/sources.json).
 - [Register catalogue](reference/05_ess_register_catalog.md), [encoder/units](reference/06_encoder_units.md) and [timing audit](reference/09_timing_and_gap_audit.md).

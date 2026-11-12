@@ -1,7 +1,8 @@
 # Implementation and qualification backlog
 
-Status reviewed on 4 November 2026. This page lists remaining work. The
-[standalone prompts](prompts/standalone/README.md) define the active ESS tasks;
+Status reviewed on 4 November 2026; multi-drive items added on 12 November.
+This page lists remaining work. The [standalone prompts](prompts/standalone/README.md)
+and the [multi-drive prompts](prompts/ess_multi_drive/README.md) define the active ESS tasks;
 the [changelog](../CHANGELOG.md) and [reports](reports/README.md) record delivery.
 The [release scope](releases/1.0.0.md) and [operation inventory](ess_api_cli_coverage.md)
 separate implementation from native and hardware evidence.
@@ -186,6 +187,41 @@ functional evidence; independent shaft calibration remains absent.
 - [ ] Resolve esptool 5.3.0 bootloader flash-read truncation at 188,416 bytes:
   compare ROM/stub reads and capture USB at the failing packet. Firmware is
   not running during this failure. [Investigation](archive/reports/2026-10-03_platform_scope_audit.md).
+
+## Multi-drive, broadcast and input-triggered motion
+
+The [12 November review](reports/2026-11-12_broadcast_and_sync_review.md) found
+no documented broadcast or sync command. The documented simultaneous start is a
+shared input edge. The [multi-drive promptset](prompts/ess_multi_drive/README.md)
+owns this work. Nothing in it has run on hardware with more than one drive.
+
+- [ ] Send the [vendor questions](reports/2026-11-12_broadcast_and_sync_review.md#questions-for-the-vendor):
+  address 0 and broadcast, function 7 from standstill, edge-to-motion delay, and
+  I/O assignments at power-up. Owner action.
+- [ ] Decide D6 and D7 (proposed in the [promptset](prompts/ess_multi_drive/README.md#proposed-owner-decisions)).
+  D6 allows a bounded single-drive broadcast test. D7 sets the broadcast-start
+  admission rule.
+- [ ] Test whether firmware `0x0029` acts on address-0 writes and stays silent
+  ([stage 01](prompts/ess_multi_drive/01_broadcast_acceptance.md)). The library
+  stays unicast-only until it does.
+- [ ] Add a drive group to the standalone application: declaration, per-member
+  facts and post-enable wait, sequential start with measured spread, explicit
+  failure policy, group stop and status ([stage 02](prompts/ess_multi_drive/02_drive_group.md)).
+- [ ] Add broadcast start and stop, only if stage 01 is GO ([stage 03](prompts/ess_multi_drive/03_broadcast_operations.md)).
+  The outcome is always unconfirmed until each drive is read back.
+- [ ] Program inputs and outputs freely: functions 4-17 with stated
+  commissioning facts, polarity on assigned terminals, connected outputs, routes
+  for `0x0050`/`0x0051`, per-function move readiness, and the power-up state
+  ([stage 04](prompts/ess_multi_drive/04_input_programming.md)). Today the
+  console admits only functions 0-3 on unconnected terminals.
+- [ ] Start motion from a shared input edge: function 7 with a staged profile
+  first, then PT segments with PIN selection, observation and stop of
+  input-started motion ([stage 05](prompts/ess_multi_drive/05_input_triggered_start.md)).
+  Depends on standalone 02, 04 and 06.
+- [ ] Qualify two drives on one bus: addressing, start spread for sequential,
+  broadcast and trigger starts, and group stops
+  ([stage 06](prompts/ess_multi_drive/06_two_drive_qualification.md)). Needs a
+  second drive and trigger wiring.
 
 ## Release and future profiles
 
