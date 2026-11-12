@@ -556,5 +556,85 @@ class RepeatCampaignTest(unittest.TestCase):
         self.assertEqual([x['host_args'] for x in console.commands('motion-profile')], [('read',)])
 
 
+
+class SelectingConsole(FakeConsole):
+    """Selected target and profile snapshot for the explicit drive selection."""
+    def __init__(self, *, selected=1, saved=True, restored=True, changed=False, **kwargs):
+        super().__init__(**kwargs)
+        self.selected = selected
+        self.profile = dict(ok=True, pending=False, restore_unsettled=False, saved=saved, restored=restored,
+                            session_ok=True, error="none", original=[30, 100, 100, 60, 0, 0],
+                            current=[30, 300, 100, 60, 0, 0] if changed else [30, 100, 100, 60, 0, 0])
+
+    def command(self, name, **kwargs):
+        if name == "wiring":
+            self.calls.append((name, kwargs))
+            return dict(ok=True, target=self.selected, address=self.selected)
+        if name == "useaddr":
+            self.calls.append((name, kwargs))
+            self.selected = kwargs["address"]
+            return dict(ok=True, result="done", address=self.selected, operation_id=0)
+        if name == "motion-profile" and kwargs.get("host_args") in (("inspect",), ("forget",)):
+            self.calls.append((name, kwargs))
+            if kwargs["host_args"] == ("forget",):
+                self.profile.update(saved=False, restored=False)
+            return dict(self.profile)
+        return super().command(name, **kwargs)
+
+
+class DriveSelectionTest(unittest.TestCase):
+    def test_default_address_keeps_node_one_without_selection(self):
+        console = SelectingConsole(selected=4)
+        campaign.run_phase(console, "forward", {})
+        self.assertEqual(console.commands("wiring"), [])
+        self.assertEqual(console.commands("useaddr"), [])
+        self.assertTrue(all(kw.get("address") == 1 for kw in console.commands("read-state")))
+
+    def test_selects_another_drive_and_addresses_every_command(self):
+        console = SelectingConsole(selected=1)
+        record = {}
+        campaign.run_phase(console, "forward", record, 4)
+        self.assertEqual(console.commands("useaddr"), [dict(address=4, timeout_s=5)])
+        self.assertTrue(record["selection"]["changed"])
+        self.assertIn("forgotten", record["selection"])
+        for name in ("read-config", "read-state", "stop"):
+            self.assertTrue(console.commands(name))
+            self.assertTrue(all(kw.get("address") == 4 for kw in console.commands(name)), name)
+        moves = [kw for name, kw in console.calls if name == "move-relative"]
+        self.assertEqual([kw["address"] for kw in moves], [4])
+
+    def test_same_drive_needs_no_selection_change(self):
+        console = SelectingConsole(selected=2)
+        record = {}
+        campaign.run_phase(console, "inspect", record, 2)
+        self.assertFalse(record["selection"]["changed"])
+        self.assertEqual(console.commands("useaddr"), [])
+
+    def test_unrestored_snapshot_blocks_selection_before_any_motor_command(self):
+        console = SelectingConsole(selected=1, restored=False, changed=True)
+        with self.assertRaisesRegex(campaign.BenchError, "unrestored profile snapshot"):
+            campaign.run_phase(console, "forward", {}, 2)
+        self.assertEqual(console.commands("useaddr"), [])
+        self.assertFalse([kw for kw in console.commands("motion-profile") if kw.get("host_args") == ("forget",)])
+        self.assertEqual(console.commands("stop"), [])
+        self.assertEqual([name for name, _ in console.calls if name.startswith("move")], [])
+
+    def test_unchanged_snapshot_may_be_forgotten(self):
+        console = SelectingConsole(selected=1, restored=False, changed=False)
+        record = {}
+        campaign.run_phase(console, "inspect", record, 2)
+        self.assertIn("forgotten", record["selection"])
+        self.assertEqual(console.selected, 2)
+
+    def test_plan_names_the_selected_drive(self):
+        plan = campaign.phase_plan("stop-normal", 4)
+        self.assertIn("useaddr 4", plan[6])
+        self.assertIn("stop normal 4", plan)
+        self.assertFalse([item for item in plan if item.endswith(" 1") or " 1 " in item])
+        self.assertEqual(campaign.phase_plan("forward"), campaign.phase_plan("forward", None))
+        with self.assertRaises(ValueError):
+            campaign.phase_plan("forward", 0)
+
+
 if __name__ == "__main__":
     unittest.main()

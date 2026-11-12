@@ -194,7 +194,24 @@ The [12 November review](reports/2026-11-12_broadcast_and_sync_review.md) found
 no documented broadcast or sync command. The documented simultaneous start is a
 shared input edge. The [multi-drive promptset](prompts/ess_multi_drive/README.md)
 owns this work. The owner approved D6 and D7 on 12 November and connected two
-more drives (addresses 1, 2 and 3, star wiring).
+more drives (now addresses 1, 2 and 4, star wiring).
+
+- [x] Write, motion and stress tests on three drives
+  ([report](reports/2026-11-12_multi_drive_write_motion_stress.md)): functional
+  set on each drive, 1 h standard and 30 min extended stress across all three,
+  with idle-drive reads. One drive moves at a time; simultaneous motion needs
+  multi-drive 02.
+- [ ] Add fail-safe bias to the bench bus (pull-up on A, pull-down on B at one
+  point). Owner wiring action. Then rerun the link check with a drive at
+  address 3 to show that lost first bytes stopped.
+- [ ] Confirm the model of drives 2 and 4. The tuning and control setters
+  qualify the exact model only for node 1 (`ProbeApp.cpp`), so their settings
+  writes are refused before TX. A confirmed model needs a firmware change that
+  qualifies those addresses.
+- [ ] Document post-stop settling in the position guide: after a stop, mainly
+  `stop fast`, firmware `0x0029` can still change its reported position by one
+  increment for about 1.5 s. Completion and comparison logic that reads a
+  position right after a stop must allow for it or wait.
 
 - [ ] Find why a drive loses the first byte of other drives' replies. At
   address 3 it answered about 0.8% of them with an exception frame

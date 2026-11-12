@@ -9,7 +9,7 @@ start of each test session; old readback is not fresh admission evidence.
 | Item | Recorded setup |
 | --- | --- |
 | Motor | User-confirmed ESS23-RS20; raw model `0x4EEA`, firmware word `0x0029` |
-| Drives since 12 November | Three ESS23-RS20 at DIP addresses 1, 2 and 4, all `0x4EEA` / `0x0029`, short star wiring, one 120 Ω terminator on the controller board, SW1 off on the drives, free shafts. Keep addresses 3, 6 and 16 free; see the [bus check](reports/2026-11-12_multi_drive_bus_check.md) |
+| Drives since 12 November | Three drives at DIP addresses 1, 2 and 4, all `0x4EEA` / `0x0029`; only drive 1 is a confirmed ESS23-RS20. The owner describes them as powered, on RS485 and with free shafts; their terminals are declared unconnected on that basis; short star wiring, one 120 Ω terminator on the controller board, SW1 off on the drives, free shafts. Keep addresses 3, 6 and 16 free; see the [bus check](reports/2026-11-12_multi_drive_bus_check.md) |
 | Mounting | Bolted securely to the table; free, uncoupled shaft |
 | Connections | Power and RS485 only; no external switches, output loads or driven mechanics |
 | Board | ESP32-S3, 16 MB flash / 8 MB PSRAM; historical board identity E2 revision 2.0.0 |
@@ -42,7 +42,12 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
-The [4 November stop normal recheck](reports/2026-11-04_stop_normal_rate_ceiling.md) is the latest session: image `bench_s3_load_timer`
+The [12 November three-drive tests](reports/2026-11-12_multi_drive_write_motion_stress.md) are the latest session:
+image `bench_s3_load_timer` from `5938f1d`, SHA-256 `5FE6D51A64EF4481D19FAD3C7BBF3DF7DDAF8A83E12121B2CBBED4EDF4E54912`.
+Ending state of drives 1, 2 and 4: enabled, stopped, motion word 3, alarm 0, raw positions 6,999, 68,386
+and 14,009. Each drive's last move profile and auxiliary 7 are in RAM, with no save. Drive 1 is selected.
+
+Before that, the [4 November stop normal recheck](reports/2026-11-04_stop_normal_rate_ceiling.md) used image `bench_s3_load_timer`
 from `d3cd883` (the same firmware sources as the merge `7d2a2f6`), SHA-256 `56F4F0BF5B4E35E87663FE7A77CD24D95D259CD61D72A5255D47EC744BAFFF27`,
 subdivision 1000, status 3, alarm 0, ending raw position 121,225. Auxiliary 7, homing words and the profile
 from the last staged move were written to drive RAM in these sessions with no save; a motor power cycle returns

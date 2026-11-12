@@ -38,7 +38,9 @@ The owner approved D6 and D7 on 12 November 2026. The bench now has three drives
 (addresses 1, 2 and 4), so a D6 broadcast reaches all three. Read every drive
 back after each trial. The [bus check](../../reports/2026-11-12_multi_drive_bus_check.md)
 found a drive at address 3 answering other drives' replies. At address 4 the
-link was clean; keep addresses 3, 6 and 16 free on this bus.
+link was clean; keep addresses 3, 6 and 16 free on this bus. The bus has no
+fail-safe bias yet. Unicast write, motion and stress tests passed on all three
+drives ([report](../../reports/2026-11-12_multi_drive_write_motion_stress.md)).
 
 | ID | Proposal |
 | --- | --- |

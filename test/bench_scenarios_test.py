@@ -30,6 +30,7 @@ class ScenarioConsole:
         self.synchronized = True
         self.calls = []
         self.setting = 10
+        self.selected = 1
         self.fail_setting = False
         self.fail_restore = False
         self.now = 0
@@ -53,6 +54,18 @@ class ScenarioConsole:
     def command(self, name, **kwargs):
         self.calls.append((name, kwargs))
         result = dict(ok=True, command=name)
+        if name == 'wiring':
+            result.update(result='done', target=self.selected, address=self.selected)
+        if name == 'motion-profile':
+            result.update(pending=False, restore_unsettled=False, saved=False, restored=False)
+        if name == 'useaddr':
+            self.selected = kwargs['address']
+            result.update(result='done', address=self.selected, operation_id=0)
+        if name in ('tuning', 'control') and 'set' in kwargs.get('driver_args', ()) and \
+                kwargs.get('address', 1) != self.selected:
+            result.update(ok=False, result='unavailable', operation_id=0)
+            self.emit('fake_command', name=name, arguments=kwargs, result=result)
+            return result
         if name == 'read-config':
             result['config'] = dict(raw=[0, 1000, 0])
         if name == 'read-state':
@@ -100,7 +113,8 @@ class ScenarioArgumentsTest(unittest.TestCase):
             ['--stop-policy', 'fast'],
             ['--timeout', 'inf'], ['--address', '0'], ['--evidence-records', '1'],
             ['--scenario', 'native-read', '--native', 'io', '--native-args', 'set', 'x0-function', 'none'],
-            ['--scenario', 'position', '--address', '2'],
+            ['--scenario', 'angle', '--address', '2', '--arguments', '90', 'deg', 'motor', 'positive', 'reject', '60', 'configured'],
+            ['--scenario', 'position', '--address', '248'],
             ['--scenario', 'position', '--count', '1'],
             ['--scenario', 'homing-prerequisites', '--interval', '0'],
             ['--scenario', 'velocity'], ['--scenario', 'persistence'],
@@ -282,6 +296,20 @@ class SettingsScenarioTest(unittest.TestCase):
                          if name == 'tuning' and 'set' in args['driver_args']]
         self.assertEqual(commands[write_indexes[0] + 1:write_indexes[1]],
                          ['tuning', 'read-identity', 'read-config', 'io', 'read-state'])
+
+    def test_another_drive_is_selected_before_any_write(self):
+        console = ScenarioConsole()
+        args = scenarios.arguments(['--plan-only', '--scenario', 'settings', '--setting', 'input-filter',
+                                    '--value', '11', '--address', '2'])
+        record = {}
+        scenarios._setting(console, args, record)
+        names = [name for name, _ in console.calls]
+        self.assertLess(names.index('useaddr'), names.index('tuning'))
+        self.assertEqual(console.selected, 2)
+        writes = [kw for name, kw in console.calls if name == 'tuning' and 'set' in kw['driver_args']]
+        self.assertEqual([kw['address'] for kw in writes], [2, 2])
+        self.assertTrue(record['setting']['restored'])
+        self.assertTrue(record['selection']['changed'])
 
     def test_noop_or_large_setting_change_never_yields_write(self):
         for value in (10, 12, 0, 65535):

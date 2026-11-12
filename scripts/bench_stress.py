@@ -9,6 +9,9 @@ USB check or stop ends the run, including with --recover. Other anomalies
 capture the drive state with reads only and exit, unless --recover selects
 bounded recovery (alarm clear, MCU reset, release/enable) with a verification ladder.
 Never replays an uncertain write. A motor power cycle is not available here.
+With --addresses, each case runs on one drive chosen at random and selected
+with useaddr; --cross-reads also reads the other drives while one moves and
+fails the run if any of them runs, alarms or changes position.
 
 Exit codes: 0 duration reached, 3 anomaly, 4 USB check or stop failed, 5 still
 degraded after recovery (needs a motor power cycle).
@@ -205,8 +208,16 @@ def state_fields(item):
 
 
 class Run:
+    address = 1  # Selected drive; tools built without __init__ keep node 1.
+
     def __init__(self, args):
         self.args = args
+        self.addresses = args.addresses
+        self.address = self.addresses[0]
+        self.selected = None
+        self.auxiliary_ready = set()
+        self.positions = {}
+        self.per_drive = collections.Counter()
         self.out = pathlib.Path(args.out)
         self.out.mkdir(parents=True, exist_ok=True)
         self.random = random.Random(args.seed)
@@ -243,6 +254,92 @@ class Run:
             raise Anomaly("ALARM", fields)
         return fields
 
+    def read_other(self, address):
+        reply = self.console.send(f"read state {address}")
+        if reply.get("result") == "results_full":
+            self.console.release_all()
+            reply = self.console.send(f"read state {address}")
+        if not reply.get("ok"):
+            raise Anomaly("CROSS_READ_REFUSED", f"read state {address}: {reply.get('result')}")
+        item = self.console.terminal(reply, 2.0)
+        self.console.release_all()
+        if item is None or not item.get("ok"):
+            raise Anomaly("CROSS_READ_FAILED", f"read state {address}: {item and item.get('outcome')}")
+        return state_fields(item)
+
+    def cross_read(self):
+        """One read of another drive: it must stay stopped, alarm-free and in place."""
+        others = [a for a in getattr(self, "addresses", [self.address]) if a != self.address]
+        if not getattr(self.args, "cross_reads", False) or not others:
+            return
+        other = self.random.choice(others)
+        fields = self.read_other(other)
+        self.counts["cross_read"] += 1
+        known = self.positions.get(other)
+        if (fields.get("raw_alarm") or fields.get("raw_motion", 0) & RUNNING or
+                (known is not None and fields.get("position") != known)):
+            raise Anomaly("OTHER_DRIVE", {"address": other, "fields": fields, "expected_position": known,
+                                          "moving": self.address})
+        self.positions[other] = fields.get("position")
+
+    def settled_position(self, hold=2.0, limit=8.0):
+        """Position of the selected drive once unchanged for `hold` seconds.
+
+        After a stop, firmware 0x0029 can still change its reported position by
+        one increment for about 1.5 s. Other drives are compared with this value.
+        """
+        first = time.time()
+        fields = self.state()
+        since, position = time.time(), fields["position"]
+        while time.time() - since < hold:
+            if time.time() - first > limit:
+                raise Anomaly("NOT_SETTLED", {"address": self.address, "position": position})
+            self.console.pump(0.25)
+            fields = self.state()
+            if fields["position"] != position or fields.get("raw_speed"):
+                since, position = time.time(), fields["position"]
+                self.counts["settle_change"] += 1
+        return position
+
+    def select(self, address, force=False):
+        """Local drive selection. The stress run never restores profiles, so its snapshot is released."""
+        if address == self.selected and not force:
+            return
+        self.console.release_all()
+        view = self.console.send("motion-profile inspect")
+        for _ in range(100):
+            if not view.get("pending"):
+                break
+            self.console.pump(0.01)
+            view = self.console.send("motion-profile inspect")
+        if view.get("saved"):
+            forgotten = self.console.send("motion-profile forget")
+            if not forgotten.get("ok"):
+                raise Anomaly("SELECT", ("motion-profile forget", forgotten.get("result")))
+        reply = self.console.send(f"useaddr {address}")
+        if not reply.get("ok"):
+            raise Anomaly("SELECT", (f"useaddr {address}", reply.get("result")))
+        self.address = self.selected = address
+        if getattr(self.args, "declare_unconnected", False):
+            # useaddr resets the host's wiring declarations. This is the stated
+            # fixture fact for these drives, never a drive change.
+            for terminal in ("x0", "x1", "x2", "x3", "y0", "y1"):
+                declared = self.console.send(f"wiring {terminal} unconnected")
+                if not declared.get("ok"):
+                    raise Anomaly("SELECT", (f"wiring {terminal} unconnected", declared.get("result")))
+        self.console.send("probe", 3.0)
+        self.console.pump(0.05)
+        self.console.release_all()
+        if address not in self.auxiliary_ready:
+            self.prepare_auxiliary()
+            self.auxiliary_ready.add(address)
+
+    def after_reset(self):
+        """A controller reset selects node 1 again; restore this run's selection."""
+        self.selected = None
+        self.auxiliary_ready.clear()
+        self.select(self.address, force=True)
+
     def prepare(self):
         self.read("config")
         before = self.state()
@@ -270,10 +367,11 @@ class Run:
                 return samples
             if time.time() > end:
                 raise Anomaly("RUNNING_STUCK", samples[-8:])
+            self.cross_read()
             self.console.pump(self.random.uniform(0.05, 0.25))
 
     def stop(self, policy):
-        reply = self.console.send(f"stop {policy} 1")
+        reply = self.console.send(f"stop {policy} {self.address}")
         if not reply.get("ok"):
             raise Anomaly("STOP_REFUSED", reply.get("result"))
         item = self.console.terminal(reply, 7.0)
@@ -438,7 +536,7 @@ class Run:
         self.console.reset_mcu()
         self.t0 = time.time()
         self.console.send("debug " + self.args.debug, 3.0)
-        self.console.send("probe", 3.0)
+        self.after_reset()
         self.console.pump(0.3)
         self.read("config")
         self.settle(self.duration(steps, rpm) + 3)
@@ -482,8 +580,12 @@ class Run:
 
     def case_simple_boot(self):
         """The documented first use: after a controller reset, moveto relative to the RAM boot zero."""
+        if 1 not in getattr(self, "addresses", [1]):
+            return "skipped: the boot zero belongs to node 1"
+        self.select(1)  # The firmware sets its boot zero only for the startup drive.
         self.console.reset_mcu()
         self.console.send("debug " + self.args.debug, 3.0)
+        self.after_reset()
         ramps = self.simple_ramps()
         zero = self.state()["position"]
         for target in sorted([self.random.randrange(-3000, 3000), self.random.randrange(-3000, 3000)]) + [0]:
@@ -618,7 +720,7 @@ class Run:
     def case_release_enable(self):
         self.read("config")
         self.state()
-        for command in ("motor-release 1", "enable 1"):
+        for command in (f"motor-release {self.address}", f"enable {self.address}"):
             reply = self.console.send(command)
             if not reply.get("ok"):
                 raise Anomaly("ACTION_REFUSED", (command, reply.get("result")))
@@ -684,7 +786,7 @@ class Run:
             # One fresh stop after reconnect; never replay a request lost earlier.
             c.next_id += 1
             try:
-                reply = c.send("stop normal 1", 3.0)
+                reply = c.send(f"stop normal {self.address}", 3.0)
                 record["stop_reply"] = reply
                 if reply.get("ok") and reply.get("result") == "accepted":
                     item = c.terminal(reply, 7.0)
@@ -696,7 +798,7 @@ class Run:
                         and item.get("command_id") == reply.get("_id")
                         and reply.get("operation_id") and item.get("operation_id") == reply["operation_id"]
                         and item.get("action_kind") == "stop" and item.get("stop_policy") == "normal"
-                        and item.get("target") == 1 and item.get("address") == 1
+                        and item.get("target") == self.address and item.get("address") == self.address
                         and item.get("state") == "succeeded" and item.get("outcome") == "observed"
                         and item.get("execution") == "acknowledged" and item.get("completion") == "observed"
                         and item.get("observation_known") is True and item.get("raw_alarm") == 0
@@ -743,19 +845,19 @@ class Run:
         log = []
         self.console.reset_mcu()
         log.append("mcu_reset")
-        self.console.send("probe")
+        self.after_reset()
         self.console.pump(0.3)
         self.read("config")
         fields = self.state(check=False)
         log.append(("after_reset", fields.get("raw_motion"), fields.get("raw_alarm"), fields.get("position")))
         if fields.get("raw_alarm"):
-            reply = self.console.send("alarm-clear 1")
+            reply = self.console.send(f"alarm-clear {self.address}")
             self.console.terminal(reply, 3)
             self.console.release_all()
             log.append("alarm_clear")
-        self.console.send("motor-release 1")
+        self.console.send(f"motor-release {self.address}")
         self.console.pump(0.8)
-        self.console.send("enable 1")
+        self.console.send(f"enable {self.address}")
         self.console.pump(0.8)
         self.console.release_all()
         ladder = []
@@ -794,6 +896,7 @@ class Run:
 
     def summary(self, final=None):
         data = dict(elapsed_s=round(time.time() - self.started), moved_increments=self.moved, counts=dict(self.counts),
+                    addresses=self.addresses, per_drive=dict(self.per_drive),
                     anomalies=self.anomalies, usb_stalls=self.usb_stalls, health=self.health, final=final, seed=self.args.seed)
         (self.out / "summary.json").write_text(json.dumps(data, indent=1))
         return data
@@ -822,9 +925,10 @@ class Run:
         table = {c[0]: c[1] for c in cases}
         self.console.send("debug " + self.args.debug)
         self.console.pump(0.2)
-        self.console.send("probe")
+        for address in reversed(self.addresses):  # Probe every drive, end on the first.
+            self.select(address, force=True)
+            self.positions[address] = self.settled_position() if getattr(self.args, "cross_reads", False) else self.state()["position"]
         self.console.pump(0.3)
-        self.prepare_auxiliary()
         if self.args.subdivision:
             self.set_subdivision(self.args.subdivision)
         end = self.started + self.args.duration
@@ -834,8 +938,13 @@ class Run:
             name = self.random.choices(names, weights)[0]
             begun = time.time()
             try:
+                self.select(self.random.choice(self.addresses))
                 note = table[name]()
                 self.counts[name] += 1
+                self.per_drive[self.address] += 1
+                self.positions[self.address] = (self.settled_position() if getattr(self.args, "cross_reads", False)
+                                                else self.state()["position"])
+                note = f"a={self.address} {note}"
                 self.cases.write(f"{time.strftime('%H:%M:%S')},{name},ok,{time.time() - begun:.2f},{note}\n")
                 self.cases.flush()
             except (Anomaly, Unresponsive) as exc:
@@ -846,14 +955,14 @@ class Run:
                     self.cases.flush()
                     continue
                 self.counts["anomaly_" + kind] += 1
-                self.cases.write(f"{time.strftime('%H:%M:%S')},{name},{kind},{time.time() - begun:.2f},{detail}\n")
+                self.cases.write(f"{time.strftime('%H:%M:%S')},{name},{kind},{time.time() - begun:.2f},a={self.address} {detail}\n")
                 self.cases.flush()
                 path = self.incident(kind, detail)
                 postmortem = None
                 if kind != "CONSOLE_UNRESPONSIVE":
                     postmortem = self.postmortem()
                     self.incident(kind + "_post", postmortem)
-                entry = dict(when=time.strftime("%H:%M:%S"), case=name, kind=kind, detail=str(detail), file=path.name, postmortem=postmortem)
+                entry = dict(when=time.strftime("%H:%M:%S"), case=name, address=self.address, kind=kind, detail=str(detail), file=path.name, postmortem=postmortem)
                 self.anomalies.append(entry)
                 self.summary()
                 if kind == "CONSOLE_UNRESPONSIVE" or not self.args.recover:
@@ -893,7 +1002,20 @@ def main():
     parser.add_argument("--subdivision", type=int, help="drive subdivision for this run, set in RAM with readback")
     parser.add_argument("--restore", type=int, default=1000, help="subdivision restored after a clean run")
     parser.add_argument("--only", help="run one case repeatedly, for a targeted reproduction")
+    parser.add_argument("--addresses", default="1", help="comma-separated ESS drives; each case picks one")
+    parser.add_argument("--cross-reads", action="store_true", help="read the other drives while one moves")
+    parser.add_argument("--declare-unconnected", action="store_true",
+                        help="state that no drive terminal is wired; declared again after each useaddr")
     args = parser.parse_args()
+    try:
+        args.addresses = [int(a) for a in args.addresses.split(",")]
+    except ValueError:
+        parser.error("--addresses takes comma-separated integers")
+    if (not args.addresses or len(set(args.addresses)) != len(args.addresses) or
+            not all(1 <= a <= 247 for a in args.addresses)):
+        parser.error("--addresses needs distinct drives within 1..247")
+    if args.subdivision and len(args.addresses) > 1:
+        parser.error("--subdivision applies to one drive only")
     keep_awake()
     run = Run(args)
     code = 1
