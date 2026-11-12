@@ -34,7 +34,7 @@ supplied image's hash; console version does not attest the flashed image.
 | `configuration` | One typed configuration and I/O read | No settings write |
 | `native-read` | `--native driver\|io\|control\|segment\|tuning`; `--native-args` use existing typed grammar | Reject setter arguments; inspect and release correlated result |
 | `settings` | `--setting input-filter\|lock-delay --value N`; exactly one native-unit difference | Save raw group, refresh existing prerequisites, change once, read back, rebuild invalidated evidence, restore once and compare the complete raw group |
-| `position` | `--phase forward\|absolute\|return`; node 1, 100 native increments at 60 rpm, configured ramps | Same-session stop, fresh standstill and original profile restoration; absolute/return require the existing raw fixture window |
+| `position` | `--phase forward\|absolute\|return`; selected `--address`, 100 native increments at 60 rpm, configured ramps | Same-session stop, fresh standstill and original profile restoration; absolute/return require the existing raw fixture window |
 | `actions` | One explicit initially-enabled stationary release/enable cycle | Ends enabled; initial released state refuses before an action write |
 | `stop` | `--stop-policy normal\|direct`; one finite 250-increment move | Require new RUNNING report, interrupted move result, stop and standstill, then restore original profile |
 | `angle` | Explicit `--arguments` matching public wrapped-angle grammar; optional stop policy | Existing coordinate/firmware gates; one stop and profile restoration only after qualified standstill |
@@ -46,8 +46,14 @@ supplied image's hash; console version does not attest the flashed image.
 
 Single-attempt scenarios report count 1 and reject `--count`/`--interval`.
 Scenario-specific arguments cannot silently enter another scenario. No stress
-mode sweeps setters, persistence or motion. `--address` is 1..247 for supported
-read operations; fixed qualified motion phases select node 1. `--timeout` is a
+mode sweeps setters, persistence or motion. `--address` is 1..247. The
+`settings`, `position`, `actions` and `stop` scenarios first select that drive
+with `useaddr`, as writes and moves apply only to the selected drive. They refuse
+to change drives while another drive's profile snapshot still needs restoring.
+`useaddr` resets the host's wiring declarations; declare the terminals again
+before moving another drive. The firmware qualifies the tuning and control
+setters only for node 1, the confirmed ESS23-RS20, so `settings` on another
+address is refused before TX. `angle` still runs on node 1 only. `--timeout` is a
 finite command bound up to 60 seconds; existing operation/request deadlines are
 unchanged. The reusable motion phases use their fixed five-second command bounds.
 
@@ -140,6 +146,19 @@ It requires Python 3.10+ and `pyserial`. `--help` opens no port.
 The tool checks the USB identity, sets homing auxiliary 7 and can change RAM
 subdivision. `--mix extended` also resets the MCU during a move. The default
 duration is one hour; a new long campaign needs its own test scope.
+
+`--addresses 1,2,4` runs each case on one drive chosen at random. Before a case
+on another drive, the tool releases the profile snapshot (stress runs never
+restore it), selects the drive with `useaddr` and probes it. It reselects after
+an MCU reset. `--declare-unconnected` states that no terminal of any drive is
+wired and declares this again after each `useaddr`; use it only when that is
+the fixture. `--cross-reads` reads another drive's state at each poll while one
+moves. The run fails with `OTHER_DRIVE` if that drive runs, alarms or changes
+position. After each case the reference position is taken only once the drive
+has held still for 2 s: after a stop, firmware `0x0029` can still change its
+reported position by one increment for about 1.5 s
+([three-drive tests](reports/2026-11-12_multi_drive_write_motion_stress.md)).
+`--subdivision` is refused with more than one drive.
 
 Use a new `--out` directory. It holds case results, health samples, a summary
 and compressed incident traffic. Subdivision is restored to `--restore`

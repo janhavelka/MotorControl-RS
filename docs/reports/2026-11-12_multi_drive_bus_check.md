@@ -28,7 +28,7 @@ command or broadcast frame was sent.
 
 | Item | Recorded value |
 | --- | --- |
-| Drives | Three ESS23-RS20 per the owner; all report `0x4EEA` / `0x0029` |
+| Drives | Drive 1 is the user-confirmed ESS23-RS20. The two new drives report the same `0x4EEA` / `0x0029`; their model is not confirmed |
 | Addresses | 1, 2, 3 by DIP switch; DIP words 1, 2, 3 (bench drive 1 earlier read DIP word 0) |
 | Wiring | Short wires in a star, not a daisy chain (owner). One 120 Ω terminator on the controller board; SW1 off on all drives (owner). Board bias not known |
 | Mounting | Bolted down, free shafts, powered (owner) |

@@ -84,8 +84,8 @@ def arguments(argv=None):
             parser.error('scenario-specific arguments cannot enter another scenario')
     if args.stop_policy is not None and args.scenario not in ('angle', 'velocity', 'stop'):
         parser.error('--stop-policy requires angle, velocity or stop')
-    if args.scenario in ('position', 'actions', 'stop', 'angle') and args.address != 1:
-        parser.error('qualified fixed bench phases select node1 only')
+    if args.scenario == 'angle' and args.address != 1:
+        parser.error('the angle scenario does not select a drive; it runs on node 1 only')
     if args.scenario in ('angle', 'velocity'):
         if not args.arguments: parser.error('explicit public motion arguments required')
         tokens = tuple(args.arguments)
@@ -118,6 +118,8 @@ def _same_configuration(before, after):
 
 def _setting(console, args, record):
     group = 'tuning' if args.setting == 'input-filter' else 'control'
+    # Settings writes apply to the selected drive only.
+    record['selection'] = motion.select_drive(console, args.address)
     prefix = ('filters',) if group == 'tuning' else ()
     fields = probe.TUNING_FIELDS['filters'] if group == 'tuning' else probe.CONTROL_FIELDS
     before = checked(console, group, driver_args=prefix + ('read',), address=args.address, timeout_s=args.timeout)
@@ -224,7 +226,7 @@ def run_scenario(console, args, record):
     elif name in ('position', 'actions', 'stop'):
         record['motion'] = {}
         phase = (args.phase or 'forward') if name == 'position' else 'actions' if name == 'actions' else 'stop-' + (args.stop_policy or 'normal')
-        motion.run_phase(console, phase, record['motion'])
+        motion.run_phase(console, phase, record['motion'], args.address)
     elif name == 'angle': _angle(console, args, record)
     elif name == 'velocity':
         record['native_parameter_restoration'] = {'known': False, 'owning_gap': '11', 'reason': 'standalone native velocity parameter reads unavailable'}

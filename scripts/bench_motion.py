@@ -57,9 +57,12 @@ def restore_profile(console, timeout_s=5, on_command=None):
     return result
 
 
-def phase_plan(phase):
+def phase_plan(phase, address=None):
+    """Exact plan. An explicit address adds the local drive selection steps."""
     if phase not in PHASES:
         raise ValueError('unknown finite experiment phase')
+    if address is not None and (type(address) is not int or not 1 <= address <= 247):
+        raise ValueError('ESS address must be an integer within 1..247')
     common = ['version', 'host', 'config', 'stats', 'load', 'read-config 1', 'read-state 1']
     steps = {
         'inspect': ['read-identity 1', 'motion-profile read', 'motion-profile inspect'],
@@ -85,18 +88,64 @@ def phase_plan(phase):
     settling = ['after motion/stop: read-state 1 up to ten times, 50ms apart, until not running and raw speed zero'] if phase in MOTION_PHASES else []
     restoration = ['before closing this same connection: restore the saved original motion profile once, only after successful stop and fresh non-running/zero-speed evidence; verify exact readback',
                    'on failed/unknown stop or broken framing: no restore write; retain backup and unknown cleanup'] if phase in MOTION_PHASES else []
-    return common + steps[phase] + settling + cleanup + restoration + ['stats', 'load', 'drv', 'memory', 'host']
+    plan = common + steps[phase] + settling + cleanup + restoration + ['stats', 'load', 'drv', 'memory', 'host']
+    if address is None:
+        return plan
+    selection = ['wiring (local selected target)',
+                 'if another target is selected: motion-profile inspect; forget only a restored or unchanged snapshot; useaddr ' + str(address)]
+    if address != 1:
+        plan = [item.replace(' 1 ', f' {address} ') for item in plan]
+        plan = [item[:-2] + f' {address}' if item.endswith(' 1') else item for item in plan]
+    return plan[:5] + selection + plan[5:]
 
 
-def run_phase(console, phase, record):
-    phase_plan(phase)  # Validate even direct callers before version/debug or device I/O.
+def run_phase(console, phase, record, address=None):
+    """Run one phase. address=None keeps node 1 without a selection step."""
+    phase_plan(phase, address)  # Validate even direct callers before version/debug or device I/O.
     record['version'] = console.identify()
     with debug_session(console, record.get('debug_mode'), 5) as diagnostics:
         record['debug'] = diagnostics
-        return _run_phase(console, phase, record)
+        return _run_phase(console, phase, record, address)
 
 
-def _run_phase(console, phase, record):
+def _select(console, address, command):
+    """Select another drive locally. Never forget a snapshot that still needs restoring."""
+    selected = command('wiring')
+    record = dict(before=dict(target=selected['target'], address=selected['address']))
+    if selected['address'] == address:
+        record['changed'] = False
+        return record
+    profile = command('motion-profile', host_args=('inspect',))
+    record['profile'] = profile
+    if profile['pending'] or profile['restore_unsettled']:
+        raise BenchError('profile snapshot is pending or unsettled; no target change')
+    if profile['saved']:
+        if not (profile['restored'] or profile['original'][1:] == profile['current'][1:]):
+            raise BenchError('another drive has an unrestored profile snapshot; restore it first')
+        record['forgotten'] = command('motion-profile', host_args=('forget',))
+    record['useaddr'] = command('useaddr', address=address)
+    record['changed'] = True
+    return record
+
+
+def select_drive(console, address, on_command=None):
+    """Select a drive for writes or moves; refuse while a snapshot still needs restoring."""
+    if type(address) is not int or not 1 <= address <= 247:
+        raise ValueError('ESS address must be an integer within 1..247')
+
+    def command(name, **kwargs):
+        result = console.command(name, timeout_s=5, **kwargs)
+        if on_command is not None:
+            on_command(name, kwargs, result)
+        if not result['ok']:
+            raise BenchError(f'{name} refused/failed: {result.get("result", result.get("outcome"))}')
+        return result
+    return _select(console, address, command)
+
+
+def _run_phase(console, phase, record, address=None):
+    select = address is not None
+    address = 1 if address is None else address
     record['events'] = []
     move = None
     move_request_id = None
@@ -130,12 +179,12 @@ def _run_phase(console, phase, record):
         return blocks
 
     def state(require_stopped=True):
-        return state_blocks(command('read-state', address=1), require_stopped)
+        return state_blocks(command('read-state', address=address), require_stopped)
 
     def stop(policy):
         nonlocal stop_attempted, stop_confirmed, standing, settlement_failed
         stop_attempted = True
-        result = command('stop', stop_policy=policy, address=1)
+        result = command('stop', stop_policy=policy, address=address)
         stop_confirmed = True
         standing = None  # A report preceding this stop does not settle this command.
         settlement_failed = False
@@ -144,10 +193,10 @@ def _run_phase(console, phase, record):
     def settled():
         nonlocal standing, settlement_failed
         def sample(result):
-            retain_command('read-state', dict(address=1), result)
+            retain_command('read-state', dict(address=address), result)
             state_blocks(result, False)
         try:
-            result = observe_stopped(console, address=1, timeout_s=5, on_sample=sample)
+            result = observe_stopped(console, address=address, timeout_s=5, on_sample=sample)
             standing = state_blocks(result)
             return standing
         except BaseException:
@@ -157,6 +206,8 @@ def _run_phase(console, phase, record):
     def fixture(action):
         return profile_snapshot(console, action, on_command=retain_command)
 
+    if select:
+        record['selection'] = _select(console, address, command)
     record['host'] = command('host')
     if record['host']['active'] != dict(baud=115200, format='8N1') or record['host']['blocked']:
         raise BenchError('unexpected host tuple; no automatic reconfiguration')
@@ -165,22 +216,22 @@ def _run_phase(console, phase, record):
     load = command('load')
     if any(load[k] for k in ('workload_us', 'owner_delay_us', 'console_bytes')):
         raise BenchError('functional tests require explicitly unloaded bench')
-    record['configuration_before'] = command('read-config', address=1)
+    record['configuration_before'] = command('read-config', address=address)
     record['state_before'] = state()
     try:
         if phase == 'inspect':
-            record['identity'] = command('read-identity', address=1)
+            record['identity'] = command('read-identity', address=address)
             record['profile'] = fixture('read')
         elif phase == 'actions':
             if record['state_before'][0]['released']:
                 raise BenchError('action experiment requires initially enabled stationary drive; no action write')
             stop('normal'); state()
             stop('fast'); state()
-            command('motor-release', address=1)
+            command('motor-release', address=address)
             if not state()[0]['released']:
                 raise BenchError('release transition was not reported')
             stop('fast')  # Reconcile uncertainty through a separate stopped report.
-            command('enable', address=1)
+            command('enable', address=address)
             if state()[0]['released']:
                 raise BenchError('enable transition was not reported')
             stop('fast'); state()
@@ -198,7 +249,7 @@ def _run_phase(console, phase, record):
             kind = 'move-absolute' if phase in ('return', 'absolute') else 'move-relative'
             stop_attempted = False
             move_request_id = getattr(console, 'next_id', None)
-            move = console.begin(kind, move_args=(value, 'steps', 'native', '60', 'configured'), address=1, timeout_s=5)
+            move = console.begin(kind, move_args=(value, 'steps', 'native', '60', 'configured'), address=address, timeout_s=5)
             record['move_admission'] = dict(accepted=move.accepted, operation_id=move.operation_id)
             if not move.accepted:
                 record['move'] = console.wait(move)
@@ -230,10 +281,10 @@ def _run_phase(console, phase, record):
         elif phase == 'restore':
             stop('fast'); state()
             record['restore'] = restore_profile(console, on_command=retain_command)
-            command('probe', address=1)
+            command('probe', address=address)
         else:
             record['profile'] = command('motion-profile', host_args=('inspect',))
-            command('probe', address=1)
+            command('probe', address=address)
     except BaseException as phase_error:
         record['phase_error'] = str(phase_error)
         raise
@@ -282,14 +333,15 @@ def main():
     parser.add_argument('--port', default='COM13')
     parser.add_argument('--debug', choices=('off', 'raw', 'decoded'), default=None)
     parser.add_argument('--phase', required=True, choices=PHASES)
+    parser.add_argument('--address', type=int, default=1, help='ESS drive 1..247; another drive is selected with useaddr')
     parser.add_argument('--out', required=True, type=Path, help='new evidence filename prefix; existing files are never overwritten')
     parser.add_argument('--plan-only', action='store_true')
     args = parser.parse_args()
-    plan = phase_plan(args.phase)
+    plan = phase_plan(args.phase, args.address)
     if args.debug is not None:
         plan[1:1] = ['debug', 'debug ' + args.debug]
         plan.extend(['debug', 'restore previous debug mode if changed and console synchronized'])
-    record = dict(phase=args.phase, debug_mode=args.debug, plan=plan, physical_shaft_observation='unmeasured',
+    record = dict(phase=args.phase, address=args.address, debug_mode=args.debug, plan=plan, physical_shaft_observation='unmeasured',
                   electrical_timing='unmeasured', automatic_write_replay=False, hours_soak='NOT RUN')
     print(json.dumps(record, indent=2), flush=True)
     if args.plan_only:
@@ -299,11 +351,11 @@ def main():
         # same reusable phase receives no second debug-mode selection.
         details = dict(phase=args.phase, plan=plan)
         summary['motion'] = details
-        run_phase(console, args.phase, details)
+        run_phase(console, args.phase, details, args.address)
         summary['workload_verified'] = True
     run_recorded(port=args.port, out=args.out, scenario='motion-' + args.phase,
-                 inputs=dict(phase=args.phase, debug=args.debug, plan=plan), run=run,
-                 debug=args.debug)
+                 inputs=dict(phase=args.phase, address=args.address, debug=args.debug, plan=plan), run=run,
+                 address=args.address, debug=args.debug)
 
 
 if __name__ == '__main__':

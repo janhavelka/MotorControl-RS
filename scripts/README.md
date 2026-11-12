@@ -44,7 +44,8 @@ there. See the [dependency and delivery handoff](../docs/archive/reports/2026-10
 `bench_stress.py` is a separate, bench-specific campaign tool. It has its own
 console parser and is not covered by the strict parser claim above. It checks
 the recorded USB identity, sets auxiliary 7 and can change RAM subdivision.
-The extended mix includes MCU resets. Use `python scripts/bench_stress.py --help`
+The extended mix includes MCU resets. `--addresses`, `--cross-reads` and
+`--declare-unconnected` run it across several drives. Use `python scripts/bench_stress.py --help`
 for options; that command opens no port. See the
 [stress tool limits](../docs/bench_scenarios.md#stress-tool) before a live run.
 
