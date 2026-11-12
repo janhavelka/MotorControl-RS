@@ -193,14 +193,23 @@ functional evidence; independent shaft calibration remains absent.
 The [12 November review](reports/2026-11-12_broadcast_and_sync_review.md) found
 no documented broadcast or sync command. The documented simultaneous start is a
 shared input edge. The [multi-drive promptset](prompts/ess_multi_drive/README.md)
-owns this work. Nothing in it has run on hardware with more than one drive.
+owns this work. The owner approved D6 and D7 on 12 November and connected two
+more drives (addresses 1, 2 and 3, star wiring).
+
+- [ ] Fix the three-drive link before motion or broadcast trials. Drive 3
+  answered about 0.8% of other drives' FC03 replies with an exception frame
+  ([bus check](reports/2026-11-12_multi_drive_bus_check.md)). Record SW1
+  termination and bias, rerun the read-only link check, and exclude the possible
+  phantom FC06 write from 3-word replies. Owner wiring action first.
+- [ ] Let discovery scan past a silent address. Today a `NO_RESPONSE` interlocks
+  the scan, so a sparse bus needs one scan per address.
 
 - [ ] Send the [vendor questions](reports/2026-11-12_broadcast_and_sync_review.md#questions-for-the-vendor):
   address 0 and broadcast, function 7 from standstill, edge-to-motion delay, and
   I/O assignments at power-up. Owner action.
-- [ ] Decide D6 and D7 (proposed in the [promptset](prompts/ess_multi_drive/README.md#proposed-owner-decisions)).
-  D6 allows a bounded single-drive broadcast test. D7 sets the broadcast-start
-  admission rule.
+- [x] Decide D6 and D7 ([promptset](prompts/ess_multi_drive/README.md#owner-decisions)).
+  Approved 12 November. D6 allows the bounded broadcast test. D7 sets the
+  broadcast-start admission rule.
 - [ ] Test whether firmware `0x0029` acts on address-0 writes and stays silent
   ([multi-drive 01](prompts/ess_multi_drive/01_broadcast_acceptance.md)). The library
   stays unicast-only until it does.

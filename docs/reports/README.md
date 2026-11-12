@@ -7,6 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [Three-drive bus check](2026-11-12_multi_drive_bus_check.md) | Drives at 1, 2 and 3 identified. Drive 3 answered 5 of 600 replies from drives 1 and 2 with an FC02 exception frame, consistent with losing their first byte. The runner failed each with `LENGTH`. Motion and broadcast trials wait for the wiring fix or an address change. Discovery stops at the first silent address. Read-only probes only. |
 | [Broadcast and multi-drive start review](2026-11-12_broadcast_and_sync_review.md) | No ESS document describes broadcast, sync or group addressing; address 0 is only "reserved for the system". The documented simultaneous start is a shared input edge (function 7, or PT/PV triggers). The console admits only passive input functions. Source review only; nothing was sent. |
 | [Documentation and stress-tool review](2026-11-04_cleanup_review.md) | Corrected stale status and API comments. The stress tool now requires an observed stop before resuming after a USB stall; failed recovery ends the run. |
 | [Stop normal rate ceiling](2026-11-04_stop_normal_rate_ceiling.md) | HW-14: a `stop normal` late in the ramp above about 60,000 increments/s leaves firmware `0x0029` creeping until `stop fast`. Default ceiling now 50,000; 0 of 190 stops failed at it. Velocity, homing and higher caller limits stay untested. |
