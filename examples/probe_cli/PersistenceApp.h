@@ -174,7 +174,8 @@ Probe::Action persistence(void* context, const Probe::PersistenceCommand* comman
                 a.persistenceReadTarget = a.axis.target;
             } else return Probe::Action::RECOVERY_REQUIRED;
         } else {
-            if (reading(a) || acting(a) || axisReserved(a) || a.monitorState.settings.enabled || (a.recovery.operationId && !a.recovery.automatic))
+            if (reading(a) || acting(a) || axisReserved(a) || a.monitorState.settings.enabled || (a.recovery.operationId && !a.recovery.automatic) ||
+                groupSequencing(a))
                 return Probe::Action::BUSY;
             if (!a.owner.beginCommissioning(now, a.commissioningLease)) return Probe::Action::BUSY;
             a.persistenceParentSession = false; a.persistenceReadTarget = a.axis.target;
@@ -209,7 +210,8 @@ Probe::Action persistence(void* context, const Probe::PersistenceCommand* comman
         if (!prepare(a.persistencePrepared, p.beforeConfig.target, a.nextOperationId, p, now, now + REQUEST_US))
             return Probe::Action::INVALID;
         if (!a.owner.commissioningOwned()) {
-            if (reading(a) || acting(a) || axisReserved(a) || a.monitorState.settings.enabled || (a.recovery.operationId && !a.recovery.automatic))
+            if (reading(a) || acting(a) || axisReserved(a) || a.monitorState.settings.enabled || (a.recovery.operationId && !a.recovery.automatic) ||
+                groupSequencing(a))
                 return Probe::Action::BUSY;
             if (!a.owner.beginCommissioning(now, a.commissioningLease)) return Probe::Action::BUSY;
             a.persistenceParentSession = false;

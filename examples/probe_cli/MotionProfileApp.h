@@ -50,7 +50,8 @@ Probe::Action motionProfileOperation(App& a, App::MotionProfileState& session, P
     if (!platformReady || !a.serial.activeKnown || a.serial.blocked || a.owner.needsRecovery() || uart.needsRecovery())
         return Probe::Action::RECOVERY_REQUIRED;
     if (view.pending || a.owner.active() || a.owner.pending() || a.owner.configurationOwned() ||
-        a.owner.commissioningOwned() || a.discovery.owned || reading(a) || acting(a) || a.monitorState.settings.enabled)
+        a.owner.commissioningOwned() || a.discovery.owned || reading(a) || acting(a) || a.monitorState.settings.enabled ||
+        groupSequencing(a))
         return Probe::Action::BUSY;
     if (!a.configuration.operationId || !Probe::sameTarget(a.configuration.target, a.axis.target) ||
         !(a.knownTargets[a.axis.target.address / 8] & (1U << (a.axis.target.address % 8))))
@@ -106,7 +107,10 @@ Probe::Action motionProfileCommand(void* context, Probe::MotionProfileCommand co
     App& a = *static_cast<App*>(context);
     return motionProfileOperation(a, a.motionProfile, command, out);
 }
-void serviceMotionProfile(App& a, App::MotionProfileState& session, uint64_t now) {
+// The word order belongs to the configuration of the session's own target: the
+// selected axis or one drive-group member. Only the selected axis restores.
+void serviceMotionProfile(App& a, App::MotionProfileState& session, uint64_t now,
+                          const ESS::ConfigObservation& configuration) {
     auto& view = session.view;
     if (!view.pending) return;
     // Invalidate once as soon as this parameter write may have applied, even
@@ -123,6 +127,7 @@ void serviceMotionProfile(App& a, App::MotionProfileState& session, uint64_t now
         view.generation = a.axis.generation;
         a.movePrerequisites = ESS::MovePrerequisites(); a.velocityPrerequisites = ESS::VelocityPrerequisites();
         a.homePrerequisites = ESS::HomePrerequisites(); a.positionClearQualified = false;
+        invalidateMemberConfiguration(a, view.address, now); // The same drive as a group member.
     }
     const auto* result = a.owner.result(session.request);
     if (!result) return;
@@ -171,13 +176,13 @@ void serviceMotionProfile(App& a, App::MotionProfileState& session, uint64_t now
         return;
     }
     ESS::PositionProfile parsed;
-    if (!ESS::parsePositionProfile(view.rx, view.rxLength, view.address, a.configuration.wordOrder, parsed)) {
+    if (!ESS::parsePositionProfile(view.rx, view.rxLength, view.address, configuration.wordOrder, parsed)) {
         view.pending = false;
         view.error = "decode";
         return;
     }
     uint16_t words[6] = {parsed.startSpeed, parsed.accelerationTime, parsed.decelerationTime, parsed.speed, 0, 0};
-    if (!ESS::encodeUint32(parsed.targetBits, a.configuration.wordOrder, words + 4, 2)) {
+    if (!ESS::encodeUint32(parsed.targetBits, configuration.wordOrder, words + 4, 2)) {
         view.pending = false;
         view.error = "word_order";
         return;
@@ -216,4 +221,7 @@ void serviceMotionProfile(App& a, App::MotionProfileState& session, uint64_t now
     view.ok = true;
 }
 
+void serviceMotionProfile(App& a, App::MotionProfileState& session, uint64_t now) {
+    serviceMotionProfile(a, session, now, a.configuration);
+}
 void serviceMotionProfile(App& a, uint64_t now) { serviceMotionProfile(a, a.motionProfile, now); }

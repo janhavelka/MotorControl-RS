@@ -76,6 +76,7 @@ guides define complete arguments and prerequisites.
 | `monitor [off\|INTERVAL_MS COUNT]` | Inspect or enable finite state polling; `off` cancels its local continuation |
 | `cancel [ID]`, `release ID`, `recover` | Local cancellation, terminal-result release and explicit host transport recovery |
 | `debug [off\|raw\|decoded]`, `capture-read`, `load` | Copied traffic, fixed read-only timing fixture and optional host workload |
+| `group show\|status\|clear`, `group set ADDR...`, `group wiring ADDR TERMINAL STATE`, `group read state`, `group move relative VALUE UNIT FRAME RPM configured [setup write\|verify] on-failure leave\|stop normal\|stop fast`, `group stop normal\|fast` | [Drive group](console.md#drive-group) of up to four unicast members (multi-drive 02). Declaration reads identity, configuration and profile (FC03 only) and rejects an absent or unexpected responder. A move checks and prepares every member before any frame, then starts members in order; the failure policy is mandatory and no start is resent. Each member keeps its own stop and result. `show`, `status`, `clear` and `wiring` cause no bus traffic. |
 | `broadcast accel 300\|301`, `broadcast start relative`, `broadcast stop normal\|fast` | Bench fixture build only (multi-drive 01). One of five fixed address-0 FC06 frames, then a 200 ms silent window. The `broadcast` result reports `outcome` `sent` and `confirmed` false; any byte in the window is `UNEXPECTED_RX` and needs `recover`. A write or start needs an idle host; a stop passes a move's axis reservation but uses ordinary capacity, so the urgent unicast stop stays available. Each broadcast invalidates every cached drive observation and prepared move. Never resent. |
 
 `config` reports host settings; `settings` reads motor configuration and position
@@ -209,7 +210,10 @@ motor commands. ACK is distinct from observed completion; old completion flags
 cannot satisfy a new operation.
 
 `version` still reports `outstanding_capacity: 10` for protocol 3; the stop-escalation
-correlation is additional. `drv` adds `stop_evidence_overwritten` and
+correlation and two group-stop correlations are additional. A group stop sends one
+urgent stop per member from its own pool (one stop and one escalation per member).
+The owner's urgent quota covers this pool and the two selected-address stop records,
+so neither starves the other. `drv` adds `stop_evidence_overwritten` and
 `automatic_recovery_operation_id`. An automatic recovery has no command correlation and
 emits no report; `result ID` inspects it until the next recovery replaces it.
 

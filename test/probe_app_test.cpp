@@ -613,7 +613,8 @@ void testStopUsesReservedCapacityAndFullAdmissionPreservesWork() {
     using namespace MotorControlRS;
     fresh(); timerCapture(); qualifyActions();
     const uint32_t active = actionAdmission(ActionKind::ENABLE);
-    App::Record occupied[STOP_RECORDS];
+    // Fill the owner's whole urgent quota (selected and group stop pools).
+    App::Record occupied[URGENT_RECORDS];
     ESS::ActionContext stopContext; ReadTarget target; target.id = target.address = target.generation = 1;
     assert(ESS::prepareNormalStop(stopContext, target, 999, nowUs(), nowUs() + REQUEST_US));
     ESS::PreparedAction work; assert(ESS::nextAction(stopContext, nowUs(), work));
@@ -724,7 +725,8 @@ void testRepeatedStopAdmissionFailureKeepsPreviousResult() {
     command("@1 stop normal\n"); const auto previous = view(0).operationId;
     actionStep(previous); actionStep(previous, registerReply({0, 0})); pump(1000);
     const auto saved = *view(previous).actionContext;
-    App::Record occupied[STOP_RECORDS];
+    // Fill the owner's whole urgent quota (selected and group stop pools).
+    App::Record occupied[URGENT_RECORDS];
     ESS::ActionContext stopContext; ReadTarget target; target.id = target.address = target.generation = 1;
     assert(ESS::prepareNormalStop(stopContext, target, 999, nowUs(), nowUs() + REQUEST_US));
     ESS::PreparedAction work; assert(ESS::nextAction(stopContext, nowUs(), work));

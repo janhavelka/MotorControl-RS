@@ -2,6 +2,7 @@
 #pragma once
 #include "../common/Esp32S3Uart.h"
 #include "MoveRelation.h"
+#include "DriveGroup.h"
 #include <MotorControlRS/profiles/ess_rs/Position.h>
 #include <MotorControlRS/profiles/ess_rs/Reads.h>
 #include <MotorControlRS/profiles/ess_rs/Velocity.h>
@@ -189,6 +190,37 @@ MotorControlRS::Status revokePositionClearQualification();
 MotorControlRS::Status submitHome(const MotorControlRS::ESS_RS::HomeRequest&, uint32_t& operationId);
 /// Copy pending/terminal programmatic home evidence. Wrong/missing IDs preserve output.
 bool copyHomeResult(uint32_t operationId, MotorControlRS::ESS_RS::HomeContext& output);
-/// Release any terminal ordinary operation after service has retained its result; no motor stop.
+/// Release any terminal ordinary or group operation after service has retained its result; no motor stop.
 bool releaseOperation(uint32_t operationId);
+
+/** Drive group (multi-drive 02): the same application functions as the console
+ * `group` routes. Call from the serviceApplication task; rejection preserves
+ * operationId. A group is a host selection of up to Probe::GROUP_CAPACITY
+ * unicast drives, never a drive change, and leaves the selected axis unchanged.
+ * declareGroup is idle-only. Each member needs a fresh checked identity (this
+ * exact node, model 0x4EEA, firmware 0x0029), configuration and position-profile
+ * read; an absent or unexpected responder rejects the whole declaration. These
+ * reads send no write. useaddr, recovery, a host tuple change or a broadcast
+ * expire every member's facts; declare the group again. Copy terminal evidence
+ * with copyGroupResult and free it with releaseOperation. */
+MotorControlRS::Status declareGroup(const uint8_t* addresses, std::size_t count, uint32_t& operationId);
+/// Idle-only; forgets the members. Retained group results keep their own copies.
+MotorControlRS::Status clearGroup();
+/** Same declaration as the selected axis's `wiring`, for one member (X0..X3 =
+ * 0..3, Y0..Y1 = 4..5). No drive assignment changes; cached state expires. */
+MotorControlRS::Status declareGroupWiring(uint8_t address, uint8_t terminal, MotorControlRS::InputWiring state);
+/// Copy cached member facts, state and group operation IDs; no bus traffic.
+bool inspectGroup(Probe::GroupView& output);
+/** One common relative native-step displacement and speed. Every member is
+ * checked and prepared with the selected axis's move rules before any frame is
+ * sent; then each runs its ordinary move after the previous start resolved.
+ * The failure policy is mandatory. After a failed or lost start no later start
+ * is sent and nothing is resent; each member's outcome stays its own. */
+MotorControlRS::Status submitGroupMove(const Probe::GroupMoveRequest& request, uint32_t& operationId);
+/// One urgent unicast stop per member, each with its own reservation and result.
+MotorControlRS::Status submitGroupStop(MotorControlRS::StopBehavior behavior, uint32_t& operationId);
+/// Refresh every member's cached state with one checked state read each.
+MotorControlRS::Status submitGroupStateRead(uint32_t& operationId);
+/// Copy pending or terminal group evidence. Missing IDs preserve output.
+bool copyGroupResult(uint32_t operationId, Probe::GroupResult& output);
 }

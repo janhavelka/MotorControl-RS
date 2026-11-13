@@ -232,37 +232,39 @@ void delayedEvidenceAndRecovery() {
 }
 void urgentPressureDefersWithinOriginalDeadline() {
     for (bool releaseReserved : {false,true}) {
-        fresh(); qualify(); const auto id=admitVelocity(); velocityStep(id); velocityStep(id);
-        velocityStep(id,registers(1,{0,4}));
+        fresh(); qualify();
         uint8_t bytes[8]; Rtu::BusRequest r; r.wire.bytes=bytes;
         r.wire.length=ESS::buildProbe(2,bytes,sizeof(bytes)); r.wire.replyLength=7;
         r.wire.responseTimeoutUs=app->serial.timing.responseTimeoutUs; r.wire.replyGapUs=app->serial.timing.replyGapUs;
         r.wire.deadlineUs=nowUs()+REQUEST_US;
         r.expected.address=r.expected.target=2; r.expected.targetGeneration=app->bindingGeneration;
-        r.expected.function=3; r.expected.count=1; r.validator=Rtu::essValidator(); Rtu::RequestId reserved;
-        Rtu::RequestId reservedAgain; // Both urgent results stay occupied (stop escalation capacity).
-        assert(app->owner.admitUrgent(r,nowUs(),reserved) == Rtu::BusAdmission::ACCEPTED);
-        for (unsigned i=0;i<25000 && !app->owner.txAccepted(reserved);++i) step();
-        scheduleReply(hardware.time+2000,registers(2,{0x4EEA}));
-        for (unsigned i=0;i<25000 && !app->owner.result(reserved);++i) step();
-        assert(app->owner.result(reserved));
-        r.wire.deadlineUs=nowUs()+REQUEST_US;
-        assert(app->owner.admitUrgent(r,nowUs(),reservedAgain) == Rtu::BusAdmission::ACCEPTED);
-        for (unsigned i=0;i<25000 && !app->owner.txAccepted(reservedAgain);++i) step();
-        scheduleReply(hardware.time+2000,registers(2,{0x4EEA}));
-        for (unsigned i=0;i<25000 && !app->owner.result(reservedAgain);++i) step();
-        assert(app->owner.result(reservedAgain));
+        r.expected.function=3; r.expected.count=1; r.validator=Rtu::essValidator();
+        // Every urgent result stays occupied: the stop and escalation records of
+        // the selected address and of the drive-group pool.
+        Rtu::RequestId reserved[URGENT_RECORDS];
+        for (auto& slot : reserved) {
+            r.wire.deadlineUs=nowUs()+REQUEST_US;
+            assert(app->owner.admitUrgent(r,nowUs(),slot) == Rtu::BusAdmission::ACCEPTED);
+            for (unsigned i=0;i<25000 && !app->owner.txAccepted(slot);++i) step();
+            scheduleReply(hardware.time+2000,registers(2,{0x4EEA}));
+            for (unsigned i=0;i<25000 && !app->owner.result(slot);++i) step();
+            assert(app->owner.result(slot));
+        }
+        // Fill the quota before the run, so its own polls never compete with the fixture.
+        const auto id=admitVelocity(); velocityStep(id); velocityStep(id);
+        velocityStep(id,registers(1,{0,4}));
         const uint64_t deadline=view(id).velocityContext->deadlineUs;
         advanceHardware(view(id).velocityContext->stopDueUs); serviceApplication();
         assert(view(id).pending && view(id).velocityContext->phase == ESS::VelocityPhase::STOPPING);
         assert(!findRecord(*app,id)->requestId.owner && !app->owner.needsRecovery());
         if (releaseReserved) {
-            assert(app->owner.release(reserved) && app->owner.release(reservedAgain)); serviceApplication();
+            for (const auto& slot : reserved) assert(app->owner.release(slot));
+            serviceApplication();
             velocityStep(id); velocityStep(id,registers(1,{0,1}));
             assert(!view(id).pending && !view(id).velocityContext->needsStop);
         } else {
             advanceHardware(deadline); serviceApplication();
-            assert(!view(id).pending && view(id).velocityContext->needsStop && hardware.writes == 5);
+            assert(!view(id).pending && view(id).velocityContext->needsStop && hardware.writes == 3 + URGENT_RECORDS);
             assert(view(id).velocityContext->stop.outcome == ActionOutcome::DEADLINE);
         }
         assert(view(id).velocityContext->deadlineUs == deadline);

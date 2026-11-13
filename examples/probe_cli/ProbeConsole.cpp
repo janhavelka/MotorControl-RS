@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <algorithm>
 
 namespace MotorControlRSExample { namespace Probe {
 Action driverAdmissionStatus(const MotorControlRS::Status& status) noexcept {
@@ -42,7 +43,7 @@ using ConsoleReport::executionName;
 using ConsoleReport::motorOutcome;
 using ConsoleReport::hex;
 
-enum class Command : uint8_t { HELP, VERSION, CONFIG, STATUS, HEALTH, STATS, PROBE, CAPTURE_READ, RECOVER, MEMORY, LOAD, DRV, RESULT, CANCEL, RELEASE, READ, PROFILE, CAPS, READ_IDENTITY, READ_CONFIG, READ_STATE, MONITOR, AXIS, PREPARE, ENABLE, MOTOR_RELEASE, ALARM_CLEAR, STOP, MOVE, POSITION_CLEAR, VELOCITY, DRIVER, IO, HOME, SEGMENT, CONTROL, TUNING, HOST, COMMUNICATION, PERSISTENCE, MOTION_PROFILE, DEBUG, DISCOVER, USEADDR, WIRING, MOVE_BY, MOVE_TO, SPEED, ACCEL, DECEL, MOTION, STEPS_PER_TURN, SETTINGS, SUBDIVISION, POSITION, BROADCAST };
+enum class Command : uint8_t { HELP, VERSION, CONFIG, STATUS, HEALTH, STATS, PROBE, CAPTURE_READ, RECOVER, MEMORY, LOAD, DRV, RESULT, CANCEL, RELEASE, READ, PROFILE, CAPS, READ_IDENTITY, READ_CONFIG, READ_STATE, MONITOR, AXIS, PREPARE, ENABLE, MOTOR_RELEASE, ALARM_CLEAR, STOP, MOVE, POSITION_CLEAR, VELOCITY, DRIVER, IO, HOME, SEGMENT, CONTROL, TUNING, HOST, COMMUNICATION, PERSISTENCE, MOTION_PROFILE, DEBUG, DISCOVER, USEADDR, WIRING, MOVE_BY, MOVE_TO, SPEED, ACCEL, DECEL, MOTION, STEPS_PER_TURN, SETTINGS, SUBDIVISION, POSITION, BROADCAST, GROUP };
 struct Entry { const char* name; Command command; const char* syntax; const char* effect; bool bus; const char* description; };
 const Entry COMMANDS[] = {
     {"moveby", Command::MOVE_BY, "moveby VALUE [steps|deg|turn|mm]", "finite_relative_move_with_readonly_preparation", true, "Move by an amount; default unit is command steps. Round to nearest command step, ties to even."},
@@ -96,6 +97,7 @@ const Entry COMMANDS[] = {
     {"drv", Command::DRV, "drv", "show_owner_queue_and_output", false, "Show the bus owner, queues, retained results and console pressure."},
     {"result", Command::RESULT, "result [operation_id]", "inspect_retained_result_without_consuming", false, "Inspect an operation without consuming its retained result."},
     {"cancel", Command::CANCEL, "cancel [operation_id]", "cancel_local_work_not_motor_stop", false, "Cancel local work; use stop to request a motor stop."},
+    {"group", Command::GROUP, "group show|status|clear | group set ADDR [ADDR ...] (1..4) | group wiring ADDR x0|x1|x2|x3|y0|y1 unknown|unconnected|connected | group read state | group move relative value unit frame native_rpm configured [setup write|verify] on-failure leave|stop normal|stop fast | group stop normal|fast", "unicast_drive_group_independent_member_operations", true, "Declare up to four drives, read their state, move them one start after another, or stop each one. Each member keeps its own result."},
     {"broadcast", Command::BROADCAST, "broadcast accel 300|301 | broadcast start relative | broadcast stop normal|fast", "fixture_only_unconfirmed_address_0_frame_then_silent_window", true, "Bench fixture only: send one fixed address-0 frame to every drive, then listen 200 ms. No drive confirms it; read each drive back."},
     {"release", Command::RELEASE, "release operation_id", "release_retained_terminal_result", false, "Release an inspected terminal result to free its storage."}
 };
@@ -494,7 +496,7 @@ const char* helpGroup(Command command) {
         return "Read and observe";
     case Command::MOVE_BY: case Command::MOVE_TO: case Command::MOTION: case Command::SPEED: case Command::ACCEL: case Command::DECEL:
     case Command::MOVE: case Command::POSITION: case Command::VELOCITY: case Command::HOME: case Command::ENABLE:
-    case Command::MOTOR_RELEASE: case Command::ALARM_CLEAR: case Command::POSITION_CLEAR: case Command::STOP:
+    case Command::MOTOR_RELEASE: case Command::ALARM_CLEAR: case Command::POSITION_CLEAR: case Command::STOP: case Command::GROUP:
         return "Motor operations";
     case Command::SUBDIVISION: case Command::DRIVER: case Command::IO: case Command::SEGMENT: case Command::CONTROL: case Command::TUNING:
     case Command::MOTION_PROFILE: case Command::PERSISTENCE:
@@ -524,6 +526,7 @@ const char* helpExample(Command command, const Host& host) {
     case Command::DEBUG: return "debug decoded\n  debug off";
     case Command::MOVE: return "move relative 100 steps native 60 configured 1";
     case Command::STOP: return "stop normal 1\n  stop fast 1";
+    case Command::GROUP: return "group set 1 2 4\n  group read state\n  group move relative 200 steps native 60 configured on-failure stop fast\n  group stop fast";
     case Command::RESULT: return "result 12";
     case Command::RELEASE: return "release 12  (after inspecting the terminal result)";
     case Command::CANCEL: return "cancel 12  (local cancellation; use stop for the motor)";
@@ -692,6 +695,64 @@ const char* actionName(Action value) {
     }
     return "failed";
 }
+
+const char* groupKindName(GroupOperationKind kind) {
+    switch (kind) {
+    case GroupOperationKind::SET: return "set";
+    case GroupOperationKind::MOVE: return "move";
+    case GroupOperationKind::STOP: return "stop";
+    case GroupOperationKind::READ_STATE: return "read_state";
+    }
+    return "unknown";
+}
+const char* groupCommandName(GroupOperationKind kind) {
+    switch (kind) {
+    case GroupOperationKind::SET: return "group-set";
+    case GroupOperationKind::MOVE: return "group-move";
+    case GroupOperationKind::STOP: return "group-stop";
+    case GroupOperationKind::READ_STATE: return "group-read-state";
+    }
+    return "group";
+}
+const char* groupStartName(GroupStart start) {
+    switch (start) {
+    case GroupStart::NOT_SENT: return "not_sent";
+    case GroupStart::STARTED: return "started";
+    case GroupStart::UNKNOWN: return "unknown";
+    case GroupStart::REJECTED: return "rejected";
+    }
+    return "unknown";
+}
+const char* groupJoinName(GroupJoin join) {
+    switch (join) {
+    case GroupJoin::NOT_READ: return "not_read";
+    case GroupJoin::JOINED: return "joined";
+    case GroupJoin::ABSENT: return "absent";
+    case GroupJoin::UNEXPECTED: return "unexpected";
+    }
+    return "unknown";
+}
+const char* groupPolicyName(GroupFailurePolicy policy) {
+    switch (policy) {
+    case GroupFailurePolicy::NONE: return "none";
+    case GroupFailurePolicy::STOP_NORMAL: return "stop_normal";
+    case GroupFailurePolicy::STOP_FAST: return "stop_fast";
+    case GroupFailurePolicy::LEAVE: return "leave";
+    }
+    return "unknown";
+}
+const char* actionStateName(Core::ActionState state) {
+    switch (state) {
+    case Core::ActionState::EMPTY: return "empty";
+    case Core::ActionState::ACTIVE: return "active";
+    case Core::ActionState::SUCCEEDED: return "succeeded";
+    case Core::ActionState::FAILED: return "failed";
+    }
+    return "unknown";
+}
+const char* memberAdmission(uint32_t operationId, Action admission) {
+    return operationId ? "admitted" : admission == Action::OK ? "not_attempted" : actionName(admission);
+}
 const char* outcomeName(Rtu::Outcome value) {
     switch (value) {
     case Rtu::Outcome::QUEUE_EXPIRED: return "queue_expired";
@@ -781,15 +842,16 @@ bool Console::humanResult(uint32_t operationId) const noexcept {
         if (item.operationId == operationId) return item.format == Format::HUMAN;
     return false;
 }
-std::size_t Console::availableSlot(bool stop) const noexcept {
-    const std::size_t begin = stop ? OUTSTANDING_CAPACITY - 1 : 0;
-    const std::size_t end = stop ? OUTSTANDING_SLOTS : OUTSTANDING_CAPACITY - 1;
+std::size_t Console::availableSlot(bool stop, bool groupStop) const noexcept {
+    // Ordinary, then the stop and its escalation, then a group stop and its escalation.
+    const std::size_t begin = groupStop ? OUTSTANDING_CAPACITY + 1 : stop ? OUTSTANDING_CAPACITY - 1 : 0;
+    const std::size_t end = groupStop ? OUTSTANDING_SLOTS : stop ? OUTSTANDING_CAPACITY + 1 : OUTSTANDING_CAPACITY - 1;
     for (std::size_t i = begin; i < end; ++i)
         if (!outstanding_[i].commandId) return i;
     return OUTSTANDING_SLOTS;
 }
-bool Console::track(uint32_t id, uint32_t operationId, bool stop) noexcept {
-    const std::size_t slot = availableSlot(stop);
+bool Console::track(uint32_t id, uint32_t operationId, bool stop, bool groupStop) noexcept {
+    const std::size_t slot = availableSlot(stop, groupStop);
     if (slot == OUTSTANDING_SLOTS) return false;
     auto& item = outstanding_[slot];
     item.commandId = id; item.operationId = operationId; item.format = outputFormat_;
@@ -829,7 +891,7 @@ bool Console::serviceOutput() noexcept {
         outputFormat_ = reply.format;
         // action emits at most this one additional line. Each nested call
         // removes one retained reply, so the depth is bounded by their capacity.
-        action(reply.id, "stop", reply.result, reply.address, reply.operationId);
+        action(reply.id, reply.command, reply.result, reply.address, reply.operationId);
         return !outputPending_;
     }
     return true;
@@ -853,7 +915,9 @@ void Console::error(uint32_t id, const char* command, const char* reason) noexce
 
 void Console::action(uint32_t id, const char* command, Action result, uint8_t address, uint32_t operationId) noexcept {
     const bool typed = std::strcmp(command, "read-identity") == 0 || std::strcmp(command, "read-config") == 0 || std::strcmp(command, "read-state") == 0 || std::strcmp(command, "velocity-read") == 0 || std::strcmp(command, "home-read") == 0;
-    const bool motor = std::strcmp(command, "position-interrupt") == 0 || std::strcmp(command, "home-auxiliary") == 0 || std::strcmp(command, "motion-profile-start-speed") == 0 || std::strcmp(command, "enable") == 0 || std::strcmp(command, "motor-release") == 0 || std::strcmp(command, "alarm-clear") == 0 || std::strcmp(command, "position-clear") == 0 || std::strcmp(command, "stop") == 0 || std::strncmp(command, "move-", 5) == 0 || std::strcmp(command, "velocity") == 0 || std::strcmp(command, "home") == 0 || std::strcmp(command, "driver") == 0 || (std::strcmp(command, "io") == 0 || std::strcmp(command, "segment") == 0 || std::strcmp(command, "control") == 0 || std::strcmp(command, "tuning") == 0);
+    const bool motor = std::strcmp(command, "position-interrupt") == 0 || std::strcmp(command, "home-auxiliary") == 0 || std::strcmp(command, "motion-profile-start-speed") == 0 || std::strcmp(command, "enable") == 0 || std::strcmp(command, "motor-release") == 0 || std::strcmp(command, "alarm-clear") == 0 || std::strcmp(command, "position-clear") == 0 || std::strcmp(command, "stop") == 0 || std::strncmp(command, "move-", 5) == 0 || std::strcmp(command, "velocity") == 0 || std::strcmp(command, "home") == 0 || std::strcmp(command, "driver") == 0 || (std::strcmp(command, "io") == 0 || std::strcmp(command, "segment") == 0 || std::strcmp(command, "control") == 0 || std::strcmp(command, "tuning") == 0) ||
+        std::strcmp(command, "group-set") == 0 || std::strcmp(command, "group-move") == 0 ||
+        std::strcmp(command, "group-stop") == 0 || std::strcmp(command, "group-read-state") == 0;
     std::snprintf(output_, sizeof(output_),
         "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":%s,\"result\":\"%s\",\"address\":%u,\"operation_id\":%lu%s}",
         static_cast<unsigned long>(id), command, boolean(result == Action::OK),
@@ -1901,6 +1965,7 @@ void Console::dispatch() noexcept {
         } else action(id, actionCommand, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0);
         return;
     }
+    if (entry->command == Command::GROUP) { group(id, tokens + first + 1, count - first - 1); return; }
     if (entry->command == Command::BROADCAST) {
         if (outputPending()) { ++inputDropped_; return; }
         // A fixed frame name selects one of five reviewed frames; never raw bytes.
@@ -2059,6 +2124,7 @@ void Console::dispatch() noexcept {
         case Command::DISCOVER: return host_.discovery != nullptr;
         case Command::CAPTURE_READ: return host_.startCaptureRead != nullptr;
         case Command::BROADCAST: return host_.broadcast != nullptr;
+        case Command::GROUP: return host_.group != nullptr;
         case Command::ENABLE: case Command::MOTOR_RELEASE: case Command::ALARM_CLEAR: case Command::STOP: case Command::POSITION_CLEAR: return host_.startAction && host_.snapshot;
         case Command::SETTINGS: return host_.simpleMotion != nullptr;
         case Command::POSITION: return host_.startPositionInterrupt && host_.snapshot;
@@ -2187,6 +2253,15 @@ void Console::dispatch() noexcept {
         if (!host_.result(host_.context, operationId, view)) { error(id, entry->name, "unavailable"); return; }
         if (view.simpleMotion) { formatSimpleMotion(id, *view.simpleMotion, true); return; }
         setReportSerial(&view.serialTuple, view.serialGeneration);
+        if (view.group) {
+            if (!view.pending) { if (!formatGroup(id, view.commandId, view.operationId, *view.group, true)) error(id, "result", "output_full"); return; }
+            std::size_t used = 0;
+            if (!append(output_, sizeof(output_), used,
+                "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"result\",\"command_id\":%lu,\"operation_id\":%lu,\"ok\":true,\"result\":\"pending\",\"recovery\":false,\"group_kind\":\"%s\"}",
+                static_cast<unsigned long>(id), static_cast<unsigned long>(view.commandId), static_cast<unsigned long>(view.operationId),
+                groupKindName(view.group->kind)) || !appendReportSerial(used)) { error(id, "result", "output_full"); return; }
+            emit(); return;
+        }
         if (view.pending) {
             std::snprintf(output_, sizeof(output_),
                 "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"result\",\"command_id\":%lu,\"operation_id\":%lu,\"ok\":true,\"result\":\"pending\",\"recovery\":%s,\"capture_read\":%s,\"read_kind\":%s,\"action_kind\":%s,\"stop_policy\":%s,\"move_kind\":%s,\"velocity\":%s,\"driver\":%s,\"home\":%s}",
@@ -3156,6 +3231,258 @@ bool Console::formatRecovery(uint32_t id, uint32_t commandId, uint32_t operation
     }
     std::size_t used = static_cast<std::size_t>(written);
     if (!appendReportSerial(used)) return false;
+    emit(inspection ? 0 : operationId);
+    return true;
+}
+
+
+// One `group` route. Each member keeps its own child operation, reservation and
+// evidence; the terminal group line copies every member's outcome. A group stop
+// dispatches under output pressure like `stop`, from its own two slots.
+void Console::group(uint32_t id, const char* const* tokens, std::size_t count) noexcept {
+    const char* sub = count ? tokens[0] : "";
+    const bool stop = std::strcmp(sub, "stop") == 0;
+    if (outputPending() && !stop) { ++inputDropped_; return; }
+    GroupCommand request;
+    const char* command = "group";
+    bool asynchronous = false;
+    if (!std::strcmp(sub, "show") || !std::strcmp(sub, "status") || !std::strcmp(sub, "clear")) {
+        request.kind = sub[1] == 'h' ? GroupCommandKind::SHOW : sub[1] == 't' ? GroupCommandKind::STATUS : GroupCommandKind::CLEAR;
+        command = request.kind == GroupCommandKind::SHOW ? "group-show" : request.kind == GroupCommandKind::STATUS ? "group-status" : "group-clear";
+        if (count != 1) { error(id, command, "invalid_arguments"); return; }
+    } else if (!std::strcmp(sub, "set")) {
+        command = "group-set"; request.kind = GroupCommandKind::SET; asynchronous = true;
+        if (count < 2 || count - 1 > GROUP_CAPACITY) { error(id, command, "invalid_arguments"); return; }
+        for (std::size_t i = 1; i < count; ++i) {
+            uint32_t address = 0;
+            if (!number(tokens[i], address) || address < 1 || address > 247) { error(id, command, "invalid_address"); return; }
+            for (std::size_t j = 0; j < request.count; ++j)
+                if (request.addresses[j] == address) { error(id, command, "duplicate_address"); return; }
+            request.addresses[request.count++] = static_cast<uint8_t>(address);
+        }
+    } else if (!std::strcmp(sub, "wiring")) {
+        command = "group-wiring"; request.kind = GroupCommandKind::WIRING;
+        uint32_t address = 0;
+        if (count != 4 || !number(tokens[1], address) || address < 1 || address > 247) { error(id, command, "invalid_arguments"); return; }
+        const char* terminal = tokens[2];
+        if (std::strlen(terminal) != 2 ||
+            !((terminal[0] == 'x' && terminal[1] >= '0' && terminal[1] <= '3') ||
+              (terminal[0] == 'y' && terminal[1] >= '0' && terminal[1] <= '1'))) { error(id, command, "invalid_arguments"); return; }
+        request.address = static_cast<uint8_t>(address);
+        request.terminal = static_cast<uint8_t>(terminal[1] - '0' + (terminal[0] == 'y' ? 4 : 0));
+        if (!std::strcmp(tokens[3], "connected")) request.wiring = Core::InputWiring::CONNECTED;
+        else if (!std::strcmp(tokens[3], "unconnected")) request.wiring = Core::InputWiring::UNCONNECTED;
+        else if (std::strcmp(tokens[3], "unknown")) { error(id, command, "invalid_arguments"); return; }
+    } else if (!std::strcmp(sub, "read")) {
+        command = "group-read-state"; request.kind = GroupCommandKind::READ_STATE; asynchronous = true;
+        if (count != 2 || std::strcmp(tokens[1], "state")) { error(id, command, "invalid_arguments"); return; }
+    } else if (stop) {
+        command = "group-stop"; request.kind = GroupCommandKind::STOP; asynchronous = true;
+        if (count != 2) { error(id, command, "invalid_arguments"); return; }
+        if (!std::strcmp(tokens[1], "normal")) request.stop = Core::StopBehavior::CONFIGURED_DECELERATION;
+        else if (!std::strcmp(tokens[1], "fast")) request.stop = Core::StopBehavior::DIRECT;
+        else { error(id, command, "unsupported_policy"); return; }
+    } else if (!std::strcmp(sub, "move")) {
+        command = "group-move"; request.kind = GroupCommandKind::MOVE; asynchronous = true;
+        auto& move = request.move.move;
+        if (count < 2 || (std::strcmp(tokens[1], "absolute") == 0 || std::strcmp(tokens[1], "angle") == 0)) {
+            error(id, command, count < 2 ? "invalid_arguments" : "unsupported"); return;
+        }
+        if (std::strcmp(tokens[1], "relative") || count < 7) { error(id, command, "invalid_arguments"); return; }
+        Core::Rational speed;
+        if (!Core::parseExactNumber(tokens[2], move.position.value) || !positionUnit(tokens[3], move.position.unit) ||
+            !coordinateFrame(tokens[4], move.position.frame) || !Core::parseExactNumber(tokens[5], speed) ||
+            speed.denominator != 1 || speed.numerator <= 0 || speed.numerator > UINT16_MAX ||
+            std::strcmp(tokens[6], "configured")) { error(id, command, "invalid_arguments"); return; }
+        move.position.relative = true; move.speedRpm = static_cast<uint16_t>(speed.numerator);
+        move.ramp = Core::MoveRamp::VERIFIED_CONFIGURED;
+        std::size_t next = 7;
+        if (next < count && !std::strcmp(tokens[next], "setup")) {
+            if (next + 1 >= count) { error(id, command, "invalid_arguments"); return; }
+            if (!std::strcmp(tokens[next + 1], "write")) move.setup = Core::MoveSetup::WRITE_ALL;
+            else if (!std::strcmp(tokens[next + 1], "verify")) move.setup = Core::MoveSetup::VERIFY_AND_UPDATE;
+            else { error(id, command, "invalid_arguments"); return; }
+            next += 2;
+        }
+        // The failure policy is mandatory; there is no default.
+        if (next >= count || std::strcmp(tokens[next], "on-failure")) { error(id, command, "failure_policy_required"); return; }
+        ++next;
+        if (next + 1 == count && !std::strcmp(tokens[next], "leave")) request.move.onFailure = GroupFailurePolicy::LEAVE;
+        else if (next + 2 == count && !std::strcmp(tokens[next], "stop") && !std::strcmp(tokens[next + 1], "normal"))
+            request.move.onFailure = GroupFailurePolicy::STOP_NORMAL;
+        else if (next + 2 == count && !std::strcmp(tokens[next], "stop") && !std::strcmp(tokens[next + 1], "fast"))
+            request.move.onFailure = GroupFailurePolicy::STOP_FAST;
+        else { error(id, command, "failure_policy_required"); return; }
+    } else { error(id, "group", "invalid_arguments"); return; }
+    if (!host_.group) { error(id, command, "unavailable"); return; }
+    GroupReply reply;
+    if (!asynchronous) {
+        const Action result = host_.group(host_.context, id, request, reply);
+        if (!formatGroupView(id, command, result, reply.view)) error(id, command, "output_full");
+        return;
+    }
+    const bool available = availableSlot(false, stop) != OUTSTANDING_SLOTS;
+    if (available) beginWork();
+    const Action result = available ? host_.group(host_.context, id, request, reply) : Action::BUSY;
+    const uint32_t operationId = result == Action::OK ? reply.operationId : 0;
+    if (result == Action::OK) track(id, operationId, false, stop);
+    if (stop && outputPending()) {
+        std::size_t slot = 0;
+        while (slot + 1 < STOP_REPLY_CAPACITY && stopReplies_[slot].pending) ++slot;
+        if (stopReplies_[slot].pending) ++inputDropped_;
+        StopReply& retained = stopReplies_[slot];
+        retained.pending = true; retained.id = id; retained.command = "group-stop";
+        retained.address = reply.address; retained.result = result;
+        retained.operationId = operationId; retained.format = outputFormat_;
+    } else action(id, command, result, reply.address, operationId);
+}
+
+bool Console::formatGroupView(uint32_t id, const char* command, Action result, const GroupView* view) noexcept {
+    const bool status = std::strcmp(command, "group-status") == 0;
+    std::size_t used = 0;
+    if (!append(output_, sizeof(output_), used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":%s,\"result\":\"%s\",\"bus_traffic\":false",
+        static_cast<unsigned long>(id), command, boolean(result == Action::OK), result == Action::OK ? "done" : actionName(result))) return false;
+    if (view) {
+        if (!append(output_, sizeof(output_), used,
+            ",\"capacity\":%u,\"count\":%u,\"declaration\":%lu,\"binding_generation\":%lu,\"sequencing\":%s,\"operations\":{\"set\":%lu,\"read_state\":%lu,\"move\":%lu,\"stops\":[%lu,%lu]},\"members\":[",
+            static_cast<unsigned>(GROUP_CAPACITY), static_cast<unsigned>(view->count), static_cast<unsigned long>(view->declaration),
+            static_cast<unsigned long>(view->bindingGeneration), boolean(view->sequencing), static_cast<unsigned long>(view->setOperationId),
+            static_cast<unsigned long>(view->readOperationId), static_cast<unsigned long>(view->moveOperationId),
+            static_cast<unsigned long>(view->stopOperationIds[0]), static_cast<unsigned long>(view->stopOperationIds[1]))) return false;
+        for (uint8_t i = 0; i < view->count && i < GROUP_CAPACITY; ++i) {
+            const auto& m = view->members[i];
+            if (i && !append(output_, sizeof(output_), used, ",")) return false;
+            if (status) {
+                char age[24] = "null";
+                if (m.motionFresh && view->nowUs >= m.motionObservedUs)
+                    std::snprintf(age, sizeof(age), "%llu", static_cast<unsigned long long>((view->nowUs - m.motionObservedUs) / 1000));
+                if (!append(output_, sizeof(output_), used,
+                    "{\"address\":%u,\"current\":%s,\"motion_fresh\":%s,\"io_fresh\":%s,\"feedback_fresh\":%s,\"raw_alarm\":%u,\"raw_motion\":%u,\"raw_inputs\":%u,\"position_known\":%s,\"raw_position\":%lu,\"age_ms\":%s,\"settling\":%s,\"settle_until_us\":%llu,\"reserved\":%s}",
+                    m.address, boolean(m.current), boolean(m.motionFresh), boolean(m.ioFresh), boolean(m.feedbackFresh),
+                    m.rawAlarm, m.rawMotion, m.rawInputs, boolean(m.positionKnown), static_cast<unsigned long>(m.rawPosition), age,
+                    boolean(m.settling), static_cast<unsigned long long>(m.settleUntilUs), boolean(m.reserved))) return false;
+            } else if (!append(output_, sizeof(output_), used,
+                "{\"address\":%u,\"target\":%lu,\"generation\":%lu,\"configuration_generation\":%lu,\"current\":%s,\"identity_known\":%s,\"raw_model\":%u,\"raw_version\":%u,\"raw_active_node\":%u,\"config_known\":%s,\"profile_known\":%s,\"profile\":[%u,%u,%u,%u,%u,%u],\"inputs\":[%u,%u,%u,%u],\"outputs\":[%u,%u],\"start_speed_relation_required\":%s}",
+                m.address, static_cast<unsigned long>(m.target.id), static_cast<unsigned long>(m.target.generation),
+                static_cast<unsigned long>(m.configurationGeneration), boolean(m.current), boolean(m.identityKnown),
+                m.rawModel, m.rawVersion, m.rawActiveNode, boolean(m.configKnown), boolean(m.profileKnown),
+                m.profile[0], m.profile[1], m.profile[2], m.profile[3], m.profile[4], m.profile[5],
+                static_cast<unsigned>(m.inputs[0]), static_cast<unsigned>(m.inputs[1]), static_cast<unsigned>(m.inputs[2]),
+                static_cast<unsigned>(m.inputs[3]), static_cast<unsigned>(m.outputs[0]), static_cast<unsigned>(m.outputs[1]),
+                boolean(m.startSpeedRelationRequired))) return false;
+        }
+        if (!append(output_, sizeof(output_), used, "]")) return false;
+    }
+    if (!append(output_, sizeof(output_), used, "}")) return false;
+    emit();
+    return true;
+}
+
+bool Console::reportGroup(uint32_t id, uint32_t operationId, const GroupResult& result,
+                          const HostTuple* tuple, uint32_t serialGeneration) noexcept {
+    setReportSerial(tuple, serialGeneration);
+    if (outputPending() || result.pending || result.operationId != operationId) return false;
+    for (auto& item : outstanding_) if (item.commandId == id && item.operationId == operationId && !item.transferred) {
+        outputFormat_ = item.format;
+        syntax_ = helpCommand_ = nullptr;
+        if (!formatGroup(id, id, operationId, result, false)) {
+            // A complete line is required; report the bounded failure once.
+            error(id, groupCommandName(result.kind), "output_full");
+            if (outputPending_) pendingTerminalOperation_ = operationId; else untrack(operationId);
+        }
+        if (item.operationId == operationId) item.transferred = true;
+        return true;
+    }
+    return false;
+}
+
+bool Console::formatGroup(uint32_t id, uint32_t commandId, uint32_t operationId,
+                          const GroupResult& r, bool inspection) noexcept {
+    std::size_t used = 0;
+    const bool move = r.kind == GroupOperationKind::MOVE;
+    if (!append(output_, sizeof(output_), used,
+        "{\"type\":\"%s\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"command_id\":%lu,\"operation_id\":%lu,\"group_kind\":\"%s\",\"ok\":%s,\"state\":\"%s\",\"declaration\":%lu,\"binding_generation\":%lu,\"aborted\":%s,\"failed_address\":%u,\"started_us\":%llu,\"finished_us\":%llu,\"count\":%u",
+        inspection ? "reply" : "group", static_cast<unsigned long>(id), inspection ? "result" : groupCommandName(r.kind),
+        static_cast<unsigned long>(commandId), static_cast<unsigned long>(operationId), groupKindName(r.kind), boolean(r.ok),
+        r.pending ? "active" : r.ok ? "succeeded" : "failed", static_cast<unsigned long>(r.declaration),
+        static_cast<unsigned long>(r.bindingGeneration), boolean(r.aborted), r.failedAddress,
+        static_cast<unsigned long long>(r.startedUs), static_cast<unsigned long long>(r.finishedUs), static_cast<unsigned>(r.count))) return false;
+    if (r.kind == GroupOperationKind::STOP && !append(output_, sizeof(output_), used, ",\"stop_policy\":\"%s\"",
+        r.stop == Core::StopBehavior::DIRECT ? "fast" : "normal")) return false;
+    if (move) {
+        // Spreads cover members whose start write completed or whose first RUNNING
+        // report arrived. RUNNING bounds are poll reply closures, not motion onset.
+        bool txKnown = false, runningKnown = false;
+        uint64_t txFirst = 0, txLast = 0, runningFirst = 0, runningLast = 0;
+        for (uint8_t i = 0; i < r.count && i < GROUP_CAPACITY; ++i) {
+            const auto& m = r.members[i];
+            if (m.start != GroupStart::NOT_SENT && m.startTxComplete && m.startTxEndUs) {
+                txFirst = txKnown ? std::min(txFirst, m.startTxEndUs) : m.startTxEndUs;
+                txLast = txKnown ? std::max(txLast, m.startTxEndUs) : m.startTxEndUs;
+                txKnown = true;
+            }
+            if (m.runningObserved && m.runningLatestUs) {
+                runningFirst = runningKnown ? std::min(runningFirst, m.runningEarliestUs) : m.runningEarliestUs;
+                runningLast = runningKnown ? std::max(runningLast, m.runningLatestUs) : m.runningLatestUs;
+                runningKnown = true;
+            }
+        }
+        char txSpread[24] = "null", runningSpread[24] = "null";
+        if (txKnown) std::snprintf(txSpread, sizeof(txSpread), "%llu", static_cast<unsigned long long>(txLast - txFirst));
+        if (runningKnown && runningLast >= runningFirst)
+            std::snprintf(runningSpread, sizeof(runningSpread), "%llu", static_cast<unsigned long long>(runningLast - runningFirst));
+        const auto& p = r.move.move.position;
+        if (!append(output_, sizeof(output_), used,
+            ",\"request\":{\"relative\":true,\"value\":[%lld,%llu],\"unit\":\"%s\",\"frame\":%u,\"speed_rpm\":%u,\"setup\":\"%s\"},\"on_failure\":\"%s\",\"start_tx_spread_us\":%s,\"running_bound_spread_us\":%s",
+            static_cast<long long>(p.value.numerator), static_cast<unsigned long long>(p.value.denominator), unitName(p.unit),
+            static_cast<unsigned>(p.frame), r.move.move.speedRpm,
+            r.move.move.setup == Core::MoveSetup::VERIFY_AND_UPDATE ? "verify" : r.move.move.setup == Core::MoveSetup::USE_STORED ? "stored" : "write",
+            groupPolicyName(r.move.onFailure), txSpread, runningSpread)) return false;
+    }
+    if (!append(output_, sizeof(output_), used, ",\"members\":[")) return false;
+    for (uint8_t i = 0; i < r.count && i < GROUP_CAPACITY; ++i) {
+        const auto& m = r.members[i];
+        if ((i && !append(output_, sizeof(output_), used, ",")) ||
+            !append(output_, sizeof(output_), used, "{\"address\":%u,\"operation_id\":%lu,\"admission\":\"%s\",\"status\":\"%s\",\"detail\":%ld",
+                m.address, static_cast<unsigned long>(m.operationId), memberAdmission(m.operationId, m.admission),
+                Core::errToString(m.status.code), static_cast<long>(m.status.detail))) return false;
+        bool fits = true;
+        switch (r.kind) {
+        case GroupOperationKind::SET:
+            fits = append(output_, sizeof(output_), used,
+                ",\"join\":\"%s\",\"read_state\":\"%s\",\"raw_model\":%u,\"raw_version\":%u,\"raw_active_node\":%u,\"config_known\":%s,\"profile_known\":%s}",
+                groupJoinName(m.join), readState(m.readState), m.rawModel, m.rawVersion, m.rawActiveNode,
+                boolean(m.configKnown), boolean(m.profileKnown));
+            break;
+        case GroupOperationKind::READ_STATE:
+            fits = append(output_, sizeof(output_), used,
+                ",\"read_state\":\"%s\",\"state_known\":%s,\"raw_alarm\":%u,\"raw_motion\":%u,\"raw_inputs\":%u,\"position_known\":%s,\"raw_position\":%lu}",
+                readState(m.readState), boolean(m.stateKnown), m.rawAlarm, m.rawMotion, m.rawInputs,
+                boolean(m.positionKnown), static_cast<unsigned long>(m.rawPosition));
+            break;
+        case GroupOperationKind::STOP:
+            fits = append(output_, sizeof(output_), used,
+                ",\"state\":\"%s\",\"outcome\":\"%s\",\"execution\":\"%s\",\"completion\":\"%s\",\"uncertain\":%s,\"raw_alarm\":%u,\"raw_motion\":%u}",
+                actionStateName(m.state), motorOutcome(m.outcome), executionName(m.execution),
+                m.completion == Core::ActionCompletion::OBSERVED ? "observed" : "not_observed", boolean(m.uncertain), m.rawAlarm, m.rawMotion);
+            break;
+        case GroupOperationKind::MOVE:
+            fits = append(output_, sizeof(output_), used,
+                ",\"start\":\"%s\",\"state\":\"%s\",\"outcome\":\"%s\",\"execution\":\"%s\",\"setup_execution\":\"%s\",\"completion\":\"%s\",\"uncertain\":%s,\"interrupted_by_stop\":%s,\"effective_native\":%lld,\"start_tx_complete\":%s,\"start_tx_end_us\":%llu,\"start_tx_uncertainty_us\":%lu,\"running_observed\":%s,\"running_earliest_us\":%llu,\"running_latest_us\":%llu,\"stop_operation_id\":%lu,\"stop_admission\":\"%s\",\"stop_state\":\"%s\",\"stop_execution\":\"%s\",\"stop_completion\":\"%s\"}",
+                groupStartName(m.start), actionStateName(m.state), motorOutcome(m.outcome), executionName(m.execution),
+                executionName(m.setupExecution), m.completion == Core::ActionCompletion::OBSERVED ? "observed" : "not_observed",
+                boolean(m.uncertain), boolean(m.interruptedByStop), static_cast<long long>(m.effectiveNative),
+                boolean(m.startTxComplete), static_cast<unsigned long long>(m.startTxEndUs), static_cast<unsigned long>(m.startTxUncertaintyUs),
+                boolean(m.runningObserved), static_cast<unsigned long long>(m.runningEarliestUs), static_cast<unsigned long long>(m.runningLatestUs),
+                static_cast<unsigned long>(m.stopOperationId), memberAdmission(m.stopOperationId, m.stopAdmission),
+                actionStateName(m.stopState), executionName(m.stopExecution),
+                m.stopCompletion == Core::ActionCompletion::OBSERVED ? "observed" : "not_observed");
+            break;
+        }
+        if (!fits) return false;
+    }
+    if (!append(output_, sizeof(output_), used, "]}") || !appendReportSerial(used)) return false;
     emit(inspection ? 0 : operationId);
     return true;
 }
