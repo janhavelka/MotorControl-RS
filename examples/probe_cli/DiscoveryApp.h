@@ -154,7 +154,8 @@ Probe::Action discoveryCommand(void* context, const Probe::DiscoveryCommand* com
     if (a.serial.blocked || !a.serial.activeKnown || a.owner.needsRecovery() || uart.needsRecovery()) return Probe::Action::RECOVERY_REQUIRED;
     if (a.owner.configurationOwned() || a.owner.commissioningOwned() || a.owner.active() || a.owner.pending() ||
         a.owner.recovering() || reading(a) || acting(a) || axisReserved(a) || a.monitorState.settings.enabled ||
-        a.persistenceCapture || a.persistenceRequest.owner || a.commissioningRequest.owner || a.motionProfile.view.pending)
+        a.persistenceCapture || a.persistenceRequest.owner || a.commissioningRequest.owner || a.motionProfile.view.pending ||
+        groupSequencing(a))
         return Probe::Action::BUSY;
     if (!a.nextOperationId) return Probe::Action::IDS_EXHAUSTED;
     auto settings = command->settings;

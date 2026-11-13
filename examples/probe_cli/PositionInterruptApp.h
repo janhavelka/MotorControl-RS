@@ -77,7 +77,8 @@ Probe::Action admitPositionInterrupt(App& a, uint32_t commandId, uint32_t origin
         a.owner.needsRecovery() || uart.needsRecovery()) return Probe::Action::RECOVERY_REQUIRED;
     if (!a.nextOperationId) return Probe::Action::IDS_EXHAUSTED;
     auto* original = findRecord(a, originalId);
-    if (!original || original->kind != App::OperationKind::MOVE || original->simpleChild) return Probe::Action::INVALID;
+    if (!original || original->kind != App::OperationKind::MOVE || original->simpleChild || original->groupChild) return Probe::Action::INVALID;
+    if (groupSequencing(a)) return Probe::Action::BUSY;
     if (terminal(a, *original)) return Probe::Action::ALREADY_TERMINAL;
     if (original->cancelContinuation || original->moveRelation.originalOperationId ||
         pendingStop(a, original->address)) return Probe::Action::BUSY;

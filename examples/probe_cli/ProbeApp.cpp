@@ -49,6 +49,12 @@ constexpr uint32_t STOP_RECOVERY_US = REQUEST_US + RECOVERY_BUDGET_US;
 // 0.6 s after an enable frame, with no status bit showing readiness. Not documented.
 constexpr uint32_t ENABLE_SETTLE_US = 1000000;
 constexpr std::size_t REQUEST_CAPACITY = 8, ORDINARY_PENDING = 4, STOP_RECORDS = 2, OUTPUT_LINES = 8;
+// A drive group has its own stop pool: one stop and one escalation per member.
+// It never consumes the two stop records of explicit `stop`, and the owner's
+// urgent quota covers both pools, so neither can starve the other.
+constexpr std::size_t GROUP_STOP_RECORDS = 2 * Probe::GROUP_CAPACITY;
+constexpr std::size_t URGENT_RECORDS = STOP_RECORDS + GROUP_STOP_RECORDS;
+constexpr std::size_t GROUP_STOP_FIRST = REQUEST_CAPACITY + 1 + STOP_RECORDS;
 DRAM_ATTR Esp32S3Uart uart; // Internal driver/ISR state; App storage is PSRAM.
 #if MOTORCONTROLRS_LOAD_FIXTURE
 DRAM_ATTR Esp32Load loadFixture;
@@ -71,9 +77,9 @@ Rtu::Timing timing() {
     return t.runner;
 }
 Rtu::BusStorage busStorage(Rtu::PendingSlot* p, Rtu::ResultSlot* r, Rtu::ProducerSlot* producers) {
-    Rtu::BusStorage s; s.pending = p; s.pendingCapacity = ORDINARY_PENDING + STOP_RECORDS;
-    s.results = r; s.resultCapacity = REQUEST_CAPACITY + STOP_RECORDS; s.producers = producers; s.producerCapacity = 1;
-    s.urgentPendingCapacity = s.urgentResultCapacity = STOP_RECORDS; return s;
+    Rtu::BusStorage s; s.pending = p; s.pendingCapacity = ORDINARY_PENDING + URGENT_RECORDS;
+    s.results = r; s.resultCapacity = REQUEST_CAPACITY + URGENT_RECORDS; s.producers = producers; s.producerCapacity = 1;
+    s.urgentPendingCapacity = s.urgentResultCapacity = URGENT_RECORDS; return s;
 }
 struct App;
 Probe::Host host(App*);
@@ -84,8 +90,8 @@ struct App {
     uint64_t observationAgeUs() const { return static_cast<uint64_t>(options.observationMaxAgeMs) * 1000; }
     uint8_t tx[32] = {}, rx[64] = {}, viewTx[8] = {};
     Rtu::Trace trace[128];
-    Rtu::PendingSlot pending[ORDINARY_PENDING + STOP_RECORDS];
-    Rtu::ResultSlot results[REQUEST_CAPACITY + STOP_RECORDS];
+    Rtu::PendingSlot pending[ORDINARY_PENDING + URGENT_RECORDS];
+    Rtu::ResultSlot results[REQUEST_CAPACITY + URGENT_RECORDS];
     Rtu::ProducerSlot producers[1];
     Probe::HostSnapshot serial;
     ESS::CommunicationContext commissioning, commissioningPrepared;
@@ -150,7 +156,12 @@ struct App {
         uint16_t requestedSetting = 0; ///< Frozen across prior read and update.
         ESS::HomeContext home;
         bool programmaticHome = false;
-    } records[REQUEST_CAPACITY + 1 + STOP_RECORDS]; // Dedicated monitor, urgent-stop and stop-escalation reservations.
+        bool groupChild = false; ///< Owned by a group operation; its group line reports it.
+        bool groupWaiting = false; ///< Prepared group member move, before its turn in the start order.
+        bool triggerTxComplete = false; ///< Start write physical TX evidence, copied from the owner.
+        uint64_t triggerTxEndUs = 0;
+        uint32_t triggerTxUncertaintyUs = 0;
+    } records[REQUEST_CAPACITY + 1 + URGENT_RECORDS]; // Dedicated monitor, stop, stop-escalation and group stop reservations.
     Probe::StateCache stateCache;
     Probe::MonitorSnapshot monitorState;
     struct Recovery {
@@ -231,10 +242,40 @@ struct App {
     uint32_t bindingGeneration = 1;
     uint8_t actionConflicts[32] = {}; ///< Physical address conflicts survive result release and host recovery.
     uint8_t knownTargets[32] = {}; ///< Checked physical addresses, independent of the latest passive observation.
+    uint8_t startSpeedWritten[32] = {}; ///< Possible start-speed writes this boot, by address (RAM only).
     MotorControlRS::ReadTarget communicationTarget;
     uint64_t communicationEarliestUs = 0, communicationLatestUs = 0;
     bool communicationKnown = false;
     MotorControlRS::ESS_RS::FrameError frameError = MotorControlRS::ESS_RS::FrameError::NONE;
+    // Drive group (multi-drive 02). A host selection only: each member keeps its
+    // own facts, separate from the selected axis, and never changes the drive.
+    struct GroupMember {
+        uint8_t address = 0;
+        MotorControlRS::AxisConfig axis; ///< Own target and configuration generation; no host scale.
+        ESS::IdentityObservation identity;
+        ESS::ConfigObservation configuration;
+        MotionProfileState profile; ///< Checked 0x0020/6 readback of this member.
+        Probe::StateCache state;
+        MotorControlRS::InputWiring inputWiring[4] = {}, outputWiring[2] = {};
+        uint64_t enableSettleUntilUs = 0; ///< Post-enable wait of this member (ENABLE_SETTLE_US).
+        bool startSpeedRelationRequired = false; ///< A possible start-speed write reached this drive.
+    };
+    struct GroupOperation {
+        Probe::GroupResult result;
+        HostTuple serialTuple;
+        uint32_t serialGeneration = 0;
+        uint32_t childId = 0; ///< Current read of a set or read sequence.
+        uint8_t next = 0, phase = 0; ///< Member in progress and its declaration read.
+        bool startsEnded = false, policyApplied = false, delivered = false, programmatic = false, interactive = false;
+    };
+    struct Group {
+        GroupMember members[Probe::GROUP_CAPACITY];
+        uint8_t count = 0; ///< Member slots of the declared or pending group.
+        bool declared = false; ///< Every member joined with checked identity and configuration.
+        uint32_t declaration = 0;
+        GroupOperation set, read, move, stops[Probe::GROUP_STOP_OPERATIONS];
+        Probe::GroupView view; ///< Scratch for synchronous show/status formatting.
+    } group;
     explicit App(const ApplicationOptions& supplied = ApplicationOptions()) : options(supplied), runner(uart.port(), storage(tx, rx, trace), timing()),
         owner(runner, busStorage(pending, results, producers)), console(host(this)) {
         hostTiming(serial.active, serial.timing);
@@ -270,6 +311,52 @@ void clearRecord(App::Record& record) {
     // would put the complete retained read/action/move contexts on the stack.
     record.~Record();
     new (&record) App::Record();
+}
+App::GroupMember* groupMember(App& a, uint8_t address) {
+    for (uint8_t i = 0; i < a.group.count; ++i) if (a.group.members[i].address == address) return &a.group.members[i];
+    return nullptr;
+}
+const App::GroupMember* groupMember(const App& a, uint8_t address) {
+    return groupMember(const_cast<App&>(a), address);
+}
+// Configuration generation that a record's own target uses: the member's for a
+// group child, otherwise the selected axis.
+uint32_t recordGeneration(const App& a, const App::Record& record) {
+    if (!record.groupChild) return a.axis.generation;
+    const auto* member = groupMember(a, record.address);
+    return member ? member->axis.generation : 0;
+}
+// Expire cached state of this address in the selected cache and the member cache.
+void invalidateObservations(App& a, uint8_t address, uint64_t now, bool validOnly = false) {
+    for (auto& block : a.stateCache.blocks)
+        if ((!validOnly || block.valid) && block.value.target.address == address) block.invalidatedUs = now;
+    if (auto* member = groupMember(a, address))
+        for (auto& block : member->state.blocks) block.invalidatedUs = now;
+}
+// A possible configuration or profile change of a member drive: its prepared
+// moves, profile binding and cached state expire. Fresh reads are required.
+void invalidateMemberConfiguration(App& a, uint8_t address, uint64_t now) {
+    auto* member = groupMember(a, address);
+    if (!member) return;
+    member->configuration.operationId = 0;
+    member->axis.generation = !member->axis.generation || member->axis.generation == UINT32_MAX ? 0 : member->axis.generation + 1;
+    for (auto& block : member->state.blocks) block.invalidatedUs = now;
+}
+// Rebinding, recovery, a host tuple change or a broadcast: every member's facts
+// expire. Members stay listed; a new group set reads them again.
+void invalidateGroupFacts(App& a, uint64_t now) {
+    for (uint8_t i = 0; i < a.group.count; ++i) {
+        auto& member = a.group.members[i];
+        member.identity.operationId = 0;
+        invalidateMemberConfiguration(a, member.address, now);
+    }
+}
+// A group set, read or start sequence admits no other ordinary bus work; only
+// urgent stops interleave. Starts already resolved release the bus.
+bool groupSequencing(const App& a) {
+    const auto& g = a.group;
+    return g.set.result.pending || g.read.result.pending ||
+        (g.move.result.pending && !g.move.policyApplied && (g.move.result.aborted || g.move.next < g.move.result.count));
 }
 bool emit(void* context, const char* text, std::size_t size) {
     App& a = *static_cast<App*>(context);
@@ -375,6 +462,7 @@ void invalidateAxis(App& a, const App::Record* changing = nullptr, uint64_t samp
     if (!MotorControlRS::invalidateAxisReference(a.axis, a.coordinateReference)) a.axis.generation = 0;
     a.axis.target.generation = a.bindingGeneration;
     for (auto& record : a.records) if (&record != changing &&
+        !(record.groupChild && record.address != a.axis.target.address) &&
         (record.kind == App::OperationKind::MOVE || record.kind == App::OperationKind::VELOCITY || record.kind == App::OperationKind::HOME ||
          (record.kind == App::OperationKind::DRIVER && record.driver.kind == ESS::DriverKind::UPDATE) ||
          (record.kind == App::OperationKind::TYPED_READ && record.read.kind == ESS::ReadKind::STATE)) && !terminal(a, record)) {
@@ -394,9 +482,7 @@ void invalidateMotionObservations(App& a, uint8_t address) {
         a.simpleEndpointKnown = false;
         a.motionObservationPending = true;
     }
-    const auto now = nowUs();
-    for (auto& block : a.stateCache.blocks)
-        if (block.value.target.address == address) block.invalidatedUs = now;
+    invalidateObservations(a, address, nowUs());
 }
 bool triggeredMotion(const App& a, uint8_t address) {
     for (const auto& record : a.records) {
@@ -617,7 +703,7 @@ MotorControlRS::Status checkProbe(const Rtu::Expectation& e, const uint8_t* byte
 }
 Probe::Action startRead(void* context, uint32_t commandId, uint8_t address, uint32_t& operationId, bool captureRead) {
     App& a = *static_cast<App*>(context);
-    if (a.owner.commissioningOwned() || a.discovery.owned) return Probe::Action::BUSY;
+    if (a.owner.commissioningOwned() || a.discovery.owned || groupSequencing(a)) return Probe::Action::BUSY;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
     const uint64_t sampled = uart.sample();
@@ -707,7 +793,7 @@ Probe::Action startBroadcast(App& a, uint32_t commandId, Probe::BroadcastFrame f
     // A stop passes a unicast move's axis reservation, as urgent stops do. It
     // uses ordinary capacity, so the urgent unicast stop stays available. A
     // write or start needs an idle host: no work, reservation or monitor.
-    if (!stop && (a.owner.active() || a.owner.pending() || axisReserved(a) || acting(a) || reading(a) ||
+    if (!stop && (a.owner.active() || a.owner.pending() || axisReserved(a) || acting(a) || reading(a) || groupSequencing(a) ||
         a.monitorState.settings.enabled || a.motionProfile.view.pending || a.persistenceCapture ||
         a.persistenceRequest.owner || a.persistenceReadRequest.owner || a.commissioningRequest.owner))
         return Probe::Action::BUSY;
@@ -757,14 +843,18 @@ Rtu::BusAdmission admitStep(App& a, App::Record& record, uint64_t sampled) {
     request.expected.first = prepared.first; request.expected.count = prepared.count;
     request.validator = Rtu::essValidator();
     const auto admitted = a.owner.admit(request, sampled, record.requestId);
-    if (admitted == Rtu::BusAdmission::ACCEPTED && record.read.kind == ESS::ReadKind::STATE)
-        Probe::stateAttempt(a.stateCache, record.read.target, record.read.operationId, record.read.step, sampled);
+    if (admitted == Rtu::BusAdmission::ACCEPTED && record.read.kind == ESS::ReadKind::STATE) {
+        auto* member = record.groupChild ? groupMember(a, record.read.target.address) : nullptr;
+        if (!record.groupChild) Probe::stateAttempt(a.stateCache, record.read.target, record.read.operationId, record.read.step, sampled);
+        else if (member && Probe::sameTarget(member->axis.target, record.read.target))
+            Probe::stateAttempt(member->state, record.read.target, record.read.operationId, record.read.step, sampled);
+    }
     return admitted;
 }
 Probe::Action startTypedRead(void* context, uint32_t commandId, uint8_t address, ESS::ReadKind kind,
                              uint32_t& operationId, bool monitored) {
     App& a = *static_cast<App*>(context);
-    if (a.owner.commissioningOwned() || a.discovery.owned) return Probe::Action::BUSY;
+    if (a.owner.commissioningOwned() || a.discovery.owned || groupSequencing(a)) return Probe::Action::BUSY;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
     const uint64_t sampled = uart.sample();
@@ -858,7 +948,9 @@ Rtu::BusAdmission admitActionStep(App& a, App::Record& record, const ESS::Prepar
         a.owner.admitUrgent(request, now, record.requestId) : a.owner.admit(request, now, record.requestId);
 }
 bool enableSettling(const App& a, uint8_t address, uint64_t now) {
-    return a.enableSettleAddress == address && now < a.enableSettleUntilUs;
+    const auto* member = groupMember(a, address);
+    return (a.enableSettleAddress == address && now < a.enableSettleUntilUs) ||
+        (member && now < member->enableSettleUntilUs);
 }
 // The pair reads high bits set below zero; the move sequence decodes it the same way.
 // Beyond the +/-0x0FFFFFFF target range (function manual p70) it is no usable zero.
@@ -879,10 +971,12 @@ bool confirmedStop(const App::Record& record) {
 // Stop storage never depends on ordinary capacity. The next explicit stop first
 // acknowledges a delivered confirmed stop, then uses a free slot, then overwrites
 // the oldest delivered failed stop (counted). A running or undelivered stop stays.
-App::Record* stopRecord(App& a) {
+// The selected-address pool and the group pool follow the same rule.
+App::Record* stopRecord(App& a, bool group = false) {
     App::Record* available = nullptr;
     App::Record* oldest = nullptr;
-    for (std::size_t i = REQUEST_CAPACITY + 1; i < REQUEST_CAPACITY + 1 + STOP_RECORDS; ++i) {
+    const std::size_t first = group ? GROUP_STOP_FIRST : REQUEST_CAPACITY + 1;
+    for (std::size_t i = first; i < first + (group ? GROUP_STOP_RECORDS : STOP_RECORDS); ++i) {
         App::Record& candidate = a.records[i];
         if (!candidate.operationId) { if (!available) available = &candidate; continue; }
         if (!terminal(a, candidate) || !candidate.delivered) continue;
@@ -891,10 +985,11 @@ App::Record* stopRecord(App& a) {
     }
     return available ? available : oldest;
 }
-Probe::Action startAction(void* context, uint32_t commandId, uint8_t address,
-                          const MotorControlRS::ActionRequest& request, uint32_t& operationId) {
+// groupStop: one member stop of a group operation, from the group pool. A declared
+// member is a stop target like the selected address, even with stale facts.
+Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
+                            const MotorControlRS::ActionRequest& request, uint32_t& operationId, bool groupStop) {
     using namespace MotorControlRS;
-    App& a = *static_cast<App*>(context);
     const bool scanStop = a.discovery.owned && request.kind == ActionKind::STOP &&
         address == a.discovery.originalTarget.address;
     if (a.owner.commissioningOwned() || (a.discovery.owned && !scanStop)) return Probe::Action::BUSY;
@@ -903,6 +998,8 @@ Probe::Action startAction(void* context, uint32_t commandId, uint8_t address,
     if (!a.nextOperationId) return Probe::Action::IDS_EXHAUSTED;
     const uint64_t now = uart.sample();
     const bool stop = request.kind == ActionKind::STOP;
+    if (groupStop && (!stop || scanStop || !groupMember(a, address))) return Probe::Action::INVALID;
+    if (!stop && groupSequencing(a)) return Probe::Action::BUSY;
     ActionRequest admittedRequest = request;
     uint64_t deadline = now + REQUEST_US + (stop ? STOP_RECOVERY_US : 0);
     ActionOptions actionOptions;
@@ -936,12 +1033,12 @@ Probe::Action startAction(void* context, uint32_t commandId, uint8_t address,
     // A discovery scan owns its tuple and keeps its explicit recover/restore route.
     const bool faulted = a.owner.needsRecovery() || uart.needsRecovery();
     if (faulted && (!stop || scanStop)) return Probe::Action::RECOVERY_REQUIRED;
-    const bool selectedStop = stop && !scanStop && address == a.axis.target.address;
+    const bool selectedStop = stop && !scanStop && (address == a.axis.target.address || groupStop);
     if (!(a.knownTargets[address / 8] & (1U << (address % 8))) && !selectedStop &&
         !(scanStop && a.discoveryOriginalKnown)) return Probe::Action::UNAVAILABLE;
     if (!stop && axisReserved(a, address)) return Probe::Action::AXIS_CONFLICT;
     App::Record* record = nullptr;
-    if (stop) record = stopRecord(a);
+    if (stop) record = stopRecord(a, groupStop);
     else for (std::size_t i = 0; i < REQUEST_CAPACITY; ++i)
         if (!a.records[i].operationId) { record = &a.records[i]; break; }
     if (!record) return Probe::Action::RESULTS_FULL;
@@ -966,6 +1063,7 @@ Probe::Action startAction(void* context, uint32_t commandId, uint8_t address,
         record->action = preparedContext;
     }
     record->stopHeld = faulted;
+    record->groupChild = groupStop;
     record->serialTuple = scanStop ? a.discovery.originalTuple : a.serial.active;
     record->serialGeneration = scanStop ? a.discovery.originalSerialGeneration : a.serial.generation;
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
@@ -990,6 +1088,10 @@ Probe::Action startAction(void* context, uint32_t commandId, uint8_t address,
         }
     }
     return Probe::Action::OK;
+}
+Probe::Action startAction(void* context, uint32_t commandId, uint8_t address,
+                          const MotorControlRS::ActionRequest& request, uint32_t& operationId) {
+    return startActionIn(*static_cast<App*>(context), commandId, address, request, operationId, false);
 }
 Probe::Action admissionResult(Rtu::BusAdmission result) {
     switch (result) {
@@ -1032,9 +1134,10 @@ inline Probe::Action admitAxisWrite(App& a, const Rtu::BusRequest& request, uint
         a.velocityPrerequisites = ESS::VelocityPrerequisites();
         a.homePrerequisites = ESS::HomePrerequisites();
     }
-    if (admitted == Probe::Action::OK)
-        for (auto& block : a.stateCache.blocks)
-            if (block.value.target.address == request.expected.address) block.invalidatedUs = now;
+    if (admitted == Probe::Action::OK) {
+        invalidateObservations(a, request.expected.address, now);
+        invalidateMemberConfiguration(a, request.expected.address, now);
+    }
     return admitted;
 }
 Probe::Action admitMoveStep(App& a, App::Record& record, const ESS::PreparedMove& prepared, uint64_t now) {
@@ -1058,7 +1161,7 @@ Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
                         const MotorControlRS::MoveRequest& supplied, uint32_t& operationId) {
     using namespace MotorControlRS;
     App& a = *static_cast<App*>(context);
-    if (a.owner.commissioningOwned() || a.discovery.owned) return Probe::Action::BUSY;
+    if (a.owner.commissioningOwned() || a.discovery.owned || groupSequencing(a)) return Probe::Action::BUSY;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
     if (!ESS::isValidAddress(address) || !supplied.speedRpm ||
@@ -1168,7 +1271,7 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
                             const MotorControlRS::VelocityRequest& supplied, uint32_t& operationId) {
     using namespace MotorControlRS;
     App& a = *static_cast<App*>(context);
-    if (a.owner.commissioningOwned() || a.discovery.owned) return Probe::Action::BUSY;
+    if (a.owner.commissioningOwned() || a.discovery.owned || groupSequencing(a)) return Probe::Action::BUSY;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
     if (!ESS::isValidAddress(address) || !supplied.durationUs || supplied.durationUs > 1000000)
@@ -1323,7 +1426,7 @@ Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
                         const ESS::HomeRequest& supplied, uint32_t& operationId) {
     using namespace MotorControlRS;
     App& a = *static_cast<App*>(context);
-    if (a.owner.commissioningOwned() || a.discovery.owned) return Probe::Action::BUSY;
+    if (a.owner.commissioningOwned() || a.discovery.owned || groupSequencing(a)) return Probe::Action::BUSY;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
     if (!ESS::isValidAddress(address)) return Probe::Action::INVALID;
@@ -1635,6 +1738,7 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
                          const ESS::DriverRequest& supplied, uint32_t& operationId) {
     using namespace MotorControlRS;
     App& a = *static_cast<App*>(context);
+    if (groupSequencing(a)) return Probe::Action::BUSY;
     if (singleSettingGroup(supplied.group))
         return startSingleSetting(a, commandId, address, kind, supplied, operationId);
     if (a.owner.commissioningOwned() || a.discovery.owned) return Probe::Action::BUSY;
@@ -1809,6 +1913,14 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
 // historical contexts or silently promotes stored codes into active settings.
 void invalidateDriverAssumptions(App& a, uint8_t address, uint32_t changed, uint64_t now, const App::Record* changing = nullptr,
                                 ESS::DriverGroup group = ESS::DriverGroup::DRIVE) {
+    if (group == ESS::DriverGroup::POSITION_START_SPEED)
+        a.startSpeedWritten[address / 8] |= static_cast<uint8_t>(1U << (address % 8));
+    if (auto* member = groupMember(a, address)) {
+        // Members keep no start-speed relation: after a possible start-speed
+        // write this boot, that member stays unready for group moves.
+        if (group == ESS::DriverGroup::POSITION_START_SPEED) member->startSpeedRelationRequired = true;
+        invalidateMemberConfiguration(a, address, now);
+    }
     if (singleSettingGroup(group)) {
         // Storing a start speed or future homing policy proves no counter change.
         // Keep historical snapshots, but expire their generation and all future
@@ -1823,12 +1935,12 @@ void invalidateDriverAssumptions(App& a, uint8_t address, uint32_t changed, uint
             a.simpleEndpointKnown = false; a.rememberedMoveGeneration = 0;
             a.movePrerequisites = ESS::MovePrerequisites(); a.velocityPrerequisites = ESS::VelocityPrerequisites();
             a.homePrerequisites = ESS::HomePrerequisites(); a.positionClearQualified = false;
-            for (auto& other : a.records) if (&other != changing && other.axisReserved && !terminal(a, other)) {
+            for (auto& other : a.records) if (&other != changing && other.axisReserved && !terminal(a, other) &&
+                !(other.groupChild && other.address != address)) {
                 other.cancelContinuation = true;
                 if (other.requestId.owner) a.owner.cancelUnsent(other.requestId, now);
             }
-            for (auto& block : a.stateCache.blocks)
-                if (block.value.target.address == address) block.invalidatedUs = now;
+            invalidateObservations(a, address, now);
         }
         return;
     }
@@ -1857,8 +1969,7 @@ void invalidateDriverAssumptions(App& a, uint8_t address, uint32_t changed, uint
         (!tuning && (changed & (0x0003FE00u | static_cast<uint32_t>(ESS::DriverField::INTERRUPTION) |
         static_cast<uint32_t>(ESS::DriverField::POSITION_MODE)))))
         a.driverInputsQualified = false;
-    for (auto& block : a.stateCache.blocks)
-        if (block.value.target.address == address) block.invalidatedUs = now;
+    invalidateObservations(a, address, now);
 }
 void driverEffects(App& a, App::Record& record, uint32_t effects, uint64_t now) {
     const uint32_t changed = effects & ~record.driverEffects;
@@ -2108,10 +2219,19 @@ void advanceReads(App& a, uint64_t sampled) {
                 if (!ESS::advanceRead(record.read, failed, sampled)) continue;
             }
             observeCommunication(a, *result);
-            reconcileConfigRead(a, record, sampled);
-            reconcileVelocityParameters(a, record);
-            reconcileHomingParameters(a, record);
-            if (record.read.kind == ESS::ReadKind::STATE && record.configurationGeneration == a.axis.generation) {
+            if (record.groupChild) {
+                // Member reads publish into the member's own cache only.
+                auto* member = groupMember(a, record.read.target.address);
+                if (record.read.kind == ESS::ReadKind::STATE && member &&
+                    Probe::sameTarget(member->axis.target, record.read.target) &&
+                    record.configurationGeneration == member->axis.generation)
+                    Probe::stateResult(member->state, record.read, block, result->transport.startedUs);
+            } else {
+                reconcileConfigRead(a, record, sampled);
+                reconcileVelocityParameters(a, record);
+                reconcileHomingParameters(a, record);
+            }
+            if (!record.groupChild && record.read.kind == ESS::ReadKind::STATE && record.configurationGeneration == a.axis.generation) {
                 const auto& previous = a.stateCache.blocks[static_cast<uint8_t>(block)];
                 const auto& reference = a.coordinateReference;
                 const bool hadPosition = Probe::current(previous, a.axis.target) && previous.value.pairKnown &&
@@ -2148,7 +2268,7 @@ void advanceReads(App& a, uint64_t sampled) {
             a.owner.release(record.requestId); record.requestId = Rtu::RequestId();
         }
         if (record.cancelContinuation || record.read.target.generation != a.bindingGeneration ||
-            (record.read.kind == ESS::ReadKind::STATE && record.configurationGeneration != a.axis.generation)) {
+            (record.read.kind == ESS::ReadKind::STATE && record.configurationGeneration != recordGeneration(a, record))) {
             ESS::advanceRead(record.read, readEvent(record, ReadEventKind::CANCEL), sampled);
         } else if (sampled >= record.deadlineUs) {
             ESS::advanceRead(record.read, readEvent(record, ReadEventKind::DEADLINE), sampled);
@@ -2357,6 +2477,11 @@ void advanceActions(App& a, uint64_t now) {
             updateActionReservation(a, record);
             continue;
         }
+        // A prepared group member waits for its turn; the group sends its first frame.
+        if (record.groupWaiting && !record.cancelContinuation) {
+            updateActionReservation(a, record);
+            continue;
+        }
         if (record.interruptWaiting && !settlePositionInterrupt(a, record, now)) {
             updateActionReservation(a, record);
             continue;
@@ -2380,8 +2505,7 @@ void advanceActions(App& a, uint64_t now) {
                 invalidateAxis(a, &record);
                 record.configurationGeneration = a.axis.generation;
                 a.homePrerequisites = ESS::HomePrerequisites();
-                for (auto& block : a.stateCache.blocks)
-                    if (block.value.target.address == record.address) block.invalidatedUs = now;
+                invalidateObservations(a, record.address, now);
             }
             if (record.kind == App::OperationKind::DRIVER && record.driver.kind == ESS::DriverKind::UPDATE &&
                 a.owner.txAccepted(record.requestId)) {
@@ -2400,13 +2524,14 @@ void advanceActions(App& a, uint64_t now) {
             if (!record.effectsInvalidated && invalidatesMotion(record) && a.owner.txAccepted(record.requestId)) {
                 record.effectsInvalidated = true;
                 if (record.kind == App::OperationKind::MOVE && record.move.step < record.move.triggerStep) a.rememberedMoveGeneration = 0;
-                for (auto& block : a.stateCache.blocks)
-                    if (block.valid && block.value.target.address == record.address) block.invalidatedUs = now;
+                invalidateObservations(a, record.address, now, true);
                 if (record.kind == App::OperationKind::ACTION && (record.action.request.kind == MotorControlRS::ActionKind::RELEASE ||
                     record.action.request.kind == MotorControlRS::ActionKind::CLEAR_POSITION) &&
                     a.axis.target.address == record.address) invalidateAxis(a);
                 if (record.kind == App::OperationKind::ACTION && record.action.request.kind == MotorControlRS::ActionKind::ENABLE) {
                     a.enableSettleAddress = record.address; a.enableSettleUntilUs = now + ENABLE_SETTLE_US;
+                    // One slot per member: a later enable of another drive keeps this wait.
+                    if (auto* member = groupMember(a, record.address)) member->enableSettleUntilUs = now + ENABLE_SETTLE_US;
                 }
             }
             const auto* result = a.owner.result(record.requestId); if (!result) continue;
@@ -2417,6 +2542,12 @@ void advanceActions(App& a, uint64_t now) {
             auto event = actionEvent(record, kind);
             copyCompletion(event.transport, *result);
             event.txComplete = result->transport.txComplete;
+            if (record.kind == App::OperationKind::MOVE && record.move.step == record.move.triggerStep) {
+                // The start write's physical TX completion, for measured group spreads.
+                record.triggerTxComplete = result->transport.txComplete;
+                record.triggerTxEndUs = result->transport.txEndUs;
+                record.triggerTxUncertaintyUs = result->transport.txUncertaintyUs;
+            }
             // Checked FC03/FC10 replies have distinct request/response wire forms.
             // FC06 retains uncertain source evidence unless the adapter/user
             // explicitly established echo exclusion. Analyzer qualification is
@@ -2435,7 +2566,10 @@ void advanceActions(App& a, uint64_t now) {
                 if (!advanceOperation(record, failed, now)) continue;
             }
             observeCommunication(a, *result);
-            if (record.kind == App::OperationKind::MOVE) {
+            if (record.kind == App::OperationKind::MOVE && record.groupChild) {
+                // A member's staging can change the stored words of the selected drive.
+                if (record.move.uncertain && record.address == a.axis.target.address) a.rememberedMoveGeneration = 0;
+            } else if (record.kind == App::OperationKind::MOVE) {
                 const auto& move = record.move;
                 if (record.storedPosition.target.id && move.execution == MotorControlRS::ActionExecution::ACKNOWLEDGED &&
                     !move.uncertain && (move.stagingApplied || move.verificationKnown ||
@@ -2459,7 +2593,7 @@ void advanceActions(App& a, uint64_t now) {
             if (record.cancelContinuation || actionEvent(record, ReadEventKind::CANCEL).transport.target.generation != a.bindingGeneration ||
                 (record.kind == App::OperationKind::MOVE &&
                     (record.move.admission == ESS::MoveAdmission::NATIVE_INTENT ? record.move.stored.configurationGeneration :
-                     record.move.prepared.configurationGeneration) != a.axis.generation) ||
+                     record.move.prepared.configurationGeneration) != recordGeneration(a, record)) ||
                 (record.kind == App::OperationKind::VELOCITY && record.velocity.request.configurationGeneration != a.axis.generation) ||
                 (record.kind == App::OperationKind::HOME && (!a.axis.generation || record.configurationGeneration != a.axis.generation)))
                 advanceOperation(record, actionEvent(record, ReadEventKind::CANCEL), now);
@@ -2546,7 +2680,7 @@ Probe::Action startRecovery(App& a, uint32_t commandId, bool automatic, uint32_t
         a.recovery = App::Recovery();
     }
     const uint64_t now = uart.sample(); uint64_t id = 0;
-    for (std::size_t i = REQUEST_CAPACITY + 1; i < REQUEST_CAPACITY + 1 + STOP_RECORDS; ++i)
+    for (std::size_t i = REQUEST_CAPACITY + 1; i < REQUEST_CAPACITY + 1 + URGENT_RECORDS; ++i)
         if (!terminal(a, a.records[i])) holdStop(a, a.records[i], now);
     if (a.owner.recover(now, now + RECOVERY_BUDGET_US, id) != Rtu::RecoveryAdmission::ACCEPTED) return Probe::Action::FAILED;
     // Recovery invalidates the scan's saved generation, including work that
@@ -2558,6 +2692,7 @@ Probe::Action startRecovery(App& a, uint32_t commandId, bool automatic, uint32_t
     a.persistenceBaselineKnown = false;
     ++a.bindingGeneration;
     invalidateAxis(a);
+    invalidateGroupFacts(a, now);
     a.monitorState.settings.enabled = false; a.monitorState.remaining = 0;
     for (auto& record : a.records) if (record.operationId && record.kind == App::OperationKind::TYPED_READ &&
         record.read.state == ReadState::ACTIVE && !record.requestId.owner)
@@ -2582,9 +2717,16 @@ Probe::Action recover(void* context, uint32_t commandId, uint32_t& operationId) 
     return startRecovery(*static_cast<App*>(context), commandId, false, operationId);
 }
 #include "SimpleMotionApp.h"
+#include "GroupApp.h"
 
 bool lookup(void* context, uint32_t operationId, Probe::ResultView& out) {
     App& a = *static_cast<App*>(context); if (!operationId) operationId = a.latestOperationId;
+    if (const auto* group = groupOperation(a, operationId)) {
+        out = Probe::ResultView();
+        out.operationId = operationId; out.commandId = group->result.commandId;
+        out.serialTuple = group->serialTuple; out.serialGeneration = group->serialGeneration;
+        out.group = &group->result; out.pending = group->result.pending; return true;
+    }
     if (operationId && operationId == a.simple.view.operationId) {
         out = Probe::ResultView(); out.operationId = operationId;
         out.commandId = a.simple.view.commandId; out.address = a.simple.view.address;
@@ -2720,6 +2862,7 @@ Probe::Action cancel(void* context, uint32_t operationId) {
 }
 Probe::Action release(void* context, uint32_t operationId) {
     App& a = *static_cast<App*>(context);
+    if (auto* group = groupOperation(a, operationId)) return releaseGroup(a, *group);
     if (operationId && (operationId == a.simple.view.operationId || operationId == a.simple.view.moveOperationId ||
         operationId == a.simple.view.driverOperationId))
         return releaseSimpleMotion(a);
@@ -2759,7 +2902,7 @@ Probe::Action monitor(void* context, const Probe::MonitorSettings* requested, Pr
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
     if (requested->intervalMs < 100 || requested->intervalMs > 60000 || !requested->count || requested->count > 1000)
         return Probe::Action::INVALID;
-    if (a.monitorState.settings.enabled || a.records[REQUEST_CAPACITY].operationId) return Probe::Action::BUSY;
+    if (a.monitorState.settings.enabled || a.records[REQUEST_CAPACITY].operationId || groupSequencing(a)) return Probe::Action::BUSY;
     if (a.owner.needsRecovery() || uart.needsRecovery()) return Probe::Action::RECOVERY_REQUIRED;
     a.monitorState = Probe::MonitorSnapshot(); a.monitorState.settings = *requested;
     a.monitorState.remaining = requested->count; a.monitorState.nextDueUs = nowUs();
@@ -2809,6 +2952,7 @@ void invalidateTargetKnowledge(App& a, uint64_t now) {
     a.driverSettings.operationId = a.ioSettings.operationId = a.controlSettings.operationId = a.segmentSettings.operationId = 0;
     for (auto& cache : a.tuningSettings) cache.operationId = 0;
     for (auto& block : a.stateCache.blocks) block.invalidatedUs = now;
+    invalidateGroupFacts(a, now);
     a.driverInputsQualified = false;
     a.movePrerequisites.readinessQualified = false;
     a.velocityPrerequisites.readinessQualified = false;
@@ -2844,7 +2988,7 @@ Probe::Action selectTarget(void* context, uint8_t address) {
         a.runner.busy() || a.runner.transmitEnabled() || reading(a) || acting(a) ||
         a.monitorState.settings.enabled || a.persistenceCapture || a.persistenceRequest.owner ||
         a.persistenceReadRequest.owner || a.commissioningRequest.owner || a.motionProfile.view.pending ||
-        a.motionProfile.view.restoreUnsettled)
+        a.motionProfile.view.restoreUnsettled || groupSequencing(a))
         return Probe::Action::BUSY;
     if (!a.axis.generation || a.axis.generation == UINT32_MAX || a.bindingGeneration == UINT32_MAX)
         return Probe::Action::IDS_EXHAUSTED;
@@ -2891,7 +3035,7 @@ Probe::Action wiring(void* context, const Probe::WiringRequest* requested, Probe
         a.runner.busy() || a.runner.transmitEnabled() || reading(a) || acting(a) ||
         a.monitorState.settings.enabled || a.persistenceCapture || a.persistenceRequest.owner ||
         a.persistenceReadRequest.owner || a.commissioningRequest.owner || a.motionProfile.view.pending ||
-        a.motionProfile.request.owner) return Probe::Action::BUSY;
+        a.motionProfile.request.owner || groupSequencing(a)) return Probe::Action::BUSY;
     if (!a.axis.generation || a.axis.generation == UINT32_MAX) return Probe::Action::IDS_EXHAUSTED;
     declaration = requested->state;
     invalidateAxis(a);
@@ -2907,7 +3051,7 @@ Probe::Action wiring(void* context, const Probe::WiringRequest* requested, Probe
     return Probe::Action::OK;
 }
 bool discoveryStopPending(const App& a) {
-    for (std::size_t i = REQUEST_CAPACITY + 1; i < REQUEST_CAPACITY + 1 + STOP_RECORDS; ++i)
+    for (std::size_t i = REQUEST_CAPACITY + 1; i < REQUEST_CAPACITY + 1 + URGENT_RECORDS; ++i)
         if (a.records[i].discoveryStop) return true;
     return false;
 }
@@ -2924,7 +3068,7 @@ Probe::Action hostSerialImpl(void* context, const Probe::HostRequest* requested,
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.configuring || a.owner.active() || a.owner.pending() || a.owner.recovering() ||
         a.runner.busy() || a.runner.transmitEnabled() || reading(a) || (acting(a) && !(ownedSession && discoveryStopPending(a))) ||
-        a.monitorState.settings.enabled || a.motionProfile.view.pending || a.motionProfile.request.owner)
+        a.monitorState.settings.enabled || a.motionProfile.view.pending || a.motionProfile.request.owner || groupSequencing(a))
         return Probe::Action::BUSY;
     if (!a.serial.blocked && (a.owner.needsRecovery() || uart.needsRecovery())) return Probe::Action::RECOVERY_REQUIRED;
     if (!a.serial.blocked && a.serial.activeKnown && sameTuple(tuple, a.serial.active)) {
@@ -2991,6 +3135,7 @@ Probe::Host host(App* a) {
     h.wiring = wiring;
     h.communication = communication; h.persistence = persistence;
     h.discovery = discoveryCommand;
+    h.group = groupCommand;
     h.result = lookup; h.cancel = cancel; h.release = release;
 #if MOTORCONTROLRS_LOAD_FIXTURE
     h.load = load;
@@ -3045,10 +3190,14 @@ void recycleInteractiveResults(void* context) {
         }
         if (success && (!r.requestId.owner || a.owner.release(r.requestId))) clearRecord(r);
     }
+    // A delivered successful human group move pins no further evidence.
+    auto& move = a.group.move;
+    if (move.result.operationId && move.delivered && move.interactive && move.result.ok)
+        releaseGroup(a, move);
 }
 void deliver(App& a) {
     for (auto& record : a.records) {
-        if (!record.operationId || record.delivered) continue;
+        if (!record.operationId || record.delivered || record.groupChild) continue;
         if (record.monitored) {
             if (!terminal(a, record)) continue;
             // This explicit consumer already harvested each non-consuming block.
@@ -3181,6 +3330,7 @@ void deliver(App& a) {
         a.console.reportRecovery(a.recoveryDisplaced.commandId, a.recoveryDisplaced.operationId, a.recoveryDisplaced.retained,
             &a.recoveryDisplaced.serialTuple, a.recoveryDisplaced.serialGeneration))
         a.recoveryDisplaced.delivered = true;
+    deliverGroups(a);
 }
 }
 namespace MotorControlRSExample {
@@ -3449,8 +3599,60 @@ bool copyHomeResult(uint32_t operationId, ESS::HomeContext& output) {
 }
 bool releaseOperation(uint32_t operationId) {
     if (!app || !operationId) return false;
+    if (auto* group = groupOperation(*app, operationId)) return releaseGroup(*app, *group) == Probe::Action::OK;
     const auto* record = findRecord(*app, operationId);
     return record && terminal(*app, *record) && release(app, operationId) == Probe::Action::OK;
+}
+static MotorControlRS::Status submitGroup(const Probe::GroupCommand& command, uint32_t* operationId, const char* message) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    Probe::GroupReply reply;
+    const auto result = groupCommand(app, 0, command, reply);
+    if (result != Probe::Action::OK)
+        return Status(result == Probe::Action::UNSUPPORTED ? Err::UNSUPPORTED : Err::INVALID_CONFIG, static_cast<int32_t>(result), message);
+    if (reply.operationId && operationId) {
+        groupOperation(*app, reply.operationId)->programmatic = true; // Delivered without a console line.
+        *operationId = reply.operationId;
+    }
+    return Ok();
+}
+MotorControlRS::Status declareGroup(const uint8_t* addresses, std::size_t count, uint32_t& operationId) {
+    Probe::GroupCommand command; command.kind = Probe::GroupCommandKind::SET;
+    if (!addresses || !count || count > Probe::GROUP_CAPACITY)
+        return MotorControlRS::Status(MotorControlRS::Err::INVALID_CONFIG, static_cast<int32_t>(Probe::Action::INVALID), "group needs 1..4 addresses");
+    std::memcpy(command.addresses, addresses, count); command.count = count;
+    return submitGroup(command, &operationId, "group declaration not admitted");
+}
+MotorControlRS::Status clearGroup() {
+    Probe::GroupCommand command; command.kind = Probe::GroupCommandKind::CLEAR;
+    return submitGroup(command, nullptr, "group clear requires an idle application");
+}
+MotorControlRS::Status declareGroupWiring(uint8_t address, uint8_t terminal, MotorControlRS::InputWiring state) {
+    Probe::GroupCommand command; command.kind = Probe::GroupCommandKind::WIRING;
+    command.address = address; command.terminal = terminal; command.wiring = state;
+    return submitGroup(command, nullptr, "group wiring declaration not admitted");
+}
+bool inspectGroup(Probe::GroupView& output) {
+    if (!app) return false;
+    output = buildGroupView(*app); return true;
+}
+MotorControlRS::Status submitGroupMove(const Probe::GroupMoveRequest& request, uint32_t& operationId) {
+    Probe::GroupCommand command; command.kind = Probe::GroupCommandKind::MOVE; command.move = request;
+    return submitGroup(command, &operationId, "group move not admitted; inspect member readiness, policy or capacity");
+}
+MotorControlRS::Status submitGroupStop(MotorControlRS::StopBehavior behavior, uint32_t& operationId) {
+    Probe::GroupCommand command; command.kind = Probe::GroupCommandKind::STOP; command.stop = behavior;
+    return submitGroup(command, &operationId, "group stop not admitted");
+}
+MotorControlRS::Status submitGroupStateRead(uint32_t& operationId) {
+    Probe::GroupCommand command; command.kind = Probe::GroupCommandKind::READ_STATE;
+    return submitGroup(command, &operationId, "group state read not admitted");
+}
+bool copyGroupResult(uint32_t operationId, Probe::GroupResult& output) {
+    if (!app || !operationId) return false;
+    const auto* op = groupOperation(*app, operationId);
+    if (!op) return false;
+    output = op->result; return true;
 }
 void serviceApplication() {
     if (!app) { Platform::idle(10); return; }
@@ -3495,6 +3697,7 @@ void serviceApplication() {
     advanceReads(a, nowUs());
     advanceActions(a, nowUs());
     const uint64_t completedSampleUs = nowUs();
+    serviceGroup(a, completedSampleUs); // No extra clock read while no group operation runs.
     serviceCoordinates(a, completedSampleUs);
     RuntimeWitness::mark(RuntimeWitness::CONSOLE);
     a.console.serviceOutput(); deliver(a);

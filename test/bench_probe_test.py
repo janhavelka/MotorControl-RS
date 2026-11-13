@@ -5843,6 +5843,193 @@ def check_position_interrupt_fixtures(executables):
     print("PASS: both production position-interrupt formatters accepted through live/retained/historical host routes")
 
 
+
+# Drive-group lines copied from the actual application (test/group_app_test.cpp
+# fixture) and re-correlated per request; members, timing and evidence unchanged.
+GROUP_SET_TERMINAL = json.loads('{"type":"group","profile":"ess_rs","id":5,"command":"group-set","command_id":5,"operation_id":19,"group_kind":"set","ok":true,"state":"succeeded","declaration":5,"binding_generation":2,"aborted":false,"failed_address":0,"started_us":984267,"finished_us":1140961,"count":3,"members":[{"address":1,"operation_id":21,"admission":"admitted","status":"OK","detail":0,"join":"joined","read_state":"succeeded","raw_model":20202,"raw_version":41,"raw_active_node":1,"config_known":true,"profile_known":true},{"address":2,"operation_id":23,"admission":"admitted","status":"OK","detail":0,"join":"joined","read_state":"succeeded","raw_model":20202,"raw_version":41,"raw_active_node":2,"config_known":true,"profile_known":true},{"address":4,"operation_id":25,"admission":"admitted","status":"OK","detail":0,"join":"joined","read_state":"succeeded","raw_model":20202,"raw_version":41,"raw_active_node":4,"config_known":true,"profile_known":true}],"host_serial":{"known":true,"baud":115200,"format":"8N1","generation":1}}')
+GROUP_MOVE_TERMINAL = json.loads('{"type":"group","profile":"ess_rs","id":9,"command":"group-move","command_id":9,"operation_id":20,"group_kind":"move","ok":true,"state":"succeeded","declaration":1,"binding_generation":1,"aborted":false,"failed_address":0,"started_us":398058,"finished_us":504673,"count":3,"request":{"relative":true,"value":[50,1],"unit":"steps","frame":0,"speed_rpm":60,"setup":"write"},"on_failure":"leave","start_tx_spread_us":35158,"running_bound_spread_us":33667,"members":[{"address":1,"operation_id":21,"admission":"admitted","status":"OK","detail":0,"start":"started","state":"succeeded","outcome":"observed","execution":"acknowledged","setup_execution":"acknowledged","completion":"observed","uncertain":false,"interrupted_by_stop":false,"effective_native":50,"start_tx_complete":true,"start_tx_end_us":410636,"start_tx_uncertainty_us":22,"running_observed":true,"running_earliest_us":443210,"running_latest_us":443234,"stop_operation_id":0,"stop_admission":"not_attempted","stop_state":"empty","stop_execution":"not_transmitted","stop_completion":"not_observed"},{"address":2,"operation_id":22,"admission":"admitted","status":"OK","detail":0,"start":"started","state":"succeeded","outcome":"observed","execution":"acknowledged","setup_execution":"acknowledged","completion":"observed","uncertain":false,"interrupted_by_stop":false,"effective_native":50,"start_tx_complete":true,"start_tx_end_us":425686,"start_tx_uncertainty_us":22,"running_observed":true,"running_earliest_us":455326,"running_latest_us":455350,"stop_operation_id":0,"stop_admission":"not_attempted","stop_state":"empty","stop_execution":"not_transmitted","stop_completion":"not_observed"},{"address":4,"operation_id":23,"admission":"admitted","status":"OK","detail":0,"start":"started","state":"succeeded","outcome":"observed","execution":"acknowledged","setup_execution":"acknowledged","completion":"observed","uncertain":false,"interrupted_by_stop":false,"effective_native":50,"start_tx_complete":true,"start_tx_end_us":445794,"start_tx_uncertainty_us":22,"running_observed":true,"running_earliest_us":476853,"running_latest_us":476877,"stop_operation_id":0,"stop_admission":"not_attempted","stop_state":"empty","stop_execution":"not_transmitted","stop_completion":"not_observed"}],"host_serial":{"known":true,"baud":115200,"format":"8N1","generation":1}}')
+GROUP_STOP_TERMINAL = json.loads('{"type":"group","profile":"ess_rs","id":10,"command":"group-stop","command_id":10,"operation_id":24,"group_kind":"stop","ok":true,"state":"succeeded","declaration":1,"binding_generation":1,"aborted":false,"failed_address":0,"started_us":2559056,"finished_us":2596423,"count":3,"stop_policy":"fast","members":[{"address":1,"operation_id":25,"admission":"admitted","status":"OK","detail":0,"state":"succeeded","outcome":"observed","execution":"acknowledged","completion":"observed","uncertain":false,"raw_alarm":0,"raw_motion":1},{"address":2,"operation_id":26,"admission":"admitted","status":"OK","detail":0,"state":"succeeded","outcome":"observed","execution":"acknowledged","completion":"observed","uncertain":false,"raw_alarm":0,"raw_motion":1},{"address":4,"operation_id":27,"admission":"admitted","status":"OK","detail":0,"state":"succeeded","outcome":"observed","execution":"acknowledged","completion":"observed","uncertain":false,"raw_alarm":0,"raw_motion":1}],"host_serial":{"known":true,"baud":115200,"format":"8N1","generation":1}}')
+GROUP_READ_TERMINAL = json.loads('{"type":"group","profile":"ess_rs","id":11,"command":"group-read-state","command_id":11,"operation_id":28,"group_kind":"read_state","ok":true,"state":"succeeded","declaration":1,"binding_generation":1,"aborted":false,"failed_address":0,"started_us":5677458,"finished_us":5743261,"count":3,"members":[{"address":1,"operation_id":29,"admission":"admitted","status":"OK","detail":0,"read_state":"succeeded","state_known":true,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0},{"address":2,"operation_id":30,"admission":"admitted","status":"OK","detail":0,"read_state":"succeeded","state_known":true,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0},{"address":4,"operation_id":31,"admission":"admitted","status":"OK","detail":0,"read_state":"succeeded","state_known":true,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0}],"host_serial":{"known":true,"baud":115200,"format":"8N1","generation":1}}')
+GROUP_SHOW = json.loads('{"type":"reply","profile":"ess_rs","id":12,"command":"group-show","ok":true,"result":"done","bus_traffic":false,"capacity":4,"count":3,"declaration":1,"binding_generation":1,"sequencing":false,"operations":{"set":1,"read_state":28,"move":20,"stops":[24,0]},"members":[{"address":1,"target":1,"generation":1,"configuration_generation":1,"current":true,"identity_known":true,"raw_model":20202,"raw_version":41,"raw_active_node":1,"config_known":true,"profile_known":true,"profile":[10,100,100,60,0,0],"inputs":[0,0,0,0],"outputs":[0,0],"start_speed_relation_required":false},{"address":2,"target":2,"generation":1,"configuration_generation":1,"current":true,"identity_known":true,"raw_model":20202,"raw_version":41,"raw_active_node":2,"config_known":true,"profile_known":true,"profile":[10,100,100,60,0,0],"inputs":[0,0,0,0],"outputs":[0,0],"start_speed_relation_required":false},{"address":4,"target":4,"generation":1,"configuration_generation":1,"current":true,"identity_known":true,"raw_model":20202,"raw_version":41,"raw_active_node":4,"config_known":true,"profile_known":true,"profile":[10,100,100,60,0,0],"inputs":[1,0,0,0],"outputs":[0,0],"start_speed_relation_required":false}]}')
+GROUP_STATUS = json.loads('{"type":"reply","profile":"ess_rs","id":13,"command":"group-status","ok":true,"result":"done","bus_traffic":false,"capacity":4,"count":3,"declaration":1,"binding_generation":1,"sequencing":false,"operations":{"set":1,"read_state":28,"move":20,"stops":[24,0]},"members":[{"address":1,"current":true,"motion_fresh":true,"io_fresh":true,"feedback_fresh":true,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0,"age_ms":3211,"settling":false,"settle_until_us":0,"reserved":false},{"address":2,"current":true,"motion_fresh":true,"io_fresh":true,"feedback_fresh":true,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0,"age_ms":3189,"settling":false,"settle_until_us":0,"reserved":false},{"address":4,"current":true,"motion_fresh":false,"io_fresh":false,"feedback_fresh":false,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0,"age_ms":null,"settling":false,"settle_until_us":0,"reserved":false}]}')
+GROUP_MOVE_ARGS = ("relative", "50", "steps", "native", "60", "configured", "on-failure", "leave")
+
+
+class DriveGroupRouteTests(unittest.TestCase):
+    """Host validation of the multi-drive 02 group routes; no device is opened."""
+
+    def session(self, handler):
+        self.clock = Clock()
+        self.port = Serial(handler)
+        console = bench.Console(self.port, clock=self.clock, sleeper=self.clock.sleep)
+        console.identify(timeout_s=0.1)
+        return console
+
+    @staticmethod
+    def routed(terminals, mutate=None, accepted_fields=None):
+        """Answer group commands with their acceptance and one re-correlated terminal."""
+        state = dict(next_operation=200)
+        def handler(i, command, args):
+            if command != "group":
+                return Serial.normal(i, command, args)
+            name = "group-read-state" if args[:2] == ["read", "state"] else "group-" + args[0]
+            item = copy.deepcopy(terminals[name])
+            if item.get("type") == "reply":  # Local view.
+                item.update(id=i)
+                if mutate: mutate(item)
+                return encoded(item)
+            state["next_operation"] += 10
+            operation = state["next_operation"]
+            item.update(id=i, command_id=i, operation_id=operation)
+            if mutate: mutate(item)
+            accepted = reply(i, name, result="accepted", address=0, operation_id=operation, **(accepted_fields or {}))
+            return encoded(accepted) + encoded(item)
+        return handler
+
+    TERMINALS = {"group-set": GROUP_SET_TERMINAL, "group-move": GROUP_MOVE_TERMINAL, "group-stop": GROUP_STOP_TERMINAL,
+                 "group-read-state": GROUP_READ_TERMINAL, "group-show": GROUP_SHOW, "group-status": GROUP_STATUS}
+
+    def test_grammar_rejects_before_transmission(self):
+        console = self.session(Serial.normal)
+        before = len(self.port.writes)
+        invalid = (("group-set", ()), ("group-set", ("1", "2", "3", "4", "5")), ("group-set", ("1", "1")),
+                   ("group-set", ("0",)), ("group-set", ("248",)), ("group-set", ("01",)),
+                   ("group-show", ("1",)), ("group-read-state", ("state",)), ("group-stop", ()),
+                   ("group-stop", ("slow",)), ("group-wiring", ("4", "x4", "unconnected")),
+                   ("group-wiring", ("4", "x0")), ("group-move", GROUP_MOVE_ARGS[:-2]),
+                   ("group-move", GROUP_MOVE_ARGS[:-1] + ("stop",)),
+                   ("group-move", ("absolute",) + GROUP_MOVE_ARGS[1:]),
+                   ("group-move", GROUP_MOVE_ARGS[:6] + ("setup", "stored") + GROUP_MOVE_ARGS[6:]),
+                   ("group-move", GROUP_MOVE_ARGS[:6] + ("basis", "actual") + GROUP_MOVE_ARGS[6:]),
+                   ("group-move", ("relative", "50", "steps", "native", "6.5", "configured", "on-failure", "leave")),
+                   ("group-set", ["1"]), ("group-set", ("1\nprobe",)))
+        for command, tokens in invalid:
+            with self.subTest(command=command, tokens=tokens), self.assertRaises(ValueError):
+                console.command(command, host_args=tokens)
+        self.assertEqual(len(self.port.writes), before)
+        self.assertTrue(console.synchronized)
+        self.assertEqual(bench.group_arguments("group-move", GROUP_MOVE_ARGS)["on_failure"], "leave")
+        self.assertEqual(bench.group_arguments("group-move", GROUP_MOVE_ARGS[:6] + ("setup", "verify", "on-failure", "stop", "fast"))["on_failure"], "stop_fast")
+
+    def test_views_are_local_and_carry_no_operation(self):
+        console = self.session(self.routed(self.TERMINALS))
+        show = console.command("group-show")
+        self.assertEqual([m["address"] for m in show["members"]], [1, 2, 4])
+        status = console.command("group-status")
+        self.assertIsNone(status["members"][2]["age_ms"])
+        self.assertFalse(console.operations)
+        self.assertEqual([line.decode().split()[1:] for line in self.port.writes[1:]], [["group", "show"], ["group", "status"]])
+        for fields in (dict(bus_traffic=True), dict(capacity=5), dict(operation_id=3), dict(count=2),
+                       dict(members=[dict(address=1, current=True)] * 3), dict(operations=dict(set=1)), dict(result="accepted")):
+            def mutate(item, fields=fields): item.update(fields)
+            console = self.session(self.routed(self.TERMINALS, mutate))
+            with self.subTest(fields=fields), self.assertRaises(bench.BenchError):
+                console.command("group-show")
+
+    def test_wiring_and_clear_replies_match_request(self):
+        cleared = dict(GROUP_SHOW, command="group-clear", count=0, members=[])
+        wiring = dict(GROUP_SHOW, command="group-wiring")
+        console = self.session(self.routed({"group-clear": cleared, "group-wiring": wiring}))
+        self.assertEqual(console.command("group-wiring", host_args=("4", "x0", "unconnected"))["members"][2]["inputs"][0], 1)
+        self.assertEqual(console.command("group-clear")["count"], 0)
+        self.assertEqual(self.port.writes[-2].decode().split()[1:], ["group", "wiring", "4", "x0", "unconnected"])
+        console = self.session(self.routed({"group-wiring": wiring}))
+        with self.assertRaises(bench.BenchError):
+            console.command("group-wiring", host_args=("4", "x1", "unconnected"))
+        console = self.session(self.routed({"group-clear": dict(GROUP_SHOW, command="group-clear")}))
+        with self.assertRaises(bench.BenchError):
+            console.command("group-clear")
+
+    def test_group_operations_route_one_terminal_each(self):
+        console = self.session(self.routed(self.TERMINALS))
+        for command, args in (("group-set", ("1", "2", "4")), ("group-read-state", ()),
+                              ("group-move", GROUP_MOVE_ARGS), ("group-stop", ("fast",))):
+            with self.subTest(command=command):
+                handle = console.begin(command, host_args=args)
+                terminal = console.wait(handle, release=command == "group-move")
+                self.assertEqual(terminal["type"], "group")
+                self.assertEqual(terminal["command_id"], handle.id)
+        wire = [line.decode().split()[1:] for line in self.port.writes[1:]]
+        self.assertEqual(wire[:5], [["group", "set", "1", "2", "4"], ["group", "read", "state"], ["group", "move", *GROUP_MOVE_ARGS],
+                                    ["release", str(console.last_operation_id - 10)], ["group", "stop", "fast"]])
+        # The firmware replaces a delivered set/read result; the harness mirrors it.
+        console.wait(console.begin("group-set", host_args=("1", "2", "4")))
+        self.assertEqual(sum(o.command == "group-set" for o in console.operations.values()), 1)
+
+    def test_group_terminal_inconsistencies_are_rejected(self):
+        def member(index, **fields):
+            def mutate(item):
+                item["members"][index].update(fields)
+            return mutate
+        cases = (
+            ("group-set", ("1", "2", "3"), None),  # Members differ from the request.
+            ("group-set", ("1", "2", "4"), member(1, join="absent")),
+            ("group-move", GROUP_MOVE_ARGS, member(0, start="unknown")),
+            ("group-move", GROUP_MOVE_ARGS, member(1, stop_operation_id=77, stop_admission="admitted")),
+            ("group-move", GROUP_MOVE_ARGS, member(2, completion="not_observed")),
+            ("group-move", GROUP_MOVE_ARGS, lambda item: item.update(aborted=True)),
+            ("group-move", GROUP_MOVE_ARGS, lambda item: item.update(on_failure="stop_fast")),
+            ("group-move", GROUP_MOVE_ARGS, member(0, operation_id=0)),
+            ("group-stop", ("normal",), None),  # Policy differs.
+            ("group-stop", ("fast",), member(0, completion="not_observed")),
+            ("group-read-state", (), lambda item: item.update(state="failed")),
+            ("group-read-state", (), lambda item: item.update(group_kind="move")),
+        )
+        for command, args, mutate in cases:
+            with self.subTest(command=command, args=args):
+                console = self.session(self.routed(self.TERMINALS, mutate))
+                with self.assertRaises(bench.BenchError):
+                    console.wait(console.begin(command, host_args=args))
+
+    def test_failed_group_move_keeps_member_outcomes_independent(self):
+        failed = copy.deepcopy(GROUP_MOVE_TERMINAL)
+        failed.update(ok=False, state="failed", aborted=True, failed_address=2, on_failure="stop_fast")
+        failed["members"][1].update(start="unknown", state="failed", outcome="transport_error", execution="unknown",
+                                    completion="not_observed", uncertain=True, stop_operation_id=31, stop_admission="admitted",
+                                    stop_state="succeeded", stop_execution="acknowledged", stop_completion="observed")
+        failed["members"][0].update(stop_operation_id=30, stop_admission="admitted", stop_state="succeeded",
+                                    stop_execution="acknowledged", stop_completion="observed", interrupted_by_stop=True,
+                                    state="failed", outcome="cancelled", completion="not_observed", uncertain=True)
+        failed["members"][2].update(start="not_sent", state="failed", outcome="cancelled", execution="not_transmitted",
+                                    setup_execution="not_transmitted", completion="not_observed", start_tx_complete=False,
+                                    start_tx_end_us=0, start_tx_uncertainty_us=0, running_observed=False,
+                                    running_earliest_us=0, running_latest_us=0)
+        args = GROUP_MOVE_ARGS[:-1] + ("stop", "fast")
+        console = self.session(self.routed({"group-move": failed}))
+        terminal = console.wait(console.begin("group-move", host_args=args))
+        self.assertEqual([m["start"] for m in terminal["members"]], ["started", "unknown", "not_sent"])
+        # A policy stop for a member whose start never left is rejected.
+        failed["members"][2].update(stop_operation_id=32, stop_admission="admitted")
+        console = self.session(self.routed({"group-move": failed}))
+        with self.assertRaises(bench.BenchError):
+            console.wait(console.begin("group-move", host_args=args))
+
+    def test_group_refusal_names_only_a_requested_member(self):
+        def refused(address, result="unavailable"):
+            def handler(i, command, args):
+                if command != "group":
+                    return Serial.normal(i, command, args)
+                return encoded(reply(i, "group-set", ok=False, result=result, address=address, operation_id=0))
+            return handler
+        self.assertFalse(self.session(refused(2)).command("group-set", host_args=("1", "2"))["ok"])
+        self.assertFalse(self.session(refused(0, "busy")).command("group-set", host_args=("1", "2"))["ok"])
+        with self.assertRaises(bench.BenchError):
+            self.session(refused(4)).command("group-set", host_args=("1", "2"))
+
+    def test_group_stops_use_their_own_two_retained_slots(self):
+        def handler(i, command, args):
+            if command != "group":
+                return Serial.normal(i, command, args)
+            return encoded(reply(i, "group-stop", result="accepted", address=0, operation_id=500 + i))
+        console = self.session(handler)
+        first = console.begin("group-stop", host_args=("normal",))
+        second = console.begin("group-stop", host_args=("fast",))
+        self.assertTrue(first.accepted and second.accepted)
+        self.assertEqual(sum(bench.operation_quota(o.command) == "group-stop" for o in console.operations.values()), 2)
+        with self.assertRaises(bench.BenchError):
+            console.begin("group-stop", host_args=("fast",))  # Both group stops still pending.
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--position-interrupt-fixtures":
         if len(sys.argv) != 4:

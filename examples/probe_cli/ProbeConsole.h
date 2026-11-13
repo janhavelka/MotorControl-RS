@@ -11,6 +11,7 @@
 #include "MoveRelation.h"
 #include "DiscoveryScan.h"
 #include "QualificationConsole.h"
+#include "DriveGroup.h"
 #include "MotorControlRS/profiles/ess_rs/Codec.h"
 #include "MotorControlRS/profiles/ess_rs/Reads.h"
 #include "MotorControlRS/profiles/ess_rs/Actions.h"
@@ -26,7 +27,7 @@ namespace MotorControlRSExample { namespace Probe {
 constexpr std::size_t LINE_CAPACITY = 128;
 constexpr std::size_t OUTPUT_CAPACITY = 8192;
 constexpr std::size_t OUTSTANDING_CAPACITY = 10; // Advertised by protocol 3: nine ordinary correlations plus one stop.
-constexpr std::size_t OUTSTANDING_SLOTS = OUTSTANDING_CAPACITY + 1; // Adds the stop-escalation correlation.
+constexpr std::size_t OUTSTANDING_SLOTS = OUTSTANDING_CAPACITY + 1 + GROUP_STOP_OPERATIONS; // Adds the stop escalation and two group stops.
 constexpr std::size_t STOP_REPLY_CAPACITY = 3; // Admission replies retained under output pressure.
 constexpr std::size_t PROBE_TX_CAPACITY = 8;
 constexpr std::size_t PROBE_RX_CAPACITY = 64;
@@ -283,6 +284,7 @@ struct ResultView {
     const MotorControlRS::ESS_RS::VelocityContext* velocityContext = nullptr;
     const MotorControlRS::ESS_RS::DriverContext* driverContext = nullptr;
     const MotorControlRS::ESS_RS::HomeContext* homeContext = nullptr;
+    const GroupResult* group = nullptr; ///< Borrowed only during formatting.
     bool interruptedByStop = false;
     ProbeResult probe;
     Rtu::RecoveryResult recoveryResult;
@@ -369,6 +371,11 @@ struct Host {
     Action (*discovery)(void*, const DiscoveryCommand*, DiscoveryView&) = nullptr;
     Action (*debug)(void*, const DebugMode* requested, DebugSnapshot&) = nullptr;
     Action (*motionProfile)(void*, MotionProfileCommand, MotionProfileView&) = nullptr;
+    /** Drive group. SHOW, STATUS, CLEAR and WIRING are synchronous host
+     * declarations without bus traffic. SET, MOVE, STOP and READ_STATE admit one
+     * group operation whose terminal is reported once with reportGroup. Each
+     * member keeps its own reservation, child operation and evidence. */
+    Action (*group)(void*, uint32_t commandId, const GroupCommand&, GroupReply&) = nullptr;
     bool (*result)(void*, uint32_t operationId, ResultView&) = nullptr; ///< Zero selects latest.
     Action (*cancel)(void*, uint32_t operationId) = nullptr; ///< Local only; zero selects latest.
     Action (*release)(void*, uint32_t operationId) = nullptr; ///< Explicit terminal retention release.
@@ -385,7 +392,8 @@ struct Host {
  * correlation id; plain commands use the configured presentation and
  * monotonically increasing local ids (wrapping to 1), skipping
  * outstanding correlations. Nine ordinary commands and two stops may be outstanding;
- * the second stop slot allows escalation. Protocol 3 still advertises capacity 10.
+ * the second stop slot allows escalation. Two more slots hold a group stop and
+ * its escalation. Protocol 3 still advertises capacity 10.
  * duplicate explicit IDs fail before callbacks. Operation result retention
  * belongs to the host and is released only by its explicit release hook.
  * Host callbacks and terminal reports share one task. Place this object in PSRAM if
@@ -431,6 +439,8 @@ public:
                       const HostTuple* tuple = nullptr, uint32_t serialGeneration = 0) noexcept;
     bool reportHome(uint32_t id, uint32_t operationId, const MotorControlRS::ESS_RS::HomeContext&,
                     bool interruptedByStop = false, const HostTuple* tuple = nullptr, uint32_t serialGeneration = 0) noexcept;
+    bool reportGroup(uint32_t id, uint32_t operationId, const GroupResult&,
+                     const HostTuple* tuple = nullptr, uint32_t serialGeneration = 0) noexcept;
 
 private:
     bool formatSimpleMotion(uint32_t id, const SimpleMotionView&, bool inspection) noexcept;
@@ -445,8 +455,11 @@ private:
     void qualificationReply(uint32_t id, const char* command, const char* result, const char* label, const char* value, bool ok = false) noexcept;
     void emit(uint32_t terminalOperation = 0, bool humanText = false) noexcept;
     bool outstanding(uint32_t id) const noexcept;
-    std::size_t availableSlot(bool stop = false) const noexcept;
-    bool track(uint32_t id, uint32_t operationId, bool stop = false) noexcept;
+    std::size_t availableSlot(bool stop = false, bool groupStop = false) const noexcept;
+    bool track(uint32_t id, uint32_t operationId, bool stop = false, bool groupStop = false) noexcept;
+    void group(uint32_t id, const char* const* tokens, std::size_t count) noexcept;
+    bool formatGroup(uint32_t id, uint32_t commandId, uint32_t operationId, const GroupResult&, bool inspection) noexcept;
+    bool formatGroupView(uint32_t id, const char* command, Action result, const GroupView*) noexcept;
     void untrack(uint32_t operationId) noexcept;
     bool formatBroadcast(uint32_t id, uint32_t commandId, uint32_t operationId,
                          const ProbeResult& result, bool inspection) noexcept;
@@ -495,6 +508,7 @@ private:
     // Retain one stop admission under output pressure without a second line buffer.
     struct StopReply {
         bool pending = false;
+        const char* command = "stop"; ///< stop or group-stop; static text.
         uint32_t id = 0, operationId = 0;
         uint8_t address = 0;
         Action result = Action::FAILED;

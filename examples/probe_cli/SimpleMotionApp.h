@@ -100,7 +100,7 @@ Probe::Action simpleMotion(void* context, uint32_t commandId,
         if (a.owner.needsRecovery() || uart.needsRecovery() || a.serial.blocked || !a.serial.activeKnown)
             return Probe::Action::RECOVERY_REQUIRED;
         if (a.owner.active() || a.owner.pending() || a.owner.commissioningOwned() || a.owner.configurationOwned() ||
-            a.discovery.owned || acting(a) || reading(a) || a.monitorState.settings.enabled) return Probe::Action::BUSY;
+            a.discovery.owned || acting(a) || reading(a) || a.monitorState.settings.enabled || groupSequencing(a)) return Probe::Action::BUSY;
         if (axisReserved(a, a.axis.target.address)) return Probe::Action::AXIS_CONFLICT;
         if (!a.nextOperationId) return Probe::Action::IDS_EXHAUSTED;
         const bool retainFailure = !v.ok;

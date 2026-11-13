@@ -221,6 +221,86 @@ Neither command replays a motor write or erases an uncertain outcome. A stop alr
 waiting for recovery is sent afterwards, for the first time. A new `recover` releases
 the previous delivered recovery result.
 
+## Drive group
+
+A drive group acts on up to four drives at their own unicast addresses, one
+member after another (multi-drive 02). It is a host selection: it changes no drive
+setting, and the selected axis and `useaddr` keep their behaviour.
+
+```text
+group set 1 2 4
+group read state
+group move relative 200 steps native 60 configured on-failure stop fast
+group stop fast
+group status
+```
+
+- `group set ADDR...` takes 1..4 distinct addresses in start order and needs an
+  idle host. For each member in order it reads identity, configuration and the
+  position profile (`0x0020`/6), all FC03. A member joins only when its identity
+  names its own node and reports model `0x4EEA` and firmware `0x0029`. The first
+  absent or unexpected responder rejects the whole declaration; no group remains
+  and no write was sent. A missing reply leaves the bus needing `recover`, as for
+  any read.
+- `group read state` refreshes each member's own cached state with one checked
+  state read per member. A failed member read does not stop the others.
+- `group move relative VALUE UNIT FRAME RPM configured [setup write|verify]
+  on-failure leave|stop normal|stop fast` checks every member with the move rules
+  of the selected axis and prepares its move before any frame is sent. One member
+  that is not ready refuses the whole group. Each member then runs its ordinary
+  move (write or verify, then start) after the previous member's start reply was
+  checked. Members have no host scale, so only `steps native` is admitted; stored
+  setup is refused.
+- The failure policy has no default. When a member's move fails before every start
+  is resolved (lost start reply, staging timeout, a stop, a cancellation or a
+  recovery), no later start is sent and no start is resent. A start frame already
+  on the wire settles with its own evidence. Then `stop normal` or `stop fast`
+  sends one urgent unicast stop to each member whose start left the host
+  (`started` or `unknown`), unless a newer explicit stop already owns that member.
+  `leave` sends nothing.
+- While a group set, read or start sequence runs, other ordinary bus commands
+  answer `busy`; urgent stops still go out. Once every start has resolved, other
+  commands run while the members move.
+- `group stop normal|fast` sends one urgent unicast stop to every member, each
+  with its own stop record and result, even when member facts have expired. A
+  group stop and one escalation may be retained; a newer stop supersedes an older
+  unsent one, as with `stop`. The selected-address `stop` keeps its own records.
+- `group show` (member facts) and `group status` (cached state) cause no bus
+  traffic. `group clear` forgets the members and needs an idle host.
+  `group wiring ADDR x0|x1|x2|x3|y0|y1 unknown|unconnected|connected` is the
+  `wiring` declaration for one member: it changes no drive assignment and expires
+  that member's cached state. Move admission does not read wiring; the next
+  `group set` records it in the member's configuration read.
+
+Each `group set`, `group move`, `group stop` and `group read state` ends with one
+`group` line. Every member keeps its own result: `start` (`not_sent`, `started`,
+`unknown`, `rejected`), outcome, execution, completion and uncertainty. A move
+member records the start write's TX end (`start_tx_end_us`, from the runner's
+physical TX evidence) and the bounds of its first RUNNING report
+(`running_earliest_us`, `running_latest_us`; poll reply closures, not motion
+onset). The line adds `start_tx_spread_us` (latest minus earliest start TX end)
+and `running_bound_spread_us`. Without staging-only moves
+([standalone 02](prompts/standalone/02_profile_staging.md)), the spread includes
+each member's staging transactions and the wait for a quiet bus.
+
+`useaddr`, `recover`, a host tuple change and a broadcast expire every member's
+facts: run `group set` again. A write to a member drive expires that member.
+Moves and enables expire the member's state: run `group read state` again. Each
+member has its own 1 s post-enable wait. A member drive that may have received a
+start-speed write this boot stays unready for group moves until the controller
+restarts; use the selected-axis route and its start-speed relation instead.
+
+`result ID` inspects a group result. `release ID` of a group move also frees each
+member's move result, which `result CHILD_ID` shows until then. A delivered group
+set, read or stop result is replaced by the next one of its kind. Successful
+human group moves are recycled like other human results. A group operation
+has no local `cancel` (it answers `invalid`); use `group stop`. During the start
+sequence, cancelling one member's move ID is a member failure and the failure
+policy applies.
+
+Native tests run these routes on a simulated multi-drive bus. Every physical
+multi-drive claim is NOT RUN until [multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md).
+
 ## Diagnostics
 
 `debug raw` shows copied TX/RX bytes and software observations. `debug decoded`

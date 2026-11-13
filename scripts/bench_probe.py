@@ -40,11 +40,23 @@ COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "h
                       "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "communication", "persistence", "motion-profile", "motion-profile-start-speed", "motion-profile-start-speed-relation", "home-auxiliary", "debug",
                       "home-qualification-install", "home-qualification-revoke", "velocity-qualification-install", "velocity-qualification-revoke",
                       "position-clear-qualification-install", "position-clear-qualification-revoke",
-                      "read-identity", "read-config", "read-state", "velocity-read", "home-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "position-interrupt", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list"})
+                      "read-identity", "read-config", "read-state", "velocity-read", "home-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "position-interrupt", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list",
+                      "group-show", "group-status", "group-clear", "group-wiring", "group-set", "group-move", "group-stop", "group-read-state"})
 MAX_COMMANDS = 11  # Eight ordinary operations, recovery, reserved stop and local query.
 MAX_OPERATIONS = 10  # Eight ordinary operations, one recovery and one reserved stop.
 MAX_STOPS = 2  # The reserved stop plus one escalation, beyond the protocol-3 advertised capacity.
 STOP_TERMINAL_S = 6.0  # Firmware's fixed stop budget, including one bounded recovery.
+# Drive group (multi-drive 02). Group operations report one terminal line each.
+GROUP_CAPACITY = 4
+GROUP_OPERATIONS = ("group-set", "group-move", "group-stop", "group-read-state")
+GROUP_KINDS = {"group-set": "set", "group-move": "move", "group-stop": "stop", "group-read-state": "read_state"}
+MAX_GROUP_STOPS = 2  # A group stop and its escalation, beyond the protocol-3 advertised capacity.
+GROUP_TERMINAL_S = {"group-set": 8.0, "group-read-state": 8.0, "group-stop": STOP_TERMINAL_S, "group-move": 32.0}
+GROUP_POLICIES = {("leave",): "leave", ("stop", "normal"): "stop_normal", ("stop", "fast"): "stop_fast"}
+ACTION_STATES = ("empty", "active", "succeeded", "failed")
+EXECUTIONS = ("not_transmitted", "acknowledged", "rejected", "unknown")
+MOTOR_OUTCOMES = ("none", "observed", "reply_error", "transport_error", "cancelled", "deadline",
+                  "timing_unqualified", "unconfirmed_response", "acknowledged", "observation_limit")
 HOME_TERMINAL_S = 32.0  # Firmware's largest home deadline (moveTimeoutMs) plus settlement.
 MAX_PROBES = 8
 TYPED_READS = {"read-identity": "identity", "read-config": "config", "read-state": "state",
@@ -54,7 +66,8 @@ HOST_FORMATS = ("8N1", "8N2", "8E1", "8O1")
 ADMISSION_FAILURES = frozenset({"busy", "recovery_required", "unavailable", "failed", "queue_full", "results_full",
     "ids_exhausted", "invalid", "already_terminal", "timing_unqualified", "unsupported", "axis_conflict",
     "unresolved", "unimplemented", "qualification_required", "invalid_arguments", "invalid_address", "invalid_value", "invalid_field",
-    "unsupported_policy", "invalid_axis_configuration", "output_full", "output_capacity"})
+    "unsupported_policy", "invalid_axis_configuration", "output_full", "output_capacity",
+    "failure_policy_required", "duplicate_address"})
 
 
 # The operator states each commissioning fact by name; this harness never supplies one.
@@ -421,7 +434,55 @@ def driver_arguments(arguments: tuple[str, ...], group: str = "drive") -> dict:
 
 
 def operation_quota(command):
-    return command if command in ("stop", "recover") else "ordinary"
+    return command if command in ("stop", "recover", "group-stop") else "ordinary"
+
+
+def group_arguments(command: str, tokens: tuple[str, ...]) -> dict:
+    """Exact drive-group grammar, checked before transmission. Never raw frames."""
+    if (command not in GROUP_KINDS and command not in ("group-show", "group-status", "group-clear", "group-wiring") or
+            not isinstance(tokens, tuple) or any(type(token) is not str or not token or
+            any(ord(char) < 33 or ord(char) > 126 for char in token) for token in tokens)):
+        raise ValueError("group arguments require a tuple of bounded ASCII tokens")
+    if command in ("group-show", "group-status", "group-clear", "group-read-state"):
+        if tokens:
+            raise ValueError(f"{command} takes no arguments")
+        return {}
+    if command == "group-set":
+        if not 1 <= len(tokens) <= GROUP_CAPACITY or any(re.fullmatch(r"[1-9][0-9]{0,2}", t) is None or int(t) > 247 for t in tokens):
+            raise ValueError("group-set requires 1..4 addresses within 1..247")
+        addresses = [int(t) for t in tokens]
+        if len(set(addresses)) != len(addresses):
+            raise ValueError("group-set addresses must be distinct")
+        return dict(addresses=addresses)
+    if command == "group-wiring":
+        terminals = ("x0", "x1", "x2", "x3", "y0", "y1")
+        dispositions = ("unknown", "unconnected", "connected")
+        if (len(tokens) != 3 or re.fullmatch(r"[1-9][0-9]{0,2}", tokens[0]) is None or int(tokens[0]) > 247 or
+                tokens[1] not in terminals or tokens[2] not in dispositions):
+            raise ValueError("group-wiring requires ADDRESS x0..x3|y0..y1 unknown|unconnected|connected")
+        return dict(address=int(tokens[0]), terminal=tokens[1], disposition=dispositions.index(tokens[2]))
+    if command == "group-stop":
+        if tokens not in (("normal",), ("fast",)):
+            raise ValueError("group-stop requires an explicit normal or fast policy")
+        return dict(stop_policy=tokens[0])
+    # group-move: relative value unit frame rpm configured [setup write|verify] on-failure POLICY
+    if len(tokens) < 8 or tokens[0] != "relative":
+        raise ValueError("group-move requires one relative displacement and an explicit failure policy")
+    try:
+        marker = tokens.index("on-failure")
+    except ValueError:
+        raise ValueError("group-move requires an explicit on-failure policy") from None
+    policy = GROUP_POLICIES.get(tokens[marker + 1:])
+    if policy is None:
+        raise ValueError("group-move on-failure requires leave, stop normal or stop fast")
+    core = tokens[1:marker]
+    parsed = move_arguments("relative", core)
+    if len(core) not in (5, 7) or parsed["setup"] not in ("write", "verify") or (len(core) == 7 and core[5] != "setup"):
+        raise ValueError("group-move accepts only an optional write or verify setup")
+    if re.fullmatch(r"[1-9][0-9]{0,4}", parsed["speed"]) is None or int(parsed["speed"]) > 65535:
+        raise ValueError("group-move speed must be a positive integer rpm")
+    return dict(value=parsed["value"], unit=parsed["unit"], frame=parsed["frame"], speed_rpm=int(parsed["speed"]),
+                setup=parsed["setup"], on_failure=policy)
 
 LOAD_FIELDS = ("workload_us", "owner_delay_us", "console_bytes")
 LOAD_LIMITS = (5000, 20000, 256)
@@ -1900,12 +1961,161 @@ class Console:
             require(values[int(terminal[1])] == disposition, "declaration differs from requested terminal")
 
     @staticmethod
+    def _check_group_view(handle: Command, item: dict) -> None:
+        """Local group declaration or cached view: no operation and no bus traffic."""
+        def require(condition, message):
+            if not condition:
+                raise BenchError(handle.command + ": " + message)
+        def integer(value, low=0, high=0xFFFFFFFF):
+            return type(value) is int and low <= value <= high
+        require(item.get("result") == "done" if item["ok"] else item.get("result") in ADMISSION_FAILURES, "invalid disposition")
+        require(item.get("bus_traffic") is False, "local command claims bus traffic")
+        require(not any(key in item for key in ("operation_id", "command_id", "tx_hex", "rx_hex", "tx_accepted")),
+                "local command claims wire or admission evidence")
+        if "members" not in item:
+            require(not item["ok"], "successful reply lacks the group view")
+            return
+        require(item.get("capacity") == GROUP_CAPACITY and integer(item.get("count"), 0, GROUP_CAPACITY) and
+                integer(item.get("declaration")) and integer(item.get("binding_generation")) and
+                type(item.get("sequencing")) is bool, "invalid group context")
+        operations = item.get("operations")
+        require(isinstance(operations, dict) and all(integer(operations.get(k)) for k in ("set", "read_state", "move")) and
+                isinstance(operations.get("stops"), list) and len(operations["stops"]) == MAX_GROUP_STOPS and
+                all(integer(v) for v in operations["stops"]), "invalid group operation identifiers")
+        members = item["members"]
+        require(isinstance(members, list) and len(members) == item["count"], "member count differs")
+        addresses = []
+        for member in members:
+            require(isinstance(member, dict) and integer(member.get("address"), 1, 247) and type(member.get("current")) is bool,
+                    "invalid member")
+            addresses.append(member["address"])
+            if handle.command == "group-status":
+                require(all(type(member.get(k)) is bool for k in ("motion_fresh", "io_fresh", "feedback_fresh", "position_known", "settling", "reserved")) and
+                        all(integer(member.get(k), 0, 0xFFFF) for k in ("raw_alarm", "raw_motion", "raw_inputs")) and
+                        integer(member.get("raw_position")) and integer(member.get("settle_until_us"), 0, 0xFFFFFFFFFFFFFFFF) and
+                        (member.get("age_ms") is None or integer(member.get("age_ms"), 0, 0xFFFFFFFFFFFFFFFF)), "invalid cached member state")
+            else:
+                require(all(integer(member.get(k)) for k in ("target", "generation", "configuration_generation")) and
+                        all(type(member.get(k)) is bool for k in ("identity_known", "config_known", "profile_known", "start_speed_relation_required")) and
+                        all(integer(member.get(k), 0, 0xFFFF) for k in ("raw_model", "raw_version", "raw_active_node")) and
+                        isinstance(member.get("profile"), list) and len(member["profile"]) == 6 and
+                        all(integer(v, 0, 0xFFFF) for v in member["profile"]), "invalid member facts")
+                for key, capacity in (("inputs", 4), ("outputs", 2)):
+                    values = member.get(key)
+                    require(isinstance(values, list) and len(values) == capacity and all(integer(v, 0, 2) for v in values),
+                            "invalid member wiring")
+        require(len(set(addresses)) == len(addresses), "duplicate member addresses")
+        if handle.command == "group-clear" and item["ok"]:
+            require(item["count"] == 0, "cleared group still lists members")
+        if handle.command == "group-wiring" and item["ok"]:
+            requested = group_arguments(handle.command, handle.host_args or ())
+            member = next((m for m in members if m["address"] == requested["address"]), None)
+            require(member is not None, "declared member is missing")
+            values = member["inputs" if requested["terminal"][0] == "x" else "outputs"]
+            require(values[int(requested["terminal"][1])] == requested["disposition"], "declaration differs from request")
+
+    def _check_group(self, item: dict, original: Command | None, *, pending: bool = False) -> None:
+        """One group terminal: each member's own child evidence, never a merged success."""
+        def require(condition, message):
+            if not condition:
+                raise BenchError("group: " + message)
+        def integer(value, low=0, high=0xFFFFFFFF):
+            return type(value) is int and low <= value <= high
+        def timestamp(value):
+            return integer(value, 0, 0xFFFFFFFFFFFFFFFF)
+        kind = item.get("group_kind")
+        require(kind in GROUP_KINDS.values(), "unknown group kind")
+        require(original is None or GROUP_KINDS.get(original.command) == kind, "group kind differs from request")
+        if pending:
+            require(not item.keys() - {"type", "profile", "id", "command", "command_id", "operation_id", "ok", "result",
+                                       "recovery", "group_kind", "host_serial"}, "pending group contains terminal evidence")
+            return
+        arguments = group_arguments(original.command, original.host_args or ()) if original is not None else {}
+        ok = item.get("ok")
+        require(item.get("state") in ("succeeded", "failed") and (item["state"] == "succeeded") == ok, "state and ok disagree")
+        require(integer(item.get("declaration")) and integer(item.get("binding_generation")) and
+                integer(item.get("failed_address"), 0, 247) and type(item.get("aborted")) is bool and
+                timestamp(item.get("started_us")) and timestamp(item.get("finished_us")) and
+                item["finished_us"] >= item["started_us"] and integer(item.get("count"), 1, GROUP_CAPACITY), "invalid group context")
+        require(not (ok and (item["aborted"] or item["failed_address"])), "an aborted group cannot succeed")
+        members = item.get("members")
+        require(isinstance(members, list) and len(members) == item["count"], "member count differs")
+        addresses = [m.get("address") if isinstance(m, dict) else None for m in members]
+        require(all(integer(a, 1, 247) for a in addresses) and len(set(addresses)) == len(addresses), "invalid member addresses")
+        if "addresses" in arguments:
+            require(addresses == arguments["addresses"], "members differ from the declaration request")
+        admissions = {"admitted", "not_attempted"} | ADMISSION_FAILURES
+        if kind == "stop":
+            require(item.get("stop_policy") in ("normal", "fast") and
+                    (not arguments or item["stop_policy"] == arguments["stop_policy"]), "stop policy differs")
+        else:
+            require("stop_policy" not in item, "stop policy on another group operation")
+        if kind == "move":
+            request, policy = item.get("request"), item.get("on_failure")
+            require(isinstance(request, dict) and request.get("relative") is True and isinstance(request.get("value"), list) and
+                    len(request["value"]) == 2 and type(request["value"][0]) is int and integer(request["value"][1], 1, 0xFFFFFFFFFFFFFFFF) and
+                    integer(request.get("speed_rpm"), 1, 0xFFFF) and request.get("setup") in ("write", "verify") and
+                    integer(request.get("frame"), 0, 2) and type(request.get("unit")) is str, "invalid move request")
+            require(policy in ("stop_normal", "stop_fast", "leave"), "invalid failure policy")
+            if arguments:
+                require(policy == arguments["on_failure"] and request["speed_rpm"] == arguments["speed_rpm"] and
+                        request["unit"] == arguments["unit"] and request["setup"] == arguments["setup"], "move differs from request")
+            for key in ("start_tx_spread_us", "running_bound_spread_us"):
+                require(item.get(key) is None or timestamp(item.get(key)), "invalid measured spread")
+        for member in members:
+            require(integer(member.get("operation_id")) and member.get("admission") in admissions and
+                    (member["operation_id"] != 0) == (member["admission"] == "admitted") and
+                    type(member.get("status")) is str and type(member.get("detail")) is int, "invalid member admission")
+            if kind == "set":
+                require(member.get("join") in ("not_read", "joined", "absent", "unexpected") and
+                        member.get("read_state") in ("empty", "active", "succeeded", "failed") and
+                        all(integer(member.get(k), 0, 0xFFFF) for k in ("raw_model", "raw_version", "raw_active_node")) and
+                        type(member.get("config_known")) is bool and type(member.get("profile_known")) is bool, "invalid declaration evidence")
+                require(not ok or member["join"] == "joined", "accepted declaration has a member that did not join")
+            elif kind == "read_state":
+                require(member.get("read_state") in ("empty", "active", "succeeded", "failed") and
+                        type(member.get("state_known")) is bool and type(member.get("position_known")) is bool and
+                        all(integer(member.get(k), 0, 0xFFFF) for k in ("raw_alarm", "raw_motion", "raw_inputs")) and
+                        integer(member.get("raw_position")), "invalid state evidence")
+                require(not ok or member["state_known"], "successful read lacks a member state")
+            elif kind == "stop":
+                require(member.get("state") in ACTION_STATES and member.get("outcome") in MOTOR_OUTCOMES and
+                        member.get("execution") in EXECUTIONS and member.get("completion") in ("observed", "not_observed") and
+                        type(member.get("uncertain")) is bool and
+                        all(integer(member.get(k), 0, 0xFFFF) for k in ("raw_alarm", "raw_motion")), "invalid stop evidence")
+                require(not ok or (member["completion"] == "observed" and member["state"] == "succeeded"), "unconfirmed member stop in a successful group")
+            else:
+                require(member.get("start") in ("not_sent", "started", "unknown", "rejected") and
+                        member.get("state") in ACTION_STATES and member.get("outcome") in MOTOR_OUTCOMES and
+                        member.get("execution") in EXECUTIONS and member.get("setup_execution") in EXECUTIONS and
+                        member.get("completion") in ("observed", "not_observed") and member.get("stop_state") in ACTION_STATES and
+                        member.get("stop_execution") in EXECUTIONS and member.get("stop_completion") in ("observed", "not_observed") and
+                        all(type(member.get(k)) is bool for k in ("uncertain", "interrupted_by_stop", "start_tx_complete", "running_observed")) and
+                        type(member.get("effective_native")) is int and integer(member.get("start_tx_uncertainty_us")) and
+                        all(timestamp(member.get(k)) for k in ("start_tx_end_us", "running_earliest_us", "running_latest_us")) and
+                        integer(member.get("stop_operation_id")) and member.get("stop_admission") in admissions and
+                        (member["stop_operation_id"] != 0) == (member["stop_admission"] == "admitted"), "invalid member move evidence")
+                start, execution = member["start"], member["execution"]
+                require((start == "started") == (execution == "acknowledged") and (start == "not_sent") == (execution == "not_transmitted") and
+                        (start != "rejected" or execution == "rejected"), "start classification differs from its execution")
+                require(not (item["on_failure"] == "leave" and member["stop_operation_id"]), "leave policy sent a stop")
+                require(not member["stop_operation_id"] or start in ("started", "unknown"), "policy stop for a start never sent")
+                require(not ok or (start == "started" and member["completion"] == "observed" and not member["uncertain"]),
+                        "successful group has an unconfirmed member")
+
+    @staticmethod
     def _check_admission_refusal(handle: Command, item: dict) -> None:
         if type(item.get("result")) is not str or item["result"] not in ADMISSION_FAILURES:
             raise BenchError("admission refusal lacks a documented disposition")
         if "operation_id" in item and (type(item["operation_id"]) is not int or item["operation_id"] != 0):
             raise BenchError("admission refusal claims an admitted operation")
-        if "address" in item and handle.command != "recover" and (
+        if handle.command in GROUP_OPERATIONS:
+            # Zero, or the one member that caused the refusal.
+            members = group_arguments(handle.command, handle.host_args or ()).get("addresses")
+            if "address" in item and (type(item["address"]) is not int or not 0 <= item["address"] <= 247 or
+                    (members is not None and item["address"] and item["address"] not in members)):
+                raise BenchError("group admission refusal names no requested member")
+        elif "address" in item and handle.command != "recover" and (
                 type(item["address"]) is not int or not 1 <= item["address"] <= 247 or
                 (handle.address is not None and item["address"] != handle.address)):
             raise BenchError("admission refusal target differs from request")
@@ -2124,6 +2334,8 @@ class Console:
             self._check_useaddr(handle, item)
         if handle.command == "wiring":
             self._check_wiring(handle, item)
+        if handle.command in ("group-show", "group-status", "group-clear", "group-wiring"):
+            self._check_group_view(handle, item)
         if handle.command in QUALIFICATION_ROUTES:
             self._check_qualification(item)
         if handle.command == "profile-list" and item["ok"]:
@@ -2172,6 +2384,9 @@ class Console:
         may derive them from the checked kind. Pending inspections have no terminal
         payload, but must satisfy the same kind and original-command correlation.
         """
+        if "group_kind" in item or (original is not None and original.command in GROUP_OPERATIONS):
+            self._check_group(item, original, pending=pending)
+            return
         recovery = item.get("recovery", False)
         capture_read = item.get("capture_read", False)
         read_kind = item.get("read_kind")
@@ -2299,7 +2514,7 @@ class Console:
         if self.clock() >= handle.deadline:
             raise BenchError("command response deadline expired; command was not replayed")
         self.emit("reply", response=item)
-        asynchronous = handle.command in (*READ_COMMANDS, *ACTION_COMMANDS, "recover", *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home", "motion-profile-start-speed", "home-auxiliary", "position-interrupt")
+        asynchronous = handle.command in (*READ_COMMANDS, *ACTION_COMMANDS, "recover", *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home", "motion-profile-start-speed", "home-auxiliary", "position-interrupt", *GROUP_OPERATIONS)
         if asynchronous:
             if item.get("type") == "reply" and not handle.accepted:
                 if not item["ok"]:
@@ -2325,10 +2540,25 @@ class Console:
                         if original.command == "recover" and original.terminal is not None:
                             original.released = True
                             del self.operations[earlier]
-                if len(self.operations) >= MAX_OPERATIONS + (MAX_STOPS - 1 if quota == "stop" else 0):
+                if handle.command in ("group-set", "group-read-state"):  # Firmware replaced the delivered earlier one.
+                    for earlier, original in list(self.operations.items()):
+                        if original.command == handle.command and original.terminal is not None:
+                            original.released = True
+                            del self.operations[earlier]
+                if quota == "group-stop":  # As the firmware: a confirmed one first, else the oldest delivered.
+                    retained = [o for o in self.operations.values() if o.command == "group-stop"]
+                    if len(retained) >= MAX_GROUP_STOPS:
+                        done = [o for o in retained if o.terminal is not None]
+                        replaced = next((o for o in done if o.terminal.get("ok")), done[0] if done else None)
+                        if replaced is None:
+                            raise BenchError("group stop accepted while both group stops are pending")
+                        replaced.released = True
+                        del self.operations[replaced.operation_id]
+                if len(self.operations) >= MAX_OPERATIONS + (MAX_STOPS - 1 if quota == "stop" else 0) + (
+                        MAX_GROUP_STOPS if quota == "group-stop" else 0):
                     raise BenchError("accepted operation exceeds retained result limit")
                 same_kind = sum(operation_quota(original.command) == quota for original in self.operations.values())
-                if same_kind >= {"ordinary": MAX_PROBES, "stop": MAX_STOPS}.get(quota, 1):
+                if same_kind >= {"ordinary": MAX_PROBES, "stop": MAX_STOPS, "group-stop": MAX_GROUP_STOPS}.get(quota, 1):
                     raise BenchError("accepted operation exceeds its retained result quota")
                 handle.operation_id = operation_id
                 handle.accepted = True
@@ -2337,7 +2567,8 @@ class Console:
                 return
             expected_type = {"probe": "probe", "capture-read": "capture_read", "recover": "recovery",
                              **dict.fromkeys(TYPED_READS, "read"),
-                             **dict.fromkeys(ACTION_COMMANDS, "action"), **dict.fromkeys(MOVE_COMMANDS, "move"), "position-interrupt": "move", "velocity": "velocity", "driver": "driver", "io": "io", "segment": "segment", "control": "control", "tuning": "tuning", "home": "home", "motion-profile-start-speed": "motion-profile-start-speed", "home-auxiliary": "home-auxiliary"}[handle.command]
+                             **dict.fromkeys(ACTION_COMMANDS, "action"), **dict.fromkeys(MOVE_COMMANDS, "move"), "position-interrupt": "move", "velocity": "velocity", "driver": "driver", "io": "io", "segment": "segment", "control": "control", "tuning": "tuning", "home": "home", "motion-profile-start-speed": "motion-profile-start-speed", "home-auxiliary": "home-auxiliary",
+                             **dict.fromkeys(GROUP_OPERATIONS, "group")}[handle.command]
             if item.get("type") != expected_type or not handle.accepted:
                 raise BenchError(f"{handle.command} response sequence is invalid")
             if (not self._operation_id(item.get("operation_id"))
@@ -2439,6 +2670,8 @@ class Console:
             raise ValueError("stop requires explicit normal or fast policy")
         if command == "stop":
             timeout_s = max(timeout_s, STOP_TERMINAL_S)
+        if command in GROUP_TERMINAL_S:
+            timeout_s = max(timeout_s, GROUP_TERMINAL_S[command])
         if command == "home":
             timeout_s = max(timeout_s, HOME_TERMINAL_S)
         if command == "host":
@@ -2467,6 +2700,9 @@ class Console:
         elif command == "wiring":
             host_args = () if host_args is None else host_args
             wiring_arguments(host_args)
+        elif command.startswith("group-"):
+            host_args = () if host_args is None else host_args
+            group_arguments(command, host_args)
         elif command == "discover":
             host_args = () if host_args is None else host_args
             discovery_arguments(host_args)
@@ -2518,7 +2754,8 @@ class Console:
             raise BenchError("console framing failed; session cannot be reused")
         if not self.identified and command != "version":
             raise BenchError("identify the standalone firmware before issuing commands")
-        if len(self.pending) >= MAX_COMMANDS + (MAX_STOPS - 1 if command == "stop" else 0):
+        if len(self.pending) >= MAX_COMMANDS + (MAX_STOPS - 1 if command == "stop" else 0) + (
+                MAX_GROUP_STOPS if command == "group-stop" else 0):
             raise BenchError("outstanding command limit reached; wait for a retained handle")
         if self.next_id > 0xFFFFFFFF:
             raise BenchError("request IDs exhausted; start a new inspected session")
@@ -2579,6 +2816,7 @@ class Console:
             if command == "position-interrupt": wire_command = "position interrupt"
             if command == "profile-list": wire_command = "profile list"
             if command in MOVE_COMMANDS: wire_command = "move " + command[5:]
+            if command.startswith("group-"): wire_command = "group " + ("read state" if command == "group-read-state" else command[6:])
             payload = f"@{request_id} {wire_command}{suffix}\n".encode("ascii")
             if len(payload) > 128:
                 raise ValueError("command exceeds the console line bound")
