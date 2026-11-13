@@ -251,7 +251,7 @@ Outside paragraph.
         self.write("include/MotorControlRS/Core.h", "#pragma once\n")
         self.write("LICENSE", "license")
         self.write("CMakeLists.txt", 'project(MotorControlRS LANGUAGES CXX)\nset(MOTORCONTROLRS_SOURCES "src/Core.cpp")\n')
-        data = {"name": "MotorControl-RS", "repository": {"url": "https://github.com/janhavelka/MotorControl-RS.git"},
+        data = {"name": "MotorControl-RS", "homepage": "https://github.com/janhavelka/MotorControl-RS", "repository": {"url": "https://github.com/janhavelka/MotorControl-RS.git"},
                 "build": {"includeDir": "include", "srcDir": "src"},
                 "export": {"include": ["include/", "src/", "CMakeLists.txt", "LICENSE"]}}
         self.write("library.json", json.dumps(data))
@@ -266,6 +266,10 @@ Outside paragraph.
         findings = checker.check_metadata(self.root)
         self.assertEqual(len(findings), 3, findings)
         self.assertTrue(any("canonical" in item for item in findings))
+        data["repository"]["url"] = "https://github.com/janhavelka/MotorControl-RS.git"
+        data["homepage"] = "https://www.thymos.cz"
+        self.write("library.json", json.dumps(data))
+        self.assertTrue(any("homepage" in item for item in checker.check_metadata(self.root)))
         self.assertTrue(any("every core" in item for item in findings))
         self.assertTrue(any("platform/application" in item for item in findings))
 
