@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "description": "Framework-independent C++11 exact targets, units, checked ESS-RS codecs, typed reads/settings and bounded motion/action operations. Partial native coverage; application-owned transport.",
   "keywords": ["rs485", "modbus", "stepper", "servo", "ess23", "motion"],
-  "authors": [{"name": "Jan Havelka", "maintainer": true}],
+  "authors": [
+    {"name": "THYMOS Solution s.r.o.", "email": "info@thymos.cz", "url": "https://www.thymos.cz"},
+    {"name": "Jan Havelka", "email": "info@thymos.cz", "url": "https://www.thymos.cz", "maintainer": true}
+  ],
   "repository": {"type": "git", "url": "https://github.com/janhavelka/MotorControl-RS.git"},
   "license": "MIT",
   "frameworks": "*",
