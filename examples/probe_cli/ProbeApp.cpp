@@ -49,12 +49,20 @@ constexpr uint32_t STOP_RECOVERY_US = REQUEST_US + RECOVERY_BUDGET_US;
 // 0.6 s after an enable frame, with no status bit showing readiness. Not documented.
 constexpr uint32_t ENABLE_SETTLE_US = 1000000;
 constexpr std::size_t REQUEST_CAPACITY = 8, ORDINARY_PENDING = 4, STOP_RECORDS = 2, OUTPUT_LINES = 8;
-// A drive group has its own stop pool: one stop and one escalation per member.
-// It never consumes the two stop records of explicit `stop`, and the owner's
-// urgent quota covers both pools, so neither can starve the other.
+// Drive-group pools, sized from Probe::GROUP_CAPACITY. One move record per
+// member, beside the ordinary results, so every member holds its move while
+// ordinary reads keep their eight. One stop and one escalation per member, beside
+// the two stop records of explicit `stop`. The owner's result and urgent quotas
+// cover every pool, so no pool can starve another. The ordinary queue stays
+// ORDINARY_PENDING deep: member polls are admitted oldest-eligible first, so the
+// queue delays a member's poll by a few transactions and never starves it.
+constexpr std::size_t GROUP_MOVE_RECORDS = Probe::GROUP_CAPACITY;
 constexpr std::size_t GROUP_STOP_RECORDS = 2 * Probe::GROUP_CAPACITY;
 constexpr std::size_t URGENT_RECORDS = STOP_RECORDS + GROUP_STOP_RECORDS;
 constexpr std::size_t GROUP_STOP_FIRST = REQUEST_CAPACITY + 1 + STOP_RECORDS;
+constexpr std::size_t GROUP_MOVE_FIRST = GROUP_STOP_FIRST + GROUP_STOP_RECORDS;
+constexpr std::size_t RECORD_COUNT = GROUP_MOVE_FIRST + GROUP_MOVE_RECORDS;
+constexpr std::size_t RESULT_SLOTS = REQUEST_CAPACITY + GROUP_MOVE_RECORDS + URGENT_RECORDS;
 DRAM_ATTR Esp32S3Uart uart; // Internal driver/ISR state; App storage is PSRAM.
 #if MOTORCONTROLRS_LOAD_FIXTURE
 DRAM_ATTR Esp32Load loadFixture;
@@ -78,7 +86,7 @@ Rtu::Timing timing() {
 }
 Rtu::BusStorage busStorage(Rtu::PendingSlot* p, Rtu::ResultSlot* r, Rtu::ProducerSlot* producers) {
     Rtu::BusStorage s; s.pending = p; s.pendingCapacity = ORDINARY_PENDING + URGENT_RECORDS;
-    s.results = r; s.resultCapacity = REQUEST_CAPACITY + URGENT_RECORDS; s.producers = producers; s.producerCapacity = 1;
+    s.results = r; s.resultCapacity = RESULT_SLOTS; s.producers = producers; s.producerCapacity = 1;
     s.urgentPendingCapacity = s.urgentResultCapacity = URGENT_RECORDS; return s;
 }
 struct App;
@@ -91,7 +99,7 @@ struct App {
     uint8_t tx[32] = {}, rx[64] = {}, viewTx[8] = {};
     Rtu::Trace trace[128];
     Rtu::PendingSlot pending[ORDINARY_PENDING + URGENT_RECORDS];
-    Rtu::ResultSlot results[REQUEST_CAPACITY + URGENT_RECORDS];
+    Rtu::ResultSlot results[RESULT_SLOTS];
     Rtu::ProducerSlot producers[1];
     Probe::HostSnapshot serial;
     ESS::CommunicationContext commissioning, commissioningPrepared;
@@ -161,7 +169,7 @@ struct App {
         bool triggerTxComplete = false; ///< Start write physical TX evidence, copied from the owner.
         uint64_t triggerTxEndUs = 0;
         uint32_t triggerTxUncertaintyUs = 0;
-    } records[REQUEST_CAPACITY + 1 + URGENT_RECORDS]; // Dedicated monitor, stop, stop-escalation and group stop reservations.
+    } records[RECORD_COUNT]; // Ordinary, monitor, stop, stop-escalation, group stop and group move reservations.
     Probe::StateCache stateCache;
     Probe::MonitorSnapshot monitorState;
     struct Recovery {
@@ -247,6 +255,16 @@ struct App {
     uint64_t communicationEarliestUs = 0, communicationLatestUs = 0;
     bool communicationKnown = false;
     MotorControlRS::ESS_RS::FrameError frameError = MotorControlRS::ESS_RS::FrameError::NONE;
+    // One staged move without a start (PositionStageApp.h). The selected axis has
+    // one session; each group member has its own.
+    struct StageSession {
+        Probe::PositionStageView view;
+        Rtu::RequestId request;
+        uint8_t phase = 0; ///< 0 none, 1 FC10 write, 2 FC03 readback.
+        bool applied = false; ///< Success already published as a stored-word witness.
+        uint8_t tx[32] = {};
+    } stage;
+    ESS::MoveContext stagePrepared; ///< Scratch for the selected-axis stage words; no stack copy.
     // Drive group (multi-drive 02). A host selection only: each member keeps its
     // own facts, separate from the selected axis, and never changes the drive.
     struct GroupMember {
@@ -259,13 +277,20 @@ struct App {
         MotorControlRS::InputWiring inputWiring[4] = {}, outputWiring[2] = {};
         uint64_t enableSettleUntilUs = 0; ///< Post-enable wait of this member (ENABLE_SETTLE_US).
         bool startSpeedRelationRequired = false; ///< A possible start-speed write reached this drive.
+        StageSession stage;
+        // Stored-word witness, as rememberedMoveWords for the selected axis: the
+        // checked staged words a USE_STORED start may rely on.
+        bool storedKnown = false;
+        uint16_t storedWords[5] = {};
+        uint32_t storedGeneration = 0, storedBinding = 0, storedSerial = 0;
     };
     struct GroupOperation {
         Probe::GroupResult result;
         HostTuple serialTuple;
         uint32_t serialGeneration = 0;
         uint32_t childId = 0; ///< Current read of a set or read sequence.
-        uint8_t next = 0, phase = 0; ///< Member in progress and its declaration read.
+        uint8_t next = 0, phase = 0; ///< Member in progress; set: declaration read, staged move: 0 stage, 1 start.
+        bool startsDone = false; ///< Every start resolved; ordinary work may run while members move.
         bool startsEnded = false, policyApplied = false, delivered = false, programmatic = false, interactive = false;
     };
     struct Group {
@@ -275,6 +300,11 @@ struct App {
         uint32_t declaration = 0;
         GroupOperation set, read, move, stops[Probe::GROUP_STOP_OPERATIONS];
         Probe::GroupView view; ///< Scratch for synchronous show/status formatting.
+        // Task-context scratch: nothing sized by the capacity lives on the loop stack.
+        Probe::GroupCommand command; ///< Public API requests.
+        MotorControlRS::InputWiring keptInputs[Probe::GROUP_CAPACITY][4], keptOutputs[Probe::GROUP_CAPACITY][2];
+        uint32_t stopIds[Probe::GROUP_CAPACITY];
+        Probe::Action stopAdmissions[Probe::GROUP_CAPACITY];
     } group;
     explicit App(const ApplicationOptions& supplied = ApplicationOptions()) : options(supplied), runner(uart.port(), storage(tx, rx, trace), timing()),
         owner(runner, busStorage(pending, results, producers)), console(host(this)) {
@@ -335,9 +365,16 @@ void invalidateObservations(App& a, uint8_t address, uint64_t now, bool validOnl
 }
 // A possible configuration or profile change of a member drive: its prepared
 // moves, profile binding and cached state expire. Fresh reads are required.
+// Anything that may have written 0x0021..0x0025 of this drive ends the stored-word
+// witnesses: the selected axis's remembered words and the member's staged words.
+void storedWordsChanged(App& a, uint8_t address) {
+    if (address == a.axis.target.address) a.rememberedMoveGeneration = 0;
+    if (auto* member = groupMember(a, address)) member->storedKnown = false;
+}
 void invalidateMemberConfiguration(App& a, uint8_t address, uint64_t now) {
     auto* member = groupMember(a, address);
     if (!member) return;
+    member->storedKnown = false;
     member->configuration.operationId = 0;
     member->axis.generation = !member->axis.generation || member->axis.generation == UINT32_MAX ? 0 : member->axis.generation + 1;
     for (auto& block : member->state.blocks) block.invalidatedUs = now;
@@ -356,7 +393,7 @@ void invalidateGroupFacts(App& a, uint64_t now) {
 bool groupSequencing(const App& a) {
     const auto& g = a.group;
     return g.set.result.pending || g.read.result.pending ||
-        (g.move.result.pending && !g.move.policyApplied && (g.move.result.aborted || g.move.next < g.move.result.count));
+        (g.move.result.pending && !g.move.policyApplied && (g.move.result.aborted || !g.move.startsDone));
 }
 bool emit(void* context, const char* text, std::size_t size) {
     App& a = *static_cast<App*>(context);
@@ -430,6 +467,10 @@ bool terminal(const App& a, const App::Record& record) {
 }
 bool axisReserved(const App& a, uint8_t address = 0) {
     if (a.simple.view.pending && !a.simple.admitting && (!address || address == a.simple.view.address)) return true;
+    // A staging write without a start still owns its drive until it settles.
+    if (a.stage.view.pending && (!address || a.stage.view.target.address == address)) return true;
+    for (uint8_t i = 0; i < a.group.count; ++i)
+        if (a.group.members[i].stage.view.pending && (!address || a.group.members[i].address == address)) return true;
     if ((a.motionProfile.view.pending || a.motionProfile.view.restoreUnsettled) &&
         (!address || a.motionProfile.view.address == address)) return true;
     // Recovery changes correlation generation, not the physical target's uncertainty.
@@ -442,6 +483,7 @@ bool axisReserved(const App& a, uint8_t address = 0) {
 }
 bool acting(const App& a) {
     if (a.simple.view.pending && !a.simple.admitting) return true;
+    if (a.stage.view.pending) return true;
     for (const auto& record : a.records)
         if (sequenced(record) && !terminal(a, record)) return true;
     return false;
@@ -961,6 +1003,7 @@ bool signedFeedback(uint32_t raw, int64_t& native) {
 #include "MotionReadinessApp.h"
 #include "MotionProfileApp.h"
 void cancelSimplePreparation(App&, uint8_t, uint64_t);
+void cancelPositionStages(App&, uint8_t, uint64_t);
 
 bool confirmedStop(const App::Record& record) {
     using namespace MotorControlRS;
@@ -1078,6 +1121,7 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
     if (stop) {
         // This includes an older stop: its unsent write and later polls end here.
         cancelSimplePreparation(a, address, now);
+        cancelPositionStages(a, address, now);
         for (auto& interrupted : a.records) {
             if (&interrupted == record || !sequenced(interrupted) || interrupted.address != address ||
                 terminal(a, interrupted)) continue;
@@ -1140,6 +1184,7 @@ inline Probe::Action admitAxisWrite(App& a, const Rtu::BusRequest& request, uint
     }
     return admitted;
 }
+Probe::Action prepareSelectedMove(App&, const MotorControlRS::MoveRequest&, uint64_t, uint64_t, ESS::MoveContext&);
 Probe::Action admitMoveStep(App& a, App::Record& record, const ESS::PreparedMove& prepared, uint64_t now) {
     Rtu::BusRequest request;
     request.wire.bytes = prepared.bytes; request.wire.length = prepared.length;
@@ -1183,6 +1228,33 @@ Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
         if (!a.records[i].operationId) { record = &a.records[i]; break; }
     if (!record) return Probe::Action::RESULTS_FULL;
     const uint64_t now = uart.sample();
+    const uint64_t deadline = now + static_cast<uint64_t>(a.options.moveTimeoutMs) * 1000;
+    const auto checked = prepareSelectedMove(a, supplied, now, deadline, record->move);
+    if (checked != Probe::Action::OK) { clearRecord(*record); return checked; }
+    const MoveRequest& request = supplied;
+    ESS::MoveContext& prepared = record->move;
+    if (request.setup == MoveSetup::USE_STORED &&
+        (a.rememberedMoveGeneration != a.axis.generation || a.rememberedMoveBinding != a.bindingGeneration ||
+         a.rememberedMoveSerial != a.serial.generation ||
+         std::memcmp(a.rememberedMoveWords, prepared.words, sizeof(prepared.words)))) {
+        clearRecord(*record); return Probe::Action::UNAVAILABLE;
+    }
+    ESS::PreparedMove work;
+    if (!ESS::nextMove(record->move, now, work)) { clearRecord(*record); return Probe::Action::FAILED; }
+    const auto admitted = admitMoveStep(a, *record, work, now);
+    if (admitted != Probe::Action::OK) { clearRecord(*record); return admitted; }
+    record->serialTuple = a.serial.active; record->serialGeneration = a.serial.generation;
+    record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
+    record->deadlineUs = deadline; record->kind = App::OperationKind::MOVE; record->axisReserved = true;
+    captureStoredPosition(a, *record, now);
+    operationId = a.latestOperationId = record->operationId;
+    return Probe::Action::OK;
+}
+// Selected-axis readiness and move preparation, shared by moves and stages. On
+// rejection a simple session receives the preparation status.
+Probe::Action prepareSelectedMove(App& a, const MotorControlRS::MoveRequest& supplied, uint64_t now,
+                                  uint64_t deadline, ESS::MoveContext& prepared) {
+    using namespace MotorControlRS;
     ESS::MovePrerequisites prerequisites = a.movePrerequisites;
     if (!prerequisites.commandUnitsVerified && !moveRequirements(a, supplied, now, prerequisites)) return Probe::Action::UNAVAILABLE;
     const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
@@ -1213,8 +1285,6 @@ Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
     // The core never assumes that an arbitrary encoder pair is command position.
     prerequisites.positionFeedbackMatchesCommand = a.simple.admitting && a.bootCoordinates &&
         reference.nativeKnown && reference.stationary;
-    ESS::MoveContext& prepared = record->move;
-    const uint64_t deadline = now + static_cast<uint64_t>(a.options.moveTimeoutMs) * 1000;
     ActionOptions options; options.maxPolls = ESS::ACTION_MAX_POLLS; options.pollIntervalUs = 20000;
     options.runningPollIntervalUs = RUNNING_POLL_US;
     const auto prepare = request.position.wrapped ? ESS::prepareMoveAngle :
@@ -1223,24 +1293,8 @@ Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
         a.nextOperationId, request, prerequisites, now, deadline, options);
     if (!checked) {
         if (a.simple.admitting) a.simple.view.status = checked;
-        clearRecord(*record);
         return checked.code == Err::UNSUPPORTED ? Probe::Action::UNSUPPORTED : Probe::Action::INVALID;
     }
-    if (request.setup == MoveSetup::USE_STORED &&
-        (a.rememberedMoveGeneration != a.axis.generation || a.rememberedMoveBinding != a.bindingGeneration ||
-         a.rememberedMoveSerial != a.serial.generation ||
-         std::memcmp(a.rememberedMoveWords, prepared.words, sizeof(prepared.words)))) {
-        clearRecord(*record); return Probe::Action::UNAVAILABLE;
-    }
-    ESS::PreparedMove work;
-    if (!ESS::nextMove(record->move, now, work)) { clearRecord(*record); return Probe::Action::FAILED; }
-    const auto admitted = admitMoveStep(a, *record, work, now);
-    if (admitted != Probe::Action::OK) { clearRecord(*record); return admitted; }
-    record->serialTuple = a.serial.active; record->serialGeneration = a.serial.generation;
-    record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
-    record->deadlineUs = deadline; record->kind = App::OperationKind::MOVE; record->axisReserved = true;
-    captureStoredPosition(a, *record, now);
-    operationId = a.latestOperationId = record->operationId;
     return Probe::Action::OK;
 }
 #include "PositionInterruptApp.h"
@@ -2523,7 +2577,10 @@ void advanceActions(App& a, uint64_t now) {
             }
             if (!record.effectsInvalidated && invalidatesMotion(record) && a.owner.txAccepted(record.requestId)) {
                 record.effectsInvalidated = true;
-                if (record.kind == App::OperationKind::MOVE && record.move.step < record.move.triggerStep) a.rememberedMoveGeneration = 0;
+                if (record.kind == App::OperationKind::MOVE && record.move.step < record.move.triggerStep) {
+                    a.rememberedMoveGeneration = 0;
+                    storedWordsChanged(a, record.address);
+                }
                 invalidateObservations(a, record.address, now, true);
                 if (record.kind == App::OperationKind::ACTION && (record.action.request.kind == MotorControlRS::ActionKind::RELEASE ||
                     record.action.request.kind == MotorControlRS::ActionKind::CLEAR_POSITION) &&
@@ -2632,6 +2689,8 @@ void advanceActions(App& a, uint64_t now) {
                     const auto next = ESS::nextMove(record.move, now, work);
                     if (!next && next.detail == static_cast<int32_t>(MotorControlRS::MoveError::READINESS))
                         advanceOperation(record, actionEvent(record, ReadEventKind::DEADLINE), now);
+                    // The group admits its members' observation polls, oldest eligible first.
+                    else if (record.groupChild && record.move.step > record.move.triggerStep) {}
                     else if (next && work.kind == ESS::ActionWork::TRANSACTION) {
                         const auto admitted = admitMoveStep(a, record, work, now);
                         if (admitted == Probe::Action::OK) record.interruptWaiting = false;
@@ -2717,6 +2776,7 @@ Probe::Action recover(void* context, uint32_t commandId, uint32_t& operationId) 
     return startRecovery(*static_cast<App*>(context), commandId, false, operationId);
 }
 #include "SimpleMotionApp.h"
+#include "PositionStageApp.h"
 #include "GroupApp.h"
 
 bool lookup(void* context, uint32_t operationId, Probe::ResultView& out) {
@@ -3603,11 +3663,18 @@ bool releaseOperation(uint32_t operationId) {
     const auto* record = findRecord(*app, operationId);
     return record && terminal(*app, *record) && release(app, operationId) == Probe::Action::OK;
 }
-static MotorControlRS::Status submitGroup(const Probe::GroupCommand& command, uint32_t* operationId, const char* message) {
+// Group requests are built in App storage (PSRAM), never on the caller's stack.
+static Probe::GroupCommand* groupRequest(Probe::GroupCommandKind kind) {
+    if (!app) return nullptr;
+    auto& command = app->group.command;
+    command.~GroupCommand(); new (&command) Probe::GroupCommand();
+    command.kind = kind; return &command;
+}
+static MotorControlRS::Status submitGroup(const Probe::GroupCommand* command, uint32_t* operationId, const char* message) {
     using namespace MotorControlRS;
-    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    if (!app || !command) return Status(Err::INVALID_CONFIG, 0, "application is not started");
     Probe::GroupReply reply;
-    const auto result = groupCommand(app, 0, command, reply);
+    const auto result = groupCommand(app, 0, *command, reply);
     if (result != Probe::Action::OK)
         return Status(result == Probe::Action::UNSUPPORTED ? Err::UNSUPPORTED : Err::INVALID_CONFIG, static_cast<int32_t>(result), message);
     if (reply.operationId && operationId) {
@@ -3617,19 +3684,18 @@ static MotorControlRS::Status submitGroup(const Probe::GroupCommand& command, ui
     return Ok();
 }
 MotorControlRS::Status declareGroup(const uint8_t* addresses, std::size_t count, uint32_t& operationId) {
-    Probe::GroupCommand command; command.kind = Probe::GroupCommandKind::SET;
     if (!addresses || !count || count > Probe::GROUP_CAPACITY)
-        return MotorControlRS::Status(MotorControlRS::Err::INVALID_CONFIG, static_cast<int32_t>(Probe::Action::INVALID), "group needs 1..4 addresses");
-    std::memcpy(command.addresses, addresses, count); command.count = count;
+        return MotorControlRS::Status(MotorControlRS::Err::INVALID_CONFIG, static_cast<int32_t>(Probe::Action::INVALID), "group needs 1..15 addresses");
+    auto* command = groupRequest(Probe::GroupCommandKind::SET);
+    if (command) { std::memcpy(command->addresses, addresses, count); command->count = count; }
     return submitGroup(command, &operationId, "group declaration not admitted");
 }
 MotorControlRS::Status clearGroup() {
-    Probe::GroupCommand command; command.kind = Probe::GroupCommandKind::CLEAR;
-    return submitGroup(command, nullptr, "group clear requires an idle application");
+    return submitGroup(groupRequest(Probe::GroupCommandKind::CLEAR), nullptr, "group clear requires an idle application");
 }
 MotorControlRS::Status declareGroupWiring(uint8_t address, uint8_t terminal, MotorControlRS::InputWiring state) {
-    Probe::GroupCommand command; command.kind = Probe::GroupCommandKind::WIRING;
-    command.address = address; command.terminal = terminal; command.wiring = state;
+    auto* command = groupRequest(Probe::GroupCommandKind::WIRING);
+    if (command) { command->address = address; command->terminal = terminal; command->wiring = state; }
     return submitGroup(command, nullptr, "group wiring declaration not admitted");
 }
 bool inspectGroup(Probe::GroupView& output) {
@@ -3637,16 +3703,32 @@ bool inspectGroup(Probe::GroupView& output) {
     output = buildGroupView(*app); return true;
 }
 MotorControlRS::Status submitGroupMove(const Probe::GroupMoveRequest& request, uint32_t& operationId) {
-    Probe::GroupCommand command; command.kind = Probe::GroupCommandKind::MOVE; command.move = request;
+    auto* command = groupRequest(Probe::GroupCommandKind::MOVE);
+    if (command) command->move = request;
     return submitGroup(command, &operationId, "group move not admitted; inspect member readiness, policy or capacity");
 }
 MotorControlRS::Status submitGroupStop(MotorControlRS::StopBehavior behavior, uint32_t& operationId) {
-    Probe::GroupCommand command; command.kind = Probe::GroupCommandKind::STOP; command.stop = behavior;
+    auto* command = groupRequest(Probe::GroupCommandKind::STOP);
+    if (command) command->stop = behavior;
     return submitGroup(command, &operationId, "group stop not admitted");
 }
 MotorControlRS::Status submitGroupStateRead(uint32_t& operationId) {
-    Probe::GroupCommand command; command.kind = Probe::GroupCommandKind::READ_STATE;
-    return submitGroup(command, &operationId, "group state read not admitted");
+    return submitGroup(groupRequest(Probe::GroupCommandKind::READ_STATE), &operationId, "group state read not admitted");
+}
+MotorControlRS::Status stagePositionMove(const MotorControlRS::PositionRequest& position, uint16_t speedRpm, uint32_t& operationId) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    MoveRequest request; request.position = position;
+    request.speedRpm = speedRpm; request.ramp = MoveRamp::VERIFIED_CONFIGURED;
+    const auto admitted = startSelectedStage(*app, request, operationId);
+    if (admitted != Probe::Action::OK)
+        return Status(admitted == Probe::Action::UNSUPPORTED ? Err::UNSUPPORTED : Err::INVALID_CONFIG,
+            static_cast<int32_t>(admitted), "stage not admitted; inspect readiness, units, limits or owner capacity");
+    return Ok();
+}
+bool copyPositionStage(uint32_t operationId, Probe::PositionStageView& output) {
+    if (!app || !operationId || app->stage.view.operationId != operationId) return false;
+    output = app->stage.view; return true;
 }
 bool copyGroupResult(uint32_t operationId, Probe::GroupResult& output) {
     if (!app || !operationId) return false;
@@ -3697,6 +3779,7 @@ void serviceApplication() {
     advanceReads(a, nowUs());
     advanceActions(a, nowUs());
     const uint64_t completedSampleUs = nowUs();
+    serviceSelectedStage(a, completedSampleUs);
     serviceGroup(a, completedSampleUs); // No extra clock read while no group operation runs.
     serviceCoordinates(a, completedSampleUs);
     RuntimeWitness::mark(RuntimeWitness::CONSOLE);

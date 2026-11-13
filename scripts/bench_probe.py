@@ -33,7 +33,9 @@ from _bench_evidence import (
 )
 
 
-MAX_LINE = 8192
+# Firmware OUTPUT_CAPACITY: 1024 bytes per group member plus common fields, at
+# least 8192. A complete 15-member group line stays below it.
+MAX_LINE = 16384
 MAX_INPUT = 32768
 MAX_TRAFFIC_INPUT = 1048576  # Independent finite diagnostic budget per command/drain.
 COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "health", "memory", "stats", "load",
@@ -47,7 +49,10 @@ MAX_OPERATIONS = 10  # Eight ordinary operations, one recovery and one reserved 
 MAX_STOPS = 2  # The reserved stop plus one escalation, beyond the protocol-3 advertised capacity.
 STOP_TERMINAL_S = 6.0  # Firmware's fixed stop budget, including one bounded recovery.
 # Drive group (multi-drive 02). Group operations report one terminal line each.
-GROUP_CAPACITY = 4
+GROUP_CAPACITY = 15
+GROUP_START_MODES = ("staged", "sequential")
+GROUP_STAGE_STATES = ("not_attempted", "staged", "failed", "active")
+GROUP_STAGE_READBACKS = ("not_read", "match", "mismatch")
 GROUP_OPERATIONS = ("group-set", "group-move", "group-stop", "group-read-state")
 GROUP_KINDS = {"group-set": "set", "group-move": "move", "group-stop": "stop", "group-read-state": "read_state"}
 MAX_GROUP_STOPS = 2  # A group stop and its escalation, beyond the protocol-3 advertised capacity.
@@ -449,7 +454,7 @@ def group_arguments(command: str, tokens: tuple[str, ...]) -> dict:
         return {}
     if command == "group-set":
         if not 1 <= len(tokens) <= GROUP_CAPACITY or any(re.fullmatch(r"[1-9][0-9]{0,2}", t) is None or int(t) > 247 for t in tokens):
-            raise ValueError("group-set requires 1..4 addresses within 1..247")
+            raise ValueError(f"group-set requires 1..{GROUP_CAPACITY} addresses within 1..247")
         addresses = [int(t) for t in tokens]
         if len(set(addresses)) != len(addresses):
             raise ValueError("group-set addresses must be distinct")
@@ -465,7 +470,8 @@ def group_arguments(command: str, tokens: tuple[str, ...]) -> dict:
         if tokens not in (("normal",), ("fast",)):
             raise ValueError("group-stop requires an explicit normal or fast policy")
         return dict(stop_policy=tokens[0])
-    # group-move: relative value unit frame rpm configured [setup write|verify] on-failure POLICY
+    # group-move: relative value unit frame rpm configured [setup write|verify]
+    # [start staged|sequential] on-failure POLICY
     if len(tokens) < 8 or tokens[0] != "relative":
         raise ValueError("group-move requires one relative displacement and an explicit failure policy")
     try:
@@ -476,13 +482,20 @@ def group_arguments(command: str, tokens: tuple[str, ...]) -> dict:
     if policy is None:
         raise ValueError("group-move on-failure requires leave, stop normal or stop fast")
     core = tokens[1:marker]
+    start = "staged"
+    if len(core) >= 2 and core[-2] == "start":
+        if core[-1] not in GROUP_START_MODES:
+            raise ValueError("group-move start requires staged or sequential")
+        start, core = core[-1], core[:-2]
     parsed = move_arguments("relative", core)
     if len(core) not in (5, 7) or parsed["setup"] not in ("write", "verify") or (len(core) == 7 and core[5] != "setup"):
         raise ValueError("group-move accepts only an optional write or verify setup")
+    if start == "staged" and parsed["setup"] == "verify":
+        raise ValueError("staged group starts always write all five words; verify needs start sequential")
     if re.fullmatch(r"[1-9][0-9]{0,4}", parsed["speed"]) is None or int(parsed["speed"]) > 65535:
         raise ValueError("group-move speed must be a positive integer rpm")
     return dict(value=parsed["value"], unit=parsed["unit"], frame=parsed["frame"], speed_rpm=int(parsed["speed"]),
-                setup=parsed["setup"], on_failure=policy)
+                setup=parsed["setup"], start=start, on_failure=policy)
 
 LOAD_FIELDS = ("workload_us", "owner_delay_us", "console_bytes")
 LOAD_LIMITS = (5000, 20000, 256)
@@ -2055,11 +2068,13 @@ class Console:
             require(isinstance(request, dict) and request.get("relative") is True and isinstance(request.get("value"), list) and
                     len(request["value"]) == 2 and type(request["value"][0]) is int and integer(request["value"][1], 1, 0xFFFFFFFFFFFFFFFF) and
                     integer(request.get("speed_rpm"), 1, 0xFFFF) and request.get("setup") in ("write", "verify") and
-                    integer(request.get("frame"), 0, 2) and type(request.get("unit")) is str, "invalid move request")
+                    integer(request.get("frame"), 0, 2) and type(request.get("unit")) is str and
+                    request.get("start") in GROUP_START_MODES, "invalid move request")
             require(policy in ("stop_normal", "stop_fast", "leave"), "invalid failure policy")
             if arguments:
                 require(policy == arguments["on_failure"] and request["speed_rpm"] == arguments["speed_rpm"] and
-                        request["unit"] == arguments["unit"] and request["setup"] == arguments["setup"], "move differs from request")
+                        request["unit"] == arguments["unit"] and request["setup"] == arguments["setup"] and
+                        request["start"] == arguments["start"], "move differs from request")
             for key in ("start_tx_spread_us", "running_bound_spread_us"):
                 require(item.get(key) is None or timestamp(item.get(key)), "invalid measured spread")
         for member in members:
@@ -2102,6 +2117,20 @@ class Console:
                 require(not member["stop_operation_id"] or start in ("started", "unknown"), "policy stop for a start never sent")
                 require(not ok or (start == "started" and member["completion"] == "observed" and not member["uncertain"]),
                         "successful group has an unconfirmed member")
+                require(member.get("stage") in GROUP_STAGE_STATES and member.get("stage_execution") in EXECUTIONS and
+                        member.get("stage_readback") in GROUP_STAGE_READBACKS and type(member.get("stage_tx_complete")) is bool and
+                        timestamp(member.get("stage_tx_end_us")) and timestamp(member.get("stage_read_latest_us")) and
+                        type(member.get("stage_status")) is str and type(member.get("stage_detail")) is int, "invalid member stage evidence")
+                if request["start"] == "sequential":
+                    require(member["stage"] == "not_attempted", "a sequential start reports staging")
+                else:
+                    require(member["setup_execution"] == "not_transmitted", "a staged start wrote setup in its move")
+                    require(member["stage"] != "staged" or (member["stage_readback"] == "match" and
+                            member["stage_execution"] == "acknowledged"), "staged member lacks its checked readback")
+                    require(not ok or member["stage"] == "staged", "successful staged group has an unstaged member")
+        if kind == "move" and item["request"]["start"] == "staged" and any(m["stage"] == "failed" for m in members):
+            # All or nothing: a failed stage means no member was started.
+            require(all(m["start"] == "not_sent" for m in members), "a start followed a failed stage")
 
     @staticmethod
     def _check_admission_refusal(handle: Command, item: dict) -> None:

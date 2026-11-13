@@ -223,19 +223,20 @@ the previous delivered recovery result.
 
 ## Drive group
 
-A drive group acts on up to four drives at their own unicast addresses, one
-member after another (multi-drive 02). It is a host selection: it changes no drive
-setting, and the selected axis and `useaddr` keep their behaviour.
+A drive group acts on up to 15 drives (the ESS hardware manual's bus limit) at
+their own unicast addresses (multi-drive 02). It is a host selection: it changes
+no drive setting, and the selected axis and `useaddr` keep their behaviour.
 
 ```text
 group set 1 2 4
 group read state
 group move relative 200 steps native 60 configured on-failure stop fast
+group move relative 200 steps native 60 configured start sequential on-failure leave
 group stop fast
 group status
 ```
 
-- `group set ADDR...` takes 1..4 distinct addresses in start order and needs an
+- `group set ADDR...` takes 1..15 distinct addresses in start order and needs an
   idle host. For each member in order it reads identity, configuration and the
   position profile (`0x0020`/6), all FC03. A member joins only when its identity
   names its own node and reports model `0x4EEA` and firmware `0x0029`. The first
@@ -245,22 +246,36 @@ group status
 - `group read state` refreshes each member's own cached state with one checked
   state read per member. A failed member read does not stop the others.
 - `group move relative VALUE UNIT FRAME RPM configured [setup write|verify]
-  on-failure leave|stop normal|stop fast` checks every member with the move rules
-  of the selected axis and prepares its move before any frame is sent. One member
-  that is not ready refuses the whole group. Each member then runs its ordinary
-  move (write or verify, then start) after the previous member's start reply was
-  checked. Members have no host scale, so only `steps native` is admitted; stored
-  setup is refused.
-- The failure policy has no default. When a member's move fails before every start
-  is resolved (lost start reply, staging timeout, a stop, a cancellation or a
-  recovery), no later start is sent and no start is resent. A start frame already
-  on the wire settles with its own evidence. Then `stop normal` or `stop fast`
-  sends one urgent unicast stop to each member whose start left the host
-  (`started` or `unknown`), unless a newer explicit stop already owns that member.
-  `leave` sends nothing.
-- While a group set, read or start sequence runs, other ordinary bus commands
-  answer `busy`; urgent stops still go out. Once every start has resolved, other
-  commands run while the members move.
+  [start staged|sequential] on-failure leave|stop normal|stop fast` checks every
+  member with the move rules of the selected axis and prepares its move before any
+  frame is sent. One member that is not ready refuses the whole group. Members
+  have no host scale, so only `steps native` is admitted; stored setup is refused.
+  - `start staged` (default): phase 1 writes each member's five `0x0021` words
+    (acceleration, deceleration, speed, target pair) with one FC10 and reads them
+    back with one FC03, member by member, sending no start and never writing
+    `0x0020`. Any staging failure (lost or rejected write, different readback, a
+    stop, cancellation or recovery) ends the group with no start sent to any
+    member. Phase 2 sends only the start word (`0x0027` relative start) to each
+    member, back to back, each after the previous member's start reply was
+    checked. Each start relies on that member's checked staged words (its
+    stored-word witness); a write, settings change, profile restore, broadcast,
+    `useaddr` or recovery between the phases ends the witness and blocks every
+    remaining start. Observation polls wait until the last start resolved.
+    `setup verify` is refused: staging always writes all five words.
+  - `start sequential`: each member runs its ordinary move (write or verify,
+    then start) after the previous member's start reply was checked, as before.
+- The failure policy has no default. When a member's start fails or its reply is
+  lost before every start is resolved (or a member is stopped, cancelled or
+  recovered then), no later start is sent and no start is resent. A start frame
+  already on the wire settles with its own evidence. Then `stop normal` or
+  `stop fast` sends one urgent unicast stop to each member whose start left the
+  host (`started` or `unknown`), unless a newer explicit stop already owns that
+  member. `leave` sends nothing.
+- While a group set, read, stage or start sequence runs, other ordinary bus
+  commands answer `busy`; urgent stops still go out. Once every start has
+  resolved, other commands run while the members move. Members' observation polls
+  share the four-deep ordinary queue oldest eligible first, so a poll waits a few
+  transactions at most and is never starved.
 - `group stop normal|fast` sends one urgent unicast stop to every member, each
   with its own stop record and result, even when member facts have expired. A
   group stop and one escalation may be retained; a newer stop supersedes an older
@@ -275,13 +290,22 @@ group status
 Each `group set`, `group move`, `group stop` and `group read state` ends with one
 `group` line. Every member keeps its own result: `start` (`not_sent`, `started`,
 `unknown`, `rejected`), outcome, execution, completion and uncertainty. A move
-member records the start write's TX end (`start_tx_end_us`, from the runner's
-physical TX evidence) and the bounds of its first RUNNING report
-(`running_earliest_us`, `running_latest_us`; poll reply closures, not motion
-onset). The line adds `start_tx_spread_us` (latest minus earliest start TX end)
-and `running_bound_spread_us`. Without staging-only moves
-([standalone 02](prompts/standalone/02_profile_staging.md)), the spread includes
-each member's staging transactions and the wait for a quiet bus.
+member records its staging (`stage` `not_attempted`, `staged` or `failed`,
+`stage_execution`, `stage_readback` `not_read`, `match` or `mismatch`,
+`stage_tx_end_us`, `stage_read_latest_us`, `stage_status`), the start write's TX
+end (`start_tx_end_us`, from the runner's physical TX evidence) and the bounds of
+its first RUNNING report (`running_earliest_us`, `running_latest_us`; poll reply
+closures, not motion onset). The line adds `request.start`, `start_tx_spread_us`
+(latest minus earliest start TX end) and `running_bound_spread_us`. A staged
+spread holds only the start frames and their checked replies; a sequential spread
+also holds each member's staging transaction.
+
+One line holds all 15 members: the console output buffer is sized from the
+capacity (1024 bytes per member plus the common fields, 16,384 bytes). The widest
+possible 15-member line, measured by `group_app_test`, is 15,559 bytes. Use
+`@ID` (JSON) for large groups: the human rendering of a large group line can
+exceed the buffer; it then keeps the summary, drops later member details and ends
+with a note to inspect `@ID result N`.
 
 `useaddr`, `recover`, a host tuple change and a broadcast expire every member's
 facts: run `group set` again. A write to a member drive expires that member.
@@ -298,8 +322,16 @@ has no local `cancel` (it answers `invalid`); use `group stop`. During the start
 sequence, cancelling one member's move ID is a member failure and the failure
 policy applies.
 
-Native tests run these routes on a simulated multi-drive bus. Every physical
-multi-drive claim is NOT RUN until [multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md).
+The application API `stagePositionMove` and `copyPositionStage` stage the
+selected axis the same way: the shared move preparation, one FC10 write of the
+five words and one checked readback, no start. A matching readback records the
+remembered words, so a following `submitMove(..., MoveSetup::USE_STORED)` sends
+only the start. It has no console route yet ([standalone 02](prompts/standalone/02_profile_staging.md)).
+
+Storage: the group adds one move record per member and two stop records per
+member to the application (PSRAM); every dependent quota is sized from the
+capacity. Native tests run these routes on a simulated bus of up to 15 drives.
+Every physical multi-drive claim beyond the bench's three drives is NOT RUN.
 
 ## Diagnostics
 

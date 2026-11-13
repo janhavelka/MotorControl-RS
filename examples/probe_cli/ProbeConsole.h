@@ -25,7 +25,11 @@
 namespace MotorControlRSExample { namespace Probe {
 
 constexpr std::size_t LINE_CAPACITY = 128;
-constexpr std::size_t OUTPUT_CAPACITY = 8192;
+/** Bound of one group member in a terminal group line, and of its common fields.
+ * The worst case is measured by group_app_test; one complete line always fits. */
+constexpr std::size_t GROUP_MEMBER_LINE_BYTES = 1024;
+constexpr std::size_t OUTPUT_CAPACITY = GROUP_MEMBER_LINE_BYTES * (GROUP_CAPACITY + 1) > 8192 ?
+    GROUP_MEMBER_LINE_BYTES * (GROUP_CAPACITY + 1) : 8192;
 constexpr std::size_t OUTSTANDING_CAPACITY = 10; // Advertised by protocol 3: nine ordinary correlations plus one stop.
 constexpr std::size_t OUTSTANDING_SLOTS = OUTSTANDING_CAPACITY + 1 + GROUP_STOP_OPERATIONS; // Adds the stop escalation and two group stops.
 constexpr std::size_t STOP_REPLY_CAPACITY = 3; // Admission replies retained under output pressure.
@@ -501,6 +505,8 @@ private:
     MotorControlRS::ESS_RS::VelocityParametersObservation velocityParametersView_;
     MotorControlRS::ESS_RS::HomingParametersObservation homingParametersView_;
     MotorControlRS::ESS_RS::DriverObservation driverView_;
+    GroupCommand groupRequest_; ///< Parsed group request, kept off the task stack.
+    GroupReply groupReply_;
     std::size_t length_ = 0;
     uint32_t nextId_ = 1;
     struct Outstanding { uint32_t commandId = 0, operationId = 0; bool transferred = false; Format format = Format::HUMAN; } outstanding_[OUTSTANDING_SLOTS];

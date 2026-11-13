@@ -628,7 +628,7 @@ void testInvalidationBeforeDispatch() {
 void testOwnerResultPressureKeepsAdmissionGuard() {
     fresh(); baseline(); const auto old=original(); startOriginal(old);
     assert(!findRecord(*app,old)->requestId.owner);
-    Rtu::RequestId retained[8];
+    Rtu::RequestId retained[RESULT_SLOTS - URGENT_RECORDS]; // Every ordinary owner result.
     const auto bytes=crc({2,3,0,0,0,1});
     // An independent producer retains all ordinary owner completions while the
     // application's original sequence is in WAIT. Only normal owner/port work
@@ -656,7 +656,7 @@ void testOwnerResultPressureKeepsAdmissionGuard() {
     assert(app->owner.release(retained[0]));
     terminalResult(replacement);
     assert(!view(replacement).moveContext->triggerEvidence.txAccepted && hardware.writes==writes);
-    for (unsigned i=1; i<8; ++i) assert(app->owner.release(retained[i]));
+    for (unsigned i=1; i<RESULT_SLOTS - URGENT_RECORDS; ++i) assert(app->owner.release(retained[i]));
 }
 
 Rtu::WriteResult (*normalWrite)(void*,const uint8_t*,std::size_t)=nullptr;
