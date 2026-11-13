@@ -51,6 +51,12 @@ or result pressure returns `URGENT_FULL`; zero reservations disable that path.
 Unread urgent results keep their slots until release. Admission during pending
 recovery returns `RECOVERING`; a settled fault permits admission but blocks dispatch.
 
+A transmit-only request (`wire.silenceUs`, address 0) is admitted like any
+other; `expected.address` is 0 and the validator must accept its exact bytes.
+A `SILENT` runner result becomes `Outcome::SENT` with `executionUnknown` true:
+sent and unconfirmed, never `SUCCESS`. Urgent work waits for the window to
+close, because a transmission inside it would break the silence check.
+
 IDs contain the originating live owner, result slot and nonzero generation.
 Reuse at admission increments generation without wrapping. Wrong owner, slot
 or generation cannot inspect/release a result. IDs expire with owner lifetime,

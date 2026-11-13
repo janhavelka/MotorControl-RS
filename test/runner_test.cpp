@@ -1269,8 +1269,106 @@ void testReleaseBoundsAndDeadlines() {
 
 } // namespace
 
+// Address-0 acceleration-time frame from the multi-drive 01 prompt.
+const uint8_t BROADCAST[] = {0, 6, 0, 0x21, 1, 0x2C, 0xD8, 0x5C};
+Request broadcast(Echo echo = Echo::NONE) {
+    Request result = request(BROADCAST, sizeof(BROADCAST), 0, echo);
+    result.responseTimeoutUs = 0;
+    result.silenceUs = 200000;
+    return result;
+}
+
+void testTransmitOnlyWindow() {
+    {
+        Rig rig;
+        assert(Ess::calcCrc16(BROADCAST, 6) == (BROADCAST[6] | (BROADCAST[7] << 8)));
+        Request unicast = request(); unicast.silenceUs = 200000;
+        assert(!rig.runner.accepts(unicast)); // A unicast frame keeps its reply.
+        Request replied = broadcast(); replied.replyLength = 8;
+        assert(!rig.runner.accepts(replied));
+        Request silent = broadcast(); silent.silenceUs = 0;
+        assert(!rig.runner.accepts(silent)); // Address 0 needs a silent window.
+        assert(rig.runner.start(silent, 1000) == Admission::INVALID && rig.fake.writes == 0);
+        rig.start(broadcast());
+        rig.send(); rig.receive();
+        assert(rig.fake.written == std::vector<uint8_t>(BROADCAST, BROADCAST + sizeof(BROADCAST)));
+        rig.poll(202159);
+        assert(rig.runner.busy());
+        rig.poll(202160);
+        const Result& result = rig.runner.result();
+        assert(result.reason == Reason::SILENT && !rig.runner.needsRecovery() && !rig.runner.busy());
+        assert(result.txComplete && result.txEndUs == 2160 && result.rxLength == 0);
+        assert(rig.runner.stats().failed == 0 && rig.runner.stats().frames == 0);
+        assert(std::strcmp(reasonName(Reason::SILENT), "SILENT") == 0);
+    }
+    {
+        Rig rig; // Every byte in the window is kept and faults the runner.
+        const uint8_t answer[] = {0x00, 0x86, 0x02};
+        rig.fake.bytes(answer, sizeof(answer), 2190);
+        rig.start(broadcast());
+        rig.send(); rig.receive();
+        rig.poll(150000);
+        assert(rig.runner.busy() && rig.runner.result().rxLength == 3);
+        rig.poll(202160);
+        const Result& result = rig.runner.result();
+        assert(result.reason == Reason::UNEXPECTED_RX && rig.runner.needsRecovery());
+        assert(result.rxLength == 3 && std::memcmp(rig.rx, answer, 3) == 0 && result.firstRxStartUs == 2190);
+        assert(std::strcmp(reasonName(Reason::UNEXPECTED_RX), "UNEXPECTED_RX") == 0);
+    }
+    {
+        Rig rig(makeTiming(), 2); // Overflow is still a finding, not a frame.
+        const uint8_t noise[] = {1, 2, 3, 4};
+        rig.fake.bytes(noise, sizeof(noise), 5000);
+        rig.start(broadcast());
+        rig.send(); rig.receive();
+        rig.poll(202160);
+        assert(rig.runner.result().reason == Reason::UNEXPECTED_RX && rig.runner.result().rxTruncated);
+        assert(rig.runner.result().rxLength == 2 && rig.runner.needsRecovery());
+    }
+    {
+        Rig rig; // Receiver-enabled board: the local copy is consumed first.
+        rig.fake.bytes(BROADCAST, sizeof(BROADCAST), 1360);
+        rig.start(broadcast(Echo::REQUIRED));
+        rig.send(); rig.receive();
+        rig.poll(202160);
+        assert(rig.runner.result().reason == Reason::SILENT && rig.runner.result().echoBytes == sizeof(BROADCAST));
+        assert(rig.runner.result().rxLength == 0 && !rig.runner.needsRecovery());
+    }
+    {
+        Rig rig; // A required local copy that never arrives is not silence.
+        rig.start(broadcast(Echo::REQUIRED));
+        rig.send(); rig.receive();
+        rig.poll(202160);
+        assert(rig.runner.result().reason == Reason::ECHO_ERROR && rig.runner.needsRecovery());
+    }
+    {
+        Rig rig; // Clock regression inside the window interlocks.
+        rig.start(broadcast());
+        rig.send(); rig.receive();
+        rig.poll(3000);
+        rig.poll(2900);
+        assert(rig.runner.result().reason == Reason::CLOCK_ERROR && rig.runner.needsRecovery());
+    }
+    {
+        Rig rig; // Cancellation and a request deadline leave the window unproven.
+        rig.start(broadcast());
+        rig.send(); rig.receive();
+        rig.poll(10000);
+        rig.runner.cancelCaptured(10000);
+        rig.poll(10001);
+        assert(rig.runner.result().reason == Reason::CANCELLED && rig.runner.needsRecovery());
+        Rig late;
+        Request bounded = broadcast(); bounded.deadlineUs = 100000;
+        late.start(bounded);
+        late.send(); late.receive();
+        late.poll(100000);
+        assert(late.runner.result().reason == Reason::REQUEST_DEADLINE && late.runner.needsRecovery());
+    }
+}
+
 int main() {
     testTiming();
+    testTransmitOnlyWindow();
     testProbeAndOwnership();
     testExceptionAndCodecFailure();
     testReplyTiming();

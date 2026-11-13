@@ -76,6 +76,7 @@ guides define complete arguments and prerequisites.
 | `monitor [off\|INTERVAL_MS COUNT]` | Inspect or enable finite state polling; `off` cancels its local continuation |
 | `cancel [ID]`, `release ID`, `recover` | Local cancellation, terminal-result release and explicit host transport recovery |
 | `debug [off\|raw\|decoded]`, `capture-read`, `load` | Copied traffic, fixed read-only timing fixture and optional host workload |
+| `broadcast accel 300\|301`, `broadcast start relative`, `broadcast stop normal\|fast` | Bench fixture build only (multi-drive 01). One of five fixed address-0 FC06 frames, then a 200 ms silent window. The `broadcast` result reports `outcome` `sent` and `confirmed` false; any byte in the window is `UNEXPECTED_RX` and needs `recover`. A write or start needs an idle host; a stop passes a move's axis reservation but uses ordinary capacity, so the urgent unicast stop stays available. Each broadcast invalidates every cached drive observation and prepared move. Never resent. |
 
 `config` reports host settings; `settings` reads motor configuration and position
 parameters and shows next-move intent. Neither implicitly enables the drive.

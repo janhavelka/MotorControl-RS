@@ -168,6 +168,27 @@ Echo policy is explicit per request:
 There is no "maybe echo" heuristic. Qualify the electrical/driver behavior
 and select the matching policy. Do not strip every request-identical prefix.
 
+### Transmit-only frames
+
+A nonzero `Request.silenceUs` selects a transmit-only frame. It requires
+address 0 and `replyLength` 0; a unicast frame with a silent window, or address
+0 without one, is rejected before TX. The runner records physical TX completion,
+consumes a required local copy as usual, and then listens for `silenceUs`
+measured from the latest possible TX end. The adapter watermark must cover the
+whole window.
+
+- No byte in the window: `SILENT`, not a fault. It is not an acknowledgement;
+  no drive confirms a broadcast.
+- Any byte after DE release: kept in the RX buffer and the trace, and the window
+  still runs to its end. Then `UNEXPECTED_RX`, a fault that needs explicit
+  recovery. A byte before DE release is `EARLY_REPLY`, as for unicast.
+- A missing required local copy at the window end is `ECHO_ERROR`.
+- Cancellation or a request deadline before the window closes is `CANCELLED`
+  or `REQUEST_DEADLINE`, both faults.
+
+The passive traffic observer copies the window bytes like any other RX byte.
+Only the standalone bench fixture uses this path (multi-drive 01).
+
 ## Failures, cancellation and recovery
 
 `Result` retains the reason, start/end time, accepted TX count, physical TX

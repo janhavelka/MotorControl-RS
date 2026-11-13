@@ -1623,6 +1623,90 @@ void testSegmentRecoveryCancelsReadbackContinuation() {
     pump(100); assert(hardware.writes == writes && view(update).driverContext->uncertain);
 }
 #if MOTORCONTROLRS_LOAD_FIXTURE
+void waitBroadcast(uint32_t operation) {
+    for (unsigned i = 0; i < 1000 && view(operation).pending; ++i) step(1000);
+    assert(!view(operation).pending); pump();
+}
+void testBroadcastFixtureRouteAcceptsOnlyListedFrames() {
+    using namespace MotorControlRS;
+    for (std::size_t i = 0; i < BROADCAST_FRAME_COUNT; ++i) {
+        const uint8_t* f = BROADCAST_FRAMES[i];
+        assert(ESS::calcCrc16(f, 6) == static_cast<uint16_t>(f[6] | f[7] << 8));
+        Rtu::Request r; r.bytes = f; r.length = 8; r.silenceUs = BROADCAST_WINDOW_US;
+        Rtu::Expectation e; e.function = 6; e.count = 1;
+        e.first = static_cast<uint16_t>(f[2] << 8 | f[3]); e.value = static_cast<uint16_t>(f[4] << 8 | f[5]);
+        assert(listedBroadcast(e, r));
+        uint8_t changed[8];
+        for (std::size_t b = 0; b < 8; ++b) {
+            std::memcpy(changed, f, 8); changed[b] ^= 1; r.bytes = changed;
+            assert(!listedBroadcast(e, r));
+        }
+        r.bytes = f; e.address = 1; assert(!listedBroadcast(e, r));
+        e.address = 0; ++e.value; assert(!listedBroadcast(e, r));
+        --e.value; r.silenceUs = 0; assert(!listedBroadcast(e, r));
+    }
+    fresh(); timerCapture();
+    uint32_t unchanged = 77;
+    assert(startBroadcast(*app, 1, static_cast<Probe::BroadcastFrame>(5), unchanged) == Probe::Action::INVALID);
+    for (const char* line : {"@1 broadcast accel 302\n", "@2 broadcast\n", "@3 broadcast stop normal 1\n",
+                             "@4 broadcast start absolute\n", "@5 broadcast raw 00 06\n"}) {
+        command(line); contains("invalid_arguments");
+    }
+    assert(unchanged == 77 && hardware.writes == 0 && !app->owner.pending());
+}
+void testBroadcastSilentWindowInvalidatesEveryDrive() {
+    fresh(); timerCapture(); qualifyActions();
+    app->identity.operationId = 5; app->configuration.operationId = 6; app->controlSettings.operationId = 7;
+    const auto generation = app->axis.generation;
+    command("@1 broadcast accel 300\n"); contains("\"result\":\"accepted\"");
+    const uint32_t operation = view(0).operationId;
+    startTx(0);
+    assert(hardware.tx == std::vector<uint8_t>(BROADCAST_FRAMES[0], BROADCAST_FRAMES[0] + 8));
+    for (unsigned i = 0; i < 150; ++i) step(1000);
+    assert(view(operation).pending && app->identity.operationId == 5); // Window still open.
+    waitBroadcast(operation);
+    const auto& p = view(operation).probe;
+    assert(p.broadcast && p.outcome == Rtu::Outcome::SENT && p.transport.reason == Rtu::Reason::SILENT);
+    assert(p.executionUnknown && p.rxLength == 0 && !app->owner.needsRecovery() && hardware.writes == 1);
+    contains("\"type\":\"broadcast\""); contains("\"frame\":\"accel_300\""); contains("\"outcome\":\"sent\"");
+    contains("\"confirmed\":false"); contains("\"window_us\":200000");
+    assert(!app->identity.operationId && !app->configuration.operationId && !app->controlSettings.operationId);
+    assert(!app->knownTargets[0] && app->axis.generation == generation + 1);
+
+    // Any byte in the window is a finding that needs explicit recovery.
+    fresh(); timerCapture();
+    command("@2 broadcast accel 301\n"); contains("\"result\":\"accepted\"");
+    const uint32_t heard = view(0).operationId;
+    startTx(0);
+    scheduleReply(hardware.writeStarted + 8 * 87 + 5000, {0x00, 0x86, 0x02});
+    waitBroadcast(heard);
+    assert(view(heard).probe.transport.reason == Rtu::Reason::UNEXPECTED_RX);
+    assert(view(heard).probe.outcome == Rtu::Outcome::TRANSPORT && view(heard).probe.rxLength == 3);
+    assert(app->owner.needsRecovery()); contains("\"rx_hex\":\"008602\"");
+    command("@3 broadcast stop fast\n"); contains("\"result\":\"recovery_required\"");
+    assert(hardware.writes == 1);
+}
+void testBroadcastStopPassesReservationAndUnicastStopWaitsForWindow() {
+    using namespace MotorControlRS;
+    fresh(); timerCapture(); qualifyActions();
+    app->actionConflicts[0] |= 2; // A possibly moving drive 1 reserves its axis.
+    command("@1 broadcast start relative\n"); contains("\"result\":\"busy\"");
+    command("@2 broadcast accel 300\n"); contains("\"result\":\"busy\"");
+    assert(hardware.writes == 0);
+    command("@3 broadcast stop fast\n"); contains("\"result\":\"accepted\"");
+    const uint32_t stopAll = view(0).operationId;
+    startTx(0);
+    assert(hardware.tx == std::vector<uint8_t>(BROADCAST_FRAMES[4], BROADCAST_FRAMES[4] + 8));
+    // The unicast stop is admitted at once and sent only after the window closes.
+    const uint32_t stop = actionAdmission(ActionKind::STOP, 4);
+    for (unsigned i = 0; i < 150; ++i) step(1000);
+    assert(hardware.writes == 1 && view(stopAll).pending);
+    waitBroadcast(stopAll);
+    assert(view(stopAll).probe.outcome == Rtu::Outcome::SENT);
+    assert(app->actionConflicts[0] & 2); // An unconfirmed broadcast never clears it.
+    actionStep(stop);
+    assert(hardware.writes == 2 && hardware.tx[0] == 1 && hardware.tx[3] == 0x27);
+}
 void testLoadLocalAdmission() {
     fresh(); command("@1 load\n"); contains("\"command\":\"load\"");
     command("@2 load 1000 5000 32\n"); Probe::LoadSnapshot settings;
@@ -1779,6 +1863,9 @@ int main() {
     testMonitorCancellationSettlesTransmission(); testMonitorYieldsToUrgentOwnerAdmission();
     testMonitorPressurePreservesUnreadForegroundResults(); testMonitorCheckedFailureHasOneAttemptAndNoFeedback();
 #if MOTORCONTROLRS_LOAD_FIXTURE
+    testBroadcastFixtureRouteAcceptsOnlyListedFrames();
+    testBroadcastSilentWindowInvalidatesEveryDrive();
+    testBroadcastStopPassesReservationAndUnicastStopWaitsForWindow();
     testLoadLocalAdmission();
     testLoadDelayExhaustsSetupTxBudgetWithoutTransmission();
 #endif

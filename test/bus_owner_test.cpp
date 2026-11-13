@@ -632,9 +632,55 @@ void testEffectiveClosureBudget() {
     }
 }
 } // namespace
+bool exactBroadcast(const Expectation& e, const Request& r) {
+    static const uint8_t frame[] = {0, 6, 0, 0x21, 1, 0x2C, 0xD8, 0x5C};
+    return e.address == 0 && r.length == sizeof(frame) && std::memcmp(r.bytes, frame, sizeof(frame)) == 0;
+}
+MotorControlRS::Status noReply(const Expectation&, const uint8_t*, std::size_t) {
+    return MotorControlRS::Status(MotorControlRS::Err::FRAME_ERROR, 0, "transmit-only");
+}
+void testTransmitOnlyBroadcastAndUrgentStop() {
+    Fake fake; uint8_t tx[MAX_FRAME] = {}, rx[MAX_FRAME] = {};
+    PendingSlot pending[4]; ResultSlot results[6]; ProducerSlot producers[1];
+    Runner runner(port(fake), runnerStorage(tx, rx, MAX_FRAME, MAX_FRAME), timing());
+    BusStorage storage = busStorage(pending, results, 4, 6, producers);
+    storage.urgentPendingCapacity = 1; storage.urgentResultCapacity = 2;
+    BusOwner owner(runner, storage);
+    const auto service = [&](uint64_t at) { fake.now = at; owner.service(at); };
+    uint8_t frame[] = {0, 6, 0, 0x21, 1, 0x2C, 0xD8, 0x5C};
+    BusRequest b; b.wire.bytes = frame; b.wire.length = sizeof(frame); b.wire.silenceUs = 200000;
+    b.wire.deadlineUs = 1000000; b.expected.address = 0; b.expected.function = 6;
+    b.expected.first = 0x21; b.expected.count = 1; b.expected.value = 300;
+    b.validator.checkRequest = exactBroadcast; b.validator.checkReply = noReply;
+    BusRequest replied = b; replied.wire.silenceUs = 0;
+    RequestId refused;
+    assert(owner.admit(replied, 1000, refused) == BusAdmission::INVALID);
+    RequestId id; assert(owner.admit(b, 1000, id) == BusAdmission::ACCEPTED);
+    service(1000); service(1350); service(1360); service(2180);
+    assert(fake.writes == 1 && fake.sent[0] == std::vector<uint8_t>(frame, frame + sizeof(frame)));
+    uint8_t stop[8]; BusRequest s;
+    s.wire.length = Ess::buildWriteSingleRegister(1, 0x0027, 0x0100, stop, sizeof(stop));
+    s.wire.bytes = stop; s.wire.replyLength = 8; s.wire.responseTimeoutUs = 10000; s.wire.deadlineUs = 1000000;
+    s.expected.address = 1; s.expected.function = 6; s.expected.first = 0x0027; s.expected.count = 1;
+    s.expected.value = 0x0100; s.validator = essValidator();
+    RequestId urgent; assert(owner.admitUrgent(s, 3000, urgent) == BusAdmission::ACCEPTED);
+    service(3000); service(202159);
+    assert(fake.writes == 1 && owner.active() && !owner.result(id)); // The stop waits for the window.
+    service(202160);
+    const Completion* sent = owner.result(id);
+    assert(sent && sent->outcome == Outcome::SENT && sent->executionUnknown && !owner.needsRecovery());
+    assert(sent->transport.reason == Reason::SILENT && sent->transport.rxLength == 0 && sent->transport.txComplete);
+    service(202160 + 350); service(202160 + 360);
+    assert(fake.writes == 2 && fake.sent[1] == std::vector<uint8_t>(stop, stop + 8));
+    const uint64_t first = fake.txEnd + 350;
+    fake.bytes(std::vector<uint8_t>(stop, stop + 8), first);
+    service(first + 800 + 350);
+    assert(owner.result(urgent) && owner.result(urgent)->outcome == Outcome::SUCCESS && owner.result(urgent)->urgent);
+}
 int main() {
     testCapacitiesAndIds(); testTransientAndReadShapes(); testWriteShapes();
     testStandaloneValidatorBounds(); testInvalidRequestsAndStorage(); testClassificationAndRecovery();
     testWriteEchoAndOverflow(); testWrappedCompactionAndReuse(); testFifoExpiryAndBudget(); testClassificationBarrierAndLateBudget(); testClockRegression(); testAbsoluteDeadline(); testEffectiveClosureBudget();
+    testTransmitOnlyBroadcastAndUrgentStop();
     return 0;
 }

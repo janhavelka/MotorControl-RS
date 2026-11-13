@@ -82,10 +82,10 @@ uint32_t readControl(uint16_t encoder = 4000, uint16_t algorithm = 3, uint8_t ad
     if (address == 1) assert(app->controlSettings.operationId == id);
     return id;
 }
-void readIdentity(uint16_t model = 0x4EEA, uint16_t version = 0x0029) {
+void readIdentity(uint16_t model = 0x4EEA, uint16_t version = 0x0029, uint8_t address = 1) {
     uint32_t id = 0;
-    assert(host(app).startTypedRead(app,70,1,ESS::ReadKind::IDENTITY,id) == Probe::Action::OK);
-    configReply(id,words({model,version,1,0}));
+    assert(host(app).startTypedRead(app,70,address,ESS::ReadKind::IDENTITY,id) == Probe::Action::OK);
+    configReply(id,words({model,version,address,0},address));
     assert(app->identity.operationId == id);
 }
 void stationary() {
@@ -241,6 +241,30 @@ void failedRefreshInvalidatesChangedScale() {
         assert(app->axis.generation == after && view(original).driverContext->outcome == ESS::DriverOutcome::SUCCESS);
     }
 }
+void identifiedDriveAtAnotherAddress() {
+    // The selected drive's own identity read qualifies it at any address.
+    fresh(); assert(selectTarget(app,2) == Probe::Action::OK);
+    const auto old = readControl(4000,3,2); readIdentity(0x4EEA,0x0029,2); stationary();
+    assert(app->controlSettings.operationId == old);
+    uint32_t id = 0;
+    assert(host(app).startDriver(app,2,2,ESS::DriverKind::UPDATE,delay(),id) == Probe::Action::OK);
+    reply(id,{}); reply(id,words({1001},2));
+    assert(!view(id).pending && view(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS);
+    assert(view(id).driverContext->target.address == 2);
+    // Another drive's identity, an older binding or other codes do not qualify it.
+    for (unsigned fault = 0; fault < 3; ++fault) {
+        fresh();
+        if (fault == 0) { readIdentity(); assert(selectTarget(app,2) == Probe::Action::OK); }
+        else { assert(selectTarget(app,2) == Probe::Action::OK); }
+        readControl(4000,3,2);
+        if (fault == 1) readIdentity(0x4EEA,0x0029,1);
+        if (fault == 2) readIdentity(0x4EEB,0x0029,2);
+        stationary();
+        uint32_t unchanged = 99; const auto writes = hardware.writes;
+        assert(host(app).startDriver(app,2,2,ESS::DriverKind::UPDATE,delay(),unchanged) == Probe::Action::INVALID);
+        assert(unchanged == 99 && hardware.writes == writes);
+    }
+}
 } // namespace
 static void testDefaultAgeKeepsCheckedControlIdentity() {
     fresh(); readControl(); readIdentity(); stationary();
@@ -257,5 +281,6 @@ int main() {
     testDefaultAgeKeepsCheckedControlIdentity();
     safeDelayAndGuards(); modelAndStaleness(); changedScaleAndHistoricalContext(); uncertaintyAndCancel(); independentCachesAndPressure();
     recoveryWithActiveWriteAndFullResults(); failedRefreshInvalidatesChangedScale();
+    identifiedDriveAtAnotherAddress();
     if (app) { app->~App(); std::free(app); app = nullptr; }
 }

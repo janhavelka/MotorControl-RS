@@ -57,8 +57,10 @@ struct BusRequest {
 enum class BusAdmission : uint8_t {
     ACCEPTED, INVALID, EXPIRED, QUEUE_FULL, RESULTS_FULL, IDS_EXHAUSTED, URGENT_FULL, RECOVERING, CONFIGURING
 };
+/** SENT: a transmit-only frame left with a silent window and no byte heard.
+ * It is never an acknowledgement; executionUnknown stays true. */
 enum class Outcome : uint8_t {
-    QUEUE_EXPIRED, TRANSPORT, SUCCESS, DEVICE_REJECTED, INVALID_REPLY, CANCELLED, DISPATCH_EXPIRED
+    QUEUE_EXPIRED, TRANSPORT, SUCCESS, DEVICE_REJECTED, INVALID_REPLY, CANCELLED, DISPATCH_EXPIRED, SENT
 };
 enum class Cancel : uint8_t { CANCELLED, ALREADY_TERMINAL, INVALID };
 enum class Cancellation : uint8_t { NONE, REQUEST, GENERATION, RECOVERY };

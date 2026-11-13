@@ -239,8 +239,15 @@ struct Snapshot {
     uint32_t psramFree = 0, psramMin = 0, psramLargest = 0, stackFreeBytes = 0;
 };
 
+/** The five reviewed address-0 FC06 frames of the multi-drive 01 bench test. */
+enum class BroadcastFrame : uint8_t { ACCEL_300, ACCEL_301, RELATIVE_START, STOP_NORMAL, STOP_FAST };
+const char* broadcastName(BroadcastFrame) noexcept;
+
 struct ProbeResult {
     bool captureRead = false; ///< Fixed timing read, never a model/presence observation.
+    bool broadcast = false; ///< Transmit-only fixture frame; SENT is never a confirmation.
+    BroadcastFrame broadcastFrame = BroadcastFrame::ACCEL_300;
+    uint32_t silenceUs = 0;
     Rtu::Result transport;
     bool codecChecked = false;
     MotorControlRS::Status codec;
@@ -339,6 +346,9 @@ struct Host {
      * Calls the same install/revoke operations as the application API. */
     QualificationReply (*qualification)(void*, const QualificationCommand&) = nullptr;
     Action (*recover)(void*, uint32_t commandId, uint32_t& operationId) = nullptr;
+    /** Fixture-only bench route: one fixed address-0 frame, then a silent window.
+     * Not a production API; reported through reportProbe with broadcast=true. */
+    Action (*broadcast)(void*, uint32_t commandId, BroadcastFrame, uint32_t& operationId) = nullptr;
     void (*resetStats)(void*) = nullptr;
     Action (*load)(void*, const LoadSettings* requested, LoadSnapshot&) = nullptr;
     /** Local finite polling control; null queries, disabled cancels local continuation. */
@@ -438,6 +448,8 @@ private:
     std::size_t availableSlot(bool stop = false) const noexcept;
     bool track(uint32_t id, uint32_t operationId, bool stop = false) noexcept;
     void untrack(uint32_t operationId) noexcept;
+    bool formatBroadcast(uint32_t id, uint32_t commandId, uint32_t operationId,
+                         const ProbeResult& result, bool inspection) noexcept;
     bool formatProbe(uint32_t id, uint32_t commandId, uint8_t address, uint32_t operationId,
                      const ProbeResult&, bool inspection) noexcept;
     bool formatRecovery(uint32_t id, uint32_t commandId, uint32_t operationId,

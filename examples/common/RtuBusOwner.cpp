@@ -158,7 +158,8 @@ void BusOwner::collect() noexcept {
         else if (completion.validation.code == MotorControlRS::Err::EXCEPTION)
             completion.outcome = Outcome::DEVICE_REJECTED;
         else { completion.outcome = Outcome::INVALID_REPLY; runner_.rejectFrame(); }
-    } else completion.outcome = completion.transport.reason == Reason::CANCELLED ? Outcome::CANCELLED : Outcome::TRANSPORT;
+    } else completion.outcome = completion.transport.reason == Reason::CANCELLED ? Outcome::CANCELLED :
+        completion.transport.reason == Reason::SILENT ? Outcome::SENT : Outcome::TRANSPORT;
     completion.executionUnknown = completion.transport.txAccepted != 0 &&
         completion.outcome != Outcome::SUCCESS && completion.outcome != Outcome::DEVICE_REJECTED;
     // Recovery remains explicit even if a historical reply completes after its
