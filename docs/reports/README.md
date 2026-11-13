@@ -7,7 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
-| [Multi-drive 02: drive group](2026-11-13_multi_drive_02_drive_group.md) | Three drives move at the same time by unicast: 437 of 437 group moves on target, 156 of 156 group stops confirmed on every member, including a 1 h randomized soak. Start spread about 38 ms. |
+| [Multi-drive 02: drive group](2026-11-13_multi_drive_02_drive_group.md) | Three drives move at the same time by unicast: 672 of 672 group moves on target, 236 of 236 group stops confirmed on every member, including a 1 h and a 30 min soak. Up to 15 members; staged starts span about 16 ms over three drives (38 ms sequential). |
 | [Multi-drive 01: broadcast acceptance](2026-11-13_multi_drive_01_broadcast_acceptance.md) | NO-GO. Firmware `0x0029` acts on address-0 FC06 frames and every drive answers them, so the answers collide. 75 frames: writes applied 72 of 72, starts 60 of 63, stops 49 of 50; misses unresolved. |
 | [Settings on all drives and a 4-hour soak](2026-11-13_multi_drive_settings_and_soak.md) | Setters qualify any drive by its own `0x4EEA`/`0x0029` identity read; settings writes pass on drives 1, 2 and 4. 4 h extended stress over three drives: 2,152 cases, 4,014 idle-drive reads, 0 anomalies. |
 | [Three-drive write, motion and stress tests](2026-11-12_multi_drive_write_motion_stress.md) | Functional writes and moves pass on drives 1, 2 and 4; settings writes on 2 and 4 refused before TX by the node-1 model gate. 1 h standard and 30 min extended stress across all three: 785 cases, 1,550 idle-drive reads, 0 anomalies. After a stop, firmware `0x0029` can change its position by one increment for about 1.5 s. |

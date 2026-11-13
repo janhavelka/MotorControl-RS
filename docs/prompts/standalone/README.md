@@ -1,7 +1,7 @@
 # Standalone ESS completion and qualification
 
-Prepared 2026-10-23; status reviewed 2026-11-04. **Stages 03, 05, 07, 11 and 14
-are PARTIAL. Stages 02, 04, 06, 08-10, 12 and 13 are NOT STARTED.**
+Prepared 2026-10-23; status reviewed 2026-11-04. **Stages 02, 03, 05, 07, 11 and 14
+are PARTIAL. Stages 04, 06, 08-10, 12 and 13 are NOT STARTED.**
 Stage 01's parameter reads are complete. The corrections and owner decisions of
 the [2 November code and promptset audit](../../reports/2026-11-02_standalone_promptset_audit.md)
 are applied here. That audit also lists stop-path and homing defects; check them
@@ -30,7 +30,7 @@ keeps those distinctions. Use the audit's Current owner column; Next stage is hi
 | Stage | Deliverable | Dependencies / starting gate | Status |
 | --- | --- | --- | --- |
 | 01 | [Native velocity and homing parameter reads](../../ess_reads.md) | Public API and ordinary console routes delivered | COMPLETE |
-| 02 | [Position candidate/archive staging](02_profile_staging.md) | Existing profile builder. Setter delivered (`DriverSettings.h:266`); candidate staging leaves `0x0020` unchanged. | NOT STARTED |
+| 02 | [Position candidate/archive staging](02_profile_staging.md) | Existing profile builder. Setter delivered (`DriverSettings.h:266`); candidate staging leaves `0x0020` unchanged. | PARTIAL: staging without a start exists as an application API, used by group moves ([report](../../reports/2026-11-13_multi_drive_02_drive_group.md)); the console leaf and archive import are not built |
 | 03 | [Remaining position replacement evidence](03_position_interrupt.md) | Stored retrigger delivered; dispatch remaining work as "N05 evidence" | PARTIAL |
 | 04 | [Paired values and wire forms](04_paired_values.md) | Vendor clarification, or the one fixture-only `0x0060/2` experiment authorized by D4 | NOT STARTED |
 | 05 | [Unresolved homing semantics and physical qualification](05_homing.md) | Reads, auxiliary and 27 switch methods delivered; stage 04 for nonzero offsets; real fixture for switch methods | PARTIAL: 33/34/35 tested on the free shaft; unresolved methods, offsets and switch fixtures remain |

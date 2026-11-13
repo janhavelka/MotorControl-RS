@@ -244,9 +244,10 @@ more drives (now addresses 1, 2 and 4, star wiring).
   failure policy, group stop and status ([multi-drive 02](prompts/ess_multi_drive/02_drive_group.md),
   [report](reports/2026-11-13_multi_drive_02_drive_group.md)). Three drives move
   together; start spread about 38 ms, including each member's staging.
-- [ ] Shorten the group start spread with staging-only moves
-  ([standalone 02](prompts/standalone/02_profile_staging.md)): stage every member,
-  then send only the start frames.
+- [x] Shorten the group start spread with staging-only moves: every member is
+  staged and read back, then only the start frames go out. Three drives start
+  within about 16 ms instead of 38 ms; the group holds up to 15 drives
+  ([report](reports/2026-11-13_multi_drive_02_drive_group.md)).
 - [ ] Broadcast start and stop ([multi-drive 03](prompts/ess_multi_drive/03_broadcast_operations.md))
   are not applicable while multi-drive 01 is NO-GO. Reopen only if the vendor or
   a nonzero custom node makes the drives silent to address 0.
