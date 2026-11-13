@@ -43,9 +43,9 @@ new unattended soak during maintenance.
 ## Latest recorded image and settings
 
 The [13 November drive group tests](reports/2026-11-13_multi_drive_02_drive_group.md) are the latest session:
-image `bench_s3_load_timer` from `aa15277`, SHA-256 `3C12A321806F91A8D2ABF038412CFDE379EE936E8E6C6DE87BBD150386703769`.
+image `bench_s3_load_timer` from `b7dd6fb`, SHA-256 `9F9845B58E0CE6B46085BBECB3058BD779E23E80F9D4AE8FE34836873A74B401`.
 Ending state of drives 1, 2 and 4: enabled, stopped, alarm 0, motion words 1, 3 and 3, raw positions
-456,725, 244,293 and 242,915. RAM holds accel and decel 300 ms and start speed 30 from the multi-drive 01
+718,991, 506,153 and 504,851. RAM holds accel and decel 300 ms and start speed 30 from the multi-drive 01
 staging; settings are at their original values; nothing was saved. The group 1, 2, 4 is declared; drive 1
 is selected. The same day's [broadcast test](reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)
 used `0984e14`, and the [4-hour soak](reports/2026-11-13_multi_drive_settings_and_soak.md) used `5938f1d`.

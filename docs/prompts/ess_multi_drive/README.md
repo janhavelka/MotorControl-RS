@@ -54,7 +54,7 @@ drives ([report](../../reports/2026-11-12_multi_drive_write_motion_stress.md)).
 | Stage | Deliverable | Starting gate | Status |
 | --- | --- | --- | --- |
 | 01 | [Broadcast acceptance test](01_broadcast_acceptance.md) | D6 approved; three-drive link clean at addresses 1, 2 and 4 | COMPLETE: NO-GO ([report](../../reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)) |
-| 02 | [Drive group in the standalone application](02_drive_group.md) | None for software; standalone 02 to stage every member before the starts; second drive for multi-drive claims | COMPLETE without staging-only starts ([report](../../reports/2026-11-13_multi_drive_02_drive_group.md)) |
+| 02 | [Drive group in the standalone application](02_drive_group.md) | None for software; standalone 02 to stage every member before the starts; second drive for multi-drive claims | COMPLETE: up to 15 members, staged starts ([report](../../reports/2026-11-13_multi_drive_02_drive_group.md)) |
 | 03 | [Broadcast start and stop](03_broadcast_operations.md) | 01 outcome GO, D7 approved, 02 delivered; standalone 02 for staging without a start | NOT APPLICABLE: 01 is NO-GO |
 | 04 | [Input and output programming](04_input_programming.md) | None for software; wired inputs for physical claims | NOT STARTED |
 | 05 | [Input-triggered start](05_input_triggered_start.md) | 04 delivered; standalone 02 for function 7; standalone 04 and 06 for PT segments; wired trigger for physical claims | NOT STARTED |
