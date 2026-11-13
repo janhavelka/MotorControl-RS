@@ -158,6 +158,14 @@ The owner can send these:
    power-on, but the register defaults are 1, 2, 3, 0.
 5. Is there any synchronized multi-axis start for the ESS-RS family?
 
+## Bench outcome, 13 November
+
+[Multi-drive 01](2026-11-13_multi_drive_01_broadcast_acceptance.md) tested the
+question on three drives with custom node 0. Firmware `0x0029` acts on
+address-0 FC06 frames and answers every one with a normal write echo. With
+several drives the answers collide. A few starts and stops were ignored by one
+drive. Broadcast is not used.
+
 ## Follow-up
 
 The [backlog](../backlog.md#multi-drive-broadcast-and-input-triggered-motion)

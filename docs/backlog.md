@@ -204,10 +204,12 @@ more drives (now addresses 1, 2 and 4, star wiring).
 - [ ] Add fail-safe bias to the bench bus (pull-up on A, pull-down on B at one
   point). Owner wiring action. Then rerun the link check with a drive at
   address 3 to show that lost first bytes stopped.
-- [ ] Confirm the model of drives 2 and 4. The tuning and control setters
-  qualify the exact model only for node 1 (`ProbeApp.cpp`), so their settings
-  writes are refused before TX. A confirmed model needs a firmware change that
-  qualifies those addresses.
+- [x] Confirm the model of drives 2 and 4. The owner confirmed them as
+  ESS23-RS20 on 13 November. The setters now qualify any drive whose own
+  identity read reports `0x4EEA`/`0x0029`; settings writes pass on all three
+  drives ([report](reports/2026-11-13_multi_drive_settings_and_soak.md)).
+- [x] Run longer than one hour: 4 h extended stress over drives 1, 2 and 4,
+  2,152 cases, 0 anomalies ([report](reports/2026-11-13_multi_drive_settings_and_soak.md)).
 - [ ] Document post-stop settling in the position guide: after a stop, mainly
   `stop fast`, firmware `0x0029` can still change its reported position by one
   increment for about 1.5 s. Completion and comparison logic that reads a
@@ -228,14 +230,20 @@ more drives (now addresses 1, 2 and 4, star wiring).
 - [x] Decide D6 and D7 ([promptset](prompts/ess_multi_drive/README.md#owner-decisions)).
   Approved 12 November. D6 allows the bounded broadcast test. D7 sets the
   broadcast-start admission rule.
-- [ ] Test whether firmware `0x0029` acts on address-0 writes and stays silent
-  ([multi-drive 01](prompts/ess_multi_drive/01_broadcast_acceptance.md)). The library
-  stays unicast-only until it does.
+- [x] Test whether firmware `0x0029` acts on address-0 writes and stays silent
+  ([multi-drive 01](prompts/ess_multi_drive/01_broadcast_acceptance.md),
+  [report](reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)). NO-GO:
+  the drives act on the frames but every drive answers address 0, and the
+  answers collide. The library stays unicast-only.
+- [ ] Find why 4 of 113 broadcast starts and stops were ignored by one drive.
+  Measure with one drive powered (no reply collision) and with a differential
+  bus capture; repeat after the bias is fitted.
 - [ ] Add a drive group to the standalone application: declaration, per-member
   facts and post-enable wait, sequential start with measured spread, explicit
   failure policy, group stop and status ([multi-drive 02](prompts/ess_multi_drive/02_drive_group.md)).
-- [ ] Add broadcast start and stop, only if multi-drive 01 is GO ([multi-drive 03](prompts/ess_multi_drive/03_broadcast_operations.md)).
-  The outcome is always unconfirmed until each drive is read back.
+- [ ] Broadcast start and stop ([multi-drive 03](prompts/ess_multi_drive/03_broadcast_operations.md))
+  are not applicable while multi-drive 01 is NO-GO. Reopen only if the vendor or
+  a nonzero custom node makes the drives silent to address 0.
 - [ ] Program inputs and outputs as needed: functions 4-17 with stated
   commissioning facts, polarity on assigned terminals, connected outputs, routes
   for `0x0050`/`0x0051`, per-function move readiness, and the power-up state

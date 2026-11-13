@@ -38,6 +38,8 @@ def arguments(argv=None):
     parser.add_argument('--list', action='store_true')
     parser.add_argument('--plan-only', action='store_true')
     parser.add_argument('--address', type=int, default=1)
+    parser.add_argument('--declare-unconnected', action='store_true',
+                        help='settings/position/actions/stop: state that no terminal of the selected drive is wired')
     parser.add_argument('--count', type=int, help='quick/load/observations only; default ten')
     parser.add_argument('--interval', type=float, help='quick/load/observations only; default 0.05s')
     parser.add_argument('--timeout', type=float, default=5)
@@ -119,7 +121,7 @@ def _same_configuration(before, after):
 def _setting(console, args, record):
     group = 'tuning' if args.setting == 'input-filter' else 'control'
     # Settings writes apply to the selected drive only.
-    record['selection'] = motion.select_drive(console, args.address)
+    record['selection'] = motion.select_drive(console, args.address, declare_unconnected=args.declare_unconnected)
     prefix = ('filters',) if group == 'tuning' else ()
     fields = probe.TUNING_FIELDS['filters'] if group == 'tuning' else probe.CONTROL_FIELDS
     before = checked(console, group, driver_args=prefix + ('read',), address=args.address, timeout_s=args.timeout)
@@ -226,7 +228,7 @@ def run_scenario(console, args, record):
     elif name in ('position', 'actions', 'stop'):
         record['motion'] = {}
         phase = (args.phase or 'forward') if name == 'position' else 'actions' if name == 'actions' else 'stop-' + (args.stop_policy or 'normal')
-        motion.run_phase(console, phase, record['motion'], args.address)
+        motion.run_phase(console, phase, record['motion'], args.address, args.declare_unconnected)
     elif name == 'angle': _angle(console, args, record)
     elif name == 'velocity':
         record['native_parameter_restoration'] = {'known': False, 'owning_gap': '11', 'reason': 'standalone native velocity parameter reads unavailable'}
