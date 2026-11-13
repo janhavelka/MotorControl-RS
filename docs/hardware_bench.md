@@ -9,7 +9,7 @@ start of each test session; old readback is not fresh admission evidence.
 | Item | Recorded setup |
 | --- | --- |
 | Motor | User-confirmed ESS23-RS20; raw model `0x4EEA`, firmware word `0x0029` |
-| Drives since 12 November | Three drives at DIP addresses 1, 2 and 4, all `0x4EEA` / `0x0029`; only drive 1 is a confirmed ESS23-RS20. The owner describes them as powered, on RS485 and with free shafts; their terminals are declared unconnected on that basis; short star wiring, one 120 Ω terminator on the controller board, SW1 off on the drives, free shafts. Keep addresses 3, 6 and 16 free; see the [bus check](reports/2026-11-12_multi_drive_bus_check.md) |
+| Drives since 12 November | Three drives at DIP addresses 1, 2 and 4, all `0x4EEA` / `0x0029` and owner-confirmed ESS23-RS20 (drives 2 and 4 on 13 November). Custom node `0x0013` is 0 on all three. The owner describes them as powered, on RS485 and with free shafts; their terminals are declared unconnected on that basis; short star wiring, one 120 Ω terminator on the controller board, SW1 off on the drives, no fail-safe bias. Keep addresses 3, 6 and 16 free; see the [bus check](reports/2026-11-12_multi_drive_bus_check.md). Every drive answers address 0, so do not broadcast on this bus ([multi-drive 01](reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)) |
 | Mounting | Bolted securely to the table; free, uncoupled shaft |
 | Connections | Power and RS485 only; no external switches, output loads or driven mechanics |
 | Board | ESP32-S3, 16 MB flash / 8 MB PSRAM; historical board identity E2 revision 2.0.0 |

@@ -99,21 +99,32 @@ def phase_plan(phase, address=None):
     return plan[:5] + selection + plan[5:]
 
 
-def run_phase(console, phase, record, address=None):
+def run_phase(console, phase, record, address=None, declare_unconnected=False):
     """Run one phase. address=None keeps node 1 without a selection step."""
     phase_plan(phase, address)  # Validate even direct callers before version/debug or device I/O.
     record['version'] = console.identify()
     with debug_session(console, record.get('debug_mode'), 5) as diagnostics:
         record['debug'] = diagnostics
-        return _run_phase(console, phase, record, address)
+        return _run_phase(console, phase, record, address, declare_unconnected)
 
 
-def _select(console, address, command):
-    """Select another drive locally. Never forget a snapshot that still needs restoring."""
+TERMINALS = ('x0', 'x1', 'x2', 'x3', 'y0', 'y1')
+
+
+def _select(console, address, command, declare_unconnected=False):
+    """Select another drive locally. Never forget a snapshot that still needs restoring.
+
+    useaddr clears the host's terminal declarations and makes earlier reads of
+    the new drive stale, so its identity and configuration are read again.
+    declare_unconnected states, for every terminal of the new drive, that
+    nothing is wired: an owner fact, never a drive change or bus traffic.
+    """
     selected = command('wiring')
     record = dict(before=dict(target=selected['target'], address=selected['address']))
     if selected['address'] == address:
         record['changed'] = False
+        if declare_unconnected:
+            record['wiring'] = [command('wiring', host_args=(terminal, 'unconnected')) for terminal in TERMINALS]
         return record
     profile = command('motion-profile', host_args=('inspect',))
     record['profile'] = profile
@@ -125,10 +136,14 @@ def _select(console, address, command):
         record['forgotten'] = command('motion-profile', host_args=('forget',))
     record['useaddr'] = command('useaddr', address=address)
     record['changed'] = True
+    if declare_unconnected:
+        record['wiring'] = [command('wiring', host_args=(terminal, 'unconnected')) for terminal in TERMINALS]
+    record['identity'] = command('read-identity', address=address)
+    record['configuration'] = command('read-config', address=address)
     return record
 
 
-def select_drive(console, address, on_command=None):
+def select_drive(console, address, on_command=None, declare_unconnected=False):
     """Select a drive for writes or moves; refuse while a snapshot still needs restoring."""
     if type(address) is not int or not 1 <= address <= 247:
         raise ValueError('ESS address must be an integer within 1..247')
@@ -140,10 +155,10 @@ def select_drive(console, address, on_command=None):
         if not result['ok']:
             raise BenchError(f'{name} refused/failed: {result.get("result", result.get("outcome"))}')
         return result
-    return _select(console, address, command)
+    return _select(console, address, command, declare_unconnected)
 
 
-def _run_phase(console, phase, record, address=None):
+def _run_phase(console, phase, record, address=None, declare_unconnected=False):
     select = address is not None
     address = 1 if address is None else address
     record['events'] = []
@@ -207,7 +222,7 @@ def _run_phase(console, phase, record, address=None):
         return profile_snapshot(console, action, on_command=retain_command)
 
     if select:
-        record['selection'] = _select(console, address, command)
+        record['selection'] = _select(console, address, command, declare_unconnected)
     record['host'] = command('host')
     if record['host']['active'] != dict(baud=115200, format='8N1') or record['host']['blocked']:
         raise BenchError('unexpected host tuple; no automatic reconfiguration')
@@ -334,6 +349,8 @@ def main():
     parser.add_argument('--debug', choices=('off', 'raw', 'decoded'), default=None)
     parser.add_argument('--phase', required=True, choices=PHASES)
     parser.add_argument('--address', type=int, default=1, help='ESS drive 1..247; another drive is selected with useaddr')
+    parser.add_argument('--declare-unconnected', action='store_true',
+                        help='state that no terminal of the selected drive is wired; declared after useaddr')
     parser.add_argument('--out', required=True, type=Path, help='new evidence filename prefix; existing files are never overwritten')
     parser.add_argument('--plan-only', action='store_true')
     args = parser.parse_args()
@@ -351,7 +368,7 @@ def main():
         # same reusable phase receives no second debug-mode selection.
         details = dict(phase=args.phase, plan=plan)
         summary['motion'] = details
-        run_phase(console, args.phase, details, args.address)
+        run_phase(console, args.phase, details, args.address, args.declare_unconnected)
         summary['workload_verified'] = True
     run_recorded(port=args.port, out=args.out, scenario='motion-' + args.phase,
                  inputs=dict(phase=args.phase, address=args.address, debug=args.debug, plan=plan), run=run,

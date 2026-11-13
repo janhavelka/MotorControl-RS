@@ -603,6 +603,27 @@ class DriveSelectionTest(unittest.TestCase):
         moves = [kw for name, kw in console.calls if name == "move-relative"]
         self.assertEqual([kw["address"] for kw in moves], [4])
 
+    def test_selection_reads_the_new_drive_and_declares_only_when_asked(self):
+        console = SelectingConsole(selected=1)
+        record = campaign.select_drive(console, 4)
+        self.assertNotIn("wiring", record)
+        names = [name for name, _ in console.calls]
+        self.assertLess(names.index("useaddr"), names.index("read-identity"))
+        self.assertEqual([kw.get("address") for kw in console.commands("read-identity")], [4])
+        self.assertEqual([kw.get("address") for kw in console.commands("read-config")], [4])
+        self.assertEqual([kw for kw in console.commands("wiring") if kw.get("host_args")], [])
+        declared = SelectingConsole(selected=1)
+        record = campaign.select_drive(declared, 2, declare_unconnected=True)
+        calls = [(name, kw.get("host_args")) for name, kw in declared.calls if name == "wiring" and kw.get("host_args")]
+        self.assertEqual(calls, [("wiring", (t, "unconnected")) for t in ("x0", "x1", "x2", "x3", "y0", "y1")])
+        names = [name for name, _ in declared.calls]
+        self.assertLess(names.index("useaddr"), max(i for i, n in enumerate(names) if n == "wiring"))
+        same = SelectingConsole(selected=2)
+        record = campaign.select_drive(same, 2, declare_unconnected=True)
+        self.assertFalse(record["changed"])
+        self.assertEqual(len([kw for kw in same.commands("wiring") if kw.get("host_args")]), 6)
+        self.assertEqual(same.commands("useaddr"), [])
+
     def test_same_drive_needs_no_selection_change(self):
         console = SelectingConsole(selected=2)
         record = {}
