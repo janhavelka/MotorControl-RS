@@ -435,20 +435,36 @@ void fullOrdinaryResultsCannotConsumeScanOrStopStorage() {
         assert(host(app).startProbe(app, i + 1, 1, operation) == Probe::Action::OK);
         reply(i, words(1, {0x4EEA}));
     }
+    // The drive group's move pool adds ordinary owner results. An independent
+    // producer holds those, so every ordinary owner result is unread again.
+    const unsigned filled = RESULT_SLOTS - URGENT_RECORDS;
+    std::vector<Rtu::RequestId> held(filled - REQUEST_CAPACITY);
+    uint8_t probeBytes[8]; const auto probeLength = ESS::buildProbe(1, probeBytes, sizeof(probeBytes));
+    for (std::size_t i = 0; i < held.size(); ++i) {
+        Rtu::BusRequest request;
+        request.wire.bytes = probeBytes; request.wire.length = probeLength; request.wire.replyLength = 7;
+        request.wire.responseTimeoutUs = app->serial.timing.responseTimeoutUs; request.wire.replyGapUs = app->serial.timing.replyGapUs;
+        request.wire.deadlineUs = nowUs() + REQUEST_US;
+        request.expected.address = request.expected.target = 1; request.expected.targetGeneration = app->bindingGeneration;
+        request.expected.function = 3; request.expected.count = 1; request.validator = Rtu::essValidator();
+        assert(app->owner.admit(request, nowUs(), held[i]) == Rtu::BusAdmission::ACCEPTED);
+        reply(REQUEST_CAPACITY + static_cast<unsigned>(i), words(1, {0x4EEA}));
+        assert(app->owner.result(held[i]));
+    }
     assert(control(Probe::DiscoveryCommandKind::BEGIN) == Probe::Action::OK);
-    pump(); assert(scan().owned && !scan().count && !scan().requests && hardware.writes == REQUEST_CAPACITY);
+    pump(); assert(scan().owned && !scan().count && !scan().requests && hardware.writes == filled);
     MotorControlRS::ActionRequest stop; stop.kind = MotorControlRS::ActionKind::STOP;
     stop.stop.behavior = MotorControlRS::StopBehavior::DIRECT;
     uint32_t id = 0;
     assert(host(app).startAction(app, 99, 1, stop, id) == Probe::Action::OK);
-    waitTx(REQUEST_CAPACITY); assert(hardware.tx[1] == 6);
+    waitTx(filled); assert(hardware.tx[1] == 6);
     const auto echo = hardware.tx; writeResponseConfirmed = true;
-    reply(REQUEST_CAPACITY, echo); reply(REQUEST_CAPACITY + 1, words(1, {0, 0}));
+    reply(filled, echo); reply(filled + 1, words(1, {0, 0}));
     Probe::ResultView result;
     assert(host(app).result(app, id, result) && !result.pending && result.actionContext);
     assert(result.actionContext->completion == MotorControlRS::ActionCompletion::OBSERVED);
     assert(scan().outcome == ScanOutcome::PREEMPTED && scan().restored && scan().count == 0);
-    assert(hardware.writes == REQUEST_CAPACITY + 2);
+    assert(hardware.writes == filled + 2);
     for (unsigned i = 1; i <= REQUEST_CAPACITY; ++i) {
         assert(host(app).result(app, i, result) && result.probe.outcome == Rtu::Outcome::SUCCESS);
     }

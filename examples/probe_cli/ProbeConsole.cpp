@@ -16,6 +16,7 @@
 #include <cstring>
 #include <limits>
 #include <algorithm>
+#include <new>
 
 namespace MotorControlRSExample { namespace Probe {
 Action driverAdmissionStatus(const MotorControlRS::Status& status) noexcept {
@@ -97,7 +98,7 @@ const Entry COMMANDS[] = {
     {"drv", Command::DRV, "drv", "show_owner_queue_and_output", false, "Show the bus owner, queues, retained results and console pressure."},
     {"result", Command::RESULT, "result [operation_id]", "inspect_retained_result_without_consuming", false, "Inspect an operation without consuming its retained result."},
     {"cancel", Command::CANCEL, "cancel [operation_id]", "cancel_local_work_not_motor_stop", false, "Cancel local work; use stop to request a motor stop."},
-    {"group", Command::GROUP, "group show|status|clear | group set ADDR [ADDR ...] (1..4) | group wiring ADDR x0|x1|x2|x3|y0|y1 unknown|unconnected|connected | group read state | group move relative value unit frame native_rpm configured [setup write|verify] on-failure leave|stop normal|stop fast | group stop normal|fast", "unicast_drive_group_independent_member_operations", true, "Declare up to four drives, read their state, move them one start after another, or stop each one. Each member keeps its own result."},
+    {"group", Command::GROUP, "group show|status|clear | group set ADDR [ADDR ...] (1..15) | group wiring ADDR x0|x1|x2|x3|y0|y1 unknown|unconnected|connected | group read state | group move relative value unit frame native_rpm configured [setup write|verify] [start staged|sequential] on-failure leave|stop normal|stop fast | group stop normal|fast", "unicast_drive_group_independent_member_operations", true, "Declare up to 15 drives, read their state, stage every move and then send only the starts, or stop each one. Each member keeps its own result."},
     {"broadcast", Command::BROADCAST, "broadcast accel 300|301 | broadcast start relative | broadcast stop normal|fast", "fixture_only_unconfirmed_address_0_frame_then_silent_window", true, "Bench fixture only: send one fixed address-0 frame to every drive, then listen 200 ms. No drive confirms it; read each drive back."},
     {"release", Command::RELEASE, "release operation_id", "release_retained_terminal_result", false, "Release an inspected terminal result to free its storage."}
 };
@@ -738,6 +739,14 @@ const char* groupPolicyName(GroupFailurePolicy policy) {
     case GroupFailurePolicy::STOP_NORMAL: return "stop_normal";
     case GroupFailurePolicy::STOP_FAST: return "stop_fast";
     case GroupFailurePolicy::LEAVE: return "leave";
+    }
+    return "unknown";
+}
+const char* stageReadbackName(GroupStageReadback readback) {
+    switch (readback) {
+    case GroupStageReadback::NOT_READ: return "not_read";
+    case GroupStageReadback::MATCH: return "match";
+    case GroupStageReadback::MISMATCH: return "mismatch";
     }
     return "unknown";
 }
@@ -3243,7 +3252,9 @@ void Console::group(uint32_t id, const char* const* tokens, std::size_t count) n
     const char* sub = count ? tokens[0] : "";
     const bool stop = std::strcmp(sub, "stop") == 0;
     if (outputPending() && !stop) { ++inputDropped_; return; }
-    GroupCommand request;
+    // Task-context storage: a 15-member request never lands on the loop stack.
+    GroupCommand& request = groupRequest_;
+    request.~GroupCommand(); new (&request) GroupCommand();
     const char* command = "group";
     bool asynchronous = false;
     if (!std::strcmp(sub, "show") || !std::strcmp(sub, "status") || !std::strcmp(sub, "clear")) {
@@ -3304,6 +3315,17 @@ void Console::group(uint32_t id, const char* const* tokens, std::size_t count) n
             else { error(id, command, "invalid_arguments"); return; }
             next += 2;
         }
+        if (next < count && !std::strcmp(tokens[next], "start")) {
+            if (next + 1 >= count) { error(id, command, "invalid_arguments"); return; }
+            if (!std::strcmp(tokens[next + 1], "staged")) request.move.start = GroupStartMode::STAGED;
+            else if (!std::strcmp(tokens[next + 1], "sequential")) request.move.start = GroupStartMode::SEQUENTIAL;
+            else { error(id, command, "invalid_arguments"); return; }
+            next += 2;
+        }
+        // Staging always writes all five words; verify-first belongs to sequential starts.
+        if (request.move.start == GroupStartMode::STAGED && move.setup == Core::MoveSetup::VERIFY_AND_UPDATE) {
+            error(id, command, "invalid_arguments"); return;
+        }
         // The failure policy is mandatory; there is no default.
         if (next >= count || std::strcmp(tokens[next], "on-failure")) { error(id, command, "failure_policy_required"); return; }
         ++next;
@@ -3315,7 +3337,8 @@ void Console::group(uint32_t id, const char* const* tokens, std::size_t count) n
         else { error(id, command, "failure_policy_required"); return; }
     } else { error(id, "group", "invalid_arguments"); return; }
     if (!host_.group) { error(id, command, "unavailable"); return; }
-    GroupReply reply;
+    GroupReply& reply = groupReply_;
+    reply = GroupReply();
     if (!asynchronous) {
         const Action result = host_.group(host_.context, id, request, reply);
         if (!formatGroupView(id, command, result, reply.view)) error(id, command, "output_full");
@@ -3434,10 +3457,11 @@ bool Console::formatGroup(uint32_t id, uint32_t commandId, uint32_t operationId,
             std::snprintf(runningSpread, sizeof(runningSpread), "%llu", static_cast<unsigned long long>(runningLast - runningFirst));
         const auto& p = r.move.move.position;
         if (!append(output_, sizeof(output_), used,
-            ",\"request\":{\"relative\":true,\"value\":[%lld,%llu],\"unit\":\"%s\",\"frame\":%u,\"speed_rpm\":%u,\"setup\":\"%s\"},\"on_failure\":\"%s\",\"start_tx_spread_us\":%s,\"running_bound_spread_us\":%s",
+            ",\"request\":{\"relative\":true,\"value\":[%lld,%llu],\"unit\":\"%s\",\"frame\":%u,\"speed_rpm\":%u,\"setup\":\"%s\",\"start\":\"%s\"},\"on_failure\":\"%s\",\"start_tx_spread_us\":%s,\"running_bound_spread_us\":%s",
             static_cast<long long>(p.value.numerator), static_cast<unsigned long long>(p.value.denominator), unitName(p.unit),
             static_cast<unsigned>(p.frame), r.move.move.speedRpm,
             r.move.move.setup == Core::MoveSetup::VERIFY_AND_UPDATE ? "verify" : r.move.move.setup == Core::MoveSetup::USE_STORED ? "stored" : "write",
+            r.move.start == GroupStartMode::STAGED ? "staged" : "sequential",
             groupPolicyName(r.move.onFailure), txSpread, runningSpread)) return false;
     }
     if (!append(output_, sizeof(output_), used, ",\"members\":[")) return false;
@@ -3469,7 +3493,7 @@ bool Console::formatGroup(uint32_t id, uint32_t commandId, uint32_t operationId,
             break;
         case GroupOperationKind::MOVE:
             fits = append(output_, sizeof(output_), used,
-                ",\"start\":\"%s\",\"state\":\"%s\",\"outcome\":\"%s\",\"execution\":\"%s\",\"setup_execution\":\"%s\",\"completion\":\"%s\",\"uncertain\":%s,\"interrupted_by_stop\":%s,\"effective_native\":%lld,\"start_tx_complete\":%s,\"start_tx_end_us\":%llu,\"start_tx_uncertainty_us\":%lu,\"running_observed\":%s,\"running_earliest_us\":%llu,\"running_latest_us\":%llu,\"stop_operation_id\":%lu,\"stop_admission\":\"%s\",\"stop_state\":\"%s\",\"stop_execution\":\"%s\",\"stop_completion\":\"%s\"}",
+                ",\"start\":\"%s\",\"state\":\"%s\",\"outcome\":\"%s\",\"execution\":\"%s\",\"setup_execution\":\"%s\",\"completion\":\"%s\",\"uncertain\":%s,\"interrupted_by_stop\":%s,\"effective_native\":%lld,\"start_tx_complete\":%s,\"start_tx_end_us\":%llu,\"start_tx_uncertainty_us\":%lu,\"running_observed\":%s,\"running_earliest_us\":%llu,\"running_latest_us\":%llu,\"stop_operation_id\":%lu,\"stop_admission\":\"%s\",\"stop_state\":\"%s\",\"stop_execution\":\"%s\",\"stop_completion\":\"%s\"",
                 groupStartName(m.start), actionStateName(m.state), motorOutcome(m.outcome), executionName(m.execution),
                 executionName(m.setupExecution), m.completion == Core::ActionCompletion::OBSERVED ? "observed" : "not_observed",
                 boolean(m.uncertain), boolean(m.interruptedByStop), static_cast<long long>(m.effectiveNative),
@@ -3477,7 +3501,14 @@ bool Console::formatGroup(uint32_t id, uint32_t commandId, uint32_t operationId,
                 boolean(m.runningObserved), static_cast<unsigned long long>(m.runningEarliestUs), static_cast<unsigned long long>(m.runningLatestUs),
                 static_cast<unsigned long>(m.stopOperationId), memberAdmission(m.stopOperationId, m.stopAdmission),
                 actionStateName(m.stopState), executionName(m.stopExecution),
-                m.stopCompletion == Core::ActionCompletion::OBSERVED ? "observed" : "not_observed");
+                m.stopCompletion == Core::ActionCompletion::OBSERVED ? "observed" : "not_observed") &&
+                append(output_, sizeof(output_), used,
+                ",\"stage\":\"%s\",\"stage_execution\":\"%s\",\"stage_readback\":\"%s\",\"stage_tx_complete\":%s,\"stage_tx_end_us\":%llu,\"stage_read_latest_us\":%llu,\"stage_status\":\"%s\",\"stage_detail\":%ld}",
+                m.stageState == Core::ActionState::EMPTY ? "not_attempted" : m.stageState == Core::ActionState::SUCCEEDED ? "staged" :
+                m.stageState == Core::ActionState::ACTIVE ? "active" : "failed",
+                executionName(m.stageExecution), stageReadbackName(m.stageReadback), boolean(m.stageTxComplete),
+                static_cast<unsigned long long>(m.stageTxEndUs), static_cast<unsigned long long>(m.stageReadLatestUs),
+                Core::errToString(m.stageStatus.code), static_cast<long>(m.stageStatus.detail));
             break;
         }
         if (!fits) return false;

@@ -614,7 +614,7 @@ void testStopUsesReservedCapacityAndFullAdmissionPreservesWork() {
     fresh(); timerCapture(); qualifyActions();
     const uint32_t active = actionAdmission(ActionKind::ENABLE);
     // Fill the owner's whole urgent quota (selected and group stop pools).
-    App::Record occupied[URGENT_RECORDS];
+    std::vector<App::Record> occupied(URGENT_RECORDS); // Heap: 32 records are too large for a stack.
     ESS::ActionContext stopContext; ReadTarget target; target.id = target.address = target.generation = 1;
     assert(ESS::prepareNormalStop(stopContext, target, 999, nowUs(), nowUs() + REQUEST_US));
     ESS::PreparedAction work; assert(ESS::nextAction(stopContext, nowUs(), work));
@@ -726,7 +726,7 @@ void testRepeatedStopAdmissionFailureKeepsPreviousResult() {
     actionStep(previous); actionStep(previous, registerReply({0, 0})); pump(1000);
     const auto saved = *view(previous).actionContext;
     // Fill the owner's whole urgent quota (selected and group stop pools).
-    App::Record occupied[URGENT_RECORDS];
+    std::vector<App::Record> occupied(URGENT_RECORDS); // Heap: 32 records are too large for a stack.
     ESS::ActionContext stopContext; ReadTarget target; target.id = target.address = target.generation = 1;
     assert(ESS::prepareNormalStop(stopContext, target, 999, nowUs(), nowUs() + REQUEST_US));
     ESS::PreparedAction work; assert(ESS::nextAction(stopContext, nowUs(), work));
@@ -1508,16 +1508,35 @@ void testMonitorPressurePreservesUnreadForegroundResults() {
         reply(operation, before);
     }
     const auto retained = view(1).probe;
+    // The drive group's move pool adds ordinary owner results. An independent
+    // producer holds those, so every ordinary owner result is unread again.
+    std::vector<Rtu::RequestId> held(RESULT_SLOTS - URGENT_RECORDS - REQUEST_CAPACITY);
+    uint8_t probeBytes[8]; const auto probeLength = ESS::buildProbe(1, probeBytes, sizeof(probeBytes));
+    for (auto& id : held) {
+        Rtu::BusRequest request;
+        request.wire.bytes = probeBytes; request.wire.length = probeLength; request.wire.replyLength = 7;
+        request.wire.responseTimeoutUs = app->serial.timing.responseTimeoutUs; request.wire.replyGapUs = app->serial.timing.replyGapUs;
+        request.wire.deadlineUs = nowUs() + REQUEST_US;
+        request.expected.address = request.expected.target = 1; request.expected.targetGeneration = app->bindingGeneration;
+        request.expected.function = 3; request.expected.count = 1; request.validator = Rtu::essValidator();
+        const unsigned before = hardware.writes;
+        assert(app->owner.admit(request, nowUs(), id) == Rtu::BusAdmission::ACCEPTED);
+        startTx(before); scheduleReply(hardware.writeStarted + 8 * 87 + 1000, REPLY);
+        for (unsigned i = 0; i < 1000 && !app->owner.result(id); ++i) step();
+        assert(app->owner.result(id));
+    }
+    const unsigned writes = hardware.writes;
+    assert(writes == 8 + held.size());
     command("@20 monitor 100 2\n");
     assert(app->monitorState.admitted == 0 && app->monitorState.rejected == 1 && app->monitorState.remaining == 1);
-    assert(!app->records[REQUEST_CAPACITY].operationId && hardware.writes == 8);
+    assert(!app->records[REQUEST_CAPACITY].operationId && hardware.writes == writes);
     advanceHardware(app->monitorState.nextDueUs + 1); loop(); pump(100);
     assert(app->monitorState.rejected == 2 && !app->monitorState.settings.enabled);
     Probe::Snapshot state; snapshot(app, state);
-    assert(state.retained == 8 && state.reserved == 0 && hardware.writes == 8);
+    assert(state.retained == 8 && state.reserved == 0 && hardware.writes == writes);
     assert(view(1).probe.transport.endedUs == retained.transport.endedUs && view(1).probe.rawModel == retained.rawModel);
     assert(!app->stateCache.blocks[0].valid && !app->stateCache.blocks[0].attemptKnown);
-    advanceHardware(hardware.time + 500000); loop(); assert(hardware.writes == 8);
+    advanceHardware(hardware.time + 500000); loop(); assert(hardware.writes == writes);
 }
 void testMonitorCheckedFailureHasOneAttemptAndNoFeedback() {
     fresh(); timerCapture(); command("@1 monitor 100 1\n");

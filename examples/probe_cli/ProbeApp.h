@@ -197,7 +197,8 @@ bool releaseOperation(uint32_t operationId);
  * `group` routes. Call from the serviceApplication task; rejection preserves
  * operationId. A group is a host selection of up to Probe::GROUP_CAPACITY
  * unicast drives, never a drive change, and leaves the selected axis unchanged.
- * declareGroup is idle-only. Each member needs a fresh checked identity (this
+ * declareGroup is idle-only (1..Probe::GROUP_CAPACITY addresses, start order).
+ * Each member needs a fresh checked identity (this
  * exact node, model 0x4EEA, firmware 0x0029), configuration and position-profile
  * read; an absent or unexpected responder rejects the whole declaration. These
  * reads send no write. useaddr, recovery, a host tuple change or a broadcast
@@ -209,11 +210,17 @@ MotorControlRS::Status clearGroup();
 /** Same declaration as the selected axis's `wiring`, for one member (X0..X3 =
  * 0..3, Y0..Y1 = 4..5). No drive assignment changes; cached state expires. */
 MotorControlRS::Status declareGroupWiring(uint8_t address, uint8_t terminal, MotorControlRS::InputWiring state);
-/// Copy cached member facts, state and group operation IDs; no bus traffic.
+/** Copy cached member facts, state and group operation IDs; no bus traffic.
+ * The view holds up to 15 members: keep output in static or PSRAM storage, not on
+ * a small task stack. The same applies to copyGroupResult. */
 bool inspectGroup(Probe::GroupView& output);
 /** One common relative native-step displacement and speed. Every member is
  * checked and prepared with the selected axis's move rules before any frame is
- * sent; then each runs its ordinary move after the previous start resolved.
+ * sent. STAGED (default): every member's five 0x0021 words are written and read
+ * back first with no start; any staging failure sends no start to any member.
+ * Then only the start words go out, back to back, each after the previous start
+ * reply was checked, and each start relies on that member's checked staged words.
+ * SEQUENTIAL: each member runs its ordinary move after the previous start resolved.
  * The failure policy is mandatory. After a failed or lost start no later start
  * is sent and nothing is resent; each member's outcome stays its own. */
 MotorControlRS::Status submitGroupMove(const Probe::GroupMoveRequest& request, uint32_t& operationId);
@@ -223,4 +230,17 @@ MotorControlRS::Status submitGroupStop(MotorControlRS::StopBehavior behavior, ui
 MotorControlRS::Status submitGroupStateRead(uint32_t& operationId);
 /// Copy pending or terminal group evidence. Missing IDs preserve output.
 bool copyGroupResult(uint32_t operationId, Probe::GroupResult& output);
+
+/** Stage one finite move on the selected axis without starting it: the same
+ * readiness and preparation as submitMove, then one FC10 write of the five 0x0021
+ * words and one FC03 readback. No start word is sent and 0x0020 is not written.
+ * A matching readback records the stored-word witness, so a following
+ * submitMove(..., MoveSetup::USE_STORED) for the same request sends only the
+ * start. Any later write, settings change, profile restore, broadcast, rebinding
+ * or recovery ends the witness. A stop on the axis cancels unsent staging.
+ * One session: a new stage replaces a finished one. Rejection preserves ID. */
+MotorControlRS::Status stagePositionMove(const MotorControlRS::PositionRequest& position, uint16_t speedRpm,
+                                         uint32_t& operationId);
+/// Copy the selected axis's pending or finished stage evidence; another ID preserves output.
+bool copyPositionStage(uint32_t operationId, Probe::PositionStageView& output);
 }

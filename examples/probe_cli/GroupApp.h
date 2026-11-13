@@ -4,9 +4,10 @@
 // unicast drives. Every member uses the ordinary typed reads, move preparation,
 // stop path and bus owner. Its target, generation, facts, reservations and
 // results stay its own; the group only orders the work and copies evidence.
-// Without staging-only moves (standalone 02) each member runs its ordinary move
-// (verify or write, then start) after the previous member's start resolved, so
-// the measured start spread includes each member's staging transactions.
+// A STAGED group move first writes and reads back every member's five 0x0021
+// words with no start (PositionStageApp.h), then sends only the start words, back
+// to back, so the measured spread is the start frames. A SEQUENTIAL group move
+// runs each member's ordinary move (write or verify, then start) in turn.
 
 const PositionStartSpeedRelation NO_START_SPEED_RELATION = PositionStartSpeedRelation();
 MotionFacts memberFacts(const App& a, const App::GroupMember& m) {
@@ -268,6 +269,10 @@ void endGroupStarts(App& a, App::GroupOperation& op, uint64_t now) {
     auto& r = op.result;
     op.startsEnded = true;
     for (uint8_t i = 0; i < r.count; ++i) {
+        if (auto* m = groupMember(a, r.members[i].address)) if (m->stage.view.pending) {
+            m->stage.view.cancelled = true; // An unsent stage write never goes out; one on the wire settles.
+            if (m->stage.request.owner && !a.owner.txAccepted(m->stage.request)) a.owner.cancelUnsent(m->stage.request, now);
+        }
         auto* record = findRecord(a, r.members[i].operationId);
         if (!record) continue;
         if (record->groupWaiting) { endWaitingMember(a, *record, now); continue; }
@@ -308,30 +313,89 @@ void applyGroupFailurePolicy(App& a, App::GroupOperation& op) {
         if (member.stopAdmission == Probe::Action::OK) member.stopOperationId = id;
     }
 }
-void serviceGroupMove(App& a, uint64_t now) {
-    auto& op = a.group.move;
+bool memberWitnessValid(const App& a, const App::GroupMember& m, const uint16_t* words) {
+    return m.storedKnown && m.storedGeneration == m.axis.generation && m.storedBinding == a.bindingGeneration &&
+        m.axis.target.generation == a.bindingGeneration && m.storedSerial == a.serial.generation &&
+        std::memcmp(m.storedWords, words, sizeof(m.storedWords)) == 0;
+}
+// Members' observation polls, oldest eligible first, so a shallow shared queue only
+// delays a poll by a few transactions. Queue pressure ends this service turn.
+void admitMemberPolls(App& a, uint64_t now) {
+    for (std::size_t round = 0; round < GROUP_MOVE_RECORDS; ++round) {
+        App::Record* oldest = nullptr;
+        for (std::size_t i = GROUP_MOVE_FIRST; i < RECORD_COUNT; ++i) {
+            auto& r = a.records[i];
+            if (!r.operationId || r.kind != App::OperationKind::MOVE || !r.groupChild || r.requestId.owner ||
+                r.cancelContinuation || terminal(a, r) || r.move.step <= r.move.triggerStep || r.move.eligibleUs > now) continue;
+            if (!oldest || r.move.eligibleUs < oldest->move.eligibleUs) oldest = &r;
+        }
+        if (!oldest || a.owner.needsRecovery() || uart.needsRecovery()) return;
+        ESS::PreparedMove work;
+        if (!ESS::nextMove(oldest->move, now, work) || work.kind != ESS::ActionWork::TRANSACTION ||
+            admitMoveStep(a, *oldest, work, now) != Probe::Action::OK) return;
+    }
+}
+// Staged phase 1: one member's stage at a time. Any failure ends the group with
+// no start sent to any member. Each success becomes that member's witness.
+void stageGroupMembers(App& a, App::GroupOperation& op, uint64_t now) {
     auto& r = op.result;
-    if (!r.pending) return;
-    // A stop, cancellation or recovery of any member during the start sequence
-    // ends it at once: no later start is sent.
-    for (uint8_t i = 0; !r.aborted && op.next < r.count && i < r.count; ++i) {
+    while (op.next < r.count) {
+        auto& member = r.members[op.next];
+        const auto* record = findRecord(a, member.operationId);
+        auto* m = groupMember(a, member.address);
+        if (!record || !m) { r.aborted = true; r.failedAddress = member.address; return; }
+        if (member.stageState == MotorControlRS::ActionState::EMPTY) {
+            const auto admitted = beginPositionStage(a, m->stage, m->axis.target, m->axis.generation,
+                record->move.words, record->operationId, now);
+            if (admitted == Probe::Action::QUEUE_FULL || admitted == Probe::Action::RESULTS_FULL) return;
+            member.stageState = admitted == Probe::Action::OK ? MotorControlRS::ActionState::ACTIVE : MotorControlRS::ActionState::FAILED;
+            if (admitted != Probe::Action::OK) {
+                member.stageStatus = MotorControlRS::Status(MotorControlRS::Err::INVALID_CONFIG, static_cast<int32_t>(admitted), "stage not admitted");
+                r.aborted = true; r.failedAddress = member.address;
+            }
+            return;
+        }
+        const auto& stage = m->stage.view;
+        if (stage.pending) return;
+        if (!stage.staged) { r.aborted = true; r.failedAddress = member.address; return; }
+        m->storedKnown = true;
+        std::memcpy(m->storedWords, stage.words, sizeof(m->storedWords));
+        m->storedGeneration = stage.configurationGeneration;
+        m->storedBinding = stage.target.generation; m->storedSerial = stage.serialGeneration;
+        ++op.next;
+    }
+    // All staged. The starts rely on every witness, so check them all first.
+    for (uint8_t i = 0; i < r.count; ++i) {
         const auto* record = findRecord(a, r.members[i].operationId);
-        if (record && (record->interruptedByStop || record->cancelContinuation || (record->groupWaiting && terminal(a, *record)))) {
-            r.aborted = true; r.failedAddress = r.members[i].address;
+        const auto* m = groupMember(a, r.members[i].address);
+        if (!record || !m || !memberWitnessValid(a, *m, record->move.words)) {
+            r.aborted = true; r.failedAddress = r.members[i].address; return;
         }
     }
+    op.phase = 1; op.next = 0;
+}
+// Starts in member order, each after the previous member's start reply was
+// checked. A staged start also needs that member's witness at its turn.
+void startGroupMembers(App& a, App::GroupOperation& op, uint64_t now) {
+    auto& r = op.result;
+    const bool staged = r.move.start == Probe::GroupStartMode::STAGED;
     while (!r.aborted && op.next < r.count) {
         auto& member = r.members[op.next];
         auto* record = findRecord(a, member.operationId);
-        if (!record || record->kind != App::OperationKind::MOVE) { r.aborted = true; r.failedAddress = member.address; break; }
+        if (!record || record->kind != App::OperationKind::MOVE) { r.aborted = true; r.failedAddress = member.address; return; }
         if (record->groupWaiting) {
             if (record->cancelContinuation || terminal(a, *record)) {
-                // Stopped, cancelled or recovered before its turn.
                 endWaitingMember(a, *record, now);
-                r.aborted = true; r.failedAddress = member.address; break;
+                r.aborted = true; r.failedAddress = member.address; return;
             }
-            // Begin each member on a quiescent bus, as an ordinary move does.
-            if (a.owner.active() || a.owner.pending()) break;
+            // Begin each member on a quiet bus; staged starts hold every poll.
+            if (a.owner.active() || a.owner.pending()) return;
+            const auto* m = groupMember(a, member.address);
+            if (staged && (!m || !memberWitnessValid(a, *m, record->move.words))) {
+                member.admission = Probe::Action::UNAVAILABLE;
+                endWaitingMember(a, *record, now);
+                r.aborted = true; r.failedAddress = member.address; return;
+            }
             const auto admitted = admitMemberMove(a, *record, now);
             if (admitted == Probe::Action::OK) record->groupWaiting = false;
             else if (admitted != Probe::Action::QUEUE_FULL && admitted != Probe::Action::RESULTS_FULL) {
@@ -339,26 +403,23 @@ void serviceGroupMove(App& a, uint64_t now) {
                 endWaitingMember(a, *record, now);
                 r.aborted = true; r.failedAddress = member.address;
             }
-            break;
+            return;
         }
         if (!terminal(a, *record)) {
             // The start reply was checked once the move observes its motion.
             if (record->move.step > record->move.triggerStep) { member.start = Probe::GroupStart::STARTED; ++op.next; continue; }
-            break;
+            return;
         }
         member.start = classifyStart(record->move);
         if (member.start == Probe::GroupStart::STARTED && record->move.state == MotorControlRS::ActionState::SUCCEEDED) {
             ++op.next; continue;
         }
-        r.aborted = true; r.failedAddress = member.address;
+        r.aborted = true; r.failedAddress = member.address; return;
     }
-    if (r.aborted && !op.startsEnded) endGroupStarts(a, op, now);
-    if (r.aborted && !op.policyApplied && groupStartsResolved(a, op)) applyGroupFailurePolicy(a, op);
-    for (uint8_t i = 0; i < r.count; ++i) {
-        const auto* record = findRecord(a, r.members[i].operationId);
-        const auto* stop = findRecord(a, r.members[i].stopOperationId);
-        if ((record && !terminal(a, *record)) || (stop && !terminal(a, *stop))) return;
-    }
+    if (!r.aborted) op.startsDone = true;
+}
+void harvestGroupMove(App& a, App::GroupOperation& op, uint64_t now) {
+    auto& r = op.result;
     bool ok = !r.aborted;
     for (uint8_t i = 0; i < r.count; ++i) {
         auto& member = r.members[i];
@@ -376,6 +437,20 @@ void serviceGroupMove(App& a, uint64_t now) {
                 member.runningEarliestUs = c.activityEvidence.earliestUs; member.runningLatestUs = c.activityEvidence.latestUs;
             }
         }
+        const auto* m = groupMember(a, member.address);
+        if (m && member.stageState != MotorControlRS::ActionState::EMPTY) {
+            const auto& stage = m->stage.view;
+            member.stageState = stage.staged ? MotorControlRS::ActionState::SUCCEEDED : MotorControlRS::ActionState::FAILED;
+            member.stageExecution = stage.execution;
+            member.stageReadback = !stage.readbackKnown ? Probe::GroupStageReadback::NOT_READ :
+                std::memcmp(stage.readback, stage.words, sizeof(stage.words)) ? Probe::GroupStageReadback::MISMATCH :
+                Probe::GroupStageReadback::MATCH;
+            member.stageTxComplete = stage.txComplete; member.stageTxEndUs = stage.txEndUs;
+            member.stageReadLatestUs = stage.readLatestUs;
+            if (member.stageStatus.isOk()) member.stageStatus = stage.status;
+            // An unacknowledged stage write may have changed the drive's words.
+            member.uncertain = member.uncertain || stage.execution == MotorControlRS::ActionExecution::UNKNOWN;
+        }
         if (const auto* stop = findRecord(a, member.stopOperationId)) {
             member.stopState = stop->action.state; member.stopExecution = stop->action.execution;
             member.stopCompletion = stop->action.completion;
@@ -384,6 +459,37 @@ void serviceGroupMove(App& a, uint64_t now) {
             member.completion == MotorControlRS::ActionCompletion::OBSERVED && !member.uncertain;
     }
     finishGroupOperation(op, ok, now);
+}
+void serviceGroupMove(App& a, uint64_t now) {
+    auto& op = a.group.move;
+    auto& r = op.result;
+    if (!r.pending) return;
+    const bool staged = r.move.start == Probe::GroupStartMode::STAGED;
+    for (uint8_t i = 0; i < r.count; ++i)
+        if (auto* m = groupMember(a, r.members[i].address)) servicePositionStage(a, m->stage, now);
+    // A stop, cancellation or recovery of any member before every start resolved
+    // ends the sequence at once: no later stage or start is sent.
+    for (uint8_t i = 0; !r.aborted && !op.startsDone && i < r.count; ++i) {
+        const auto* record = findRecord(a, r.members[i].operationId);
+        if (record && (record->interruptedByStop || record->cancelContinuation || (record->groupWaiting && terminal(a, *record)))) {
+            r.aborted = true; r.failedAddress = r.members[i].address;
+        }
+    }
+    if (!r.aborted && !op.startsDone) {
+        if (staged && op.phase == 0) stageGroupMembers(a, op, now);
+        if (!r.aborted && (!staged || op.phase == 1)) startGroupMembers(a, op, now);
+    }
+    if (r.aborted && !op.startsEnded) endGroupStarts(a, op, now);
+    if (r.aborted && !op.policyApplied && groupStartsResolved(a, op)) applyGroupFailurePolicy(a, op);
+    // Staged starts hold every member's poll until the last start resolved.
+    if (!staged || op.startsDone || op.policyApplied) admitMemberPolls(a, now);
+    for (uint8_t i = 0; i < r.count; ++i) {
+        const auto* record = findRecord(a, r.members[i].operationId);
+        const auto* stop = findRecord(a, r.members[i].stopOperationId);
+        const auto* m = groupMember(a, r.members[i].address);
+        if ((record && !terminal(a, *record)) || (stop && !terminal(a, *stop)) || (m && m->stage.view.pending)) return;
+    }
+    harvestGroupMove(a, op, now);
 }
 void serviceGroupStop(App& a, App::GroupOperation& op, uint64_t now) {
     using namespace MotorControlRS;
@@ -446,13 +552,14 @@ Probe::Action startGroupSet(App& a, uint32_t commandId, const Probe::GroupComman
     auto& op = a.group.set;
     if (op.result.operationId && !op.delivered) return Probe::Action::RESULTS_FULL;
     if (!freeRecord(a)) return Probe::Action::RESULTS_FULL;
-    // Wiring declarations of addresses that stay members are kept.
-    InputWiring inputs[Probe::GROUP_CAPACITY][4] = {}, outputs[Probe::GROUP_CAPACITY][2] = {};
-    for (std::size_t i = 0; i < command.count; ++i)
-        if (const auto* old = groupMember(a, command.addresses[i])) {
-            std::memcpy(inputs[i], old->inputWiring, sizeof(inputs[i]));
-            std::memcpy(outputs[i], old->outputWiring, sizeof(outputs[i]));
-        }
+    // Wiring declarations of addresses that stay members are kept (App storage).
+    auto& inputs = a.group.keptInputs;
+    auto& outputs = a.group.keptOutputs;
+    for (std::size_t i = 0; i < command.count; ++i) {
+        const auto* old = groupMember(a, command.addresses[i]);
+        for (uint8_t t = 0; t < 4; ++t) inputs[i][t] = old ? old->inputWiring[t] : InputWiring::UNKNOWN;
+        for (uint8_t t = 0; t < 2; ++t) outputs[i][t] = old ? old->outputWiring[t] : InputWiring::UNKNOWN;
+    }
     for (auto& member : a.group.members) { member.~GroupMember(); new (&member) App::GroupMember(); }
     a.group.count = static_cast<uint8_t>(command.count); a.group.declared = false; ++a.group.declaration;
     for (std::size_t i = 0; i < command.count; ++i) {
@@ -492,11 +599,15 @@ Probe::Action startGroupRead(App& a, uint32_t commandId, Probe::GroupReply& repl
 Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveRequest& supplied, Probe::GroupReply& reply) {
     using namespace MotorControlRS;
     const auto& move = supplied.move;
+    const bool staged = supplied.start == Probe::GroupStartMode::STAGED;
     if (supplied.onFailure == Probe::GroupFailurePolicy::NONE || supplied.onFailure > Probe::GroupFailurePolicy::LEAVE ||
+        supplied.start > Probe::GroupStartMode::SEQUENTIAL ||
         !move.position.relative || move.position.wrapped || move.position.basis != RelativeBasis::ACTUAL ||
-        !move.speedRpm || move.ramp != MoveRamp::VERIFIED_CONFIGURED || move.setup > MoveSetup::USE_STORED)
+        !move.speedRpm || move.ramp != MoveRamp::VERIFIED_CONFIGURED || move.setup > MoveSetup::USE_STORED ||
+        (staged && move.setup == MoveSetup::VERIFY_AND_UPDATE)) // Staging always writes all five words.
         return Probe::Action::INVALID;
-    if (move.setup == MoveSetup::USE_STORED) return Probe::Action::UNSUPPORTED; // Members keep no stored-word witness.
+    // A request cannot name stored words: a staged start relies only on its own fresh stage.
+    if (move.setup == MoveSetup::USE_STORED) return Probe::Action::UNSUPPORTED;
     if (!a.group.declared || !a.group.count) return Probe::Action::UNAVAILABLE;
     const auto ready = groupAdmissionReady(a);
     if (ready != Probe::Action::OK) return ready;
@@ -514,18 +625,17 @@ Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveR
         if (enableSettling(a, m.address, now)) return Probe::Action::BUSY; // HW-15: the drive ignores an early start.
     }
     reply.address = 0;
-    App::Record* slots[Probe::GROUP_CAPACITY] = {};
-    std::size_t found = 0;
-    for (std::size_t i = 0; i < REQUEST_CAPACITY && found < count; ++i)
-        if (!a.records[i].operationId) slots[found++] = &a.records[i];
-    if (found < count) return Probe::Action::RESULTS_FULL;
+    // Each member's move has its own record in the group pool.
+    for (uint8_t i = 0; i < count; ++i) if (a.records[GROUP_MOVE_FIRST + i].operationId) return Probe::Action::RESULTS_FULL;
     const uint64_t deadline = now + static_cast<uint64_t>(a.options.moveTimeoutMs) * 1000;
     ActionOptions options; options.maxPolls = ESS::ACTION_MAX_POLLS; options.pollIntervalUs = 20000;
     options.runningPollIntervalUs = RUNNING_POLL_US;
     for (uint8_t i = 0; i < count; ++i) {
         const auto& m = a.group.members[i];
+        auto& record = a.records[GROUP_MOVE_FIRST + i];
         MoveRequest request = move;
         request.position.configurationGeneration = m.axis.generation;
+        if (staged) request.setup = MoveSetup::USE_STORED; // Its own stage writes the words; the move only starts.
         const MotionFacts facts = memberFacts(a, m);
         ESS::MovePrerequisites prerequisites;
         const bool readiness = moveRequirements(facts, request, now, prerequisites);
@@ -540,11 +650,11 @@ Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveR
             prerequisites.wordOrderKnown = m.configuration.wordOrderKnown;
             prerequisites.wordOrder = m.configuration.wordOrder;
             prerequisites.subdivision = m.configuration.raw.subdivision;
-            checked = ESS::prepareMoveRelative(slots[i]->move, m.axis, nullptr, a.nextOperationId + 1 + i,
+            checked = ESS::prepareMoveRelative(record.move, m.axis, nullptr, a.nextOperationId + 1 + i,
                 request, prerequisites, now, deadline, options);
         }
         if (!checked) {
-            for (uint8_t j = 0; j <= i; ++j) clearRecord(*slots[j]);
+            for (uint8_t j = 0; j <= i; ++j) clearRecord(a.records[GROUP_MOVE_FIRST + j]);
             reply.address = m.address;
             return !readiness ? Probe::Action::UNAVAILABLE :
                 checked.code == Err::UNSUPPORTED ? Probe::Action::UNSUPPORTED : Probe::Action::INVALID;
@@ -553,7 +663,7 @@ Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveR
     beginGroupOperation(a, op, Probe::GroupOperationKind::MOVE, commandId, now);
     op.result.move = supplied; op.result.count = count;
     for (uint8_t i = 0; i < count; ++i) {
-        auto& record = *slots[i];
+        auto& record = a.records[GROUP_MOVE_FIRST + i];
         const auto& m = a.group.members[i];
         record.serialTuple = a.serial.active; record.serialGeneration = a.serial.generation;
         record.operationId = a.nextOperationId++; record.address = m.address;
@@ -586,11 +696,12 @@ Probe::Action startGroupStop(App& a, uint32_t commandId, MotorControlRS::StopBeh
     // The group identifier comes first; every member stop has its own.
     const uint32_t groupId = a.nextOperationId++;
     ActionRequest stop; stop.kind = ActionKind::STOP; stop.stop.behavior = behavior;
-    uint32_t ids[Probe::GROUP_CAPACITY] = {};
-    Probe::Action admissions[Probe::GROUP_CAPACITY] = {};
+    auto& ids = a.group.stopIds;
+    auto& admissions = a.group.stopAdmissions;
     Probe::Action first = Probe::Action::OK;
     std::size_t admitted = 0;
     for (uint8_t i = 0; i < a.group.count; ++i) {
+        ids[i] = 0;
         admissions[i] = startActionIn(a, 0, a.group.members[i].address, stop, ids[i], true);
         if (admissions[i] == Probe::Action::OK) ++admitted;
         else if (first == Probe::Action::OK) { first = admissions[i]; reply.address = a.group.members[i].address; }

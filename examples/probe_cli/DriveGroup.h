@@ -4,18 +4,19 @@
 #include <MotorControlRS/MoveOperation.h>
 #include <MotorControlRS/ReadOperation.h>
 #include <MotorControlRS/Status.h>
+#include "PositionStage.h"
 #include <cstddef>
 #include <cstdint>
 
 namespace MotorControlRSExample { namespace Probe {
 enum class Action : uint8_t; // Values are defined in ProbeConsole.h; zero is OK.
 
-/** Drive group of the standalone application (multi-drive 02). The hardware
- * manual allows 15 drives on one bus. Four members keep each member's move
- * record inside the eight ordinary results, a stop and an escalation per member
- * inside the reserved urgent quota, and one group line inside the console output
- * buffer. Group types are plain data: no I/O, clocks or allocation. */
-constexpr std::size_t GROUP_CAPACITY = 4;
+/** Drive group of the standalone application (multi-drive 02): up to the 15
+ * drives the ESS hardware manual allows on one bus. Every dependent quota is
+ * sized from this value: one move record per member beside the ordinary results,
+ * a stop and an escalation per member, the owner's result and urgent quotas, and
+ * the console output buffer for one group line. Plain data: no I/O or allocation. */
+constexpr std::size_t GROUP_CAPACITY = 15;
 /** Group stop operations retained at once: one stop and one escalation. */
 constexpr std::size_t GROUP_STOP_OPERATIONS = 2;
 
@@ -30,11 +31,19 @@ enum class GroupStart : uint8_t { NOT_SENT, STARTED, UNKNOWN, REJECTED };
  * a reply arrived, but not a checked ESS identity of this exact node. */
 enum class GroupJoin : uint8_t { NOT_READ, JOINED, ABSENT, UNEXPECTED };
 
+/** STAGED: every member's five 0x0021 words are written and read back first,
+ * with no start; then only the start words go out, back to back. SEQUENTIAL:
+ * each member runs its ordinary move (write, then start) in turn. */
+enum class GroupStartMode : uint8_t { STAGED, SEQUENTIAL };
+/** Staging evidence of one member in a staged group move. */
+enum class GroupStageReadback : uint8_t { NOT_READ, MATCH, MISMATCH };
+
 /** One common finite relative displacement and native speed for every member.
  * Each member prepares and checks it as its own ordinary move. */
 struct GroupMoveRequest {
     MotorControlRS::MoveRequest move; ///< configurationGeneration is replaced by each member's own.
     GroupFailurePolicy onFailure = GroupFailurePolicy::NONE;
+    GroupStartMode start = GroupStartMode::STAGED;
 };
 
 /** Cached member facts; building this view causes no bus traffic. */
@@ -89,6 +98,12 @@ struct GroupMemberResult {
     uint32_t startTxUncertaintyUs = 0;
     bool runningObserved = false; ///< First RUNNING report, bounded by its poll reply closure.
     uint64_t runningEarliestUs = 0, runningLatestUs = 0;
+    MotorControlRS::ActionState stageState = MotorControlRS::ActionState::EMPTY; ///< STAGED only; EMPTY: not attempted.
+    MotorControlRS::ActionExecution stageExecution = MotorControlRS::ActionExecution::NOT_TRANSMITTED;
+    GroupStageReadback stageReadback = GroupStageReadback::NOT_READ;
+    bool stageTxComplete = false;
+    uint64_t stageTxEndUs = 0, stageReadLatestUs = 0;
+    MotorControlRS::Status stageStatus;
     uint32_t stopOperationId = 0; ///< Failure-policy stop; zero when none was sent.
     Action stopAdmission{};
     MotorControlRS::ActionState stopState = MotorControlRS::ActionState::EMPTY;
