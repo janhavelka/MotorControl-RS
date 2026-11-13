@@ -129,6 +129,7 @@ struct App {
         bool observed = false, delivered = false, captureRead = false, interactive = false;
         bool monitored = false, simpleChild = false, programmaticRead = false;
         bool cancelContinuation = false; ///< Cancel the operation after its current frame settles.
+        uint8_t broadcastFrame = 0; ///< 1 + Probe::BroadcastFrame for a fixture broadcast; 0 otherwise.
         ESS::ReadContext read;
         bool axisReserved = false, effectsInvalidated = false, interruptedByStop = false;
         bool motionUnresolved = false; // Our possible movement, until a later checked stop; not historical outcome.
@@ -667,6 +668,82 @@ Probe::Action probe(void* context, uint32_t commandId, uint8_t address, uint32_t
 Probe::Action captureRead(void* context, uint32_t commandId, uint8_t address, uint32_t& operationId) {
     return startRead(context, commandId, address, operationId, true);
 }
+// Multi-drive 01 bench fixture: exactly these reviewed address-0 FC06 frames.
+// It is not a production API, a raw-frame command or a wider isValidAddress.
+// No drive replies, so the outcome stays "sent, unconfirmed" until each drive
+// is read back by unicast. Nothing resends a broadcast.
+constexpr uint32_t BROADCAST_WINDOW_US = 200000;
+constexpr std::size_t BROADCAST_FRAME_COUNT = 5;
+const uint8_t BROADCAST_FRAMES[BROADCAST_FRAME_COUNT][8] = {
+    {0x00, 0x06, 0x00, 0x21, 0x01, 0x2C, 0xD8, 0x5C}, // 0x0021 acceleration time = 300 ms
+    {0x00, 0x06, 0x00, 0x21, 0x01, 0x2D, 0x19, 0x9C}, // 0x0021 acceleration time = 301 ms
+    {0x00, 0x06, 0x00, 0x27, 0x00, 0x01, 0xF9, 0xD0}, // 0x0027 relative position start
+    {0x00, 0x06, 0x00, 0x27, 0x01, 0x00, 0x39, 0x80}, // 0x0027 stop normal
+    {0x00, 0x06, 0x00, 0x27, 0x02, 0x00, 0x39, 0x70}, // 0x0027 stop fast
+};
+#if MOTORCONTROLRS_LOAD_FIXTURE
+bool listedBroadcast(const Rtu::Expectation& e, const Rtu::Request& r) {
+    if (e.address != 0 || e.function != 6 || e.count != 1 || !r.bytes || r.length != 8 || r.replyLength ||
+        r.silenceUs != BROADCAST_WINDOW_US) return false;
+    for (const auto& frame : BROADCAST_FRAMES)
+        if (std::memcmp(r.bytes, frame, sizeof(frame)) == 0)
+            return e.first == static_cast<uint16_t>(frame[2] << 8 | frame[3]) &&
+                e.value == static_cast<uint16_t>(frame[4] << 8 | frame[5]);
+    return false;
+}
+MotorControlRS::Status noBroadcastReply(const Rtu::Expectation&, const uint8_t*, std::size_t) {
+    return MotorControlRS::Status(MotorControlRS::Err::FRAME_ERROR, 0, "broadcast has no reply");
+}
+Probe::Action startBroadcast(App& a, uint32_t commandId, Probe::BroadcastFrame frame, uint32_t& operationId) {
+    const auto index = static_cast<std::size_t>(frame);
+    if (index >= BROADCAST_FRAME_COUNT) return Probe::Action::INVALID;
+    const bool stop = frame == Probe::BroadcastFrame::STOP_NORMAL || frame == Probe::BroadcastFrame::STOP_FAST;
+    if (a.owner.commissioningOwned() || a.discovery.owned) return Probe::Action::BUSY;
+    if (!platformReady) return Probe::Action::UNAVAILABLE;
+    if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
+    const uint64_t now = uart.sample();
+    if (a.owner.needsRecovery() || uart.needsRecovery()) return Probe::Action::RECOVERY_REQUIRED;
+    if (!a.nextOperationId) return Probe::Action::IDS_EXHAUSTED;
+    // A stop passes a unicast move's axis reservation, as urgent stops do. It
+    // uses ordinary capacity, so the urgent unicast stop stays available. A
+    // write or start needs an idle host: no work, reservation or monitor.
+    if (!stop && (a.owner.active() || a.owner.pending() || axisReserved(a) || acting(a) || reading(a) ||
+        a.monitorState.settings.enabled || a.motionProfile.view.pending || a.persistenceCapture ||
+        a.persistenceRequest.owner || a.persistenceReadRequest.owner || a.commissioningRequest.owner))
+        return Probe::Action::BUSY;
+    App::Record* record = nullptr;
+    for (std::size_t i = 0; i < REQUEST_CAPACITY; ++i)
+        if (!a.records[i].operationId) { record = &a.records[i]; break; }
+    if (!record) return Probe::Action::RESULTS_FULL;
+    const uint8_t* bytes = BROADCAST_FRAMES[index];
+    Rtu::BusRequest request;
+    request.wire.bytes = bytes; request.wire.length = sizeof(BROADCAST_FRAMES[index]);
+    request.wire.silenceUs = BROADCAST_WINDOW_US;
+    request.wire.deadlineUs = now + BROADCAST_WINDOW_US + REQUEST_US;
+    request.expected.address = 0; request.expected.function = 6; request.expected.count = 1;
+    request.expected.first = static_cast<uint16_t>(bytes[2] << 8 | bytes[3]);
+    request.expected.value = static_cast<uint16_t>(bytes[4] << 8 | bytes[5]);
+    request.expected.targetGeneration = a.bindingGeneration;
+    request.validator.checkRequest = listedBroadcast; request.validator.checkReply = noBroadcastReply;
+    Rtu::RequestId id;
+    switch (a.owner.admit(request, now, id)) {
+    case Rtu::BusAdmission::ACCEPTED: break;
+    case Rtu::BusAdmission::QUEUE_FULL: return Probe::Action::QUEUE_FULL;
+    case Rtu::BusAdmission::RESULTS_FULL: return Probe::Action::RESULTS_FULL;
+    case Rtu::BusAdmission::IDS_EXHAUSTED: return Probe::Action::IDS_EXHAUSTED;
+    default: return Probe::Action::FAILED;
+    }
+    record->serialTuple = a.serial.active; record->serialGeneration = a.serial.generation;
+    record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = 0;
+    record->requestId = id; operationId = a.latestOperationId = record->operationId;
+    record->deadlineUs = request.wire.deadlineUs;
+    record->kind = App::OperationKind::TRANSACTION; record->broadcastFrame = static_cast<uint8_t>(index + 1);
+    return Probe::Action::OK;
+}
+Probe::Action broadcast(void* context, uint32_t commandId, Probe::BroadcastFrame frame, uint32_t& operationId) {
+    return startBroadcast(*static_cast<App*>(context), commandId, frame, operationId);
+}
+#endif
 Rtu::BusAdmission admitStep(App& a, App::Record& record, uint64_t sampled) {
     ESS::PreparedRead prepared;
     if (!ESS::nextRead(record.read, sampled, prepared)) return Rtu::BusAdmission::EXPIRED;
@@ -1635,10 +1712,14 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
         }
         if (request.group == ESS::DriverGroup::CONTROL_SETTINGS || ESS::isTuningGroup(request.group)) {
             // Explicit standalone bench identification, independent of wire-code
-            // decoding. No motor rating or undocumented algorithm is inferred.
+            // decoding. The owner confirmed that every bench drive reporting
+            // model 0x4EEA and firmware 0x0029 is an ESS23-RS20 (2026-10-04 for
+            // node 1, 2026-11-13 for nodes 2 and 4). The core still requires a
+            // fresh checked identity read of this exact target and binding.
+            // No motor rating or undocumented algorithm is inferred.
             prerequisites.controlIdentity = a.identity;
-            prerequisites.exactModelQualified = address == 1 && a.identity.rawModel == 0x4EEA && a.identity.rawVersion == 0x0029;
-            prerequisites.modelSourceId = 20261004; // User-confirmed ESS23-RS20 and preserved datasheet.
+            prerequisites.exactModelQualified = a.identity.rawModel == 0x4EEA && a.identity.rawVersion == 0x0029;
+            prerequisites.modelSourceId = 20261113; // Owner-confirmed ESS23-RS20 drives and preserved datasheet.
             prerequisites.qualifiedModelCode = 0x4EEA; prerequisites.qualifiedFirmwareCode = 0x0029;
             if (request.group == ESS::DriverGroup::CONTROL_SETTINGS) {
                 prerequisites.qualifiedControl = request;
@@ -2561,9 +2642,17 @@ bool lookup(void* context, uint32_t operationId, Probe::ResultView& out) {
     p.transport = result->transport; p.outcome = result->outcome; p.executionUnknown = result->executionUnknown;
     p.cancellation = result->cancellation; p.codecChecked = p.transport.reason == Rtu::Reason::FRAME;
     p.codec = result->validation; p.rx = result->raw; p.rxLength = p.transport.rxLength;
+    if (record->broadcastFrame) {
+        p.broadcast = true;
+        p.broadcastFrame = static_cast<Probe::BroadcastFrame>(record->broadcastFrame - 1);
+        p.silenceUs = BROADCAST_WINDOW_US;
+        p.txLength = sizeof(BROADCAST_FRAMES[0]);
+        std::memcpy(a.viewTx, BROADCAST_FRAMES[record->broadcastFrame - 1], p.txLength);
+    } else
     p.txLength = record->captureRead ? MotorControlRS::ESS_RS::buildReadRegisters(record->address,
         Probe::CAPTURE_FIRST, Probe::CAPTURE_WORDS, a.viewTx, sizeof(a.viewTx)) :
-        MotorControlRS::ESS_RS::buildProbe(record->address, a.viewTx, sizeof(a.viewTx)); p.tx = a.viewTx;
+        MotorControlRS::ESS_RS::buildProbe(record->address, a.viewTx, sizeof(a.viewTx));
+    p.tx = a.viewTx;
     if (p.codecChecked) {
         if (record->captureRead) {
             uint16_t words[Probe::CAPTURE_WORDS]; std::size_t count = 0;
@@ -2714,9 +2803,7 @@ Probe::Action load(void* context, const Probe::LoadSettings* requested, Probe::L
     return result;
 }
 #endif
-void invalidateSerialConfidence(App& a, uint64_t now) {
-    a.known = a.ok = a.modelKnown = a.communicationKnown = false;
-    a.codecChecked = false;
+void invalidateTargetKnowledge(App& a, uint64_t now) {
     std::memset(a.knownTargets, 0, sizeof(a.knownTargets));
     a.identity.operationId = a.configuration.operationId = 0;
     a.driverSettings.operationId = a.ioSettings.operationId = a.controlSettings.operationId = a.segmentSettings.operationId = 0;
@@ -2726,8 +2813,26 @@ void invalidateSerialConfidence(App& a, uint64_t now) {
     a.movePrerequisites.readinessQualified = false;
     a.velocityPrerequisites.readinessQualified = false;
     a.homePrerequisites.readinessQualified = false;
+}
+void invalidateSerialConfidence(App& a, uint64_t now) {
+    a.known = a.ok = a.modelKnown = a.communicationKnown = false;
+    a.codecChecked = false;
+    invalidateTargetKnowledge(a, now);
     // Endpoint/configuration generations and physical uncertainty do not belong
     // to a temporary UART selection. Historical records and host origins survive.
+}
+// A broadcast may change every drive outside per-target tracking. Treat it as
+// an uncertain write to each: drop cached observations, configuration and
+// readiness, and expire prepared work and current-position evidence, as the
+// profile restoration path does. Fresh checked reads are required afterwards.
+void invalidateAfterBroadcast(App& a, uint64_t now) {
+    invalidateTargetKnowledge(a, now);
+    a.axis.generation = !a.axis.generation || a.axis.generation == UINT32_MAX ? 0 : a.axis.generation + 1;
+    a.coordinateReference = MotorControlRS::AxisReference();
+    a.simpleEndpointKnown = false; a.motionObservationPending = true;
+    a.movePrerequisites = ESS::MovePrerequisites(); a.velocityPrerequisites = ESS::VelocityPrerequisites();
+    a.homePrerequisites = ESS::HomePrerequisites(); a.positionClearQualified = false;
+    a.rememberedMoveGeneration = 0;
 }
 Probe::Action selectTarget(void* context, uint8_t address) {
     using namespace MotorControlRS;
@@ -2889,6 +2994,7 @@ Probe::Host host(App* a) {
     h.result = lookup; h.cancel = cancel; h.release = release;
 #if MOTORCONTROLRS_LOAD_FIXTURE
     h.load = load;
+    h.broadcast = broadcast;
 #endif
     return h;
 }
@@ -3038,6 +3144,10 @@ void deliver(App& a) {
         }
         }
         const auto* retained = a.owner.result(record.requestId);
+        if (!record.observed && record.broadcastFrame && retained) {
+            record.observed = true;
+            if (retained->transport.txAccepted) invalidateAfterBroadcast(a, nowUs());
+        }
         if (!record.observed && !record.captureRead && record.serialGeneration == a.serial.generation &&
             retained && retained->expected.targetGeneration == a.bindingGeneration) {
             record.observed = true;

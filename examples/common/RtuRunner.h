@@ -15,7 +15,9 @@ enum class Reason : uint8_t {
     NONE, FRAME, NO_RESPONSE, PARTIAL_RESPONSE, LENGTH, GAP, EARLY_REPLY,
     RX_OVERFLOW, RX_ERROR, TX_ERROR, TX_TIMEOUT, BUS_TIMEOUT, DIRECTION_ERROR,
     ECHO_ERROR, CANCELLED, CLOCK_ERROR, CAPTURE_TIMEOUT, TIMING_UNCERTAIN,
-    REQUEST_DEADLINE
+    REQUEST_DEADLINE,
+    SILENT,        ///< Transmit-only frame sent; no byte arrived in the silent window.
+    UNEXPECTED_RX  ///< Transmit-only frame sent; bytes arrived in the silent window.
 };
 enum class Admission : uint8_t { STARTED, BUSY, RECOVERY_REQUIRED, INVALID };
 enum class Echo : uint8_t { NONE, REQUIRED }; ///< REQUIRED means one qualified local copy.
@@ -106,6 +108,11 @@ struct Request {
     Echo echo = Echo::NONE;
     uint64_t deadlineUs = 0;        ///< Absolute closure deadline; zero disables it.
                                   ///< New DE assertion/enqueue requires now < deadline.
+    /** Nonzero selects a transmit-only address-0 frame: replyLength must be zero.
+     * After physical TX end (and any required local copy) the runner listens this
+     * long. Every byte in the window is retained as a finding, never a reply.
+     * SILENT is not an acknowledgement: no drive confirms a broadcast. */
+    uint32_t silenceUs = 0;
 };
 
 /** FRAME means a complete envelope was collected, not a valid CRC or motor action.
@@ -251,7 +258,7 @@ private:
     Reason pending_ = Reason::NONE;
     std::size_t txLength_ = 0, replyLength_ = 0;
     std::size_t traceHead_ = 0, traceSize_ = 0;
-    uint32_t responseTimeoutUs_ = 0, replyGapUs_ = 0;
+    uint32_t responseTimeoutUs_ = 0, replyGapUs_ = 0, silenceUs_ = 0;
     uint32_t txUncertaintyUs_ = 0, rxUncertaintyUs_ = 0, releaseUncertaintyUs_ = 0;
     uint64_t now_ = 0, quietSince_ = 0, assertedUs_ = 0, queuedUs_ = 0;
     uint64_t txEndUs_ = 0, releasedUs_ = 0, lastRxEndUs_ = 0, observedUs_ = 0;

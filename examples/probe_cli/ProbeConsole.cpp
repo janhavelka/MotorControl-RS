@@ -42,7 +42,7 @@ using ConsoleReport::executionName;
 using ConsoleReport::motorOutcome;
 using ConsoleReport::hex;
 
-enum class Command : uint8_t { HELP, VERSION, CONFIG, STATUS, HEALTH, STATS, PROBE, CAPTURE_READ, RECOVER, MEMORY, LOAD, DRV, RESULT, CANCEL, RELEASE, READ, PROFILE, CAPS, READ_IDENTITY, READ_CONFIG, READ_STATE, MONITOR, AXIS, PREPARE, ENABLE, MOTOR_RELEASE, ALARM_CLEAR, STOP, MOVE, POSITION_CLEAR, VELOCITY, DRIVER, IO, HOME, SEGMENT, CONTROL, TUNING, HOST, COMMUNICATION, PERSISTENCE, MOTION_PROFILE, DEBUG, DISCOVER, USEADDR, WIRING, MOVE_BY, MOVE_TO, SPEED, ACCEL, DECEL, MOTION, STEPS_PER_TURN, SETTINGS, SUBDIVISION, POSITION };
+enum class Command : uint8_t { HELP, VERSION, CONFIG, STATUS, HEALTH, STATS, PROBE, CAPTURE_READ, RECOVER, MEMORY, LOAD, DRV, RESULT, CANCEL, RELEASE, READ, PROFILE, CAPS, READ_IDENTITY, READ_CONFIG, READ_STATE, MONITOR, AXIS, PREPARE, ENABLE, MOTOR_RELEASE, ALARM_CLEAR, STOP, MOVE, POSITION_CLEAR, VELOCITY, DRIVER, IO, HOME, SEGMENT, CONTROL, TUNING, HOST, COMMUNICATION, PERSISTENCE, MOTION_PROFILE, DEBUG, DISCOVER, USEADDR, WIRING, MOVE_BY, MOVE_TO, SPEED, ACCEL, DECEL, MOTION, STEPS_PER_TURN, SETTINGS, SUBDIVISION, POSITION, BROADCAST };
 struct Entry { const char* name; Command command; const char* syntax; const char* effect; bool bus; const char* description; };
 const Entry COMMANDS[] = {
     {"moveby", Command::MOVE_BY, "moveby VALUE [steps|deg|turn|mm]", "finite_relative_move_with_readonly_preparation", true, "Move by an amount; default unit is command steps. Round to nearest command step, ties to even."},
@@ -96,6 +96,7 @@ const Entry COMMANDS[] = {
     {"drv", Command::DRV, "drv", "show_owner_queue_and_output", false, "Show the bus owner, queues, retained results and console pressure."},
     {"result", Command::RESULT, "result [operation_id]", "inspect_retained_result_without_consuming", false, "Inspect an operation without consuming its retained result."},
     {"cancel", Command::CANCEL, "cancel [operation_id]", "cancel_local_work_not_motor_stop", false, "Cancel local work; use stop to request a motor stop."},
+    {"broadcast", Command::BROADCAST, "broadcast accel 300|301 | broadcast start relative | broadcast stop normal|fast", "fixture_only_unconfirmed_address_0_frame_then_silent_window", true, "Bench fixture only: send one fixed address-0 frame to every drive, then listen 200 ms. No drive confirms it; read each drive back."},
     {"release", Command::RELEASE, "release operation_id", "release_retained_terminal_result", false, "Release an inspected terminal result to free its storage."}
 };
 const Entry IDENTITY_ENTRY = {"read-identity", Command::READ_IDENTITY, "read identity [address]", "checked_identity_read", true, "Read drive identity."};
@@ -700,6 +701,7 @@ const char* outcomeName(Rtu::Outcome value) {
     case Rtu::Outcome::INVALID_REPLY: return "invalid_reply";
     case Rtu::Outcome::CANCELLED: return "cancelled";
     case Rtu::Outcome::DISPATCH_EXPIRED: return "dispatch_expired";
+    case Rtu::Outcome::SENT: return "sent";
     }
     return "unknown";
 }
@@ -855,7 +857,7 @@ void Console::action(uint32_t id, const char* command, Action result, uint8_t ad
     std::snprintf(output_, sizeof(output_),
         "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":%s,\"result\":\"%s\",\"address\":%u,\"operation_id\":%lu%s}",
         static_cast<unsigned long>(id), command, boolean(result == Action::OK),
-        result == Action::OK && !typed && !motor && (std::strcmp(command, "probe") != 0 && std::strcmp(command, "capture-read") != 0 && std::strcmp(command, "recover") != 0) ? "done" : actionName(result), address,
+        result == Action::OK && !typed && !motor && (std::strcmp(command, "probe") != 0 && std::strcmp(command, "capture-read") != 0 && std::strcmp(command, "recover") != 0 && std::strcmp(command, "broadcast") != 0) ? "done" : actionName(result), address,
         static_cast<unsigned long>(operationId), typed ? (std::strcmp(command, "read-identity") == 0 ? ",\"read_kind\":\"identity\"" : std::strcmp(command, "read-config") == 0 ? ",\"read_kind\":\"config\"" : std::strcmp(command, "velocity-read") == 0 ? ",\"read_kind\":\"velocity_parameters\"" : std::strcmp(command, "home-read") == 0 ? ",\"read_kind\":\"homing_parameters\"" : ",\"read_kind\":\"state\"") : "");
     emit();
 }
@@ -1899,6 +1901,28 @@ void Console::dispatch() noexcept {
         } else action(id, actionCommand, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0);
         return;
     }
+    if (entry->command == Command::BROADCAST) {
+        if (outputPending()) { ++inputDropped_; return; }
+        // A fixed frame name selects one of five reviewed frames; never raw bytes.
+        const char* kind = count == first + 3 ? tokens[first + 1] : "";
+        const char* value = count == first + 3 ? tokens[first + 2] : "";
+        BroadcastFrame frame;
+        if (!std::strcmp(kind, "accel") && !std::strcmp(value, "300")) frame = BroadcastFrame::ACCEL_300;
+        else if (!std::strcmp(kind, "accel") && !std::strcmp(value, "301")) frame = BroadcastFrame::ACCEL_301;
+        else if (!std::strcmp(kind, "start") && !std::strcmp(value, "relative")) frame = BroadcastFrame::RELATIVE_START;
+        else if (!std::strcmp(kind, "stop") && !std::strcmp(value, "normal")) frame = BroadcastFrame::STOP_NORMAL;
+        else if (!std::strcmp(kind, "stop") && !std::strcmp(value, "fast")) frame = BroadcastFrame::STOP_FAST;
+        else { error(id, "broadcast", "invalid_arguments"); return; }
+        if (!host_.broadcast) { error(id, "broadcast", "unavailable"); return; }
+        // Ordinary slots only: the stop reply slots stay free for unicast stops.
+        if (availableSlot() == OUTSTANDING_SLOTS) { action(id, "broadcast", Action::BUSY); return; }
+        uint32_t operationId = 0;
+        beginWork();
+        const Action result = host_.broadcast(host_.context, id, frame, operationId);
+        if (result == Action::OK) track(id, operationId);
+        action(id, "broadcast", result, 0, result == Action::OK ? operationId : 0);
+        return;
+    }
     if (entry->command == Command::USEADDR) {
         if (outputPending()) { ++inputDropped_; return; }
         uint32_t address = 0;
@@ -2034,6 +2058,7 @@ void Console::dispatch() noexcept {
         case Command::PERSISTENCE: return host_.persistence != nullptr;
         case Command::DISCOVER: return host_.discovery != nullptr;
         case Command::CAPTURE_READ: return host_.startCaptureRead != nullptr;
+        case Command::BROADCAST: return host_.broadcast != nullptr;
         case Command::ENABLE: case Command::MOTOR_RELEASE: case Command::ALARM_CLEAR: case Command::STOP: case Command::POSITION_CLEAR: return host_.startAction && host_.snapshot;
         case Command::SETTINGS: return host_.simpleMotion != nullptr;
         case Command::POSITION: return host_.startPositionInterrupt && host_.snapshot;
@@ -2379,6 +2404,7 @@ bool Console::reportProbe(uint32_t id, uint8_t address, uint32_t operationId, co
 
 bool Console::formatProbe(uint32_t id, uint32_t commandId, uint8_t address, uint32_t operationId,
                           const ProbeResult& result, bool inspection) noexcept {
+    if (result.broadcast) return formatBroadcast(id, commandId, operationId, result, inspection);
     const bool ok = result.transport.reason == Rtu::Reason::FRAME && result.codecChecked && result.codec.isOk();
     const uint64_t duration = result.transport.endedUs >= result.transport.startedUs ? result.transport.endedUs - result.transport.startedUs : 0;
     char model[8] = "null";
@@ -2414,6 +2440,48 @@ bool Console::formatProbe(uint32_t id, uint32_t commandId, uint8_t address, uint
     const bool exception = result.transport.reason==Rtu::Reason::FRAME && result.codecChecked && result.codec.code==MotorControlRS::Err::EXCEPTION;
     if(!append(output_,sizeof(output_),used,",\"confidence\":\"%s\",\"manufacturer_confirmed\":false,\"exact_model_confirmed\":false,\"collision_excluded\":false}",
         result.captureRead?"not_requested":ok?"responder_model_unresolved":exception?"responder_only":"none")) return false;
+    if (!appendReportSerial(used)) return false;
+    emit(inspection ? 0 : operationId);
+    return true;
+}
+
+const char* broadcastName(BroadcastFrame frame) noexcept {
+    switch (frame) {
+    case BroadcastFrame::ACCEL_300: return "accel_300";
+    case BroadcastFrame::ACCEL_301: return "accel_301";
+    case BroadcastFrame::RELATIVE_START: return "start_relative";
+    case BroadcastFrame::STOP_NORMAL: return "stop_normal";
+    case BroadcastFrame::STOP_FAST: return "stop_fast";
+    }
+    return "unknown";
+}
+
+bool Console::formatBroadcast(uint32_t id, uint32_t commandId, uint32_t operationId,
+                              const ProbeResult& result, bool inspection) noexcept {
+    // SENT means the frame left and the silent window stayed quiet. It never
+    // confirms that any drive applied it; every drive is read back by unicast.
+    char txHex[PROBE_TX_CAPACITY * 2 + 1], rxHex[PROBE_RX_CAPACITY * 2 + 1];
+    hex(result.tx, result.txLength, txHex, sizeof(txHex));
+    hex(result.rx, result.rxLength, rxHex, sizeof(rxHex));
+    const bool truncated = result.transport.rxTruncated || result.txLength > PROBE_TX_CAPACITY ||
+        result.rxLength > PROBE_RX_CAPACITY || (!result.tx && result.txLength) || (!result.rx && result.rxLength);
+    const int written = std::snprintf(output_, sizeof(output_),
+        "{\"type\":\"%s\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"command_id\":%lu,\"operation_id\":%lu,\"ok\":%s,\"address\":0,\"frame\":\"%s\",\"outcome\":\"%s\",\"confirmed\":false,\"execution_unknown\":%s,\"cancellation\":\"%s\",\"transport\":\"%s\",\"window_us\":%lu,\"tx_bytes\":%u,\"rx_bytes\":%u,\"tx_hex\":\"%s\",\"rx_hex\":\"%s\",\"raw_truncated\":%s,\"started_us\":%llu,\"tx_end_us\":%llu,\"tx_uncertainty_us\":%lu,\"first_rx_start_us\":%llu,\"max_rx_uncertainty_us\":%lu,\"ended_us\":%llu,\"delivered_us\":%llu}",
+        inspection ? "reply" : "broadcast", static_cast<unsigned long>(id), inspection ? "result" : "broadcast",
+        static_cast<unsigned long>(commandId), static_cast<unsigned long>(operationId),
+        boolean(result.outcome == Rtu::Outcome::SENT), broadcastName(result.broadcastFrame), outcomeName(result.outcome),
+        boolean(result.executionUnknown), cancellationName(result.cancellation), Rtu::reasonName(result.transport.reason),
+        static_cast<unsigned long>(result.silenceUs), result.transport.txAccepted, result.transport.rxLength,
+        txHex, rxHex, boolean(truncated), static_cast<unsigned long long>(result.transport.startedUs),
+        static_cast<unsigned long long>(result.txEndUs), static_cast<unsigned long>(result.txUncertaintyUs),
+        static_cast<unsigned long long>(result.firstRxStartUs), static_cast<unsigned long>(result.maxRxUncertaintyUs),
+        static_cast<unsigned long long>(result.transport.endedUs), static_cast<unsigned long long>(result.deliveredUs));
+    if (written < 0 || static_cast<std::size_t>(written) >= sizeof(output_)) {
+        error(id, inspection ? "result" : "broadcast", "output_full");
+        if (!inspection) { if (outputPending_) pendingTerminalOperation_ = operationId; else untrack(operationId); }
+        return true;
+    }
+    std::size_t used = static_cast<std::size_t>(written);
     if (!appendReportSerial(used)) return false;
     emit(inspection ? 0 : operationId);
     return true;

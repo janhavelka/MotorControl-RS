@@ -135,7 +135,7 @@ void Runner::finish(Reason reason, uint64_t nowUs, bool fault) noexcept {
     result_.reason = reason;
     result_.endedUs = nowUs;
     if (reason == Reason::FRAME) increment(stats_.frames);
-    else {
+    else if (reason != Reason::SILENT) {
         increment(stats_.failed);
         if (reason == Reason::CANCELLED) increment(stats_.cancelled);
         if (reason == Reason::NO_RESPONSE || reason == Reason::PARTIAL_RESPONSE ||
@@ -173,12 +173,15 @@ bool Runner::direction(bool enabled, uint64_t nowUs) noexcept {
 }
 
 bool Runner::accepts(const Request& request) const noexcept {
-    return valid() && request.bytes && request.length >= 4 &&
-        request.length <= storage_.txCapacity && request.replyLength >= 5 &&
-        request.replyLength <= storage_.rxCapacity && request.responseTimeoutUs &&
-        request.bytes[0] >= 1 && request.bytes[0] <= 247 &&
+    const bool shape = valid() && request.bytes && request.length >= 4 &&
+        request.length <= storage_.txCapacity &&
         request.bytes[1] != 0 && request.bytes[1] < 0x80 &&
         (request.echo == Echo::NONE || request.echo == Echo::REQUIRED);
+    if (!shape) return false;
+    // Address 0 is transmit-only and needs a silent window; unicast needs a reply.
+    if (request.silenceUs) return request.bytes[0] == 0 && request.replyLength == 0;
+    return request.replyLength >= 5 && request.replyLength <= storage_.rxCapacity &&
+        request.responseTimeoutUs && request.bytes[0] >= 1 && request.bytes[0] <= 247;
 }
 
 bool Runner::checkClock(uint64_t nowUs) noexcept {
@@ -265,6 +268,7 @@ Admission Runner::start(const Request& request, uint64_t nowUs) noexcept {
     deadlineUs_ = request.deadlineUs;
     cancellationUs_ = 0;
     replyGapUs_ = request.replyGapUs ? request.replyGapUs : timing_.gap35Us;
+    silenceUs_ = request.silenceUs;
     echo_ = request.echo;
     pending_ = Reason::NONE;
     quietSince_ = nowUs;
@@ -398,6 +402,13 @@ bool Runner::processByte(const RxByte& byte, uint64_t nowUs) noexcept {
         increment(stats_.echoBytes);
         record(Event::ECHO, byte.endUs, byte.value, result_.echoBytes);
         if (traffic_ && result_.echoBytes == txLength_) traffic_->flushReceived(false, nowUs);
+        return true;
+    }
+    if (silenceUs_ && phase_ == Phase::RECEIVE && startLatest >= releasedUs_ - releaseUncertaintyUs_) {
+        // Transmit-only frame: keep every byte of the silent window as evidence.
+        // poll() reports UNEXPECTED_RX when the window closes; nothing is a reply.
+        if (result_.rxLength < storage_.rxCapacity) storage_.rx[result_.rxLength++] = byte.value;
+        else result_.rxTruncated = true;
         return true;
     }
     if (phase_ != Phase::RECEIVE || startLatest < releasedUs_ - releaseUncertaintyUs_ ||
@@ -635,6 +646,23 @@ void Runner::poll(uint64_t nowUs) noexcept {
     if (phase_ == Phase::RECEIVE) {
         const bool empty = receive(nowUs);
         if (!busy() || !empty) return;
+        if (silenceUs_) {
+            // The watermark must cover the whole window measured from the latest
+            // possible TX end. A cancellation or deadline first leaves it open.
+            const bool closed = elapsed(observedUs_, txEndUs_, silenceUs_);
+            if (cancellationUs_ && observedUs_ >= cancellationUs_ && !closed)
+                finish(Reason::CANCELLED, nowUs, true);
+            else if (deadlineUs_ && observedUs_ >= deadlineUs_ && !closed)
+                finish(Reason::REQUEST_DEADLINE, nowUs, true);
+            else if (closed && echo_ == Echo::REQUIRED && result_.echoBytes != txLength_) {
+                increment(stats_.timeouts);
+                finish(Reason::ECHO_ERROR, nowUs, true);
+            } else if (closed) {
+                const bool heard = result_.rxLength || result_.rxTruncated;
+                finish(heard ? Reason::UNEXPECTED_RX : Reason::SILENT, nowUs, heard);
+            }
+            return;
+        }
         const bool requestExpired = deadlineUs_ && observedUs_ >= deadlineUs_;
         const bool responseExpired = elapsed(observedUs_, txEndUs_, responseTimeoutUs_);
         if (result_.rxLength && elapsed(observedUs_, lastRxEndUs_, timing_.gap35Us)) {
@@ -728,6 +756,7 @@ const char* reasonName(Reason value) noexcept {
         REASON_NAME(CAPTURE_TIMEOUT);
         REASON_NAME(TIMING_UNCERTAIN);
         REASON_NAME(REQUEST_DEADLINE);
+        REASON_NAME(SILENT); REASON_NAME(UNEXPECTED_RX);
 #undef REASON_NAME
     }
     return "UNKNOWN";
