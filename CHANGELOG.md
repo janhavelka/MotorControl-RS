@@ -95,6 +95,7 @@
 
 ### Changed
 
+- Unified author, copyright and contact metadata: THYMOS Solution s.r.o., Jan Havelka, info@thymos.cz.
 - The default position ceiling is 50,000 command increments/s, down from 200,000
   (`PositionLimits::maximumCommandRate`). Above about 60,000/s, firmware `0x0029` can
   turn a `stop normal` sent late in the acceleration ramp into endless creep. 2,000 rpm
