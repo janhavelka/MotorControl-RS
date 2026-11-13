@@ -42,10 +42,16 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
-The [12 November three-drive tests](reports/2026-11-12_multi_drive_write_motion_stress.md) are the latest session:
+The [13 November drive group tests](reports/2026-11-13_multi_drive_02_drive_group.md) are the latest session:
+image `bench_s3_load_timer` from `aa15277`, SHA-256 `3C12A321806F91A8D2ABF038412CFDE379EE936E8E6C6DE87BBD150386703769`.
+Ending state of drives 1, 2 and 4: enabled, stopped, alarm 0, motion words 1, 3 and 3, raw positions
+456,725, 244,293 and 242,915. RAM holds accel and decel 300 ms and start speed 30 from the multi-drive 01
+staging; settings are at their original values; nothing was saved. The group 1, 2, 4 is declared; drive 1
+is selected. The same day's [broadcast test](reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)
+used `0984e14`, and the [4-hour soak](reports/2026-11-13_multi_drive_settings_and_soak.md) used `5938f1d`.
+
+Before that, the [12 November three-drive tests](reports/2026-11-12_multi_drive_write_motion_stress.md) used
 image `bench_s3_load_timer` from `5938f1d`, SHA-256 `5FE6D51A64EF4481D19FAD3C7BBF3DF7DDAF8A83E12121B2CBBED4EDF4E54912`.
-Ending state of drives 1, 2 and 4: enabled, stopped, motion word 3, alarm 0, raw positions 6,999, 68,386
-and 14,009. Each drive's last move profile and auxiliary 7 are in RAM, with no save. Drive 1 is selected.
 
 Before that, the [4 November stop normal recheck](reports/2026-11-04_stop_normal_rate_ceiling.md) used image `bench_s3_load_timer`
 from `d3cd883` (the same firmware sources as the merge `7d2a2f6`), SHA-256 `56F4F0BF5B4E35E87663FE7A77CD24D95D259CD61D72A5255D47EC744BAFFF27`,

@@ -71,9 +71,11 @@ of the 12 November tests. Tools from `3e59d49`. Command:
 
 ## Ending state
 
-All three drives enabled, stopped and alarm-free. RAM holds the last staged
-move profile (start speed 30, accel and decel 300 ms, speed 60 rpm). Settings
-are at their original values. Nothing was saved.
+After these runs all three drives were enabled, stopped and alarm-free, with
+the settings at their original values and nothing saved. The session continued
+with the [broadcast test](2026-11-13_multi_drive_01_broadcast_acceptance.md) and
+the [drive group test](2026-11-13_multi_drive_02_drive_group.md); the latter
+records the final bench state.
 
 ## Not run
 

@@ -238,9 +238,14 @@ more drives (now addresses 1, 2 and 4, star wiring).
 - [ ] Find why 4 of 113 broadcast starts and stops were ignored by one drive.
   Measure with one drive powered (no reply collision) and with a differential
   bus capture; repeat after the bias is fitted.
-- [ ] Add a drive group to the standalone application: declaration, per-member
+- [x] Add a drive group to the standalone application: declaration, per-member
   facts and post-enable wait, sequential start with measured spread, explicit
-  failure policy, group stop and status ([multi-drive 02](prompts/ess_multi_drive/02_drive_group.md)).
+  failure policy, group stop and status ([multi-drive 02](prompts/ess_multi_drive/02_drive_group.md),
+  [report](reports/2026-11-13_multi_drive_02_drive_group.md)). Three drives move
+  together; start spread about 38 ms, including each member's staging.
+- [ ] Shorten the group start spread with staging-only moves
+  ([standalone 02](prompts/standalone/02_profile_staging.md)): stage every member,
+  then send only the start frames.
 - [ ] Broadcast start and stop ([multi-drive 03](prompts/ess_multi_drive/03_broadcast_operations.md))
   are not applicable while multi-drive 01 is NO-GO. Reopen only if the vendor or
   a nonzero custom node makes the drives silent to address 0.
