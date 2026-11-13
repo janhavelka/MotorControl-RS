@@ -317,6 +317,8 @@ def check_metadata(root):
             errors.append("library.json: package name must be MotorControl-RS")
         if metadata.get("repository", {}).get("url") != "https://github.com/janhavelka/MotorControl-RS.git":
             errors.append("library.json: repository URL must use canonical MotorControl-RS identity")
+        if metadata.get("homepage") != "https://github.com/janhavelka/MotorControl-RS":
+            errors.append("library.json: homepage must be the canonical MotorControl-RS GitHub page")
         if metadata.get("build", {}).get("includeDir") != "include" or metadata.get("build", {}).get("srcDir") != "src":
             errors.append("library.json: core includeDir/srcDir must be include/src")
         exports = metadata.get("export", {}).get("include", [])
