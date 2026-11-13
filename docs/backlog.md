@@ -202,8 +202,8 @@ more drives (now addresses 1, 2 and 4, star wiring).
   with idle-drive reads. One drive moves at a time; simultaneous motion needs
   multi-drive 02.
 - [ ] Add fail-safe bias to the bench bus (pull-up on A, pull-down on B at one
-  point). Owner wiring action. Then rerun the link check with a drive at
-  address 3 to show that lost first bytes stopped.
+  point). Owner wiring action, deferred by the owner on 13 November. Then rerun
+  the link check with a drive at address 3 to show that lost first bytes stopped.
 - [x] Confirm the model of drives 2 and 4. The owner confirmed them as
   ESS23-RS20 on 13 November. The setters now qualify any drive whose own
   identity read reports `0x4EEA`/`0x0029`; settings writes pass on all three
@@ -235,9 +235,10 @@ more drives (now addresses 1, 2 and 4, star wiring).
   [report](reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)). NO-GO:
   the drives act on the frames but every drive answers address 0, and the
   answers collide. The library stays unicast-only.
-- [ ] Find why 4 of 113 broadcast starts and stops were ignored by one drive.
-  Measure with one drive powered (no reply collision) and with a differential
-  bus capture; repeat after the bias is fitted.
+- [ ] Find why 4 of 113 broadcast starts and stops were ignored by one drive
+  ([multi-drive 07](prompts/ess_multi_drive/07_broadcast_misses.md)). Planned;
+  waits for the owner to power the drives one at a time. Not urgent: broadcast
+  stays unused.
 - [x] Add a drive group to the standalone application: declaration, per-member
   facts and post-enable wait, sequential start with measured spread, explicit
   failure policy, group stop and status ([multi-drive 02](prompts/ess_multi_drive/02_drive_group.md),

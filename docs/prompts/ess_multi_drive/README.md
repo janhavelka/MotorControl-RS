@@ -2,7 +2,8 @@
 
 Prepared 2026-11-12 from the [broadcast and multi-drive review](../../reports/2026-11-12_broadcast_and_sync_review.md).
 Multi-drive 01 is COMPLETE with outcome NO-GO, so multi-drive 03 is not
-applicable. Multi-drive 02 is COMPLETE. The other stages are NOT STARTED.
+applicable. Multi-drive 02 is COMPLETE. Multi-drive 07 is planned and
+BLOCKED(input). The other stages are NOT STARTED.
 
 The owner wants several ESS drives started together. If the drive accepts
 broadcast, the owner wants the library to use it. The owner also wants the drive
@@ -58,6 +59,7 @@ drives ([report](../../reports/2026-11-12_multi_drive_write_motion_stress.md)).
 | 04 | [Input and output programming](04_input_programming.md) | None for software; wired inputs for physical claims | NOT STARTED |
 | 05 | [Input-triggered start](05_input_triggered_start.md) | 04 delivered; standalone 02 for function 7; standalone 04 and 06 for PT segments; wired trigger for physical claims | NOT STARTED |
 | 06 | [Two-drive qualification and closeout](06_two_drive_qualification.md) | Second drive on the bus with a unique address; trigger wiring for the 05 cases | NOT STARTED |
+| 07 | [Why some broadcast starts and stops were ignored](07_broadcast_misses.md) | Owner powers the drives one at a time; bias fitted for the last row | BLOCKED(input) |
 
 This table is the single status record. Statuses are NOT STARTED, PARTIAL,
 BLOCKED(input) and COMPLETE. Software stages may proceed before their physical
