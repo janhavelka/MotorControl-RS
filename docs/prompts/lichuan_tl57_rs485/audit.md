@@ -1,16 +1,18 @@
-# TL57-R promptset audit: corrections to apply before stage 01
+# TL57-R promptset audit
 
-Current dispositions and corrected prompts are recorded in the
-[15 November application review](audit_application.md). This audit remains the
-dated input; its older source observations and proposed remedies are not current
-implementation claims.
+**Status: PROCESSED — 15 November 2026.** Every finding has a disposition in the
+[application review](audit_application.md). Valid prompt/evidence corrections
+and small tooling fixes were applied in `4f0576b` and `42f5b4b`; larger changes
+are assigned to the revised stages and shared prerequisites. Processed does not
+mean those implementation stages or hardware qualification are complete.
+Use the updated prompts as instructions; the audit below is historical evidence.
 
 Audited 2 November 2026 at `b74a917`. Every finding was then re-audited individually
 at `513251d`, after `6ff2374` and `ba20c8b` changed the ESS code; the
 [ledger](#re-audit-ledger) records each verdict. This text is the corrected version.
 Line numbers in code are from `513251d`. Recheck them if the branch has advanced.
 
-**This is a work order.** Apply Part 1 and Part 2 to the promptset and evidence
+**Original work order (processed; retained for history).** Apply Part 1 and Part 2 to the promptset and evidence
 files, then start stage 01. Parts 3 and 4 are decided facts to copy into the
 reference, Part 5 lists ESS defects to fix and not to copy, Part 6 records what
 must not be reopened, and Part 7 lists tooling fixes.

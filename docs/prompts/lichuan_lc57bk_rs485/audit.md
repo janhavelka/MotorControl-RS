@@ -1,16 +1,19 @@
-# LC57BK-R / RC promptset audit: corrections to apply before stage 01
+# LC57BK-R / RC promptset audit
 
-Application review, 2026-11-15: [finding-by-finding dispositions](audit_application.md)
-record the independent current-code/source check. Use the updated numbered
-stages as instructions. The work order below is retained as the dated audit;
-its proposed first-contact procedures are narrowed in [12A](12a_first_contact.md).
+**Status: PROCESSED — 15 November 2026.** Every finding has a disposition in the
+[application review](audit_application.md). Valid prompt/evidence corrections
+and small tooling fixes were applied in `4f0576b` and `42f5b4b`; larger changes
+are assigned to the revised stages and shared prerequisites. Processed does not
+mean those implementation stages or hardware qualification are complete.
+Use the updated prompts as instructions; the audit below is historical evidence.
+Its proposed first-contact procedures are narrowed in [12A](12a_first_contact.md).
 
 Audited 2 November 2026 at `363255a`. Every finding was then re-verified individually
 at `513251d` against page images and current code, by reviewers told to disprove it.
 This file contains the corrected results. Part 5's status table describes `513251d`.
 Other line numbers come from several commits, so search by symbol if a line does not match.
 
-**This is a work order.** Apply Part 1 and Part 2 to the promptset and evidence
+**Original work order (processed; retained for history).** Apply Part 1 and Part 2 to the promptset and evidence
 files, then start stage 01. Part 3 holds decided procedures and wire windows to copy
 into the reference. Part 4 is the first-contact plan for a real motor. Part 5 lists
 ESS defects to fix and not to copy. Part 6 records what must not be reopened, and
