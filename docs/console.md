@@ -208,12 +208,18 @@ may still be moving: send `stop fast`. Nothing escalates automatically. On firmw
 position ceiling refuses ([report](reports/2026-11-04_stop_normal_rate_ceiling.md)).
 
 `enable` holds motion starts on its address for 1 s. `moveby`/`moveto` wait it out;
-advanced `move`, `velocity` and `home` answer `busy` without bus traffic. Firmware
+advanced `move`, staging, group moves, `velocity` and `home` answer `busy` without bus traffic. Firmware
 `0x0029` echoed and ignored starts sent up to 0.6 s after an enable, and no status bit
 shows when it is ready. Stops, releases, alarm clears and reads are not held. Limits:
 the 1 s is a margin over one drive's measurement for position starts; only enables
-this firmware sent are tracked, one address at a time; an MCU reset forgets the
+this firmware sent are tracked; an MCU reset forgets the
 window; an enable from another master or a drive power-up is not seen.
+
+Each unicast address keeps its own wait from the first service that sees accepted
+enable bytes. Selection, group clear/redeclare, failed declarations, recovery
+and host tuple changes preserve that time and write evidence. Fresh reads do not
+shorten it. A drive-address change is refused while that address's wait remains.
+See [enable wait lifetime](ess_actions.md#standalone-enable-wait).
 
 Stop does not need a prior `probe` of the selected axis or a manual `recover`. After a
 transport fault, the stop is accepted, starts one bounded recovery and is sent once.
@@ -320,7 +326,9 @@ with a note to inspect `@ID result N`.
 `useaddr`, `recover`, a host tuple change and a broadcast expire every member's
 facts: run `group set` again. A write to a member drive expires that member.
 Moves and enables expire the member's state: run `group read state` again. Each
-member has its own 1 s post-enable wait. A member drive that may have received a
+address has its own 1 s post-enable wait, even after removal from the group.
+`group status` reports the retained deadline for each current member.
+A member drive that may have received a
 start-speed write this boot stays unready for group moves until the controller
 restarts; use the selected-axis route and its start-speed relation instead.
 

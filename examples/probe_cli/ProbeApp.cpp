@@ -51,6 +51,7 @@ constexpr uint32_t STOP_RECOVERY_US = REQUEST_US + RECOVERY_BUDGET_US;
 // Bench, 3 November 2026: firmware 0x0029 echoed and ignored starts sent up to
 // 0.6 s after an enable frame, with no status bit showing readiness. Not documented.
 constexpr uint32_t ENABLE_SETTLE_US = 1000000;
+constexpr std::size_t ENABLE_WAIT_SLOTS = 248; // Unicast 1..247; slot 0 is unused.
 constexpr std::size_t REQUEST_CAPACITY = 8, ORDINARY_PENDING = 4, STOP_RECORDS = 2, OUTPUT_LINES = 8;
 constexpr std::size_t STOP_ESCALATIONS = 2;
 // Drive-group pools, sized from Probe::GROUP_CAPACITY. One move record per
@@ -224,8 +225,14 @@ struct App {
     MotorControlRS::AxisConfig axis;
     bool commandPolarityKnown = true; // Host declaration; invalidated by possible device-direction changes.
     MotorControlRS::AxisReference coordinateReference; // Qualified command-coordinate evidence; never inferred from an unsigned/raw zero.
-    uint64_t enableSettleUntilUs = 0; // No motion start to this address before then (ENABLE_SETTLE_US).
-    uint8_t enableSettleAddress = 0;
+    struct EnableWait {
+        MotorControlRS::ReadTarget target;
+        HostTuple serialTuple;
+        uint32_t serialGeneration = 0, operationId = 0;
+        uint64_t observedUs = 0, untilUs = 0;
+        MotorControlRS::ActionExecution execution = MotorControlRS::ActionExecution::NOT_TRANSMITTED;
+        ESS::ActionEvidence write;
+    } enableWaits[ENABLE_WAIT_SLOTS]; // Per physical address on this App's bus; never cleared by host rebinding.
     bool bootOriginPending = true; // RAM-only, consumed once before the first simple move.
     bool bootCoordinates = false; // Explicit standalone feedback/command coordinate convention.
     bool simpleEndpointKnown = false;
@@ -287,7 +294,6 @@ struct App {
         MotionProfileState profile; ///< Checked 0x0020/6 readback of this member.
         Probe::StateCache state;
         MotorControlRS::InputWiring inputWiring[4] = {}, outputWiring[2] = {};
-        uint64_t enableSettleUntilUs = 0; ///< Post-enable wait of this member (ENABLE_SETTLE_US).
         bool startSpeedRelationRequired = false; ///< A possible start-speed write reached this drive.
         StageSession stage;
         // Stored-word witness, as rememberedMoveWords for the selected axis: the
@@ -1009,9 +1015,7 @@ Rtu::BusAdmission admitActionStep(App& a, App::Record& record, const ESS::Prepar
         a.owner.admitUrgent(request, now, record.requestId) : a.owner.admit(request, now, record.requestId);
 }
 bool enableSettling(const App& a, uint8_t address, uint64_t now) {
-    const auto* member = groupMember(a, address);
-    return (a.enableSettleAddress == address && now < a.enableSettleUntilUs) ||
-        (member && now < member->enableSettleUntilUs);
+    return ESS::isValidAddress(address) && now < a.enableWaits[address].untilUs;
 }
 // The pair reads high bits set below zero; the move sequence decodes it the same way.
 // Beyond the +/-0x0FFFFFFF target range (function manual p70) it is no usable zero.
@@ -2756,9 +2760,14 @@ void advanceActions(App& a, uint64_t now) {
                     record.action.request.kind == MotorControlRS::ActionKind::CLEAR_POSITION) &&
                     a.axis.target.address == record.address) invalidateAxis(a);
                 if (record.kind == App::OperationKind::ACTION && record.action.request.kind == MotorControlRS::ActionKind::ENABLE) {
-                    a.enableSettleAddress = record.address; a.enableSettleUntilUs = now + ENABLE_SETTLE_US;
-                    // One slot per member: a later enable of another drive keeps this wait.
-                    if (auto* member = groupMember(a, record.address)) member->enableSettleUntilUs = now + ENABLE_SETTLE_US;
+                    auto& wait = a.enableWaits[record.address];
+                    wait = App::EnableWait();
+                    wait.target = record.action.target; wait.serialTuple = record.serialTuple;
+                    wait.serialGeneration = record.serialGeneration; wait.operationId = record.operationId;
+                    // Preserve the existing origin: first service that sees accepted TX.
+                    wait.observedUs = now;
+                    wait.untilUs = now > UINT64_MAX - ENABLE_SETTLE_US ? UINT64_MAX : now + ENABLE_SETTLE_US;
+                    wait.execution = MotorControlRS::ActionExecution::UNKNOWN;
                 }
             }
             const auto* result = a.owner.result(record.requestId); if (!result) continue;
@@ -2791,6 +2800,12 @@ void advanceActions(App& a, uint64_t now) {
                 failed.transport.frame = event.transport.frame; failed.transport.length = event.transport.length;
                 failed.txComplete = event.txComplete;
                 if (!advanceOperation(record, failed, now)) continue;
+            }
+            if (record.kind == App::OperationKind::ACTION && record.action.request.kind == MotorControlRS::ActionKind::ENABLE &&
+                event.transport.step == 0 && a.enableWaits[record.address].operationId == record.operationId) {
+                auto& wait = a.enableWaits[record.address];
+                wait.write = record.action.writeEvidence;
+                wait.execution = record.action.execution;
             }
             observeCommunication(a, *result);
             if (record.kind == App::OperationKind::MOVE && record.groupChild) {

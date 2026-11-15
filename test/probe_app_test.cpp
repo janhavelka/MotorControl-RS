@@ -543,7 +543,7 @@ void testActionGateAndSeparateAcknowledgement() {
     assert(view(operation).actionContext->completion == ActionCompletion::OBSERVED && !axisReserved(*app, 1));
     assert(hardware.writes == 3 && !app->owner.needsRecovery());
     // HW-15: the transmitted enable holds off motion starts on its address.
-    assert(app->enableSettleAddress == 1 && app->enableSettleUntilUs > hardware.time);
+    assert(app->enableWaits[1].target.address == 1 && app->enableWaits[1].untilUs > hardware.time);
 }
 void testStopSupersedesOnlyAfterAdmissionAndSettlesInflight() {
     using namespace MotorControlRS;

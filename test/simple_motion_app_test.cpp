@@ -838,16 +838,16 @@ void testNegativeMovesStageTwosComplementAndKeepBootZero() {
 void testMoveWaitsOutEnableSettling() {
     // HW-15: firmware 0x0029 echoed and ignored a start sent within 0.6 s of an enable.
     // The wait fits the 5 s preparation deadline; no start is sent before the window ends.
-    fresh(); app->enableSettleAddress = 1; app->enableSettleUntilUs = hardware.time + 1000000;
+    fresh(); app->enableWaits[1].untilUs = hardware.time + 1000000;
     command("@1 moveby 100\n"); prepareSimple(false);
     const auto writes = hardware.writes; pump(10);
-    assert(hardware.time < app->enableSettleUntilUs);
+    assert(hardware.time < app->enableWaits[1].untilUs);
     assert(app->simple.view.pending && !app->simple.view.moveAdmitted && hardware.writes == writes);
-    for (unsigned i = 0; i < 2000000 && hardware.time <= app->enableSettleUntilUs; ++i) step();
+    for (unsigned i = 0; i < 2000000 && hardware.time <= app->enableWaits[1].untilUs; ++i) step();
     pump(); assert(app->simple.view.moveAdmitted);
     completeSimple(); assert(app->simple.view.ok);
     // Other starts answer busy, so a caller retries instead of reading a fault.
-    app->enableSettleUntilUs = hardware.time + 1000000; Serial.output.clear();
+    app->enableWaits[1].untilUs = hardware.time + 1000000; Serial.output.clear();
     const auto idle = hardware.writes;
     command("@9 move relative 100 steps native 60 configured\n");
     assert(Serial.output.find("\"id\":9,")!=std::string::npos && Serial.output.find("\"result\":\"busy\"")!=std::string::npos);

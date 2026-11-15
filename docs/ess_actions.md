@@ -42,6 +42,35 @@ traffic. `DeviceQueue::UNSPECIFIED` explicitly requests no device queue guarante
 Host continuation cancellation is a separate application effect. A serial fast
 stop is not a qualified independent emergency-stop mechanism.
 
+## Standalone enable wait
+
+The standalone application holds each address for 1 s from the first service
+that sees accepted enable bytes. This is the existing host policy for HW-15,
+not a documented drive-ready signal. Possible or incomplete writes also hold
+the address; a lost ACK remains UNKNOWN. A cancelled enable with no accepted
+bytes leaves any earlier wait unchanged.
+
+The App keeps one fixed slot for each unicast address 1..247 on its bus. Each
+slot retains the original target/binding, host tuple/generation, operation ID,
+time and settled write evidence. There is no active-slot eviction. Only a new
+transmitted enable to the same address replaces that slot and starts a later
+wait. Other addresses keep their own times. Ordinary action results remain
+independent and may be released without erasing the wait.
+
+Selection, group clear/redeclare, failed declarations, cache invalidation,
+recovery and host tuple changes never clear these slots. New readiness evidence
+is still required after invalidation. Drive-address commissioning is refused
+while the source address has an unexpired wait; its identity cannot be moved
+to an unproven endpoint. A new binding at the same address inherits the remaining
+hold, not the old readiness. At `now >= untilUs` the wait no longer blocks.
+
+Selected moves, selected staging, group moves, home and velocity use the same
+fact. Simple console moves wait; other submissions return BUSY before traffic.
+Stops, release and reads remain available. Host reset loses the table, and
+external enables or drive power-up are not observed. This correction does not
+qualify the duration for every drive/mode or close HW-15. See the
+[implementation and verification record](reports/2026-11-15_multi_drive_08_enable_wait_lifetime.md).
+
 ## Explicit device position clear
 
 `prepareSetDevicePosition(context, target, operationId,

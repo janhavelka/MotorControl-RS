@@ -89,8 +89,9 @@ post-enable wait; their limits remain in the [backlog](backlog.md).
    the library stays unicast-only. Common-relative group moves and checked
    staged starts already have three-drive evidence. The
    [multi-drive revalidation](reports/2026-11-15_ess_multi_drive_promptset_audit.md)
-   assigns enable-wait lifetime to stage 08 and independent member requests to
-   09. Input programming/observation and wired-trigger qualification remain
+   assigned enable-wait lifetime to stage 08; its software correction is delivered,
+   with bench checks pending. Independent member requests in 09 are next.
+   Input programming/observation and wired-trigger qualification remain
    open. Independent physical skew and electrical timing are unmeasured;
    the existing fixture no longer needs a second drive.
 6. **Publish the scoped release.** Use the [verification workflow](verification.md)

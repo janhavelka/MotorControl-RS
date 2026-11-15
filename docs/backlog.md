@@ -275,12 +275,16 @@ more drives (now addresses 1, 2 and 4, star wiring).
   staged and read back, then only the start frames go out. Three drives start
   within about 16 ms instead of 38 ms; the group holds up to 15 drives
   ([report](reports/2026-11-13_multi_drive_02_drive_group.md)).
-- [ ] Preserve every target's enable wait across group clear, subset/reordered
+- [x] Preserve every target's enable wait across group clear, subset/reordered
   declaration and selected-axis access ([multi-drive 08](prompts/ess_multi_drive/08_enable_wait_lifetime.md)).
-  Native reproduction confirmed a start about 858 ms before the original wait
-  expired. This defect remains unfixed; the
-  [audit and diagnostic](reports/2026-11-15_ess_multi_drive_promptset_audit.md)
-  retain the evidence.
+  Fixed per-address storage and shared stage/move admission; original time and
+  possible-write evidence survive recovery and rebinding. The
+  [report](reports/2026-11-15_multi_drive_08_enable_wait_lifetime.md) retains the
+  before/after traces and storage measurement.
+- [ ] Bench-check the multi-drive 08 image: refusal before the enable deadline,
+  then one finite move after it, plus the short regression. The 15 November
+  preflight got NO_RESPONSE from address 1; no new image or motion was sent.
+  HW-15's separate drive-timing investigation remains open.
 - [ ] Complete the original different-member-target requirement
   ([multi-drive 09](prompts/ess_multi_drive/09_member_motion_requests.md)), with
   per-member intent/reference provenance. The current group API accepts one

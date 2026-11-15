@@ -83,6 +83,9 @@ Probe::Action communication(void* context, const Probe::CommunicationCommand* co
     if (command->kind == Kind::PREVIEW) return Probe::Action::OK; // Console shows source effects and current fixture prerequisites.
     if (a.persistenceRequest.owner || a.persistenceCapture) return Probe::Action::BUSY;
     if (command->kind == Kind::BEGIN) {
+        // Do not move an unexpired physical-address wait to an unproven endpoint.
+        if (command->request.field == ESS::CommunicationField::ADDRESS && enableSettling(a, command->address, now))
+            return Probe::Action::BUSY;
         if (a.owner.commissioningOwned() || a.serial.blocked || !a.serial.activeKnown ||
             a.owner.active() || a.owner.pending() || reading(a) || acting(a) ||
             a.monitorState.settings.enabled || (a.recovery.operationId && !a.recovery.automatic) || axisReserved(a) ||

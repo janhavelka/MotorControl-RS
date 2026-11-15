@@ -813,7 +813,7 @@ const Probe::GroupView& buildGroupView(App& a) {
         if (motion.valid) { out.rawAlarm = motion.value.rawAlarm; out.rawMotion = motion.value.rawMotion; out.motionObservedUs = motion.observedEarliestUs; }
         if (io.valid) out.rawInputs = io.value.rawInputs;
         if (feedback.valid) { out.positionKnown = feedback.value.pairKnown; out.rawPosition = feedback.value.rawPosition; }
-        out.settleUntilUs = m.enableSettleUntilUs; out.settling = now < m.enableSettleUntilUs;
+        out.settleUntilUs = a.enableWaits[m.address].untilUs; out.settling = enableSettling(a, m.address, now);
         out.reserved = axisReserved(a, m.address);
         out.startSpeedRelationRequired = m.startSpeedRelationRequired;
     }

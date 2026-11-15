@@ -6,6 +6,13 @@ start of each test session; old readback is not fresh admission evidence.
 
 ## Fixture and standing authorization
 
+Read-only preflight on 15 November for multi-drive 08: the recorded COM13 USB
+device answered the protocol-3 console handshake, but one address-1 model probe
+returned NO_RESPONSE (8 TX bytes, 0 RX bytes). No retry, flash or motion followed.
+The running image hash was not established. See the
+[retained preflight](reports/2026-11-15_multi_drive_08_enable_wait_lifetime.md).
+This does not establish the drives' present power or settings.
+
 | Item | Recorded setup |
 | --- | --- |
 | Motor | User-confirmed ESS23-RS20; raw model `0x4EEA`, firmware word `0x0029` |

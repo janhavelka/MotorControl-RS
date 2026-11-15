@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Per-address enable waits survive selection, group changes, recovery and rebinding.
+  Selected staging and group admission use the same original deadline and write
+  evidence. Drive-address changes cannot bypass an active wait.
 - Velocity retains a transmitted poll's evidence when the overall deadline expires.
 - Stop results wait for attached recovery before delivery or slot reuse. Action
   and velocity JSON retain recovery and zero-byte attempt evidence across later recovery.

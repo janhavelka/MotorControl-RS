@@ -105,9 +105,12 @@ most half a step of error. Results retain effective native value and rounding
 error; zero displacement after rounding yields no motion write. Negative
 distances and targets move backwards: on firmware `0x0029` the two's-complement
 target and the feedback below zero were verified on the bench. For 1 s after an
-enable is transmitted, simple moves wait and other position, velocity and home
-starts answer `busy`: firmware `0x0029` echoed and ignored starts sent up to 0.6 s
-after enable, and no status bit shows when it is ready. Detailed
+enable is transmitted, simple moves wait and other position, staging, group,
+velocity and home requests answer `busy`: firmware `0x0029` echoed and ignored starts sent up to 0.6 s
+after enable, and no status bit shows when it is ready. Each address retains its
+original wait across selection, group changes and recovery; fresh reads do not
+shorten it. The [application wait contract](ess_actions.md#standalone-enable-wait)
+defines its lifetime and limits. Detailed
 requests default to EXACT and expose explicit rounding/approximation choices.
 Angles and travel require the corresponding scale, frame and origin.
 

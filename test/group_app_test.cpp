@@ -624,9 +624,9 @@ void testGenerationInvalidation() {
     assert(memberCurrent(*app, app->group.members[1]));
     // Enable: a member keeps its own post-enable wait and its state expires.
     command("@2 enable 4\n"); contains("\"result\":\"accepted\"");
-    runUntil([] { return app->group.members[2].enableSettleUntilUs != 0; });
+    runUntil([] { return app->enableWaits[4].untilUs != 0; });
     command("@3 enable 2\n"); contains("\"result\":\"accepted\"");
-    runUntil([] { return app->group.members[1].enableSettleUntilUs != 0; });
+    runUntil([] { return app->enableWaits[2].untilUs != 0; });
     // A later enable of another member keeps the first member's wait.
     assert(enableSettling(*app, 4, nowUs()) && enableSettling(*app, 2, nowUs()));
     pump(4000);
@@ -657,6 +657,174 @@ void testGenerationInvalidation() {
     assert(groupMember(*app, 4)->startSpeedRelationRequired && !groupMember(*app, 2)->startSpeedRelationRequired);
     id = 77;
     assert(!submitGroupMove(groupMove(Policy::LEAVE), id) && id == 77);
+}
+uint32_t enableDrive(uint8_t address, uint32_t commandId) {
+    command("@" + std::to_string(commandId) + " enable " + std::to_string(address) + "\n");
+    contains("\"result\":\"accepted\"");
+    const uint32_t id = app->latestOperationId;
+    runUntil([&] { const auto* r = findRecord(*app, id); return r && terminal(*app, *r) && r->delivered; });
+    const auto& wait = app->enableWaits[address];
+    assert(wait.operationId == id && wait.target.address == address && wait.observedUs < wait.untilUs);
+    assert(wait.untilUs - wait.observedUs == ENABLE_SETTLE_US && wait.write.txAccepted == 8);
+    assert(wait.execution == ActionExecution::ACKNOWLEDGED && wait.write.txComplete);
+    assert(releaseOperation(id)); // The wait must outlive result storage too.
+    return id;
+}
+void sameEnableWait(uint8_t address, const App::EnableWait& old) {
+    const auto& now = app->enableWaits[address];
+    assert(now.operationId == old.operationId && now.target.id == old.target.id && now.target.address == old.target.address &&
+        now.target.generation == old.target.generation && now.serialGeneration == old.serialGeneration);
+    assert(sameTuple(now.serialTuple, old.serialTuple) && now.observedUs == old.observedUs && now.untilUs == old.untilUs);
+    assert(now.execution == old.execution && now.write.txAccepted == old.write.txAccepted &&
+        now.write.txComplete == old.write.txComplete && now.write.executionUnknown == old.write.executionUnknown &&
+        now.write.latestUs == old.write.latestUs && now.write.deliveredUs == old.write.deliveredUs &&
+        now.write.length == old.write.length && now.write.status.code == old.write.status.code &&
+        std::memcmp(now.write.raw, old.write.raw, old.write.length) == 0);
+}
+void testEnableWaitSurvivesGroupChanges() {
+    for (unsigned change = 0; change < 6; ++change) {
+        fresh(); readyGroup({1, 2}); enableDrive(1, 11); enableDrive(2, 12);
+        const auto first = app->enableWaits[1], second = app->enableWaits[2];
+        if (change == 0) readyGroup({2, 1});
+        if (change == 1) readyGroup({1});
+        if (change == 2) { assert(clearGroup()); readyGroup({1}); }
+        if (change == 3) {
+            const uint8_t invalid[] = {1, 1}; uint32_t unchanged = 777;
+            assert(!declareGroup(invalid, 2, unchanged) && unchanged == 777);
+            readyGroup({1});
+        }
+        if (change == 4) {
+            drives[4].regs[0] = 0xFFFF;
+            assert(!groupOp(declare({4})).result.ok); readyGroup({1});
+        }
+        if (change == 5) {
+            recoverBus(20);
+            assert(app->bindingGeneration != first.target.generation);
+            uint32_t unchanged = 777;
+            assert(!submitGroupMove(groupMove(Policy::LEAVE), unchanged) && unchanged == 777); // Fresh facts still required.
+            readyGroup({1});
+        }
+        sameEnableWait(1, first); sameEnableWait(2, second);
+        assert(nowUs() < first.untilUs && enableSettling(*app, 1, nowUs()) && !enableSettling(*app, 4, nowUs()));
+        Probe::GroupView view; assert(inspectGroup(view));
+        for (uint8_t i = 0; i < view.count; ++i) {
+            assert(view.members[i].settling);
+            assert(view.members[i].settleUntilUs == app->enableWaits[view.members[i].address].untilUs);
+        }
+        const auto from = frames.size(); uint32_t move = 777;
+        const auto rejected = submitGroupMove(groupMove(Policy::LEAVE), move);
+        assert(!rejected && rejected.detail == static_cast<int32_t>(Probe::Action::BUSY) && move == 777);
+        pump(); assert(frames.size() == from && count(isAnyStart, from) == 0);
+        assert(enableSettling(*app, 1, first.untilUs - 1) && !enableSettling(*app, 1, first.untilUs));
+        advanceHardware(std::max(first.untilUs, second.untilUs));
+        assert(submitGroupMove(groupMove(Policy::LEAVE), move));
+        runUntil([&] { return terminalGroup(move); }, 2000000);
+        assert(groupOp(move).result.ok);
+        assert(count([](const std::vector<uint8_t>& f) { return isStart(f, 1); }, from) == 1);
+        sameEnableWait(1, first); sameEnableWait(2, second);
+    }
+}
+void readSelectedFacts() {
+    for (const char* line : {"@31 read config\n", "@32 motion-profile read\n", "@33 read state\n"}) {
+        command(line);
+        runUntil([] { return !app->owner.active() && !app->owner.pending() && !reading(*app) && !app->motionProfile.view.pending; });
+    }
+}
+void testRemovedMemberSelectedWaitAndExpiry() {
+    fresh(); readyGroup({1, 2}); enableDrive(1, 11); enableDrive(2, 12);
+    const auto first = app->enableWaits[1], second = app->enableWaits[2];
+    readyGroup({2}); // The first drive has no group member now.
+    command("@21 useaddr 2\n"); command("@22 useaddr 1\n");
+    assert(app->axis.target.address == 1 && app->bindingGeneration != first.target.generation);
+    readSelectedFacts();
+    assert(nowUs() < first.untilUs);
+    PositionRequest position = groupMove(Policy::LEAVE).move.position;
+    position.configurationGeneration = app->axis.generation;
+    const auto from = frames.size(); uint32_t id = 777;
+    hardware.clockStep = 0;
+    advanceHardware(first.untilUs - 1);
+    auto status = stagePositionMove(position, 60, id);
+    assert(!status && status.detail == static_cast<int32_t>(Probe::Action::BUSY) && id == 777);
+    status = submitMove(position, 60, id);
+    assert(!status && status.detail == static_cast<int32_t>(Probe::Action::BUSY) && id == 777);
+    assert(frames.size() == from && !app->owner.pending());
+    sameEnableWait(1, first); sameEnableWait(2, second);
+    advanceHardware(first.untilUs);
+    assert(stagePositionMove(position, 60, id));
+    Probe::PositionStageView staged;
+    runUntil([&] { return copyPositionStage(id, staged) && !staged.pending; });
+    assert(staged.staged && staged.execution == ActionExecution::ACKNOWLEDGED && count(isAnyStart, from) == 0);
+    assert(submitMove(position, 60, id, MoveSetup::USE_STORED));
+    MoveProgress progress;
+    runUntil([&] { return moveProgress(id, progress) && !progress.pending; }, 2000000);
+    assert(progress.completion == ActionCompletion::OBSERVED && count(isAnyStart, from) == 1);
+}
+void testEnableWaitCapacityAndAddressBounds() {
+    auto list = addresses(16); list.push_back(247);
+    fresh(list); readyGroup(addresses(15));
+    for (uint8_t address = 1; address <= 15; ++address) enableDrive(address, 100 + address);
+    readyGroup({16, 247}); enableDrive(16, 116); enableDrive(247, 347);
+    assert(clearGroup());
+    const uint64_t now = nowUs();
+    for (unsigned address = 1; address <= 247; ++address) {
+        const auto& wait = app->enableWaits[address];
+        if (address <= 16 || address == 247) {
+            assert(wait.target.address == address && wait.operationId && enableSettling(*app, static_cast<uint8_t>(address), now));
+            assert(wait.write.txAccepted == 8 && wait.execution == ActionExecution::ACKNOWLEDGED);
+        } else assert(!wait.operationId && !wait.untilUs && !enableSettling(*app, static_cast<uint8_t>(address), now));
+    }
+    ActionRequest enable; enable.kind = ActionKind::ENABLE; uint32_t unchanged = 777;
+    const auto from = frames.size();
+    for (const uint8_t invalid : {uint8_t(0), uint8_t(248), uint8_t(255)})
+        assert(startAction(app, 400, invalid, enable, unchanged) == Probe::Action::INVALID && unchanged == 777);
+    assert(frames.size() == from && !app->owner.pending());
+}
+void testPossibleEnableKeepsWaitAndEvidence() {
+    for (bool incomplete : {false, true}) {
+        fresh({1}); readyGroup({1});
+        dropReply = [](const std::vector<uint8_t>& f) { return f[1] == 6; };
+        if (incomplete) hardware.txCharacterUs = 0;
+        command("@51 enable 1\n"); contains("\"result\":\"accepted\"");
+        const auto id = app->latestOperationId;
+        runUntil([&] { return terminal(*app, *findRecord(*app, id)); });
+        const auto wait = app->enableWaits[1];
+        assert(wait.operationId == id && wait.execution == ActionExecution::UNKNOWN && wait.write.txAccepted == 8);
+        assert(wait.write.txComplete != incomplete && wait.untilUs - wait.observedUs == ENABLE_SETTLE_US);
+        assert(findRecord(*app, id)->action.execution == ActionExecution::UNKNOWN);
+        const auto writes = count(isWrite); pump(2000);
+        assert(count(isWrite) == writes); sameEnableWait(1, wait);
+        if (!incomplete) {
+            dropReply = nullptr; recoverBus(52);
+            assert(clearGroup()); readyGroup({1});
+            sameEnableWait(1, wait);
+            assert(count(isWrite) == writes); // Reads/recovery never replay enable or change its execution evidence.
+        }
+    }
+    fresh({1}); readyGroup({1}); enableDrive(1, 61);
+    const auto wait = app->enableWaits[1];
+    ActionRequest enable; enable.kind = ActionKind::ENABLE; uint32_t id = 0;
+    const auto from = frames.size();
+    assert(startAction(app, 62, 1, enable, id) == Probe::Action::OK);
+    assert(cancel(app, id) == Probe::Action::OK); // Cancel the second enable before dispatch.
+    runUntil([&] { return terminal(*app, *findRecord(*app, id)); });
+    assert(findRecord(*app, id)->action.execution == ActionExecution::NOT_TRANSMITTED);
+    sameEnableWait(1, wait); assert(frames.size() == from);
+}
+void testAddressChangeCannotBypassEnableWait() {
+    fresh({1}); readyGroup({1}); enableDrive(1, 71);
+    const auto wait = app->enableWaits[1];
+    Probe::CommunicationCommand command;
+    command.kind = Probe::CommunicationCommandKind::BEGIN;
+    command.address = 1; command.request.field = ESS::CommunicationField::ADDRESS; command.request.address = 2;
+    Probe::CommunicationView view;
+    const auto from = frames.size();
+    assert(communication(app, &command, view) == Probe::Action::BUSY);
+    assert(!app->owner.commissioningOwned() && frames.size() == from);
+    sameEnableWait(1, wait); assert(!app->enableWaits[2].operationId);
+    advanceHardware(wait.untilUs);
+    // Expiry removes this guard, not the independent commissioning prerequisites.
+    assert(communication(app, &command, view) == Probe::Action::UNAVAILABLE);
+    assert(!app->owner.commissioningOwned() && frames.size() == from);
 }
 void testIdleOnlyDeclarationAndExclusiveSequence() {
     fresh(); readyGroup();
@@ -783,7 +951,17 @@ void testActiveOriginSharedReadiness() {
 }
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc == 2 && std::string(argv[1]) == "--storage-layout") {
+        std::printf("App=%zu GroupMember=%zu EnableWait=%zu EnableWaitArray=%zu ActionEvidence=%zu\n",
+            sizeof(App), sizeof(App::GroupMember), sizeof(App::EnableWait), sizeof(app->enableWaits), sizeof(ESS::ActionEvidence));
+        return 0;
+    }
+    testEnableWaitSurvivesGroupChanges();
+    testRemovedMemberSelectedWaitAndExpiry();
+    testEnableWaitCapacityAndAddressBounds();
+    testPossibleEnableKeepsWaitAndEvidence();
+    testAddressChangeCannotBypassEnableWait();
     testActiveOriginSharedReadiness();
     testDeclarationRejectsAbsentAndUnexpectedResponders();
     testFullCapacityDeclarationMoveStopAndOutputOnError();

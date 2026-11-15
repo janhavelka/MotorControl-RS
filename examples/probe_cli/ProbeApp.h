@@ -83,6 +83,8 @@ MotorControlRS::Status submitReleaseAfterStop(uint32_t failedStopId,
  * remembered profile/binding in this example; it does not detect an unseen reset.
  * During the 1 s enable settling window, these API calls return BUSY without
  * traffic. The console's moveby/moveto commands wait through that window.
+ * Each bus address retains its wait across selection, group changes and recovery;
+ * fresh readiness reads do not shorten it.
  */
 // Convenience targets round to nearest command step, ties to even, at most
 // half a step. Use submitMove for explicit EXACT or another rounding policy.
@@ -253,7 +255,7 @@ bool releaseOperation(uint32_t operationId);
  * expire every member's facts; declare the group again. Copy terminal evidence
  * with copyGroupResult and free it with releaseOperation. */
 MotorControlRS::Status declareGroup(const uint8_t* addresses, std::size_t count, uint32_t& operationId);
-/// Idle-only; forgets the members. Retained group results keep their own copies.
+/// Idle-only; forgets members, but preserves enable waits and retained results.
 MotorControlRS::Status clearGroup();
 /** Same declaration as the selected axis's `wiring`, for one member (X0..X3 =
  * 0..3, Y0..Y1 = 4..5). No drive assignment changes; cached state expires. */
@@ -270,7 +272,8 @@ bool inspectGroup(Probe::GroupView& output);
  * reply was checked, and each start relies on that member's checked staged words.
  * SEQUENTIAL: each member runs its ordinary move after the previous start resolved.
  * The failure policy is mandatory. After a failed or lost start no later start
- * is sent and nothing is resent; each member's outcome stays its own. */
+ * is sent and nothing is resent; each member's outcome stays its own.
+ * Any member's unexpired enable wait returns BUSY before staging or start. */
 MotorControlRS::Status submitGroupMove(const Probe::GroupMoveRequest& request, uint32_t& operationId);
 /// One urgent unicast stop per member, each with its own reservation and result.
 MotorControlRS::Status submitGroupStop(MotorControlRS::StopBehavior behavior, uint32_t& operationId);
@@ -287,6 +290,7 @@ bool copyGroupResult(uint32_t operationId, Probe::GroupResult& output);
  * start. Any later write, settings change, profile restore, broadcast, rebinding
  * or recovery ends the witness. A stop cancels staging; an in-flight reply
  * settles and its evidence remains, but cannot publish a stored-word witness.
+ * An unexpired enable wait returns BUSY before the staging write.
  * One session: a new stage replaces a finished one. Rejection preserves ID. */
 MotorControlRS::Status stagePositionMove(const MotorControlRS::PositionRequest& position, uint16_t speedRpm,
                                          uint32_t& operationId);

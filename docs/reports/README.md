@@ -7,6 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [Multi-drive 08: enable-wait lifetime](2026-11-15_multi_drive_08_enable_wait_lifetime.md) | Per-address waits survive group/selection/recovery changes, with shared staging/move admission and retained write evidence. Software verification and separate bench status are recorded; address-1 preflight returned NO_RESPONSE. |
 | [Standalone 15/16 independent audit](2026-11-15_standalone_15_16_audit.md) | PROCESSED: five findings fixed; fresh 94-suite verification, Doxygen and all four exact-commit CI jobs pass. Physical checks NOT RUN. |
 | [Standalone 16: evidence and qualification](2026-11-15_standalone_16_evidence_qualification.md) | Software complete: write closure, exact qualification lifetime and bounded home observation with UNKNOWN execution. 94-suite verification and four exact-commit CI jobs pass; hardware NOT RUN. |
 | [Standalone 15: stop delivery](2026-11-15_standalone_15_stop_recovery.md) | Software complete: stop/recovery, public results, escalation and host accounting. 94 suites and four exact-commit CI jobs pass; new hardware checks NOT RUN. |

@@ -2,7 +2,13 @@
 
 **Status: PROCESSED on 15 November 2026.** Finding dispositions and prompt
 corrections were delivered in commit `53678eb`. The remaining implementation
-and hardware work documented below is still open.
+and hardware work documented below has the dated correction noted here.
+
+**Follow-up, 15 November:** multi-drive 08 fixes M02's enable-wait lifetime defect.
+The [implementation report](2026-11-15_multi_drive_08_enable_wait_lifetime.md)
+retains the original reproduction and new regressions. Its board check remains
+pending after a read-only NO_RESPONSE. Independent member requests remain in 09.
+The audit findings below describe the inspected baseline, not the corrected code.
 
 The six findings in the [12 November review](2026-11-12_broadcast_and_sync_review.md)
 were checked individually against current source, callers/tests, original
@@ -118,7 +124,8 @@ New [08](../prompts/ess_multi_drive/08_enable_wait_lifetime.md) requires target
 waits to outlive host selection and membership changes, with selected-axis,
 group, expiry, rebinding and capacity tests. The fix touches shared application
 admission/state lifetime and needs firmware verification; it was not replaced
-with a narrow declaration-only workaround. **The defect remains unfixed.**
+with a narrow declaration-only workaround. **Unfixed at audit time; corrected
+by the multi-drive 08 follow-up linked above.**
 Stage 02 is PARTIAL against the original requirements; its delivered subset
 and bench results remain valid within their recorded scope.
 

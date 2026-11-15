@@ -145,6 +145,7 @@ Probe::Action startSelectedStage(App& a, const MotorControlRS::MoveRequest& supp
     if (!a.configuration.operationId || !Probe::sameTarget(a.configuration.target, a.axis.target))
         return Probe::Action::UNAVAILABLE;
     const uint64_t now = uart.sample();
+    if (enableSettling(a, address, now)) return Probe::Action::BUSY;
     const uint64_t deadline = now + static_cast<uint64_t>(a.options.moveTimeoutMs) * 1000;
     const auto prepared = prepareSelectedMove(a, supplied, now, deadline, a.stagePrepared);
     if (prepared != Probe::Action::OK) return prepared;
