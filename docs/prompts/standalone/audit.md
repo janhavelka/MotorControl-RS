@@ -5,15 +5,16 @@
 Corrections are applied and remaining work has prompt owners. The promptset
 remains PARTIAL; processed does not mean all findings are resolved.
 
-Current routing: N01, N02, N04, N07 and the 27 planned switch methods are
+Current routing: N01, N02, N03, N04, N07 and the 27 planned switch methods are
 implemented; see the [coverage guide](../../ess_api_cli_coverage.md). Broader
-N05 remains PARTIAL under standalone 03. N03, N06, N09, unresolved homing and
+N05 remains PARTIAL under standalone 03. N06, N09, unresolved homing and
 physical work retain their owners below. The 2026-10-23 columns are historical;
 the [standalone index](README.md) records current stage status. The
 [15 November revalidation](../../reports/2026-11-15_standalone_audit_revalidation.md)
 checks each remaining software and qualification finding against current code.
-N03 now includes a delivered prepared-move staging API; archive/candidate import
-and its console route remain open. HW-13 qualifies negative active-position
+N03's candidate/archive route is now software complete; the
+[standalone 02 report](../../reports/2026-11-15_standalone_02_profile_staging.md)
+retains its checks and pending physical regression. HW-13 qualifies negative active-position
 targets and feedback on firmware `0x0029`, not the other paired fields.
 
 ## Baseline and method
@@ -62,7 +63,7 @@ missing standalone-library implementation. The
 
 ## Nine gaps at 2026-10-23
 
-> Current: five gaps (`position_profile_candidate_staging`, `homing_methods_remaining`, `homing_nonzero_offset`, `earlier_collision_access`, `position_interrupt`).
+> Current: four gaps (`homing_methods_remaining`, `homing_nonzero_offset`, `earlier_collision_access`, `position_interrupt`). N03 candidate staging is implemented.
 
 The [checked ledger](../../reference/ess_rs_operations.json) and
 [coverage guide](../../ess_api_cli_coverage.md) retained then nine named gaps, nine
@@ -75,7 +76,7 @@ not count as a typed operation or console route.
 | --- | --- | --- | --- |
 | N01 `velocity_parameter_reads` | [Reads.cpp](../../../src/profiles/ess_rs/Reads.cpp) exposes identity/config/state; [Velocity.cpp](../../../src/profiles/ess_rs/Velocity.cpp) stages supplied JOG words. No standalone typed read of JOG_SPEED/ACCELERATION/DECELERATION. | 01 | Closed: `Reads.cpp:342`; ESS software 02 |
 | N02 `homing_parameter_reads` | [Homing.cpp](../../../src/profiles/ess_rs/Homing.cpp) uses supplied prerequisites and staged values, not an independent typed read of auxiliary/method/speeds/ramp/offset. Six missing records, including a two-word offset. | 01 | Closed: `Reads.cpp:355`; ESS software 03 |
-| N03 `position_profile_candidate_staging` | [Position.cpp](../../../src/profiles/ess_rs/Position.cpp) already has a caller-supplied typed profile builder. [MotionProfileApp.h](../../../examples/probe_cli/MotionProfileApp.h) restores only its saved original RAM snapshot; arbitrary checked candidate/archive import after host restart is absent. Do not report the core builder as missing. | 02 | PARTIAL (15 November): `stagePositionMove` writes/readbacks a prepared move without starting. Candidate/archive import and console route remain: standalone 02 |
+| N03 `position_profile_candidate_staging` | [Position.cpp](../../../src/profiles/ess_rs/Position.cpp) already has a caller-supplied typed profile builder. [MotionProfileApp.h](../../../examples/probe_cli/MotionProfileApp.h) restored only its saved original RAM snapshot; arbitrary checked candidate/archive import was absent. | 02 | Closed in software (15 November): `submitProfileCandidate`, ordinary console and host archive route; retained result and fresh prior/write/readback evidence. Hardware remains separate. Historical ledger owner `09/11` is preserved in the operation/report. |
 | N04 `position_start_speed_write` | `buildWritePositionProfile` writes 0x0021/5; start speed at 0x0020 is read but not restored/set. [Position.h](../../../include/MotorControlRS/profiles/ess_rs/Position.h) explicitly treats it as an existing qualified prerequisite. | 02 | Closed: setter exists (`DriverSettings.h:266`); ESS software 04. Restore is still five words |
 | N05 `position_interrupt` | [Position.cpp](../../../src/profiles/ess_rs/Position.cpp) emits noninterrupting position starts; no typed finite-operation/CLI option for MOTION_COMMAND bit 3. Urgent stop is a different operation. | 03 | PARTIAL: `Position.cpp:33`, `:81-85`; `position interrupt ORIGINAL_ID`. Remainder: standalone 03, dispatched as "N05 evidence" |
 | N06 `homing_nonzero_offset` | `prepareHome` rejects nonzero offset/unqualified zero. Sign/order/scale and standalone 0x0035/2 remain unresolved; containing 0x0031/6 supports qualified zero. This is a deliberate guard. | 04,05 | Unresolved: standalone 04 owns evidence and encoding disposition; 05 owns implementation after it |

@@ -13,6 +13,12 @@ The running image hash was not established. See the
 [retained preflight](reports/2026-11-15_multi_drive_08_enable_wait_lifetime.md).
 This does not establish the drives' present power or settings.
 
+Later standalone 02 preflight reached the same board. After one explicit host
+recovery, one address-1 model read again returned NO_RESPONSE (8 TX bytes,
+0 RX bytes). No flash, motor write or motion followed. The new candidate-stage
+regression remains NOT RUN; see the
+[standalone 02 record](reports/2026-11-15_standalone_02_profile_staging.md).
+
 | Item | Recorded setup |
 | --- | --- |
 | Motor | User-confirmed ESS23-RS20; raw model `0x4EEA`, firmware word `0x0029` |

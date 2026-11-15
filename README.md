@@ -27,12 +27,14 @@ maintenance documented in the changelog.
 | Packages | CMake source/install consumers and PlatformIO; C++11, plus C++17 with RTTI disabled |
 
 Typed native coverage is partial. The [API/CLI inventory](docs/ess_api_cli_coverage.md)
-lists five named gaps and 18 guarded paired setters. Current settings do not
+lists four named gaps and 18 guarded paired setters. Current settings do not
 provide torque/current motion; stored segments require external triggers.
 Other manufacturers and CANopen are not implemented.
 
 Recent work adds native velocity/homing reads, start-speed and homing-auxiliary
 setters, stored-profile interruption and 27 switch homing methods. The console
+also stages validated position-profile archives without starting motion; see
+[candidate staging](docs/ess_position.md#candidate-profile-staging). The console
 can install explicit homing, velocity and position-clear qualification facts;
 installation itself sends no motor command. See the [console guide](docs/console.md).
 The [prompt index](docs/prompts/README.md) separates completed work from open work.

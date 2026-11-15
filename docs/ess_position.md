@@ -173,6 +173,58 @@ it does not stage parameters or observe the result. Raw builders remain API-only
 Ordinary CLI moves use `prepareMove*`; the restricted `position interrupt`
 route below uses native intent with an independently retained original witness.
 
+## Candidate profile staging
+
+`submitProfileCandidate`, `copyProfileCandidate` and `releaseProfileCandidate`
+in `ProbeApp.h` stage untrusted raw values through the same owner as prepared
+moves. One dedicated result slot remains occupied until explicit release, even
+after failure or UNKNOWN execution. `releaseOperation` also handles this slot.
+The console uses the same API path:
+
+```text
+motion-profile stage ACC DEC RPM TARGET_W0 TARGET_W1 ORDER ADDRESS [model firmware]
+result ID
+cancel ID
+release ID
+```
+
+ORDER is 0 (high word first) or 1 (low word first). Both optional identity words
+must be supplied together. The address, known word order and optional raw
+model/firmware must match live session evidence before traffic. Imports contain
+no generations or readiness. Admission uses the ordinary start-speed input
+policy below: fresh configuration, stopped state, zero speed, inactive logical
+inputs, passive assignments and declared unconnected nonzero input functions.
+A saved, fresh six-word profile read is required too.
+
+Each candidate takes its own fresh `0x0020/6` read within one three-second
+deadline. Equal five-word values finish `unchanged`, with that read and no write.
+Otherwise the shared staging path writes exactly `0x0021/5` and reads back those
+five words. There is no start, EEPROM save or automatic rollback. `0x0020` is
+unchanged; the archive's start word is advisory. Ramps 0..2000 and RPM 0..3000
+are wire-valid, even when a later move's `PositionLimits` rejects them. The typed
+target range remains +/-`0x0FFFFFFF`. Out-of-range readable words stay visible;
+candidate or original-snapshot restore returns `target_range` before TX.
+Unknown word order cannot authorize a typed write.
+
+A possible write revokes remembered move/interruption words and the start-speed
+relation, and invalidates configuration/state/profile readiness. Refresh these
+reads and explicitly install the relation before a move that needs it. Candidate
+success does not publish a prepared-move witness. The saved drive-read original,
+raw read/restore evidence and its wire qualification remain historical evidence.
+Imported bytes never set the snapshot's `saved`, `original`, `ok` or
+`closureQualified` fields. `motion-profile restore` still uses the original read
+from the drive, independently of the candidate.
+
+Stop, cancel, recovery or rebinding ends unsent work. An in-flight frame settles
+and its evidence remains copied. Cancellation wins over a matching final
+readback. A late queued stage gets no new budget. Ordinary reads and snapshot
+replacement are blocked while the candidate owns its session; urgent stop stays
+available. Lost or partial writes remain UNKNOWN and are never resent.
+
+The Python host owns files; firmware stores none. See the
+[archive commands](../scripts/README.md#position-profile-archives) and
+[implementation report](reports/2026-11-15_standalone_02_profile_staging.md).
+
 <a id="planned-start-speed-setting-and-interruption-not-implemented"></a>
 
 ## Native position start-speed setting

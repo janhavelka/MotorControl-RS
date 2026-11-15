@@ -16,6 +16,11 @@
 
 ### Added
 
+- Validated position-profile candidates and host archive export/import through
+  the ordinary application and console. One retained result, a fresh prior read
+  and one deadline cover five-word staging/readback; no start, save or replay.
+  Start speed remains separate. Shared group staging now keeps parent deadlines
+  and copied failure evidence; target-range refusals are named before writes.
 - Write acknowledgement now uses the same inclusive closure deadline in all
   seven ESS engines. Late replies and supplied execution uncertainty stay UNKNOWN.
   Checked rejected writes preserve evidence without inventing changed settings or

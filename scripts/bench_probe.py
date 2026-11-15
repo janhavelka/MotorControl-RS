@@ -39,7 +39,7 @@ MAX_LINE = 16384
 MAX_INPUT = 32768
 MAX_TRAFFIC_INPUT = 1048576  # Independent finite diagnostic budget per command/drain.
 COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "health", "memory", "stats", "load",
-                      "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "communication", "persistence", "motion-profile", "motion-profile-start-speed", "motion-profile-start-speed-relation", "home-auxiliary", "debug",
+                      "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "communication", "persistence", "motion-profile", "motion-profile-stage", "motion-profile-start-speed", "motion-profile-start-speed-relation", "home-auxiliary", "debug",
                       "home-qualification-install", "home-qualification-revoke", "velocity-qualification-install", "velocity-qualification-revoke",
                       "position-clear-qualification", "position-clear-qualification-install", "position-clear-qualification-revoke",
                       "read-identity", "read-config", "read-state", "velocity-read", "home-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "position-interrupt", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list",
@@ -74,7 +74,7 @@ ADMISSION_FAILURES = frozenset({"busy", "recovery_required", "unavailable", "fai
     "ids_exhausted", "invalid", "already_terminal", "timing_unqualified", "unsupported", "axis_conflict",
     "unresolved", "unimplemented", "qualification_required", "reference_not_ready", "operating_limit", "invalid_arguments", "invalid_address", "invalid_value", "invalid_field",
     "unsupported_policy", "invalid_axis_configuration", "output_full", "output_capacity",
-    "failure_policy_required", "duplicate_address"})
+    "failure_policy_required", "duplicate_address", "target_range"})
 
 
 # The operator states each commissioning fact by name; this harness never supplies one.
@@ -244,6 +244,77 @@ def motion_profile_arguments(tokens: tuple[str, ...]) -> str:
     if not isinstance(tokens, tuple) or len(tokens) != 1 or tokens[0] not in ("read", "inspect", "restore", "forget"):
         raise ValueError("motion-profile requires read, inspect, restore or forget")
     return tokens[0]
+
+
+PROFILE_ARCHIVE_SCHEMA = "MotorControlRS.position-profile.v1"
+PROFILE_ARCHIVE_BYTES = 4096
+
+
+def profile_stage_arguments(tokens: tuple[str, ...]) -> dict:
+    """Five raw candidate words, explicit order/address and optional raw identity."""
+    if (not isinstance(tokens, tuple) or len(tokens) not in (7, 9) or
+            any(type(token) is not str or not token.isascii() or not token.isdigit() for token in tokens)):
+        raise ValueError("motion-profile stage requires ACC DEC RPM W0 W1 ORDER ADDRESS [MODEL FIRMWARE]")
+    values = [int(token) for token in tokens]
+    if any(value > limit for value, limit in zip(values, (2000, 2000, 3000, 65535, 65535, 1, 247, 65535, 65535))):
+        raise ValueError("motion-profile stage value is outside its native range")
+    if values[6] < 1:
+        raise ValueError("motion-profile stage address must be within 1..247")
+    w0, w1, order = values[3:6]
+    bits = (w0 << 16 | w1) if order == 0 else (w1 << 16 | w0)
+    target = bits if bits < 0x80000000 else bits - 0x100000000
+    if not -0x0FFFFFFF <= target <= 0x0FFFFFFF:
+        raise ValueError("motion-profile stage target_range")
+    result = dict(words=values[:5], order=order, address=values[6])
+    if len(values) == 9:
+        result.update(model=values[7], firmware=values[8])
+    return result
+
+
+def profile_archive(data: dict, *, stage: bool = False) -> dict:
+    """Validate file data without treating it as current drive evidence."""
+    required = {"schema", "address", "order", "words"}
+    if (not isinstance(data, dict) or set(data) not in (required, required | {"model", "firmware"}) or
+            data.get("schema") != PROFILE_ARCHIVE_SCHEMA):
+        raise ValueError("invalid position-profile archive schema or fields")
+    if type(data["address"]) is not int or not 1 <= data["address"] <= 247:
+        raise ValueError("invalid position-profile archive address")
+    if type(data["order"]) is not int or data["order"] not in (0, 1):
+        raise ValueError("invalid position-profile archive order")
+    if (not isinstance(data["words"], list) or len(data["words"]) != 6 or
+            any(type(word) is not int or not 0 <= word <= 65535 for word in data["words"])):
+        raise ValueError("position-profile archive needs six raw uint16 words")
+    for key in ("model", "firmware"):
+        if key in data and (type(data[key]) is not int or not 0 <= data[key] <= 65535):
+            raise ValueError("invalid position-profile archive " + key)
+    result = dict(data, words=list(data["words"]))
+    if stage:
+        profile_stage_arguments(profile_archive_arguments(result))
+    return result
+
+
+def profile_archive_arguments(data: dict) -> tuple[str, ...]:
+    """The archived start word is advisory and never sent in the candidate leaf."""
+    values = [*data["words"][1:], data["order"], data["address"]]
+    if "model" in data:
+        values.extend((data["model"], data["firmware"]))
+    return tuple(str(value) for value in values)
+
+
+def load_profile_archive(path: Path) -> dict:
+    with Path(path).open("rb") as stream:
+        raw = stream.read(PROFILE_ARCHIVE_BYTES + 1)
+    if len(raw) > PROFILE_ARCHIVE_BYTES:
+        raise ValueError("position-profile archive exceeds 4096 bytes")
+    return profile_archive(json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object,
+                                      parse_constant=invalid_constant), stage=True)
+
+
+def save_profile_archive(path: Path, data: dict) -> None:
+    data = profile_archive(data)  # Raw reads remain exportable outside typed target range.
+    with Path(path).open("x", encoding="utf-8", newline="\n") as stream:
+        json.dump(data, stream, indent=2)
+        stream.write("\n")
 
 
 def wiring_arguments(tokens: tuple[str, ...]) -> tuple[str, int] | None:
@@ -441,7 +512,7 @@ def driver_arguments(arguments: tuple[str, ...], group: str = "drive") -> dict:
 
 
 def operation_quota(command):
-    return command if command in ("stop", "recover", "group-stop") else "ordinary"
+    return command if command in ("stop", "recover", "group-stop", "motion-profile-stage") else "ordinary"
 
 
 def group_arguments(command: str, tokens: tuple[str, ...]) -> dict:
@@ -1831,7 +1902,7 @@ class Console:
                     "reply omitted profile evidence without an explicit refusal")
             return
         require(item.get("result") == "accepted" if item["ok"] else
-                item.get("result") in ("busy", "recovery_required", "unavailable", "failed", "invalid"),
+                item.get("result") in ("busy", "recovery_required", "unavailable", "failed", "invalid", "target_range"),
                 "invalid command disposition")
         require(item.get("request") == action, "request differs")
         for key in ("pending", "saved", "restored", "session_ok",
@@ -1845,7 +1916,7 @@ class Console:
         for key in ("deadline_us", "delivered_us", "tx_accepted", "closure_earliest_us", "closure_latest_us",
                     "write_tx_accepted", "write_closure_earliest_us", "write_closure_latest_us", "write_delivered_us", "write_deadline_us"):
             require(integer(item.get(key)), "invalid " + key)
-        require(item.get("error") in ("none", "admission", "transaction", "readback_admission", "decode", "readback_mismatch", "stationary_required"),
+        require(item.get("error") in ("none", "admission", "transaction", "readback_admission", "decode", "word_order", "target_range", "readback_mismatch", "stationary_required"),
                 "invalid session error")
         for key in ("original", "current"):
             require(isinstance(item.get(key), list) and len(item[key]) == 6 and
@@ -1963,6 +2034,103 @@ class Console:
                     "write_delivered_us", "write_execution_unknown")
             require(all(item[key] == old[key] for key in keys), "immutable restoration evidence changed")
         self.motion_profile = json.loads(json.dumps(item))
+
+    def _check_profile_stage(self, item: dict, original: Command | None, *, pending: bool = False) -> None:
+        """Validate candidate results from their copied prior/write/readback frames."""
+        def require(condition, message):
+            if not condition:
+                raise BenchError("profile stage: " + message)
+        def integer(value, low=0, high=0xFFFFFFFFFFFFFFFF):
+            return type(value) is int and low <= value <= high
+        require(item.get("profile_stage") is True and item.get("pending") is pending, "invalid operation kind/lifetime")
+        require(not any(item.get(key) for key in ("group", "recovery", "capture_read", "home", "driver", "velocity", "position_interrupt")) and
+                all(item.get(key) is None for key in ("read_kind", "action_kind", "move_kind")), "mixed operation kinds")
+        require(integer(item.get("address"), 1, 247), "invalid target")
+        for key in ("target_generation", "configuration_generation", "serial_generation"):
+            require(integer(item.get(key), 1, 0xFFFFFFFF), "invalid " + key)
+        require(type(item.get("word_order")) is int and item["word_order"] in (0, 1), "invalid word order")
+        for key, count in (("candidate", 5), ("original", 6), ("before", 6), ("readback", 5)):
+            require(isinstance(item.get(key), list) and len(item[key]) == count and
+                    all(integer(word, 0, 65535) for word in item[key]), "invalid " + key)
+        for key in ("staged", "unchanged", "cancelled", "readback_known"):
+            require(type(item.get(key)) is bool, "invalid " + key)
+        for key in ("started_us", "deadline_us", "finished_us"):
+            require(integer(item.get(key)), "invalid " + key)
+        require(item["started_us"] < item["deadline_us"] and
+                (item["finished_us"] == 0 if pending else item["finished_us"] >= item["started_us"]), "invalid immutable budget")
+        require(item.get("execution") in EXECUTIONS, "invalid execution")
+        require(item.get("error") in ("none", "cancelled", "deadline", "prior_read", "admission", "write", "readback_mismatch", "readback_failed"),
+                "invalid error")
+        require(not item["staged"] or (not pending and item["ok"] and not item["cancelled"] and item["error"] == "none"), "false staged result")
+        require(pending or item["ok"] == item["staged"], "terminal success differs from staged result")
+        require(pending or (item["error"] == "none") == item["staged"], "terminal error differs from staged result")
+        require(not item["cancelled"] or (not item["staged"] and item["error"] in ("cancelled", "deadline")), "cancellation lost precedence")
+        try:
+            expected = profile_stage_arguments(tuple(map(str, [*item["candidate"], item["word_order"], item["address"]])))
+        except ValueError as error:
+            raise BenchError("profile stage: invalid admitted candidate") from error
+        if original is not None:
+            supplied = profile_stage_arguments(original.host_args)
+            require(all(expected[key] == supplied[key] for key in ("words", "order", "address")), "candidate differs from admission")
+            saved = getattr(original, "profile_original", None)
+            require(saved is None or item["original"] == saved, "candidate changed drive-read original")
+        evidence = {}
+        for name, size, function, reply_size in (("prior_evidence", 8, 3, 17), ("write_evidence", 19, 16, 8),
+                                                  ("readback_evidence", 8, 3, 15)):
+            entry = item.get(name)
+            require(isinstance(entry, dict), "missing " + name)
+            for key, maximum in (("step", 255), ("event", 3), ("received_length", 0xFFFFFFFF), ("tx_accepted", size),
+                                 ("frame_error", 255), ("earliest_us", 0xFFFFFFFFFFFFFFFF),
+                                 ("latest_us", 0xFFFFFFFFFFFFFFFF), ("delivered_us", 0xFFFFFFFFFFFFFFFF)):
+                require(integer(entry.get(key), 0, maximum), name + " invalid " + key)
+            for key in ("tx_complete", "response_confirmed", "qualified", "execution_unknown"):
+                require(type(entry.get(key)) is bool, name + " invalid " + key)
+            require(entry.get("status") in ("OK", "INVALID_CONFIG", "ILLEGAL_VALUE", "UNSUPPORTED", "CRC_ERROR", "FRAME_ERROR", "EXCEPTION") and
+                    all(integer(entry.get(key), -0x80000000, 0x7FFFFFFF) for key in ("detail", "transport_detail")), name + " invalid status")
+            raw = entry.get("raw_hex")
+            require(type(raw) is str and re.fullmatch(r"(?:[0-9a-fA-F]{2}){0,19}", raw) is not None, name + " invalid raw frame")
+            raw = bytes.fromhex(raw)
+            require(len(raw) == min(entry["received_length"], 19), name + " lost raw evidence")
+            require(not entry["tx_complete"] or entry["tx_accepted"] == size, name + " incomplete TX")
+            if entry["qualified"]:
+                require(entry["event"] == 0 and item["started_us"] <= entry["earliest_us"] <= entry["latest_us"] <= entry["delivered_us"],
+                        name + " invalid closure interval")
+            else:
+                require(entry["earliest_us"] == entry["latest_us"] == 0, name + " unqualified closure bounds")
+            if entry["delivered_us"]:
+                require(entry["delivered_us"] >= item["started_us"] and
+                        (pending or entry["delivered_us"] <= item["finished_us"]), name + " invalid delivery")
+                if entry["event"] == 0:
+                    require(entry["tx_complete"], name + " FRAME lacks physical TX")
+                    require((entry["status"], entry["detail"], entry["frame_error"]) ==
+                            _reply_status(raw, entry["received_length"], item["address"], function, reply_size,
+                                          (0x21, 5) if function == 16 else None), name + " codec result differs")
+                else:
+                    require(not entry["qualified"] and not entry["response_confirmed"], name + " local event claims response")
+            evidence[name] = (entry, raw)
+        prior, prior_raw = evidence["prior_evidence"]
+        write, _ = evidence["write_evidence"]
+        readback, readback_raw = evidence["readback_evidence"]
+        def checked(entry):
+            return (entry["delivered_us"] and entry["event"] == 0 and entry["status"] == "OK" and
+                    entry["qualified"] and entry["response_confirmed"] and entry["tx_complete"] and
+                    not entry["execution_unknown"] and entry["latest_us"] <= item["deadline_us"])
+        if checked(prior):
+            require(item["before"] == [int.from_bytes(prior_raw[i:i+2], "big") for i in range(3, 15, 2)], "before differs from fresh read")
+        require(not write["tx_accepted"] or checked(prior), "write lacks checked fresh prior read")
+        require(not write["qualified"] or write["earliest_us"] >= prior["delivered_us"], "write precedes prior read")
+        if not pending:
+            require(item["execution"] == _evidence.write_execution(write, item["deadline_us"]), "execution differs from raw write evidence")
+        if item["readback_known"] and not item["unchanged"]:
+            require(checked(readback) and item["readback"] == [int.from_bytes(readback_raw[i:i+2], "big") for i in range(3, 13, 2)] and
+                    readback["earliest_us"] >= write["delivered_us"], "readback lacks checked later frame")
+        if item["unchanged"]:
+            require(item["staged"] and item["readback_known"] and checked(prior) and item["before"][1:] == item["candidate"] == item["readback"] and
+                    not write["tx_accepted"] and not write["execution_unknown"] and not readback["tx_accepted"], "false unchanged result")
+        elif item["staged"]:
+            require(item["execution"] == "acknowledged" and item["readback_known"] and item["readback"] == item["candidate"], "staged values lack matching readback")
+        if item["error"] == "readback_mismatch":
+            require(item["readback_known"] and item["readback"] != item["candidate"], "mismatch lacks distinct readback")
 
     @staticmethod
     def _check_useaddr(handle: Command, item: dict) -> None:
@@ -2480,6 +2648,12 @@ class Console:
         may derive them from the checked kind. Pending inspections have no terminal
         payload, but must satisfy the same kind and original-command correlation.
         """
+        candidate = item.get("profile_stage", False)
+        if type(candidate) is not bool or (original is not None and candidate != (original.command == "motion-profile-stage")):
+            raise BenchError("result candidate kind differs from retained operation")
+        if candidate:
+            self._check_profile_stage(item, original, pending=pending)
+            return
         if any(key in item for key in ("replaced_operation_id", "stop_escalation")) and item.get("action_kind") != "stop":
             raise BenchError("ordinary stop retention metadata on another operation kind")
         if "group_kind" in item or (original is not None and original.command in GROUP_OPERATIONS):
@@ -2618,7 +2792,7 @@ class Console:
         if self.clock() >= handle.deadline:
             raise BenchError("command response deadline expired; command was not replayed")
         self.emit("reply", response=item)
-        asynchronous = handle.command in (*READ_COMMANDS, *ACTION_COMMANDS, "recover", *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home", "motion-profile-start-speed", "home-auxiliary", "position-interrupt", *GROUP_OPERATIONS)
+        asynchronous = handle.command in (*READ_COMMANDS, *ACTION_COMMANDS, "recover", *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home", "motion-profile-stage", "motion-profile-start-speed", "home-auxiliary", "position-interrupt", *GROUP_OPERATIONS)
         if asynchronous:
             if item.get("type") == "reply" and not handle.accepted:
                 if not item["ok"]:
@@ -2627,7 +2801,7 @@ class Console:
                     return
                 if item.get("result") != "accepted":
                     raise BenchError(f"{handle.command} acceptance is not explicit")
-                if handle.command in (*READ_COMMANDS, *ACTION_COMMANDS, *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home", "motion-profile-start-speed", "home-auxiliary", "position-interrupt"):
+                if handle.command in (*READ_COMMANDS, *ACTION_COMMANDS, *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home", "motion-profile-stage", "motion-profile-start-speed", "home-auxiliary", "position-interrupt"):
                     address = item.get("address")
                     if (type(address) is not int or not 1 <= address <= 247
                             or (handle.address is not None and address != handle.address)):
@@ -2687,7 +2861,7 @@ class Console:
                             raise BenchError("group stop accepted while both group stops are pending")
                         replaced.released = True
                         del self.operations[replaced.operation_id]
-                if len(self.operations) - int(replaced_stop is not None) >= MAX_OPERATIONS + MAX_STOPS - 1 + MAX_GROUP_STOPS:
+                if len(self.operations) - int(replaced_stop is not None) >= MAX_OPERATIONS + MAX_STOPS - 1 + MAX_GROUP_STOPS + 1:
                     raise BenchError("accepted operation exceeds retained result limit")
                 same_kind = sum(operation_quota(original.command) == quota for original in self.operations.values()) - int(replaced_stop is not None)
                 stop_limit = MAX_STOPS if stop_retention is not None else LEGACY_MAX_STOPS
@@ -2707,7 +2881,7 @@ class Console:
             expected_type = {"probe": "probe", "capture-read": "capture_read", "recover": "recovery",
                              **dict.fromkeys(TYPED_READS, "read"),
                              **dict.fromkeys(ACTION_COMMANDS, "action"), **dict.fromkeys(MOVE_COMMANDS, "move"), "position-interrupt": "move", "velocity": "velocity", "driver": "driver", "io": "io", "segment": "segment", "control": "control", "tuning": "tuning", "home": "home", "motion-profile-start-speed": "motion-profile-start-speed", "home-auxiliary": "home-auxiliary",
-                             **dict.fromkeys(GROUP_OPERATIONS, "group")}[handle.command]
+                             "motion-profile-stage": "profile_stage", **dict.fromkeys(GROUP_OPERATIONS, "group")}[handle.command]
             if item.get("type") != expected_type or not handle.accepted:
                 raise BenchError(f"{handle.command} response sequence is invalid")
             if (not self._operation_id(item.get("operation_id"))
@@ -2828,6 +3002,11 @@ class Console:
             debug_arguments(host_args)
         elif command == "motion-profile":
             motion_profile_arguments(host_args)
+        elif command == "motion-profile-stage":
+            candidate = profile_stage_arguments(host_args)
+            if address is not None and address != candidate["address"]:
+                raise ValueError("motion-profile stage address differs from supplied address")
+            address = candidate["address"]
         elif command == "motion-profile-start-speed":
             position_start_speed_arguments(host_args)
         elif command == "home-auxiliary":
@@ -2887,7 +3066,7 @@ class Console:
                 raise ValueError("monitor requires off or interval 100..60000/count 1..1000")
         if command == "useaddr" and address is None:
             raise ValueError("useaddr requires an explicit ESS address within 1..247")
-        if address is not None and (command not in (*READ_COMMANDS, *ACTION_COMMANDS, *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home", "useaddr") or type(address) is not int
+        if address is not None and (command not in (*READ_COMMANDS, *ACTION_COMMANDS, *MOVE_COMMANDS, "velocity", "driver", "io", "segment", "control", "tuning", "home", "useaddr", "motion-profile-stage") or type(address) is not int
                                     or not 1 <= address <= 247):
             raise ValueError("an ESS probe address must be an integer within 1..247")
         if load is not None:
@@ -2905,7 +3084,8 @@ class Console:
             max(0, sum(h.command == "stop" for h in self.pending.values()) - 1))
         group_extra = MAX_GROUP_STOPS if command == "group-stop" else min(MAX_GROUP_STOPS,
             sum(h.command == "group-stop" for h in self.pending.values()))
-        if len(self.pending) >= MAX_COMMANDS + stop_extra + group_extra:
+        candidate_extra = int(command == "motion-profile-stage" or any(h.command == "motion-profile-stage" for h in self.pending.values()))
+        if len(self.pending) >= MAX_COMMANDS + stop_extra + group_extra + candidate_extra:
             raise BenchError("outstanding command limit reached; wait for a retained handle")
         if self.next_id > 0xFFFFFFFF:
             raise BenchError("request IDs exhausted; start a new inspected session")
@@ -2932,6 +3112,8 @@ class Console:
             handle.driver_args = driver_args
             handle.home_args = home_args
             handle.host_args = host_args
+            if command == "motion-profile-stage" and self.motion_profile and self.motion_profile["saved"] and self.motion_profile["address"] == address:
+                handle.profile_original = list(self.motion_profile["original"])
             if self.serial is not None:
                 known = self.serial["active_known"] and not self.serial["blocked"]
                 handle.serial = dict(known=known, baud=self.serial["active"]["baud"] if known else 0,
@@ -2961,6 +3143,7 @@ class Console:
             if command == "velocity-read": wire_command = "velocity read"
             if command == "home-read": wire_command = "home read"
             if command == "motion-profile-start-speed": wire_command = "motion-profile start-speed"
+            if command == "motion-profile-stage": wire_command = "motion-profile stage"
             if command in QUALIFICATION_ROUTES: wire_command = QUALIFICATION_ROUTES[command]
             if command == "position-clear-qualification": wire_command = "position-clear qualification"
             if command == "home-auxiliary": wire_command = "home auxiliary"
@@ -3796,6 +3979,65 @@ def open_port(name: str, baud: int, timeout_s: float):
     return port
 
 
+def profile_archive_campaign(console: Console, *, action: str, path: Path, address: int,
+                             timeout_s: float, wiring: tuple[tuple[str, str], ...] = (),
+                             candidate: dict | None = None) -> dict:
+    """Export checked raw data, or stage one file candidate after fresh live reads."""
+    if action not in ("export", "stage") or type(address) is not int or not 1 <= address <= 247:
+        raise ValueError("invalid position-profile archive action/address")
+    positive(timeout_s, "profile archive timeout")
+    if action == "stage":
+        candidate = load_profile_archive(path) if candidate is None else profile_archive(candidate, stage=True)
+        if candidate["address"] != address:
+            raise ValueError("position-profile archive address differs from --address")
+    elif wiring or Path(path).exists():
+        raise ValueError("profile export needs a new file and takes no wiring declarations")
+    for pair in wiring:
+        wiring_arguments(tuple(pair))
+    deadline = console.clock() + timeout_s
+    def remaining():
+        value = deadline - console.clock()
+        if value <= 0:
+            raise BenchError("profile archive deadline expired; no write replay")
+        return value
+    def command(name, **kwargs):
+        result = console.command(name, timeout_s=remaining(), **kwargs)
+        if not result["ok"]:
+            raise BenchError(name + " refused before profile archive transfer: " + str(result.get("result", result.get("outcome"))))
+        return result
+    command("useaddr", address=address)
+    for pair in wiring:
+        command("wiring", host_args=tuple(pair))
+    config = command("read-config", address=address)["config"]
+    identity = command("read-identity", address=address)["identity"]
+    if not config["known"]["word_order"]:
+        raise BenchError("profile archive requires known current word order")
+    order = config["raw"]["word_order"]
+    if candidate is not None and (candidate["order"] != order or
+            ("model" in candidate and (candidate["model"] != identity["raw_model"] or
+                                       candidate["firmware"] != identity["raw_version"]))):
+        raise BenchError("profile archive order/model/firmware differs from fresh read")
+    # Reuse the existing bounded read/inspect loop; it never repeats a write.
+    from bench_motion import profile_snapshot
+    snapshot = profile_snapshot(console, "read", remaining())
+    if snapshot["address"] != address:
+        raise BenchError("profile snapshot address differs from requested archive target")
+    if action == "export":
+        archive = dict(schema=PROFILE_ARCHIVE_SCHEMA, address=address, order=order,
+                       words=list(snapshot["current"]), model=identity["raw_model"], firmware=identity["raw_version"])
+        save_profile_archive(path, archive)
+        console.emit("profile_archive", action=action, path=str(path), archive=archive, start_word_advisory=True, ok=True)
+        return archive
+    command("read-state", address=address)
+    handle = console.begin("motion-profile-stage", host_args=profile_archive_arguments(candidate), timeout_s=remaining())
+    result = console.wait(handle)  # Caller consumes/releases the retained result explicitly.
+    console.emit("profile_archive", action=action, path=str(path), archive=candidate, start_word_advisory=True,
+                 operation_id=handle.operation_id, result=result, ok=result["ok"])
+    if not result["ok"]:
+        raise BenchError("profile candidate failed: " + str(result.get("error", result.get("result"))))
+    return result
+
+
 def arguments(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", required=True, help="standalone console port, e.g. COM13")
@@ -3833,8 +4075,11 @@ def arguments(argv: list[str] | None) -> argparse.Namespace:
     persistence_check.add_argument("--finish", action="store_true")
     debug = sub.add_parser("debug", help="query or select non-consuming traffic display")
     debug.add_argument("debug_mode", nargs="?", choices=("off", "raw", "decoded"))
-    motion_profile = sub.add_parser("motion-profile", help="read position parameters, inspect or restore the original snapshot")
-    motion_profile.add_argument("motion_profile_action", choices=("read", "inspect", "restore"))
+    motion_profile = sub.add_parser("motion-profile", help="read/restore a live snapshot or export/stage a host archive; never start motion")
+    motion_profile.add_argument("motion_profile_action", choices=("read", "inspect", "restore", "forget", "export", "stage"))
+    motion_profile.add_argument("archive_file", nargs="?", type=Path, help="new export file or existing stage file; start word is advisory")
+    motion_profile.add_argument("--wiring", action="append", default=[], nargs=2, metavar=("TERMINAL", "STATE"),
+                                help="explicit wiring declaration for stage; never imported from the archive")
     commissioning = sub.add_parser("communication-check", help="finite preview, optional one write and explicitly selected confirmation")
     commissioning.add_argument("field", choices=("address", "baud", "format"))
     commissioning.add_argument("value")
@@ -3950,7 +4195,24 @@ def arguments(argv: list[str] | None) -> argparse.Namespace:
     if result.mode == "debug":
         result.host_args = (result.debug_mode,) if result.debug_mode else ()
     if result.mode == "motion-profile":
-        result.host_args = (result.motion_profile_action,)
+        result.profile_candidate = None
+        action = result.motion_profile_action
+        if (action in ("export", "stage")) != (result.archive_file is not None):
+            parser.error("motion-profile export/stage require a file; other actions take none")
+        if result.wiring and action != "stage":
+            parser.error("motion-profile --wiring applies only to stage")
+        try:
+            for pair in result.wiring:
+                wiring_arguments(tuple(pair))
+            if action == "stage":
+                result.profile_candidate = load_profile_archive(result.archive_file)
+                if result.profile_candidate["address"] != result.address:
+                    raise ValueError("position-profile archive address differs from --address")
+            elif action == "export" and result.archive_file.exists():
+                raise ValueError("profile export will not replace an existing file")
+        except (OSError, ValueError, UnicodeError) as exc:
+            parser.error(str(exc))
+        result.host_args = (action,) if action not in ("export", "stage") else None
     if result.mode == "communication":
         result.host_args = tuple(result.communication_tokens)
         try: communication_arguments(result.host_args)
@@ -4070,9 +4332,14 @@ def main(argv: list[str] | None = None) -> int:
                         if not result["ok"]:
                             raise BenchError("debug command failed")
                     elif args.mode == "motion-profile":
-                        result = console.command("motion-profile", host_args=args.host_args, timeout_s=args.timeout)
-                        if not result["ok"]:
-                            raise BenchError("motion-profile command failed: " + str(result.get("result")))
+                        if args.motion_profile_action in ("export", "stage"):
+                            profile_archive_campaign(console, action=args.motion_profile_action, path=args.archive_file,
+                                address=args.address, timeout_s=args.timeout, wiring=tuple(map(tuple, args.wiring)),
+                                candidate=args.profile_candidate)
+                        else:
+                            result = console.command("motion-profile", host_args=args.host_args, timeout_s=args.timeout)
+                            if not result["ok"]:
+                                raise BenchError("motion-profile command failed: " + str(result.get("result")))
                     elif args.mode in ("discover", "profile-list"):
                         result = console.command(args.mode, host_args=args.host_args if args.mode=="discover" else None, timeout_s=args.timeout)
                         if not result["ok"]:

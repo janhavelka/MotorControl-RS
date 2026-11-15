@@ -6551,13 +6551,348 @@ class DriveGroupRouteTests(unittest.TestCase):
         terminal = console.wait(console.begin("group-move", host_args=GROUP_MOVE_ARGS))
         self.assertEqual(len(terminal["members"]), 15)
 
+PROFILE_STAGE_ARGS = ("20", "40", "100", "0", "7000", "0", "1")
+
+
+def profile_stage_terminal(request_id, *, unchanged=False):
+    """Independent FC03 six words, FC10 0x0021/5, FC03 five words."""
+    before = [30, 50, 50, 60, 0, 5000]
+    candidate = before[1:] if unchanged else [20, 40, 100, 0, 7000]
+    empty = dict(step=0, event=0, raw_hex="", received_length=0, tx_accepted=0,
+        tx_complete=False, response_confirmed=False, qualified=False, execution_unknown=False,
+        earliest_us=0, latest_us=0, delivered_us=0, transport_detail=0, status="OK", detail=0, frame_error=0)
+    def evidence(step, prefix, tx_size, start):
+        raw = bytes(prefix)
+        raw += bench.wire_crc(raw).to_bytes(2, "little")
+        return dict(empty, step=step, raw_hex=raw.hex(), received_length=len(raw), tx_accepted=tx_size,
+            tx_complete=True, response_confirmed=True, qualified=True,
+            earliest_us=start, latest_us=start+20, delivered_us=start+40)
+    return reply(request_id, "motion-profile-stage", type="profile_stage", command_id=request_id,
+        operation_id=request_id+100, profile_stage=True, recovery=False, address=1, target_generation=9,
+        configuration_generation=3, serial_generation=1, pending=False, staged=True, unchanged=unchanged,
+        cancelled=False, execution="not_transmitted" if unchanged else "acknowledged", error="none",
+        word_order=0, candidate=candidate, original=list(before), before=before,
+        readback=list(candidate), readback_known=True,
+        started_us=1000, deadline_us=10000, finished_us=1240 if unchanged else 1640,
+        prior_evidence=evidence(0, bytes((1,3,12))+b"".join(w.to_bytes(2,"big") for w in before), 8, 1200),
+        write_evidence=dict(empty) if unchanged else evidence(0, (1,16,0,0x21,0,5), 19, 1400),
+        readback_evidence=dict(empty) if unchanged else evidence(1, bytes((1,3,10))+b"".join(w.to_bytes(2,"big") for w in candidate),8,1600))
+
+
+class ProfileArchiveTests(unittest.TestCase):
+    session = Framing.session
+
+    @staticmethod
+    def archive():
+        return dict(schema=bench.PROFILE_ARCHIVE_SCHEMA, address=1, order=0,
+                    words=[3000,20,40,100,0,7000], model=0x4EEA, firmware=0x1234)
+
+    @staticmethod
+    def route_stage(terminal, *, mutate_result=None):
+        retained = {}
+        def handler(i, command, args):
+            if command == "motion-profile" and args[0] == "stage":
+                item = copy.deepcopy(terminal)
+                item.update(id=i, command_id=i, operation_id=i+100)
+                retained[i+100] = item
+                return encoded(reply(i,"motion-profile-stage",result="accepted",operation_id=i+100,address=1))+encoded(item)
+            if command == "result":
+                item = dict(retained[int(args[0])], id=i, command="result",type="reply")
+                if mutate_result: mutate_result(item)
+                return encoded(item)
+            if command == "release": retained.pop(int(args[0]),None)
+            return Serial.normal(i,command,args)
+        return handler
+
+    def test_archive_roundtrip_raw_start_is_advisory_and_no_generations(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"profile.json"
+            saved=self.archive()
+            bench.save_profile_archive(path,saved)
+            loaded=bench.load_profile_archive(path)
+            self.assertEqual(loaded,saved)
+            self.assertEqual(bench.profile_archive_arguments(loaded),(*PROFILE_STAGE_ARGS,"20202","4660"))
+            loaded["words"][0]=65535
+            self.assertEqual(bench.profile_archive_arguments(loaded),bench.profile_archive_arguments(saved))
+            with self.assertRaises(FileExistsError): bench.save_profile_archive(path,saved)
+
+    def test_archive_rejects_extra_fields_wrong_types_and_unbounded_files(self):
+        mutations=(lambda x:x.update(generation=9),lambda x:x.update(saved=True),lambda x:x.update(schema="other"),
+            lambda x:x.update(address=True),lambda x:x.update(address=0),lambda x:x.update(address=248),
+            lambda x:x.update(order=True),lambda x:x.update(order=2),lambda x:x.update(words=x["words"][:5]),
+            lambda x:x["words"].__setitem__(0,1.0),lambda x:x["words"].__setitem__(3,False),
+            lambda x:x.update(model=-1),lambda x:x.pop("firmware"),lambda x:x.update(firmware=65536))
+        for mutate in mutations:
+            data=self.archive();mutate(data)
+            with self.subTest(mutate=mutate),self.assertRaises(ValueError): bench.profile_archive(data,stage=True)
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"profile.json"
+            for raw in ('{"schema":1,"schema":2}', '{"words":NaN}', ' '*4097, '[]'):
+                path.write_text(raw)
+                with self.assertRaises(ValueError): bench.load_profile_archive(path)
+
+    def test_raw_out_of_range_export_is_retained_but_stage_names_target_range(self):
+        for order, words in ((0,[0x1000,0]),(1,[0,0x1000])):
+            data=self.archive();data.update(order=order);data["words"][4:]=words
+            with tempfile.TemporaryDirectory() as temp:
+                path=Path(temp)/"raw.json";bench.save_profile_archive(path,data)
+                self.assertEqual(json.loads(path.read_text())["words"],data["words"])
+                with self.assertRaisesRegex(ValueError,"target_range"): bench.load_profile_archive(path)
+        # Above default motion policy, but within native wire bounds: staging is valid.
+        data=self.archive();data["words"][3]=3000
+        self.assertEqual(bench.profile_archive(data,stage=True)["words"][3],3000)
+
+    def test_stage_grammar_bounds_and_mismatched_address_send_nothing(self):
+        console=self.session();before=len(self.port.writes)
+        for tokens in (None,(),PROFILE_STAGE_ARGS[:6],(*PROFILE_STAGE_ARGS,"1"),
+                       ("2001",*PROFILE_STAGE_ARGS[1:]),(*PROFILE_STAGE_ARGS[:5],"2","1"),
+                       (*PROFILE_STAGE_ARGS[:3],"4096","0","0","1"),
+                       (*PROFILE_STAGE_ARGS[:6],"0"),(*PROFILE_STAGE_ARGS[:6],"1\nstop")):
+            with self.assertRaises(ValueError): console.begin("motion-profile-stage",host_args=tokens)
+        with self.assertRaises(ValueError): console.begin("motion-profile-stage",host_args=PROFILE_STAGE_ARGS,address=2)
+        self.assertEqual(len(self.port.writes),before)
+        console.next_id=0xFFFFFFFF
+        line=f"@{console.next_id} motion-profile stage {' '.join(PROFILE_STAGE_ARGS)} 65535 65535"
+        self.assertLess(len(line),128);self.assertLessEqual(len(line.split()),22)
+
+    def test_success_and_unchanged_results_are_retained_until_explicit_release(self):
+        for unchanged in (False,True):
+            terminal=profile_stage_terminal(2,unchanged=unchanged)
+            tokens=tuple(map(str,[*terminal["candidate"],0,1]))
+            console=self.session(self.route_stage(terminal))
+            handle=console.begin("motion-profile-stage",host_args=tokens)
+            result=console.wait(handle)
+            self.assertTrue(result["staged"]);self.assertEqual(result["unchanged"],unchanged)
+            self.assertIn(handle.operation_id,console.operations)
+            inspected=console.command("result",operation_id=handle.operation_id)
+            self.assertEqual(inspected["candidate"],terminal["candidate"])
+            console.command("release",operation_id=handle.operation_id)
+            self.assertNotIn(handle.operation_id,console.operations)
+            writes=[line.decode().split()[1:] for line in self.port.writes]
+            self.assertEqual(sum(line[:2]==["motion-profile","stage"] for line in writes),1)
+            self.assertFalse(any(line[0] in ("move","enable","save","recover") for line in writes))
+
+    def test_write_uncertainty_and_cancelled_readback_remain_failed_without_replay(self):
+        for case in ("lost-ack","partial-tx","cancelled"):
+            cancellation=case=="cancelled"
+            item=profile_stage_terminal(2)
+            item.update(ok=False,staged=False,error="cancelled" if cancellation else "write",cancelled=cancellation)
+            if not cancellation:
+                item["write_evidence"].update(event=2,raw_hex="",received_length=0,response_confirmed=False,
+                    qualified=False,execution_unknown=True,earliest_us=0,latest_us=0)
+                item.update(execution="unknown",readback_known=False,readback=[0]*5)
+                item["readback_evidence"]=dict(profile_stage_terminal(2,unchanged=True)["readback_evidence"])
+                if case=="partial-tx":item["write_evidence"].update(tx_accepted=3,tx_complete=False)
+            console=self.session(self.route_stage(item))
+            handle=console.begin("motion-profile-stage",host_args=PROFILE_STAGE_ARGS)
+            result=console.wait(handle)
+            self.assertFalse(result["ok"]);self.assertEqual(result["execution"],item["execution"])
+            self.assertEqual(len(self.port.writes),2)
+            console.command("result",operation_id=handle.operation_id)
+            self.assertEqual(len(self.port.writes),3)
+
+    def test_corrupted_or_invented_candidate_proof_is_rejected(self):
+        mutations=(lambda x:x.update(staged=False),lambda x:x.update(cancelled=True),
+            lambda x:x.update(execution="not_transmitted"),lambda x:x.update(readback_known=False),
+            lambda x:x.update(profile_stage=False),lambda x:x.update(home=True),lambda x:x.update(word_order=1),
+            lambda x:x["before"].__setitem__(2,99),lambda x:x["readback"].__setitem__(1,99),
+            lambda x:x["write_evidence"].update(raw_hex="01100021000491C2"),
+            lambda x:x["prior_evidence"].update(latest_us=11000,delivered_us=11000),
+            lambda x:x["write_evidence"].update(execution_unknown=True),
+            lambda x:x["readback_evidence"].update(delivered_us=99999))
+        for mutate in mutations:
+            item=profile_stage_terminal(2);mutate(item)
+            console=self.session(self.route_stage(item))
+            with self.subTest(mutate=mutate),self.assertRaises(bench.BenchError):
+                console.command("motion-profile-stage",host_args=PROFILE_STAGE_ARGS)
+
+    def test_result_after_host_restart_and_immutable_terminal(self):
+        item=profile_stage_terminal(2)
+        def handler(i,command,args):
+            if command=="result":return encoded(dict(item,id=i,command="result",type="reply"))
+            return Serial.normal(i,command,args)
+        console=self.session(handler)
+        self.assertTrue(console.command("result",operation_id=102)["staged"])
+        console=self.session(self.route_stage(item,mutate_result=lambda x:x.update(deadline_us=10001)))
+        handle=console.begin("motion-profile-stage",host_args=PROFILE_STAGE_ARGS);console.wait(handle)
+        with self.assertRaisesRegex(bench.BenchError,"immutable retained terminal"):
+            console.command("result",operation_id=handle.operation_id)
+
+    def test_dedicated_candidate_result_quota_rejects_silent_replacement(self):
+        console=self.session(self.route_stage(profile_stage_terminal(2)))
+        console.wait(console.begin("motion-profile-stage",host_args=PROFILE_STAGE_ARGS))
+        self.assertEqual(bench.operation_quota("motion-profile-stage"),"motion-profile-stage")
+        with self.assertRaisesRegex(bench.BenchError,"retained result quota"):
+            console.begin("motion-profile-stage",host_args=PROFILE_STAGE_ARGS)
+
+    def test_archive_cli_loads_before_port_access_and_rejects_mismatched_address(self):
+        prefix=["--port","fake","--log","unused.jsonl"]
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"profile.json";bench.save_profile_archive(path,self.archive())
+            args=bench.arguments(prefix+["motion-profile","stage",str(path),"--wiring","x0","unconnected"])
+            self.assertEqual(args.profile_candidate,self.archive())
+            self.assertEqual(args.wiring,[["x0","unconnected"]])
+            with redirect_stderr(io.StringIO()):
+                for tail in (("motion-profile","stage"),("motion-profile","export",str(path)),
+                             ("motion-profile","read",str(path)),
+                             ("--address","2","motion-profile","stage",str(path))):
+                    with self.assertRaises(SystemExit):bench.arguments(prefix+list(tail))
+
+    @staticmethod
+    def transfer_handler(*, profile_failure=False, stage_failure=False):
+        terminal=profile_stage_terminal(2)
+        if stage_failure:
+            terminal.update(ok=False,staged=False,error="write",execution="unknown",readback_known=False,readback=[0]*5)
+            terminal["write_evidence"].update(event=2,raw_hex="",received_length=0,response_confirmed=False,
+                qualified=False,execution_unknown=True,earliest_us=0,latest_us=0)
+            terminal["readback_evidence"]=dict(profile_stage_terminal(2,unchanged=True)["readback_evidence"])
+        stage=ProfileArchiveTests.route_stage(terminal)
+        def handler(i,command,args):
+            if command=="useaddr":return encoded(reply(i,command,result="done",operation_id=0,address=int(args[0])))
+            if command=="wiring":return encoded(reply(i,command,result="done",target=1,address=1,generation=9,
+                configuration_generation=3,inputs=[1,0,0,0],outputs=[0,0],bus_traffic=False))
+            if command=="read":
+                kind=args[0];item=typed_terminal(i,kind)
+                if kind=="config":
+                    item["config"]["raw"]["word_order"]=0
+                    prefix=bytes((1,3,6,0,1,0,1,0,0))
+                    item["steps"][2]["rx"]=(prefix+bench.wire_crc(prefix).to_bytes(2,"little")).hex()
+                return encoded(reply(i,item["command"],result="accepted",operation_id=i+100,address=1,read_kind=kind))+encoded(item)
+            if command=="motion-profile" and args[0]!="stage":
+                item=motion_profile_reply(i,args[0],pending=args[0]=="read")
+                if profile_failure:item.update(ok=False,result="busy")
+                return encoded(item)
+            return stage(i,command,args)
+        return handler
+
+    def test_export_and_fresh_host_import_use_checked_reads_and_one_explicit_stage(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"profile.json"
+            console=self.session(self.transfer_handler())
+            exported=bench.profile_archive_campaign(console,action="export",path=path,address=1,timeout_s=1)
+            self.assertEqual(exported["words"],[30,50,50,60,0,5000])
+            first=[line.decode().split()[1:] for line in self.port.writes]
+            self.assertFalse(any(line[:2]==["motion-profile","stage"] for line in first))
+            # New host process/state: only the file carries candidate bytes.
+            candidate=self.archive();path.write_text(json.dumps(candidate))
+            console=self.session(self.transfer_handler())
+            result=bench.profile_archive_campaign(console,action="stage",path=path,address=1,timeout_s=1,
+                                                  wiring=(("x0","unconnected"),))
+            self.assertTrue(result["staged"]);self.assertIn(result["operation_id"],console.operations)
+            sent=[line.decode().split()[1:] for line in self.port.writes]
+            self.assertEqual(sent[-1],["motion-profile","stage",*PROFILE_STAGE_ARGS,"20202","4660"])
+            self.assertEqual([line[:2] for line in sent if line[0]=="read"],[["read","config"],["read","identity"],["read","state"]])
+            self.assertEqual([line for line in sent if line[0]=="wiring"],[["wiring","x0","unconnected"]])
+            self.assertFalse(any(line[0] in ("move","enable","save","recover","stop") for line in sent))
+            self.assertNotIn(["release",str(result["operation_id"])],sent)
+            self.assertEqual(console.motion_profile["original"],exported["words"])
+
+    def test_fresh_binding_mismatches_and_failed_snapshot_never_submit_candidate(self):
+        for key in ("order","model","firmware","address","snapshot"):
+            console=self.session(self.transfer_handler(profile_failure=key=="snapshot"))
+            candidate=self.archive()
+            if key=="order":candidate.update(order=1);candidate["words"][4:]=[7000,0]
+            elif key in ("model","firmware"):candidate[key]+=1
+            elif key=="address":candidate["address"]=2
+            with tempfile.TemporaryDirectory() as temp,self.subTest(key=key):
+                path=Path(temp)/"candidate.json";bench.save_profile_archive(path,candidate)
+                with self.assertRaises((ValueError,bench.BenchError)):
+                    bench.profile_archive_campaign(console,action="stage",path=path,address=1,timeout_s=1)
+            self.assertFalse(any(b"motion-profile stage" in line for line in self.port.writes))
+
+    def test_failed_archive_stage_keeps_unknown_result_and_sends_no_rollback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"candidate.json";bench.save_profile_archive(path,self.archive())
+            console=self.session(self.transfer_handler(stage_failure=True))
+            with self.assertRaisesRegex(bench.BenchError,"profile candidate failed"):
+                bench.profile_archive_campaign(console,action="stage",path=path,address=1,timeout_s=1)
+            retained=list(console.operations.values())
+            self.assertEqual(len(retained),1);self.assertEqual(retained[0].terminal["execution"],"unknown")
+            sent=[line.decode().split()[1:] for line in self.port.writes]
+            self.assertEqual(sum(line[:2]==["motion-profile","stage"] for line in sent),1)
+            self.assertFalse(any(line[:2] in (["motion-profile","restore"],["recover"],["stop","fast"]) for line in sent))
+
+    def test_restore_target_range_refusal_preserves_raw_snapshot_evidence(self):
+        def handler(i,command,args):
+            if command!="motion-profile":return Serial.normal(i,command,args)
+            item=motion_profile_reply(i,args[0])
+            item["original"][4:]=item["current"][4:]=[0x1000,0]
+            prefix=bytes((1,3,12))+b"".join(w.to_bytes(2,"big") for w in item["current"])
+            item["rx_hex"]=(prefix+bench.wire_crc(prefix).to_bytes(2,"little")).hex()
+            if args[0]=="restore":item.update(ok=False,result="target_range")
+            return encoded(item)
+        console=self.session(handler)
+        original=console.command("motion-profile",host_args=("inspect",))
+        refused=console.command("motion-profile",host_args=("restore",))
+        self.assertEqual(refused["result"],"target_range")
+        for key in ("original","current","rx_hex","deadline_us","session_ok","error"):
+            self.assertEqual(refused[key],original[key])
+
+
+def check_profile_stage_fixtures(executables):
+    """Feed production Arduino/IDF result JSON through the ordinary host routes."""
+    assert len(executables)==2 and Path(executables[0]).resolve()!=Path(executables[1]).resolve()
+    by_frontend=[]
+    for executable in executables:
+        records=[]
+        for scenario in ("success","unchanged","lost-ack","cancelled","malformed-prior","malformed-write","malformed-readback"):
+            output=subprocess.check_output([executable,"--emit-profile-stage",scenario],text=True,timeout=10)
+            assert len(output.encode("utf-8"))<=bench.MAX_LINE
+            record=json.loads(output,object_pairs_hook=bench.unique_object)
+            assert record["type"]=="reply" and record["command"]=="result" and record["profile_stage"] is True
+            clock=Clock();port=Serial()
+            console=bench.Console(port,clock=clock,sleeper=clock.sleep)
+            console._check_profile_stage(record,None)
+            assert record["staged"]==(scenario in ("success","unchanged"))
+            assert record["unchanged"]==(scenario=="unchanged")
+            assert record["execution"]==("not_transmitted" if scenario in ("unchanged","malformed-prior") else
+                                         "unknown" if scenario in ("lost-ack","malformed-write") else "acknowledged")
+            assert record["cancelled"]==(scenario=="cancelled")
+            terminal=dict(copy.deepcopy(record),type="profile_stage",command="motion-profile-stage")
+            tokens=tuple(map(str,[*record["candidate"],record["word_order"],record["address"]]))
+            port=Serial(ProfileArchiveTests.route_stage(terminal),fragment=17)
+            console=bench.Console(port,clock=clock,sleeper=clock.sleep)
+            console.identify(timeout_s=.1)
+            handle=console.begin("motion-profile-stage",host_args=tokens,timeout_s=.1)
+            live=console.wait(handle)
+            inspected=console.command("result",operation_id=handle.operation_id,timeout_s=.1)
+            for key in ("prior_evidence","write_evidence","readback_evidence","before","original","candidate"):
+                assert live[key]==inspected[key]==record[key]
+            assert len(port.writes)==3 and handle.operation_id in console.operations
+            records.append(record)
+        for restored in (False,True):
+            args=[executable,"--emit-profile-snapshot-after-stage"]+(["restored"] if restored else [])
+            output=subprocess.check_output(args,text=True,timeout=10)
+            assert len(output.encode("utf-8"))<=bench.MAX_LINE
+            record=json.loads(output,object_pairs_hook=bench.unique_object)
+            assert record["command"]=="motion-profile" and record["request"]=="inspect"
+            assert not record["session_ok"] and not record["restored"] and record["closure_qualified"]
+            clock=Clock()
+            def handler(i,command,args):
+                return encoded(dict(record,id=i)) if command=="motion-profile" else Serial.normal(i,command,args)
+            port=Serial(handler,fragment=17)
+            console=bench.Console(port,clock=clock,sleeper=clock.sleep)
+            console.identify(timeout_s=.1)
+            inspected=console.command("motion-profile",host_args=("inspect",),timeout_s=.1)
+            assert inspected["original"]==record["original"] and inspected["rx_hex"]==record["rx_hex"]
+            records.append(record)
+        by_frontend.append(records)
+    assert by_frontend[0]==by_frontend[1],"Arduino/IDF production candidate evidence differs"
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--position-interrupt-fixtures":
-        if len(sys.argv) not in (4, 9) or (len(sys.argv) == 9 and sys.argv[4] != "--stop-recovery-fixtures"):
-            raise ValueError("expected two position-interrupt and optionally four stop-recovery fixtures")
+        if (len(sys.argv) not in (4,9,12) or (len(sys.argv)>=9 and sys.argv[4]!="--stop-recovery-fixtures") or
+                (len(sys.argv)==12 and sys.argv[9]!="--profile-stage-fixtures")):
+            raise ValueError("expected interruption, optional recovery and optional candidate fixture paths")
         check_position_interrupt_fixtures(sys.argv[2:4])
-        if len(sys.argv) == 9:
-            check_stop_recovery_fixtures(sys.argv[5:])
+        if len(sys.argv)>=9:
+            check_stop_recovery_fixtures(sys.argv[5:9])
+        if len(sys.argv)==12:
+            check_profile_stage_fixtures(sys.argv[10:12])
+        unittest.main(argv=[sys.argv[0]])
+    elif len(sys.argv)==4 and sys.argv[1]=="--profile-stage-fixtures":
+        check_profile_stage_fixtures(sys.argv[2:4])
         unittest.main(argv=[sys.argv[0]])
     else:
         unittest.main()

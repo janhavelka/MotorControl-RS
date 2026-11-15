@@ -4,6 +4,11 @@
 and verified. Remaining source, qualification and physical findings retain their
 owners below; processed does not mean the whole promptset is complete.
 
+Later follow-up: [standalone 02](2026-11-15_standalone_02_profile_staging.md)
+delivers N03 candidate/archive staging and R-08's named target-range refusal.
+Its software checks and pending board regression are recorded there. The
+findings below retain the state inspected during this audit.
+
 Baseline: `13cf955` on `main`. This review checks the findings in the
 [2 November independent audit](2026-11-02_standalone_promptset_audit.md)
 against current code and its callers/tests. It also checks the shared ESS C
@@ -62,7 +67,8 @@ required implementation.
 
 [15 stop/recovery](../archive/prompts/standalone/15_stop_recovery.md) and
 [16 evidence/qualification](../archive/prompts/standalone/16_evidence_qualification.md)
-are completed software. Next is [02 candidate staging](../prompts/standalone/02_profile_staging.md).
+are completed software. The later stage 02 delivery is linked above; next is
+the [14 bench regression](../prompts/standalone/14_bench_regression.md).
 [17 cleanup](../prompts/standalone/17_application_cleanup.md) is optional at
 tested boundaries. Existing stages keep their source/physical work.
 

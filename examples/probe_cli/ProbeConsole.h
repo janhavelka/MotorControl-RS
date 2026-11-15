@@ -12,6 +12,7 @@
 #include "DiscoveryScan.h"
 #include "QualificationConsole.h"
 #include "DriveGroup.h"
+#include "ProfileCandidate.h"
 #include "MotorControlRS/profiles/ess_rs/Codec.h"
 #include "MotorControlRS/profiles/ess_rs/Reads.h"
 #include "MotorControlRS/profiles/ess_rs/Actions.h"
@@ -41,7 +42,7 @@ constexpr uint16_t CAPTURE_FIRST = 0x0130, CAPTURE_WORDS = 16;
 /** Host action result; admitted reads and recovery complete asynchronously. */
 enum class Action : uint8_t { OK, BUSY, RECOVERY_REQUIRED, UNAVAILABLE, FAILED,
     QUEUE_FULL, RESULTS_FULL, IDS_EXHAUSTED, INVALID, ALREADY_TERMINAL,
-    TIMING_UNQUALIFIED, UNSUPPORTED, AXIS_CONFLICT, UNRESOLVED, UNIMPLEMENTED, QUALIFICATION_REQUIRED, REFERENCE_NOT_READY, OPERATING_LIMIT };
+    TIMING_UNQUALIFIED, UNSUPPORTED, AXIS_CONFLICT, UNRESOLVED, UNIMPLEMENTED, QUALIFICATION_REQUIRED, REFERENCE_NOT_READY, OPERATING_LIMIT, TARGET_RANGE };
 
 enum class DebugMode : uint8_t { OFF, RAW, DECODED };
 /** Presentation only; \@ID commands always select JSON independently. */
@@ -275,6 +276,7 @@ struct ProbeResult {
  * Raw frame pointers are borrowed only
  * until the result callback's caller finishes formatting this view. */
 struct ResultView {
+    const ProfileCandidateResult* profileStage = nullptr;
     const SimpleMotionView* simpleMotion = nullptr;
     HostTuple serialTuple;
     uint32_t serialGeneration = 0; ///< Zero means historical tuple unavailable.
@@ -385,6 +387,7 @@ struct Host {
     Action (*discovery)(void*, const DiscoveryCommand*, DiscoveryView&) = nullptr;
     Action (*debug)(void*, const DebugMode* requested, DebugSnapshot&) = nullptr;
     Action (*motionProfile)(void*, MotionProfileCommand, MotionProfileView&) = nullptr;
+    Action (*stageProfile)(void*, uint32_t commandId, const ProfileCandidate&, uint32_t& operationId) = nullptr;
     /** Drive group. SHOW, STATUS, CLEAR and WIRING are synchronous host
      * declarations without bus traffic. SET, MOVE, STOP and READ_STATE admit one
      * group operation whose terminal is reported once with reportGroup. Each
@@ -455,6 +458,8 @@ public:
                     bool interruptedByStop = false, const HostTuple* tuple = nullptr, uint32_t serialGeneration = 0) noexcept;
     bool reportGroup(uint32_t id, uint32_t operationId, const GroupResult&,
                      const HostTuple* tuple = nullptr, uint32_t serialGeneration = 0) noexcept;
+    bool reportProfileStage(uint32_t id, uint32_t operationId, const ProfileCandidateResult&,
+                            const HostTuple* tuple = nullptr, uint32_t serialGeneration = 0) noexcept;
 
 private:
     bool formatSimpleMotion(uint32_t id, const SimpleMotionView&, bool inspection) noexcept;
@@ -477,6 +482,7 @@ private:
     void group(uint32_t id, const char* const* tokens, std::size_t count) noexcept;
     bool formatGroup(uint32_t id, uint32_t commandId, uint32_t operationId, const GroupResult&, bool inspection) noexcept;
     bool formatGroupView(uint32_t id, const char* command, Action result, const GroupView*) noexcept;
+    bool formatProfileStage(uint32_t id, uint32_t commandId, const ProfileCandidateResult&, bool inspection) noexcept;
     void untrack(uint32_t operationId) noexcept;
     bool formatBroadcast(uint32_t id, uint32_t commandId, uint32_t operationId,
                          const ProbeResult& result, bool inspection) noexcept;

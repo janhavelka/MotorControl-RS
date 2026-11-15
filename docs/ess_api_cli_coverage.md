@@ -39,8 +39,8 @@ remain NOT RUN. Raw DIP interpretation remains unresolved; reading a writable
 setting still creates no setter credit. The documented auxiliary INVALID value
 is explicitly no-operation metadata, not a missing command to implement.
 
-The checked inventory retains 221 records/242 words, 135 choices, 54 producing
-operation rows and five named gaps. It accounts for 201 implemented reads and
+The checked inventory retains 221 records/242 words, 135 choices, 55 producing
+operation rows and four named gaps. It accounts for 201 implemented reads and
 zero missing readable-record implementations; 172 implemented writes, zero missing writes, three partial
 write registers and 18 guarded pair writes. Sixteen reserved records and two
 unspecified-access records remain visible. Choice totals are 121 implemented
@@ -51,7 +51,7 @@ device or physical qualification.
 | Public role | Existing callable surface | Console relationship |
 | --- | --- | --- |
 | Typed device operations | ESS read/action/move/velocity/home/settings/communication/persistence preparations; common wrappers reuse ESS preparations | Producing common/profile routes call these functions through one application owner |
-| Typed position profile | `buildReadPositionProfile`, `parsePositionProfile`, `buildWritePositionProfile` | `motion-profile read/inspect/restore/forget` and `start-speed NATIVE` manage an original six-word snapshot; explicit start-speed uses its single-word settings operation; restore writes only `0x0021/5`; arbitrary candidate/archive staging remains a named gap; forget is local release |
+| Typed position profile | `buildReadPositionProfile`, `parsePositionProfile`, `buildWritePositionProfile`; application `submitProfileCandidate` / `copyProfileCandidate` / `releaseProfileCandidate` | `motion-profile read/inspect/restore/forget`, `stage ACC DEC RPM TARGET_W0 TARGET_W1 ORDER ADDRESS [model firmware]` and `start-speed NATIVE`; candidate/restore write only `0x0021/5`, start speed is separate; forget is local snapshot release |
 | Sequencers | `next*`, `advance*`, `serviceVelocity`, settings write deadline and persistence verification | Cooperatively executed by the owner; inspecting a context is not a second device operation |
 | Observations | Checked `getIdentity/getConfig/getStateBlock/getVelocityParameters/getHomingParameters`, settings observations, `checkProbe`, `getHomeReference` | Terminal/result/status formatting uses retained evidence; reads and cached inspection remain separate |
 | Host configuration | `validateAxisConfig/configureAxis/setAxisOrigin/invalidateAxisReference`; explicitly assumed bench units | Axis commands change host interpretation, with idle/reference/generation rules; no implicit device write |
@@ -139,8 +139,10 @@ An old saved motion profile cannot restore into a new binding. Explicit idle
 operations, transport faults or physical reservations; archive/restore originals
 before discarding a snapshot that is still needed. Both bare and explicit ESS
 routes use the same checked snapshot/restoration callback. The public builder
-can encode valid caller-supplied profiles, but the console currently supplies
-only its retained original snapshot; it has no arbitrary staging/archive import.
+encodes valid caller-supplied profiles. The separate candidate route accepts
+validated archives with fresh live reads, one immutable deadline and one retained
+result slot. It never replaces the original snapshot with imported data. See
+[candidate staging](ess_position.md#candidate-profile-staging).
 
 An accepted restore reserves the axis until matching readback settles it.
 `restore_unsettled` remains visible after failed/uncertain transport and blocks
@@ -184,7 +186,6 @@ The remaining gaps are tracked by feature, independently of hardware evidence:
 | Area | Open obligation | Actual boundary |
 | --- | --- | --- |
 | Position | Native ignore-versus-interrupt position command | PARTIAL: typed bit-3 core and ordinary owner/app/CLI admit only qualified exact native stored retrigger, ACK-only, with independent retained results and stop priority. Broader staging/completion attribution remains evidence-gated. |
-| Position | Arbitrary native five-word profile candidates and archived restoration | Typed builder exists, but CLI restoration accepts only the volatile original snapshot; finite-move staging is not standalone parameter access |
 | Homing | Unresolved homing methods | 30 implemented, zero unimplemented, five unresolved (18 and -4..-1); physical switch/index qualification remains separate from software support |
 | Homing | Nonzero homing offset and additional paired-write forms | Zero-only reviewed staging does not resolve offset order, signedness or units |
 | Settings | Limit and stored-position paired setters | Reviewed write restrictions stay in the source denominator; no split FC06 workaround |

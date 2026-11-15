@@ -64,8 +64,11 @@ Probe::Action motionProfileOperation(App& a, App::MotionProfileState& session, P
     if (view.saved && !motionProfileEndpoint(a, session) && !(reconcile && view.address == a.axis.target.address &&
         std::memcmp(&session.configuration, &a.configuration.raw, sizeof(session.configuration)) == 0))
         return Probe::Action::UNAVAILABLE;
-    if (restore && (!motionProfileEndpoint(a, session) || !motionProfileStationary(a, nowUs()) ||
+    if (restore && (!a.configuration.wordOrderKnown || !motionProfileEndpoint(a, session) || !motionProfileStationary(a, nowUs()) ||
         axisReserved(a, a.axis.target.address))) return Probe::Action::UNAVAILABLE;
+    if (restore && !profileTargetInRange(view.original + 4, a.configuration.wordOrder)) {
+        return Probe::Action::TARGET_RANGE;
+    }
     if (!view.saved) session.configuration = a.configuration.raw;
     view.address = a.axis.target.address;
     view.generation = a.axis.generation;

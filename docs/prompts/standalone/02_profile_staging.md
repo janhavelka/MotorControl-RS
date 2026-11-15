@@ -1,5 +1,10 @@
 # 02 - Stage a position profile without starting motion
 
+Software delivered on 15 November 2026; see the [stage table](README.md#stage-status)
+and [verification report](../../reports/2026-11-15_standalone_02_profile_staging.md).
+The instructions below record the delivered scope. Keep the short board
+regression pending under stage 14 until the recorded drive responds.
+
 Read [README](README.md), [execution contract](execution_contract.md) and the
 [audit finding map](audit.md) together with this prompt.
 

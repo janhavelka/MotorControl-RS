@@ -12,7 +12,7 @@ retain successful and failed experiments.
 | Area | Current implementation | Evidence boundary |
 | --- | --- | --- |
 | Portable core | Exact units/coordinates, typed targets, register ledger, checked ESS FC03/06/10 codecs | No framework, transport, clock, heap or retry ownership |
-| Bounded operations | Typed reads/settings, actions, relative/absolute/wrapped position, finite velocity, homing 1-14/17/19-30/33-35, discovery and explicit communication/persistence sequences | Unsupported and unresolved operations fail explicitly; five native-family gaps and 18 guarded paired setters remain |
+| Bounded operations | Typed reads/settings, actions, relative/absolute/wrapped position, finite velocity, homing 1-14/17/19-30/33-35, discovery and explicit communication/persistence sequences | Unsupported and unresolved operations fail explicitly; four native-family gaps and 18 guarded paired setters remain |
 | Application reference | Cooperative owner, retained results, immutable deadlines, urgent stop, runner/capture, ordinary API/console and passive traffic observation | Software timing observations do not establish exact wire timing; no uncertain write replay |
 | Consumers and tooling | Shared Arduino/native ESP-IDF S3 application, S2 compile-only fixtures, strict host tools, source/install packages and CI | S3 functional evidence belongs to the exact tested image, motor and fixture; S2 hardware is unqualified |
 | Documentation | Current contracts and operation coverage, source-backed FieldCore handoff, preserved manuals and bench reports | Old numbered prompts are historical delivery instructions, not current missing-feature lists |
@@ -59,9 +59,9 @@ post-enable wait; their limits remain in the [backlog](backlog.md).
 
 ## Next delivery blocks
 
-1. **Finish candidate/archive staging.**
-   [Standalone 02](prompts/standalone/02_profile_staging.md) owns the missing
-   ordinary import route. [15 stop/recovery](reports/2026-11-15_standalone_15_stop_recovery.md)
+1. **Bench-check the delivered software.**
+   [Standalone 02](prompts/standalone/02_profile_staging.md) delivers the ordinary
+   candidate/archive route. [15 stop/recovery](reports/2026-11-15_standalone_15_stop_recovery.md)
    and [16 evidence/qualification](reports/2026-11-15_standalone_16_evidence_qualification.md)
    are software complete; their new-image bench regression is still NOT RUN.
    The [15 November review](reports/2026-11-15_standalone_audit_revalidation.md)
@@ -74,8 +74,8 @@ post-enable wait; their limits remain in the [backlog](backlog.md).
    Stored-profile retrigger remains ACK-only. Broader N05 replacement needs
    [staging and completion evidence](ess_position.md#remaining-replacement-work).
    Method 18, collision homing and nonzero offsets remain guarded.
-   Standalone 02 already has prepared-move staging; archive/candidate import
-   and its console/host route remain unfinished.
+   Candidate staging is complete in software; its new physical checks remain
+   separate from the existing prepared-move and group evidence.
 3. **Qualify remaining hardware behavior.** Repeat overnight testing; measure
    independent shaft/electrical behavior; use actual fixtures for external I/O,
    restart/persistence, wire faults and loaded mechanics. The complete list and

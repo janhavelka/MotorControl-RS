@@ -23,7 +23,7 @@ class VerificationFailures(unittest.TestCase):
         tests = [{"name": name, "command": [str(build / (binary + suffix))]} for name, binary in
                  [("foo", "foo_test"), ("units_preview", "units_preview"),
                   *[(n, n + "_test") for n in ("codec_independent", "probe_app_load", "idf_move_app",
-                                              "idf_simple_motion_app", "idf_position_interrupt_app", "idf_control_app", "idf_velocity_app", "idf_home_app", "idf_position_start_speed_app", "idf_homing_auxiliary_app", "idf_group_app", "idf_stop_path_app")]]]
+                                              "idf_simple_motion_app", "idf_position_interrupt_app", "idf_control_app", "idf_velocity_app", "idf_home_app", "idf_position_start_speed_app", "idf_homing_auxiliary_app", "idf_group_app", "idf_stop_path_app", "idf_motion_profile_app")]]]
         tests.append({"name": "foo_python", "command": [sys.executable, str(root / "test/foo_test.py")]})
         for name, script, args in (("version_generated", "generate_version.py", ["check"]),
                 ("registers_generated", "generate_ess_registers.py", ["--check"]),
@@ -61,7 +61,7 @@ class VerificationFailures(unittest.TestCase):
             root = Path(directory)
             listing, build = self.inventory(root)
             for name in ("codec_independent", "probe_app_load", "idf_move_app",
-                         "idf_simple_motion_app", "idf_position_interrupt_app", "idf_control_app", "idf_velocity_app", "idf_home_app", "idf_position_start_speed_app", "idf_homing_auxiliary_app", "idf_group_app"):
+                         "idf_simple_motion_app", "idf_position_interrupt_app", "idf_control_app", "idf_velocity_app", "idf_home_app", "idf_position_start_speed_app", "idf_homing_auxiliary_app", "idf_group_app", "idf_motion_profile_app"):
                 with self.subTest(name=name):
                     missing = copy.deepcopy(listing)
                     missing["tests"] = [t for t in missing["tests"] if t["name"] != name]
@@ -72,7 +72,7 @@ class VerificationFailures(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "missing or wrong native test"):
                         verify.check_inventory(root, wrong, build)
 
-    def test_host_requires_both_frontends_for_interrupt_stop_and_velocity(self):
+    def test_host_requires_both_frontends_for_interrupt_stop_velocity_and_profile(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             listing, build = self.inventory(root)
@@ -83,6 +83,8 @@ class VerificationFailures(unittest.TestCase):
                     ("position_interrupt_app_test", "idf_position_interrupt_app_test")]]
             args += ["--stop-recovery-fixtures", *[str(build / (name+suffix)) for name in
                      ("stop_path_app_test", "idf_stop_path_app_test", "velocity_app_test", "idf_velocity_app_test")]]
+            args += ["--profile-stage-fixtures", *[str(build / (name+suffix)) for name in
+                     ("motion_profile_app_test", "idf_motion_profile_app_test")]]
             entry = {"name": "bench_probe", "command": [sys.executable, str(script), *args]}
             listing["tests"].append(entry)
             verify.check_inventory(root, listing, build)
@@ -91,7 +93,7 @@ class VerificationFailures(unittest.TestCase):
             invalid_args += [args[:i] + args[i+1:] for i in range(len(args))]
             for invalid in invalid_args:
                 entry["command"] = [sys.executable, str(script), *invalid]
-                with self.subTest(args=invalid), self.assertRaisesRegex(RuntimeError, "wrong position interruption or stop recovery fixtures"):
+                with self.subTest(args=invalid), self.assertRaisesRegex(RuntimeError, "wrong interruption, stop recovery or profile staging fixtures"):
                     verify.check_inventory(root, listing, build)
 
     def test_required_command_identity_and_modes(self):

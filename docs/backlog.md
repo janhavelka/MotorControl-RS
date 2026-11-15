@@ -29,7 +29,7 @@ review. These are future refactors, not unfinished prompts from the completed se
 
 ## Native ESS coverage
 
-The inventory still has **five named native-family gaps and 18 guarded paired
+The inventory still has **four named native-family gaps and 18 guarded paired
 setters**. Their exact membership and source restrictions are maintained in
 [API coverage](ess_api_cli_coverage.md) and [paired writes](ess_pair_writes.md);
 the register catalogue alone is not semantic command coverage.
@@ -46,12 +46,14 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   [missing staging and observation evidence](ess_position.md#remaining-replacement-work)
   before extending it; [standalone 03](prompts/standalone/03_position_interrupt.md)
   owns that work.
-- [ ] Implement remaining standalone native staging, including
-  restoring an arbitrary archived position profile without starting motion.
-  Prepared-move staging exists through `stagePositionMove`; candidate import,
-  its retained result and console/host route remain in
-  [standalone 02](prompts/standalone/02_profile_staging.md).
-  Host reset loses the RAM backup; never replay a move as restoration.
+- [x] Stage validated position-profile candidates and host archives without motion
+  ([standalone 02](prompts/standalone/02_profile_staging.md)). Fresh session reads,
+  one retained result slot and the shared owner preserve deadlines and evidence.
+  `0x0020` remains separate; no automatic rollback or move replay.
+- [ ] Run the candidate/export/import short board regression on the new image.
+  The 15 November preflight found the recorded board, but address 1 did not
+  respond after explicit host recovery. See the
+  [report](reports/2026-11-15_standalone_02_profile_staging.md).
 - [ ] Resolve signed stored-target encoding, admissible limit/stored-target
   write forms, and home-offset order/sign/scale before exposing their setters.
 - [ ] Resolve method 18's conflicting signal captions and collision methods

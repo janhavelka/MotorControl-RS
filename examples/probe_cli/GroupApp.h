@@ -346,7 +346,8 @@ void stageGroupMembers(App& a, App::GroupOperation& op, uint64_t now) {
         if (!record || !m) { r.aborted = true; r.failedAddress = member.address; return; }
         if (member.stageState == MotorControlRS::ActionState::EMPTY) {
             const auto admitted = beginPositionStage(a, m->stage, m->axis.target, m->axis.generation,
-                record->move.words, record->operationId, now);
+                record->move.words, record->operationId, now, record->move.prerequisites.wordOrder,
+                std::min(record->deadlineUs, now > UINT64_MAX - 2 * REQUEST_US ? UINT64_MAX : now + 2 * REQUEST_US));
             if (admitted == Probe::Action::QUEUE_FULL || admitted == Probe::Action::RESULTS_FULL) return;
             member.stageState = admitted == Probe::Action::OK ? MotorControlRS::ActionState::ACTIVE : MotorControlRS::ActionState::FAILED;
             if (admitted != Probe::Action::OK) {

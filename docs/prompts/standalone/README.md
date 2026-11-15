@@ -1,7 +1,7 @@
 # Standalone ESS completion and qualification
 
-Prepared 2026-10-23; status reviewed 2026-11-15. **Stages 01, 15 and 16 are COMPLETE.
-Stages 02, 03, 05, 07, 11 and 14 are PARTIAL. Stages 04, 06, 08-10, 12, 13
+Prepared 2026-10-23; status reviewed 2026-11-15. **Stages 01, 02, 15 and 16 are COMPLETE (software).
+Stages 03, 05, 07, 11 and 14 are PARTIAL. Stages 04, 06, 08-10, 12, 13
 and 17 are NOT STARTED.**
 Stage 01's parameter reads are complete. The corrections and owner decisions of
 the [2 November code and promptset audit](../../reports/2026-11-02_standalone_promptset_audit.md)
@@ -17,10 +17,10 @@ work; a historical finding is not proof that the defect still exists.
 The [independent 15/16 follow-up audit](../../reports/2026-11-15_standalone_15_16_audit.md)
 records the later result-lifetime and host-validation corrections.
 
-N01, N02, N04, N07 and the 27 planned switch methods are implemented. Their
+N01, N02, N03, N04, N07 and the 27 planned switch methods are implemented. Their
 [delivery reports](../../reports/README.md) retain tests and CI evidence.
-The finished ESS software prompts were removed. This set owns N03 candidate
-staging, broader N05 replacement, unresolved semantics and physical campaigns.
+The finished ESS software prompts were removed. Broader N05 replacement,
+unresolved semantics and physical campaigns remain in this set.
 
 Read the [audit](audit.md) and [execution contract](execution_contract.md) with
 each dispatched prompt. This set covers the reusable MotorControl-RS library,
@@ -35,9 +35,10 @@ keeps those distinctions. Use the audit's Current owner column; Next stage is hi
 
 ## Next work
 
-1. Finish [02: candidate staging](02_profile_staging.md). Prepared-move staging
-   already exists; arbitrary archive import and its console/host route do not.
-2. Run the short [14 bench regression](14_bench_regression.md) on the new image.
+1. Run the short [14 bench regression](14_bench_regression.md) on the new image,
+   including [02: candidate staging](02_profile_staging.md). Its ordinary archive
+   route is software complete; the drive did not answer the latest preflight.
+2. Include the completed stop/evidence changes in that regression.
    [15 stop/recovery](../../reports/2026-11-15_standalone_15_stop_recovery.md) and
    [16 evidence/qualification](../../reports/2026-11-15_standalone_16_evidence_qualification.md)
    are software complete. Their new physical checks are NOT RUN.
@@ -51,7 +52,7 @@ keeps those distinctions. Use the audit's Current owner column; Next stage is hi
 | Stage | Deliverable | Dependencies / starting gate | Status |
 | --- | --- | --- | --- |
 | 01 | [Native velocity and homing parameter reads](../../ess_reads.md) | Public API and ordinary console routes delivered | COMPLETE |
-| 02 | [Position candidate/archive staging](02_profile_staging.md) | Existing profile builder. Setter delivered (`DriverSettings.h:266`); candidate staging leaves `0x0020` unchanged. | PARTIAL: staging without a start exists as an application API, used by group moves ([report](../../reports/2026-11-13_multi_drive_02_drive_group.md)); the console leaf and archive import are not built |
+| 02 | [Position candidate/archive staging](02_profile_staging.md) | Candidate staging leaves `0x0020` unchanged. | COMPLETE (software): public submit/copy/release, ordinary console and host archives, shared owner and retained results. New board regression NOT RUN after NO_RESPONSE ([report](../../reports/2026-11-15_standalone_02_profile_staging.md)) |
 | 03 | [Remaining position replacement evidence](03_position_interrupt.md) | Stored retrigger delivered; dispatch remaining work as "N05 evidence" | PARTIAL |
 | 04 | [Paired values and wire forms](04_paired_values.md) | Vendor clarification, or the one fixture-only `0x0060/2` experiment authorized by D4 | NOT STARTED |
 | 05 | [Unresolved homing semantics and physical qualification](05_homing.md) | Reads, auxiliary and 27 switch methods delivered; stage 04 for nonzero offsets; real fixture for switch methods | PARTIAL: 33/34/35 tested on the free shaft; unresolved methods, offsets and switch fixtures remain |

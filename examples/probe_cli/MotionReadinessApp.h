@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Included inside the standalone application's private namespace.
+// Reads retain raw target bits; typed writes use the existing conservative range.
+bool profileTargetInRange(const uint16_t* pair, ESS::WordOrder order) {
+    int32_t target = 0;
+    return ESS::decodeInt32(pair, 2, order, target) && target >= -0x0FFFFFFF && target <= 0x0FFFFFFF;
+}
 // Production movement admission consumes the same cached observations and typed
 // profile snapshot used by the public operations. Diagnostics grant no access.
 

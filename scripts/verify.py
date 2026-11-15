@@ -45,7 +45,7 @@ def check_inventory(root, listing, build):
     native.update({name: name+"_test" for name in
                    ("codec_independent", "probe_app_load", "idf_move_app",
                     "idf_simple_motion_app", "idf_position_interrupt_app", "idf_control_app", "idf_velocity_app", "idf_home_app",
-                    "idf_position_start_speed_app", "idf_homing_auxiliary_app", "idf_group_app", "idf_stop_path_app")})
+                    "idf_position_start_speed_app", "idf_motion_profile_app", "idf_homing_auxiliary_app", "idf_group_app", "idf_stop_path_app")})
     native["units_preview"] = "units_preview"
     for name, binary in native.items():
         command = by_name.get(name, {}).get("command", [])
@@ -77,10 +77,12 @@ def check_inventory(root, listing, build):
             args = registered["command"][2:]
             expected = [str((build / (binary+suffix)).resolve()) for binary in
                         ("position_interrupt_app_test", "idf_position_interrupt_app_test", "stop_path_app_test",
-                         "idf_stop_path_app_test", "velocity_app_test", "idf_velocity_app_test")]
-            if (len(args) != 8 or args[0] != "--position-interrupt-fixtures" or args[3] != "--stop-recovery-fixtures" or
-                    [str(Path(arg).resolve()) for arg in args[1:3] + args[4:]] != expected):
-                raise RuntimeError("wrong position interruption or stop recovery fixtures: bench_probe_test.py")
+                         "idf_stop_path_app_test", "velocity_app_test", "idf_velocity_app_test",
+                         "motion_profile_app_test", "idf_motion_profile_app_test")]
+            if (len(args) != 11 or args[0] != "--position-interrupt-fixtures" or args[3] != "--stop-recovery-fixtures" or
+                    args[8] != "--profile-stage-fixtures" or
+                    [str(Path(arg).resolve()) for arg in args[1:3] + args[4:8] + args[9:]] != expected):
+                raise RuntimeError("wrong interruption, stop recovery or profile staging fixtures: bench_probe_test.py")
         elif path.name.endswith("_console_parity_test.py") or path.name == "discovery_harness_test.py":
             target = "discovery_console_test" if path.name == "discovery_harness_test.py" else "probe_console_test"
             python_command(registered, path)

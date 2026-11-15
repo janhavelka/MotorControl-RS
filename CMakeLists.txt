@@ -162,7 +162,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         endif()
         add_test(NAME idf_app COMMAND idf_app_test)
         # Reuse identical operation/failure assertions with both framework startup adapters.
-        foreach(suite move_app group_app position_interrupt_app simple_motion_app control_app velocity_app home_app position_start_speed_app homing_auxiliary_app stop_path_app)
+        foreach(suite move_app group_app position_interrupt_app simple_motion_app control_app velocity_app home_app motion_profile_app position_start_speed_app homing_auxiliary_app stop_path_app)
             add_executable(idf_${suite}_test test/${suite}_test.cpp
                 examples/probe_cli/DebugSession.cpp
                 examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
@@ -206,7 +206,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 --position-interrupt-fixtures $<TARGET_FILE:position_interrupt_app_test>
                   $<TARGET_FILE:idf_position_interrupt_app_test>
                   --stop-recovery-fixtures $<TARGET_FILE:stop_path_app_test> $<TARGET_FILE:idf_stop_path_app_test>
-                  $<TARGET_FILE:velocity_app_test> $<TARGET_FILE:idf_velocity_app_test>)
+                  $<TARGET_FILE:velocity_app_test> $<TARGET_FILE:idf_velocity_app_test>
+                  --profile-stage-fixtures $<TARGET_FILE:motion_profile_app_test> $<TARGET_FILE:idf_motion_profile_app_test>)
             add_test(NAME velocity_console_parity COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/test/velocity_console_parity_test.py
                 $<TARGET_FILE:probe_console_test>)

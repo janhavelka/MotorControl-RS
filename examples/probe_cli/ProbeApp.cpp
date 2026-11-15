@@ -278,11 +278,22 @@ struct App {
     // one session; each group member has its own.
     struct StageSession {
         Probe::PositionStageView view;
+        ESS::WordOrder wordOrder = ESS::WordOrder::HIGH_WORD_FIRST;
         Rtu::RequestId request;
         uint8_t phase = 0; ///< 0 none, 1 FC10 write, 2 FC03 readback.
         bool applied = false; ///< Success already published as a stored-word witness.
         uint8_t tx[32] = {};
     } stage;
+    struct CandidateSession : StageSession {
+        Probe::ProfileCandidate candidate;
+        uint16_t original[6] = {}, before[6] = {};
+        ESS::ActionEvidence priorEvidence;
+        HostTuple serialTuple;
+        uint32_t commandId = 0;
+        bool unchanged = false, effectsInvalidated = false, delivered = false, programmatic = false;
+        const char* error = "none";
+    } profileCandidate;
+    Probe::ProfileCandidateResult candidateOutput; ///< Reused copy/format scratch, not another retained session.
     ESS::MoveContext stagePrepared; ///< Scratch for the selected-axis stage words; no stack copy.
     // Drive group (multi-drive 02). A host selection only: each member keeps its
     // own facts, separate from the selected axis, and never changes the drive.
@@ -488,6 +499,7 @@ bool resultPending(const App& a, const App::Record& record) {
     return !terminal(a, record) || (record.stopRecoveryId && !record.stopRecoveryResult.id);
 }
 bool axisReserved(const App& a, uint8_t address = 0, bool includeHistory = true) {
+    if (a.profileCandidate.view.pending && (!address || a.profileCandidate.view.target.address == address)) return true;
     if (a.simple.view.pending && !a.simple.admitting && (!address || address == a.simple.view.address)) return true;
     // A staging write without a start still owns its drive until it settles.
     if (a.stage.view.pending && (!address || a.stage.view.target.address == address)) return true;
@@ -504,6 +516,7 @@ bool axisReserved(const App& a, uint8_t address = 0, bool includeHistory = true)
     return false;
 }
 bool acting(const App& a) {
+    if (a.profileCandidate.view.pending) return true;
     if (a.simple.view.pending && !a.simple.admitting) return true;
     if (a.stage.view.pending) return true;
     for (const auto& record : a.records)
@@ -767,6 +780,7 @@ MotorControlRS::Status checkProbe(const Rtu::Expectation& e, const uint8_t* byte
 }
 Probe::Action startRead(void* context, uint32_t commandId, uint8_t address, uint32_t& operationId, bool captureRead) {
     App& a = *static_cast<App*>(context);
+    if (a.profileCandidate.view.pending) return Probe::Action::BUSY;
     if (a.owner.commissioningOwned() || a.discovery.owned || groupSequencing(a)) return Probe::Action::BUSY;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
@@ -918,6 +932,7 @@ Rtu::BusAdmission admitStep(App& a, App::Record& record, uint64_t sampled) {
 Probe::Action startTypedRead(void* context, uint32_t commandId, uint8_t address, ESS::ReadKind kind,
                              uint32_t& operationId, bool monitored) {
     App& a = *static_cast<App*>(context);
+    if (a.profileCandidate.view.pending) return Probe::Action::BUSY;
     if (a.owner.commissioningOwned() || a.discovery.owned || groupSequencing(a)) return Probe::Action::BUSY;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
@@ -2981,9 +2996,17 @@ Probe::Action recover(void* context, uint32_t commandId, uint32_t& operationId) 
 #include "SimpleMotionApp.h"
 #include "PositionStageApp.h"
 #include "GroupApp.h"
+#include "ProfileCandidateApp.h"
 
 bool lookup(void* context, uint32_t operationId, Probe::ResultView& out) {
     App& a = *static_cast<App*>(context); if (!operationId) operationId = a.latestOperationId;
+    if (operationId && operationId == a.profileCandidate.view.operationId) {
+        const auto& s = a.profileCandidate;
+        copyCandidate(s, a.candidateOutput); out = Probe::ResultView();
+        out.profileStage = &a.candidateOutput; out.pending = s.view.pending;
+        out.commandId = s.commandId; out.operationId = operationId; out.address = s.view.target.address;
+        out.serialTuple = s.serialTuple; out.serialGeneration = s.view.serialGeneration; return true;
+    }
     if (const auto* group = groupOperation(a, operationId)) {
         out = Probe::ResultView();
         out.operationId = operationId; out.commandId = group->result.commandId;
@@ -3086,6 +3109,13 @@ Probe::Action cancel(void* context, uint32_t operationId) {
         return Probe::Action::OK;
     }
     if (!operationId) operationId = a.latestOperationId;
+    if (operationId && operationId == a.profileCandidate.view.operationId) {
+        auto& s = a.profileCandidate;
+        if (!s.view.pending) return Probe::Action::ALREADY_TERMINAL;
+        s.view.cancelled = true; s.error = "cancelled";
+        if (s.request.owner) a.owner.cancelUnsent(s.request, nowUs());
+        return Probe::Action::OK;
+    }
     if (operationId && operationId == a.simple.view.operationId) {
         if (!a.simple.view.pending) return Probe::Action::ALREADY_TERMINAL;
         cancelSimplePreparation(a, a.simple.view.address, nowUs());
@@ -3136,6 +3166,11 @@ Probe::Action cancel(void* context, uint32_t operationId) {
 }
 Probe::Action release(void* context, uint32_t operationId) {
     App& a = *static_cast<App*>(context);
+    if (operationId && operationId == a.profileCandidate.view.operationId) {
+        auto& s = a.profileCandidate;
+        if (s.view.pending || s.request.owner || !s.delivered) return Probe::Action::BUSY;
+        s.~CandidateSession(); new (&s) App::CandidateSession(); return Probe::Action::OK;
+    }
     if (auto* group = groupOperation(a, operationId)) return releaseGroup(a, *group);
     if (operationId && (operationId == a.simple.view.operationId || operationId == a.simple.view.moveOperationId ||
         operationId == a.simple.view.driverOperationId))
@@ -3409,7 +3444,7 @@ Probe::Host host(App* a) {
     h.qualification = qualificationCommand;
     h.startPositionInterrupt = startPositionInterrupt;
     h.simpleMotion = simpleMotion;
-    h.monitor = monitor; h.motionProfile = motionProfileCommand; h.debug = debugCommand;
+    h.monitor = monitor; h.motionProfile = motionProfileCommand; h.stageProfile = startProfileCandidate; h.debug = debugCommand;
     h.axis = axisCommand; h.hostSerial = hostSerial; h.selectTarget = selectTarget;
     h.wiring = wiring;
     h.communication = communication; h.persistence = persistence;
@@ -3928,6 +3963,8 @@ MotorControlRS::Status submitReleaseAfterStop(uint32_t stopId, const ReleaseAfte
     return Ok();
 }
 bool releaseOperation(uint32_t operationId) {
+    if (app && operationId && app->profileCandidate.view.operationId == operationId)
+        return release(app, operationId) == Probe::Action::OK;
     if (!app || !operationId) return false;
     if (auto* group = groupOperation(*app, operationId)) return releaseGroup(*app, *group) == Probe::Action::OK;
     const auto* record = findRecord(*app, operationId);
@@ -4000,6 +4037,22 @@ bool copyPositionStage(uint32_t operationId, Probe::PositionStageView& output) {
     if (!app || !operationId || app->stage.view.operationId != operationId) return false;
     output = app->stage.view; return true;
 }
+MotorControlRS::Status submitProfileCandidate(const Probe::ProfileCandidate& candidate, uint32_t& operationId) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    const auto admitted = startProfileCandidate(app, 0, candidate, operationId);
+    if (admitted != Probe::Action::OK)
+        return Status(admitted == Probe::Action::TARGET_RANGE ? Err::ILLEGAL_VALUE : Err::INVALID_CONFIG,
+            static_cast<int32_t>(admitted), admitted == Probe::Action::TARGET_RANGE ? "target_range" : "candidate not admitted");
+    app->profileCandidate.programmatic = true; return Ok();
+}
+bool copyProfileCandidate(uint32_t operationId, Probe::ProfileCandidateResult& output) {
+    if (!app || !operationId || app->profileCandidate.view.operationId != operationId) return false;
+    copyCandidate(app->profileCandidate, output); return true;
+}
+bool releaseProfileCandidate(uint32_t operationId) {
+    return app && operationId && app->profileCandidate.view.operationId == operationId && releaseOperation(operationId);
+}
 bool copyGroupResult(uint32_t operationId, Probe::GroupResult& output) {
     if (!app || !operationId) return false;
     const auto* op = groupOperation(*app, operationId);
@@ -4030,6 +4083,8 @@ void serviceApplication() {
         cancelInvalidHomes(a, sampled);
         cancelInvalidReleases(a, sampled);
         cancelInvalidPositionClears(a, sampled);
+        cancelInvalidPositionStages(a, sampled);
+        cancelInvalidProfileCandidate(a, sampled);
         a.owner.service(sampled, recoveryReady);
         if (hadDE && !a.runner.transmitEnabled()) a.recoveryGuardUntilUs = nowUs() + RECOVER_US;
 #if MOTORCONTROLRS_LOAD_FIXTURE
@@ -4052,10 +4107,17 @@ void serviceApplication() {
     advanceActions(a, nowUs());
     const uint64_t completedSampleUs = nowUs();
     serviceSelectedStage(a, completedSampleUs);
+    serviceProfileCandidate(a, completedSampleUs);
     serviceGroup(a, completedSampleUs); // No extra clock read while no group operation runs.
     serviceCoordinates(a, completedSampleUs);
     RuntimeWitness::mark(RuntimeWitness::CONSOLE);
     a.console.serviceOutput(); deliver(a);
+    auto& candidate = a.profileCandidate;
+    if (candidate.view.operationId && !candidate.view.pending && !candidate.delivered) {
+        copyCandidate(candidate, a.candidateOutput);
+        if (candidate.programmatic || a.console.reportProfileStage(candidate.commandId, candidate.view.operationId,
+                a.candidateOutput, &candidate.serialTuple, candidate.view.serialGeneration)) candidate.delivered = true;
+    }
     serviceSimpleMotion(a, nowUs());
     serviceMonitor(a, nowUs());
     for (unsigned i = 0; i < 32 && Platform::availableConsole(); ++i) {

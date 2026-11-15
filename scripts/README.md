@@ -22,6 +22,38 @@ Missing checks fail. Verification opens no serial port and changes no drive.
 | `prepare_lichuan_tl57_references.py` | Separate TL57 research bundle checks using the same private source/frame validation helpers |
 | `pio.cmd` | Windows wrapper for the installed PlatformIO toolchain |
 
+## Position-profile archives
+
+The host exports the current checked six-word profile and owns the file.
+Firmware receives five candidate words; it never reads a host file or writes
+the advisory start word at index 0. Example on the recorded port:
+
+```sh
+python scripts/bench_probe.py --port COM13 --address 1 --log export.jsonl motion-profile export profile.json
+python scripts/bench_probe.py --port COM13 --address 1 --log stage.jsonl motion-profile stage profile.json --wiring x0 unconnected --wiring x1 unconnected --wiring x2 unconnected
+```
+
+Supply wiring declarations only when they describe the installation. The tool
+does not change drive input assignments or infer fixture facts from the file.
+Export refuses an existing destination. Stage validates the file before opening
+the port, checks fresh configuration/identity/profile/state, then submits once.
+It leaves the result retained: inspect and explicitly `release ID` when done.
+There is no start, save, retry or automatic restore.
+
+The bounded JSON schema is:
+
+```json
+{"schema":"MotorControlRS.position-profile.v1","address":1,"order":0,"words":[30,50,50,60,0,100],"model":20202,"firmware":41}
+```
+
+`words` are start speed, acceleration, deceleration, RPM and two target words.
+`order` is 0 or 1. Model and firmware are optional as a pair. Generations, extra
+keys, duplicate keys, non-integer values and files over 4 KiB reject. Export
+preserves a readable out-of-range target; stage refuses it as `target_range`.
+Archive values above motion policy can stage within the typed wire range;
+later moves still enforce their own limits. Host restart requires fresh reads,
+not imported provenance. See the [candidate contract](../docs/ess_position.md#candidate-profile-staging).
+
 ## Finite bench tools
 
 These tools use the ordinary firmware console and the same strict command/result

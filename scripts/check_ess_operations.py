@@ -30,6 +30,7 @@ PUBLIC_DECLARATION = re.compile(
 # source checks supplement the real native/package consumers; they do not parse
 # arbitrary C++ or prove the implementation's behavior.
 PRODUCING_APIS = {
+    "position_profile_candidate_staging": ("Position", "buildReadPositionProfile buildWritePositionProfile"),
     "velocity_parameter_read": ("Reads", "prepareVelocityParameters nextRead advanceRead getVelocityParameters"),
     "homing_parameter_read": ("Reads", "prepareHomingParameters nextRead advanceRead getHomingParameters"),
     "position_start_speed_write": ("DriverSettings", "preparePositionStartSpeed prepareDriverRead getDriver prepareDriverSettings nextDriver advanceDriver"),
@@ -55,9 +56,18 @@ def check_producing_api(operation_id, api, sources):
         sources[module] = re.sub(r"//[^\n]*|/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.DOTALL)
     for symbol in required:
         name = "PositionCommand::" + symbol if module == "Position" and symbol.startswith("prepare") else symbol
-        definition = r"^Status\s+" + name + r"\s*\([^;{}]*\)\s*(?:const\s+)?noexcept\s*\{"
+        result_type = r"std::size_t" if operation_id == "position_profile_candidate_staging" else "Status"
+        definition = r"^" + result_type + r"\s+" + name + r"\s*\([^;{}]*\)\s*(?:const\s+)?noexcept\s*\{"
         if not re.search(definition, sources[module], re.MULTILINE):
             raise ValueError("missing producing API definition: " + operation_id + ":" + symbol)
+    if operation_id == "position_profile_candidate_staging":
+        source = (ROOT / "examples/probe_cli/ProbeApp.cpp").read_text(encoding="utf-8")
+        source = re.sub(r"//[^\n]*|/\*.*?\*/", "", source, flags=re.DOTALL)
+        for symbol in ("submitProfileCandidate", "copyProfileCandidate", "releaseProfileCandidate"):
+            if not re.search(r"^(?:MotorControlRS::Status|bool)\s+" + symbol + r"\([^;{}]*\)\s*\{", source, re.MULTILINE):
+                raise ValueError("missing candidate application definition: " + symbol)
+        if "h.stageProfile = startProfileCandidate" not in source:
+            raise ValueError("candidate console must use the application route")
 
 
 def console_commands():
@@ -110,6 +120,9 @@ def check_cli_route(command, metadata, operation_kind):
         valid = len(tail) == 1 and tail[0] in {"read", "inspect", "restore", "forget"}
         if valid: effects = {"READ"} if tail[0] == "read" else {"WRITE"} if tail[0] == "restore" else set()
         elif tail == ["start-speed", "NATIVE"]:
+            valid = True
+            effects = {"WRITE"}
+        elif tail == ["stage", "ACC", "DEC", "RPM", "TARGET_W0", "TARGET_W1", "ORDER", "ADDRESS", "[model", "firmware]"]:
             valid = True
             effects = {"WRITE"}
     elif root == "move":
@@ -318,6 +331,10 @@ def check(inventory, ledger):
                             raise ValueError("single-field setting requires its exact producing route: " + op_id)
                 check_cli_route(command, metadata, kind)
         api = operation.get("api", {})
+        if op_id == "position_profile_candidate_staging" and (kind != "WRITE" or
+                linked != ["POSITION_ACCELERATION_TIME", "POSITION_DECELERATION_TIME", "POSITION_SPEED", "POSITION_PULSES"] or
+                commands != ["motion-profile stage ACC DEC RPM TARGET_W0 TARGET_W1 ORDER ADDRESS [model firmware]"]):
+            raise ValueError("candidate staging requires its exact five-word producing route")
         if "MotionCommandBit.INTERRUPT_POSITION" in selected or any(c.startswith("position ") for c in commands):
             if (op_id != "position_interrupt_stored" or kind != "ACTION" or linked != ["MOTION_COMMAND"] or
                     selected != ["MotionCommandBit.INTERRUPT_POSITION"] or commands != ["position interrupt ORIGINAL_ID"] or

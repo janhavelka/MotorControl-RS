@@ -7,6 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [Standalone 02: profile candidates and archives](2026-11-15_standalone_02_profile_staging.md) | Candidate admission, retained results and ordinary host/console staging without motion. Shared deadlines and raw evidence; new board regression pending after NO_RESPONSE. |
 | [Multi-drive 08: enable-wait lifetime](2026-11-15_multi_drive_08_enable_wait_lifetime.md) | Software complete: waits survive group/selection/recovery changes. All 94 suites, Doxygen and four exact-commit CI jobs pass. Board regression pending after read-only address-1 NO_RESPONSE; HW-15 stays open. |
 | [Standalone 15/16 independent audit](2026-11-15_standalone_15_16_audit.md) | PROCESSED: five findings fixed; fresh 94-suite verification, Doxygen and all four exact-commit CI jobs pass. Physical checks NOT RUN. |
 | [Standalone 16: evidence and qualification](2026-11-15_standalone_16_evidence_qualification.md) | Software complete: write closure, exact qualification lifetime and bounded home observation with UNKNOWN execution. 94-suite verification and four exact-commit CI jobs pass; hardware NOT RUN. |

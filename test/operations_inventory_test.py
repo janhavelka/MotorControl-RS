@@ -387,12 +387,34 @@ class Coverage(unittest.TestCase):
         self.assertEqual(restored["cli_commands"], ["motion-profile restore"])
         self.rejected(lambda value: next(row for row in value["operations"]
             if row["id"] == "position_profile_restore").update(cli_commands=["motion-profile start-speed NATIVE"]))
-        gap = next(row for row in INVENTORY["gaps"] if row["id"] == "position_profile_candidate_staging")
-        self.assertEqual(gap["owner"], "09/11")
-        self.assertEqual(gap["disposition"], "PARTIAL")
-        self.assertEqual(set(gap["records"]), set(restored["records"]))
-        self.assertIn("volatile original snapshot", gap["reason"])
-        self.assertEqual(result["summary"]["named_gaps"], 5)
+        candidate = next(row for row in INVENTORY["operations"] if row["id"] == "position_profile_candidate_staging")
+        self.assertEqual(set(candidate["records"]), set(restored["records"]))
+        self.assertIn("owner09/11", candidate["reason"])
+        self.assertNotIn("position_profile_candidate_staging", {g["id"] for g in INVENTORY["gaps"]})
+        self.assertEqual(result["summary"]["named_gaps"], 4)
+
+    def test_candidate_staging_requires_the_producing_application_route(self):
+        def candidate(value):
+            return next(row for row in value["operations"] if row["id"] == "position_profile_candidate_staging")
+        for route in ("motion-profile restore", "motion-profile read", "motion-profile stage", "motion-profile stage INTEGER extra"):
+            self.rejected(lambda value: candidate(value).update(cli_commands=[route]))
+        self.rejected(lambda value: candidate(value)["records"].append("POSITION_START_SPEED"))
+        self.rejected(lambda value: candidate(value)["api"].update(symbols=["parsePositionProfile"]))
+        read_text = Path.read_text
+        def missing_definition(path, *args, **kwargs):
+            text = read_text(path, *args, **kwargs)
+            if path.resolve() == (ROOT / "examples/probe_cli/ProbeApp.cpp").resolve():
+                text = text.replace("Status submitProfileCandidate(", "Status missingCandidate(")
+            return text
+        with mock.patch.object(Path, "read_text", missing_definition):
+            with self.assertRaises(ValueError): operations.check(INVENTORY, LEDGER)
+        def commented_definition(path, *args, **kwargs):
+            text = missing_definition(path, *args, **kwargs)
+            if path.resolve() == (ROOT / "examples/probe_cli/ProbeApp.cpp").resolve():
+                text += "\n/*\nMotorControlRS::Status submitProfileCandidate() { return Ok(); }\n*/\n"
+            return text
+        with mock.patch.object(Path, "read_text", commented_definition):
+            with self.assertRaises(ValueError): operations.check(INVENTORY, LEDGER)
 
     def test_auxiliary_choices_close_only_stored_setting_coverage(self):
         result = operations.check(INVENTORY, LEDGER)

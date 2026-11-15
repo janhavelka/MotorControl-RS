@@ -929,10 +929,88 @@ void testStopDuringStageReadbackKeepsEvidenceWithoutWitness() {
     runUntil([&] { return copyPositionStage(stage, view) && !view.pending; });
     assert(view.cancelled && !view.staged && !view.status.isOk());
     assert(view.execution == ActionExecution::ACKNOWLEDGED && view.readbackKnown);
+    assert(view.writeEvidence.txAccepted == 19 && view.writeEvidence.length == 8 && view.writeEvidence.status);
+    assert(view.readEvidence.txAccepted == 8 && view.readEvidence.length == 15 && view.readEvidence.status);
     assert(std::memcmp(view.words, view.readback, sizeof(view.words)) == 0);
     assert(app->rememberedMoveGeneration == 0);
     runUntil([&] { return terminal(*app, *findRecord(*app, stopped)); });
     assert(count(isStageFrame, from) == 2 && count(isAnyStart, from) == 0);
+}
+void testGroupStageCannotRenewExpiredParentDeadline() {
+    fresh({1, 2}); readyGroup({1, 2});
+    app->options.moveTimeoutMs = 1;
+    uint32_t id = 0;
+    const auto from = frames.size();
+    assert(submitGroupMove(groupMove(Policy::LEAVE), id));
+    const auto* first = findRecord(*app, groupOp(id).result.members[0].operationId);
+    assert(first && !app->owner.pending()); // Group staging has not been admitted yet.
+    const uint64_t deadline = first->deadlineUs;
+    advanceHardware(deadline);
+    runUntil([&] { return terminalGroup(id); });
+    const auto& result = groupOp(id).result;
+    assert(!result.ok && result.aborted && result.failedAddress == 1);
+    assert(result.members[0].stageState == ActionState::FAILED);
+    assert(frames.size() == from && count(isAnyStart, from) == 0);
+    assert(findRecord(*app, result.members[0].operationId)->deadlineUs == deadline);
+}
+void testQueuedStageConfigurationChangePreventsTx() {
+    for (bool group : {false, true}) {
+        fresh({1});
+        uint32_t id = 0;
+        if (group) {
+            readyGroup({1});
+            assert(submitGroupMove(groupMove(Policy::LEAVE), id));
+            serviceGroup(*app, nowUs()); // Admit the first stage, without servicing transport.
+            assert(app->group.members[0].stage.view.pending && app->owner.pending());
+            invalidateMemberConfiguration(*app, 1, nowUs());
+        } else {
+            readSelectedFacts();
+            auto position = groupMove(Policy::LEAVE).move.position;
+            position.configurationGeneration = app->axis.generation;
+            assert(stagePositionMove(position, 60, id));
+            assert(app->stage.view.pending && app->owner.pending());
+            invalidateAxis(*app);
+        }
+        const auto from = frames.size();
+        runUntil([&] { return group ? terminalGroup(id) : !app->stage.view.pending; });
+        const auto& stage = group ? app->group.members[0].stage.view : app->stage.view;
+        assert(stage.cancelled && !stage.staged && stage.execution == ActionExecution::NOT_TRANSMITTED);
+        assert(stage.writeEvidence.event == ReadEventKind::CANCEL && !stage.writeEvidence.txAccepted);
+        assert(frames.size() == from && count(isAnyStart, from) == 0);
+    }
+}
+void testStageClosureEvidenceSurvivesDelayedDelivery() {
+    for (bool cancelled : {false, true}) {
+        fresh({1}); readSelectedFacts();
+        auto position = groupMove(Policy::LEAVE).move.position;
+        position.configurationGeneration = app->axis.generation;
+        uint32_t id = 0;
+        const auto from = frames.size();
+        assert(stagePositionMove(position, 60, id));
+        const uint64_t deadline = app->stage.view.deadlineUs;
+        runUntil([] { return app->stage.phase == 2 && app->stage.request.owner; });
+        // Run the actual owner/runner to completion while delaying application harvest.
+        const auto request = app->stage.request;
+        for (unsigned i = 0; i < 20000 && !app->owner.result(request); ++i) {
+            advanceHardware(hardware.time + 20);
+            app->owner.service(uart.sample()); serveBus();
+        }
+        const auto* result = app->owner.result(request);
+        assert(result && result->outcome == Rtu::Outcome::SUCCESS);
+        const uint64_t closure = result->transport.closureLatestUs;
+        assert(closure <= deadline);
+        advanceHardware(deadline + 1);
+        if (cancelled) cancelPositionStages(*app, 1, nowUs());
+        serviceSelectedStage(*app, nowUs());
+        Probe::PositionStageView view; assert(copyPositionStage(id, view));
+        assert(!view.pending && view.deadlineUs == deadline && view.readbackKnown);
+        assert(view.staged != cancelled && view.cancelled == cancelled);
+        assert(view.execution == ActionExecution::ACKNOWLEDGED && view.readEvidence.status);
+        assert(view.readEvidence.latestUs == closure && view.readEvidence.deliveredUs > deadline);
+        assert(view.readEvidence.length == 15 && view.readEvidence.raw[0] == 1 && view.readEvidence.raw[1] == 3);
+        assert((app->rememberedMoveGeneration != 0) != cancelled);
+        assert(count(isStageFrame, from) == 2 && count(isAnyStart, from) == 0);
+    }
 }
 void testActiveOriginSharedReadiness() {
     fresh();
@@ -977,6 +1055,9 @@ int main(int argc, char** argv) {
     testIdleOnlyDeclarationAndExclusiveSequence();
     testSelectedAxisStageThenStoredStart();
     testStopDuringStageReadbackKeepsEvidenceWithoutWitness();
+    testGroupStageCannotRenewExpiredParentDeadline();
+    testQueuedStageConfigurationChangePreventsTx();
+    testStageClosureEvidenceSurvivesDelayedDelivery();
     std::puts("Drive group application tests passed");
     return 0;
 }

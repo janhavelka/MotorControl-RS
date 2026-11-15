@@ -10,14 +10,14 @@ The [15 November revalidation](../reports/2026-11-15_standalone_audit_revalidati
 checks the independent standalone audit against current code.
 [Standalone 15](../reports/2026-11-15_standalone_15_stop_recovery.md) and
 [16](../reports/2026-11-15_standalone_16_evidence_qualification.md) are software complete.
-Next is the unfinished [02 candidate-import route](standalone/02_profile_staging.md).
+The [02 candidate-import route](standalone/02_profile_staging.md) is software complete too.
 The set remains PARTIAL; stage 14 owns the new-image bench regression.
 
 The [ESS multi-drive set](ess_multi_drive/README.md) has nine stages following
 the [15 November revalidation](../reports/2026-11-15_ess_multi_drive_promptset_audit.md).
 Broadcast acceptance is complete with NO-GO; production broadcast stays disabled.
-Common-relative group moves and staged starts have three-drive evidence. New 08
-corrects lost enable waits across group changes; 09 adds independent member
+Common-relative group moves and staged starts have three-drive evidence. Stage 08
+preserves enable waits across group changes; next software work is 09, independent member
 requests. Input programming, input-start observation and remaining physical
 qualification stay open. See the set's table for each stage's disposition.
 

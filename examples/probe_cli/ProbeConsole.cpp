@@ -58,7 +58,7 @@ const Entry COMMANDS[] = {
     {"discover", Command::DISCOVER, "discover [profile ess_rs|manufacturer stepperonline] [addresses FIRST LAST] [tuple BAUD FORMAT] [query-ms 1..5000] [overall-ms 1..60000] [requests 1..256] [results 1..8] [identity] | discover inspect|cancel|restore|finish; max4 distinct tuples,128bytes,20tokens; defaults selected endpoint/current tuple,query500ms,overall5000ms,requests16,results8,no identity,no retries", "bounded_nonchanging_queries_retained_findings_host_restoration", true, "Find responding drives within explicit address, serial and time limits."},
     {"debug", Command::DEBUG, "debug [off|raw|decoded]", "observe_regular_operations_and_cached_diagnostics", false, "Show diagnostics; select raw or decoded traffic while ordinary commands run."},
     {"position", Command::POSITION, "position interrupt <original-id>", "qualified_stored_position_start_or_interrupt_ack_only", true, "Retrigger the exact stored native move. Acknowledgement does not prove interruption or arrival; use a checked stop to settle motion."},
-    {"motion-profile", Command::MOTION_PROFILE, "motion-profile read|inspect|restore|forget | motion-profile start-speed <native>", "snapshot_restore_or_explicit_native_start_speed_setting", true, "Read, inspect or restore position parameters; explicitly set native start speed; forget releases the snapshot."},
+    {"motion-profile", Command::MOTION_PROFILE, "motion-profile read|inspect|restore|forget | motion-profile stage ACC DEC RPM TARGET_W0 TARGET_W1 ORDER ADDRESS [model firmware] | motion-profile start-speed <native>", "snapshot_restore_or_explicit_native_start_speed_setting", true, "Read, inspect, stage or restore position parameters without starting; set native start speed separately."},
     {"help", Command::HELP, "help [command]", "show_callable_commands", false, "Show all commands once, or detailed syntax for one command."},
     {"version", Command::VERSION, "version", "show_build", false, "Show the firmware version and console protocol."},
     {"config", Command::CONFIG, "config", "show_host_settings", false, "Show the selected address and host communication settings."},
@@ -534,6 +534,7 @@ const char* helpExample(Command command, const Host& host) {
     case Command::HOST: return "host\n  host caps";
     case Command::DISCOVER: return "discover addresses 1 1\n  discover inspect";
     case Command::MOTION_PROFILE:
+        if (host.stageProfile) return "motion-profile read\n  motion-profile stage 50 50 60 0 100 0 1\n  result ID\n  release ID";
         if (!host.motionProfile) return "motion-profile start-speed 30";
         return host.startDriver && host.snapshot ?
             "motion-profile read\n  motion-profile inspect\n  motion-profile start-speed 30" :
@@ -630,7 +631,7 @@ HelpText helpText(const Entry& entry, const Host& host) {
             text.description = "Explicitly set the native position start-speed word.";
             text.effect = "explicit_native_start_speed_setting";
         } else if (host.qualification) {
-            text.syntax = "motion-profile read|inspect|restore|forget | motion-profile start-speed <native> | motion-profile start-speed relation RAW_WORD MIN_RPM";
+            text.syntax = "motion-profile read|inspect|restore|forget | motion-profile stage ACC DEC RPM TARGET_W0 TARGET_W1 ORDER ADDRESS [model firmware] | motion-profile start-speed <native> | motion-profile start-speed relation RAW_WORD MIN_RPM";
             text.description = "Read, inspect or restore position parameters; explicitly set native start speed; a set locks moves until start-speed relation states the minimum rpm for the stored word. A controller restart forgets that lock and uses the stored word under the startup policy.";
         }
     } else if (entry.command == Command::STATS) {
@@ -737,6 +738,7 @@ const char* actionName(Action value) {
     case Action::QUALIFICATION_REQUIRED: return "qualification_required";
     case Action::REFERENCE_NOT_READY: return "reference_not_ready";
     case Action::OPERATING_LIMIT: return "operating_limit";
+    case Action::TARGET_RANGE: return "target_range";
     }
     return "failed";
 }
@@ -995,7 +997,7 @@ void Console::action(uint32_t id, const char* command, Action result, uint8_t ad
                      bool ordinaryStop, uint32_t replacedOperationId, bool stopEscalation) noexcept {
     const bool typed = std::strcmp(command, "read-identity") == 0 || std::strcmp(command, "read-config") == 0 || std::strcmp(command, "read-state") == 0 || std::strcmp(command, "velocity-read") == 0 || std::strcmp(command, "home-read") == 0;
     const bool motor = std::strcmp(command, "position-interrupt") == 0 || std::strcmp(command, "home-auxiliary") == 0 || std::strcmp(command, "motion-profile-start-speed") == 0 || std::strcmp(command, "enable") == 0 || std::strcmp(command, "motor-release") == 0 || std::strcmp(command, "alarm-clear") == 0 || std::strcmp(command, "position-clear") == 0 || std::strcmp(command, "stop") == 0 || std::strncmp(command, "move-", 5) == 0 || std::strcmp(command, "velocity") == 0 || std::strcmp(command, "home") == 0 || std::strcmp(command, "driver") == 0 || (std::strcmp(command, "io") == 0 || std::strcmp(command, "segment") == 0 || std::strcmp(command, "control") == 0 || std::strcmp(command, "tuning") == 0) ||
-        std::strcmp(command, "group-set") == 0 || std::strcmp(command, "group-move") == 0 ||
+        std::strcmp(command, "motion-profile-stage") == 0 || std::strcmp(command, "group-set") == 0 || std::strcmp(command, "group-move") == 0 ||
         std::strcmp(command, "group-stop") == 0 || std::strcmp(command, "group-read-state") == 0;
     std::snprintf(output_, sizeof(output_),
         "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":%s,\"result\":\"%s\",\"address\":%u,\"operation_id\":%lu%s}",
@@ -1386,6 +1388,29 @@ void Console::dispatch() noexcept {
     }
     if (entry->command == Command::MOTION_PROFILE) {
         if (outputPending()) { ++inputDropped_; return; }
+        if (count >= first + 2 && !std::strcmp(tokens[first + 1], "stage")) {
+            const char* command = "motion-profile-stage";
+            if (!host_.stageProfile) { error(id, command, "unavailable"); return; }
+            if (count != first + 9 && count != first + 11) { error(id, command, "invalid_arguments"); return; }
+            ProfileCandidate candidate;
+            uint32_t values[9] = {};
+            for (std::size_t i = 0; i < count - first - 2; ++i)
+                if (!number(tokens[first + 2 + i], values[i]) || values[i] > 65535) {
+                    error(id, command, "invalid_arguments"); return;
+                }
+            if (values[5] > 1 || !values[6] || values[6] > 247) { error(id, command, "invalid_arguments"); return; }
+            for (std::size_t i = 0; i < 5; ++i) candidate.words[i] = static_cast<uint16_t>(values[i]);
+            candidate.wordOrder = static_cast<Ess::WordOrder>(values[5]); candidate.address = static_cast<uint8_t>(values[6]);
+            candidate.identitySpecified = count == first + 11;
+            candidate.model = static_cast<uint16_t>(values[7]); candidate.firmware = static_cast<uint16_t>(values[8]);
+            uint32_t operationId = 0;
+            const bool available = availableSlot() != OUTSTANDING_SLOTS;
+            if (available) beginWork();
+            const Action result = available ? host_.stageProfile(host_.context, id, candidate, operationId) : Action::BUSY;
+            if (result == Action::OK) track(id, operationId);
+            action(id, command, result, candidate.address, result == Action::OK ? operationId : 0);
+            return;
+        }
         if (count >= first + 3 && !std::strcmp(tokens[first + 1], "start-speed") && !std::strcmp(tokens[first + 2], "relation")) {
             qualificationRoute(id, QualificationRoute::START_SPEED_RELATION, tokens + first + 3, count - first - 3);
             return;
@@ -2236,7 +2261,7 @@ void Console::dispatch() noexcept {
         case Command::USEADDR: return host_.selectTarget != nullptr;
         case Command::WIRING: return host_.wiring != nullptr;
         case Command::DEBUG: return host_.debug && host_.snapshot;
-        case Command::MOTION_PROFILE: return host_.motionProfile || (host_.startDriver && host_.snapshot);
+        case Command::MOTION_PROFILE: return host_.motionProfile || host_.stageProfile || (host_.startDriver && host_.snapshot);
         case Command::COMMUNICATION: return host_.communication != nullptr;
         case Command::PERSISTENCE: return host_.persistence != nullptr;
         case Command::DISCOVER: return host_.discovery != nullptr;
@@ -2371,6 +2396,10 @@ void Console::dispatch() noexcept {
         if (!host_.result(host_.context, operationId, view)) { error(id, entry->name, "unavailable"); return; }
         if (view.simpleMotion) { formatSimpleMotion(id, *view.simpleMotion, true); return; }
         setReportSerial(&view.serialTuple, view.serialGeneration);
+        if (view.profileStage) {
+            if (!formatProfileStage(id, view.commandId, *view.profileStage, true)) error(id, "result", "output_full");
+            return;
+        }
         if (view.group) {
             if (!view.pending) { if (!formatGroup(id, view.commandId, view.operationId, *view.group, true)) error(id, "result", "output_full"); return; }
             std::size_t used = 0;
@@ -3520,6 +3549,8 @@ bool Console::formatGroupView(uint32_t id, const char* command, Action result, c
     emit();
     return true;
 }
+
+#include "ProfileCandidateConsole.h"
 
 bool Console::reportGroup(uint32_t id, uint32_t operationId, const GroupResult& result,
                           const HostTuple* tuple, uint32_t serialGeneration) noexcept {

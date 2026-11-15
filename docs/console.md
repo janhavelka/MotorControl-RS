@@ -207,6 +207,14 @@ may still be moving: send `stop fast`. Nothing escalates automatically. On firmw
 `0x0029` this happened only above about 60,000 increments/s, which the default
 position ceiling refuses ([report](reports/2026-11-04_stop_normal_rate_ceiling.md)).
 
+`motion-profile stage ACC DEC RPM TARGET_W0 TARGET_W1 ORDER ADDRESS [model firmware]`
+stages five raw words without starting motion. It requires live readiness and a
+profile read; files supply candidate values only. Inspect `result ID`, then
+`release ID` to free its single retained slot. `cancel ID` ends unsent work;
+transmitted effects remain recorded. Start speed is not written. See the
+[candidate contract](ess_position.md#candidate-profile-staging) and
+[Python archive commands](../scripts/README.md#position-profile-archives).
+
 `enable` holds motion starts on its address for 1 s. `moveby`/`moveto` wait it out;
 advanced `move`, staging, group moves, `velocity` and `home` answer `busy` without bus traffic. Firmware
 `0x0029` echoed and ignored starts sent up to 0.6 s after an enable, and no status bit

@@ -11,6 +11,7 @@ operations and physical qualification are separate; see the
 - [Getting started](getting_started.md): build, first probe, simple moves and refusals.
 - [Console guide](console.md): short commands, subdivision, origins, results and diagnostics.
 - [C++ moveBy / moveTo](move_example.md): example application submissions and service loop.
+- [Profile candidates and archives](ess_position.md#candidate-profile-staging): stage five words without starting motion.
 - [Arduino ESP32-S3 build](esp32_probe.md) and [native ESP-IDF build](esp_idf_probe.md): board configuration, flash and recovery.
 - [Verification and packaging](verification.md): quick/full checks, clean consumers and CI.
 - [API documentation](verification.md#api-documentation): generate Doxygen from public headers.

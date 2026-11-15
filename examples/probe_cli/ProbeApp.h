@@ -4,6 +4,7 @@
 #include "../common/RtuBusOwner.h"
 #include "MoveRelation.h"
 #include "DriveGroup.h"
+#include "ProfileCandidate.h"
 #include "QualificationConsole.h"
 #include <MotorControlRS/profiles/ess_rs/Position.h>
 #include <MotorControlRS/profiles/ess_rs/Reads.h>
@@ -296,4 +297,14 @@ MotorControlRS::Status stagePositionMove(const MotorControlRS::PositionRequest& 
                                          uint32_t& operationId);
 /// Copy the selected axis's pending or finished stage evidence; another ID preserves output.
 bool copyPositionStage(uint32_t operationId, Probe::PositionStageView& output);
+/** Stage untrusted raw profile values after fresh checked readiness and a saved
+ * drive snapshot. Uses one three-second deadline and a fresh six-word prior
+ * read. Wire-valid values may exceed motion policy; this operation never starts
+ * motion. Output ID stays unchanged on refusal, including TARGET_RANGE.
+ * Call from the service task; the retained slot requires explicit release. */
+MotorControlRS::Status submitProfileCandidate(const Probe::ProfileCandidate&, uint32_t& operationId);
+/// Copy pending or terminal candidate evidence. Missing IDs preserve output.
+bool copyProfileCandidate(uint32_t operationId, Probe::ProfileCandidateResult& output);
+/// Release a delivered terminal candidate only; no bus traffic or rollback.
+bool releaseProfileCandidate(uint32_t operationId);
 }
