@@ -233,9 +233,9 @@ more drives (now addresses 1, 2 and 4, star wiring).
 - [x] Test whether firmware `0x0029` acts on address-0 writes and stays silent
   ([multi-drive 01](prompts/ess_multi_drive/01_broadcast_acceptance.md),
   [report](reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)). NO-GO:
-  the drives act on the frames but every drive answers address 0, and the
-  answers collide. The library stays unicast-only.
-- [ ] Find why 4 of 113 broadcast starts and stops were ignored by one drive
+  the setup produced address-0 replies and RX errors consistent with collisions.
+  Shared-bus evidence does not identify every responder; production stays unicast.
+- [ ] Find why four of 113 per-drive start/stop effects were missed (drives 1 and 4)
   ([multi-drive 07](prompts/ess_multi_drive/07_broadcast_misses.md)). Planned;
   waits for the owner to power the drives one at a time. Not urgent: broadcast
   stays unused.
@@ -248,9 +248,20 @@ more drives (now addresses 1, 2 and 4, star wiring).
   staged and read back, then only the start frames go out. Three drives start
   within about 16 ms instead of 38 ms; the group holds up to 15 drives
   ([report](reports/2026-11-13_multi_drive_02_drive_group.md)).
+- [ ] Preserve every target's enable wait across group clear, subset/reordered
+  declaration and selected-axis access ([multi-drive 08](prompts/ess_multi_drive/08_enable_wait_lifetime.md)).
+  Native reproduction confirmed a start about 858 ms before the original wait
+  expired. This defect remains unfixed; the
+  [audit and diagnostic](reports/2026-11-15_ess_multi_drive_promptset_audit.md)
+  retain the evidence.
+- [ ] Complete the original different-member-target requirement
+  ([multi-drive 09](prompts/ess_multi_drive/09_member_motion_requests.md)), with
+  per-member intent/reference provenance. The current group API accepts one
+  common relative request; stage 02 is PARTIAL against its full scope.
 - [ ] Broadcast start and stop ([multi-drive 03](prompts/ess_multi_drive/03_broadcast_operations.md))
-  are not applicable while multi-drive 01 is NO-GO. Reopen only if the vendor or
-  a nonzero custom node makes the drives silent to address 0.
+  are not applicable while multi-drive 01 is NO-GO. Reopening requires new
+  passing evidence for the exact configuration and command words, not a
+  vendor answer or changed custom-node value alone.
 - [ ] Program inputs and outputs as needed: functions 4-17 with stated
   commissioning facts, polarity on assigned terminals, connected outputs, routes
   for `0x0050`/`0x0051`, per-function move readiness, and the power-up state
@@ -259,11 +270,14 @@ more drives (now addresses 1, 2 and 4, star wiring).
 - [ ] Start motion from a shared input edge: function 7 with a staged profile
   first (absolute mode preferred), then PT segments with PIN selection, the
   negative PV speed encoding, and observation and stop of input-started motion ([multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)).
-  Depends on standalone 02, 04 and 06.
-- [ ] Qualify two drives on one bus: addressing, start spread for sequential,
-  broadcast and trigger starts, and group stops
-  ([multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md)). Needs a
-  second drive and trigger wiring.
+  Prepared staging is delivered. PT depends on standalone 04/06; function 7
+  does not need standalone 02's separate archive-import route. Source inhibition,
+  intermediate writes and stop/disarm evidence stay explicit.
+- [ ] Finish shared-bus qualification
+  ([multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md)).
+  Three-drive unicast group evidence already exists; map exact cases/images
+  before running missing cases. Wired triggers and independent physical timing
+  remain open; broadcast cases are not applicable. No second-drive blocker remains.
 
 ## Release and future profiles
 

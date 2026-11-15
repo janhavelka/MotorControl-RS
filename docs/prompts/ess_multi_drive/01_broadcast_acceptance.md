@@ -6,11 +6,25 @@ together with this prompt.
 
 Findings: **M01, M06**.
 
+## Delivered result, reviewed 15 November 2026
+
+This stage is COMPLETE with outcome **NO-GO**. The
+[13 November report](../../reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)
+records the campaign on drives 1, 2 and 4. Address-0 frames produced replies or
+UART errors; no transaction established a silent window. The production library
+stays unicast-only and multi-drive 03 stays not applicable.
+
+The requirements below retain the acceptance plan and its delivered fixture.
+Do not rerun this completed campaign or promote the fixture into a production
+API. [Multi-drive 07](07_broadcast_misses.md) owns the separate investigation of
+missed effects. Original trial counts, deviations and failures stay in the
+dated report and raw evidence.
+
 ## Entry gate
 
-The bench test needs owner decision D6. Without D6 the stage is
-BLOCKED(input). A vendor answer that defines address-0 behaviour sharpens the
-test, but it does not replace D6 or the bench check on firmware `0x0029`.
+D6 was approved on 12 November for the three-drive bench; this entry gate was
+met. A vendor answer may clarify address-0 behaviour, but it does not replace
+the failed acceptance evidence or qualify another configuration.
 
 ## Inspect before editing
 
@@ -24,13 +38,15 @@ RtuBusOwner.h and their tests; examples/probe_cli/ProbeApp.cpp (urgent stop
 admission while a move holds the axis), MotionProfileApp.h
 (`motion-profile snapshot`/`restore`), ProbeConsole.cpp; scripts/bench_probe.py,
 scripts/bench_session.py; docs/runner.md, docs/bus_owner.md, docs/traffic.md,
-docs/hardware_bench.md. No fixture-only route exists yet. The D4 route in
-[standalone 04](../standalone/04_paired_values.md) is designed but not built.
+docs/hardware_bench.md. The five-frame route now exists in ProbeApp.cpp under
+`MOTORCONTROLRS_LOAD_FIXTURE`, with runner, owner and application tests. The
+separate D4 paired-write route in
+[standalone 04](../standalone/04_paired_values.md) does not authorize broadcast.
 
-## Work
+## Delivered requirements and acceptance plan
 
-1. **Fixture route.** Design a new fixture-only transmit route for the D6
-   frames. It must not be a production API, a generic raw-frame command or a
+1. **Fixture route.** Retain the fixture-only transmit route for the D6
+   frames. It must not become a production API, a generic raw-frame command or a
    widening of `isValidAddress`. The route accepts only these exact frames, so a
    typo cannot send anything else:
 
@@ -45,8 +61,8 @@ docs/hardware_bench.md. No fixture-only route exists yet. The D4 route in
    The CRCs were checked against the manual's `01 06 00 27 00 01 F8 01` and
    `01 06 00 27 01 00 38 51`. Both `0x0021` values are inside the 100-2000 ms
    ramp policy, so a failed restoration leaves a usable profile. Broadcast the
-   value that differs from the fresh reading. Add other values only with their
-   computed frames in the report.
+   value that differs from the fresh reading. A report entry alone does not
+   authorize frames beyond the D6 list.
 
    The stop frames must be admitted while a unicast move holds the axis, as
    urgent stops are today.
@@ -58,14 +74,18 @@ docs/hardware_bench.md. No fixture-only route exists yet. The D4 route in
    - Then listen for a fixed silent window of 200 ms, the upper end of the
      standard's typical turnaround. Record every byte received in the window
      with its timestamp. Any byte is a finding, not a reply.
+   - UART/capture errors can terminate observation before 200 ms. Retain the
+     actual observed interval, terminal error, bytes and truncation/drop counts,
+     plus separate recovery/discard evidence. An aborted window is a failed
+     observation, never a completed 200 ms window or proof of silence.
    - Keep the passive traffic observer copying these bytes.
 3. **Address state first.** Before the trials, read and record:
    - `0x0002` active node and `0x0003` DIP word;
    - `0x0013` custom node.
-   The bench last answered at node 1 with DIP word 0 and custom node 0
-   ([ess_release_05](../../archive/reports/ess_release_05_2026-10-04.md)).
-   A drive whose stored custom node is 0 might treat address 0 as its own, so
-   the outcome applies only to the recorded address configuration.
+   The tested three drives had active node = DIP = 1, 2 and 4 respectively,
+   and custom node 0 on all three. Read every powered drive before and after
+   a trial. The outcome applies only to that recorded configuration; custom
+   node 0 is not established as the cause of address-0 responses.
 4. **Trials.** Run them one at a time, with fresh checked reads before and after
    each.
    - **A. RAM write, 20 trials.**
@@ -99,8 +119,8 @@ docs/hardware_bench.md. No fixture-only route exists yet. The D4 route in
    profile, configuration and readiness as after an uncertain write: invalidate
    them and require fresh reads.
 
-FC08 diagnostics are not supported (exception 02, function manual p11), so the
-drive has no broadcast counter to read.
+FC08 diagnostics are not documented as supported (function manual p11 permits
+only FC03/FC06/FC10); no readable broadcast counter is established by the manual.
 
 ## Outcome
 
@@ -111,9 +131,9 @@ drive has no broadcast counter to read.
   collide on a shared bus. Record that, keep unicast-only policy, and mark
   multi-drive 03 as not applicable.
 
-One drive cannot show behaviour between drives. A GO here does not cover
-collisions or skew; multi-drive 06 owns those. Windows shorter than 200 ms need
-their own trials.
+The delivered three-drive result is NO-GO. It does not qualify another address
+configuration, shorter windows, electrical timing or physical start/stop skew;
+multi-drive 06 retains the relevant qualification gates.
 
 ## Acceptance and handoff
 

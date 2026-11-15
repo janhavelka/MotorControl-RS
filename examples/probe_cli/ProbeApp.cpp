@@ -798,8 +798,8 @@ Probe::Action captureRead(void* context, uint32_t commandId, uint8_t address, ui
 }
 // Multi-drive 01 bench fixture: exactly these reviewed address-0 FC06 frames.
 // It is not a production API, a raw-frame command or a wider isValidAddress.
-// No drive replies, so the outcome stays "sent, unconfirmed" until each drive
-// is read back by unicast. Nothing resends a broadcast.
+// No reply is accepted as confirmation. Each drive needs separate unicast
+// checks; received bytes fault the trial. Nothing resends a broadcast.
 constexpr uint32_t BROADCAST_WINDOW_US = 200000;
 constexpr std::size_t BROADCAST_FRAME_COUNT = 5;
 const uint8_t BROADCAST_FRAMES[BROADCAST_FRAME_COUNT][8] = {

@@ -1,5 +1,13 @@
 # Broadcast and multi-drive start review, 12 November 2026
 
+Current disposition is in the [15 November revalidation](2026-11-15_ess_multi_drive_promptset_audit.md).
+The original source/code review below is dated: group staging is now delivered,
+three drives have unicast evidence, and the broadcast campaign is NO-GO.
+Shared-bus recordings establish replies/errors, not every responder's identity.
+A shared input source has no documented physical-skew guarantee. The startup
+input wording and assignment defaults establish an ambiguity, not a proven
+register contradiction. Retained statements below do not override those limits.
+
 The owner asked two questions. Do the ESS drives accept non-addressed
 (broadcast) commands, so the library can start several drives together? Can the
 library program the drive inputs for a shared hardware start? This is a source

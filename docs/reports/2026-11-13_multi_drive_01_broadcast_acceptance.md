@@ -1,5 +1,28 @@
 # Multi-drive 01: broadcast acceptance on three drives, 13 November 2026
 
+## Interpretation correction, 15 November
+
+The [promptset revalidation](2026-11-15_ess_multi_drive_promptset_audit.md)
+retains NO-GO but narrows several claims in the original record below:
+
+- All 75 transactions recorded RX activity or error. This establishes address-0
+  replies and errors consistent with collisions, not the identity of every
+  responder on every trial. Isolated-drive response tests remain pending.
+- The four misses are per-drive effects among 113 start/stop observations,
+  involving drives 1 and 4. They are not 113 transmitted frames.
+- Travel spread of 1-7 increments divided by nominal speed is not a bound on
+  start/stop skew; offsets can cancel and speed/ramp differences contribute.
+  Physical onset/skew remains unmeasured.
+- `RX_ERROR` can end observation well before 200 ms. Three quiet absent-address
+  probes do not qualify the electrical idle state or exclude intermittent noise.
+- The archived D summary says passed despite trial 6's full 5,000-increment
+  travel on drive 4. Natural completion after delayed recovery/readback cannot
+  prove a stop effect. The original report correctly keeps that missed stop;
+  stage 07 now requires TX-relative deadlines and independent per-drive verdicts.
+
+The original account, aggregates and raw archive below remain historical evidence;
+the stronger responder and skew interpretations are superseded by this correction.
+
 The owner asked for the broadcast tests on the three-drive bench (addresses 1,
 2 and 4). This report covers the fixture route built for them and the D6
 trials. It follows [multi-drive 01](../prompts/ess_multi_drive/01_broadcast_acceptance.md).

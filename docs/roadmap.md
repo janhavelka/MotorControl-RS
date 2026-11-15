@@ -78,12 +78,14 @@ post-enable wait; their limits remain in the [backlog](backlog.md).
    Its selected board/backend and physical product/load tests remain consumer
    work; see the [current handoff](fieldcore_handoff.md). FieldCore is read-only
    here, and its pinned release is distinct from standalone main.
-5. **Start several drives together.** No broadcast or sync command is
-   documented ([review](reports/2026-11-12_broadcast_and_sync_review.md)).
-   The [multi-drive set](prompts/ess_multi_drive/README.md) tests address 0 on
-   the bench, adds a drive group and free input programming, and starts drives
-   from a shared input edge. A second drive and trigger wiring are needed for
-   any multi-drive claim.
+5. **Complete group and input-start support.** Broadcast testing is NO-GO;
+   the library stays unicast-only. Common-relative group moves and checked
+   staged starts already have three-drive evidence. The
+   [multi-drive revalidation](reports/2026-11-15_ess_multi_drive_promptset_audit.md)
+   assigns enable-wait lifetime to stage 08 and independent member requests to
+   09. Input programming/observation and wired-trigger qualification remain
+   open. Independent physical skew and electrical timing are unmeasured;
+   the existing fixture no longer needs a second drive.
 6. **Publish the scoped release.** Use the [verification workflow](verification.md)
    and exact source/artifact evidence. Publication does not imply full ESS native
    coverage or close the independent qualification gates.

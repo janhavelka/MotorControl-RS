@@ -1,19 +1,27 @@
 # ESS multi-drive start, broadcast and input programming
 
 Prepared 2026-11-12 from the [broadcast and multi-drive review](../../reports/2026-11-12_broadcast_and_sync_review.md).
-Multi-drive 01 is COMPLETE with outcome NO-GO, so multi-drive 03 is not
-applicable. Multi-drive 02 is COMPLETE. Multi-drive 07 is planned and
-BLOCKED(input). The other stages are NOT STARTED.
+Revalidated on 15 November against current code, original manuals and retained
+bench evidence; see the [finding-by-finding audit](../../reports/2026-11-15_ess_multi_drive_promptset_audit.md).
+Multi-drive 01 is COMPLETE with outcome NO-GO; 03 is not applicable. The
+common-relative group and staged starts are delivered. M02 remains PARTIAL for
+the enable-wait defect (08) and different member targets (09). Multi-drive 06 has
+partial unicast evidence; wired-trigger qualification remains open. Multi-drive
+07 waits for owner-controlled power isolation. No new campaign is started by
+these corrections.
 
 The owner wants several ESS drives started together. If the drive accepts
 broadcast, the owner wants the library to use it. The owner also wants the drive
-inputs programmable as needed. The review found the following:
+inputs programmable as needed. Current facts are:
 
-- Broadcast is undocumented, so its behaviour on firmware `0x0029` is unknown.
-- The documented simultaneous start is a shared input edge.
-- The core can address several drives sequentially; the standalone application
-  handles one selected drive.
-- The console admits only passive input functions.
+- Broadcast is undocumented. The tested custom-node-0 setup produced address-0
+  replies and receive errors, so broadcast stays disabled.
+- External inputs provide a shared start source; the manuals give no physical
+  synchronization guarantee or input-to-motion delay.
+- The standalone application supports up to 15 group members and checked staged
+  starts, with recorded physical evidence for three drives.
+- Ordinary input assignment remains limited to functions 0-3 on unconnected
+  terminals. Broader commissioning and input-start observation remain open.
 
 Follow the [standalone execution contract](../standalone/execution_contract.md)
 and its owner decisions D1-D5 with every stage, on the existing branch. Its
@@ -25,14 +33,14 @@ examples and their host tools. FieldCore-node stays read-only.
 
 ## Finding map
 
-| ID | Finding and source | Stage |
+| ID | Current validity and disposition | Stage |
 | --- | --- | --- |
-| M01 | No ESS document describes broadcast, sync or group addressing. Hardware p11 calls address 0 "Reserved for the system"; `0x0013` accepts 0-255 without explaining 0 or 248-255. Codec, runner and console accept only unicast 1-247 (`Codec.cpp:96`, `RtuRunner.cpp:179`); the runner also needs a reply of at least 5 bytes. | 01, 03 |
-| M02 | The standalone application has one selected axis. `useaddr` is idle-only rebinding that clears the previous drive's knowledge. The post-enable wait has one address slot (`ProbeApp.cpp:196`). There is no group staging, start, stop or status. | 02 |
-| M03 | Console I/O admission is narrow. Input functions 0-3 only, and only on terminals declared unconnected (`ProbeApp.cpp:1294-1302`). Polarity only with function 0. Outputs only when unconnected. `io` always uses echo-readback, which accepts only unconnected terminals (`DriverSettings.cpp:467-474`). `driver set position-mode/interruption` is always refused. An input function above 3 blocks moves, segment writes and some setters (`MotionReadinessApp.h:73-74`). The core admits functions 0-17 (`DriverSettings.cpp:96`). | 04 |
-| M04 | No input-started motion route exists. Function 7 needs a staged profile written without a start ([standalone 02](../standalone/02_profile_staging.md)). PT trigger 12 needs stored target writes ([standalone 04](../standalone/04_paired_values.md)) and the shared-start mismatch resolved ([standalone 06](../standalone/06_io_and_tuning.md)). PV trigger 13 needs the negative-speed encoding, which multi-drive 05 owns. p17 calls function 7 level-active and p27 edge-active. `0x0050` makes input-started moves relative or absolute (p75). Nothing observes or stops input-started motion as an operation. | 05 |
+| M01 | Valid source gap; old implementation description superseded. Hardware p11 reserves address 0; function p69 leaves custom-node 0/248-255 unexplained. Core codecs remain unicast. The runner and five-frame fixture now support transmit-only trials; the three-drive outcome is NO-GO. Collided recordings do not identify every responder. | 01 complete; 03 not applicable; 07 investigation |
+| M02 | Partly resolved: 15-member group, shared readiness, staging, starts/stops/status and independent results exist. Current request is common-relative only (`DriveGroup.h`, `GroupApp.h`). Redeclaration/clear can lose an earlier member's enable wait; native reproduction retained in the audit. Identity admission is intentionally limited to recorded model/firmware words `0x4EEA/0x0029`. | 02 partial; 08 correction; 09 extension |
+| M03 | Valid application restriction (`qualifyIoEffects`, `startDriver`, `moveRequirements`). Core supports functions 0-17 with prerequisites; ordinary application admission stays narrow. Broader rules must account for sensors, trigger inhibition, intermediate writes and unresolved status/polarity mapping. PIN selectors are not universally neutral; edge-triggered PV is still velocity. | 04 |
+| M04 | Valid missing input-start observation/arming route. Prepared finite staging is delivered; separate archive import is not required for it. PT target writes and shared-start semantics still depend on standalone 04/06. Function 7's held-level behavior is unqualified; `0x0050` selects input position mode. Negative PV encoding is unresolved; nonnegative stored settings already exist. Ordinary serial stops exist, but their interaction with an active external trigger is unqualified. | 05 |
 | M05 | Since 12 November the bench has three drives (1, 2, 4) on short star wiring, with power and RS485 only. There is no trigger wire or wired input. | 06; physical gates of 01-05 |
-| M06 | Vendor questions are not yet sent: address 0 and broadcast, function 7 from standstill, edge-to-motion delay, and whether I/O assignments survive power-up. Hardware p9 says "X0-X3 defaults to the unspecified state" at each power-on, while the register defaults are 1, 2, 3, 0 (p73-74). The [review](../../reports/2026-11-12_broadcast_and_sync_review.md#questions-for-the-vendor) has the text. | Owner; 01, 04, 05 |
+| M06 | Valid unresolved questions; sending/answering them is not established here. Hardware p9 describes unspecified startup input state; function pp73-74 give assignment defaults 1,2,3,0. These may describe different things, so a register contradiction is not proven. Saved persistence, held-trigger behavior and edge-to-motion delay need specific evidence. The [review](../../reports/2026-11-12_broadcast_and_sync_review.md#questions-for-the-vendor) retains vendor questions. | Owner; 04, 05, 07 |
 
 ## Owner decisions
 
@@ -46,7 +54,7 @@ drives ([report](../../reports/2026-11-12_multi_drive_write_motion_stress.md)).
 
 | ID | Proposal |
 | --- | --- |
-| D6 | Multi-drive 01 may send address-0 FC06 frames on the single-drive bench, through a fixture-only route rather than a production API. The frames are: `0x0021` acceleration time (RAM, restored and checked); `0x0027` = `0x0001`, repeating a completed and checked unicast relative move; and `0x0027` = `0x0100` or `0x0200` during a unicast-started finite move. Each trial sends its frame once. The trial count is bounded and stated in advance, a unicast `stop fast` is prepared, and nothing is saved. |
+| D6 | Approved bounded address-0 FC06 trials through the five-frame fixture route, extended to the recorded three-drive setup above. Frames: `0x0021` acceleration time (RAM, restored and checked); `0x0027` = `0x0001`, repeating a completed and checked unicast relative move; `0x0027` = `0x0100` or `0x0200` during a finite move. One transmission per trial, fixed counts, prepared unicast `stop fast`, no save. Stage 01 is finished; 07 retains its separate power-isolation gate. |
 | D7 | A broadcast start is admitted only when the application has declared every drive on the bus and each one has fresh, checked staging in the current generation. Otherwise it is rejected before TX. A broadcast stop needs no declaration, but it never replaces the per-drive stop reservation or the readback of each drive. |
 
 ## Stages
@@ -54,23 +62,24 @@ drives ([report](../../reports/2026-11-12_multi_drive_write_motion_stress.md)).
 | Stage | Deliverable | Starting gate | Status |
 | --- | --- | --- | --- |
 | 01 | [Broadcast acceptance test](01_broadcast_acceptance.md) | D6 approved; three-drive link clean at addresses 1, 2 and 4 | COMPLETE: NO-GO ([report](../../reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)) |
-| 02 | [Drive group in the standalone application](02_drive_group.md) | None for software; standalone 02 to stage every member before the starts; second drive for multi-drive claims | COMPLETE: up to 15 members, staged starts ([report](../../reports/2026-11-13_multi_drive_02_drive_group.md)) |
-| 03 | [Broadcast start and stop](03_broadcast_operations.md) | 01 outcome GO, D7 approved, 02 delivered; standalone 02 for staging without a start | NOT APPLICABLE: 01 is NO-GO |
+| 02 | [Drive group in the standalone application](02_drive_group.md) | Delivered common-relative subset; 08 before further motion extensions | PARTIAL: staged starts and three-drive evidence retained; lifecycle correction and member-specific requests in 08/09 |
+| 03 | [Broadcast start and stop](03_broadcast_operations.md) | Reopened 01 with GO, D7, checked staging and qualified command words | NOT APPLICABLE: 01 is NO-GO |
 | 04 | [Input and output programming](04_input_programming.md) | None for software; wired inputs for physical claims | NOT STARTED |
-| 05 | [Input-triggered start](05_input_triggered_start.md) | 04 delivered; standalone 02 for function 7; standalone 04 and 06 for PT segments; wired trigger for physical claims | NOT STARTED |
-| 06 | [Two-drive qualification and closeout](06_two_drive_qualification.md) | Second drive on the bus with a unique address; trigger wiring for the 05 cases | NOT STARTED |
+| 05 | [Input-triggered start](05_input_triggered_start.md) | 04 delivered; existing checked staging for function 7; standalone 04/06 for PT segments; wired trigger for physical claims | NOT STARTED |
+| 06 | [Multi-drive qualification and closeout](06_two_drive_qualification.md) | Recorded three-drive fixture; wired trigger for 05 cases | PARTIAL: unicast group evidence exists; remaining case mapping, wired trigger and physical timing open |
 | 07 | [Why some broadcast starts and stops were ignored](07_broadcast_misses.md) | Owner powers the drives one at a time; bias fitted for the last row | BLOCKED(input) |
+| 08 | [Enable-wait lifetime](08_enable_wait_lifetime.md) | Native reproduction available; no software fixture gate | NOT STARTED: confirmed code defect |
+| 09 | [Independent member motion requests](09_member_motion_requests.md) | 08 corrected; existing group/stage API | NOT STARTED: remaining M02 scope |
 
 This table is the single status record. Statuses are NOT STARTED, PARTIAL,
-BLOCKED(input) and COMPLETE. Software stages may proceed before their physical
-gates open. They stay PARTIAL until the physical evidence exists. Multi-drive
-01 is the exception: it is a bench test, so it is BLOCKED(input) until D6 is
-approved.
+BLOCKED(input), COMPLETE and NOT APPLICABLE. Software stages may proceed before
+their physical gates open. Missing physical evidence stays explicit. Preserve
+the delivered subset when later review finds unmet original requirements.
 
 ## Rules for this set
 
-- Broadcast is used only where timing between drives matters: start and stop.
-  Settings and staging stay unicast, where each write is confirmed.
+- Production broadcast stays disabled. If 03 is ever reopened with evidence,
+  its scope is qualified start/stop words only. Settings and staging stay unicast.
 - A broadcast outcome is never success. It is "sent, unconfirmed" until each
   drive's state is read back by unicast. Never resend a broadcast automatically.
 - Any byte received in the post-broadcast silent window is a fault, not a reply.

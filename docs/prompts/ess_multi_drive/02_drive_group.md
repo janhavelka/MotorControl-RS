@@ -6,35 +6,49 @@ with this prompt.
 
 Finding: **M02**.
 
+## Current disposition
+
+The common-relative group implementation and staged starts are delivered, with
+three-drive evidence in the [13 November report](../../reports/2026-11-13_multi_drive_02_drive_group.md).
+The original requirement for different member targets is still open. M02 is
+PARTIAL against that full requirement. Continue with
+[multi-drive 08](08_enable_wait_lifetime.md) for enable-wait lifetime and
+[multi-drive 09](09_member_motion_requests.md) for member-specific requests.
+Do not rebuild the delivered group or treat its finite bench results as missing.
+
 ## Entry gate
 
-None for software and native tests. Multi-drive physical claims need the
-multi-drive 06 fixture. On the one-drive bench, test a group of one only.
+None for software and native tests. The recorded bench has three drives at
+1, 2 and 4; inspect its current state before any new trial. Further physical
+qualification belongs to multi-drive 06.
 
-Today a move verifies, stages and starts in one operation
-(`Position.cpp:329-344`). Staging every member before any start therefore
-needs [standalone 02](../standalone/02_profile_staging.md), which is NOT
-STARTED. Without it, the group move runs each member's ordinary move one after
-another. The measured spread then includes each member's staging writes.
+`stagePositionMove` and `PositionStageApp.h` already stage a prepared finite
+move without starting it. STAGED group moves use this capability for every
+member before issuing starts. SEQUENTIAL remains an explicit alternative.
+[Standalone 02](../standalone/02_profile_staging.md) owns the separate remaining
+archive/candidate-import and console work; it is not a prerequisite for the
+delivered group staging path.
 
 ## Inspect before editing
 
 Paths are relative to the repository root. Read implementations, callers and
 tests, not just declarations:
 
-examples/probe_cli/ProbeApp.h, ProbeApp.cpp (`selectTarget` for `useaddr`,
+examples/probe_cli/GroupApp.h, PositionStageApp.h, ProbeApp.h, ProbeApp.cpp (`selectTarget` for `useaddr`,
 `enableSettleAddress`, `axisReserved`, the `STOP_RECORDS` urgent quota),
 CommunicationApp.h (binding generation), MotionReadinessApp.h,
 SimpleMotion.h, SimpleMotionApp.h, StateCache.h, ProbeConsole.cpp/.h,
 ConsoleText.cpp; examples/common/RtuBusOwner.h and its tests; docs/bus_owner.md,
 docs/cli_contract.md, docs/console.md, docs/move_example.md; scripts/bench_probe.py;
-test/probe_app_test.cpp, move_app_test.cpp and the owner tests.
+test/group_app_test.cpp, probe_console_test.cpp, probe_app_test.cpp,
+move_app_test.cpp and the owner tests.
 
 ## Work
 
-1. **Group membership.** Add a fixed-capacity group of member addresses. Choose
-   the capacity from measured RAM; the hardware manual's 15 drives on one bus is
-   the upper bound.
+1. **Group membership.** Preserve the delivered fixed capacity of 15 members
+   and measured storage. Hardware p11 describes up to 15 drives on a bus, but
+   its DIP table assigns only addresses 1-14; all four address switches ON
+   means factory reset. Capacity 15 does not authorize that switch setting.
    - Declaring a group is idle-only. It is a host selection, never a drive change.
    - Each member needs a fresh checked identity and configuration read before it
      joins. An absent or unexpected responder rejects the declaration before any
@@ -42,18 +56,18 @@ test/probe_app_test.cpp, move_app_test.cpp and the owner tests.
    - The single selected axis and `useaddr` keep their current behaviour.
 2. **Per-member facts.** Keep, per member: target and generation, configuration,
    I/O and state caches, the staged-profile readback and the post-enable wait.
-   - Replace the single `enableSettleAddress` slot with one slot per member.
+   - Preserve unexpired enable waits even when a member is removed or the group
+     is redeclared. Host selection cannot shorten a drive's wait; see 08.
    - Move-readiness rules must not be copied. Extract the facts that
      `MotionReadinessApp.h` reads into a per-target structure, and use the same
      readiness function for the selected axis and for group members.
 3. **Group move.**
-   - With standalone 02: stage each member's finite position move by unicast
-     and check the readback. Then send only the start commands, back to back in
-     member order. Without it: run each member's ordinary move in order, as the
-     entry gate describes.
-   - The members' targets may differ. A later broadcast start (multi-drive 03)
-     sends one `0x0027` word, so it needs every member in the same relative or
-     absolute mode.
+   - Preserve STAGED: stage each member's finite position move by unicast and
+     check every readback before sending any start. SEQUENTIAL runs ordinary
+     member moves in order and includes staging in its measured start spread.
+   - The delivered request contains one common relative move. Different member
+     targets and absolute requests remain work for 09, with each member's own
+     scale/reference and configuration generation. Broadcast remains disabled.
    - Only urgent stops may interleave.
    - Record per-member TX completion and the first RUNNING observation, so the
      start spread is measured rather than assumed.
@@ -65,9 +79,9 @@ test/probe_app_test.cpp, move_app_test.cpp and the owner tests.
 5. **Group stop and status.**
    - `group stop normal|fast` sends an urgent unicast stop to each member, each
      with its own reservation and result.
-   - The application has two urgent slots today (`STOP_RECORDS = 2`,
-     `ProbeApp.cpp:51,76`). Size the urgent pending and result quotas to the
-     group capacity. Keep the protocol-3 advertised outstanding capacity.
+   - Preserve the delivered urgent pending/result quotas and separate member
+     move pool, sized from group capacity. Keep the protocol-3 advertised
+     outstanding capacity.
    - `group read state` refreshes every member.
    - Cached `group status` reports members without bus traffic.
 6. **Interfaces.** Expose the group through the public application API that
@@ -87,7 +101,8 @@ Native tests with a fake bus of several members:
 - generation invalidation after `useaddr`, enable or recovery;
 - a check that no write goes to a non-member.
 
-Bench: a group of one runs the short regression and the group routes. Mark every
-multi-drive claim NOT RUN until multi-drive 06. Update docs/console.md,
+Retain the existing three-drive staged/sequential evidence. New behavior needs
+its own focused checks and short regression; physical capacity above three and
+independent shaft/electrical timing remain NOT RUN. Update docs/console.md,
 docs/cli_contract.md, docs/ess_api_cli_coverage.md and the backlog. CI required:
 application and API change.
