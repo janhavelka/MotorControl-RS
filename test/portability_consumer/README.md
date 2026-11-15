@@ -27,6 +27,8 @@ includes example sources and does not replace installed-public-header isolation.
 The fixture links real probe codec/request validator calls, rejects a request
 through the unavailable runner port, constructs the bounded owner and feeds
 local/version/capability/unavailable-probe commands through the actual console.
+Its output sink checks each line in place. It keeps the full console line bound
+without a second retained line buffer in S2 internal RAM.
 Building does not execute `app_main` or prove those runtime assertions. Native
 tests execute the corresponding behavior. No S2 firmware is flashed, no S2
 transceiver or board wiring is claimed, and no S2 hardware qualification follows

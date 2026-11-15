@@ -20,7 +20,7 @@ Rtu::Trace trace[16];
 Rtu::PendingSlot pending[1];
 Rtu::ResultSlot results[1];
 Rtu::ProducerSlot producers[1];
-char output[Probe::OUTPUT_CAPACITY];
+bool lastReplyFailed = false;
 std::size_t emitted = 0;
 
 Rtu::Storage runnerStorage() {
@@ -48,8 +48,12 @@ Rtu::Runner runner{Rtu::Port(), runnerStorage(), runnerTiming()};
 Rtu::BusOwner owner(runner, ownerStorage());
 
 bool emit(void*, const char* text, std::size_t length) {
-    if (!text || length >= sizeof(output)) return false;
-    std::memcpy(output, text, length); output[length] = '\0';
+    if (!text || length >= Probe::OUTPUT_CAPACITY) return false;
+    // Inspect the supplied line in place; the fixture need not keep a second copy.
+    const char failed[] = "\"ok\":false";
+    lastReplyFailed = false;
+    for (std::size_t i = 0; i + sizeof(failed) - 1 <= length; ++i)
+        if (!std::memcmp(text + i, failed, sizeof(failed) - 1)) lastReplyFailed = true;
     ++emitted;
     return true;
 }
@@ -90,7 +94,7 @@ void checkPortableConsumption() {
     const char commands[] = "@1 version\n@2 caps\n@3 probe\n";
     for (char c : commands) if (c) console.feed(c);
     console.serviceOutput();
-    if (emitted != 3 || !std::strstr(output, "\"ok\":false")) std::abort();
+    if (emitted != 3 || !lastReplyFailed) std::abort();
 }
 }
 
