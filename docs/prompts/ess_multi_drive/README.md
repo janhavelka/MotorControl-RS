@@ -6,7 +6,8 @@ bench evidence; see the [finding-by-finding audit](../../reports/2026-11-15_ess_
 Multi-drive 01 is COMPLETE with outcome NO-GO; 03 is not applicable. The
 common-relative group and staged starts are delivered. The enable-wait defect
 (08) is fixed in software; its new bench checks remain pending. M02 remains
-PARTIAL for different member targets (09). Multi-drive 06 has
+PARTIAL while stage 09 completes integrated and board verification of independent
+member targets ([report](../../reports/2026-11-15_multi_drive_09_member_motion_requests.md)). Multi-drive 06 has
 partial unicast evidence; wired-trigger qualification remains open. Multi-drive
 07 waits for owner-controlled power isolation. No new campaign is started by
 these corrections.
@@ -41,7 +42,7 @@ examples and their host tools. FieldCore-node stays read-only.
 | ID | Current validity and disposition | Stage |
 | --- | --- | --- |
 | M01 | Valid source gap; old implementation description superseded. Hardware p11 reserves address 0; function p69 leaves custom-node 0/248-255 unexplained. Core codecs remain unicast. The runner and five-frame fixture now support transmit-only trials; the three-drive outcome is NO-GO. Collided recordings do not identify every responder. | 01 complete; 03 not applicable; 07 investigation |
-| M02 | Partly resolved: 15-member group, shared readiness, staging, starts/stops/status and independent results exist. Current request is common-relative only (`DriveGroup.h`, `GroupApp.h`). Stage 08 fixes wait lifetime across selection/group/recovery changes; bench verification of this correction is pending. Identity admission remains limited to recorded model/firmware words `0x4EEA/0x0029`. | 02 partial; 08 software complete; 09 extension |
+| M02 | Stage 08 retains per-target enable waits. Stage 09 adds copied member intents, independent conversion/reference facts and inert console plans; common-relative moves use the same path. Final integrated and board verification is in progress. Identity admission remains limited to recorded model/firmware words `0x4EEA/0x0029`. | 02 partial; 08 software complete; 09 verification |
 | M03 | Valid application restriction (`qualifyIoEffects`, `startDriver`, `moveRequirements`). Core supports functions 0-17 with prerequisites; ordinary application admission stays narrow. Broader rules must account for sensors, trigger inhibition, intermediate writes and unresolved status/polarity mapping. PIN selectors are not universally neutral; edge-triggered PV is still velocity. | 04 |
 | M04 | Valid missing input-start observation/arming route. Prepared finite staging is delivered; separate archive import is not required for it. PT target writes and shared-start semantics still depend on standalone 04/06. Function 7's held-level behavior is unqualified; `0x0050` selects input position mode. Negative PV encoding is unresolved; nonnegative stored settings already exist. Ordinary serial stops exist, but their interaction with an active external trigger is unqualified. | 05 |
 | M05 | Since 12 November the bench has three drives (1, 2, 4) on short star wiring, with power and RS485 only. There is no trigger wire or wired input. | 06; physical gates of 01-05 |
@@ -67,14 +68,14 @@ drives ([report](../../reports/2026-11-12_multi_drive_write_motion_stress.md)).
 | Stage | Deliverable | Starting gate | Status |
 | --- | --- | --- | --- |
 | 01 | [Broadcast acceptance test](01_broadcast_acceptance.md) | D6 approved; three-drive link clean at addresses 1, 2 and 4 | COMPLETE: NO-GO ([report](../../reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)) |
-| 02 | [Drive group in the standalone application](02_drive_group.md) | Delivered common-relative subset; 08 software correction delivered | PARTIAL: staged starts and three-drive evidence retained; member-specific requests remain in 09 |
+| 02 | [Drive group in the standalone application](02_drive_group.md) | Delivered common-relative subset; 08 software correction delivered | PARTIAL: original staged-start evidence retained; member-specific implementation is in 09 verification |
 | 03 | [Broadcast start and stop](03_broadcast_operations.md) | Reopened 01 with GO, D7, checked staging and qualified command words | NOT APPLICABLE: 01 is NO-GO |
 | 04 | [Input and output programming](04_input_programming.md) | None for software; wired inputs for physical claims | NOT STARTED |
 | 05 | [Input-triggered start](05_input_triggered_start.md) | 04 delivered; existing checked staging for function 7; standalone 04/06 for PT segments; wired trigger for physical claims | NOT STARTED |
 | 06 | [Multi-drive qualification and closeout](06_two_drive_qualification.md) | Recorded three-drive fixture; wired trigger for 05 cases | PARTIAL: unicast group evidence exists; remaining case mapping, wired trigger and physical timing open |
 | 07 | [Why some broadcast starts and stops were ignored](07_broadcast_misses.md) | Owner powers the drives one at a time; bias fitted for the last row | BLOCKED(input) |
 | 08 | [Enable-wait lifetime](08_enable_wait_lifetime.md) | No software fixture gate | SOFTWARE COMPLETE; bench regression pending after address-1 NO_RESPONSE ([report](../../reports/2026-11-15_multi_drive_08_enable_wait_lifetime.md)) |
-| 09 | [Independent member motion requests](09_member_motion_requests.md) | 08 corrected; existing group/stage API | NOT STARTED: remaining M02 scope |
+| 09 | [Independent member motion requests](09_member_motion_requests.md) | 08 corrected; existing group/stage API | PARTIAL: API/console/host implementation and focused checks pass; final verification in progress ([report](../../reports/2026-11-15_multi_drive_09_member_motion_requests.md)) |
 
 This table is the single status record. Statuses are NOT STARTED, PARTIAL,
 BLOCKED(input), SOFTWARE COMPLETE, COMPLETE and NOT APPLICABLE. Software stages may proceed before

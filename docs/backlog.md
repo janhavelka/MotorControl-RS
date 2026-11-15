@@ -289,10 +289,13 @@ more drives (now addresses 1, 2 and 4, star wiring).
   then one finite move after it, plus the short regression. The 15 November
   preflight got NO_RESPONSE from address 1; no new image or motion was sent.
   HW-15's separate drive-timing investigation remains open.
-- [ ] Complete the original different-member-target requirement
+- [x] Implement the original different-member-target requirement
   ([multi-drive 09](prompts/ess_multi_drive/09_member_motion_requests.md)), with
-  per-member intent/reference provenance. The current group API accepts one
-  common relative request; stage 02 is PARTIAL against its full scope.
+  copied member intents, independent scales and explicit coordinate/reference
+  provenance. Whole-group validation precedes writes; ordinary API, console and
+  host routes share the execution path. The
+  [report](reports/2026-11-15_multi_drive_09_member_motion_requests.md) records
+  verification and separate physical limits.
 - [ ] Broadcast start and stop ([multi-drive 03](prompts/ess_multi_drive/03_broadcast_operations.md))
   are not applicable while multi-drive 01 is NO-GO. Reopening requires new
   passing evidence for the exact configuration and command words, not a

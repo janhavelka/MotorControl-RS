@@ -3374,7 +3374,7 @@ class Framing(unittest.TestCase):
             if command!="probe": return normal
             accepted,terminal=normal.splitlines(keepends=True)
             records=[]
-            for sequence in range(1,61):
+            for sequence in range(1,121):
                 item=traffic_record(sequence,mode="raw")
                 item.update(complete=False,length=256,raw_hex="ff"*256)
                 records.append(encoded(item))
@@ -3383,7 +3383,7 @@ class Framing(unittest.TestCase):
         console=self.session(handler)
         result=console.command("probe",address=1)
         self.assertTrue(result["ok"])
-        self.assertEqual(len([e for e in self.events if e["event"]=="traffic"]),60)
+        self.assertEqual(len([e for e in self.events if e["event"]=="traffic"]),120)
         self.assertFalse(console.operations)
 
     def test_partial_traffic_line_is_completed_before_next_command(self):
@@ -6318,8 +6318,8 @@ GROUP_STOP_TERMINAL = json.loads('{"type":"group","profile":"ess_rs","id":10,"co
 GROUP_READ_TERMINAL = json.loads('{"type":"group","profile":"ess_rs","id":11,"command":"group-read-state","command_id":11,"operation_id":28,"group_kind":"read_state","ok":true,"state":"succeeded","declaration":1,"binding_generation":1,"aborted":false,"failed_address":0,"started_us":5677458,"finished_us":5743261,"count":3,"members":[{"address":1,"operation_id":29,"admission":"admitted","status":"OK","detail":0,"read_state":"succeeded","state_known":true,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0},{"address":2,"operation_id":30,"admission":"admitted","status":"OK","detail":0,"read_state":"succeeded","state_known":true,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0},{"address":4,"operation_id":31,"admission":"admitted","status":"OK","detail":0,"read_state":"succeeded","state_known":true,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0}],"host_serial":{"known":true,"baud":115200,"format":"8N1","generation":1}}')
 GROUP_SHOW = json.loads('{"type":"reply","profile":"ess_rs","id":12,"command":"group-show","ok":true,"result":"done","bus_traffic":false,"capacity":15,"count":3,"declaration":1,"binding_generation":1,"sequencing":false,"operations":{"set":1,"read_state":28,"move":20,"stops":[24,0]},"members":[{"address":1,"target":1,"generation":1,"configuration_generation":1,"current":true,"identity_known":true,"raw_model":20202,"raw_version":41,"raw_active_node":1,"config_known":true,"profile_known":true,"profile":[10,100,100,60,0,0],"inputs":[0,0,0,0],"outputs":[0,0],"start_speed_relation_required":false},{"address":2,"target":2,"generation":1,"configuration_generation":1,"current":true,"identity_known":true,"raw_model":20202,"raw_version":41,"raw_active_node":2,"config_known":true,"profile_known":true,"profile":[10,100,100,60,0,0],"inputs":[0,0,0,0],"outputs":[0,0],"start_speed_relation_required":false},{"address":4,"target":4,"generation":1,"configuration_generation":1,"current":true,"identity_known":true,"raw_model":20202,"raw_version":41,"raw_active_node":4,"config_known":true,"profile_known":true,"profile":[10,100,100,60,0,0],"inputs":[1,0,0,0],"outputs":[0,0],"start_speed_relation_required":false}]}')
 GROUP_STATUS = json.loads('{"type":"reply","profile":"ess_rs","id":13,"command":"group-status","ok":true,"result":"done","bus_traffic":false,"capacity":15,"count":3,"declaration":1,"binding_generation":1,"sequencing":false,"operations":{"set":1,"read_state":28,"move":20,"stops":[24,0]},"members":[{"address":1,"current":true,"motion_fresh":true,"io_fresh":true,"feedback_fresh":true,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0,"age_ms":3211,"settling":false,"settle_until_us":0,"reserved":false},{"address":2,"current":true,"motion_fresh":true,"io_fresh":true,"feedback_fresh":true,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0,"age_ms":3189,"settling":false,"settle_until_us":0,"reserved":false},{"address":4,"current":true,"motion_fresh":false,"io_fresh":false,"feedback_fresh":false,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0,"age_ms":null,"settling":false,"settle_until_us":0,"reserved":false}]}')
-GROUP_MOVE_ARGS = ("relative", "50", "steps", "native", "60", "configured", "on-failure", "leave")
-GROUP_SEQUENTIAL_ARGS = GROUP_MOVE_ARGS[:6] + ("start", "sequential") + GROUP_MOVE_ARGS[6:]
+GROUP_MOVE_ARGS = ("relative", "200", "steps", "native", "60", "configured", "on-failure", "leave")
+GROUP_SEQUENTIAL_ARGS = ("relative", "50") + GROUP_MOVE_ARGS[2:6] + ("start", "sequential") + GROUP_MOVE_ARGS[6:]
 
 
 class DriveGroupRouteTests(unittest.TestCase):
@@ -6550,6 +6550,246 @@ class DriveGroupRouteTests(unittest.TestCase):
         console = self.session(self.routed({"group-move": line}))
         terminal = console.wait(console.begin("group-move", host_args=GROUP_MOVE_ARGS))
         self.assertEqual(len(terminal["members"]), 15)
+
+class GroupMemberPlanTests(unittest.TestCase):
+    """Inert host assembly and exact submitted evidence; no motor traffic."""
+
+    session = DriveGroupRouteTests.session
+    routed = staticmethod(DriveGroupRouteTests.routed)
+
+    @staticmethod
+    def intent(value, relative=True, generation=1):
+        return dict(relative=relative, wrapped=False, value=[value, 1], unit="steps", frame=0,
+                    configuration_generation=generation, basis=0, path=2, tie=0, rounding=0,
+                    maximum_quantization_error=0, approximate=False, rational_radians=True, radians=0,
+                    maximum_approximation_error=0, speed_rpm=60, ramp=1, setup="write")
+
+    @classmethod
+    def view(cls, count=3):
+        view = copy.deepcopy(GROUP_SHOW)
+        if count != 3:
+            view["members"] = [dict(copy.deepcopy(view["members"][0]), address=a, target=a, raw_active_node=a) for a in range(1, count + 1)]
+        view["count"] = count
+        view["plan"] = dict(active=False, declaration=0, binding_generation=0, count=0, start="staged", on_failure="none", members=[])
+        for member in view["members"]:
+            address = member["address"]
+            member.update(configuration_operation_id=10 + address, motion_operation_id=20 + address, feedback_operation_id=20 + address,
+                          reference_current=False, reference=dict(target=0, address=0, generation=0, configuration_generation=0,
+                          native_known=False, native_position=0, basis=0, source=0, observed_us=0, maximum_age_us=0))
+            member["axis"] = dict(ok=True, code="OK", detail=0, bus_traffic=False, motion_command=False, wire_motion="not_requested",
+                                  configuration_generation=1, target=address, address=address, binding_generation=1,
+                                  operator_scales=[dict(numerator=0, denominator=1, source=0) for _ in range(5)])
+        return view
+
+    @classmethod
+    def terminal(cls, view):
+        result = copy.deepcopy(GROUP_MOVE_TERMINAL)
+        result.update(individual=True, request=dict(start=view["plan"]["start"]), on_failure=view["plan"]["on_failure"], count=view["count"])
+        template = result["members"][0]
+        intents = {m["address"]: m["request"] for m in view["plan"]["members"]}
+        result["members"] = [dict(copy.deepcopy(template), address=m["address"], operation_id=301 + i,
+                                  request=copy.deepcopy(intents[m["address"]]), effective_native=intents[m["address"]]["value"][0])
+                             for i, m in enumerate(view["members"])]
+        return result
+
+    def planner(self, *, count=3, mutate=None, defer=False):
+        view = self.view(count)
+        self.retained = []
+        def handler(i, command, args):
+            if command != "group":
+                return Serial.normal(i, command, args)
+            if args[:2] == ["plan", "submit"]:
+                terminal = self.terminal(view)
+                terminal.update(id=i, command_id=i, operation_id=300)
+                if mutate:
+                    mutate(terminal)
+                accepted = encoded(reply(i, "group-move", result="accepted", address=0, operation_id=300))
+                if defer:
+                    self.retained.append(encoded(terminal))
+                    return accepted
+                return accepted + encoded(terminal)
+            name = "group-" + "-".join(args[:2]) if args[0] == "plan" else "group-" + args[0]
+            if args[:2] == ["plan", "begin"]:
+                parsed = bench.group_arguments(name, tuple(args[2:]))
+                view["plan"] = dict(active=True, declaration=1, binding_generation=1, count=0, members=[], **parsed)
+            elif args[:2] == ["plan", "add"]:
+                parsed = bench.group_arguments(name, tuple(args[2:]))
+                value = bench.Fraction(parsed["value"])
+                intent = self.intent(value.numerator, parsed["relative"])
+                intent.update(value=[value.numerator, value.denominator], unit=parsed["unit"],
+                              frame=("native", "motor", "load").index(parsed["frame"]), speed_rpm=parsed["speed_rpm"], setup=parsed["setup"])
+                view["plan"]["members"].append(dict(address=parsed["address"], request=intent))
+                view["plan"]["count"] += 1
+            elif args[:2] == ["plan", "clear"]:
+                view["plan"].update(active=False, count=0, members=[])
+            item = copy.deepcopy(view)
+            item.update(id=i, command=name)
+            return encoded(item)
+        return self.session(handler)
+
+    def assemble(self, console, addresses=(1, 2, 4)):
+        console.command("group-plan-begin", host_args=("on-failure", "leave"))
+        for index, address in enumerate(addresses):
+            console.command("group-plan-add", host_args=(str(address), "absolute" if index == 2 else "relative",
+                            str((index + 1) * (-25 if index % 2 else 50)), "steps", "native", "60", "configured"))
+
+    def test_new_grammar_rejects_before_tx(self):
+        console = self.session(Serial.normal)
+        before = len(self.port.writes)
+        bad = (("group-plan-begin", ()), ("group-plan-begin", ("on-failure", "stop")),
+               ("group-plan-begin", ("start", "broadcast", "on-failure", "leave")),
+               ("group-plan-add", ("1", "angle", "50", "steps", "native", "60", "configured")),
+               ("group-plan-add", ("1", "relative", "50", "steps", "native", "60", "configured", "setup", "stored")),
+               ("group-plan-add", ("1", "absolute", "1/0", "steps", "native", "60", "configured")),
+               ("group-reference", ("1", "1", "1", "1", "10", "20", "0", "1000")),
+               ("group-reference", ("1", "1", "1", "1", "10", "20", "0", "4294967296", "command-coordinate-qualified")))
+        for command, args in bad:
+            with self.subTest(command=command, args=args), self.assertRaises(ValueError):
+                console.command(command, host_args=args)
+        with self.assertRaises(ValueError):
+            console.command("group-plan-submit")
+        self.assertEqual(len(self.port.writes), before)
+
+    def test_plan_is_inert_until_complete_explicit_submit(self):
+        console = self.planner()
+        console.command("group-plan-begin", host_args=("on-failure", "leave"))
+        console.command("group-plan-add", host_args=("1", "relative", "50", "steps", "native", "60", "configured"))
+        with self.assertRaises(ValueError):
+            console.command("group-plan-submit")
+        self.assertFalse(console.operations)
+        console.command("group-plan-clear")
+        self.assemble(console)
+        self.assertFalse(console.operations)
+        terminal = console.command("group-plan-submit")
+        self.assertTrue(terminal["ok"])
+        self.assertEqual([m["request"]["relative"] for m in terminal["members"]], [True, True, False])
+        self.assertEqual(sum(b"group plan submit" in line for line in self.port.writes), 1)
+        self.assertIsNone(console.group_plan)
+
+    def test_plan_expectation_is_frozen_and_not_replayed(self):
+        console = self.planner(defer=True)
+        self.assemble(console)
+        cached = console.group_plan
+        handle = console.begin("group-plan-submit")
+        cached["members"][0]["request"]["value"][0] = 999
+        self.port.input.extend(self.retained[0])
+        self.assertTrue(console.wait(handle)["ok"])
+        self.assertEqual(handle.group_plan["members"][0]["request"]["value"], [50, 1])
+        self.assertEqual(sum(b"group plan submit" in line for line in self.port.writes), 1)
+
+    def test_forged_member_intents_and_bindings_are_rejected(self):
+        mutations = (lambda t: t["members"][0]["request"].update(value=[51, 1]),
+                     lambda t: t["members"][1]["request"].update(frame=1),
+                     lambda t: t["members"][2]["request"].update(relative=True),
+                     lambda t: t["members"][0]["request"].update(configuration_generation=2),
+                     lambda t: t.update(declaration=2), lambda t: t["members"].reverse(),
+                     lambda t: t["members"][1].update(address=8), lambda t: t.update(individual=False))
+        for mutate in mutations:
+            console = self.planner(mutate=mutate)
+            self.assemble(console)
+            with self.subTest(mutate=mutate), self.assertRaises(bench.BenchError):
+                console.command("group-plan-submit")
+            self.assertEqual(sum(b"group plan submit" in line for line in self.port.writes), 1)
+            self.assertFalse(console.synchronized)
+
+    def test_common_value_and_frame_are_checked_exactly(self):
+        for fields in (dict(value=[201, 1]), dict(frame=1)):
+            console = self.session(self.routed({"group-move": GROUP_MOVE_TERMINAL}, lambda item: item["request"].update(fields)))
+            with self.assertRaises(bench.BenchError):
+                console.command("group-move", host_args=GROUP_MOVE_ARGS)
+        console = self.session(self.routed({"group-move": GROUP_MOVE_TERMINAL}))
+        args = ("relative", "400/2") + GROUP_MOVE_ARGS[2:]
+        self.assertTrue(console.command("group-move", host_args=args)["ok"])
+
+    def test_full_capacity_plan_and_terminal_fit_fixed_limits(self):
+        console = self.planner(count=15)
+        self.assemble(console, tuple(range(1, 16)))
+        inspected = console.command("group-plan-show")
+        self.assertLess(len(encoded(inspected)), bench.MAX_LINE)
+        self.assertEqual(inspected["plan"]["count"], 15)
+        terminal = console.command("group-plan-submit")
+        self.assertEqual(len(terminal["members"]), 15)
+        self.assertLess(len(encoded(terminal)), bench.MAX_LINE)
+        self.assertTrue(all(len(line) <= 128 and len(line.split()) <= 22 for line in self.port.writes))
+
+    def test_explicit_reference_matches_every_binding_and_revoke(self):
+        tokens = ("1", "1", "1", "1", "11", "21", "-50", "1000000", "command-coordinate-qualified")
+        def handler(mutate=None):
+            def respond(i, command, args):
+                if command != "group":
+                    return Serial.normal(i, command, args)
+                view = self.view()
+                view.update(id=i, command="group-reference")
+                if args[-1] != "revoke":
+                    member = view["members"][0]
+                    member.update(reference_current=True)
+                    member["reference"].update(target=1, address=1, generation=1, configuration_generation=1,
+                                               native_known=True, native_position=-50, source=4, observed_us=100, maximum_age_us=1000000)
+                if mutate:
+                    mutate(view)
+                return encoded(view)
+            return respond
+        console = self.session(handler())
+        self.assertTrue(console.command("group-reference", host_args=tokens)["ok"])
+        self.assertTrue(console.command("group-reference", host_args=("1", "revoke"))["ok"])
+        self.assertFalse(console.operations)
+        changes = (lambda t: t.update(declaration=2),
+                   lambda t: t["members"][0]["reference"].update(native_position=0),
+                   lambda t: t["members"][0]["reference"].update(configuration_generation=2),
+                   lambda t: t["members"][0]["reference"].update(source=3),
+                   lambda t: t["members"][0].update(feedback_operation_id=22),
+                   lambda t: t["members"][0]["reference"].update(maximum_age_us=0))
+        for change in changes:
+            console = self.session(handler(change))
+            with self.subTest(change=change), self.assertRaises(bench.BenchError):
+                console.command("group-reference", host_args=tokens)
+
+    def test_oversized_member_command_is_rejected_without_tx(self):
+        console = self.session(Serial.normal)
+        before = len(self.port.writes)
+        console.next_id = 0xFFFFFFFF
+        tokens = ("247", "absolute", "-9223372036854775808/18446744073709551615", "fullsteps", "native", "65535", "configured", "setup", "verify")
+        with self.assertRaises(ValueError):
+            console.command("group-plan-add", host_args=tokens)
+        self.assertEqual(len(self.port.writes), before)
+        self.assertTrue(console.synchronized)
+
+    def test_stale_inert_plan_remains_inspectable_but_cannot_submit(self):
+        plan = dict(active=True, declaration=1, binding_generation=1, count=3, start="staged", on_failure="leave",
+                    members=[dict(address=a, request=self.intent(50)) for a in (1, 2, 4)])
+        for command in ("group-show", "group-status", "group-clear"):
+            view = copy.deepcopy(GROUP_STATUS) if command == "group-status" else self.view()
+            view.update(command=command, declaration=2, binding_generation=3, plan=copy.deepcopy(plan))
+            if command == "group-clear":
+                view.update(count=0, members=[])
+            console = self.session(self.routed({command: view}))
+            reply = console.command(command)
+            self.assertEqual(reply["plan"], plan)
+            writes = len(self.port.writes)
+            with self.subTest(command=command), self.assertRaises(ValueError):
+                console.command("group-plan-submit")
+            self.assertEqual(len(self.port.writes), writes)
+            self.assertEqual(console.group_plan, plan)
+            self.assertTrue(console.synchronized)
+
+    def test_refused_submission_preserves_the_inert_plan(self):
+        view = self.view()
+        view["plan"] = dict(active=True, declaration=1, binding_generation=1, count=3, start="staged", on_failure="leave",
+                            members=[dict(address=a, request=self.intent(50)) for a in (1, 2, 4)])
+        def handler(i, command, args):
+            if command != "group":
+                return Serial.normal(i, command, args)
+            if args == ["plan", "submit"]:
+                return encoded(reply(i, "group-move", ok=False, result="unavailable", address=2, operation_id=0))
+            return encoded(dict(copy.deepcopy(view), id=i))
+        console = self.session(handler)
+        console.command("group-show")
+        saved = copy.deepcopy(console.group_plan)
+        self.assertFalse(console.command("group-plan-submit")["ok"])
+        self.assertEqual(console.group_plan, saved)
+        self.assertFalse(console.operations)
+        self.assertEqual(sum(b"group plan submit" in line for line in self.port.writes), 1)
+
 
 PROFILE_STAGE_ARGS = ("20", "40", "100", "0", "7000", "0", "1")
 
@@ -6896,16 +7136,65 @@ def check_profile_stage_fixtures(executables):
     assert by_frontend[0]==by_frontend[1],"Arduino/IDF production candidate evidence differs"
 
 
+def check_group_member_fixtures(executables):
+    """Feed both production console frontends through the real bounded host route."""
+    checked = []
+    requests = (("group-show", ()), ("group-plan-begin", ("on-failure", "leave")),
+                ("group-plan-add", ("4", "absolute", "100", "steps", "native", "60", "configured")),
+                ("group-plan-add", ("1", "relative", "50", "steps", "native", "60", "configured")),
+                ("group-plan-add", ("2", "relative", "-25", "steps", "native", "60", "configured")),
+                ("group-plan-show", ()), ("group-plan-submit", ()))
+    for executable in executables:
+        output = subprocess.check_output([executable, "--emit-member-fixtures"], text=True, timeout=10)
+        records = [json.loads(line) for line in output.splitlines() if line.startswith("{")]
+        packets = []
+        for record in records:
+            if not packets or packets[-1][0]["id"] != record["id"]:
+                packets.append([])
+            packets[-1].append(record)
+        assert len(packets) == len(requests), "member fixture route count differs"
+        cursor = 0
+        def handler(request_id, command, args):
+            nonlocal cursor
+            if command != "group":
+                return Serial.normal(request_id, command, args)
+            packet = copy.deepcopy(packets[cursor]); cursor += 1
+            for record in packet:
+                original_id = record["id"]
+                record["id"] = request_id
+                if record.get("command_id") == original_id:
+                    record["command_id"] = request_id
+            return b"".join(encoded(record) for record in packet)
+        clock = Clock(); port = Serial(handler)
+        console = bench.Console(port, clock=clock, sleeper=clock.sleep)
+        console.identify(timeout_s=.1)
+        outputs = [console.command(command, host_args=args) for command, args in requests]
+        terminal = outputs[-1]
+        assert terminal["individual"] and terminal["ok"] and [m["address"] for m in terminal["members"]] == [1, 2, 4]
+        assert [m["request"]["value"] for m in terminal["members"]] == [[50, 1], [-25, 1], [100, 1]]
+        assert [m["request"]["relative"] for m in terminal["members"]] == [True, True, False]
+        assert len(port.writes) == len(requests) + 2 and port.writes[-1].split()[1] == b"release"
+        assert all(len(line) <= 128 and len(line.split()) <= 22 for line in port.writes)
+        checked.append(outputs)
+    assert checked[0] == checked[1], "Arduino/IDF member intent or retained evidence differs"
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--position-interrupt-fixtures":
-        if (len(sys.argv) not in (4,9,12) or (len(sys.argv)>=9 and sys.argv[4]!="--stop-recovery-fixtures") or
-                (len(sys.argv)==12 and sys.argv[9]!="--profile-stage-fixtures")):
-            raise ValueError("expected interruption, optional recovery and optional candidate fixture paths")
+        if (len(sys.argv) not in (4,9,12,15) or (len(sys.argv)>=9 and sys.argv[4]!="--stop-recovery-fixtures") or
+                (len(sys.argv)>=12 and sys.argv[9]!="--profile-stage-fixtures") or
+                (len(sys.argv)==15 and sys.argv[12]!="--group-member-fixtures")):
+            raise ValueError("expected interruption, optional recovery, candidate and member fixture executables")
         check_position_interrupt_fixtures(sys.argv[2:4])
         if len(sys.argv)>=9:
             check_stop_recovery_fixtures(sys.argv[5:9])
-        if len(sys.argv)==12:
+        if len(sys.argv)>=12:
             check_profile_stage_fixtures(sys.argv[10:12])
+        if len(sys.argv)==15:
+            check_group_member_fixtures(sys.argv[13:15])
+        unittest.main(argv=[sys.argv[0]])
+    elif len(sys.argv)==4 and sys.argv[1]=="--group-member-fixtures":
+        check_group_member_fixtures(sys.argv[2:4])
         unittest.main(argv=[sys.argv[0]])
     elif len(sys.argv)==4 and sys.argv[1]=="--profile-stage-fixtures":
         check_profile_stage_fixtures(sys.argv[2:4])

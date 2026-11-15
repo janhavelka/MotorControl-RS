@@ -19,6 +19,9 @@
 
 ### Added
 
+- Independent group-member relative/absolute requests, explicit member coordinate
+  facts and inert console/host plans. All members are checked before writes;
+  staging, starts, stops and results retain their own evidence.
 - Validated position-profile candidates and host archive export/import through
   the ordinary application and console. One retained result, a fresh prior read
   and one deadline cover five-word staging/readback; no start, save or replay.

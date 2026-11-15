@@ -98,7 +98,7 @@ const Entry COMMANDS[] = {
     {"drv", Command::DRV, "drv", "show_owner_queue_and_output", false, "Show the bus owner, queues, retained results and console pressure."},
     {"result", Command::RESULT, "result [operation_id]", "inspect_retained_result_without_consuming", false, "Inspect an operation without consuming its retained result."},
     {"cancel", Command::CANCEL, "cancel [operation_id]", "cancel_local_work_not_motor_stop", false, "Cancel local work; use stop to request a motor stop."},
-    {"group", Command::GROUP, "group show|status|clear | group set ADDR [ADDR ...] (1..15) | group wiring ADDR x0|x1|x2|x3|y0|y1 unknown|unconnected|connected | group read state | group move relative value unit frame native_rpm configured [setup write|verify] [start staged|sequential] on-failure leave|stop normal|stop fast | group stop normal|fast", "unicast_drive_group_independent_member_operations", true, "Declare up to 15 drives, read their state, stage every move and then send only the starts, or stop each one. Each member keeps its own result."},
+    {"group", Command::GROUP, "group show|status|clear | group set ADDR [ADDR ...] (1..15) | group wiring ADDR x0|x1|x2|x3|y0|y1 unknown|unconnected|connected | group read state | group move relative value unit frame native_rpm configured [setup write|verify] [start staged|sequential] on-failure leave|stop normal|stop fast | group stop normal|fast | group plan begin [start staged|sequential] on-failure leave|stop normal|stop fast | group plan add ADDR relative|absolute value unit frame native_rpm configured [setup write|verify] | group plan show|clear|submit | group axis ADDR config|config set field value [maximum]|origin native|prepare request | group reference ADDR declaration binding config config_read state_read native max_age_us command-coordinate-qualified | group reference ADDR revoke", "unicast_drive_group_independent_member_operations", true, "Declare up to 15 drives. A member plan stays inert until complete and explicitly submitted. Each member keeps its own coordinates, request and result."},
     {"broadcast", Command::BROADCAST, "broadcast accel 300|301 | broadcast start relative | broadcast stop normal|fast", "fixture_only_unconfirmed_address_0_frame_then_silent_window", true, "Bench fixture only: send one fixed address-0 frame to every drive, then listen 200 ms. No drive confirms it; read each drive back."},
     {"release", Command::RELEASE, "release operation_id", "release_retained_terminal_result", false, "Release an inspected terminal result to free its storage."}
 };
@@ -342,7 +342,7 @@ Core::Status allowance(const char* text, double& output) {
     if (value.numerator < 0) return axisArgument();
     return Core::rationalToDouble(value, output);
 }
-Core::Status axisRequest(char* const* tokens, std::size_t count, bool prepare, AxisCommand& output) {
+Core::Status axisRequest(const char* const* tokens, std::size_t count, bool prepare, AxisCommand& output) {
     if (prepare) {
         if (count < 4 || count > 9) return axisArgument();
         output.kind = AxisCommandKind::PREPARE;
@@ -3399,6 +3399,34 @@ bool Console::formatRecovery(uint32_t id, uint32_t commandId, uint32_t operation
 }
 
 
+bool groupIntent(char* output, std::size_t capacity, std::size_t& used, const Core::MoveRequest& move) {
+    const auto& p = move.position;
+    return append(output, capacity, used,
+        "{\"relative\":%s,\"wrapped\":%s,\"value\":[%lld,%llu],\"unit\":\"%s\",\"frame\":%u,\"configuration_generation\":%lu,\"basis\":%u,\"path\":%u,\"tie\":%u,\"rounding\":%u,\"maximum_quantization_error\":%.17g,\"approximate\":%s,\"rational_radians\":%s,\"radians\":%.17g,\"maximum_approximation_error\":%.17g,\"speed_rpm\":%u,\"ramp\":%u,\"setup\":\"%s\"}",
+        boolean(p.relative), boolean(p.wrapped), static_cast<long long>(p.value.numerator),
+        static_cast<unsigned long long>(p.value.denominator), unitName(p.unit), static_cast<unsigned>(p.frame),
+        static_cast<unsigned long>(p.configurationGeneration), static_cast<unsigned>(p.basis), static_cast<unsigned>(p.path),
+        static_cast<unsigned>(p.tie), static_cast<unsigned>(p.rounding), p.maximumQuantizationError,
+        boolean(p.approximate), boolean(p.rationalRadians), p.radians, p.maximumApproximationError,
+        move.speedRpm, static_cast<unsigned>(move.ramp), move.setup == Core::MoveSetup::WRITE_ALL ? "write" :
+        move.setup == Core::MoveSetup::VERIFY_AND_UPDATE ? "verify" : "stored");
+}
+bool groupPolicy(const char* const* tokens, std::size_t count, GroupMoveRequest& request) {
+    std::size_t next = 0;
+    if (count >= 2 && !std::strcmp(tokens[0], "start")) {
+        if (!std::strcmp(tokens[1], "staged")) request.start = GroupStartMode::STAGED;
+        else if (!std::strcmp(tokens[1], "sequential")) request.start = GroupStartMode::SEQUENTIAL;
+        else return false;
+        next = 2;
+    }
+    if (next >= count || std::strcmp(tokens[next++], "on-failure")) return false;
+    if (next + 1 == count && !std::strcmp(tokens[next], "leave")) request.onFailure = GroupFailurePolicy::LEAVE;
+    else if (next + 2 == count && !std::strcmp(tokens[next], "stop") && !std::strcmp(tokens[next + 1], "normal")) request.onFailure = GroupFailurePolicy::STOP_NORMAL;
+    else if (next + 2 == count && !std::strcmp(tokens[next], "stop") && !std::strcmp(tokens[next + 1], "fast")) request.onFailure = GroupFailurePolicy::STOP_FAST;
+    else return false;
+    return true;
+}
+
 // One `group` route. Each member keeps its own child operation, reservation and
 // evidence; the terminal group line copies every member's outcome. A group stop
 // dispatches under output pressure like `stop`, from its own two slots.
@@ -3447,6 +3475,68 @@ void Console::group(uint32_t id, const char* const* tokens, std::size_t count) n
         if (!std::strcmp(tokens[1], "normal")) request.stop = Core::StopBehavior::CONFIGURED_DECELERATION;
         else if (!std::strcmp(tokens[1], "fast")) request.stop = Core::StopBehavior::DIRECT;
         else { error(id, command, "unsupported_policy"); return; }
+    } else if (!std::strcmp(sub, "axis")) {
+        command = "group-axis"; request.kind = GroupCommandKind::AXIS;
+        uint32_t address = 0;
+        if (count < 3 || !number(tokens[1], address) || address < 1 || address > 247) { error(id, command, "invalid_arguments"); return; }
+        request.address = static_cast<uint8_t>(address);
+        const bool prepare = !std::strcmp(tokens[2], "prepare");
+        const std::size_t first = prepare ? 3 : 2;
+        if (!axisRequest(tokens + first, count - first, prepare, request.axis)) { error(id, command, "invalid_arguments"); return; }
+    } else if (!std::strcmp(sub, "reference")) {
+        command = "group-reference"; request.kind = GroupCommandKind::REFERENCE;
+        uint32_t address = 0;
+        if (count < 3 || !number(tokens[1], address) || address < 1 || address > 247) { error(id, command, "invalid_arguments"); return; }
+        request.address = static_cast<uint8_t>(address);
+        if (count == 3 && !std::strcmp(tokens[2], "revoke")) request.kind = GroupCommandKind::REFERENCE_REVOKE;
+        else {
+            uint32_t fields[7] = {};
+            Core::Rational native;
+            if (count != 10 || std::strcmp(tokens[9], "command-coordinate-qualified") ||
+                !Core::parseExactNumber(tokens[7], native) || native.denominator != 1) { error(id, command, "invalid_arguments"); return; }
+            for (std::size_t i = 0; i < 5; ++i)
+                if (!number(tokens[i + 2], fields[i]) || !fields[i]) { error(id, command, "invalid_arguments"); return; }
+            if (!number(tokens[8], fields[5])) { error(id, command, "invalid_arguments"); return; }
+            auto& supplied = request.reference;
+            supplied.declaration = fields[0]; supplied.configurationOperationId = fields[3];
+            supplied.motionOperationId = supplied.feedbackOperationId = fields[4];
+            auto& reference = supplied.reference;
+            reference.target.id = address; reference.target.address = static_cast<uint8_t>(address); reference.target.generation = fields[1];
+            reference.configurationGeneration = fields[2]; reference.nativePosition = native.numerator;
+            reference.nativeKnown = reference.idle = reference.stationary = true;
+            reference.source = Core::ScaleSource::QUALIFIED; reference.maximumAgeUs = fields[5];
+        }
+    } else if (!std::strcmp(sub, "plan")) {
+        if (count < 2) { error(id, "group-plan", "invalid_arguments"); return; }
+        if (!std::strcmp(tokens[1], "begin")) {
+            command = "group-plan-begin"; request.kind = GroupCommandKind::PLAN_BEGIN;
+            if (!groupPolicy(tokens + 2, count - 2, request.move)) { error(id, command, "failure_policy_required"); return; }
+        } else if (!std::strcmp(tokens[1], "add")) {
+            command = "group-plan-add"; request.kind = GroupCommandKind::PLAN_ADD;
+            uint32_t address = 0; Core::Rational speed;
+            auto& move = request.move.move;
+            if ((count != 9 && count != 11) || !number(tokens[2], address) || address < 1 || address > 247 ||
+                (std::strcmp(tokens[3], "relative") && std::strcmp(tokens[3], "absolute")) ||
+                !Core::parseExactNumber(tokens[4], move.position.value) || !positionUnit(tokens[5], move.position.unit) ||
+                !coordinateFrame(tokens[6], move.position.frame) || !Core::parseExactNumber(tokens[7], speed) ||
+                speed.denominator != 1 || speed.numerator <= 0 || speed.numerator > UINT16_MAX || std::strcmp(tokens[8], "configured")) {
+                error(id, command, "invalid_arguments"); return;
+            }
+            request.address = static_cast<uint8_t>(address); move.position.relative = !std::strcmp(tokens[3], "relative");
+            move.speedRpm = static_cast<uint16_t>(speed.numerator); move.ramp = Core::MoveRamp::VERIFIED_CONFIGURED;
+            if (count == 11) {
+                if (std::strcmp(tokens[9], "setup")) { error(id, command, "invalid_arguments"); return; }
+                if (!std::strcmp(tokens[10], "write")) move.setup = Core::MoveSetup::WRITE_ALL;
+                else if (!std::strcmp(tokens[10], "verify")) move.setup = Core::MoveSetup::VERIFY_AND_UPDATE;
+                else { error(id, command, "invalid_arguments"); return; }
+            }
+        } else {
+            if (count != 2) { error(id, "group-plan", "invalid_arguments"); return; }
+            if (!std::strcmp(tokens[1], "show")) { command = "group-plan-show"; request.kind = GroupCommandKind::PLAN_SHOW; }
+            else if (!std::strcmp(tokens[1], "clear")) { command = "group-plan-clear"; request.kind = GroupCommandKind::PLAN_CLEAR; }
+            else if (!std::strcmp(tokens[1], "submit")) { command = "group-move"; request.kind = GroupCommandKind::PLAN_SUBMIT; asynchronous = true; }
+            else { error(id, "group-plan", "invalid_arguments"); return; }
+        }
     } else if (!std::strcmp(sub, "move")) {
         command = "group-move"; request.kind = GroupCommandKind::MOVE; asynchronous = true;
         auto& move = request.move.move;
@@ -3495,6 +3585,13 @@ void Console::group(uint32_t id, const char* const* tokens, std::size_t count) n
     reply = GroupReply();
     if (!asynchronous) {
         const Action result = host_.group(host_.context, id, request, reply);
+        if (request.kind == GroupCommandKind::AXIS && result == Action::OK && reply.axis) {
+            std::size_t used = 0;
+            if (!append(output_, sizeof(output_), used, "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"group-axis\",\"ok\":true,\"result\":\"done\",\"code\":\"OK\",\"detail\":0", static_cast<unsigned long>(id)) ||
+                !axisView(output_, sizeof(output_), used, *reply.axis, request.axis.kind == AxisCommandKind::PREPARE)) error(id, command, "output_full");
+            else emit();
+            return;
+        }
         if (!formatGroupView(id, command, result, reply.view)) error(id, command, "output_full");
         return;
     }
@@ -3542,8 +3639,31 @@ bool Console::formatGroupView(uint32_t id, const char* command, Action result, c
                 static_cast<unsigned>(m.inputs[0]), static_cast<unsigned>(m.inputs[1]), static_cast<unsigned>(m.inputs[2]),
                 static_cast<unsigned>(m.inputs[3]), static_cast<unsigned>(m.outputs[0]), static_cast<unsigned>(m.outputs[1]),
                 boolean(m.startSpeedRelationRequired))) return false;
+            if (!status) {
+                --used; // Extend this member without copying its full configuration to the stack.
+                const auto& reference = m.reference;
+                if (!append(output_, sizeof(output_), used,
+                    ",\"configuration_operation_id\":%lu,\"motion_operation_id\":%lu,\"feedback_operation_id\":%lu,\"reference_current\":%s,\"reference\":{\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"native_known\":%s,\"native_position\":%lld,\"basis\":%u,\"source\":%u,\"observed_us\":%llu,\"maximum_age_us\":%llu},\"axis\":{\"ok\":true,\"code\":\"OK\",\"detail\":0",
+                    static_cast<unsigned long>(m.configurationOperationId), static_cast<unsigned long>(m.motionOperationId), static_cast<unsigned long>(m.feedbackOperationId), boolean(m.referenceCurrent),
+                    static_cast<unsigned long>(reference.target.id), reference.target.address, static_cast<unsigned long>(reference.target.generation),
+                    static_cast<unsigned long>(reference.configurationGeneration), boolean(reference.nativeKnown), static_cast<long long>(reference.nativePosition),
+                    static_cast<unsigned>(reference.basis), static_cast<unsigned>(reference.source), static_cast<unsigned long long>(reference.observedUs), static_cast<unsigned long long>(reference.maximumAgeUs))) return false;
+                groupAxisView_.configuration = m.axis;
+                if (!axisView(output_, sizeof(output_), used, groupAxisView_, false) || !append(output_, sizeof(output_), used, "}")) return false;
+            }
         }
         if (!append(output_, sizeof(output_), used, "]")) return false;
+        const auto& plan = view->plan;
+        if (!append(output_, sizeof(output_), used,
+            ",\"plan\":{\"active\":%s,\"declaration\":%lu,\"binding_generation\":%lu,\"count\":%u,\"start\":\"%s\",\"on_failure\":\"%s\",\"members\":[",
+            boolean(view->planActive), static_cast<unsigned long>(plan.declaration), static_cast<unsigned long>(plan.bindingGeneration), static_cast<unsigned>(plan.count),
+            plan.start == GroupStartMode::STAGED ? "staged" : "sequential", plan.onFailure == GroupFailurePolicy::LEAVE ? "leave" :
+            plan.onFailure == GroupFailurePolicy::STOP_NORMAL ? "stop_normal" : plan.onFailure == GroupFailurePolicy::STOP_FAST ? "stop_fast" : "none")) return false;
+        for (std::size_t i = 0; i < plan.count && i < GROUP_CAPACITY; ++i) {
+            if (!append(output_, sizeof(output_), used, "%s{\"address\":%u,\"request\":", i ? "," : "", plan.members[i].address) ||
+                !groupIntent(output_, sizeof(output_), used, plan.members[i].move) || !append(output_, sizeof(output_), used, "}")) return false;
+        }
+        if (!append(output_, sizeof(output_), used, "]}")) return false;
     }
     if (!append(output_, sizeof(output_), used, "}")) return false;
     emit();
@@ -3606,7 +3726,10 @@ bool Console::formatGroup(uint32_t id, uint32_t commandId, uint32_t operationId,
         if (runningKnown && runningLast >= runningFirst)
             std::snprintf(runningSpread, sizeof(runningSpread), "%llu", static_cast<unsigned long long>(runningLast - runningFirst));
         const auto& p = r.move.move.position;
-        if (!append(output_, sizeof(output_), used,
+        if (r.individual) {
+            if (!append(output_, sizeof(output_), used, ",\"individual\":true,\"request\":{\"start\":\"%s\"},\"on_failure\":\"%s\",\"start_tx_spread_us\":%s,\"running_bound_spread_us\":%s",
+                r.move.start == GroupStartMode::STAGED ? "staged" : "sequential", groupPolicyName(r.move.onFailure), txSpread, runningSpread)) return false;
+        } else if (!append(output_, sizeof(output_), used,
             ",\"request\":{\"relative\":true,\"value\":[%lld,%llu],\"unit\":\"%s\",\"frame\":%u,\"speed_rpm\":%u,\"setup\":\"%s\",\"start\":\"%s\"},\"on_failure\":\"%s\",\"start_tx_spread_us\":%s,\"running_bound_spread_us\":%s",
             static_cast<long long>(p.value.numerator), static_cast<unsigned long long>(p.value.denominator), unitName(p.unit),
             static_cast<unsigned>(p.frame), r.move.move.speedRpm,
@@ -3659,6 +3782,11 @@ bool Console::formatGroup(uint32_t id, uint32_t commandId, uint32_t operationId,
                 executionName(m.stageExecution), stageReadbackName(m.stageReadback), boolean(m.stageTxComplete),
                 static_cast<unsigned long long>(m.stageTxEndUs), static_cast<unsigned long long>(m.stageReadLatestUs),
                 Core::errToString(m.stageStatus.code), static_cast<long>(m.stageStatus.detail));
+            if (fits && r.individual) {
+                --used;
+                fits = append(output_, sizeof(output_), used, ",\"request\":") &&
+                    groupIntent(output_, sizeof(output_), used, m.request) && append(output_, sizeof(output_), used, "}");
+            }
             break;
         }
         if (!fits) return false;

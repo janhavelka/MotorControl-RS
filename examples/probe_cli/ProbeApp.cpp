@@ -12,6 +12,7 @@
 #include <new>
 #include <cstring>
 #include <algorithm>
+#include <cmath>
 #include "ProbeConsole.h"
 #include "DebugSession.h"
 #include "StateCache.h"
@@ -304,6 +305,7 @@ struct App {
         ESS::ConfigObservation configuration;
         MotionProfileState profile; ///< Checked 0x0020/6 readback of this member.
         Probe::StateCache state;
+        Probe::GroupReference coordinate; ///< Explicit caller witness bound to this member's checked reads.
         MotorControlRS::InputWiring inputWiring[4] = {}, outputWiring[2] = {};
         bool startSpeedRelationRequired = false; ///< This drive needs a relation that group moves cannot supply.
         StageSession stage;
@@ -329,6 +331,9 @@ struct App {
         uint32_t declaration = 0;
         GroupOperation set, read, move, stops[Probe::GROUP_STOP_OPERATIONS];
         Probe::GroupView view; ///< Scratch for synchronous show/status formatting.
+        Probe::AxisView axisView;
+        bool planActive = false;
+        Probe::GroupMemberMoves plan; ///< Inert, bounded request assembly; submit copies it into results.
         // Task-context scratch: nothing sized by the capacity lives on the loop stack.
         Probe::GroupCommand command; ///< Public API requests.
         MotorControlRS::InputWiring keptInputs[Probe::GROUP_CAPACITY][4], keptOutputs[Probe::GROUP_CAPACITY][2];
@@ -400,12 +405,17 @@ void storedWordsChanged(App& a, uint8_t address) {
     if (address == a.axis.target.address) a.rememberedMoveGeneration = 0;
     if (auto* member = groupMember(a, address)) member->storedKnown = false;
 }
+void invalidateMemberCoordinates(App::GroupMember& member) {
+    if (!MotorControlRS::invalidateAxisReference(member.axis, member.coordinate.reference)) member.axis.generation = 0;
+    member.profile.view.generation = member.axis.generation; // Host interpretation changed; raw drive bytes did not.
+    member.storedKnown = false;
+}
 void invalidateMemberConfiguration(App& a, uint8_t address, uint64_t now) {
     auto* member = groupMember(a, address);
     if (!member) return;
     member->storedKnown = false;
     member->configuration.operationId = 0;
-    member->axis.generation = !member->axis.generation || member->axis.generation == UINT32_MAX ? 0 : member->axis.generation + 1;
+    invalidateMemberCoordinates(*member);
     for (auto& block : member->state.blocks) block.invalidatedUs = now;
 }
 // Rebinding, recovery, a host tuple change or a broadcast: every member's facts
@@ -559,6 +569,7 @@ void invalidateMotionObservations(App& a, uint8_t address) {
         a.simpleEndpointKnown = false;
         a.motionObservationPending = true;
     }
+    if (auto* member = groupMember(a, address)) member->coordinate.reference.nativeKnown = false;
     invalidateObservations(a, address, nowUs());
 }
 bool triggeredMotion(const App& a, uint8_t address) {
@@ -628,6 +639,50 @@ MotorControlRS::AxisReference axisReference(const App& a) {
     // A zero raw position is insufficient evidence for nativeKnown or an origin.
     return evidence;
 }
+MotorControlRS::Status applyAxisConfiguration(MotorControlRS::AxisConfig& candidate, const Probe::AxisCommand& command) {
+    using namespace MotorControlRS;
+    if (command.kind != Probe::AxisCommandKind::CONFIGURE || command.field > Probe::AxisField::RELATIVE_BASES)
+        return Status(Err::INVALID_CONFIG, 0, "invalid axis configuration field");
+    const bool scaleField = command.field <= Probe::AxisField::ENCODER_SCALE;
+    if (scaleField && !command.clear && (command.value.numerator <= 0 ||
+        static_cast<uint64_t>(command.value.numerator) > UINT32_MAX || !command.value.denominator ||
+        command.value.denominator > UINT32_MAX))
+        return Status(Err::INVALID_CONFIG, 0, "scale is outside fixed range");
+    if ((command.field == Probe::AxisField::POLARITY || command.field == Probe::AxisField::ENCODER_POLARITY) &&
+        (command.value.denominator != 1 || (command.value.numerator != -1 && command.value.numerator != 1)))
+        return Status(Err::INVALID_CONFIG, 0, "polarity must be -1 or 1");
+    if ((command.field == Probe::AxisField::NATIVE_LIMITS || command.field == Probe::AxisField::SOFT_LIMITS) &&
+        (command.value.denominator != 1 || command.secondValue.denominator != 1))
+        return Status(Err::INVALID_CONFIG, 0, "native limits must be integers");
+    if ((command.field == Probe::AxisField::RELATIVE_BASES || command.field == Probe::AxisField::ENCODER_ID) &&
+        (command.value.denominator != 1 || command.value.numerator < 0 ||
+         static_cast<uint64_t>(command.value.numerator) > (command.field == Probe::AxisField::RELATIVE_BASES ? 7U : UINT32_MAX)))
+        return Status(Err::INVALID_CONFIG, 0, "axis field is outside fixed range");
+    UnitScale* scale = nullptr;
+    switch (command.field) {
+    case Probe::AxisField::COMMAND_SCALE: scale = &candidate.units.commandStepsPerMotorTurn; break;
+    case Probe::AxisField::GEAR: scale = &candidate.units.motorTurnsPerLoadTurn; break;
+    case Probe::AxisField::FULL_STEP_SCALE: scale = &candidate.units.fullStepsPerMotorTurn; break;
+    case Probe::AxisField::LEAD: scale = &candidate.units.millimetresPerLoadTurn; break;
+    case Probe::AxisField::ENCODER_SCALE: scale = &candidate.units.encoder.countsPerUnit; break;
+    case Probe::AxisField::ENCODER_ID: candidate.units.encoder.sourceId = static_cast<uint32_t>(command.value.numerator); break;
+    case Probe::AxisField::ENCODER_BASIS: candidate.units.encoder.basis = command.encoderBasis; break;
+    case Probe::AxisField::ENCODER_POLARITY: candidate.units.encoder.polarity = static_cast<int8_t>(command.value.numerator); break;
+    case Probe::AxisField::POLARITY: candidate.units.commandPolarity = static_cast<int8_t>(command.value.numerator); break;
+    case Probe::AxisField::POSITION_UNIT: candidate.units.settings.position = command.positionUnit; break;
+    case Probe::AxisField::VELOCITY_UNIT: candidate.units.settings.velocity = command.velocityUnit; break;
+    case Probe::AxisField::ACCELERATION_UNIT: candidate.units.settings.acceleration = command.accelerationUnit; break;
+    case Probe::AxisField::NATIVE_LIMITS:
+        candidate.nativeMinimum = command.value.numerator; candidate.nativeMaximum = command.secondValue.numerator; break;
+    case Probe::AxisField::SOFT_LIMITS:
+        candidate.softLimitsKnown = !command.clear;
+        candidate.softMinimum = command.value.numerator; candidate.softMaximum = command.secondValue.numerator; break;
+    case Probe::AxisField::RELATIVE_BASES: candidate.supportedRelativeBases = static_cast<uint8_t>(command.value.numerator); break;
+    }
+    if (scale) *scale = command.clear ? UnitScale() :
+        UnitScale(static_cast<uint32_t>(command.value.numerator), static_cast<uint32_t>(command.value.denominator), ScaleSource::ASSUMED);
+    return validateAxisConfig(candidate);
+}
 MotorControlRS::Status axisCommand(void* context, const Probe::AxisCommand& command, Probe::AxisView& view) {
     using namespace MotorControlRS;
     App& a = *static_cast<App*>(context);
@@ -654,29 +709,8 @@ MotorControlRS::Status axisCommand(void* context, const Probe::AxisCommand& comm
         return status;
     }
     AxisConfig candidate = a.axis;
-    UnitScale* scale = nullptr;
-    switch (command.field) {
-    case Probe::AxisField::COMMAND_SCALE: scale = &candidate.units.commandStepsPerMotorTurn; break;
-    case Probe::AxisField::GEAR: scale = &candidate.units.motorTurnsPerLoadTurn; break;
-    case Probe::AxisField::FULL_STEP_SCALE: scale = &candidate.units.fullStepsPerMotorTurn; break;
-    case Probe::AxisField::LEAD: scale = &candidate.units.millimetresPerLoadTurn; break;
-    case Probe::AxisField::ENCODER_SCALE: scale = &candidate.units.encoder.countsPerUnit; break;
-    case Probe::AxisField::ENCODER_ID: candidate.units.encoder.sourceId = static_cast<uint32_t>(command.value.numerator); break;
-    case Probe::AxisField::ENCODER_BASIS: candidate.units.encoder.basis = command.encoderBasis; break;
-    case Probe::AxisField::ENCODER_POLARITY: candidate.units.encoder.polarity = static_cast<int8_t>(command.value.numerator); break;
-    case Probe::AxisField::POLARITY: candidate.units.commandPolarity = static_cast<int8_t>(command.value.numerator); break;
-    case Probe::AxisField::POSITION_UNIT: candidate.units.settings.position = command.positionUnit; break;
-    case Probe::AxisField::VELOCITY_UNIT: candidate.units.settings.velocity = command.velocityUnit; break;
-    case Probe::AxisField::ACCELERATION_UNIT: candidate.units.settings.acceleration = command.accelerationUnit; break;
-    case Probe::AxisField::NATIVE_LIMITS:
-        candidate.nativeMinimum = command.value.numerator; candidate.nativeMaximum = command.secondValue.numerator; break;
-    case Probe::AxisField::SOFT_LIMITS:
-        candidate.softLimitsKnown = !command.clear;
-        candidate.softMinimum = command.value.numerator; candidate.softMaximum = command.secondValue.numerator; break;
-    case Probe::AxisField::RELATIVE_BASES: candidate.supportedRelativeBases = static_cast<uint8_t>(command.value.numerator); break;
-    }
-    if (scale) *scale = command.clear ? UnitScale() :
-        UnitScale(static_cast<uint32_t>(command.value.numerator), static_cast<uint32_t>(command.value.denominator), ScaleSource::ASSUMED);
+    const Status applied = applyAxisConfiguration(candidate, command);
+    if (!applied) return applied;
     const Status status = configureAxis(a.axis, candidate, evidence, &a.coordinateReference);
     if (status) {
         if (command.field == Probe::AxisField::COMMAND_SCALE) {
@@ -2354,6 +2388,34 @@ void reconcileHomingParameters(App& a, const App::Record& record) {
 // Consume one retained transaction per operation per loop. Intermediate evidence
 // is copied into the public context before its owner slot is explicitly released.
 // The frontend record reserves terminal storage across the gaps between steps.
+// A checked observation may revoke another view of the same drive. It never
+// refreshes the member cache through the selected-axis route.
+void reconcileMemberState(App& a, const App::Record& record, uint8_t block, uint64_t now) {
+    if (record.read.kind != ESS::ReadKind::STATE) return;
+    auto* member = groupMember(a, record.read.target.address);
+    if (!member || !Probe::sameTarget(member->axis.target, record.read.target)) return;
+    ESS::StateObservation observed;
+    if (!ESS::getStateBlock(record.read, block, observed)) return;
+    const auto& prior = member->state.blocks[block];
+    if (prior.valid && observed.provenance.latestUs <= prior.observedLatestUs) return;
+    const bool changedPosition = block == static_cast<uint8_t>(ESS::StateBlock::FEEDBACK) &&
+        Probe::current(prior, member->axis.target) &&
+        (observed.rawPositionWords[0] != prior.value.rawPositionWords[0] ||
+         observed.rawPositionWords[1] != prior.value.rawPositionWords[1]);
+    const bool motion = block == static_cast<uint8_t>(ESS::StateBlock::MOTION);
+    const bool movingFeedback = block == static_cast<uint8_t>(ESS::StateBlock::FEEDBACK) && observed.rawSpeed;
+    const bool changedInputs = block == static_cast<uint8_t>(ESS::StateBlock::IO) &&
+        (observed.unknownInputBits || (prior.valid && observed.rawInputs != prior.value.rawInputs));
+    const bool contradicted = changedPosition || movingFeedback || changedInputs || (motion &&
+        (observed.running || observed.released || observed.rawAlarm || observed.alarmFlag || observed.unknownMotionBits ||
+         observed.positiveSoftLimit || observed.negativeSoftLimit));
+    const bool coordinates = member->axis.originKnown || member->axis.softLimitsKnown || member->coordinate.reference.nativeKnown;
+    const bool revoked = coordinates && ((motion && observed.released) || (!triggeredMotion(a, member->address) &&
+        (changedPosition || movingFeedback || (motion && observed.running))));
+    if (revoked) invalidateMemberCoordinates(*member);
+    if (revoked || (!record.groupChild && contradicted))
+        for (auto& cached : member->state.blocks) cached.invalidatedUs = now;
+}
 void advanceReads(App& a, uint64_t sampled) {
     for (auto& record : a.records) {
         if (!record.operationId || record.kind != App::OperationKind::TYPED_READ || record.read.state != ReadState::ACTIVE) continue;
@@ -2377,13 +2439,15 @@ void advanceReads(App& a, uint64_t sampled) {
                 if (!ESS::advanceRead(record.read, failed, sampled)) continue;
             }
             observeCommunication(a, *result);
+            reconcileMemberState(a, record, block, sampled);
             if (record.groupChild) {
                 // Member reads publish into the member's own cache only.
                 auto* member = groupMember(a, record.read.target.address);
                 if (record.read.kind == ESS::ReadKind::STATE && member &&
                     Probe::sameTarget(member->axis.target, record.read.target) &&
-                    record.configurationGeneration == member->axis.generation)
+                    record.configurationGeneration == member->axis.generation) {
                     Probe::stateResult(member->state, record.read, block, result->transport.startedUs);
+                }
             } else {
                 reconcileConfigRead(a, record, sampled);
                 reconcileVelocityParameters(a, record);
@@ -2738,6 +2802,7 @@ void advanceActions(App& a, uint64_t now) {
             if (record.kind == App::OperationKind::HOME && !record.effectsInvalidated && a.owner.txAccepted(record.requestId)) {
                 record.effectsInvalidated = true;
                 invalidateAxis(a, &record);
+                if (auto* member = groupMember(a, record.address)) invalidateMemberCoordinates(*member);
                 record.configurationGeneration = a.axis.generation;
                 a.homePrerequisites = ESS::HomePrerequisites();
                 invalidateObservations(a, record.address, now);
@@ -2751,10 +2816,13 @@ void advanceActions(App& a, uint64_t now) {
                             driverEffects(a, record, static_cast<uint32_t>(progress.field), now);
             }
             if (((record.kind == App::OperationKind::MOVE && record.move.step == record.move.triggerStep) ||
-                (record.kind == App::OperationKind::VELOCITY && record.velocity.phase == ESS::VelocityPhase::TRIGGER)) && record.address == a.axis.target.address &&
+                (record.kind == App::OperationKind::VELOCITY && record.velocity.phase == ESS::VelocityPhase::TRIGGER)) &&
                 a.owner.txAccepted(record.requestId)) {
-                a.coordinateReference.nativeKnown = false;
-                a.simpleEndpointKnown = false;
+                if (record.address == a.axis.target.address) {
+                    a.coordinateReference.nativeKnown = false;
+                    a.simpleEndpointKnown = false;
+                }
+                if (auto* member = groupMember(a, record.address)) member->coordinate.reference.nativeKnown = false;
             }
             if (!record.effectsInvalidated && invalidatesMotion(record) && a.owner.txAccepted(record.requestId)) {
                 record.effectsInvalidated = true;
@@ -2764,8 +2832,10 @@ void advanceActions(App& a, uint64_t now) {
                 }
                 invalidateObservations(a, record.address, now, true);
                 if (record.kind == App::OperationKind::ACTION && (record.action.request.kind == MotorControlRS::ActionKind::RELEASE ||
-                    record.action.request.kind == MotorControlRS::ActionKind::CLEAR_POSITION) &&
-                    a.axis.target.address == record.address) invalidateAxis(a);
+                    record.action.request.kind == MotorControlRS::ActionKind::CLEAR_POSITION)) {
+                    if (a.axis.target.address == record.address) invalidateAxis(a);
+                    if (auto* member = groupMember(a, record.address)) invalidateMemberCoordinates(*member);
+                }
                 if (record.kind == App::OperationKind::ACTION && record.action.request.kind == MotorControlRS::ActionKind::ENABLE) {
                     auto& wait = a.enableWaits[record.address];
                     wait = App::EnableWait();
@@ -2987,6 +3057,9 @@ Probe::Action recover(void* context, uint32_t commandId, uint32_t& operationId) 
 }
 #include "SimpleMotionApp.h"
 #include "PositionStageApp.h"
+bool memberCurrent(const App& a, const App::GroupMember& member);
+bool groupBusy(const App& a);
+#include "GroupCoordinatesApp.h"
 #include "GroupApp.h"
 #include "ProfileCandidateApp.h"
 
@@ -4005,6 +4078,41 @@ MotorControlRS::Status submitGroupMove(const Probe::GroupMoveRequest& request, u
     auto* command = groupRequest(Probe::GroupCommandKind::MOVE);
     if (command) command->move = request;
     return submitGroup(command, &operationId, "group move not admitted; inspect member readiness, policy or capacity");
+}
+MotorControlRS::Status submitGroupMoves(const Probe::GroupMemberMoves& request, uint32_t& operationId) {
+    auto* command = groupRequest(Probe::GroupCommandKind::MEMBER_MOVES);
+    if (command) command->memberMoves = request;
+    return submitGroup(command, &operationId, "member moves not admitted; inspect intent, binding and readiness");
+}
+MotorControlRS::Status configureGroupAxis(uint8_t address, const Probe::AxisCommand& request, Probe::AxisView& output) {
+    if (!app) return MotorControlRS::Status(MotorControlRS::Err::INVALID_CONFIG, 0, "application is not started");
+    return groupAxisCommand(*app, address, request, output);
+}
+MotorControlRS::Status installGroupReference(const Probe::GroupReference& reference) {
+    auto* command = groupRequest(Probe::GroupCommandKind::REFERENCE);
+    if (command) command->reference = reference;
+    return submitGroup(command, nullptr, "member reference does not match current checked observations");
+}
+MotorControlRS::Status revokeGroupReference(uint8_t address) {
+    auto* command = groupRequest(Probe::GroupCommandKind::REFERENCE_REVOKE);
+    if (command) command->address = address;
+    return submitGroup(command, nullptr, "member reference revocation requires idle member");
+}
+MotorControlRS::Status beginGroupPlan(Probe::GroupStartMode start, Probe::GroupFailurePolicy onFailure) {
+    auto* command = groupRequest(Probe::GroupCommandKind::PLAN_BEGIN);
+    if (command) { command->move.start = start; command->move.onFailure = onFailure; }
+    return submitGroup(command, nullptr, "group plan not admitted");
+}
+MotorControlRS::Status addGroupPlanMember(uint8_t address, const MotorControlRS::MoveRequest& request) {
+    auto* command = groupRequest(Probe::GroupCommandKind::PLAN_ADD);
+    if (command) { command->address = address; command->move.move = request; }
+    return submitGroup(command, nullptr, "group plan member not admitted");
+}
+MotorControlRS::Status clearGroupPlan() {
+    return submitGroup(groupRequest(Probe::GroupCommandKind::PLAN_CLEAR), nullptr, "group plan clear failed");
+}
+MotorControlRS::Status submitGroupPlan(uint32_t& operationId) {
+    return submitGroup(groupRequest(Probe::GroupCommandKind::PLAN_SUBMIT), &operationId, "group plan incomplete or stale");
 }
 MotorControlRS::Status submitGroupStop(MotorControlRS::StopBehavior behavior, uint32_t& operationId) {
     auto* command = groupRequest(Probe::GroupCommandKind::STOP);

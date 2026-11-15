@@ -428,7 +428,9 @@
       "cli_commands": [
         "move relative",
         "move absolute",
-        "move angle"
+        "move angle",
+        "group plan submit",
+        "group move relative"
       ],
       "implementation": "IMPLEMENTED",
       "cli": "REACHABLE",
@@ -439,7 +441,8 @@
           "test/move_app_test.cpp",
           "test/axis_test.cpp",
           "test/probe_console_test.cpp",
-          "test/bench_probe_test.py"
+          "test/bench_probe_test.py",
+          "test/group_app_test.cpp"
         ]
       },
       "hardware": {
@@ -448,7 +451,7 @@
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json"
         ],
-        "reason": "Reviewed five-word staging for positive finite relative commands and exact original-profile restoration PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified."
+        "reason": "Reviewed five-word staging for positive finite relative commands and exact original-profile restoration PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. The new per-member group route has no physical credit from these older records."
       },
       "id": "finite_position_staging",
       "kind": "WRITE",
@@ -458,7 +461,7 @@
         "POSITION_SPEED",
         "POSITION_PULSES"
       ],
-      "reason": "One shared reviewed five-word finite positioning staging window, exact public preparation and verified configured raw ramps; no arbitrary paired writes or separate configuration setter."
+      "reason": "One shared reviewed five-word finite positioning staging window, exact public preparation and verified configured raw ramps; no arbitrary paired writes or separate configuration setter. Multi-drive09 uses these same core preparations for copied per-member intents through submitGroupMoves and the inert group plan submit route; each member retains its own target, reference, staging and completion evidence."
     },
     {
       "api": {
@@ -470,7 +473,9 @@
         ]
       },
       "cli_commands": [
-        "move relative"
+        "move relative",
+        "group plan submit",
+        "group move relative"
       ],
       "implementation": "IMPLEMENTED",
       "cli": "REACHABLE",
@@ -478,7 +483,8 @@
         "state": "PASS",
         "evidence": [
           "test/position_test.cpp",
-          "test/move_app_test.cpp"
+          "test/move_app_test.cpp",
+          "test/group_app_test.cpp"
         ]
       },
       "hardware": {
@@ -487,7 +493,7 @@
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json"
         ],
-        "reason": "Positive finite relative commands of 100 native increments at 60 RPM, configured native ramps and fresh running/completion reports PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified."
+        "reason": "Positive finite relative commands of 100 native increments at 60 RPM, configured native ramps and fresh running/completion reports PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. The new per-member group route has no physical credit from these older records."
       },
       "id": "move_relative",
       "kind": "ACTION",
@@ -497,7 +503,7 @@
       "choices": [
         "MotionCommandBit.START_POSITION"
       ],
-      "reason": "Noninterrupting finite-relative trigger followed by fresh running then arrival/standstill reports; acknowledgement is not physical completion."
+      "reason": "Noninterrupting finite-relative trigger followed by fresh running then arrival/standstill reports; acknowledgement is not physical completion. Multi-drive09 uses these same core preparations for copied per-member intents through submitGroupMoves and the inert group plan submit route; each member retains its own target, reference, staging and completion evidence."
     },
     {
       "id": "position_interrupt_stored",
@@ -760,7 +766,8 @@
       },
       "cli_commands": [
         "move absolute",
-        "move angle"
+        "move angle",
+        "group plan submit"
       ],
       "implementation": "IMPLEMENTED",
       "cli": "REACHABLE",
@@ -771,7 +778,8 @@
           "test/position_test.cpp",
           "test/move_app_test.cpp",
           "test/probe_console_test.cpp",
-          "test/bench_probe_test.py"
+          "test/bench_probe_test.py",
+          "test/group_app_test.cpp"
         ]
       },
       "hardware": {
@@ -779,9 +787,9 @@
         "evidence": [
           "docs/archive/reports/ess_release_23_2026-10-05.md"
         ],
-        "reason": "The retained final-image absolute-return attempt refused before writes outside the bounded raw0..250 fixture. Earlier historical return evidence lacks an exact retained binary and is not qualification of the current image. Independent shaft/origin/path measurements remain open."
+        "reason": "The retained final-image absolute-return attempt refused before writes outside the bounded raw0..250 fixture. Earlier historical return evidence lacks an exact retained binary and is not qualification of the current image. Independent shaft/origin/path measurements remain open. The new per-member group route has no physical credit from these older records."
       },
-      "reason": "Unwrapped absolute and explicitly wrapped paths use the existing finite mover and START_POSITION choice, counted separately under move_relative; full turns, direction/ties, fresh references and selected-path limits are retained."
+      "reason": "Unwrapped absolute and explicitly wrapped paths use the existing finite mover and START_POSITION choice, counted separately under move_relative; full turns, direction/ties, fresh references and selected-path limits are retained. Multi-drive09 uses these same core preparations for copied per-member intents through submitGroupMoves and the inert group plan submit route; each member retains its own target, reference, staging and completion evidence."
     },
     {
       "id": "clear_position",

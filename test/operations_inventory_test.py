@@ -368,6 +368,16 @@ class Coverage(unittest.TestCase):
         self.rejected(lambda value: update(value).update(cli_commands=["driver set invented garbage"]))
         self.rejected(lambda value: update(value).update(cli_commands=["driver set invented INTEGER"]))
 
+    def test_group_plan_only_submit_produces_motion(self):
+        for kind in ("WRITE", "ACTION"):
+            operations.check_cli_route("group plan submit", operations.console_commands(), kind)
+            operations.check_cli_route("group move relative", operations.console_commands(), kind)
+            for command in ("group plan begin", "group plan add", "group plan show", "group axis", "group reference",
+                            "group plan submit extra", "group move absolute", "group invented"):
+                with self.subTest(kind=kind, command=command):
+                    with self.assertRaises(ValueError):
+                        operations.check_cli_route(command, operations.console_commands(), kind)
+
     def test_only_explicit_start_speed_route_claims_its_write(self):
         result = operations.check(INVENTORY, LEDGER)
         rows = {row["id"]: row for row in result["records"]}

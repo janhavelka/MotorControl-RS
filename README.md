@@ -39,6 +39,11 @@ can install explicit homing, velocity and position-clear qualification facts;
 installation itself sends no motor command. See the [console guide](docs/console.md).
 The [prompt index](docs/prompts/README.md) separates completed work from open work.
 
+Drive groups accept up to 15 independent relative or absolute requests through
+the ordinary application API and an inert console plan. Every member keeps its
+own units, reference and result; all staging checks finish before staged starts.
+See [member requests](docs/console.md#different-member-targets).
+
 The tested motor is an ESS23-RS20, raw model `0x4EEA`, firmware word `0x0029`,
 at address 1 / 115200 8N1 with a secured free shaft. These raw words are not a
 resolved universal model/version mapping. S3 has recorded hardware evidence;

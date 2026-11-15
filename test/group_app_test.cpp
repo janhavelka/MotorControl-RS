@@ -31,11 +31,13 @@ struct Drive {
     bool present = true;
     uint16_t regs[0x140] = {};
     unsigned runningReads = 0;
+    unsigned startsApplied = 0;
     uint16_t ignoredWrite = 0; ///< Nonzero: this register keeps its value (readback mismatch).
 };
 std::map<uint8_t, Drive> drives;
 std::vector<std::vector<uint8_t>> frames; // Every transmitted request, in order.
 std::function<bool(const std::vector<uint8_t>&)> dropReply; // True: this request gets no reply.
+std::function<bool(const std::vector<uint8_t>&)> loseAcknowledgement; // Apply write, then lose its reply.
 unsigned servedWrites = 0;
 
 std::vector<uint8_t> crc(std::vector<uint8_t> bytes) {
@@ -64,8 +66,10 @@ uint16_t readWord(Drive& drive, uint16_t reg) {
 void writeWord(Drive& drive, uint16_t reg, uint16_t value) {
     if (reg >= 0x140 || reg == drive.ignoredWrite) return;
     drive.regs[reg] = value;
-    if (reg == 0x0027 && (value & 1)) drive.runningReads = 1; // One RUNNING report, then ARRIVED.
+    if (reg == 0x0027 && (value & 1)) { drive.runningReads = 1; ++drive.startsApplied; } // RUNNING, then ARRIVED.
     if (reg == 0x0027 && (value & 0x0300)) drive.runningReads = 0; // Stop.
+    if (reg == 0x002D && value == 17) drive.regs[0x0007] = 16; // Released.
+    if (reg == 0x002D && value == 18) drive.regs[0x0007] = 1; // Enabled, arrived.
 }
 // Answer each new request once, as the addressed drive would, after its TX ends.
 void serveBus() {
@@ -95,6 +99,7 @@ void serveBus() {
         for (uint16_t i = 0; i < count; ++i) writeWord(drive, static_cast<uint16_t>(first + i), word(frame, 7 + 2 * i));
         reply = crc(std::vector<uint8_t>(frame.begin(), frame.begin() + 6));
     } else return;
+    if (loseAcknowledgement && loseAcknowledgement(frame)) return;
     scheduleReply(std::max(hardware.writeStarted + frame.size() * 87 + 1000, hardware.time + 1000), reply);
 }
 void step(uint32_t us = 10) { advanceHardware(hardware.time + us); serviceApplication(); serveBus(); }
@@ -112,7 +117,7 @@ void fresh(const std::vector<uint8_t>& present = {1, 2, 4}) {
     if (app) { app->~App(); std::free(app); app = nullptr; }
     uart.~Esp32S3Uart(); new (&uart) Esp32S3Uart;
     resetHardware(); resetUsbConsole(); platformReady = false;
-    drives.clear(); frames.clear(); dropReply = nullptr; servedWrites = 0;
+    drives.clear(); frames.clear(); dropReply = nullptr; loseAcknowledgement = nullptr; servedWrites = 0;
     for (const auto address : present) addDrive(address);
     ApplicationOptions options; options.moveTimeoutMs = 3000; // Keeps unobservable moves short in fake time.
     assert(beginApplication({Board::kRs485TxPin, Board::kRs485RxPin, Board::kRs485DeRePin,
@@ -206,6 +211,81 @@ bool startsBackToBack(std::size_t from, unsigned expected) {
     for (std::size_t i = from; i < frames.size(); ++i)
         if (isAnyStart(frames[i])) { if (!starts) firstStart = i; lastStart = i; ++starts; }
     return starts == expected && lastStart - firstStart + 1 == expected;
+}
+
+Probe::GroupMemberView memberView(uint8_t address) {
+    Probe::GroupView view;
+    assert(inspectGroup(view));
+    for (uint8_t i = 0; i < view.count; ++i) if (view.members[i].address == address) return view.members[i];
+    assert(false); return Probe::GroupMemberView();
+}
+Probe::GroupMemberMoves memberMoves(const std::vector<uint8_t>& order = {4, 1, 2},
+                                  Policy policy = Policy::LEAVE, Mode mode = Mode::STAGED) {
+    Probe::GroupView view; assert(inspectGroup(view));
+    Probe::GroupMemberMoves request;
+    request.declaration = view.declaration; request.bindingGeneration = view.bindingGeneration;
+    request.count = order.size(); request.onFailure = policy; request.start = mode;
+    assert(request.count <= Probe::GROUP_CAPACITY);
+    for (std::size_t i = 0; i < request.count; ++i) {
+        request.members[i].address = order[i]; request.members[i].move = groupMove(policy, mode).move;
+        request.members[i].move.position.configurationGeneration = memberView(order[i]).configurationGeneration;
+    }
+    return request;
+}
+MoveRequest& memberMove(Probe::GroupMemberMoves& request, uint8_t address) {
+    for (std::size_t i = 0; i < request.count; ++i)
+        if (request.members[i].address == address) return request.members[i].move;
+    assert(false); return request.members[0].move;
+}
+void sameIntent(const MoveRequest& actual, const MoveRequest& expected) {
+    const auto& a = actual.position; const auto& e = expected.position;
+    assert(a.value.numerator == e.value.numerator && a.value.denominator == e.value.denominator);
+    assert(a.unit == e.unit && a.frame == e.frame && a.relative == e.relative && a.wrapped == e.wrapped);
+    assert(a.path == e.path && a.tie == e.tie && a.basis == e.basis && a.rounding == e.rounding);
+    assert(a.configurationGeneration == e.configurationGeneration && a.maximumQuantizationError == e.maximumQuantizationError);
+    assert(a.approximate == e.approximate && a.rationalRadians == e.rationalRadians && a.radians == e.radians);
+    assert(a.maximumApproximationError == e.maximumApproximationError);
+    assert(actual.speedRpm == expected.speedRpm && actual.ramp == expected.ramp && actual.setup == expected.setup);
+}
+Probe::AxisView configureMember(uint8_t address, Probe::AxisField field, int64_t first, int64_t second = 1) {
+    Probe::AxisCommand command; command.kind = Probe::AxisCommandKind::CONFIGURE; command.field = field;
+    command.value = Rational(first); command.secondValue = Rational(second);
+    Probe::AxisView view;
+    assert(configureGroupAxis(address, command, view));
+    return view;
+}
+Probe::GroupReference memberReference(uint8_t address, int64_t position, uint64_t maximumAge = 0) {
+    Probe::GroupView view; assert(inspectGroup(view));
+    const auto member = memberView(address);
+    Probe::GroupReference supplied;
+    supplied.declaration = view.declaration;
+    supplied.configurationOperationId = member.configurationOperationId;
+    supplied.motionOperationId = member.motionOperationId; supplied.feedbackOperationId = member.feedbackOperationId;
+    auto& ref = supplied.reference;
+    ref.target = member.target; ref.configurationGeneration = member.configurationGeneration;
+    ref.nativeKnown = ref.idle = ref.stationary = true; ref.nativePosition = position;
+    ref.basis = RelativeBasis::ACTUAL; ref.source = ScaleSource::QUALIFIED; ref.maximumAgeUs = maximumAge;
+    return supplied;
+}
+void originMember(uint8_t address, int64_t origin, int64_t position) {
+    assert(installGroupReference(memberReference(address, position)));
+    Probe::AxisCommand command; command.kind = Probe::AxisCommandKind::ORIGIN; command.value = Rational(origin);
+    Probe::AxisView view; assert(configureGroupAxis(address, command, view));
+    assert(view.configuration.originKnown && view.configuration.originNative == origin);
+}
+void assertRejectedWithoutTraffic(const Probe::GroupMemberMoves& request) {
+    uint32_t id = 777;
+    const auto traffic = hardware.writes; const auto operationId = app->nextOperationId;
+    assert(!submitGroupMoves(request, id));
+    assert(id == 777 && hardware.writes == traffic && app->nextOperationId == operationId);
+    for (std::size_t i = GROUP_MOVE_FIRST; i < RECORD_COUNT; ++i) assert(!app->records[i].operationId);
+}
+void exactStage(uint8_t address, uint16_t rpm, uint16_t first, uint16_t second, std::size_t from) {
+    const auto expected = crc({address, 16, 0, 0x21, 0, 5, 10, 0, 100, 0, 100,
+        static_cast<uint8_t>(rpm >> 8), static_cast<uint8_t>(rpm),
+        static_cast<uint8_t>(first >> 8), static_cast<uint8_t>(first),
+        static_cast<uint8_t>(second >> 8), static_cast<uint8_t>(second)});
+    assert(count([&](const std::vector<uint8_t>& frame) { return frame == expected; }, from) == 1);
 }
 
 void testDeclarationRejectsAbsentAndUnexpectedResponders() {
@@ -358,6 +438,14 @@ void testWorstCaseGroupLineFits() {
     r.move.move.position.value = Rational(INT64_MIN + 1, UINT32_MAX); r.move.move.position.unit = PositionUnit::FULL_STEPS;
     r.move.move.speedRpm = UINT16_MAX; r.count = Probe::GROUP_CAPACITY;
     for (auto& m : r.members) {
+        m.request = r.move.move;
+        m.request.position.value.denominator = UINT64_MAX;
+        m.request.position.configurationGeneration = UINT32_MAX;
+        m.request.position.maximumQuantizationError = std::numeric_limits<double>::max();
+        m.request.position.radians = -std::numeric_limits<double>::max();
+        m.request.position.maximumApproximationError = std::numeric_limits<double>::max();
+        m.request.position.relative = m.request.position.approximate = m.request.position.rationalRadians = false;
+        m.request.setup = MoveSetup::VERIFY_AND_UPDATE;
         m.address = 247; m.operationId = 0; m.admission = Probe::Action::QUALIFICATION_REQUIRED;
         m.status = m.stageStatus = Status(Err::INVALID_CONFIG, INT32_MIN, "x");
         m.start = Probe::GroupStart::NOT_SENT; m.state = m.stopState = ActionState::SUCCEEDED;
@@ -369,15 +457,18 @@ void testWorstCaseGroupLineFits() {
         m.stageState = ActionState::EMPTY; m.stageReadback = Probe::GroupStageReadback::MISMATCH;
     }
     op.delivered = true;
-    command("@4294967295 result 4294967295\n");
-    pump(4000);
-    const auto begin = Serial.output.find("{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":4294967295,\"command\":\"result\"");
-    assert(begin != std::string::npos);
-    const auto end = Serial.output.find('\n', begin);
-    assert(end != std::string::npos && Serial.output.find("\"group_kind\":\"move\"", begin) < end);
-    const std::size_t length = end - begin;
-    assert(length < Probe::OUTPUT_CAPACITY && Serial.output[end - 1] == '}');
-    std::printf("Worst-case 15-member group line: %zu/%zu bytes\n", length, Probe::OUTPUT_CAPACITY);
+    for (bool individual : {false, true}) {
+        r.individual = individual;
+        command("@4294967295 result 4294967295\n");
+        pump(4000);
+        const auto begin = Serial.output.find("{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":4294967295,\"command\":\"result\"");
+        assert(begin != std::string::npos);
+        const auto end = Serial.output.find('\n', begin);
+        assert(end != std::string::npos && Serial.output.find("\"group_kind\":\"move\"", begin) < end);
+        const std::size_t length = end - begin;
+        assert(length < Probe::OUTPUT_CAPACITY && Serial.output[end - 1] == '}');
+        std::printf("Worst-case 15-member group line (%s): %zu/%zu bytes\n", individual ? "individual" : "common", length, Probe::OUTPUT_CAPACITY);
+    }
     clearGroupOperation(op);
 }
 void testSequentialMoveStartsEachMemberInOrder() {
@@ -1127,14 +1218,499 @@ void testActiveOriginSharedReadiness() {
         pump(); assert(frames.size() == before);
     }
 }
+void testMemberIntentMappingAndCopiedFrames() {
+    for (const auto mode : {Mode::STAGED, Mode::SEQUENTIAL}) {
+        fresh();
+        drives[1].regs[0x0011] = 1000; drives[2].regs[0x0011] = 2000; drives[4].regs[0x0011] = 4000;
+        drives[2].regs[0x0019] = 0; // High word first, unlike the other members.
+        readyGroup();
+        auto request = memberMoves({4, 1, 2}, Policy::LEAVE, mode);
+        memberMove(request, 1).position.value = Rational(65538);
+        memberMove(request, 2).position.value = Rational(-65539);
+        memberMove(request, 2).speedRpm = 80;
+        memberMove(request, 4).position.value = Rational(37);
+        memberMove(request, 4).speedRpm = 100;
+        const auto original = request;
+        const auto from = frames.size(); uint32_t id = 0;
+        assert(submitGroupMoves(request, id));
+        for (auto& intent : request.members) { intent.address = 99; intent.move.position.value = Rational(9999); }
+        runUntil([&] { return terminalGroup(id); }, 2000000);
+        assert(groupOp(id).result.ok && groupOp(id).result.individual);
+        exactStage(1, 60, 0x0002, 0x0001, from);
+        exactStage(2, 80, 0xFFFE, 0xFFFD, from);
+        exactStage(4, 100, 37, 0, from);
+        const int64_t targets[] = {65538, -65539, 37};
+        std::vector<uint8_t> startOrder;
+        std::size_t lastStage = 0, firstStart = frames.size();
+        for (std::size_t i = from; i < frames.size(); ++i) {
+            if (isStageFrame(frames[i])) lastStage = i;
+            if (isAnyStart(frames[i])) {
+                if (firstStart == frames.size()) firstStart = i;
+                startOrder.push_back(frames[i][0]);
+                assert(frames[i] == crc({frames[i][0], 6, 0, 0x27, 0, 1}));
+            }
+        }
+        assert((startOrder == std::vector<uint8_t>{1, 2, 4}));
+        if (mode == Mode::STAGED) assert(lastStage < firstStart && startsBackToBack(from, 3));
+        else assert(count(isStageFrame, from) == 3);
+        unsigned index = 0;
+        for (const uint8_t address : {1, 2, 4}) {
+            const auto& result = memberResult(id, address);
+            auto expected = original;
+            sameIntent(result.request, memberMove(expected, address));
+            assert(result.effectiveNative == targets[index++] && result.completion == ActionCompletion::OBSERVED);
+        }
+        noWriteOutside({1, 2, 4}, from);
+    }
+}
+
+void testMemberRequestRejectsShapeAndInvalidLast() {
+    fresh(); readyGroup();
+    const auto valid = memberMoves({1, 2, 4});
+    for (unsigned failure = 0; failure < 18; ++failure) {
+        auto invalid = valid;
+        switch (failure) {
+        case 0: invalid.count = 0; break;
+        case 1: invalid.count = Probe::GROUP_CAPACITY + 1; break;
+        case 2: invalid.count = 2; break;
+        case 3: invalid.members[2].address = 1; break;
+        case 4: invalid.members[2].address = 3; break;
+        case 5: invalid.onFailure = Policy::NONE; break;
+        case 6: invalid.start = static_cast<Mode>(255); break;
+        case 7: ++invalid.declaration; break;
+        case 8: ++invalid.bindingGeneration; break;
+        case 9: ++invalid.members[2].move.position.configurationGeneration; break;
+        case 10: invalid.members[2].move.position.value.denominator = 0; break;
+        case 11: invalid.members[2].move.position.value = Rational(1, 2); break;
+        case 12: invalid.members[2].move.speedRpm = 0; break;
+        case 13: invalid.members[2].move.position.relative = false; invalid.members[2].move.position.wrapped = true; break;
+        case 14: invalid.members[2].move.setup = MoveSetup::USE_STORED; break;
+        case 15: invalid.members[2].move.position.value = Rational(0x10000000); break;
+        case 16: invalid.members[2].move.position.radians = std::numeric_limits<double>::quiet_NaN(); break;
+        case 17: invalid.members[2].move.position.maximumApproximationError = std::numeric_limits<double>::infinity(); break;
+        }
+        assertRejectedWithoutTraffic(invalid);
+    }
+    // Earlier valid members cannot leak writes when the last member's active
+    // subdivision makes its rate exceed the shared operating limit.
+    fresh(); drives[4].regs[0x0011] = 51200; readyGroup();
+    assertRejectedWithoutTraffic(memberMoves({1, 2, 4})); // 60 rpm exceeds 50,000 increments/s.
+    fresh(); readyGroup();
+    configureMember(4, Probe::AxisField::NATIVE_LIMITS, -100, 100);
+    auto invalid = memberMoves({1, 2, 4});
+    memberMove(invalid, 4).position.value = Rational(101); memberMove(invalid, 4).position.relative = false;
+    assertRejectedWithoutTraffic(invalid);
+}
+
+void testMemberScalesAreIndependent() {
+    fresh(); drives[2].regs[0x0011] = 2000; drives[4].regs[0x0011] = 4000; readyGroup();
+    const auto traffic = hardware.writes;
+    const auto selectedScale = app->axis.units.commandStepsPerMotorTurn;
+    configureMember(1, Probe::AxisField::COMMAND_SCALE, 1000);
+    configureMember(2, Probe::AxisField::COMMAND_SCALE, 2000);
+    configureMember(4, Probe::AxisField::COMMAND_SCALE, 4000);
+    assert(hardware.writes == traffic && app->axis.units.commandStepsPerMotorTurn.numerator == selectedScale.numerator &&
+        app->axis.units.commandStepsPerMotorTurn.denominator == selectedScale.denominator);
+    auto request = memberMoves();
+    for (auto& intent : request.members) {
+        intent.move.position.unit = PositionUnit::TURNS; intent.move.position.frame = CoordinateFrame::MOTOR;
+    }
+    memberMove(request, 1).position.value = Rational(1, 2);
+    memberMove(request, 2).position.value = Rational(-1, 4);
+    memberMove(request, 4).position.value = Rational(3, 8);
+    const auto from = frames.size(); uint32_t id = 0;
+    assert(submitGroupMoves(request, id)); runUntil([&] { return terminalGroup(id); }, 2000000);
+    assert(groupOp(id).result.ok);
+    assert(memberResult(id, 1).effectiveNative == 500 && memberResult(id, 2).effectiveNative == -500 &&
+        memberResult(id, 4).effectiveNative == 1500);
+    exactStage(1, 60, 500, 0, from); exactStage(2, 60, 0xFE0C, 0xFFFF, from); exactStage(4, 60, 1500, 0, from);
+    assert(releaseOperation(id));
+    // A new declaration does not infer scales or origins from raw registers.
+    readyGroup();
+    for (const uint8_t address : {1, 2, 4}) {
+        const auto view = memberView(address);
+        assert(!view.axis.units.commandStepsPerMotorTurn.numerator && !view.axis.originKnown && !view.referenceCurrent);
+    }
+    request = memberMoves({1, 2, 4});
+    memberMove(request, 4).position.unit = PositionUnit::TURNS; memberMove(request, 4).position.frame = CoordinateFrame::MOTOR;
+    assertRejectedWithoutTraffic(request);
+}
+
+void testMemberAbsoluteOriginsAndMixedStarts() {
+    for (const auto mode : {Mode::STAGED, Mode::SEQUENTIAL}) {
+        fresh(); readyGroup();
+        configureMember(1, Probe::AxisField::COMMAND_SCALE, 1000);
+        configureMember(2, Probe::AxisField::COMMAND_SCALE, 2000);
+        configureMember(4, Probe::AxisField::COMMAND_SCALE, 4000);
+        originMember(1, 100, 50); originMember(2, 1000, 900); originMember(4, -100, -150);
+        auto request = memberMoves({4, 1, 2}, Policy::LEAVE, mode);
+        for (auto& intent : request.members) {
+            intent.move.position.relative = false; intent.move.position.unit = PositionUnit::TURNS;
+            intent.move.position.frame = CoordinateFrame::MOTOR; intent.move.position.value = Rational(1);
+        }
+        memberMove(request, 1).position.relative = true;
+        const auto from = frames.size(); uint32_t id = 0;
+        assert(submitGroupMoves(request, id));
+        const auto* first = findRecord(*app, memberResult(id, 1).operationId);
+        const auto* second = findRecord(*app, memberResult(id, 2).operationId);
+        assert(first && second && first->move.reference.nativePosition == 50 && second->move.reference.nativePosition == 900);
+        runUntil([] { return !groupMember(*app, 1)->coordinate.reference.nativeKnown; });
+        assert(groupMember(*app, 2)->coordinate.reference.nativeKnown && groupMember(*app, 4)->coordinate.reference.nativeKnown);
+        assert(first->move.reference.nativeKnown && first->move.reference.nativePosition == 50);
+        runUntil([&] { return terminalGroup(id); }, 2000000);
+        assert(groupOp(id).result.ok && memberResult(id, 1).effectiveNative == 1000 &&
+            memberResult(id, 2).effectiveNative == 3000 && memberResult(id, 4).effectiveNative == 3900);
+        for (const uint8_t address : {1, 2, 4}) {
+            const auto start = crc({address, 6, 0, 0x27, 0, static_cast<uint8_t>(address == 1 ? 1 : 5)});
+            assert(count([&](const std::vector<uint8_t>& frame) { return frame == start; }, from) == 1);
+            const auto view = memberView(address);
+            assert(view.axis.originKnown && !view.referenceCurrent);
+            assert(memberResult(id, address).completion == ActionCompletion::OBSERVED);
+        }
+        if (mode == Mode::STAGED) assert(startsBackToBack(from, 3));
+        noWriteOutside({1, 2, 4}, from);
+    }
+    // Device-native absolute retains the ordinary reference-free core path.
+    fresh(); readyGroup();
+    auto request = memberMoves();
+    for (auto& intent : request.members) intent.move.position.relative = false;
+    uint32_t id = 0; assert(submitGroupMoves(request, id));
+    runUntil([&] { return terminalGroup(id); }, 2000000); assert(groupOp(id).result.ok);
+    for (const uint8_t address : {1, 2, 4}) assert(!memberView(address).axis.originKnown);
+}
+void testMemberReferenceProvenanceAndOutputOnError() {
+    fresh(); readyGroup();
+    configureMember(4, Probe::AxisField::COMMAND_SCALE, 1000);
+    auto request = memberMoves({1, 2, 4});
+    auto& absolute = memberMove(request, 4).position;
+    absolute.relative = false; absolute.unit = PositionUnit::TURNS; absolute.frame = CoordinateFrame::MOTOR;
+    absolute.value = Rational(1);
+    assertRejectedWithoutTraffic(request); // Raw zero feedback does not establish a host origin.
+    const auto good = memberReference(4, 25);
+    assert(installGroupReference(good));
+    const auto kept = memberView(4);
+    const auto traffic = hardware.writes;
+    for (unsigned failure = 0; failure < 13; ++failure) {
+        auto invalid = good;
+        switch (failure) {
+        case 0: ++invalid.declaration; break;
+        case 1: ++invalid.configurationOperationId; break;
+        case 2: ++invalid.motionOperationId; break;
+        case 3: ++invalid.feedbackOperationId; break;
+        case 4: ++invalid.reference.target.id; break;
+        case 5: ++invalid.reference.target.generation; break;
+        case 6: ++invalid.reference.configurationGeneration; break;
+        case 7: invalid.reference.nativeKnown = false; break;
+        case 8: invalid.reference.stationary = false; break;
+        case 9: invalid.reference.idle = false; break;
+        case 10: invalid.reference.basis = RelativeBasis::COMMANDED; break;
+        case 11: invalid.reference.source = ScaleSource::UNKNOWN; break;
+        case 12: invalid.reference.observedUs = nowUs() + 1; break;
+        }
+        assert(!installGroupReference(invalid));
+        const auto after = memberView(4);
+        assert(after.referenceCurrent && after.reference.nativePosition == 25 &&
+            after.reference.observedUs == kept.reference.observedUs && after.axis.generation == kept.axis.generation);
+        assert(hardware.writes == traffic);
+    }
+    Probe::AxisCommand origin; origin.kind = Probe::AxisCommandKind::ORIGIN; origin.value = Rational(100);
+    Probe::AxisView unchanged; unchanged.configuration.generation = 777;
+    assert(!configureGroupAxis(2, origin, unchanged) && unchanged.configuration.generation == 777);
+    originMember(4, 100, 25);
+    configureMember(4, Probe::AxisField::SOFT_LIMITS, -500, 1000);
+    request = memberMoves({1, 2, 4});
+    auto& bounded = memberMove(request, 4).position;
+    bounded.relative = false; bounded.unit = PositionUnit::TURNS; bounded.frame = CoordinateFrame::MOTOR;
+    bounded.value = Rational(1); // Endpoint 1100 is beyond this member's limit.
+    assertRejectedWithoutTraffic(request);
+    const auto stale = memberReference(4, 25);
+    readGroupState();
+    assert(!installGroupReference(stale)); // New read IDs cannot refresh the old witness.
+    assert(installGroupReference(memberReference(4, 25)));
+    assert(revokeGroupReference(4));
+    assert(!memberView(4).referenceCurrent && !memberView(4).axis.originKnown);
+    assert(!memberView(1).referenceCurrent && !memberView(2).referenceCurrent);
+}
+
+void testMemberReferenceExpiresAndContradictionsRevokeIt() {
+    fresh(); readyGroup();
+    assert(installGroupReference(memberReference(4, 123, 100000)));
+    advanceHardware(hardware.time + 100001); pump();
+    assert(!memberView(4).referenceCurrent);
+    auto request = memberMoves({1, 2, 4});
+    assertRejectedWithoutTraffic(request);
+    memberMove(request, 4).position.relative = false;
+    assertRejectedWithoutTraffic(request); // Stale installed evidence cannot silently disappear for admission.
+    fresh(); readyGroup();
+    originMember(4, 100, 123);
+    drives[4].regs[0x0007] = 4;
+    uint32_t read = 0; assert(submitGroupStateRead(read));
+    runUntil([&] { return terminalGroup(read); });
+    assert(!memberView(4).referenceCurrent);
+    drives[4].regs[0x0007] = 1; readGroupState();
+    assert(!memberView(4).referenceCurrent); // Stopped feedback does not manufacture a new relation.
+    assert(installGroupReference(memberReference(4, 125)));
+    invalidateMemberConfiguration(*app, 4, nowUs());
+    assert(!memberView(4).referenceCurrent && !memberView(4).axis.originKnown);
+}
+
+void testMemberPlanIsInertAndBoundToConfiguration() {
+    fresh(); readyGroup();
+    const auto traffic = hardware.writes;
+    assert(!beginGroupPlan(Mode::STAGED, Policy::NONE));
+    assert(beginGroupPlan(Mode::STAGED, Policy::LEAVE));
+    assert(!beginGroupPlan(Mode::STAGED, Policy::STOP_FAST));
+    auto move = groupMove(Policy::LEAVE).move;
+    assert(addGroupPlanMember(4, move));
+    assert(!addGroupPlanMember(4, move) && !addGroupPlanMember(3, move));
+    auto nonfinite = move; nonfinite.position.radians = std::numeric_limits<double>::quiet_NaN();
+    assert(!addGroupPlanMember(1, nonfinite));
+    nonfinite = move; nonfinite.position.maximumApproximationError = std::numeric_limits<double>::infinity();
+    assert(!addGroupPlanMember(1, nonfinite));
+    uint32_t id = 777; assert(!submitGroupPlan(id) && id == 777);
+    Probe::GroupView view; assert(inspectGroup(view) && view.planActive && view.plan.count == 1);
+    move.position.value = Rational(10); assert(addGroupPlanMember(1, move));
+    move.position.value = Rational(-20); assert(addGroupPlanMember(2, move));
+    pump(500); assert(hardware.writes == traffic);
+    configureMember(2, Probe::AxisField::NATIVE_LIMITS, -1000, 1000);
+    assert(!submitGroupPlan(id) && id == 777 && hardware.writes == traffic);
+    assert(inspectGroup(view) && view.planActive && view.plan.count == 3);
+    assert(clearGroupPlan());
+    assert(beginGroupPlan(Mode::SEQUENTIAL, Policy::STOP_FAST));
+    for (const uint8_t address : {4, 1, 2}) {
+        move.position.value = Rational(address * 10); assert(addGroupPlanMember(address, move));
+    }
+    assert(hardware.writes == traffic && submitGroupPlan(id) && id != 777);
+    assert(inspectGroup(view) && !view.planActive);
+    runUntil([&] { return terminalGroup(id); }, 2000000);
+    assert(groupOp(id).result.ok && groupOp(id).result.individual);
+}
+
+void testMemberStartLossAfterExecutionNeverReplays() {
+    for (const auto mode : {Mode::STAGED, Mode::SEQUENTIAL})
+        for (const auto policy : {Policy::LEAVE, Policy::STOP_NORMAL, Policy::STOP_FAST}) {
+            fresh(); readyGroup();
+            auto request = memberMoves({4, 1, 2}, policy, mode);
+            memberMove(request, 1).position.value = Rational(50);
+            memberMove(request, 2).position.value = Rational(-25);
+            memberMove(request, 4).position.relative = false; memberMove(request, 4).position.value = Rational(100);
+            const auto from = frames.size();
+            loseAcknowledgement = [](const std::vector<uint8_t>& frame) { return isStart(frame, 2); };
+            uint32_t id = 0; assert(submitGroupMoves(request, id));
+            runUntil([&] { return terminalGroup(id); }, 4000000);
+            const auto& first = memberResult(id, 1); const auto& middle = memberResult(id, 2); const auto& last = memberResult(id, 4);
+            assert(groupOp(id).result.aborted && groupOp(id).result.failedAddress == 2);
+            assert(first.start == Probe::GroupStart::STARTED && middle.start == Probe::GroupStart::UNKNOWN);
+            assert(middle.uncertain && middle.execution == ActionExecution::UNKNOWN && middle.effectiveNative == -25);
+            assert(last.start == Probe::GroupStart::NOT_SENT && last.outcome == ActionOutcome::CANCELLED && !last.uncertain);
+            assert(drives[1].startsApplied == 1 && drives[2].startsApplied == 1 && drives[4].startsApplied == 0);
+            assert(count([](const std::vector<uint8_t>& frame) { return isStart(frame, 2); }, from) == 1);
+            const bool stop = policy != Policy::LEAVE;
+            for (const uint8_t address : {1, 2, 4}) {
+                assert(count([&](const std::vector<uint8_t>& frame) { return isStop(frame, address); }, from) ==
+                    (stop && address != 4 ? 1u : 0u));
+                sameIntent(memberResult(id, address).request, memberMove(request, address));
+            }
+            if (stop) assert(middle.stopExecution == ActionExecution::ACKNOWLEDGED);
+            noWriteOutside({1, 2, 4}, from);
+            loseAcknowledgement = nullptr;
+            recoverBus(99); pump(1000);
+            assert(drives[2].startsApplied == 1 && middle.start == Probe::GroupStart::UNKNOWN && middle.uncertain);
+        }
+}
+
+void testFifteenIndependentRequestsAndStorage() {
+    const auto all = addresses(Probe::GROUP_CAPACITY);
+    fresh(all); readyGroup(all);
+    auto reversed = all; std::reverse(reversed.begin(), reversed.end());
+    auto request = memberMoves(reversed, Policy::STOP_FAST);
+    for (auto& intent : request.members) intent.move.position.value = Rational((intent.address % 2 ? 1 : -1) * intent.address * 17);
+    const auto from = frames.size(); uint32_t id = 0;
+    assert(submitGroupMoves(request, id)); runUntil([&] { return terminalGroup(id); }, 4000000);
+    assert(groupOp(id).result.ok && groupOp(id).result.count == 15 && startsBackToBack(from, 15));
+    std::size_t lastReadback = 0, firstStart = frames.size();
+    for (std::size_t i = from; i < frames.size(); ++i) {
+        if (isStageFrame(frames[i]) && frames[i][1] == 3) lastReadback = i;
+        if (isAnyStart(frames[i]) && firstStart == frames.size()) firstStart = i;
+    }
+    assert(count(isStageFrame, from) == 30 && lastReadback < firstStart);
+    for (const auto address : all) {
+        const auto& expected = memberMove(request, address);
+        const auto& actual = memberResult(id, address);
+        sameIntent(actual.request, expected);
+        assert(actual.effectiveNative == expected.position.value.numerator && actual.completion == ActionCompletion::OBSERVED);
+    }
+    noWriteOutside(all, from);
+    std::printf("Member request storage: GroupMemberMoves=%zu GroupReference=%zu GroupMemberResult=%zu GroupView=%zu GroupCommand=%zu App=%zu\n",
+        sizeof(Probe::GroupMemberMoves), sizeof(Probe::GroupReference), sizeof(Probe::GroupMemberResult),
+        sizeof(Probe::GroupView), sizeof(Probe::GroupCommand), sizeof(App));
+}
+void testMemberStageExpiresBeforeLaterMemberWithoutOldEvidence() {
+    fresh(); readyGroup();
+    app->options.observationMaxAgeMs = 1500;
+    auto request = memberMoves({1, 2, 4});
+    const auto from = frames.size(); uint32_t id = 0;
+    assert(submitGroupMoves(request, id));
+    auto* second = findRecord(*app, memberResult(id, 2).operationId);
+    ESS::PreparedMove next;
+    assert(second && ESS::nextMove(second->move, nowUs(), next));
+    assert(next.deadlineUs < second->deadlineUs);
+    runUntil([] { const auto& stage = groupMember(*app, 1)->stage; return stage.phase == 2 && stage.request.owner; });
+    const auto readback = groupMember(*app, 1)->stage.request;
+    for (unsigned i = 0; i < 20000 && !app->owner.result(readback); ++i) {
+        advanceHardware(hardware.time + 20); app->owner.service(uart.sample()); serveBus();
+    }
+    const auto* result = app->owner.result(readback);
+    assert(result && result->outcome == Rtu::Outcome::SUCCESS);
+    advanceHardware(next.deadlineUs + 1);
+    runUntil([&] { return terminalGroup(id); });
+    assert(groupOp(id).result.aborted && groupOp(id).result.failedAddress == 2);
+    assert(memberResult(id, 1).stageReadback == Probe::GroupStageReadback::MATCH);
+    assert(memberResult(id, 2).stageExecution == ActionExecution::NOT_TRANSMITTED);
+    assert(count(isAnyStart, from) == 0);
+    assert(count([](const std::vector<uint8_t>& frame) { return frame[0] != 1; }, from) == 0);
+
+    // A later operation that expires before its first stage cannot borrow the
+    // preceding operation's successful stage or its TX/readback evidence.
+    fresh(); readyGroup();
+    request = memberMoves(); assert(submitGroupMoves(request, id));
+    runUntil([&] { return terminalGroup(id); }, 2000000);
+    assert(groupOp(id).result.ok && groupMember(*app, 1)->stage.view.staged && releaseOperation(id));
+    readGroupState(); app->options.moveTimeoutMs = 1;
+    request = memberMoves(); const auto secondFrom = frames.size();
+    assert(submitGroupMoves(request, id));
+    const auto* first = findRecord(*app, memberResult(id, 1).operationId);
+    assert(first); advanceHardware(first->deadlineUs + 1);
+    runUntil([&] { return terminalGroup(id); });
+    const auto& expired = memberResult(id, 1);
+    assert(expired.stageState == ActionState::FAILED && expired.stageExecution == ActionExecution::NOT_TRANSMITTED);
+    assert(expired.stageReadback == Probe::GroupStageReadback::NOT_READ && !expired.stageTxComplete &&
+        !expired.stageTxEndUs && !expired.stageReadLatestUs && frames.size() == secondFrom);
+}
+
+void testMemberReferenceInvalidationThroughOrdinaryActionsAndReads() {
+    fresh(); readyGroup(); originMember(4, 100, 123);
+    command("@301 motor-release 4\n"); contains("\"result\":\"accepted\"");
+    runUntil([] { return !acting(*app); });
+    assert(!memberView(4).axis.originKnown && !memberView(4).referenceCurrent);
+    enableDrive(4, 302);
+    advanceHardware(hardware.time + ENABLE_SETTLE_US); pump(); readGroupState();
+    assert(!memberView(4).axis.originKnown && !memberView(4).referenceCurrent);
+    for (bool release : {false, true}) {
+        fresh(); readyGroup(); originMember(1, 100, 123);
+        if (release) drives[1].regs[0x0007] = 16;
+        else drives[1].regs[0x000A] = 1; // Changed raw feedback; no command relation inferred.
+        command("@303 read config\n");
+        runUntil([] { return !reading(*app); });
+        command("@304 read state\n");
+        runUntil([] { return !reading(*app); });
+        assert(!memberView(1).axis.originKnown && !memberView(1).referenceCurrent);
+    }
+}
+
+void testMemberConsolePlan(bool emit = false) {
+    fresh(); readyGroup();
+    const auto traffic = hardware.writes;
+    const auto send = [emit](const std::string& line) {
+        command(line); pump(4000);
+        if (emit) std::fputs(Serial.output.c_str(), stdout);
+    };
+    send("@401 group show\n"); contains("\"axis\":"); contains("\"reference_current\":false");
+    send("@402 group plan begin start staged on-failure leave\n"); contains("\"result\":\"done\"");
+    send("@403 group plan add 4 absolute 100 steps native 60 configured\n"); contains("\"result\":\"done\"");
+    send("@404 group plan add 1 relative 50 steps native 60 configured\n"); contains("\"result\":\"done\"");
+    send("@405 group plan add 2 relative -25 steps native 60 configured\n"); contains("\"result\":\"done\"");
+    send("@406 group plan show\n"); contains("\"active\":true"); contains("\"count\":3");
+    assert(hardware.writes == traffic);
+    command("@407 group plan submit\n"); contains("\"result\":\"accepted\"");
+    runUntil([] { return app->group.move.result.operationId && !app->group.move.result.pending && app->group.move.delivered; }, 2000000);
+    pump(4000);
+    contains("\"individual\":true"); contains("\"command\":\"group-move\"");
+    if (emit) std::fputs(Serial.output.c_str(), stdout);
+    const auto id = app->group.move.result.operationId;
+    assert(groupOp(id).result.ok && memberResult(id, 1).effectiveNative == 50 &&
+        memberResult(id, 2).effectiveNative == -25 && memberResult(id, 4).effectiveNative == 100);
+}
+
+void testMemberConsoleCoordinates() {
+    fresh(); readyGroup();
+    const auto traffic = hardware.writes;
+    command("@501 group axis 4 config set command 1000\n"); contains("\"result\":\"done\"");
+    const auto reference = memberReference(4, 25);
+    const auto& ref = reference.reference;
+    const auto line = "@502 group reference 4 " + std::to_string(reference.declaration) + " " +
+        std::to_string(ref.target.generation) + " " + std::to_string(ref.configurationGeneration) + " " +
+        std::to_string(reference.configurationOperationId) + " " + std::to_string(reference.motionOperationId) +
+        " 25 0 command-coordinate-qualified\n";
+    assert(line.size() < Probe::LINE_CAPACITY);
+    command(line); contains("\"result\":\"done\""); assert(memberView(4).referenceCurrent);
+    command("@503 group axis 4 origin 100\n"); contains("\"result\":\"done\"");
+    assert(memberView(4).axis.originKnown && memberView(4).axis.originNative == 100);
+    command("@504 group reference 4 revoke\n"); contains("\"result\":\"done\"");
+    assert(!memberView(4).referenceCurrent && !memberView(4).axis.originKnown && hardware.writes == traffic);
+}
+
+void testFullCapacityPlanLineFits() {
+    const auto all = addresses(Probe::GROUP_CAPACITY);
+    fresh(all); readyGroup(all);
+    const auto traffic = hardware.writes;
+    assert(beginGroupPlan(Mode::SEQUENTIAL, Policy::STOP_NORMAL));
+    auto move = groupMove(Policy::LEAVE).move;
+    move.position.value = Rational(INT64_MIN + 1, UINT64_MAX);
+    move.position.unit = PositionUnit::ENCODER_COUNTS;
+    move.position.maximumQuantizationError = move.position.maximumApproximationError = std::numeric_limits<double>::max();
+    move.position.radians = -std::numeric_limits<double>::max(); move.setup = MoveSetup::VERIFY_AND_UPDATE;
+    for (const auto address : all) assert(addGroupPlanMember(address, move));
+    // Deliberately wide cached numbers exercise formatting, not motion admission.
+    for (auto& member : app->group.members) {
+        auto& axis = member.axis;
+        axis.generation = UINT32_MAX; axis.originKnown = axis.encoderOriginKnown = axis.softLimitsKnown = true;
+        axis.originNative = axis.encoderOriginNative = axis.softMinimum = INT64_MIN;
+        axis.softMaximum = INT64_MAX;
+        axis.originSource = axis.encoderOriginSource = ScaleSource::QUALIFIED;
+        const UnitScale scale(UINT32_MAX, UINT32_MAX, ScaleSource::QUALIFIED);
+        axis.units.commandStepsPerMotorTurn = axis.units.motorTurnsPerLoadTurn = axis.units.fullStepsPerMotorTurn = scale;
+        axis.units.millimetresPerLoadTurn = axis.units.encoder.countsPerUnit = scale;
+        axis.units.encoder.sourceId = UINT32_MAX;
+        auto& reference = member.coordinate.reference;
+        reference.nativeKnown = true; reference.nativePosition = INT64_MIN;
+        reference.target.id = reference.target.generation = reference.configurationGeneration = UINT32_MAX;
+        reference.target.address = 247;
+        reference.observedUs = reference.maximumAgeUs = UINT64_MAX;
+    }
+    command("@4294967295 group plan show\n"); pump(5000);
+    contains("\"command\":\"group-plan-show\""); contains("\"count\":15");
+    const auto begin = Serial.output.find('{'); const auto end = Serial.output.find('\n', begin);
+    assert(begin != std::string::npos && end != std::string::npos && Serial.output[end - 1] == '}');
+    const auto length = end - begin;
+    assert(length < Probe::OUTPUT_CAPACITY && hardware.writes == traffic);
+    std::printf("Wide 15-member group view with full plan: %zu/%zu bytes\n", length, Probe::OUTPUT_CAPACITY);
+}
 } // namespace
 
 int main(int argc, char** argv) {
+    if (argc == 2 && std::string(argv[1]) == "--emit-member-fixtures") {
+        testMemberConsolePlan(true); return 0;
+    }
     if (argc == 2 && std::string(argv[1]) == "--storage-layout") {
         std::printf("App=%zu GroupMember=%zu EnableWait=%zu EnableWaitArray=%zu ActionEvidence=%zu\n",
             sizeof(App), sizeof(App::GroupMember), sizeof(App::EnableWait), sizeof(app->enableWaits), sizeof(ESS::ActionEvidence));
         return 0;
     }
+    testMemberIntentMappingAndCopiedFrames();
+    testMemberRequestRejectsShapeAndInvalidLast();
+    testMemberScalesAreIndependent();
+    testMemberAbsoluteOriginsAndMixedStarts();
+    testMemberReferenceProvenanceAndOutputOnError();
+    testMemberReferenceExpiresAndContradictionsRevokeIt();
+    testMemberPlanIsInertAndBoundToConfiguration();
+    testMemberStartLossAfterExecutionNeverReplays();
+    testFifteenIndependentRequestsAndStorage();
+    testMemberStageExpiresBeforeLaterMemberWithoutOldEvidence();
+    testMemberReferenceInvalidationThroughOrdinaryActionsAndReads();
+    testMemberConsolePlan();
+    testMemberConsoleCoordinates();
+    testFullCapacityPlanLineFits();
     testEnableWaitSurvivesGroupChanges();
     testCandidateRelationSurvivesGroupChanges();
     testUnchangedCandidateInvalidatesContradictedGroupProfile();

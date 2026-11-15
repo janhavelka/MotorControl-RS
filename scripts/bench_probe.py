@@ -17,6 +17,7 @@ import argparse
 from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from fractions import Fraction
 import json
 import math
 from pathlib import Path
@@ -33,17 +34,18 @@ from _bench_evidence import (
 )
 
 
-# Firmware OUTPUT_CAPACITY: 1024 bytes per group member plus common fields, at
+# Firmware OUTPUT_CAPACITY: 3072 bytes per group member plus common fields, at
 # least 8192. A complete 15-member group line stays below it.
-MAX_LINE = 16384
-MAX_INPUT = 32768
+MAX_LINE = 49152
+MAX_INPUT = 98304
 MAX_TRAFFIC_INPUT = 1048576  # Independent finite diagnostic budget per command/drain.
 COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "health", "memory", "stats", "load",
                       "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "communication", "persistence", "motion-profile", "motion-profile-stage", "motion-profile-start-speed", "motion-profile-start-speed-relation", "home-auxiliary", "debug",
                       "home-qualification-install", "home-qualification-revoke", "velocity-qualification-install", "velocity-qualification-revoke",
                       "position-clear-qualification", "position-clear-qualification-install", "position-clear-qualification-revoke",
                       "read-identity", "read-config", "read-state", "velocity-read", "home-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "position-interrupt", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list",
-                      "group-show", "group-status", "group-clear", "group-wiring", "group-set", "group-move", "group-stop", "group-read-state"})
+                      "group-show", "group-status", "group-clear", "group-wiring", "group-set", "group-move", "group-stop", "group-read-state",
+                      "group-axis", "group-reference", "group-plan-begin", "group-plan-add", "group-plan-show", "group-plan-clear", "group-plan-submit"})
 MAX_COMMANDS = 11  # Eight ordinary operations, recovery, reserved stop and local query.
 MAX_OPERATIONS = 10  # Eight ordinary operations, one recovery and one reserved stop.
 MAX_STOPS = 4  # Two primary stops and two reserved cross-address escalations.
@@ -52,6 +54,8 @@ LEGACY_MAX_STOPS = 2  # Protocol-3 images without explicit stop-retention metada
 STOP_TERMINAL_S = 6.0  # Firmware's fixed stop budget, including one bounded recovery.
 # Drive group (multi-drive 02). Group operations report one terminal line each.
 GROUP_CAPACITY = 15
+GROUP_LOCAL = ("group-show", "group-status", "group-clear", "group-wiring", "group-reference",
+               "group-plan-begin", "group-plan-add", "group-plan-show", "group-plan-clear")
 GROUP_START_MODES = ("staged", "sequential")
 GROUP_STAGE_STATES = ("not_attempted", "staged", "failed", "active")
 GROUP_STAGE_READBACKS = ("not_read", "match", "mismatch")
@@ -517,14 +521,50 @@ def operation_quota(command):
 
 def group_arguments(command: str, tokens: tuple[str, ...]) -> dict:
     """Exact drive-group grammar, checked before transmission. Never raw frames."""
-    if (command not in GROUP_KINDS and command not in ("group-show", "group-status", "group-clear", "group-wiring") or
+    if (command not in GROUP_KINDS and command not in (*GROUP_LOCAL, "group-axis", "group-plan-submit") or
             not isinstance(tokens, tuple) or any(type(token) is not str or not token or
             any(ord(char) < 33 or ord(char) > 126 for char in token) for token in tokens)):
         raise ValueError("group arguments require a tuple of bounded ASCII tokens")
-    if command in ("group-show", "group-status", "group-clear", "group-read-state"):
+    if command in ("group-show", "group-status", "group-clear", "group-read-state", "group-plan-show", "group-plan-clear", "group-plan-submit"):
         if tokens:
             raise ValueError(f"{command} takes no arguments")
         return {}
+    if command == "group-plan-begin":
+        core = tokens
+        start = "staged"
+        if core[:1] == ("start",):
+            if len(core) < 2 or core[1] not in GROUP_START_MODES:
+                raise ValueError("group plan start requires staged or sequential")
+            start, core = core[1], core[2:]
+        if core[:1] != ("on-failure",) or core[1:] not in GROUP_POLICIES:
+            raise ValueError("group plan requires an explicit on-failure policy")
+        return dict(start=start, on_failure=GROUP_POLICIES[core[1:]])
+    if command == "group-plan-add":
+        if (len(tokens) not in (7, 9) or re.fullmatch(r"[1-9][0-9]{0,2}", tokens[0]) is None or
+                int(tokens[0]) > 247 or tokens[1] not in ("relative", "absolute")):
+            raise ValueError("group plan add requires ADDRESS relative|absolute VALUE UNIT FRAME RPM configured [setup write|verify]")
+        parsed = move_arguments(tokens[1], tokens[2:])
+        if parsed["setup"] not in ("write", "verify") or (len(tokens) == 9 and tokens[7] != "setup"):
+            raise ValueError("group plan add supports write or verify setup")
+        return dict(address=int(tokens[0]), relative=tokens[1] == "relative", value=parsed["value"], unit=parsed["unit"],
+                    frame=parsed["frame"], speed_rpm=int(Fraction(parsed["speed"])), setup=parsed["setup"])
+    if command in ("group-axis", "group-reference"):
+        if not tokens or re.fullmatch(r"[1-9][0-9]{0,2}", tokens[0]) is None or int(tokens[0]) > 247:
+            raise ValueError("member command requires an explicit address")
+        if command == "group-axis":
+            if not 2 <= len(tokens) <= 11 or tokens[1] not in ("config", "origin", "prepare"):
+                raise ValueError("group axis requires config, origin or prepare")
+            return dict(address=int(tokens[0]), prepare=tokens[1] == "prepare")
+        if tokens[1:] == ("revoke",):
+            return dict(address=int(tokens[0]), revoke=True)
+        if (len(tokens) != 9 or tokens[-1] != "command-coordinate-qualified" or
+                any(re.fullmatch(r"[1-9][0-9]{0,9}", token) is None or int(token) > 0xFFFFFFFF for token in tokens[1:6]) or
+                re.fullmatch(r"-?[0-9]+", tokens[6]) is None or not -2**63 <= int(tokens[6]) < 2**63 or
+                re.fullmatch(r"[0-9]{1,10}", tokens[7]) is None or int(tokens[7]) > 0xFFFFFFFF):
+            raise ValueError("group reference requires declaration, binding, config generation, config/read IDs, native position, max age and explicit coordinate qualification")
+        return dict(address=int(tokens[0]), revoke=False, declaration=int(tokens[1]), binding_generation=int(tokens[2]),
+                    configuration_generation=int(tokens[3]), configuration_operation_id=int(tokens[4]), state_operation_id=int(tokens[5]),
+                    native_position=int(tokens[6]), maximum_age_us=int(tokens[7]))
     if command == "group-set":
         if not 1 <= len(tokens) <= GROUP_CAPACITY or any(re.fullmatch(r"[1-9][0-9]{0,2}", t) is None or int(t) > 247 for t in tokens):
             raise ValueError(f"group-set requires 1..{GROUP_CAPACITY} addresses within 1..247")
@@ -713,6 +753,7 @@ class Command:
         self.driver_args = None
         self.home_args = None
         self.host_args = None
+        self.group_plan = None  # Frozen expected intent; never refreshed from a terminal result.
         self.serial = None
 
 
@@ -751,6 +792,9 @@ class Console:
         self.persistence_invocations = 0
         self.communication_candidate = None
         self.motion_profile = None
+        self.group_plan = None
+        self.group_addresses = None
+        self.group_context = None
         self.debug_mode = None
         self.debug_snapshot = None
         self.discovery = None
@@ -2205,7 +2249,39 @@ class Console:
             require(values[int(terminal[1])] == disposition, "declaration differs from requested terminal")
 
     @staticmethod
-    def _check_group_view(handle: Command, item: dict) -> None:
+    def _check_group_intent(item: dict, expected: dict | None = None, *, detailed: bool = True) -> None:
+        def require(condition):
+            if not condition:
+                raise BenchError("group member intent is invalid or differs from the submitted request")
+        def integer(value, low=0, high=0xFFFFFFFF):
+            return type(value) is int and low <= value <= high
+        require(isinstance(item, dict) and type(item.get("relative")) is bool and
+                isinstance(item.get("value"), list) and len(item["value"]) == 2 and
+                integer(item["value"][0], -2**63, 2**63 - 1) and integer(item["value"][1], 1, 2**64 - 1) and
+                item.get("unit") in ("steps", "fullsteps", "counts", "turn", "deg", "rad", "mm") and
+                integer(item.get("frame"), 0, 2) and integer(item.get("speed_rpm"), 1, 65535) and
+                item.get("setup") in ("write", "verify"))
+        if detailed:
+            require(integer(item.get("configuration_generation"), 1) and
+                    all(type(item.get(k)) is bool for k in ("wrapped", "approximate", "rational_radians")) and
+                    integer(item.get("basis"), 0, 2) and integer(item.get("path"), 0, 2) and integer(item.get("tie"), 0, 2) and
+                    integer(item.get("rounding"), 0, 4) and item.get("ramp") == 1 and
+                    all(type(item.get(k)) in (int, float) and math.isfinite(item[k]) for k in
+                        ("maximum_quantization_error", "radians", "maximum_approximation_error")) and
+                    item["maximum_quantization_error"] >= 0 and item["maximum_approximation_error"] >= 0)
+        if expected:
+            value = expected["value"]
+            exact = Fraction(*value) if isinstance(value, list) else Fraction(value)
+            require(Fraction(*item["value"]) == exact)
+            for key in ("relative", "unit", "frame", "speed_rpm", "setup", "configuration_generation", "wrapped", "basis", "path", "tie",
+                        "rounding", "maximum_quantization_error", "approximate", "rational_radians", "radians", "maximum_approximation_error", "ramp"):
+                if key in expected:
+                    value = expected[key]
+                    if key == "frame" and isinstance(value, str):
+                        value = ("native", "motor", "load").index(value)
+                    require(item.get(key) == value)
+
+    def _check_group_view(self, handle: Command, item: dict) -> None:
         """Local group declaration or cached view: no operation and no bus traffic."""
         def require(condition, message):
             if not condition:
@@ -2248,6 +2324,23 @@ class Console:
                     values = member.get(key)
                     require(isinstance(values, list) and len(values) == capacity and all(integer(v, 0, 2) for v in values),
                             "invalid member wiring")
+                if "axis" in member:
+                    self._check_axis(member["axis"], False)
+                    require(member["axis"]["address"] == member["address"] and
+                            member["axis"]["configuration_generation"] == member["configuration_generation"] and
+                            member["axis"]["binding_generation"] == member["generation"], "member axis binding differs")
+                    reference = member.get("reference")
+                    require(all(integer(member.get(k)) for k in ("configuration_operation_id", "motion_operation_id", "feedback_operation_id")) and
+                            type(member.get("reference_current")) is bool and isinstance(reference, dict) and
+                            all(integer(reference.get(k)) for k in ("target", "generation", "configuration_generation")) and
+                            integer(reference.get("address"), 0, 247) and type(reference.get("native_known")) is bool and
+                            integer(reference.get("native_position"), -2**63, 2**63 - 1) and integer(reference.get("basis"), 0, 2) and
+                            integer(reference.get("source"), 0, 4) and all(integer(reference.get(k), 0, 2**64 - 1) for k in ("observed_us", "maximum_age_us")),
+                            "invalid member reference")
+                    if member["reference_current"]:
+                        require(reference["native_known"] and reference["target"] == member["target"] and reference["address"] == member["address"] and
+                                reference["generation"] == member["generation"] and reference["configuration_generation"] == member["configuration_generation"],
+                                "current reference binding differs")
         require(len(set(addresses)) == len(addresses), "duplicate member addresses")
         if handle.command == "group-clear" and item["ok"]:
             require(item["count"] == 0, "cleared group still lists members")
@@ -2257,6 +2350,52 @@ class Console:
             require(member is not None, "declared member is missing")
             values = member["inputs" if requested["terminal"][0] == "x" else "outputs"]
             require(values[int(requested["terminal"][1])] == requested["disposition"], "declaration differs from request")
+        plan = item.get("plan")
+        if plan is not None:
+            require(isinstance(plan, dict) and type(plan.get("active")) is bool and
+                    integer(plan.get("declaration")) and integer(plan.get("binding_generation")) and integer(plan.get("count"), 0, GROUP_CAPACITY) and
+                    plan.get("start") in GROUP_START_MODES and plan.get("on_failure") in ("none", "leave", "stop_normal", "stop_fast") and
+                    isinstance(plan.get("members"), list) and len(plan["members"]) == plan["count"], "invalid inert plan")
+            seen = set()
+            for member in plan["members"]:
+                require(isinstance(member, dict) and integer(member.get("address"), 1, 247) and member["address"] not in seen, "invalid plan member")
+                seen.add(member["address"])
+                self._check_group_intent(member.get("request"))
+            if plan["active"]:
+                # Declaration changes retain the inert plan for inspection. Only
+                # explicit submission requires its binding and membership now.
+                require(plan["on_failure"] != "none", "active plan lacks its failure policy")
+        if handle.command.startswith("group-plan-") and item["ok"]:
+            require(plan is not None, "plan command lacks builder evidence")
+            if handle.command == "group-plan-begin":
+                requested = group_arguments(handle.command, handle.host_args or ())
+                require(plan["active"] and not plan["count"] and all(plan[k] == requested[k] for k in ("start", "on_failure")), "begin differs from requested plan")
+            elif handle.command == "group-plan-clear":
+                require(not plan["active"] and not plan["count"], "clear retained an active plan")
+            elif handle.command == "group-plan-add":
+                requested = group_arguments(handle.command, handle.host_args or ())
+                found = next((m for m in plan["members"] if m["address"] == requested["address"]), None)
+                require(plan["active"] and found is not None, "added member missing")
+                self._check_group_intent(found["request"], requested)
+                require(all(found["request"].get(k) == v for k, v in dict(wrapped=False, basis=0, path=2, tie=0, rounding=0,
+                        maximum_quantization_error=0, approximate=False, rational_radians=True, radians=0, maximum_approximation_error=0, ramp=1).items()),
+                        "add changed an implicit motion policy")
+                if self.group_plan is not None and self.group_plan["active"]:
+                    require(plan["count"] == self.group_plan["count"] + 1 and
+                            plan["members"][:-1] == self.group_plan["members"] and all(plan[k] == self.group_plan[k] for k in
+                                ("declaration", "binding_generation", "start", "on_failure")), "add changed a previous intent")
+        if handle.command == "group-reference" and item["ok"]:
+            requested = group_arguments(handle.command, handle.host_args or ())
+            member = next((m for m in members if m["address"] == requested["address"]), None)
+            require(member is not None and "reference" in member, "reference reply lacks member evidence")
+            if requested["revoke"]:
+                require(not member["reference_current"] and not member["reference"]["native_known"], "revoked reference is still usable")
+            else:
+                require(member["reference_current"] and item["declaration"] == requested["declaration"] and
+                        item["binding_generation"] == requested["binding_generation"] and
+                        all(member["reference"][k] == requested[k] for k in ("configuration_generation", "native_position", "maximum_age_us")) and
+                        member["reference"]["source"] == 4 and member["configuration_operation_id"] == requested["configuration_operation_id"] and
+                        member["motion_operation_id"] == member["feedback_operation_id"] == requested["state_operation_id"], "installed reference differs")
 
     def _check_group(self, item: dict, original: Command | None, *, pending: bool = False) -> None:
         """One group terminal: each member's own child evidence, never a merged success."""
@@ -2274,7 +2413,8 @@ class Console:
             require(not item.keys() - {"type", "profile", "id", "command", "command_id", "operation_id", "ok", "result",
                                        "recovery", "group_kind", "host_serial"}, "pending group contains terminal evidence")
             return
-        arguments = group_arguments(original.command, original.host_args or ()) if original is not None else {}
+        expected_plan = original.group_plan if original is not None else None
+        arguments = group_arguments(original.command, original.host_args or ()) if original is not None and expected_plan is None else {}
         ok = item.get("ok")
         require(item.get("state") in ("succeeded", "failed") and (item["state"] == "succeeded") == ok, "state and ok disagree")
         require(integer(item.get("declaration")) and integer(item.get("binding_generation")) and
@@ -2296,16 +2436,22 @@ class Console:
             require("stop_policy" not in item, "stop policy on another group operation")
         if kind == "move":
             request, policy = item.get("request"), item.get("on_failure")
-            require(isinstance(request, dict) and request.get("relative") is True and isinstance(request.get("value"), list) and
-                    len(request["value"]) == 2 and type(request["value"][0]) is int and integer(request["value"][1], 1, 0xFFFFFFFFFFFFFFFF) and
-                    integer(request.get("speed_rpm"), 1, 0xFFFF) and request.get("setup") in ("write", "verify") and
-                    integer(request.get("frame"), 0, 2) and type(request.get("unit")) is str and
-                    request.get("start") in GROUP_START_MODES, "invalid move request")
+            individual = item.get("individual", False)
+            require(type(individual) is bool and isinstance(request, dict) and request.get("start") in GROUP_START_MODES, "invalid move request")
+            if not individual:
+                self._check_group_intent(request, arguments or None, detailed=False)
+                require(request["relative"] is True, "common request is not relative")
+            if original is not None:
+                require(individual == (expected_plan is not None), "move request kind differs from submission")
             require(policy in ("stop_normal", "stop_fast", "leave"), "invalid failure policy")
             if arguments:
                 require(policy == arguments["on_failure"] and request["speed_rpm"] == arguments["speed_rpm"] and
                         request["unit"] == arguments["unit"] and request["setup"] == arguments["setup"] and
                         request["start"] == arguments["start"], "move differs from request")
+            if expected_plan is not None:
+                require(item["declaration"] == expected_plan["declaration"] and item["binding_generation"] == expected_plan["binding_generation"] and
+                        policy == expected_plan["on_failure"] and request["start"] == expected_plan["start"] and
+                        addresses == expected_plan["addresses"], "member plan binding, policy or start order differs")
             for key in ("start_tx_spread_us", "running_bound_spread_us"):
                 require(item.get(key) is None or timestamp(item.get(key)), "invalid measured spread")
         for member in members:
@@ -2331,6 +2477,9 @@ class Console:
                         all(integer(member.get(k), 0, 0xFFFF) for k in ("raw_alarm", "raw_motion")), "invalid stop evidence")
                 require(not ok or (member["completion"] == "observed" and member["state"] == "succeeded"), "unconfirmed member stop in a successful group")
             else:
+                if item.get("individual", False):
+                    expected = next((m["request"] for m in expected_plan["members"] if m["address"] == member["address"]), None) if expected_plan else None
+                    self._check_group_intent(member.get("request"), expected)
                 require(member.get("start") in ("not_sent", "started", "unknown", "rejected") and
                         member.get("state") in ACTION_STATES and member.get("outcome") in MOTOR_OUTCOMES and
                         member.get("execution") in EXECUTIONS and member.get("setup_execution") in EXECUTIONS and
@@ -2373,7 +2522,7 @@ class Console:
                              handle.host_args[0] == "after-stop")
         if handle.command in GROUP_OPERATIONS:
             # Zero, or the one member that caused the refusal.
-            members = group_arguments(handle.command, handle.host_args or ()).get("addresses")
+            members = handle.group_plan["addresses"] if handle.group_plan else group_arguments(handle.command, handle.host_args or ()).get("addresses")
             if "address" in item and (type(item["address"]) is not int or not 0 <= item["address"] <= 247 or
                     (members is not None and item["address"] and item["address"] not in members)):
                 raise BenchError("group admission refusal names no requested member")
@@ -2596,8 +2745,26 @@ class Console:
             self._check_useaddr(handle, item)
         if handle.command == "wiring":
             self._check_wiring(handle, item)
-        if handle.command in ("group-show", "group-status", "group-clear", "group-wiring"):
+        if handle.command in GROUP_LOCAL:
             self._check_group_view(handle, item)
+            if item["ok"]:
+                self.group_addresses = [m["address"] for m in item["members"]]
+                self.group_context = (item["declaration"], item["binding_generation"])
+                self.group_plan = json.loads(json.dumps(item.get("plan")))
+        if handle.command == "group-axis":
+            if item["ok"]:
+                requested = group_arguments(handle.command, handle.host_args or ())
+                self._check_axis(item, requested["prepare"])
+                if item["address"] != requested["address"]:
+                    raise BenchError("member axis reply names another member")
+                if (handle.host_args or ())[1:] != ("config",) and not requested["prepare"]:
+                    self.group_plan = None
+            else:
+                self._check_group_view(handle, item)
+        if item["ok"] and handle.command in ("useaddr", "recover", "group-set", "host"):
+            self.group_plan = None
+            self.group_addresses = None
+            self.group_context = None
         if handle.command in QUALIFICATION_ROUTES:
             self._check_qualification(item)
         if handle.command == "position-clear-qualification":
@@ -2875,6 +3042,8 @@ class Console:
                 handle.stop_retention = stop_retention
                 handle.operation_id = operation_id
                 handle.accepted = True
+                if handle.group_plan is not None:
+                    self.group_plan = None
                 self.operations[operation_id] = handle
                 self.last_operation_id = operation_id
                 return
@@ -2978,14 +3147,15 @@ class Console:
         No command, including recovery, is retried after any framing failure.
         """
         positive(timeout_s, "command timeout")
+        group_submit = command == "group-plan-submit"
         if command not in COMMANDS:
             raise ValueError("command is not in the explicit harness inventory")
         if (command == "stop" and stop_policy not in ("normal", "fast")) or (command != "stop" and stop_policy is not None):
             raise ValueError("stop requires explicit normal or fast policy")
         if command == "stop":
             timeout_s = max(timeout_s, STOP_TERMINAL_S)
-        if command in GROUP_TERMINAL_S:
-            timeout_s = max(timeout_s, GROUP_TERMINAL_S[command])
+        if command in GROUP_TERMINAL_S or group_submit:
+            timeout_s = max(timeout_s, GROUP_TERMINAL_S["group-move" if group_submit else command])
         if command == "home":
             timeout_s = max(timeout_s, HOME_TERMINAL_S)
         if command == "host":
@@ -3097,6 +3267,16 @@ class Console:
             raise ValueError("velocity command exceeds the console line bound")
         if driver_args is not None and len(f"@{self.next_id} {command} {' '.join(driver_args)}" + ("" if address is None else f" {address}")) >= 128:
             raise ValueError("driver command exceeds the console line bound")
+        expected_group_plan = None
+        if group_submit:
+            if (not self.group_plan or not self.group_plan["active"] or not self.group_addresses or
+                    (self.group_plan["declaration"], self.group_plan["binding_generation"]) != self.group_context or
+                    self.group_plan["count"] != len(self.group_addresses) or
+                    {m["address"] for m in self.group_plan["members"]} != set(self.group_addresses)):
+                raise ValueError("group plan submit requires a complete inspected plan")
+            expected_group_plan = json.loads(json.dumps(self.group_plan))
+            expected_group_plan["addresses"] = list(self.group_addresses)
+            command = "group-move"  # The firmware returns the ordinary group move outcome.
         request_id = self.next_id
         self.next_id += 1
         started = self.clock()
@@ -3112,6 +3292,7 @@ class Console:
             handle.driver_args = driver_args
             handle.home_args = home_args
             handle.host_args = host_args
+            handle.group_plan = expected_group_plan
             if command == "motion-profile-stage" and self.motion_profile and self.motion_profile["saved"] and self.motion_profile["address"] == address:
                 handle.profile_original = list(self.motion_profile["original"])
             if self.serial is not None:
@@ -3150,10 +3331,13 @@ class Console:
             if command == "position-interrupt": wire_command = "position interrupt"
             if command == "profile-list": wire_command = "profile list"
             if command in MOVE_COMMANDS: wire_command = "move " + command[5:]
-            if command.startswith("group-"): wire_command = "group " + ("read state" if command == "group-read-state" else command[6:])
+            if command.startswith("group-"): wire_command = "group " + ("read state" if command == "group-read-state" else command[6:].replace("-", " "))
+            if group_submit: wire_command = "group plan submit"
             payload = f"@{request_id} {wire_command}{suffix}\n".encode("ascii")
             if len(payload) > 128:
                 raise ValueError("command exceeds the console line bound")
+            if len(payload.split()) > 22:
+                raise ValueError("command exceeds the console token bound")
             self.emit("send", id=request_id, command=command, address=address,
                       load=load, operation_id=operation_id)
             if self.port.write(payload) != len(payload):

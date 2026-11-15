@@ -273,7 +273,7 @@ group status
   [start staged|sequential] on-failure leave|stop normal|stop fast` checks every
   member with the move rules of the selected axis and prepares its move before any
   frame is sent. One member that is not ready refuses the whole group. Members
-  have no host scale, so only `steps native` is admitted; stored setup is refused.
+  keep their own host scales; unresolved conversions and stored setup are refused.
   - `start staged` (default): phase 1 writes each member's five `0x0021` words
     (acceleration, deceleration, speed, target pair) with one FC10 and reads them
     back with one FC03, member by member, sending no start and never writing
@@ -324,9 +324,9 @@ closures, not motion onset). The line adds `request.start`, `start_tx_spread_us`
 spread holds only the start frames and their checked replies; a sequential spread
 also holds each member's staging transaction.
 
-One line holds all 15 members: the console output buffer is sized from the
-capacity (1024 bytes per member plus the common fields, 16,384 bytes). The widest
-possible 15-member line, measured by `group_app_test`, is 15,559 bytes. Use
+One line holds all 15 members. The console output buffer reserves 3,072 bytes
+per member plus common fields, 49,152 bytes total. Capacity tests cover full
+member intents, references, plan contents and terminal evidence. Use
 `@ID` (JSON) for large groups: the human rendering of a large group line can
 exceed the buffer; it then keeps the summary, drops later member details and ends
 with a note to inspect `@ID result N`.
@@ -348,6 +348,70 @@ human group moves are recycled like other human results. A group operation
 has no local `cancel` (it answers `invalid`); use `group stop`. During the start
 sequence, cancelling one member's move ID is a member failure and the failure
 policy applies.
+
+### Different member targets
+
+Use an inert plan when member values or modes differ:
+
+```text
+group plan begin start staged on-failure stop fast
+group plan add 1 relative 100 steps native 60 configured
+group plan add 2 relative -200 steps native 80 configured
+group plan add 4 absolute 300 steps native 60 configured
+group plan show
+group plan submit
+```
+
+Begin, add, show and clear send no motor traffic. Add rejects duplicate and
+non-member addresses. Submit requires exactly one intent for every declared
+member and validates all conversions and readiness before any write. Starts
+follow declaration order, even if intents were added in another order. A failed
+submission retains the plan; a successful one consumes it. `group plan clear`
+forgets only the draft. It does not cancel an admitted move.
+
+Each intent keeps its exact value, unit, frame, speed, setup and configuration
+generation. The result adds `individual:true` and each member's `request`;
+`effective_native` is that member's prepared native displacement or endpoint.
+The existing common-relative route uses the same executor. Both routes keep
+the same explicit failure policy, independent results, stop priority and no replay.
+Wrapped angles remain unsupported by the group application.
+
+Native absolute targets use the drive's command coordinate and need no invented
+origin. Host absolute coordinates need a declared scale and explicit origin.
+`group axis ADDRESS ...` uses the ordinary axis grammar for this member only:
+inspect it, configure scale/gear/lead/limits, or set an origin. It changes no
+drive register. The selected axis's scale is never copied into another member.
+
+Before setting an origin, install a caller-qualified command-coordinate fact:
+
+```text
+group reference ADDRESS DECLARATION BINDING CONFIG_GENERATION CONFIG_READ_ID STATE_READ_ID NATIVE_POSITION MAX_AGE_US command-coordinate-qualified
+group axis ADDRESS origin ORIGIN_NATIVE
+```
+
+Take the IDs from fresh `group show` after `group read state`. Motion and
+feedback must be stopped, fresh, from the named read and tied to the current
+configuration. The supplied position is a caller fact; raw feedback alone does
+not establish its sign, scale or coordinate relation. Installation keeps the
+observation's original lower time bound. `MAX_AGE_US=0` disables age expiry,
+as elsewhere; a finite age must cover the admitted write budget. New read IDs
+do not refresh an installed reference. Reinstall explicitly after new evidence.
+
+Host interpretation changes invalidate prepared generations. Normal motion
+expires the current-position reference but preserves the fixed origin. Release,
+position clear, homing, recovery, rebinding and contradictory external motion
+invalidate dependent coordinates. `group reference ADDRESS revoke` explicitly
+forgets the member's reference, origin and derived limits while idle.
+
+Every encoded command must still fit 128 bytes including its newline and 22
+tokens including `@ID`. Long exact numbers or IDs can exceed that limit and are
+rejected. No partial plan can execute merely because the host disconnects.
+
+Upper firmware uses `submitGroupMoves(GroupMemberMoves)`, or the same
+`beginGroupPlan` / `addGroupPlanMember` / `submitGroupPlan` builder.
+`configureGroupAxis`, `installGroupReference`, `revokeGroupReference` and
+`inspectGroup` expose the same coordinate operations. Keep capacity-sized
+requests, views and results in caller-owned task storage, not a small stack.
 
 The application API `stagePositionMove` and `copyPositionStage` stage the
 selected axis the same way: the shared move preparation, one FC10 write of the

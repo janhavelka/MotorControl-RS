@@ -72,7 +72,7 @@ class VerificationFailures(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "missing or wrong native test"):
                         verify.check_inventory(root, wrong, build)
 
-    def test_host_requires_both_frontends_for_interrupt_stop_velocity_and_profile(self):
+    def test_host_requires_both_frontends_for_interrupt_stop_velocity_profile_and_group(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             listing, build = self.inventory(root)
@@ -85,6 +85,8 @@ class VerificationFailures(unittest.TestCase):
                      ("stop_path_app_test", "idf_stop_path_app_test", "velocity_app_test", "idf_velocity_app_test")]]
             args += ["--profile-stage-fixtures", *[str(build / (name+suffix)) for name in
                      ("motion_profile_app_test", "idf_motion_profile_app_test")]]
+            args += ["--group-member-fixtures", *[str(build / (name+suffix)) for name in
+                     ("group_app_test", "idf_group_app_test")]]
             entry = {"name": "bench_probe", "command": [sys.executable, str(script), *args]}
             listing["tests"].append(entry)
             verify.check_inventory(root, listing, build)
@@ -93,7 +95,7 @@ class VerificationFailures(unittest.TestCase):
             invalid_args += [args[:i] + args[i+1:] for i in range(len(args))]
             for invalid in invalid_args:
                 entry["command"] = [sys.executable, str(script), *invalid]
-                with self.subTest(args=invalid), self.assertRaisesRegex(RuntimeError, "wrong interruption, stop recovery or profile staging fixtures"):
+                with self.subTest(args=invalid), self.assertRaisesRegex(RuntimeError, "wrong interruption, stop, profile or group fixtures"):
                     verify.check_inventory(root, listing, build)
 
     def test_required_command_identity_and_modes(self):

@@ -128,6 +128,15 @@ def check_cli_route(command, metadata, operation_kind):
     elif root == "move":
         valid = len(tail) == 1 and tail[0] in {"relative", "absolute", "angle"}
         effects = {"WRITE", "ACTION"}
+    elif root == "group":
+        valid = tail in [["move", "relative"], ["plan", "submit"]]
+        effects = {"WRITE", "ACTION"}
+        if valid:
+            app = (ROOT / "examples/probe_cli/GroupApp.h").read_text(encoding="utf-8")
+            public = (ROOT / "examples/probe_cli/ProbeApp.cpp").read_text(encoding="utf-8")
+            if not all(symbol in app for symbol in ("startGroupMove", "groupIntent", "ESS::prepareMoveRelative", "ESS::prepareMoveAbsolute")) or \
+                    not all(symbol in public for symbol in ("submitGroupMove(", "submitGroupMoves(", "submitGroupPlan(")):
+                raise ValueError("group route lacks producing application path: " + command)
     elif root == "position":
         valid = tail == ["interrupt", "ORIGINAL_ID"]
         effects = {"ACTION"}

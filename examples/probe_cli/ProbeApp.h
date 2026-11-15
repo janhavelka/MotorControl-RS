@@ -265,8 +265,8 @@ MotorControlRS::Status declareGroupWiring(uint8_t address, uint8_t terminal, Mot
  * The view holds up to 15 members: keep output in static or PSRAM storage, not on
  * a small task stack. The same applies to copyGroupResult. */
 bool inspectGroup(Probe::GroupView& output);
-/** One common relative native-step displacement and speed. Every member is
- * checked and prepared with the selected axis's move rules before any frame is
+/** One common relative displacement and speed. Every member uses its own facts
+ * and the shared move preparation rules before any frame is
  * sent. STAGED (default): every member's five 0x0021 words are written and read
  * back first with no start; any staging failure sends no start to any member.
  * Then only the start words go out, back to back, each after the previous start
@@ -276,6 +276,26 @@ bool inspectGroup(Probe::GroupView& output);
  * is sent and nothing is resent; each member's outcome stays its own.
  * Any member's unexpired enable wait returns BUSY before staging or start. */
 MotorControlRS::Status submitGroupMove(const Probe::GroupMoveRequest& request, uint32_t& operationId);
+/** Copied per-member relative/absolute requests, using the same group executor.
+ * Reject incomplete, duplicate, stale or unsupported intent before any write.
+ * Wrapped angles remain unsupported. Rejection preserves operationId. */
+MotorControlRS::Status submitGroupMoves(const Probe::GroupMemberMoves& request, uint32_t& operationId);
+/** Apply ordinary host axis configuration/origin rules to one member. No I/O.
+ * Requires current stationary observations; origins require an installed reference.
+ * QUERY copies only; failures preserve output. */
+MotorControlRS::Status configureGroupAxis(uint8_t address, const Probe::AxisCommand& command, Probe::AxisView& output);
+/// Install exact caller-qualified reference against current config/read IDs; no I/O.
+MotorControlRS::Status installGroupReference(const Probe::GroupReference& reference);
+/// Revoke future reference/origin use while idle; does not stop a motor.
+MotorControlRS::Status revokeGroupReference(uint8_t address);
+/** Bounded inert plan used by the console and upper firmware. Begin refuses an
+ * existing plan; add rejects duplicates/non-members and captures current generation
+ * if the supplied generation is zero. Only submit can send motor work. A rejected
+ * submit preserves the plan; success consumes it. inspectGroup copies its state. */
+MotorControlRS::Status beginGroupPlan(Probe::GroupStartMode start, Probe::GroupFailurePolicy onFailure);
+MotorControlRS::Status addGroupPlanMember(uint8_t address, const MotorControlRS::MoveRequest& request);
+MotorControlRS::Status clearGroupPlan();
+MotorControlRS::Status submitGroupPlan(uint32_t& operationId);
 /// One urgent unicast stop per member, each with its own reservation and result.
 MotorControlRS::Status submitGroupStop(MotorControlRS::StopBehavior behavior, uint32_t& operationId);
 /// Refresh every member's cached state with one checked state read each.

@@ -5,6 +5,7 @@
 #include <MotorControlRS/ReadOperation.h>
 #include <MotorControlRS/Status.h>
 #include "PositionStage.h"
+#include "AxisConsole.h"
 #include <cstddef>
 #include <cstdint>
 
@@ -46,6 +47,30 @@ struct GroupMoveRequest {
     GroupStartMode start = GroupStartMode::STAGED;
 };
 
+/** One member's copied intent; address selects the member, not its array index. */
+struct GroupMoveIntent {
+    uint8_t address = 0;
+    MotorControlRS::MoveRequest move;
+};
+/** Exactly one intent per declared member. Start order is declaration order.
+ * Binding, declaration and each position.configurationGeneration must match.
+ * Keep this bounded request in caller-owned task storage, not a small stack. */
+struct GroupMemberMoves {
+    uint32_t declaration = 0, bindingGeneration = 0;
+    std::size_t count = 0;
+    GroupMoveIntent members[GROUP_CAPACITY];
+    GroupFailurePolicy onFailure = GroupFailurePolicy::NONE;
+    GroupStartMode start = GroupStartMode::STAGED;
+};
+/** Caller-qualified command coordinate at a named stationary observation.
+ * Readback identifies the observation; it does not establish this relation.
+ * Installation sends no traffic and does not set an origin. */
+struct GroupReference {
+    MotorControlRS::AxisReference reference;
+    uint32_t declaration = 0, configurationOperationId = 0;
+    uint32_t motionOperationId = 0, feedbackOperationId = 0;
+};
+
 /** Cached member facts; building this view causes no bus traffic. */
 struct GroupMemberView {
     uint8_t address = 0;
@@ -65,6 +90,10 @@ struct GroupMemberView {
     uint64_t settleUntilUs = 0;
     bool reserved = false; ///< An operation or an uncertain-motion interlock owns this address.
     bool startSpeedRelationRequired = false;
+    MotorControlRS::AxisConfig axis; ///< This member's scales, origin and host limits.
+    MotorControlRS::AxisReference reference; ///< Supplied witness, never inferred from raw feedback.
+    bool referenceCurrent = false;
+    uint32_t configurationOperationId = 0, motionOperationId = 0, feedbackOperationId = 0;
 };
 struct GroupView {
     uint8_t count = 0;
@@ -75,11 +104,14 @@ struct GroupView {
     uint32_t setOperationId = 0, readOperationId = 0, moveOperationId = 0;
     uint32_t stopOperationIds[GROUP_STOP_OPERATIONS] = {};
     GroupMemberView members[GROUP_CAPACITY];
+    bool planActive = false; ///< Inert until an explicit complete submission.
+    GroupMemberMoves plan;
 };
 
 /** Copied evidence of one member, independent of every other member. */
 struct GroupMemberResult {
     uint8_t address = 0;
+    MotorControlRS::MoveRequest request; ///< Exact admitted intent before internal setup conversion.
     uint32_t operationId = 0; ///< Child read, move or stop; zero when none was admitted.
     Action admission{}; ///< OK, or why the child was not admitted.
     GroupJoin join = GroupJoin::NOT_READ;
@@ -120,6 +152,7 @@ struct GroupResult {
     bool pending = false, ok = false;
     uint32_t declaration = 0, bindingGeneration = 0;
     GroupMoveRequest move; ///< MOVE only.
+    bool individual = false; ///< MOVE has one distinct request in each member result.
     MotorControlRS::StopBehavior stop = MotorControlRS::StopBehavior::UNSPECIFIED; ///< STOP only.
     bool aborted = false; ///< A member failed during declaration or before every start was resolved.
     uint8_t failedAddress = 0;
@@ -128,7 +161,11 @@ struct GroupResult {
     GroupMemberResult members[GROUP_CAPACITY];
 };
 
-enum class GroupCommandKind : uint8_t { SHOW, STATUS, SET, CLEAR, WIRING, MOVE, STOP, READ_STATE };
+enum class GroupCommandKind : uint8_t {
+    SHOW, STATUS, SET, CLEAR, WIRING, MOVE, STOP, READ_STATE,
+    MEMBER_MOVES, AXIS, REFERENCE, REFERENCE_REVOKE,
+    PLAN_BEGIN, PLAN_ADD, PLAN_SHOW, PLAN_CLEAR, PLAN_SUBMIT
+};
 /** One group request; copied by the application before returning. */
 struct GroupCommand {
     GroupCommandKind kind = GroupCommandKind::SHOW;
@@ -137,12 +174,16 @@ struct GroupCommand {
     uint8_t address = 0, terminal = 0; ///< WIRING: member and X0..X3=0..3, Y0..Y1=4..5.
     MotorControlRS::InputWiring wiring = MotorControlRS::InputWiring::UNKNOWN;
     GroupMoveRequest move;
+    GroupMemberMoves memberMoves;
+    AxisCommand axis;
+    GroupReference reference;
     MotorControlRS::StopBehavior stop = MotorControlRS::StopBehavior::UNSPECIFIED;
 };
 struct GroupReply {
     uint32_t operationId = 0; ///< SET, MOVE, STOP and READ_STATE admission.
     uint8_t address = 0; ///< Member that caused a refusal; zero otherwise.
     const GroupView* view = nullptr; ///< Borrowed during the synchronous call only.
+    const AxisView* axis = nullptr; ///< AXIS reply, same synchronous lifetime.
 };
 
 }} // namespace MotorControlRSExample::Probe

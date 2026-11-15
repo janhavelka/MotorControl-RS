@@ -10,11 +10,11 @@
 // runs each member's ordinary move (write or verify, then start) in turn.
 
 const PositionStartSpeedRelation NO_START_SPEED_RELATION = PositionStartSpeedRelation();
-MotionFacts memberFacts(const App& a, const App::GroupMember& m) {
+MotionFacts memberFacts(const App& a, const App::GroupMember& m, const MotorControlRS::AxisReference* reference = nullptr) {
     // Members keep no start-speed relation. Once it is revoked, the shared
     // rule refuses the member (startSpeedRelationRequired).
     return MotionFacts(m.axis, m.configuration, m.profile, m.state, m.startSpeedRelationRequired,
-        NO_START_SPEED_RELATION, a.bindingGeneration, a.serial.generation, a.observationAgeUs());
+        NO_START_SPEED_RELATION, a.bindingGeneration, a.serial.generation, a.observationAgeUs(), reference);
 }
 bool knownTarget(const App& a, uint8_t address) {
     return (a.knownTargets[address / 8] & (1U << (address % 8))) != 0;
@@ -345,9 +345,16 @@ void stageGroupMembers(App& a, App::GroupOperation& op, uint64_t now) {
         auto* m = groupMember(a, member.address);
         if (!record || !m) { r.aborted = true; r.failedAddress = member.address; return; }
         if (member.stageState == MotorControlRS::ActionState::EMPTY) {
+            ESS::PreparedMove work;
+            const auto checked = ESS::nextMove(record->move, now, work);
+            if (!checked || work.kind != ESS::ActionWork::TRANSACTION || work.deadlineUs <= now) {
+                member.stageState = MotorControlRS::ActionState::FAILED;
+                member.stageStatus = checked ? MotorControlRS::Status(MotorControlRS::Err::INVALID_CONFIG, 0, "stage readiness expired") : checked;
+                r.aborted = true; r.failedAddress = member.address; return;
+            }
             const auto admitted = beginPositionStage(a, m->stage, m->axis.target, m->axis.generation,
                 record->move.words, record->operationId, now, record->move.prerequisites.wordOrder,
-                std::min(record->deadlineUs, now > UINT64_MAX - 2 * REQUEST_US ? UINT64_MAX : now + 2 * REQUEST_US));
+                std::min(work.deadlineUs, now > UINT64_MAX - 2 * REQUEST_US ? UINT64_MAX : now + 2 * REQUEST_US));
             if (admitted == Probe::Action::QUEUE_FULL || admitted == Probe::Action::RESULTS_FULL) return;
             member.stageState = admitted == Probe::Action::OK ? MotorControlRS::ActionState::ACTIVE : MotorControlRS::ActionState::FAILED;
             if (admitted != Probe::Action::OK) {
@@ -439,7 +446,7 @@ void harvestGroupMove(App& a, App::GroupOperation& op, uint64_t now) {
             }
         }
         const auto* m = groupMember(a, member.address);
-        if (m && member.stageState != MotorControlRS::ActionState::EMPTY) {
+        if (m && member.stageState != MotorControlRS::ActionState::EMPTY && m->stage.view.operationId == member.operationId) {
             const auto& stage = m->stage.view;
             member.stageState = stage.staged ? MotorControlRS::ActionState::SUCCEEDED : MotorControlRS::ActionState::FAILED;
             member.stageExecution = stage.execution;
@@ -597,19 +604,52 @@ Probe::Action startGroupRead(App& a, uint32_t commandId, Probe::GroupReply& repl
 }
 // Every member is checked and prepared with the shared move rules before any
 // frame is sent. The first member's first frame follows on the next service.
-Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveRequest& supplied, Probe::GroupReply& reply) {
+const MotorControlRS::MoveRequest* groupIntent(const Probe::GroupMoveRequest& common,
+        const Probe::GroupMemberMoves* individual, uint8_t address) {
+    if (!individual) return &common.move;
+    for (std::size_t i = 0; i < individual->count; ++i)
+        if (individual->members[i].address == address) return &individual->members[i].move;
+    return nullptr;
+}
+bool validGroupIntent(const MotorControlRS::MoveRequest& move) {
     using namespace MotorControlRS;
-    const auto& move = supplied.move;
-    const bool staged = supplied.start == Probe::GroupStartMode::STAGED;
-    if (supplied.onFailure == Probe::GroupFailurePolicy::NONE || supplied.onFailure > Probe::GroupFailurePolicy::LEAVE ||
-        supplied.start > Probe::GroupStartMode::SEQUENTIAL ||
-        !move.position.relative || move.position.wrapped || move.position.basis != RelativeBasis::ACTUAL ||
-        !move.speedRpm || move.ramp != MoveRamp::VERIFIED_CONFIGURED || move.setup > MoveSetup::USE_STORED ||
-        (staged && move.setup == MoveSetup::VERIFY_AND_UPDATE)) // Staging always writes all five words.
+    const auto& p = move.position;
+    return p.value.denominator && p.unit <= PositionUnit::MILLIMETRES && p.frame <= CoordinateFrame::LOAD &&
+        p.basis <= RelativeBasis::QUEUED && p.path <= AnglePath::SHORTEST && p.tie <= HalfTurnTie::NEGATIVE &&
+        p.rounding <= Rounding::CEIL && std::isfinite(p.maximumQuantizationError) && p.maximumQuantizationError >= 0 &&
+        std::isfinite(p.radians) && std::isfinite(p.maximumApproximationError) && p.maximumApproximationError >= 0 &&
+        move.speedRpm && move.ramp == MoveRamp::VERIFIED_CONFIGURED && move.setup <= MoveSetup::USE_STORED;
+}
+Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveRequest& supplied,
+                             Probe::GroupReply& reply, const Probe::GroupMemberMoves* individual = nullptr) {
+    using namespace MotorControlRS;
+    const auto policy = individual ? individual->onFailure : supplied.onFailure;
+    const auto start = individual ? individual->start : supplied.start;
+    const bool staged = start == Probe::GroupStartMode::STAGED;
+    if (policy == Probe::GroupFailurePolicy::NONE || policy > Probe::GroupFailurePolicy::LEAVE ||
+        start > Probe::GroupStartMode::SEQUENTIAL)
         return Probe::Action::INVALID;
-    // A request cannot name stored words: a staged start relies only on its own fresh stage.
-    if (move.setup == MoveSetup::USE_STORED) return Probe::Action::UNSUPPORTED;
     if (!a.group.declared || !a.group.count) return Probe::Action::UNAVAILABLE;
+    if (individual) {
+        if (individual->count != a.group.count || individual->count > Probe::GROUP_CAPACITY ||
+            individual->declaration != a.group.declaration || individual->bindingGeneration != a.bindingGeneration)
+            return Probe::Action::INVALID;
+        for (std::size_t i = 0; i < individual->count; ++i) {
+            const auto& intent = individual->members[i];
+            const auto* member = groupMember(a, intent.address);
+            if (!member || intent.move.position.configurationGeneration != member->axis.generation) return Probe::Action::INVALID;
+            for (std::size_t j = 0; j < i; ++j)
+                if (individual->members[j].address == intent.address) return Probe::Action::INVALID;
+        }
+    }
+    for (uint8_t i = 0; i < a.group.count; ++i) {
+        const auto* move = groupIntent(supplied, individual, a.group.members[i].address);
+        if (!move || !validGroupIntent(*move)) return Probe::Action::INVALID;
+        if (move->position.wrapped || move->setup == MoveSetup::USE_STORED) return Probe::Action::UNSUPPORTED;
+        if ((!individual && !move->position.relative) || move->position.basis != RelativeBasis::ACTUAL ||
+            !move->speedRpm || move->ramp != MoveRamp::VERIFIED_CONFIGURED || move->setup > MoveSetup::USE_STORED ||
+            (staged && move->setup == MoveSetup::VERIFY_AND_UPDATE)) return Probe::Action::INVALID;
+    }
     const auto ready = groupAdmissionReady(a);
     if (ready != Probe::Action::OK) return ready;
     if (groupBusy(a)) return Probe::Action::BUSY;
@@ -634,12 +674,14 @@ Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveR
     for (uint8_t i = 0; i < count; ++i) {
         const auto& m = a.group.members[i];
         auto& record = a.records[GROUP_MOVE_FIRST + i];
-        MoveRequest request = move;
+        MoveRequest request = *groupIntent(supplied, individual, m.address);
         request.position.configurationGeneration = m.axis.generation;
         if (staged) request.setup = MoveSetup::USE_STORED; // Its own stage writes the words; the move only starts.
-        const MotionFacts facts = memberFacts(a, m);
+        const auto reference = memberReference(a, m, now);
+        const MotionFacts facts = memberFacts(a, m, &reference);
         ESS::MovePrerequisites prerequisites;
-        const bool readiness = moveRequirements(facts, request, now, prerequisites);
+        const bool staleReference = m.coordinate.reference.nativeKnown && !reference.nativeKnown;
+        const bool readiness = !staleReference && moveRequirements(facts, request, now, prerequisites);
         Status checked(Err::INVALID_CONFIG, 0, "member move readiness unavailable");
         if (readiness) {
             const auto& motion = facts.block(ESS::StateBlock::MOTION);
@@ -651,7 +693,8 @@ Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveR
             prerequisites.wordOrderKnown = m.configuration.wordOrderKnown;
             prerequisites.wordOrder = m.configuration.wordOrder;
             prerequisites.subdivision = m.configuration.raw.subdivision;
-            checked = ESS::prepareMoveRelative(record.move, m.axis, nullptr, a.nextOperationId + 1 + i,
+            const auto prepare = request.position.relative ? ESS::prepareMoveRelative : ESS::prepareMoveAbsolute;
+            checked = prepare(record.move, m.axis, reference.nativeKnown ? &reference : nullptr, a.nextOperationId + 1 + i,
                 request, prerequisites, now, deadline, options);
         }
         if (!checked) {
@@ -662,7 +705,8 @@ Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveR
         }
     }
     beginGroupOperation(a, op, Probe::GroupOperationKind::MOVE, commandId, now);
-    op.result.move = supplied; op.result.count = count;
+    op.result.move = supplied; op.result.move.onFailure = policy; op.result.move.start = start;
+    op.result.count = count; op.result.individual = individual != nullptr;
     for (uint8_t i = 0; i < count; ++i) {
         auto& record = a.records[GROUP_MOVE_FIRST + i];
         const auto& m = a.group.members[i];
@@ -671,6 +715,7 @@ Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveR
         record.deadlineUs = deadline; record.kind = App::OperationKind::MOVE; record.axisReserved = true;
         record.groupChild = record.groupWaiting = true; record.configurationGeneration = m.axis.generation;
         op.result.members[i].address = m.address; op.result.members[i].operationId = record.operationId;
+        op.result.members[i].request = *groupIntent(supplied, individual, m.address);
     }
     reply.operationId = op.result.operationId;
     return Probe::Action::OK;
@@ -783,6 +828,41 @@ Probe::Action groupWiring(App& a, const Probe::GroupCommand& command, uint8_t& b
     for (auto& block : member->state.blocks) block.invalidatedUs = nowUs();
     return Probe::Action::OK;
 }
+void clearGroupPlanState(App& a) {
+    a.group.planActive = false;
+    a.group.plan.~GroupMemberMoves(); new (&a.group.plan) Probe::GroupMemberMoves();
+}
+Probe::Action beginGroupPlanState(App& a, const Probe::GroupMoveRequest& supplied) {
+    if (supplied.onFailure == Probe::GroupFailurePolicy::NONE || supplied.onFailure > Probe::GroupFailurePolicy::LEAVE ||
+        supplied.start > Probe::GroupStartMode::SEQUENTIAL) return Probe::Action::INVALID;
+    if (!a.group.declared || !a.group.count) return Probe::Action::UNAVAILABLE;
+    if (a.group.planActive || groupBusy(a)) return Probe::Action::BUSY;
+    const auto ready = groupAdmissionReady(a);
+    if (ready != Probe::Action::OK) return ready;
+    clearGroupPlanState(a);
+    auto& plan = a.group.plan;
+    plan.declaration = a.group.declaration; plan.bindingGeneration = a.bindingGeneration;
+    plan.onFailure = supplied.onFailure; plan.start = supplied.start;
+    a.group.planActive = true;
+    return Probe::Action::OK;
+}
+Probe::Action addGroupPlanIntent(App& a, uint8_t address, const MotorControlRS::MoveRequest& supplied) {
+    auto& plan = a.group.plan;
+    if (!a.group.planActive || !a.group.declared || plan.declaration != a.group.declaration ||
+        plan.bindingGeneration != a.bindingGeneration) return Probe::Action::UNAVAILABLE;
+    if (groupBusy(a)) return Probe::Action::BUSY;
+    const auto* member = groupMember(a, address);
+    if (!member || !validGroupIntent(supplied) || plan.count >= Probe::GROUP_CAPACITY ||
+        (supplied.position.configurationGeneration && supplied.position.configurationGeneration != member->axis.generation))
+        return Probe::Action::INVALID;
+    for (std::size_t i = 0; i < plan.count; ++i)
+        if (plan.members[i].address == address) return Probe::Action::INVALID;
+    plan.members[plan.count].address = address;
+    plan.members[plan.count].move = supplied;
+    plan.members[plan.count].move.position.configurationGeneration = member->axis.generation;
+    ++plan.count;
+    return Probe::Action::OK;
+}
 const Probe::GroupView& buildGroupView(App& a) {
     auto& v = a.group.view;
     v.~GroupView(); new (&v) Probe::GroupView();
@@ -791,6 +871,7 @@ const Probe::GroupView& buildGroupView(App& a) {
     v.nowUs = now; v.sequencing = groupSequencing(a);
     v.setOperationId = a.group.set.result.operationId; v.readOperationId = a.group.read.result.operationId;
     v.moveOperationId = a.group.move.result.operationId;
+    v.planActive = a.group.planActive; v.plan = a.group.plan;
     for (std::size_t i = 0; i < Probe::GROUP_STOP_OPERATIONS; ++i) v.stopOperationIds[i] = a.group.stops[i].result.operationId;
     for (uint8_t i = 0; i < a.group.count; ++i) {
         const auto& m = a.group.members[i];
@@ -817,6 +898,11 @@ const Probe::GroupView& buildGroupView(App& a) {
         out.settleUntilUs = a.enableWaits[m.address].untilUs; out.settling = enableSettling(a, m.address, now);
         out.reserved = axisReserved(a, m.address);
         out.startSpeedRelationRequired = m.startSpeedRelationRequired;
+        out.axis = m.axis; out.reference = m.coordinate.reference;
+        out.referenceCurrent = memberReference(a, m, now).nativeKnown;
+        out.configurationOperationId = m.configuration.operationId;
+        out.motionOperationId = motion.valid ? motion.value.operationId : 0;
+        out.feedbackOperationId = feedback.valid ? feedback.value.operationId : 0;
     }
     return v;
 }
@@ -827,7 +913,7 @@ Probe::Action groupCommand(void* context, uint32_t commandId, const Probe::Group
     reply = Probe::GroupReply();
     Probe::Action result = Probe::Action::INVALID;
     switch (command.kind) {
-    case Probe::GroupCommandKind::SHOW: case Probe::GroupCommandKind::STATUS:
+    case Probe::GroupCommandKind::SHOW: case Probe::GroupCommandKind::STATUS: case Probe::GroupCommandKind::PLAN_SHOW:
         reply.view = &buildGroupView(a); return Probe::Action::OK;
     case Probe::GroupCommandKind::CLEAR:
         result = clearGroupMembers(a); reply.view = &buildGroupView(a); return result;
@@ -835,6 +921,29 @@ Probe::Action groupCommand(void* context, uint32_t commandId, const Probe::Group
         result = groupWiring(a, command, reply.address); reply.view = &buildGroupView(a); return result;
     case Probe::GroupCommandKind::SET: return startGroupSet(a, commandId, command, reply);
     case Probe::GroupCommandKind::MOVE: return startGroupMove(a, commandId, command.move, reply);
+    case Probe::GroupCommandKind::MEMBER_MOVES:
+        return startGroupMove(a, commandId, command.move, reply, &command.memberMoves);
+    case Probe::GroupCommandKind::AXIS: {
+        const auto status = groupAxisCommand(a, command.address, command.axis, a.group.axisView);
+        result = status ? Probe::Action::OK : status.code == MotorControlRS::Err::UNSUPPORTED ? Probe::Action::UNSUPPORTED : Probe::Action::INVALID;
+        if (status) reply.axis = &a.group.axisView;
+        reply.view = &buildGroupView(a); return result;
+    }
+    case Probe::GroupCommandKind::REFERENCE:
+        result = installMemberReference(a, command.reference); reply.view = &buildGroupView(a); return result;
+    case Probe::GroupCommandKind::REFERENCE_REVOKE:
+        result = revokeMemberReference(a, command.address); reply.view = &buildGroupView(a); return result;
+    case Probe::GroupCommandKind::PLAN_BEGIN:
+        result = beginGroupPlanState(a, command.move); reply.view = &buildGroupView(a); return result;
+    case Probe::GroupCommandKind::PLAN_ADD:
+        result = addGroupPlanIntent(a, command.address, command.move.move); reply.view = &buildGroupView(a); return result;
+    case Probe::GroupCommandKind::PLAN_CLEAR:
+        clearGroupPlanState(a); reply.view = &buildGroupView(a); return Probe::Action::OK;
+    case Probe::GroupCommandKind::PLAN_SUBMIT:
+        if (!a.group.planActive) return Probe::Action::UNAVAILABLE;
+        result = startGroupMove(a, commandId, command.move, reply, &a.group.plan);
+        if (result == Probe::Action::OK) clearGroupPlanState(a);
+        return result;
     case Probe::GroupCommandKind::STOP: return startGroupStop(a, commandId, command.stop, reply);
     case Probe::GroupCommandKind::READ_STATE: return startGroupRead(a, commandId, reply);
     }

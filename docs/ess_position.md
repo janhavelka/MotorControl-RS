@@ -3,6 +3,12 @@
 For a user-facing ESP32 function, see [moveBy / moveTo](move_example.md).
 It submits the same observed move sequence; no console-string parsing is needed.
 
+The standalone [group route](console.md#different-member-targets) accepts a
+copied `GroupMemberMoves` request with one addressed intent per member. It uses
+these same relative/absolute preparations and completion rules. Member scales,
+origins and references stay separate. Wrapped group requests remain unsupported.
+Checked staging and start acknowledgement never prove completion by themselves.
+
 **Known motor limitations:** some high-subdivision speed/ramp combinations leave
 firmware `0x0029` reporting RUNNING after expected travel. See the
 [measured cases](reports/2026-10-07_position_completion.md) and
