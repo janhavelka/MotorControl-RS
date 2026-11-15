@@ -14,6 +14,13 @@ member requests, explicit coordinates and inert console plans; its
 verification, three-drive finite moves, urgent stop and exact profile restoration.
 The audit findings below describe the inspected baseline, not the corrected code.
 
+**Follow-up, 16 November:** [multi-drive 04](2026-11-16_multi_drive_04_input_programming.md)
+delivers M03's software: terminal facts, intermediate-write checks, confirmed
+connected writes and shared per-function readiness. Native/firmware checks and
+unconnected register round trips with restoration pass. Wired effects and
+status/polarity mapping remain unqualified. M06's startup and persistence
+questions remain open; this run did not restart a drive.
+
 The six findings in the [12 November review](2026-11-12_broadcast_and_sync_review.md)
 were checked individually against current source, callers/tests, original
 manuals and retained bench evidence. No separate independent `audit.md` was

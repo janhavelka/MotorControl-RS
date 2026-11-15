@@ -94,8 +94,9 @@ post-enable wait; their limits remain in the [backlog](backlog.md).
    requests, explicit member
    references and inert console plans are implemented in 09; see its
    [verification report](reports/2026-11-15_multi_drive_09_member_motion_requests.md).
-   Input programming is implemented in 04 and under final verification.
-   Input-start observation and wired-trigger qualification remain open.
+   Input programming is software complete in 04; unconnected register updates,
+   restoration and the finite-move regression pass. Input-start observation,
+   wired effects and restart persistence remain open.
    Independent physical skew and electrical timing are unmeasured;
    the existing fixture no longer needs a second drive.
 6. **Publish the scoped release.** Use the [verification workflow](verification.md)

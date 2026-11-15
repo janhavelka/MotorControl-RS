@@ -6,11 +6,16 @@ start of each test session; old readback is not fresh admission evidence.
 
 ## Fixture and standing authorization
 
+On 16 November, [M04 terminal checks](reports/2026-11-16_multi_drive_04_input_programming.md)
+flashed `e43c8d0` on the recorded COM13 board. Address 1 passed 64 unconnected
+I/O updates, exact restoration, one finite move and an explicit stop. Addresses
+2 and 4 were not accessed. Wired effects and drive restart were not tested.
+
 Later on 15 November, all three model probes answered. The
 [M09 regression](reports/2026-11-15_multi_drive_09_member_motion_requests.md)
 flashed `7a97050` and passed different-member staged/sequential moves, urgent
 group stop, profile restoration and enable/reselection checks. This supersedes
-the earlier failed preflights below as the latest recorded session.
+the earlier failed preflights below; M04 is the later recorded session.
 
 Read-only preflight on 15 November for multi-drive 08: the recorded COM13 USB
 device answered the protocol-3 console handshake, but one address-1 model probe
@@ -61,8 +66,19 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+The [16 November M04 checks](reports/2026-11-16_multi_drive_04_input_programming.md)
+are the latest session: ordinary `bench_s3_load_timer` from `e43c8d0`, SHA-256
+`43a259fa5ca09ca3fe860cc0b205bfddfa2ab83300fcb1732bf29ebdfe453931`.
+Drive 1 ended enabled, stopped and alarm-free, raw position 590 and speed 0.
+Its nine I/O words were restored to `[0,1,2,3,0,0,0,0,0]` and its six profile
+words to `[30,100,100,60,0,5000]`. Subdivision 1000 and word order 0 were
+unchanged. Drives 2/4 were not accessed; their earlier ending state is below.
+No EEPROM write or drive power cycle occurred. Drive 1 is selected, group
+empty, monitor/debug/injected load off, DE off, owner idle with no retained
+work and COM13 closed. A new move needs fresh ordinary readiness evidence.
+
 The [15 November M09 checks](reports/2026-11-15_multi_drive_09_member_motion_requests.md)
-are the latest session: ordinary `bench_s3_load_timer` from `7a97050`, SHA-256
+used ordinary `bench_s3_load_timer` from `7a97050`, SHA-256
 `c213825b1e6522ceea5b6707affb583fc9736d0c6eb887d737bd3b3e31e9f6d2`.
 Drives 1/2/4 ended enabled, stopped and alarm-free; latest raw positions were
 490/388/380. All six profile words were restored to `[30,100,100,60,0,5000]`;

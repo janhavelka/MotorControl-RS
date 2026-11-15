@@ -19,7 +19,8 @@ Broadcast acceptance is complete with NO-GO; production broadcast stays disabled
 Common-relative group moves and staged starts have three-drive evidence. Stage 08
 preserves enable waits across group changes. Stage 09 adds independent member
 requests, member references and inert console plans. Input programming in 04 is
-implemented and under final verification; input-start observation and remaining physical
+software complete, with unconnected register round trips and a finite-move
+regression. Input-start observation, wired effects and remaining physical
 qualification stay open. See the set's table for each stage's disposition.
 M02 and stages 02/08/09 are complete; the short three-drive and enable/reselection
 checks pass. Wider qualification remains in 06 and HW-15.
