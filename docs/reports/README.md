@@ -7,7 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
-| [Multi-drive 08 / standalone 02 independent audit](2026-11-15_multi_drive_08_standalone_02_audit.md) | Fresh source and real-route review: candidate/group relation and profile invalidation, pending-result cancellation parity and stale coverage wording corrected. Final verification in progress; hardware remains separate. |
+| [Multi-drive 08 / standalone 02 independent audit](2026-11-15_multi_drive_08_standalone_02_audit.md) | PROCESSED: candidate/group relation and profile invalidation, pending-result cancellation parity and stale coverage wording corrected. All 95 suites and exact-commit GCC/Clang/Arduino/IDF CI pass; board checks remain NOT RUN. |
 | [Standalone 02: profile candidates and archives](2026-11-15_standalone_02_profile_staging.md) | Candidate admission, retained results and ordinary host/console staging without motion. Shared deadlines and raw evidence; new board regression pending after NO_RESPONSE. |
 | [Multi-drive 08: enable-wait lifetime](2026-11-15_multi_drive_08_enable_wait_lifetime.md) | Software complete: waits survive group/selection/recovery changes. All 94 suites, Doxygen and four exact-commit CI jobs pass. Board regression pending after read-only address-1 NO_RESPONSE; HW-15 stays open. |
 | [Standalone 15/16 independent audit](2026-11-15_standalone_15_16_audit.md) | PROCESSED: five findings fixed; fresh 94-suite verification, Doxygen and all four exact-commit CI jobs pass. Physical checks NOT RUN. |

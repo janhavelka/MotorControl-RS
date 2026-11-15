@@ -1,7 +1,10 @@
 # Multi-drive 08 and standalone 02 audit, 15 November 2026
 
-Status: final CI pending. Three code defects and one documentation gap were
-confirmed. Corrections and local verification are complete.
+Status: **PROCESSED**. Three code defects and one documentation gap were
+confirmed and fixed. Local checks and exact-commit CI pass. Board checks remain
+NOT RUN.
+
+Correction commit: `be7a2ac92014303768326c24f5c58b601be14def`.
 
 ## Scope and method
 
@@ -16,6 +19,10 @@ ownership and cache invalidation; and API/console/host contracts, vendor rules
 and coverage claims. Each used actual production fixtures. The lead reran the
 confirmed code reproducers and checked the owning transitions. A separate
 reviewer checked the final fixes and independent regression coverage.
+
+Final reviewer dispositions: enable-wait lifetime passed without a new defect;
+candidate lifetime and cache findings A1/A2 are fixed; host parity finding A3
+and coverage wording A4 are fixed. No confirmed in-scope software finding remains.
 
 FieldCore-node `c40ea8341edf8d665460b902cafefbe857a7f73f` was inspected read-only:
 `Rs485MotorModule`, `Rs485OwnerTransaction` and owner settlement retain identity,
@@ -72,7 +79,32 @@ Fresh quick verification in `build/m08_s02_audit_verify` passes all 95 suites
 and all 15 checks, including strict headers and source/install consumers.
 Doxygen, inventory, reference/document checks and `git diff --check` pass.
 The host validates 24 real frontend records, including the six new pending-stop
-cases. Exact-commit firmware CI is pending until its terminal results are recorded.
+cases. Exact-commit CI run
+[43724860008](https://github.com/janhavelka/MotorControl-RS/actions/runs/43724860008)
+finished successfully on `be7a2ac92014303768326c24f5c58b601be14def`.
+
+| Job | Result | Checks | Artifact ID |
+| --- | --- | --- | --- |
+| Native GCC | PASS, 95 suites | 15 | 14165664795 |
+| Native Clang | PASS, 95 suites | 15 | 14165839270 |
+| Arduino | PASS, 95 suites and four environments | 16 | 14166425883 |
+| ESP-IDF 5.5.5 | PASS, 95 suites and four targets | 19 | 14165929837 |
+
+Arduino covers `bench_s3_units`, `bench_s3_probe`, `bench_s3_load_poll` and
+`bench_s3_load_timer`. IDF covers the S3 probe, S3/S2 core consumers and S2
+portable consumer. Downloaded artifact hashes match GitHub's SHA-256 digests;
+each summary reports PASS with every check successful.
+
+Local core package SHA-256:
+`fc38ba84593954d4c79c32fd2db98fa9c2077d695b3768e8829cf1e7a55b2c01`.
+
+[Audit evidence](2026-11-15_multi_drive_08_standalone_02_audit_evidence.zip)
+retains original failure fixtures/output, final local checks, source/layout
+hashes, corrected console records and all four CI artifacts with metadata.
+Archive SHA-256:
+`2b2353d18057b940df88743db15ef06a69c10dcbfd04df7885ef6ade5aeabd7d`.
+The later evidence-only commit changes this report, its index and the archive;
+implementation verification applies to the correction commit above.
 
 ## Physical limits and next work
 
