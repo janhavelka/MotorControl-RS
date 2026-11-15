@@ -90,7 +90,8 @@ post-enable wait; their limits remain in the [backlog](backlog.md).
    staged starts already have three-drive evidence. The
    [multi-drive revalidation](reports/2026-11-15_ess_multi_drive_promptset_audit.md)
    assigned enable-wait lifetime to stage 08; its software correction is delivered,
-   with bench checks pending. Independent member requests, explicit member
+   with the short enable/reselection bench checks now passed. Independent member
+   requests, explicit member
    references and inert console plans are implemented in 09; see its
    [verification report](reports/2026-11-15_multi_drive_09_member_motion_requests.md).
    Input programming/observation and wired-trigger qualification remain

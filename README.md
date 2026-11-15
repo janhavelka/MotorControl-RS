@@ -44,8 +44,8 @@ the ordinary application API and an inert console plan. Every member keeps its
 own units, reference and result; all staging checks finish before staged starts.
 See [member requests](docs/console.md#different-member-targets).
 
-The tested motor is an ESS23-RS20, raw model `0x4EEA`, firmware word `0x0029`,
-at address 1 / 115200 8N1 with a secured free shaft. These raw words are not a
+The recorded bench has three ESS23-RS20 drives, raw model `0x4EEA`, firmware word
+`0x0029`, at addresses 1, 2 and 4 / 115200 8N1 with free shafts. These raw words are not a
 resolved universal model/version mapping. S3 has recorded hardware evidence;
 S2 has core/portable compile checks only, with no supported S2 UART adapter.
 

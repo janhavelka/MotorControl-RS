@@ -285,10 +285,11 @@ more drives (now addresses 1, 2 and 4, star wiring).
   possible-write evidence survive recovery and rebinding. The
   [report](reports/2026-11-15_multi_drive_08_enable_wait_lifetime.md) retains the
   before/after traces and storage measurement.
-- [ ] Bench-check the multi-drive 08 image: refusal before the enable deadline,
-  then one finite move after it, plus the short regression. The 15 November
-  preflight got NO_RESPONSE from address 1; no new image or motion was sent.
-  HW-15's separate drive-timing investigation remains open.
+- [x] Bench-check enable waits: two enables, subset/reselection, group/selected
+  move and staging refusals before the original deadline with zero transactions,
+  then one finite move, stop and exact restoration. The later 15 November
+  [M09 run](reports/2026-11-15_multi_drive_09_member_motion_requests.md) also passes
+  the three-drive regression. HW-15's drive-timing investigation remains open.
 - [x] Implement the original different-member-target requirement
   ([multi-drive 09](prompts/ess_multi_drive/09_member_motion_requests.md)), with
   copied member intents, independent scales and explicit coordinate/reference

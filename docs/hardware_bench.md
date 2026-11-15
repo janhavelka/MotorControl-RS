@@ -6,6 +6,12 @@ start of each test session; old readback is not fresh admission evidence.
 
 ## Fixture and standing authorization
 
+Later on 15 November, all three model probes answered. The
+[M09 regression](reports/2026-11-15_multi_drive_09_member_motion_requests.md)
+flashed `7a97050` and passed different-member staged/sequential moves, urgent
+group stop, profile restoration and enable/reselection checks. This supersedes
+the earlier failed preflights below as the latest recorded session.
+
 Read-only preflight on 15 November for multi-drive 08: the recorded COM13 USB
 device answered the protocol-3 console handshake, but one address-1 model probe
 returned NO_RESPONSE (8 TX bytes, 0 RX bytes). No retry, flash or motion followed.
@@ -55,7 +61,17 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
-The [13 November drive group tests](reports/2026-11-13_multi_drive_02_drive_group.md) are the latest session:
+The [15 November M09 checks](reports/2026-11-15_multi_drive_09_member_motion_requests.md)
+are the latest session: ordinary `bench_s3_load_timer` from `7a97050`, SHA-256
+`c213825b1e6522ceea5b6707affb583fc9736d0c6eb887d737bd3b3e31e9f6d2`.
+Drives 1/2/4 ended enabled, stopped and alarm-free; latest raw positions were
+490/388/380. All six profile words were restored to `[30,100,100,60,0,5000]`;
+subdivision 1000 and word order 0 were unchanged. No EEPROM write or drive power
+cycle occurred. Drive 1 is selected, group cleared, debug off, DE off, owner
+idle and COM13 closed. The final candidate restoration invalidated host motion
+qualification; a new move still needs its normal readiness facts.
+
+The earlier [13 November drive group tests](reports/2026-11-13_multi_drive_02_drive_group.md) used:
 image `bench_s3_load_timer` from `b7dd6fb`, SHA-256 `9F9845B58E0CE6B46085BBECB3058BD779E23E80F9D4AE8FE34836873A74B401`.
 Ending state of drives 1, 2 and 4: enabled, stopped, alarm 0, motion words 1, 3 and 3, raw positions
 718,991, 506,153 and 504,851. RAM holds accel and decel 300 ms and start speed 30 from the multi-drive 01

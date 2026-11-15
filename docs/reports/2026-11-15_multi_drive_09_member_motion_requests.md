@@ -1,7 +1,10 @@
 # Multi-drive 09: independent member requests, 15 November 2026
 
-Status: implementation and local verification complete; exact-commit CI and
-new-image bench checks pending. Starting commit: `1d58149` on synchronized `main`.
+Status: COMPLETE for this bounded stage. Local verification, all four exact-commit
+CI jobs and the three-drive regression pass. M02 is resolved by stages 08/09;
+wider physical qualification remains separate. Starting commit: `1d58149`.
+Implementation commit: `7a9705027cd163b66053e68d93dd37e6ad502514`.
+S2 consumer correction: `12112df7b001ec079d3e5b4c296e9ace111f48f6`.
 
 ## Delivered behavior
 
@@ -47,6 +50,8 @@ and console/host routes. Review corrections include release/clear/home and
 cross-route observation invalidation; stale references that could widen relative
 admission; stale stage-result correlation; nonfinite retained intent fields; and
 host inspection of stale inert plans. The lead checked the affected transitions.
+Final contract, native-fixture and API/CLI reviewers found no remaining in-scope
+blockers. The S2 fixture correction also received an independent review.
 
 FieldCore-node `c40ea8341edf8d665460b902cafefbe857a7f73f` was inspected read-only:
 motor preparation, reference invalidation and owner transaction deadlines.
@@ -75,6 +80,41 @@ Doxygen, repository checks and all 38 inventory checks pass. The first quick
 run found one stale fixture list in the verifier's own negative tests; the list
 now requires both group frontends and still rejects missing/reordered arguments.
 The failed run is retained. The local `bench_s3_load_timer` firmware build passes.
+The checked inventory remains 55 operations, 145 classified core functions and
+four named native gaps. `group plan submit` is a producing staging/relative/
+absolute route; plan assembly and coordinate inspection do not count as operations.
+
+The first exact-commit CI passed GCC, Clang, all Arduino targets and three IDF
+targets. The portable S2 fixture exceeded internal BSS by 45,264 bytes: it kept
+a redundant full-size copy of console output. The fixture now checks the supplied
+line in place, preserving its original assertions and the full 49,152-byte console
+bound. This removes about 49 KB without heap, PSRAM or a production change. The
+actual portable fixture also passes as a native executable with C++11 and warnings
+as errors. The final CI run covers this correction; its failed predecessor remains
+in the evidence archive. The flashed production sources are unchanged by this fix.
+
+[Final CI run 43730140882](https://github.com/janhavelka/MotorControl-RS/actions/runs/43730140882)
+passed on exact code commit `12112df7b001ec079d3e5b4c296e9ace111f48f6`.
+GCC and Clang each passed all 95 suites and 15 verifier checks. Arduino passed
+all 95 suites and all four firmware environments (16 checks). IDF 5.5.5 passed
+all 95 suites, S3 application, S3/S2 core consumers and S2 portable consumer
+(19 checks). All downloaded artifact hashes match GitHub metadata.
+
+| Final CI artifact | ID |
+| --- | --- |
+| native-gcc | 14168043510 |
+| native-clang | 14167488817 |
+| arduino | 14168206699 |
+| native-idf | 14167998987 |
+
+The final evidence/docs commit uses local document, inventory and Doxygen checks.
+It changes no production or fixture code and needs no additional CI campaign.
+
+The [evidence archive](2026-11-15_multi_drive_09_member_motion_requests_evidence.zip)
+contains source hashes/diff, native and target measurements, local logs, both CI
+attempts and their verified artifacts, the flashed image, all bench runs and the
+separate cleanup. SHA-256:
+`8043005b2cd311a64b39c5e6e7c05cd3bb6a116db4e044cf5a98a4518f32876a`.
 
 Native Windows sizes at capacity 15: App 1,314,560 bytes; member 3,248;
 `GroupMemberMoves` 1,224; `GroupReference` 80; member result 240; group result
@@ -92,17 +132,61 @@ S3 individual static stack frames: group admission 432 bytes, member axis
 configuration 784, group service 224, application service 912, console group
 parser 128, group-view formatter 240 and result formatter 304. Native optimized
 frames are retained separately. These are compiler frame measurements, not a
-full call-chain bound or runtime watermark. Final quick checks, exact-commit CI
-and board watermarks follow in the evidence closeout.
+full call-chain bound. Board measurements below cover three physical members;
+capacity 15 uses native fixtures and compiler measurements.
 
 ## Physical checks and remaining limits
 
 The recorded COM13 device matched USB `303A:1001`, serial `3C:0F:02:CD:6B:98`.
 After explicit host recovery, one read-only model probe at each of 1, 2 and 4
 succeeded. No other port was opened. This updates the earlier NO_RESPONSE
-preflight; it does not qualify the new image. Bounded new-image moves and profile
-restoration remain pending here until recorded.
+preflight. The board was then flashed with the ordinary `bench_s3_load_timer`
+image from `7a97050`, SHA-256
+`c213825b1e6522ceea5b6707affb583fc9736d0c6eb887d737bd3b3e31e9f6d2`.
+
+The final bounded run passed in 12.3 seconds:
+
+- Staged relative requests: addresses 1/2/4 received +100/-150/+200 steps.
+- Sequential inverse requests: -100/+150/-200 steps.
+- Staged +300/+400/+500 steps, then an explicit group fast stop after fresh
+  RUNNING. Every stop completed independently; cancelled move outcomes kept
+  their historical completion uncertainty.
+- All starts used 60 rpm and the actual configured 100 ms ramps. In staged cases,
+  all readbacks preceded all starts. Software TX-end spread was 19.6 ms for staged
+  starts and 45.5 ms for sequential starts; these are not physical start skew.
+- All six profile words were restored to `[30,100,100,60,0,5000]` on each drive.
+  Subdivision 1000, word order 0 and all configuration words were unchanged.
+  All drives ended enabled, stopped and alarm-free. No EEPROM write occurred.
+
+The first run passed all motion cases but its cleanup script requested a profile
+read immediately after a candidate write had invalidated configuration readiness.
+The read correctly returned `unavailable` before traffic. The script now refreshes
+configuration first. A separate cleanup reproduced that refusal, skipped drive
+1's already confirmed restoration, and restored drives 2/4 once. After an explicit
+controller-only restart, the full corrected run passed. Failed evidence remains;
+no uncertain write or motion was replayed, and no production workaround was added.
+
+Final owner counters: 246 transactions/frames, zero failed, timed-out or discarded
+replies, zero RX/capture errors, no pending/retained/reserved owner work, DE off.
+Minimum internal free memory was 342,212 bytes; free PSRAM 7,173,676 bytes; minimum
+reported task stack headroom 900 bytes. Passive debug output dropped 682 optional
+records under pressure; capture dropped none. The retained operation results and
+wire evidence remain authoritative; the debug stream is not a complete wire log.
+
+The M08 follow-up also passed on this image after a recorded controller-only
+restart: enable 1 then 2 retained deadlines 45,266,751 and 45,373,814 us.
+Redeclaring only 1 kept its original deadline. Group move, selected candidate
+stage and selected move all returned BUSY before expiry with no operation ID;
+idle-owner transaction/frame counters stayed 45/45, 50/50 and 50/50 across the
+three refusals. The +100-step move was admitted at 45,819,943 us, then completed
+and stopped. Its checked trigger and observed TX were after the original wait.
+Profile restoration and all 94 transactions passed. Drive 1 ended at raw position
+490, stopped/enabled/alarm-free; drives 2/4 retained the M09 ending state.
+This validates host wait retention, not the drive's undocumented ready timing.
 
 Broadcast remains NO-GO. Independent start skew, electrical timing, calibrated
 shaft motion, wired inputs and loaded mechanisms remain outside this evidence.
+Physical absolute-coordinate/reference checks and more than three drives are
+NOT RUN. Absolute software admission is covered by native fixtures and requires
+the documented caller facts; raw feedback does not supply those facts.
 M08's host wait policy and HW-15's drive-timing investigation remain separate.

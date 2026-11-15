@@ -6,11 +6,12 @@ is recorded below; other open work remains.
 
 **Follow-up, 15 November:** multi-drive 08 fixes M02's enable-wait lifetime defect.
 The [implementation report](2026-11-15_multi_drive_08_enable_wait_lifetime.md)
-retains the original reproduction and new regressions. Its board check remains
-pending after a read-only NO_RESPONSE. Multi-drive 09 now implements independent
+retains the original reproduction and new regressions. Its later board check
+passed two-enable/subset/reselection refusals and a post-wait finite move.
+Multi-drive 09 now implements independent
 member requests, explicit coordinates and inert console plans; its
 [report](2026-11-15_multi_drive_09_member_motion_requests.md) records current
-verification. A fresh read-only preflight answered at all three addresses.
+verification, three-drive finite moves, urgent stop and exact profile restoration.
 The audit findings below describe the inspected baseline, not the corrected code.
 
 The six findings in the [12 November review](2026-11-12_broadcast_and_sync_review.md)

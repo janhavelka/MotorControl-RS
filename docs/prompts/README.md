@@ -21,6 +21,8 @@ preserves enable waits across group changes. Stage 09 adds independent member
 requests, member references and inert console plans. Input programming in 04 is
 the next software block; input-start observation and remaining physical
 qualification stay open. See the set's table for each stage's disposition.
+M02 and stages 02/08/09 are complete; the short three-drive and enable/reselection
+checks pass. Wider qualification remains in 06 and HW-15.
 
 The [Lichuan LC57BK-R / RC RS485 set](lichuan_lc57bk_rs485/README.md) contains
 implementation and qualification stages for a second manufacturer profile.

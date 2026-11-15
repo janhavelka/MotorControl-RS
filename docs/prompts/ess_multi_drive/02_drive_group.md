@@ -10,11 +10,12 @@ Finding: **M02**.
 
 The common-relative group implementation and staged starts are delivered, with
 three-drive evidence in the [13 November report](../../reports/2026-11-13_multi_drive_02_drive_group.md).
-The original requirement for different member targets is still open. M02 is
-PARTIAL against that full requirement. The
-[multi-drive 08](08_enable_wait_lifetime.md) software correction is delivered;
-its board regression remains pending. Continue software work with
-[multi-drive 09](09_member_motion_requests.md) for member-specific requests.
+The original different-member-target requirement is now delivered by
+[multi-drive 09](09_member_motion_requests.md), together with
+[multi-drive 08](08_enable_wait_lifetime.md)'s retained enable waits.
+Their [verification report](../../reports/2026-11-15_multi_drive_09_member_motion_requests.md)
+records exact-commit CI, three-drive moves and enable/reselection checks. M02 is
+resolved; wider physical qualification stays in multi-drive 06.
 Do not rebuild the delivered group or treat its finite bench results as missing.
 
 ## Entry gate
@@ -66,8 +67,8 @@ move_app_test.cpp and the owner tests.
    - Preserve STAGED: stage each member's finite position move by unicast and
      check every readback before sending any start. SEQUENTIAL runs ordinary
      member moves in order and includes staging in its measured start spread.
-   - The delivered request contains one common relative move. Different member
-     targets and absolute requests remain work for 09, with each member's own
+   - The original request contains one common relative move. Stage 09 adds
+     different member targets and absolute requests, with each member's own
      scale/reference and configuration generation. Broadcast remains disabled.
    - Only urgent stops may interleave.
    - Record per-member TX completion and the first RUNNING observation, so the

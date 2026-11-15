@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- The portable S2 consumer checks console lines without a redundant full-size
+  buffer; the production console keeps its full group output capacity.
 - Candidate profile staging preserves start-speed relation revocation across
   group changes, invalidates contradicted group profiles, and reports pending
   stop cancellation consistently to the host.

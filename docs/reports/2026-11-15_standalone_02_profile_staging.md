@@ -1,13 +1,17 @@
 # Standalone 02: profile candidates and archives, 15 November 2026
 
-Software implementation and verification are complete. New board
-regression is NOT RUN: the recorded board answered, but the drive did not.
+Software implementation and verification are complete. At initial delivery the
+new board regression was NOT RUN: the board answered, but the drive did not.
 This closes N03 in software without changing the release 1.0.0 artifact or
 claiming physical qualification for the new route.
 
 The later [independent M08/S02 audit](2026-11-15_multi_drive_08_standalone_02_audit.md)
 records corrections to candidate/group readiness and pending cancellation
 inspection. The original delivery evidence below remains dated to its commit.
+Later [M09 checks](2026-11-15_multi_drive_09_member_motion_requests.md) restored
+imported profile candidates on all three drives through the ordinary route,
+with checked prior values, write ACKs and readback. This is bounded candidate
+evidence; the wider standalone 14 regression remains separate.
 
 ## Delivered behavior
 

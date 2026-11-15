@@ -1,8 +1,10 @@
 # Multi-drive 08: enable-wait lifetime, 15 November 2026
 
 Software complete at `a670c09670164ace09a029f1428fc542d344ec1a`. Local checks
-and all four exact-commit CI jobs pass. Board regression is NOT RUN: the read-only preflight returned
-NO_RESPONSE. HW-15 remains open; the one-second host policy is unchanged.
+and all four exact-commit CI jobs pass. The first read-only preflight returned
+NO_RESPONSE. Later the same day, the [M09 image regression](2026-11-15_multi_drive_09_member_motion_requests.md)
+passed two-enable/subset/reselection refusal checks, one post-wait finite move,
+stop and exact profile restoration. HW-15 remains open; the host policy is unchanged.
 
 The later [independent M08/S02 audit](2026-11-15_multi_drive_08_standalone_02_audit.md)
 reproduces the old defect and rechecks current lifetime/admission paths. It found
@@ -115,6 +117,9 @@ One model probe sent `010300000001840A` to address 1. It ended NO_RESPONSE after
 202,845 us with 8 TX bytes and 0 RX bytes. The host released result 6739; no
 retry, recovery, flash, settings write or motion followed. COM15 was untouched.
 
+The following was the handoff after that initial preflight; it was completed
+later on `7a97050` as recorded in the M09 report above:
+
 When the recorded drives respond, flash the verified image, take fresh identity,
 configuration and state reads, then run the short bounded regression and
 enable/reselection checks. Verify refusal before the original deadline and one
@@ -123,6 +128,6 @@ traffic, timing and results. Missing reply is not evidence of power state.
 
 HW-15 still needs its separate drive-ready/timing investigation. This fix only
 preserves the current host wait. Host reset loses the table, and another master's
-enable or a drive power-up is not observed. Multi-drive 09, independent member
-requests, is the next software step. Broadcast, input-trigger and wired-fixture
+enable or a drive power-up is not observed. Multi-drive 09 now implements member
+requests. Broadcast, input-trigger and wired-fixture
 gates are unchanged.
