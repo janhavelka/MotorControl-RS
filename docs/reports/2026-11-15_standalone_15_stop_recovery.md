@@ -4,8 +4,8 @@ Baseline: `2f41e27` on `main`, 15 November 2026. Motors were unpowered.
 No serial port was opened and no firmware was flashed. FieldCore-node was
 inspected read-only at `c40ea8341edf8d665460b902cafefbe857a7f73f`.
 
-Status: PARTIAL. Blocks 15a and 15b are implemented. Block 15c and final
-integrated verification/CI remain.
+Status: PARTIAL. Blocks 15a, 15b and 15c are implemented. Final integrated
+verification and exact-commit CI remain.
 
 ## 15a: deadlines and the first stop transmission
 
@@ -89,6 +89,14 @@ Host ABI storage review (MinGW GCC 15.1, x64 C++11, fake ESP, no load fixture):
 Copied `ActionResult` is 1040 bytes on this ABI. App storage stays in required
 PSRAM. These are compiler layout measurements, not MCU runtime headroom claims.
 
+The installed Xtensa GCC 14.2 compiler also checked the S3 ABI with C++11 `-Os`
+and SDK stubs: App 826872 bytes, Record 9040 and ActionResult 928. Individual
+static frames were 656 bytes for `startActionIn`, 112 for
+`startReleaseAfterStop`, 80 for `submitStop`, 48 for `copyActionResult` and
+`cancelInvalidReleases`, 384 for console `reportAction` and 1952 for `dispatch`.
+These compile-only figures do not establish summed call depth or runtime stack
+watermarks. Exact commands and compiler output are retained with the evidence.
+
 15b focused verification passed 11 suites: actions, velocity, owner, runner,
 discovery, console, group, and both frontends' velocity/stop fixtures. Additional
 console parity checks and both home frontends passed. The unchanged host suite
@@ -96,9 +104,31 @@ passed 311 tests before 15c. Doxygen, repository links/metadata and operation
 inventory passed. Reviewers checked actual code and original manual pages;
 no further confirmed 15b defect remained at this checkpoint.
 
-## Remaining block and physical checks
+## 15c: host accounting
 
-15c owns host result replacement accounting. It must preserve both earlier blocks.
+`bench_probe.py` checks the exact replaced terminal stop and its storage pool
+before retiring its live handle. Old terminal evidence remains in the handle and
+run log, with a separate replacement event. It rejects missing/changed metadata,
+wrong IDs, pending results and cross-pool replacements. Older protocol-3 images
+without both metadata fields keep the strict two-stop/explicit-release workflow.
+
+Quotas now account independently for eight ordinary operations, one recovery,
+two primary stops, two reserved escalations and two group stops. Local queries
+remain available with all 15 operation slots occupied. The explicit
+`release_after_stop` helper/CLI requires both supplied fact flags; no cleanup
+path invokes it automatically.
+
+Independent review found a refusal mismatch: a qualified release can refuse
+before it has an admitted target, so firmware reports address zero. The host
+now accepts that refusal only for the validated after-stop route. Ordinary
+release and accepted operation validation remain strict. Regressions cover
+valid refusals, invalid addresses/types and nonzero refused operation IDs.
+
+The host suite passes 324 tests, including 13 new cases. Console/host parity
+checks use the existing registered harnesses; no new scheduler or allocator model
+was introduced.
+
+## Final verification and physical checks
 
 Hardware qualification is NOT RUN. Native injected faults do not authorize
 physical moving-link-loss experiments. The final handoff will list the image,

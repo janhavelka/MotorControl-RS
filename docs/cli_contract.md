@@ -228,6 +228,11 @@ of retained same-address normal stops. At most one active/undelivered escalation
 per address is allowed. Within each pool, reuse the oldest delivered confirmed
 stop, then a free slot, then the oldest delivered failed stop. Never infer host
 replacement from address or slot order when these explicit fields are present.
+The Python host validates the exact terminal result and storage pool before
+retiring that handle. Its terminal evidence stays in the run log. Older images
+that omit both fields retain the strict two-stop/explicit-release workflow;
+one missing field or changed metadata is a protocol error. Stop/group reserves
+do not consume the ordinary result or local-query allowance.
 
 `motor-release after-stop ID mechanics-permit-release triggers-inhibited` supplies
 two explicit fixture facts for an exact retained failed transmitted stop on the

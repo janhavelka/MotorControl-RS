@@ -74,6 +74,22 @@ through the ordinary `home auxiliary` operation and returns checked prior/echo/
 readback evidence before explicit release. `begin`/`wait` support retained results.
 No home, active-policy qualification, save or uncertain-write replay follows.
 
+Ordinary stop replies identify the replaced result with `replaced_operation_id`
+and the reserved pool with `stop_escalation`. The host validates both fields
+before removing that result from its live retention map. The old handle and run
+log keep the terminal evidence, including uncertainty. Two primary stops and two
+reserved fast escalations are separate from group-stop storage. Pending stops
+cannot be replaced. Protocol-3 firmware without both fields keeps the legacy
+two-stop limit: explicitly release a delivered result before another stop.
+
+`bench_probe.Console.release_after_stop(stop_id, mechanics_permit_release=True,
+triggers_inhibited=True)` requests release for the exact retained stop target.
+Both caller facts are required; neither has a default. The command-line form is
+`motor-release --after-stop ID --mechanics-permit-release --triggers-inhibited`.
+The stop target supplies the address. Firmware still checks the retained stop
+evidence and admission guards. This is an explicit action, never automatic
+cleanup after a failed stop. Ordinary `motor-release` is unchanged.
+
 ## Reference preparation
 
 `prepare_references.py` downloads the nine references listed in the source

@@ -46,7 +46,9 @@ COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "h
                       "group-show", "group-status", "group-clear", "group-wiring", "group-set", "group-move", "group-stop", "group-read-state"})
 MAX_COMMANDS = 11  # Eight ordinary operations, recovery, reserved stop and local query.
 MAX_OPERATIONS = 10  # Eight ordinary operations, one recovery and one reserved stop.
-MAX_STOPS = 2  # The reserved stop plus one escalation, beyond the protocol-3 advertised capacity.
+MAX_STOPS = 4  # Two primary stops and two reserved cross-address escalations.
+STOP_POOL_CAPACITY = 2
+LEGACY_MAX_STOPS = 2  # Protocol-3 images without explicit stop-retention metadata.
 STOP_TERMINAL_S = 6.0  # Firmware's fixed stop budget, including one bounded recovery.
 # Drive group (multi-drive 02). Group operations report one terminal line each.
 GROUP_CAPACITY = 15
@@ -634,6 +636,7 @@ class Command:
         self.traffic_bytes = 0
         self.released = False
         self.stop_policy = None
+        self.stop_retention: tuple[int, bool] | None = None
         self.move_args = None
         self.velocity_args = None
         self.driver_args = None
@@ -784,6 +787,21 @@ class Console:
     _check_position_interrupt = staticmethod(_evidence.check_position_interrupt)
     _check_velocity = staticmethod(_evidence.check_velocity)
     _check_home = staticmethod(_evidence.check_home)
+
+    @staticmethod
+    def _check_stop_retention(item: dict, stop_policy: str | None) -> tuple[int, bool] | None:
+        """Old images omit both fields; new images identify the exact reused slot."""
+        fields = ("replaced_operation_id", "stop_escalation")
+        if not any(key in item for key in fields):
+            return None
+        if not all(key in item for key in fields):
+            raise BenchError("stop retention metadata is incomplete")
+        replaced, escalation = (item[key] for key in fields)
+        if type(replaced) is not int or not 0 <= replaced <= 0xFFFFFFFF or type(escalation) is not bool:
+            raise BenchError("stop retention metadata has invalid types or range")
+        if escalation and stop_policy != "fast":
+            raise BenchError("only a fast stop may use reserved escalation storage")
+        return replaced, escalation
 
     @staticmethod
     def _check_driver(item: dict, address: int | None, arguments: tuple[str, ...] | None, expected_group: str | None = "drive") -> None:
@@ -2138,6 +2156,8 @@ class Console:
             raise BenchError("admission refusal lacks a documented disposition")
         if "operation_id" in item and (type(item["operation_id"]) is not int or item["operation_id"] != 0):
             raise BenchError("admission refusal claims an admitted operation")
+        qualified_release = (handle.command == "motor-release" and handle.host_args is not None and
+                             handle.host_args[0] == "after-stop")
         if handle.command in GROUP_OPERATIONS:
             # Zero, or the one member that caused the refusal.
             members = group_arguments(handle.command, handle.host_args or ()).get("addresses")
@@ -2145,7 +2165,7 @@ class Console:
                     (members is not None and item["address"] and item["address"] not in members)):
                 raise BenchError("group admission refusal names no requested member")
         elif "address" in item and handle.command != "recover" and (
-                type(item["address"]) is not int or not 1 <= item["address"] <= 247 or
+                type(item["address"]) is not int or not (0 if qualified_release else 1) <= item["address"] <= 247 or
                 (handle.address is not None and item["address"] != handle.address)):
             raise BenchError("admission refusal target differs from request")
 
@@ -2413,6 +2433,8 @@ class Console:
         may derive them from the checked kind. Pending inspections have no terminal
         payload, but must satisfy the same kind and original-command correlation.
         """
+        if any(key in item for key in ("replaced_operation_id", "stop_escalation")) and item.get("action_kind") != "stop":
+            raise BenchError("ordinary stop retention metadata on another operation kind")
         if "group_kind" in item or (original is not None and original.command in GROUP_OPERATIONS):
             self._check_group(item, original, pending=pending)
             return
@@ -2446,6 +2468,10 @@ class Console:
                 (original is not None and velocity != (original.command == "velocity"))):
             raise BenchError("result velocity kind does not match retained operation")
         stop_policy = item.get("stop_policy")
+        if action_kind == "stop":
+            retention = self._check_stop_retention(item, stop_policy)
+            if original is not None and retention != original.stop_retention:
+                raise BenchError("stop retention metadata changed after admission")
         if (move_kind is not None and (type(move_kind) is not str or "move-" + move_kind not in MOVE_COMMANDS)) or (
                 move_kind is not None and (action_kind is not None or recovery or capture_read or read_kind is not None)) or (
                 original is not None and not position_interrupt and
@@ -2564,6 +2590,35 @@ class Console:
                 if not self._operation_id(operation_id) or operation_id <= self.last_operation_id:
                     raise BenchError("accepted operation ID is missing, reused or not monotonic")
                 quota = operation_quota(handle.command)
+                stop_retention = None
+                replaced_stop = None
+                if quota == "stop":
+                    stop_retention = self._check_stop_retention(item, handle.stop_policy)
+                    if stop_retention is not None:
+                        replaced_id, escalation = stop_retention
+                        if escalation:
+                            if not any(o.command == "stop" and o.stop_policy == "normal" and
+                                       o.address == handle.address for o in self.operations.values()):
+                                raise BenchError("stop escalation lacks a retained same-address normal stop")
+                            if any(o.command == "stop" and o.address == handle.address and
+                                   o.stop_retention is not None and o.stop_retention[1] and
+                                   o.terminal is None for o in self.operations.values()):
+                                raise BenchError("duplicate pending stop escalation for one address")
+                        if replaced_id:
+                            replaced_stop = self.operations.get(replaced_id)
+                            if (replaced_stop is None or replaced_stop.command != "stop" or
+                                    replaced_stop.terminal is None):
+                                raise BenchError("stop replaced an unknown, pending or non-stop operation")
+                            old_escalation = bool(replaced_stop.stop_retention and replaced_stop.stop_retention[1])
+                            if old_escalation != escalation:
+                                raise BenchError("stop replacement changed its storage pool")
+                        in_pool = sum(o.command == "stop" and o is not replaced_stop and
+                                      bool(o.stop_retention and o.stop_retention[1]) == escalation
+                                      for o in self.operations.values())
+                        if in_pool >= STOP_POOL_CAPACITY:
+                            raise BenchError("accepted stop exceeds its primary or escalation pool")
+                elif any(key in item for key in ("replaced_operation_id", "stop_escalation")):
+                    raise BenchError("ordinary stop retention metadata on another operation kind")
                 if quota == "recover":  # Firmware released the delivered earlier recovery result.
                     for earlier, original in list(self.operations.items()):
                         if original.command == "recover" and original.terminal is not None:
@@ -2583,12 +2638,18 @@ class Console:
                             raise BenchError("group stop accepted while both group stops are pending")
                         replaced.released = True
                         del self.operations[replaced.operation_id]
-                if len(self.operations) >= MAX_OPERATIONS + (MAX_STOPS - 1 if quota == "stop" else 0) + (
-                        MAX_GROUP_STOPS if quota == "group-stop" else 0):
+                if len(self.operations) - int(replaced_stop is not None) >= MAX_OPERATIONS + MAX_STOPS - 1 + MAX_GROUP_STOPS:
                     raise BenchError("accepted operation exceeds retained result limit")
-                same_kind = sum(operation_quota(original.command) == quota for original in self.operations.values())
-                if same_kind >= {"ordinary": MAX_PROBES, "stop": MAX_STOPS, "group-stop": MAX_GROUP_STOPS}.get(quota, 1):
+                same_kind = sum(operation_quota(original.command) == quota for original in self.operations.values()) - int(replaced_stop is not None)
+                stop_limit = MAX_STOPS if stop_retention is not None else LEGACY_MAX_STOPS
+                if same_kind >= {"ordinary": MAX_PROBES, "stop": stop_limit, "group-stop": MAX_GROUP_STOPS}.get(quota, 1):
                     raise BenchError("accepted operation exceeds its retained result quota")
+                if replaced_stop is not None:
+                    replaced_stop.released = True
+                    del self.operations[replaced_stop.operation_id]
+                    self.emit("result_replaced", command="stop", operation_id=replaced_stop.operation_id,
+                              replacement_operation_id=operation_id, stop_escalation=stop_retention[1])
+                handle.stop_retention = stop_retention
                 handle.operation_id = operation_id
                 handle.accepted = True
                 self.operations[operation_id] = handle
@@ -2688,8 +2749,9 @@ class Console:
               driver_args: tuple[str, ...] | None = None, home_args: tuple[str, ...] | None = None) -> Command:
         """Send once and collect admission/local reply; bus completion can stay pending.
 
-        Up to eleven handles (eight ordinary operations, recovery, stop and a local query) may be
-        outstanding. Accepted operation IDs stay retained until explicit release.
+        Eleven base handles include eight ordinary operations, recovery, stop and
+        a local query. Additional stop/group-stop reservations are counted separately.
+        Results stay retained until explicit release or a checked firmware replacement.
         No command, including recovery, is retried after any framing failure.
         """
         positive(timeout_s, "command timeout")
@@ -2723,6 +2785,13 @@ class Console:
             homing_auxiliary_arguments(host_args)
         elif command == "position-interrupt":
             position_interrupt_arguments(host_args)
+        elif command == "motor-release" and host_args is not None:
+            if (not isinstance(host_args, tuple) or len(host_args) != 4 or
+                    host_args[0] != "after-stop" or
+                    type(host_args[1]) is not str or not host_args[1].isascii() or
+                    not host_args[1].isdigit() or not 1 <= int(host_args[1]) <= 0xFFFFFFFF or
+                    host_args[2:] != ("mechanics-permit-release", "triggers-inhibited") or address is not None):
+                raise ValueError("release after stop requires an exact stop ID and both explicit facts, without an address")
         elif command in QUALIFICATION_ROUTES:
             host_args = () if host_args is None else host_args
             qualification_arguments(command, host_args)
@@ -2783,8 +2852,11 @@ class Console:
             raise BenchError("console framing failed; session cannot be reused")
         if not self.identified and command != "version":
             raise BenchError("identify the standalone firmware before issuing commands")
-        if len(self.pending) >= MAX_COMMANDS + (MAX_STOPS - 1 if command == "stop" else 0) + (
-                MAX_GROUP_STOPS if command == "group-stop" else 0):
+        stop_extra = MAX_STOPS - 1 if command == "stop" else min(MAX_STOPS - 1,
+            max(0, sum(h.command == "stop" for h in self.pending.values()) - 1))
+        group_extra = MAX_GROUP_STOPS if command == "group-stop" else min(MAX_GROUP_STOPS,
+            sum(h.command == "group-stop" for h in self.pending.values()))
+        if len(self.pending) >= MAX_COMMANDS + stop_extra + group_extra:
             raise BenchError("outstanding command limit reached; wait for a retained handle")
         if self.next_id > 0xFFFFFFFF:
             raise BenchError("request IDs exhausted; start a new inspected session")
@@ -2921,6 +2993,18 @@ class Console:
         handle = self.begin(command, timeout_s=timeout_s, address=address, load=load,
                             operation_id=operation_id, monitor=monitor, host_args=host_args, stop_policy=stop_policy, move_args=move_args, velocity_args=velocity_args, driver_args=driver_args, home_args=home_args)
         return self.wait(handle, release=True)
+
+    def release_after_stop(self, stop_id: int, *, mechanics_permit_release: bool,
+                           triggers_inhibited: bool, timeout_s: float = 3.0) -> dict:
+        """Attempt release for an exact retained stop using explicit caller facts.
+
+        The firmware checks the stop evidence and target. This is never automatic
+        cleanup, a stop retry, or permission inferred from a failed stop.
+        """
+        if not self._operation_id(stop_id) or mechanics_permit_release is not True or triggers_inhibited is not True:
+            raise ValueError("release after stop requires an exact stop ID and both explicit facts")
+        return self.command("motor-release", host_args=("after-stop", str(stop_id),
+                            "mechanics-permit-release", "triggers-inhibited"), timeout_s=timeout_s)
 
     def set_position_start_speed(self, native: int, *, timeout_s: float = 3.0) -> dict:
         """One explicit selected-axis native setting attempt; retain evidence in
@@ -3715,6 +3799,10 @@ def arguments(argv: list[str] | None) -> argparse.Namespace:
         action = sub.add_parser(name, help="one explicit action attempt; never retried")
         if name == "stop":
             action.add_argument("stop_policy", choices=("normal", "fast"))
+        if name == "motor-release":
+            action.add_argument("--after-stop", type=int, help="exact retained stop ID; its target overrides --address")
+            action.add_argument("--mechanics-permit-release", action="store_true")
+            action.add_argument("--triggers-inhibited", action="store_true")
     typed = sub.add_parser("typed-read", help="typed identity/configuration/state/velocity/homing-parameter reads, retained inspection and release")
     typed.add_argument("--kind", choices=(*TYPED_WINDOWS, "both"), default="both")
     interrupt = sub.add_parser("position-interrupt", help="one qualified stored-profile retrigger of an existing operation; ACK-only, never replayed")
@@ -3803,6 +3891,12 @@ def arguments(argv: list[str] | None) -> argparse.Namespace:
         parser.error("interval must be finite and within 0..60 seconds")
     result.move_args = None
     result.host_args = None
+    if result.mode == "motor-release":
+        qualified = result.after_stop is not None
+        if (qualified and (not 1 <= result.after_stop <= 0xFFFFFFFF or
+                          not result.mechanics_permit_release or not result.triggers_inhibited)) or (
+                not qualified and (result.mechanics_permit_release or result.triggers_inhibited)):
+            parser.error("--after-stop requires an exact stop ID and both explicit fact flags")
     if result.mode == "debug":
         result.host_args = (result.debug_mode,) if result.debug_mode else ()
     if result.mode == "motion-profile":
@@ -3956,8 +4050,13 @@ def main(argv: list[str] | None = None) -> int:
                         host_check_campaign(console, baud=args.host_baud, fmt=args.fmt,
                                             timeout_s=args.timeout, address=args.address)
                     elif args.mode in ACTION_COMMANDS:
-                        result = console.command(args.mode, timeout_s=args.timeout, address=args.address,
-                                                 stop_policy=getattr(args, "stop_policy", None))
+                        if args.mode == "motor-release" and args.after_stop is not None:
+                            result = console.release_after_stop(args.after_stop,
+                                mechanics_permit_release=args.mechanics_permit_release,
+                                triggers_inhibited=args.triggers_inhibited, timeout_s=args.timeout)
+                        else:
+                            result = console.command(args.mode, timeout_s=args.timeout, address=args.address,
+                                                     stop_policy=getattr(args, "stop_policy", None))
                         if not result["ok"]:
                             raise BenchError("action rejected or failed: " + str(result.get("result", result.get("outcome"))))
                     elif args.mode == "home":

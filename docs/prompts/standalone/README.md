@@ -64,7 +64,7 @@ keeps those distinctions. Use the audit's Current owner column; Next stage is hi
 | 12 | [S2/SDK and flash-read qualification](12_platforms.md) | Actual S2 hardware for UART claims; bench S3 in bootloader mode with esptool 5.3.0 | NOT STARTED |
 | 13 | [Coverage and release-scope reconciliation](13_closeout.md) | Every other stage has an explicit disposition, with rows for the N05 remainder and stage 14 | NOT STARTED |
 | 14 | [Delivered-software bench regression](14_bench_regression.md) | Recorded bench USB device present; no analyzer | PARTIAL: [routes pass, one persistent RUNNING failure unresolved](../../reports/2026-11-02_standalone_14_bench_regression.md) |
-| 15 | [Stop, recovery and result handling](15_stop_recovery.md) | Current code/reproducers; owner decision D1 already settled | PARTIAL: 15a/15b implemented and locally verified; 15c and final checks remain ([report](../../reports/2026-11-15_standalone_15_stop_recovery.md)) |
+| 15 | [Stop, recovery and result handling](15_stop_recovery.md) | Current code/reproducers; owner decision D1 already settled | PARTIAL: 15a/15b/15c implemented and locally verified; final integrated checks remain ([report](../../reports/2026-11-15_standalone_15_stop_recovery.md)) |
 | 16 | [Evidence and qualification corrections](16_evidence_qualification.md) | Independent audit verdicts; source and current qualification contracts | NOT STARTED |
 | 17 | [Measured application cleanup](17_application_cleanup.md) | Affected behavior characterized; 15/16 corrections first | NOT STARTED |
 

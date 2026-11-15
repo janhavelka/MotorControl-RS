@@ -450,6 +450,32 @@ class ActionSerial:
         return Serial.normal(request_id, command, args)
 
 
+class StopRetentionSerial(ActionSerial):
+    """Explicit admission records, without duplicating the firmware allocator."""
+    def __init__(self, records, *, deliver=True):
+        super().__init__()
+        self.records = iter(records)
+        self.deliver = deliver
+
+    def __call__(self, request_id, command, args):
+        if command == "stop":
+            metadata = next(self.records)
+            metadata = {} if metadata is None else metadata
+            address = int(args[1]) if len(args) > 1 else 1
+            terminal = action_terminal(request_id, command, args[0])
+            if self.mutate: self.mutate(terminal)
+            terminal.update(metadata, address=address, target=address)
+            for key in ("write_evidence", "last_observation"):
+                if not terminal[key]["raw_hex"]: continue
+                prefix = bytes((address,)) + bytes.fromhex(terminal[key]["raw_hex"])[1:-2]
+                terminal[key]["raw_hex"] = (prefix + bench.wire_crc(prefix).to_bytes(2, "little")).hex()
+            self.retained[request_id + 100] = terminal
+            accepted = reply(request_id, command, result="accepted", operation_id=request_id + 100, address=address)
+            accepted.update(metadata)
+            return encoded(accepted) + (encoded(terminal) if self.deliver else b"")
+        return super().__call__(request_id, command, args)
+
+
 def move_terminal(request_id):
     empty = dict(step=0, event=0, raw_hex="", received_length=0, tx_accepted=0, tx_complete=False,
         response_confirmed=False, qualified=False, execution_unknown=False, earliest_us=0,
@@ -751,6 +777,8 @@ def check_fixture_routes(record, *, live_command=None):
                              terminal.get("address"), None, 102)
     original.accepted = True
     original.stop_policy = terminal.get("stop_policy") if terminal.get("action_kind") == "stop" else None
+    if original.stop_policy is not None:
+        original.stop_retention = bench.Console._check_stop_retention(terminal, original.stop_policy)
     console.pending[2] = original
     console.operations[102] = original
     console._dispatch(terminal)
@@ -2733,7 +2761,7 @@ class Framing(unittest.TestCase):
         commands = [line.decode().split()[1] for line in self.port.writes]
         self.assertEqual((commands.count("stop"), commands.count("recover")), (1, 0))
 
-    def test_recover_and_stop_quotas_follow_firmware_release_and_escalation(self):
+    def test_legacy_recovery_replacement_and_two_stop_limit(self):
         console = self.session(MoveSerial())
         first = console.begin("recover"); console.wait(first)
         second = console.begin("recover"); console.wait(second)  # Firmware released the first.
@@ -2743,6 +2771,294 @@ class Framing(unittest.TestCase):
         self.assertEqual(len(console.operations), 3)
         with self.assertRaisesRegex(bench.BenchError, "quota"):
             console.begin("stop", address=1, stop_policy="fast")
+
+    def test_stop_replacement_keeps_original_terminal_and_run_log(self):
+        fixture = StopRetentionSerial([dict(replaced_operation_id=old, stop_escalation=False)
+                                       for old in (0, 102, 103, 104)])
+        console = self.session(fixture, fragment=1)
+        handles = []
+        evidence = []
+        for _ in range(4):
+            handle = console.begin("stop", address=1, stop_policy="normal")
+            evidence.append(copy.deepcopy(console.wait(handle)))
+            handles.append(handle)
+        self.assertEqual(list(console.operations), [105])
+        self.assertEqual([h.released for h in handles], [True, True, True, False])
+        self.assertEqual([h.terminal for h in handles], evidence)
+        retired = [e for e in self.events if e["event"] == "result_replaced"]
+        self.assertEqual([(e["operation_id"], e["replacement_operation_id"]) for e in retired],
+                         [(102, 103), (103, 104), (104, 105)])
+        terminals = [e["response"] for e in self.events if e["event"] == "reply" and e["response"]["type"] == "action"]
+        self.assertEqual(terminals, evidence)
+        self.assertEqual(len(self.port.writes), 5)  # No release, recovery or write replay.
+        self.assertEqual(console.command("result", operation_id=105),
+                         dict(evidence[-1], type="reply", id=6, command="result"))
+
+    def test_stop_reserved_pools_and_group_slots_leave_control_capacity(self):
+        fixture = StopRetentionSerial([dict(replaced_operation_id=0, stop_escalation=e)
+                                       for e in (False, False, True, True)], deliver=False)
+        def handler(i, command, args):
+            if command == "enable":
+                return encoded(reply(i, command, result="accepted", operation_id=i + 100, address=1))
+            if command == "group":
+                return encoded(reply(i, "group-stop", result="accepted", operation_id=i + 100, address=0))
+            if command == "recover":
+                return encoded(reply(i, command, result="accepted", operation_id=i + 100))
+            if command == "result":
+                original = fixture.retained[int(args[0])]
+                return encoded(reply(i, command, result="pending", operation_id=original["operation_id"],
+                    command_id=original["command_id"], action_kind="stop", stop_policy=original["stop_policy"],
+                    recovery=False, capture_read=False, replaced_operation_id=original["replaced_operation_id"],
+                    stop_escalation=original["stop_escalation"]))
+            return fixture(i, command, args)
+        console = self.session(handler, fragment=7)
+        for _ in range(8):
+            console.begin("enable", address=1)
+        console.begin("recover")
+        stops = [console.begin("stop", address=address, stop_policy=policy)
+                 for address, policy in ((1, "normal"), (2, "normal"), (1, "fast"), (2, "fast"))]
+        groups = [console.begin("group-stop", host_args=(policy,)) for policy in ("normal", "fast")]
+        self.assertEqual(len(console.operations), 15)
+        self.assertEqual(len(console.pending), 15)
+        self.assertTrue(console.command("status")["ok"])
+        self.assertEqual(console.command("result", operation_id=stops[0].operation_id)["result"], "pending")
+        self.assertEqual(len(console.operations), 15)
+        self.assertTrue(all(console.operations[h.operation_id] is h for h in groups + stops))
+        self.assertTrue(all(h.terminal is None for h in groups + stops))
+
+    def test_stop_replacement_preserves_failed_evidence_and_other_stop(self):
+        fixture = StopRetentionSerial([dict(replaced_operation_id=old, stop_escalation=False) for old in (0, 0, 102)])
+        def lost_ack(t):
+            if t["command_id"] > 3: return
+            empty = copy.deepcopy(t["failure_evidence"])
+            t.update(ok=False, state="failed", outcome="transport_error", execution="unknown",
+                     completion="not_observed", observation_known=False, raw_alarm=None, raw_motion=None,
+                     polls=0, last_observation=empty, serviced_us=1250)
+            t["write_evidence"].update(event=1, raw_hex="", received_length=0, qualified=False,
+                response_confirmed=False, execution_unknown=True, earliest_us=0, latest_us=0,
+                status="ILLEGAL_VALUE", detail=12)
+            t["failure_evidence"] = copy.deepcopy(t["write_evidence"])
+        fixture.mutate = lost_ack
+        console = self.session(fixture)
+        first = console.begin("stop", address=1, stop_policy="normal"); console.wait(first)
+        second = console.begin("stop", address=2, stop_policy="normal"); console.wait(second)
+        saved = copy.deepcopy(first.terminal)
+        replacement = console.begin("stop", address=2, stop_policy="fast"); console.wait(replacement)
+        self.assertEqual(list(console.operations), [second.operation_id, replacement.operation_id])
+        self.assertTrue(first.released)
+        self.assertFalse(second.released)
+        self.assertEqual(first.terminal, saved)
+        self.assertEqual(first.terminal["execution"], "unknown")
+        self.assertTrue(first.terminal["failure_evidence"]["execution_unknown"])
+        self.assertEqual(len(self.port.writes), 4)
+
+    def test_stop_reserve_recycling_keeps_pending_normal_and_group_stops(self):
+        fixture = StopRetentionSerial([dict(replaced_operation_id=old, stop_escalation=reserve)
+                                       for old, reserve in ((0, False), (0, False), (0, True), (104, True))], deliver=False)
+        def handler(i, command, args):
+            if command == "group":
+                return encoded(reply(i, "group-stop", result="accepted", operation_id=i + 100, address=0))
+            return fixture(i, command, args)
+        console = self.session(handler, fragment=1)
+        normal1 = console.begin("stop", address=1, stop_policy="normal")
+        normal2 = console.begin("stop", address=2, stop_policy="normal")
+        fast1 = console.begin("stop", address=1, stop_policy="fast")
+        group = console.begin("group-stop", host_args=("fast",))
+        self.port.input.extend(encoded(fixture.retained[fast1.operation_id]))
+        saved = copy.deepcopy(console.wait(fast1))
+        fast2 = console.begin("stop", address=2, stop_policy="fast")
+        self.assertEqual(fast2.stop_retention, (fast1.operation_id, True))
+        self.assertEqual(list(console.operations), [normal1.operation_id, normal2.operation_id, group.operation_id, fast2.operation_id])
+        self.assertTrue(fast1.released)
+        self.assertEqual(fast1.terminal, saved)
+        self.assertTrue(all(h.terminal is None for h in (normal1, normal2, group, fast2)))
+        self.port.input.extend(encoded(fixture.retained[fast2.operation_id]))
+        self.assertTrue(console.wait(fast2)["ok"])
+
+    def test_stop_metadata_never_belongs_to_other_operations(self):
+        for route in ("accepted", "terminal", "group"):
+            with self.subTest(route=route):
+                fixture = ActionSerial()
+                def handler(i, command, args):
+                    if route == "group" and command == "group":
+                        return encoded(reply(i, "group-stop", result="accepted", operation_id=i + 100,
+                            address=0, replaced_operation_id=0, stop_escalation=False))
+                    output = fixture(i, command, args)
+                    if command == "enable":
+                        records = [json.loads(line) for line in output.splitlines()]
+                        records[route == "terminal"].update(replaced_operation_id=0, stop_escalation=False)
+                        return b"".join(encoded(item) for item in records)
+                    return output
+                console = self.session(handler)
+                with self.assertRaisesRegex(bench.BenchError, "another operation kind"):
+                    console.begin("group-stop", host_args=("normal",)) if route == "group" else console.command("enable")
+
+    def test_stop_legacy_explicit_release_allows_another_stop(self):
+        console = self.session(ActionSerial())
+        first = console.begin("stop", stop_policy="normal"); console.wait(first)
+        second = console.begin("stop", stop_policy="fast"); console.wait(second)
+        console.command("release", operation_id=first.operation_id)
+        third = console.begin("stop", stop_policy="fast"); console.wait(third)
+        self.assertEqual(list(console.operations), [second.operation_id, third.operation_id])
+        self.assertTrue(first.released)
+        self.assertIsNone(third.stop_retention)
+
+    def test_stop_metadata_rejected_before_retained_results_change(self):
+        changes = [dict(replaced_operation_id=999, stop_escalation=False),
+                   dict(replaced_operation_id=103, stop_escalation=False),
+                   dict(replaced_operation_id=102, stop_escalation=True),
+                   dict(replaced_operation_id=0), dict(stop_escalation=False),
+                   dict(replaced_operation_id=True, stop_escalation=False),
+                   dict(replaced_operation_id=-1, stop_escalation=False),
+                   dict(replaced_operation_id=0x100000000, stop_escalation=False),
+                   dict(replaced_operation_id=0, stop_escalation=1)]
+        for bad in changes:
+            with self.subTest(metadata=bad):
+                console = self.session(StopRetentionSerial([dict(replaced_operation_id=0, stop_escalation=False), bad]))
+                first = console.begin("stop", stop_policy="normal"); console.wait(first)
+                saved = copy.deepcopy(first.terminal)
+                with self.assertRaises(bench.BenchError):
+                    console.begin("stop", stop_policy="fast")
+                self.assertEqual(list(console.operations), [first.operation_id])
+                self.assertEqual(first.terminal, saved)
+                self.assertFalse(first.released)
+                self.assertEqual(len(self.port.writes), 3)
+
+    def test_stop_replacement_cannot_retire_pending_or_other_kinds(self):
+        for kind in ("stop", "enable", "recover", "group-stop"):
+            with self.subTest(kind=kind):
+                fixture = StopRetentionSerial([dict(replaced_operation_id=old, stop_escalation=False)
+                                               for old in ((0, 102) if kind == "stop" else (102,))], deliver=False)
+                def handler(i, command, args):
+                    if command == "group":
+                        return encoded(reply(i, "group-stop", result="accepted", operation_id=i + 100, address=0))
+                    return fixture(i, command, args)
+                console = self.session(handler)
+                first = console.begin(kind, **({"stop_policy": "normal"} if kind == "stop" else
+                    {"host_args": ("normal",)} if kind == "group-stop" else {}))
+                if kind not in ("stop", "group-stop"):
+                    console.wait(first)
+                with self.assertRaisesRegex(bench.BenchError, "unknown, pending or non-stop"):
+                    console.begin("stop", stop_policy="fast")
+                self.assertEqual(list(console.operations), [first.operation_id])
+                self.assertFalse(first.released)
+
+    def test_stop_escalation_requires_normal_and_distinct_pending_address(self):
+        for scenario in ("no_normal", "wrong_address", "normal_in_reserve", "duplicate", "third_primary", "third_reserve"):
+            with self.subTest(scenario=scenario):
+                plan = []
+                requests = []
+                if scenario != "no_normal":
+                    plan.append(False); requests.append((1, "normal"))
+                if scenario in ("duplicate", "third_primary", "third_reserve"):
+                    plan.append(False); requests.append((2, "normal"))
+                if scenario in ("duplicate", "third_reserve"):
+                    plan.append(True); requests.append((1, "fast"))
+                if scenario == "third_reserve":
+                    plan.append(True); requests.append((2, "fast"))
+                plan.append(scenario != "third_primary")
+                fixture = StopRetentionSerial([dict(replaced_operation_id=0, stop_escalation=e) for e in plan], deliver=False)
+                console = self.session(fixture)
+                for address, policy in requests:
+                    console.begin("stop", address=address, stop_policy=policy)
+                saved = dict(console.operations)
+                with self.assertRaises(bench.BenchError):
+                    console.begin("stop", address=2 if scenario == "wrong_address" else 1,
+                                  stop_policy="normal" if scenario == "normal_in_reserve" else "fast")
+                self.assertEqual(console.operations, saved)
+
+    def test_stop_retention_metadata_is_immutable_in_pending_and_terminal_results(self):
+        for route in ("live", "pending", "retained"):
+            for change in (lambda item: item.update(replaced_operation_id=999),
+                           lambda item: item.update(stop_escalation=True),
+                           lambda item: item.pop("stop_escalation"),
+                           lambda item: (item.pop("stop_escalation"), item.pop("replaced_operation_id"))):
+                with self.subTest(route=route, change=change):
+                    fixture = StopRetentionSerial([dict(replaced_operation_id=0, stop_escalation=False)], deliver=False)
+                    console = self.session(fixture)
+                    first = console.begin("stop", stop_policy="fast")
+                    terminal = fixture.retained[first.operation_id]
+                    if route == "retained":
+                        self.port.input.extend(encoded(terminal)); console.wait(first)
+                    damaged = copy.deepcopy(terminal)
+                    if route == "pending":
+                        damaged = reply(3, "result", result="pending", operation_id=first.operation_id,
+                            command_id=first.id, action_kind="stop", stop_policy="fast", recovery=False,
+                            replaced_operation_id=0, stop_escalation=False)
+                    change(damaged)
+                    saved = copy.deepcopy(first.terminal)
+                    with self.assertRaises(bench.BenchError):
+                        if route == "live":
+                            self.port.input.extend(encoded(damaged)); console.wait(first)
+                        else:
+                            self.port.handler = lambda i, command, args: encoded(dict(damaged, type="reply", id=i, command="result"))
+                            console.command("result", operation_id=first.operation_id)
+                    self.assertEqual(first.terminal, saved)
+                    self.assertFalse(first.released)
+
+    def test_release_after_stop_requires_explicit_facts_and_exact_id(self):
+        console = self.session(ActionSerial())
+        facts = dict(mechanics_permit_release=True, triggers_inhibited=True)
+        for stop_id in (0, -1, 0x100000000, True, "42"):
+            with self.assertRaises(ValueError): console.release_after_stop(stop_id, **facts)
+        with self.assertRaises(TypeError): console.release_after_stop(42)
+        for name in facts:
+            with self.assertRaises(ValueError): console.release_after_stop(42, **dict(facts, **{name: False}))
+            with self.assertRaises(ValueError): console.release_after_stop(42, **dict(facts, **{name: 1}))
+        for tokens in (("after-stop", "0", "mechanics-permit-release", "triggers-inhibited"),
+                       ("after-stop", "42", "mechanics-permit-release"),
+                       ("after-stop", "42", "triggers-inhibited", "mechanics-permit-release")):
+            with self.assertRaises(ValueError): console.begin("motor-release", host_args=tokens)
+        with self.assertRaises(ValueError):
+            console.begin("motor-release", address=1, host_args=("after-stop", "42", "mechanics-permit-release", "triggers-inhibited"))
+        self.assertEqual(len(self.port.writes), 1)
+        result = console.release_after_stop(42, **facts)
+        self.assertTrue(result["ok"])
+        self.assertEqual(self.port.writes[1], b"@2 motor-release after-stop 42 mechanics-permit-release triggers-inhibited\n")
+        self.assertEqual(self.port.writes[2], b"@3 release 102\n")
+        self.assertFalse(console.operations)
+        result = console.command("motor-release", address=1)
+        self.assertTrue(result["ok"])
+        self.assertEqual(self.port.writes[3], b"@4 motor-release 1\n")
+
+    def test_release_after_stop_cli_requires_both_fact_flags(self):
+        prefix = ["--port", "fake", "--log", "fake.jsonl", "motor-release"]
+        flags = ["--after-stop", "42", "--mechanics-permit-release", "--triggers-inhibited"]
+        args = bench.arguments(prefix + flags)
+        self.assertEqual(args.after_stop, 42)
+        self.assertTrue(args.mechanics_permit_release and args.triggers_inhibited)
+        self.assertIsNone(bench.arguments(prefix).after_stop)
+        for bad in (flags[:-1], flags[2:], ["--after-stop", "0", *flags[2:]], ["--after-stop", "4294967296", *flags[2:]]):
+            with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit): bench.arguments(prefix + bad)
+
+    def test_release_after_stop_refusal_has_no_admitted_target(self):
+        for disposition in ("invalid", "busy", "unavailable", "timing_unqualified"):
+            with self.subTest(disposition=disposition):
+                def handler(i, command, args):
+                    if command == "motor-release":
+                        return encoded(reply(i, command, ok=False, result=disposition, address=0, operation_id=0))
+                    return Serial.normal(i, command, args)
+                console = self.session(handler)
+                result = console.release_after_stop(42, mechanics_permit_release=True, triggers_inhibited=True)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["result"], disposition)
+                self.assertTrue(console.synchronized)
+                self.assertFalse(console.operations)
+                self.assertEqual(len(self.port.writes), 2)  # No recovery, release, retry or cleanup.
+                self.assertTrue(console.command("status")["ok"])
+        for qualified, changes in ((False, {}), (True, dict(address=True)),
+                                   (True, dict(address=-1)), (True, dict(operation_id=42))):
+            with self.subTest(qualified=qualified, changes=changes):
+                def handler(i, command, args):
+                    if command == "motor-release":
+                        return encoded(dict(reply(i, command, ok=False, result="invalid", address=0, operation_id=0), **changes))
+                    return Serial.normal(i, command, args)
+                console = self.session(handler)
+                with self.assertRaises(bench.BenchError):
+                    if qualified:
+                        console.release_after_stop(42, mechanics_permit_release=True, triggers_inhibited=True)
+                    else:
+                        console.command("motor-release", address=1)
 
     def test_move_campaign_poisoned_reply_retains_unknown_cleanup(self):
         console = self.session(MoveSerial(lambda t: t.update(running_observed=False)))
@@ -3620,7 +3936,7 @@ class Framing(unittest.TestCase):
         recovery = console.begin("recover"); console.wait(recovery)
         stop = console.begin("stop", address=1, stop_policy="fast"); console.wait(stop)
         self.assertEqual(len(console.operations), bench.MAX_OPERATIONS)
-        with self.assertRaisesRegex(bench.BenchError, "retained result limit"):
+        with self.assertRaisesRegex(bench.BenchError, "retained result quota"):
             console.begin("enable", address=1)
 
     def test_actions_are_explicit_single_attempts_when_timing_unqualified(self):

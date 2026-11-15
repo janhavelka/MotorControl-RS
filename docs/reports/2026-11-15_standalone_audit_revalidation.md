@@ -7,9 +7,12 @@ findings in the [LC57BK audit](../prompts/lichuan_lc57bk_rs485/audit.md) and
 [TL57 audit](../prompts/lichuan_tl57_rs485/audit.md). It does not dispatch either
 Lichuan implementation set.
 
-Most original A/H/K fixes are present. Stop delivery still has reachable gaps,
-including the finite velocity run's own stop. Those take priority over broader
-cleanup. A dated successful run does not close an untested fault path.
+At the audit baseline, stop delivery had reachable gaps, including the finite
+velocity run's own stop. Standalone 15a/15b corrected those paths in `6ee9f01`
+and `bee5fb0`; current dispositions below point to their regressions. Host
+accounting R-06 is also corrected; final integrated verification is in progress. See the
+[stage 15 report](2026-11-15_standalone_15_stop_recovery.md). A dated successful
+run does not close an untested fault path.
 
 ## Evidence and limits
 
@@ -51,9 +54,9 @@ are separately testable. Existing stages keep their source/physical work.
 
 | ID | Current verdict and evidence | Next action |
 | --- | --- | --- |
-| A-01 | Partial. `startActionIn`, `holdStop` and `serviceHeldStop` handle a stop queued behind a lost poll. `stop_path_app_test::queuedStopSurvivesLostPoll` covers it. Terminal zero-TX and discovery cases remain R-02/R-03. | 15a/15b. |
-| A-02 | Fixed for sequences, typed reads and monitor-off: `cancelContinuation` plus `cancelUnsent` lets the admitted frame settle. `cancelAndMonitorOffDoNotInterlock` covers it. Ordinary probe cancellation still uses `owner.cancel` (R-04). | 15b for probe only. |
-| A-03 | Fixed for one selected-axis escalation. Two ordinary stop records/correlations let fast stop follow normal stop, including an undelivered result. `escalatesRunningNormalStop` and `escalatesPastUndeliveredStopReport` cover it. Capacity is bounded, not unlimited. | Preserve in 15. |
+| A-01 | Fixed in standalone 15a/15b. Explicit and velocity-owned unsent stops retain a zero-byte terminal attempt and use one bounded recovery. Discovery restoration has a separate explicit gate. | Preserve the new fault/recovery traces. |
+| A-02 | Fixed, including ordinary probes in standalone 15b. In-flight TX/receive settles naturally; only unsent work is cancelled. | Preserve probe, typed-read, sequence and monitor regressions. |
+| A-03 | Fixed in standalone 15b for two ordinary addresses. Two primary and two fast-escalation reservations retain separate results. | Preserve bounded capacity and group separation. |
 | A-04 | Fixed for the stated budget defect: home uses `moveTimeoutMs` and `runningPollIntervalUs`; the real-app fixture covers a 10-second search. Delayed/missing RUNNING still consumes the faster initial poll budget. | Keep remaining observation limit in 05. |
 | A-05 | Fixed. `stopRecord` uses separate stop storage and can replace the oldest delivered failed stop, counted by `stopEvidenceOverwritten`. `failedStopsDoNotDependOnOrdinaryCapacity` fills ordinary storage. | Preserve evidence policy; fix host mismatch R-06. |
 | A-06 | Fixed. `selectedStop` bypasses the known-target gate for the selected address; declared group members have their own stop route. `firstStopAfterBoot` also rejects an unrelated unknown address. | Preserve exact target rules. |
@@ -92,11 +95,11 @@ are separately testable. Existing stages keep their source/physical work.
 | ID | Current verdict and evidence | Next action |
 | --- | --- | --- |
 | R-01 | Open. `MotionReadinessApp::moveRequirements` rejects every active function 1..3 and every function above 3. An active origin can therefore reject a serial move after homing. Shared `MotionFacts` now extends this rule to group members. | 16b narrow active-origin correction; broader per-function policy stays multi-drive 04. Do not blindly admit external velocity/trigger inputs. |
-| R-02 | Open. `holdStop` requires `cancelUnsent` to succeed. A READY owner result with zero TX cannot enter held recovery. Source trace agrees with the old reproducer. | 15a. |
-| R-03 | Open with a policy qualification. Discovery and commissioning own tuples/leases; refusing a guessed stop is valid. The accepted scan-stop/restoration path still needs a deterministic delivery/failure contract. The unconditional comment is too broad. | 15b. |
-| R-04 | Open. `cancel` falls through to `owner.cancel` for ordinary TRANSACTION/probe records; the typed-read fix does not cover it. | 15b. |
-| R-05 | Open. After a stop ACK, `advanceActions` skips new observations while recovery is needed, leaving the action until its fixed deadline. It retains uncertainty; it does not falsely report stopped. | 15b, honest early terminal result. |
-| R-06 | Open. `bench_probe.Console` handles replacement for recovery/group-stop but still raises when two retained ordinary stops exist and firmware accepts the next replacement. | 15c. |
+| R-02 | Fixed in standalone 15a. READY zero-byte completion is copied and released before the first stop transmission after recovery. Partial/complete writes are never replayed. | New Arduino/IDF stop traces; original failing regression retained. |
+| R-03 | Fixed contract and implementation in standalone 15b. Healthy discovery restores the original tuple before stop; INTERLOCK ends a deferred stop untransmitted. Faulted scan refuses with RECOVERY_REQUIRED; commissioning refuses with BUSY. | Real restore/fault/lease tests; no guessed tuple. |
+| R-04 | Fixed in standalone 15b. Ordinary non-changing probe cancellation uses cancelUnsent and preserves the natural in-flight result. | TX/receive cancellation followed by checked read and stop. |
+| R-05 | Fixed in standalone 15b. A post-ACK bus interlock ends stop observation promptly as transport failure, retaining ACK and NOT_OBSERVED completion. | Both frontend stop fixtures. |
+| R-06 | Fixed in standalone 15c. The host retires only the exact delivered terminal stop named by firmware, validates its pool and preserves old logged evidence. Stop, group, recovery and ordinary quotas are independent. Legacy images keep explicit release. | 324 host tests, including replacement/pressure/metadata/refusal regressions. |
 | R-07 | Open diagnostic issue. `prepareSelectedMove` maps a failed core readiness/reference check to generic INVALID; monitor-owned activity can cause it. | 16b names the exact refusal; retain guard precedence. |
 | R-08 | Open diagnostic, conservative rejection. `parsePositionProfile` preserves raw bits; `buildWritePositionProfile` rejects target bits outside the typed bound. Readable data alone does not prove that the drive accepted that target. | 02 must name the range refusal before restore TX; keep the raw archived value. |
 | R-09 | Open. Position-clear qualification is a Boolean. `startRecovery` changes the binding/axis generation without clearing it; later fresh state can admit clear using the old fact. | 16b. |
@@ -107,7 +110,7 @@ are separately testable. Existing stages keep their source/physical work.
 | R-14 | Stale as an absolute claim. `serviceOutput` still has bounded nesting, but later bench records contain stack watermarks, including 1,108/1,220 bytes in the group report. Those runs do not prove every pressure case. | Measure changed worst-case pressure paths; do not claim stack was never measured. |
 | R-15 | Not a defect. D1..D5 are in the mandatory execution contract, linked from the set. Duplicating decisions in AGENTS would create another status source. | Keep one owner decision record. |
 | R-16 | Open envelope gap. Homing accepts native search speed up to 3,000 rpm without a subdivision-derived rate policy. Explicit rate qualification is required; the code does not claim the position limit applies. The old 200,000/s comparison is stale: position now defaults to 50,000/s. | 16b policy, then 05 physical evidence. Do not describe a host ceiling as a datasheet limit. |
-| R-17 | Open intentional interlock with incomplete recovery route. `startActionIn` rejects all non-stop actions while the axis is reserved. Release, enable and alarm clear cannot be treated as equivalent safe cleanup. | 15b explicit per-action contract; preserve uncertainty. |
+| R-17 | Implemented bounded policy in standalone 15b. Exact failed transmitted stop plus current target/configuration and supplied mechanical/trigger facts admits explicit release only. RELEASED keeps old uncertainty; enable and alarm clear remain blocked. | Wrong/stale facts, unsent expiry, lost ACK, CLI/API parity; physical qualification remains separate. |
 | R-18 | Documented bounded storage, not a library bug. Correlated results require explicit release. Sampling tools must retain then release each completed observation. | 14/host harness; no automatic expiry of uncertain results. |
 
 ## Shared ESS findings in the Lichuan audits
@@ -117,7 +120,7 @@ They do not apply Lichuan-specific semantics to ESS.
 
 | ID | Current verdict and evidence | Owner |
 | --- | --- | --- |
-| C1 | Open, freshly reproduced. `Velocity::stepDeadline` uses the run stop time as the observation transaction deadline; `admitVelocityStep` passes it to the owner without a separate dispatch cutoff. Healthy replies can force recovery before the owned stop. | 15a. |
+| C1 | Fixed in standalone 15a. Velocity poll dispatch ends at stopDueUs; an admitted poll retains its normal response timeout and original operation deadline. | 101 healthy durations plus boundary/fault/pressure regressions. |
 | C2 | Fixed original home-budget issue; missing/delayed RUNNING remains the explicit H-02 limit. | 05. |
 | C3 | Withdrawn as a defect: native displacement limits are intentional and documented in `Axis.h` (K-08). General contract wording must distinguish those bounds from endpoint soft limits. | Documentation only; no new range or arithmetic change. |
 | C4 | Fixed stationary/idle reference check (K-03). | Preserve tests. |
@@ -127,11 +130,11 @@ They do not apply Lichuan-specific semantics to ESS.
 | C8 | IN_POSITION requirement is fixed by HW-11. Repeated-HOMED and missed transition behavior remain observation limits, not proof that current code is wrong. | 05. |
 | C9 | Confirmed portability limit, freshly reproduced: unconfirmed trigger ends UNKNOWN without observation. Continuing observation and publishing a reference are separate decisions; dropping the ACK guard alone is not a valid fix. | 16c. |
 | C10 | Exception-05 classification fixed; deadline parity remains K-02. | 16a for remainder. |
-| C11 | Partial, freshly reproduced. Group storage now has two sets of per-member stop records, but two ordinary stops on different addresses still block fast escalation with RESULTS_FULL. | 15b, preserve existing group guarantees. |
-| C12 | Open API gap. `ProbeApp.h` has no normal independent stop submission/copied-result entry point comparable to move/home. Internal Host callbacks are not that API. A copied terminal must count as delivered for headless retention/release. Velocity start, enable, release, alarm/position clear and recover also remain internal callbacks. | 15b implements stop and explicitly inventories the others. |
+| C11 | Fixed in standalone 15b. Two normal ordinary stops cannot consume the two reserved same-address fast-escalation records. One active/undelivered escalation per address; group pools stay separate. | Two-address and output/ordinary-pressure traces. |
+| C12 | Independent stop and qualified release now have public submission and copied results in ProbeApp.h. Terminal copying acknowledges delivery. Other internal-only callbacks have explicit follow-up dispositions in the action guide/backlog. | Stop API gap closed in 15b; broader exports remain separate work. |
 | C13 input facts | Open intentionally restricted input admission. `driverInputsQualified` is initialized/cleared but never supplied in production. Existing per-function input programming work owns the broader change. | Multi-drive 04; standalone 06 retains its source/fixture work. |
 | C13 timing fields | Confirmed compatibility state: `snapshot` publishes `timingQualified=false`; the admission enum has a labelled but unused TIMING_UNQUALIFIED value. This is not a runtime fault or evidence that an analyzer gate is missing. Removing it changes the public protocol. | Preserve and document in 17 unless a separate contract change is justified. |
-| C14 | Open, freshly reproduced. `holdStop` accepts only ACTION records; the velocity continuation cannot send its owned stop on an interlocked bus. | 15a with C1, never replay uncertain writes. |
+| C14 | Fixed in standalone 15a. The run-owned nested stop can use one bounded recovery before its first byte. Run failure, stop outcome and recovery result remain independent. | Lost start/poll/stop ACK and recovery failure/cancellation tests. |
 
 ## Maintainability findings
 
