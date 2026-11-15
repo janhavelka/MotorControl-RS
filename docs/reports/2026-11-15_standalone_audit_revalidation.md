@@ -282,6 +282,23 @@ Fresh isolated verification passed on `4f0576b` plus this task's owned changes:
 `build/audit_20261115_snapshot/build/verification/summary.json`, 93 registered
 suites and all 15 verifier steps, including source/install consumers and package
 checks. Shared documentation hunks from concurrent work were excluded from the
-snapshot. Doxygen completed without warnings. Exact-commit CI is recorded after
-the implementation commit is pushed. Hardware and new physical qualification:
-NOT RUN.
+snapshot. Doxygen completed without warnings.
+
+The fixes and prompt corrections are in commit
+`2e82ccccbf4d89c7a814898fab975e29d1421948`. They were pushed with concurrent
+work at `42f5b4b473c3a494eff5cd196e5f71243404af82`.
+[CI run 43695333938](https://github.com/janhavelka/MotorControl-RS/actions/runs/43695333938)
+passed all four jobs on that exact commit. Downloaded artifact summaries and
+archive hashes were checked; local copies are in `build/audit_20261115_ci/`.
+
+| Job | Result | Registered suites / verifier steps | Artifact |
+| --- | --- | --- | --- |
+| Native GCC | PASS | 93 / 15 | [native-gcc](https://github.com/janhavelka/MotorControl-RS/actions/runs/43695333938/artifacts/14153779627) |
+| Native Clang | PASS | 93 / 15 | [native-clang](https://github.com/janhavelka/MotorControl-RS/actions/runs/43695333938/artifacts/14154012744) |
+| Arduino | PASS | 93 / 16 | [arduino](https://github.com/janhavelka/MotorControl-RS/actions/runs/43695333938/artifacts/14154263298) |
+| Native ESP-IDF | PASS | 93 / 19 | [native-idf](https://github.com/janhavelka/MotorControl-RS/actions/runs/43695333938/artifacts/14154034567) |
+
+Later audit-status and verification-record edits are documentation only.
+Current repository reference, documentation and metadata checks pass. No new
+remote campaign is required for this final record. Hardware and new physical
+qualification: NOT RUN.
