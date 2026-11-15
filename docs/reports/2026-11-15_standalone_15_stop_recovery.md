@@ -130,6 +130,14 @@ was introduced.
 
 ## Final verification and physical checks
 
+The first full run at `4715da9` found stale assertions in the general application
+fixture, in both normal and load builds. It still expected a third fast stop to
+be refused and in-flight probe cancellation to abort the wire transaction.
+Those checks now exercise the delivered contract: reserve admission followed by
+duplicate refusal and retained results; natural checked probe settlement under
+USB pressure without recovery. The focused four affected suites pass. The
+initial failed verifier/CI records are retained; final fresh checks follow.
+
 Hardware qualification is NOT RUN. Native injected faults do not authorize
 physical moving-link-loss experiments. The final handoff will list the image,
 bounded bench cases, expected evidence and restoration requirements.

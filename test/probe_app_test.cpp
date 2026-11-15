@@ -174,8 +174,14 @@ void testSaturatedUsbDoesNotBlockCancellation() {
     Serial.input += "@100 probe\n"; // Full output cannot admit another bus request.
     for (unsigned i = 0; i < 1000 && !Serial.input.empty(); ++i) step();
     assert(Serial.input.empty());
+    assert(findRecord(*app, operation)->cancelContinuation && view(operation).pending);
+    // Cancelling this transmitted read ends no wire transaction. Its checked
+    // reply still settles while USB is blocked, without forcing recovery.
+    scheduleReply(std::max(hardware.writeStarted + 8 * 87 + 1000, hardware.time + 1000), REPLY);
     for (unsigned i = 0; i < 1000 && view(operation).pending; ++i) step();
-    assert(!view(operation).pending && view(operation).probe.cancellation == Rtu::Cancellation::REQUEST);
+    assert(!view(operation).pending && view(operation).probe.outcome == Rtu::Outcome::SUCCESS &&
+        view(operation).probe.cancellation == Rtu::Cancellation::NONE);
+    assert(!app->owner.needsRecovery() && !uart.needsRecovery());
     Probe::ResultView rejected;
     assert(!host(app).result(app, 2, rejected));
     assert(app->console.inputDropped() && hardware.writes == 1);
@@ -709,14 +715,25 @@ void testRepeatedStopCannotDiscardUndeliveredResult() {
     actionStep(previous); actionStep(previous, registerReply({0, 0}));
     assert(!view(previous).pending && !findRecord(*app, previous)->delivered);
     ActionRequest stop; stop.kind = ActionKind::STOP; stop.stop.behavior = StopBehavior::DIRECT;
-    // The escalation record admits a new stop; the undelivered report stays.
-    uint32_t next = 777, third = 777;
+    // The second primary record and a fast reserve preserve the undelivered
+    // report. A duplicate escalation cannot consume the other address's reserve.
+    uint32_t next = 777, third = 777, fourth = 777;
     assert(startAction(app, 3, 1, stop, next) == Probe::Action::OK);
     assert(view(previous).actionContext->completion == ActionCompletion::OBSERVED);
-    assert(startAction(app, 4, 1, stop, third) == Probe::Action::RESULTS_FULL && third == 777);
+    assert(submitStop(1, stop.stop, third) && third != 777);
+    assert(view(third).stopEscalation && !view(third).replacedOperationId);
+    const auto writes = hardware.writes;
+    assert(startAction(app, 4, 1, stop, fourth) == Probe::Action::RESULTS_FULL && fourth == 777);
+    assert(hardware.writes == writes && view(previous).actionContext->completion == ActionCompletion::OBSERVED);
+    assert(!findRecord(*app, previous)->delivered && view(next).operationId == next);
+    actionStep(third); actionStep(third, registerReply({0, 0}));
+    ActionResult copied; assert(copyActionResult(third, copied) && !copied.pending);
+    assert(copied.action.completion == ActionCompletion::OBSERVED);
     Serial.writeCapacity = 64; pump(6000);
     assert(findRecord(*app, previous)->delivered);
-    assert(startAction(app, 5, 1, stop, third) == Probe::Action::OK);
+    assert(startAction(app, 5, 1, stop, fourth) == Probe::Action::OK && fourth != 777);
+    assert(view(fourth).replacedOperationId == previous && !view(fourth).stopEscalation);
+    assert(view(third).actionContext->completion == ActionCompletion::OBSERVED);
     Probe::ResultView old; assert(!lookup(app, previous, old));
 }
 void testRepeatedStopAdmissionFailureKeepsPreviousResult() {
@@ -726,7 +743,7 @@ void testRepeatedStopAdmissionFailureKeepsPreviousResult() {
     actionStep(previous); actionStep(previous, registerReply({0, 0})); pump(1000);
     const auto saved = *view(previous).actionContext;
     // Fill the owner's whole urgent quota (selected and group stop pools).
-    std::vector<App::Record> occupied(URGENT_RECORDS); // Heap: 32 records are too large for a stack.
+    std::vector<App::Record> occupied(URGENT_RECORDS); // This pool is too large for a stack.
     ESS::ActionContext stopContext; ReadTarget target; target.id = target.address = target.generation = 1;
     assert(ESS::prepareNormalStop(stopContext, target, 999, nowUs(), nowUs() + REQUEST_US));
     ESS::PreparedAction work; assert(ESS::nextAction(stopContext, nowUs(), work));
