@@ -1,5 +1,10 @@
 # Source audit and finding map, 2026-10-23
 
+**Status: PROCESSED - 15 November 2026.** Findings were rechecked in the
+[revalidation report](../../reports/2026-11-15_standalone_audit_revalidation.md).
+Corrections are applied and remaining work has prompt owners. The promptset
+remains PARTIAL; processed does not mean all findings are resolved.
+
 Current routing: N01, N02, N04, N07 and the 27 planned switch methods are
 implemented; see the [coverage guide](../../ess_api_cli_coverage.md). Broader
 N05 remains PARTIAL under standalone 03. N03, N06, N09, unresolved homing and

@@ -1,10 +1,13 @@
 # Code and standalone promptset audit - 2 November 2026
 
-Current disposition: the [15 November revalidation](2026-11-15_standalone_audit_revalidation.md)
-checks these findings against later code and assigns remaining work. The
-findings, reproductions and decisions below remain their dated record.
+**Status: PROCESSED - 15 November 2026.** Each finding has a current disposition
+in the [revalidation report](2026-11-15_standalone_audit_revalidation.md).
+Confirmed small fixes and prompt corrections were applied in `2e82ccc`;
+remaining work is assigned to the updated standalone prompts. Processed does
+not mean all implementation or hardware qualification is complete. Use the
+updated prompts as instructions; the findings below remain dated evidence.
 
-This is a work list for the AI coder. It audits the library, the example firmware
+This original work list audits the library, the example firmware
 and the [standalone promptset](../prompts/standalone/README.md) against the source,
 the original vendor PDFs and retained bench evidence. Line numbers refer to commit
 `363255a`; no code changed between the start of the audit and that commit. Recheck them
