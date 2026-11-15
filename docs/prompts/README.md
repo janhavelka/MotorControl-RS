@@ -8,10 +8,10 @@ Their [final audit](../reports/2026-11-02_ess_final_audit.md) and dated reports 
 verification. Finished ESS software prompts have been removed; do not repeat them.
 The [15 November revalidation](../reports/2026-11-15_standalone_audit_revalidation.md)
 checks the independent standalone audit against current code.
-[Standalone 15 software is complete](../reports/2026-11-15_standalone_15_stop_recovery.md).
-Start remaining software repairs with [standalone 16](standalone/16_evidence_qualification.md),
-then the unfinished candidate-import work in 02. The set remains PARTIAL;
-stage 14 still owns the new-image bench regression.
+[Standalone 15](../reports/2026-11-15_standalone_15_stop_recovery.md) and
+[16](../reports/2026-11-15_standalone_16_evidence_qualification.md) are software complete.
+Next is the unfinished [02 candidate-import route](standalone/02_profile_staging.md).
+The set remains PARTIAL; stage 14 owns the new-image bench regression.
 
 The [ESS multi-drive set](ess_multi_drive/README.md) has nine stages following
 the [15 November revalidation](../reports/2026-11-15_ess_multi_drive_promptset_audit.md).

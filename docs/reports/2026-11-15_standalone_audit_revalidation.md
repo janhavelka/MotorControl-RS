@@ -1,6 +1,6 @@
 # Standalone ESS audit revalidation - 15 November 2026
 
-**Status: PROCESSED.** Standalone 15's assigned software findings are corrected
+**Status: PROCESSED.** Standalone 15/16's assigned software findings are corrected
 and verified. Remaining source, qualification and physical findings retain their
 owners below; processed does not mean the whole promptset is complete.
 
@@ -18,6 +18,12 @@ accounting R-06 is also corrected. Fresh verification and all four CI jobs passe
 on `dd2b1b2`. See the
 [stage 15 report](2026-11-15_standalone_15_stop_recovery.md). A dated successful
 run does not close an untested fault path.
+
+Standalone 16 closes the assigned evidence/qualification corrections in
+`b35bccc`, with portable evidence tests corrected in `4c48920`. All four CI jobs
+pass on the latter commit. The [stage 16 report](2026-11-15_standalone_16_evidence_qualification.md)
+retains the contracts, failed checks, corrections and final evidence. No new
+hardware qualification follows.
 
 ## Evidence and limits
 
@@ -50,10 +56,11 @@ delivered and missing parts; **policy/limit** means the observed behavior is
 intentional or needs evidence before a change. A proposed helper is not a
 required implementation.
 
-[15 stop/recovery](../archive/prompts/standalone/15_stop_recovery.md) is completed
-software. Next is [16 evidence/qualification](../prompts/standalone/16_evidence_qualification.md),
-then [17 cleanup](../prompts/standalone/17_application_cleanup.md) at stable
-boundaries. Existing stages keep their source/physical work.
+[15 stop/recovery](../archive/prompts/standalone/15_stop_recovery.md) and
+[16 evidence/qualification](../archive/prompts/standalone/16_evidence_qualification.md)
+are completed software. Next is [02 candidate staging](../prompts/standalone/02_profile_staging.md).
+[17 cleanup](../prompts/standalone/17_application_cleanup.md) is optional at
+tested boundaries. Existing stages keep their source/physical work.
 
 ## Application findings
 
@@ -63,7 +70,7 @@ boundaries. Existing stages keep their source/physical work.
 | A-02 | Fixed, including ordinary probes in standalone 15b. In-flight TX/receive settles naturally; only unsent work is cancelled. | Preserve probe, typed-read, sequence and monitor regressions. |
 | A-03 | Fixed in standalone 15b for two ordinary addresses. Two primary and two fast-escalation reservations retain separate results. | Preserve bounded capacity and group separation. |
 | A-04 | Fixed for the stated budget defect: home uses `moveTimeoutMs` and `runningPollIntervalUs`; the real-app fixture covers a 10-second search. Delayed/missing RUNNING still consumes the faster initial poll budget. | Keep remaining observation limit in 05. |
-| A-05 | Fixed. `stopRecord` uses separate stop storage and can replace the oldest delivered failed stop, counted by `stopEvidenceOverwritten`. `failedStopsDoNotDependOnOrdinaryCapacity` fills ordinary storage. | Preserve evidence policy; fix host mismatch R-06. |
+| A-05 | Fixed. `stopRecord` uses separate stop storage and can replace the oldest delivered failed stop, counted by `stopEvidenceOverwritten`. `failedStopsDoNotDependOnOrdinaryCapacity` fills ordinary storage. | Preserve evidence policy; R-06 host accounting is corrected in 15c. |
 | A-06 | Fixed. `selectedStop` bypasses the known-target gate for the selected address; declared group members have their own stop route. `firstStopAfterBoot` also rejects an unrelated unknown address. | Preserve exact target rules. |
 | A-07 | Fixed. `startRecovery` releases a delivered terminal result and retains an undelivered result displaced by automatic stop recovery. Tests cover both cases. | No repeated recovery implementation. |
 | A-08 | Fixed for reachability. `QualificationApp.h`, public install/revoke APIs and console routes supply explicit facts. `qualification_routes_app_test` exercises home, velocity and position clear. Missing facts report `qualification_required`. | Physical gates still apply. |
@@ -79,7 +86,7 @@ boundaries. Existing stages keep their source/physical work.
 
 | ID | Current verdict and evidence | Next action |
 | --- | --- | --- |
-| H-01 | Fixed for active origin and method-35 admission. `inputReadiness` uses required/forbidden limit roles and admits inert selectors; tests cover every implemented family. Opposite-limit and release/stop rules remain conservative host policy, not a direction-aware trajectory model. | Correct policy wording under R-11; do not relax gates here. |
+| H-01 | Fixed for active origin and method-35 admission. `inputReadiness` uses required/forbidden limit roles and admits inert selectors; tests cover every implemented family. Opposite-limit and release/stop rules remain conservative host policy, not a direction-aware trajectory model. | R-11 wording corrected; preserve guards. |
 | H-02 | Partial source/physical limit. IN_POSITION was wrongly required and has been removed. HOMED-low, moving-method RUNNING and final zero have recorded 33/34/35 evidence. Switch methods, internal Z, all polarity/soft-limit cases and all stop/ramp cases are not physically established. | 05; no generic success from sampled edges. |
 | H-03 | Fixed: `advanceHome` publishes zero words only for parsed, qualified, confirmed, on-time frames; raw failed evidence remains retained. `testZeroWordsPublishOnlyQualifiedFrames` covers it. | None. |
 | H-04 | Fixed wording. `homeMethod(METHOD_18)`, public types and method guide describe a likely caption error. PDF p51 prose/trajectory say positive limit while labels say negative. Support remains UNRESOLVED. | 05 switch fixture/source disposition. |
@@ -87,9 +94,9 @@ boundaries. Existing stages keep their source/physical work.
 | K-02 | Corrected in standalone 16a. All seven engines require qualified closure within the yielded transaction deadline. Delayed delivery preserves on-time evidence but does not extend the operation. Exception 05 and supplied uncertainty stay UNKNOWN. | Exact/late/delayed, malformed and uncertainty regressions; final verification in the stage 16 report. |
 | K-03 | Fixed: `prepareMove` requires idle, stationary ACTUAL reference whenever a known reference is consumed, including relative moves. Native-unknown relative preparation remains valid. | Preserve relative-reference tests. |
 | K-04 | Fixed in typed position preparation/builders by `targetInRange`/`targetBitsInRange`. PDF p70 is malformed; the symmetric bound is explicitly a conservative interpretation, not a measured universal limit. Raw FC10 remains raw. | Keep guard; 02 owns restore diagnostics, 08/source work owns changed range evidence. |
-| K-05 | Fixed in core: an observation closing after `stopDueUs` ends the run budget and calls `beginStop`, while fault words still matter. `testObservationClosingAfterDurationEndsTheBudget` covers it. Owner-level deadline coupling C1 is a separate open defect. | 15a. |
+| K-05 | Fixed: an observation closing after `stopDueUs` ends the run budget and calls `beginStop`, while fault words still matter. Owner coupling C1 was corrected in 15a; 16a rejects observation closure beyond the overall deadline. | Preserve both dispatch and closure boundary regressions. |
 | K-06 | Fixed: `advanceRead` and `checkProbe` require full TX for FRAME. Existing tests reject zero/partial TX. | None. |
-| K-07 | Fixed: `prepareVelocity` rejects `maxPolls * pollIntervalUs < durationUs`. `testPollBudgetMustCoverDuration` covers it. This does not close C1/C14. | 15a for owner behavior. |
+| K-07 | Fixed: `prepareVelocity` rejects `maxPolls * pollIntervalUs < durationUs`. `testPollBudgetMustCoverDuration` covers it. C1/C14 owner behavior was corrected separately in 15a. | Preserve both core and owner regressions. |
 | K-08 | Fixed as documentation. `AxisConfig` and axis guide now explain displacement bounds and one-sided native ranges. The arithmetic contract was deliberate, so adding another range is not required. | No code change. |
 | K-09 | Fixed for contradictory readback after confirmation. Standalone 16a also distinguishes the expected previous value after rejection (R-10). | Preserve both contradiction and known-rejection regressions. |
 | K-10 | Fixed exposure: `ActionContext` retains `rawPositionWords`; compatibility `rawPosition` is documented as wire concatenation. Zero checking is order-independent. | No removal of compatible field. |
@@ -182,15 +189,13 @@ These are dispositions of retained evidence, not a new bench qualification.
 
 ## Handoff
 
-Start with stage 15a: it has a current reproducer and can leave a finite
-velocity run's explicit stop unsent. Then finish the evidence/qualification
-blocks in 16 and the bounded staging route in 02. Perform 17 cleanup
-only after the affected contracts and tests are stable. Existing source,
-fixture, electrical and overnight gates remain separate.
+Stages 15 and 16 are software complete. Finish the bounded candidate/archive
+route in 02 and run the new image through the short stage 14 bench regression.
+Perform 17 cleanup only at tested boundaries. Existing source, fixture,
+electrical and overnight gates remain separate.
 
-This audit does not mark these new stages implemented. Historical audits remain
-dated evidence; the standalone README is the current status record. Final
-repository/build checks for the combined audit change are recorded by the lead.
+Historical audits remain dated evidence; the standalone README is the current
+status record. Implementation reports record exact commits and verification.
 
 ## Original N/Q finding map
 

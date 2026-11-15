@@ -1,7 +1,11 @@
 # 16 - Align evidence and qualification boundaries
 
-Read the [execution contract](execution_contract.md) and the
-[current audit](../../reports/2026-11-15_standalone_audit_revalidation.md).
+Completed software instructions, archived 15 November 2026. Do not dispatch
+again. See the [implementation and verification record](../../../reports/2026-11-15_standalone_16_evidence_qualification.md).
+Hardware checks remain separate.
+
+Read the [execution contract](../../../prompts/standalone/execution_contract.md) and the
+[current audit](../../../reports/2026-11-15_standalone_audit_revalidation.md).
 This stage owns K-02's closure remainder, R-01, R-07, R-09..R-12, R-16 and ESS C9.
 Deliver the independent blocks below separately. Do not turn a conservative
 rejection into success without the required source and observation evidence.

@@ -11,6 +11,7 @@ remain separately indexed.
 
 | Record | Disposition |
 | --- | --- |
+| [Standalone 16 evidence/qualification](prompts/standalone/16_evidence_qualification.md) | Completed software instructions. [Implementation, retained failures and exact-commit verification](../reports/2026-11-15_standalone_16_evidence_qualification.md); physical/source limits remain separate. |
 | [Standalone 15 stop/recovery](prompts/standalone/15_stop_recovery.md) | Completed software instructions. [Implementation and exact-commit verification](../reports/2026-11-15_standalone_15_stop_recovery.md); new bench checks remain separate. |
 | [ESS delivery sequence](prompts/ess_release/README.md) | Historical implementation sequence and original acceptance requirements. Delivery of a prompt does not close its separately recorded native or hardware gaps. |
 | [Earlier maintenance draft](prompts/maintenance/README.md) | Superseded without execution by the completed [maintainability sequence](prompts/maintainability/README.md). Do not dispatch either set again. |

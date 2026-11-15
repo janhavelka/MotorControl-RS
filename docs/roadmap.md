@@ -59,13 +59,14 @@ post-enable wait; their limits remain in the [backlog](backlog.md).
 
 ## Next delivery blocks
 
-1. **Finish the current audit repairs.** Run
-   [standalone 16](prompts/standalone/16_evidence_qualification.md) for evidence
-   and qualification. [Stage 15 stop/recovery software is complete](reports/2026-11-15_standalone_15_stop_recovery.md),
-   with its new-image bench regression still NOT RUN.
+1. **Finish candidate/archive staging.**
+   [Standalone 02](prompts/standalone/02_profile_staging.md) owns the missing
+   ordinary import route. [15 stop/recovery](reports/2026-11-15_standalone_15_stop_recovery.md)
+   and [16 evidence/qualification](reports/2026-11-15_standalone_16_evidence_qualification.md)
+   are software complete; their new-image bench regression is still NOT RUN.
    The [15 November review](reports/2026-11-15_standalone_audit_revalidation.md)
-   gives each old finding a current verdict. Put optional cleanup after these
-   corrections; preserve frames, deadlines, retained results and command syntax.
+   gives each old finding a current verdict. Optional cleanup must preserve
+   frames, deadlines, retained results and command syntax.
 2. **Resolve evidence-backed gaps.** Investigate exact-drive failures and source
    ambiguities before extending native access, velocity/ramp semantics, homing,
    paired setters or tuning. Keep the operation inventory current.

@@ -73,19 +73,21 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   velocity poll deadlines, unsent-stop recovery, two-address escalation,
   public stop/copied results, qualified release and host accounting. All 94
   suites and exact-commit GCC/Clang/Arduino/IDF checks pass.
-- [ ] Run the stage 15 image through [standalone 14](prompts/standalone/14_bench_regression.md).
+- [ ] Run the stage 15/16 image through [standalone 14](prompts/standalone/14_bench_regression.md).
   New physical checks were NOT RUN; native faults do not qualify real stop timing.
-- [ ] Finish [standalone 16](prompts/standalone/16_evidence_qualification.md):
-  reply evidence, qualification lifetime and home admission policy. Do not
-  equate the native rate range with a tested operating envelope.
+- [x] Finish [standalone 16 software](reports/2026-11-15_standalone_16_evidence_qualification.md):
+  uniform reply evidence, exact qualification lifetime, active-origin moves,
+  home rate policy and bounded observation after an ambiguous trigger. Fresh
+  94-suite verification and four exact-commit CI jobs pass. The nominal home
+  ceiling and native range do not establish physical rate qualification.
 - [ ] Add standalone headless submission/results for velocity start, enable,
   ordinary release, alarm clear, position clear and host recovery in a separate
   application API block. Stage 15 delivers independent stop and qualified
   release only. Reuse current console admission and retain each operation's
   effects; exporting a core builder alone does not close these application gaps.
-- [ ] Resolve R-01's active-origin refusal in standalone 16; broader per-function
-  readiness stays in [multi-drive 04](prompts/ess_multi_drive/04_input_programming.md).
-  Resolve K-01's
+- [ ] Extend per-function readiness in
+  [multi-drive 04](prompts/ess_multi_drive/04_input_programming.md).
+  R-01's narrow active-origin refusal is corrected in standalone 16. Resolve K-01's
   endpoint/tolerance question through [standalone 08](prompts/standalone/08_motion_measurement.md).
 - [ ] Apply the bounded cleanup in [standalone 17](prompts/standalone/17_application_cleanup.md)
   after correctness work. The

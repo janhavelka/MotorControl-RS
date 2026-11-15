@@ -42,10 +42,10 @@ from the standing finite-position bench authorization.
 
 ## 2. Consume homing evidence corrections without copying ESS semantics
 
-[Standalone 16c](../standalone/16_evidence_qualification.md) owns ESS C9.
-Use its explicit contract for continued observation after an unconfirmed trigger
-where applicable. UNKNOWN execution must remain distinct from a later observed
-result/reference; uncertain staging must not lead to another motion trigger.
+[Standalone 16c](../../reports/2026-11-15_standalone_16_evidence_qualification.md)
+delivered ESS C9's bounded observation path. Use that contract where applicable:
+observed home state retains UNKNOWN trigger execution, a failed result and no
+reference. Uncertain staging must not lead to another motion trigger.
 Require tests for stale HOMED, missing RUNNING, method 35, revocation and stop.
 
 Preserve the existing C2/C8 corrections: configured home deadline, slower

@@ -5,9 +5,8 @@ Baseline: `f0741d459c7cfa16c762cac64f4a7a2708c0c76b` on `main`,
 `c40ea8341edf8d665460b902cafefbe857a7f73f`. No serial port was opened and no
 firmware was flashed. Hardware checks are NOT RUN.
 
-Status: implementation, independent review and local verification complete;
-exact-commit CI pending. This record separates the three delivered blocks from
-remaining source and fixture limits.
+Status: COMPLETE (software). Blocks 16a, 16b and 16c pass independent review,
+local verification and exact-commit CI. Source and physical limits remain separate.
 
 ## 16a: write evidence
 
@@ -108,7 +107,7 @@ Fresh quick verification passes in `build/stage16_verified`: 94 registered
 suites and all 15 steps, including source/install consumers and package checks.
 The first run in `build/stage16_final_verify` passed 93/94 suites: repository
 links failed because the report was still being written. That failed log is
-retained; the fresh run has no failures. Exact-commit CI is pending.
+retained; the fresh run has no failures.
 
 The first Clang CI run on `b35bccc` failed three home suites at a whole-struct
 `memcmp` in the new fixture. Member copies need not preserve compiler padding.
@@ -116,6 +115,32 @@ The corrected fixture checks every evidence member and all retained raw bytes.
 The related core copy check uses the same helper; the communication regression
 snapshots the original object's bytes instead of a memberwise copy. Production
 code and expected wire bytes are unchanged. Failed CI logs are retained.
+
+Five focused core/app/parity suites pass after that test correction. Final
+verification is on `4c48920ee2274902487a88f4fdfc73ad0f7b816a`, including all
+production changes from `b35bccce53f3f5b54bea822138db21148b67a59c`.
+[CI run 43711678572](https://github.com/janhavelka/MotorControl-RS/actions/runs/43711678572)
+passes all four jobs:
+
+| Job | Result | Registered suites / verifier steps | Artifact |
+| --- | --- | --- | --- |
+| GCC | PASS | 94 / 15 | [native-gcc](https://github.com/janhavelka/MotorControl-RS/actions/runs/43711678572/artifacts/14161046617) |
+| Clang | PASS | 94 / 15 | [native-clang](https://github.com/janhavelka/MotorControl-RS/actions/runs/43711678572/artifacts/14161385475) |
+| Arduino | PASS | 94 / 16, all four environments | [arduino](https://github.com/janhavelka/MotorControl-RS/actions/runs/43711678572/artifacts/14160728463) |
+| Native ESP-IDF | PASS | 94 / 19, S3 app/core and S2 core/portable builds | [native-idf](https://github.com/janhavelka/MotorControl-RS/actions/runs/43711678572/artifacts/14160682328) |
+
+All four artifact hashes and terminal summaries were checked. The
+[evidence archive](2026-11-15_standalone_16_evidence_qualification_evidence.zip)
+keeps baseline failures, both failed verification records, final local/CI logs,
+actual app results, reviewer dispositions and hash manifests. Archive SHA-256:
+`f14d83f8cedbc6dbacfef9fc3e6ebdab1915a20d415da949a3fb0d0867dbfcb5`.
+
+Final reviewer dispositions: no confirmed in-scope defect remains in write
+evidence, qualification or home observation. The copied-evidence test correction
+also passed independent review and final Clang CI. Completed instructions are
+[archived](../archive/prompts/standalone/16_evidence_qualification.md).
+Final report/navigation changes are documentation only; local consistency
+checks apply without another remote verification campaign.
 
 Hardware qualification is NOT RUN. Source scales, method 18,
 negative methods, nonzero offsets, physical switches, drive faults and electrical
