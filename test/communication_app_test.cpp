@@ -247,11 +247,16 @@ void rejectedWriteRetainsCandidates() {
     fresh(); configuration(); begin(); reply(crc({1, 0x86, 3}));
     assert(app->commissioning.execution == MotorControlRS::ActionExecution::REJECTED);
     assert(app->commissioning.writeOutcome == ESS::CommunicationOutcome::REPLY_ERROR);
+    assert(app->commissioning.effects && !app->commissioning.uncertain);
+    const auto rejected = app->commissioning.writeEvidence;
     assert(app->commissioning.beforeSerial.baud == 115200 && app->commissioning.requestedSerial.baud == 38400);
     assert(!app->owner.needsRecovery() && command(Kind::FINISH) == Probe::Action::RECOVERY_REQUIRED);
     const unsigned count = hardware.writes; pump(); assert(hardware.writes == count);
     assert(command(Kind::CONFIRM_BEFORE) == Probe::Action::OK); reply(words({0}));
     assert(app->commissioning.outcome == ESS::CommunicationOutcome::READBACK_MISMATCH);
+    assert(app->commissioning.effects && !app->commissioning.uncertain && app->commissioning.readback == 0);
+    assert(app->commissioning.execution == MotorControlRS::ActionExecution::REJECTED);
+    assert(!std::memcmp(&app->commissioning.writeEvidence, &rejected, sizeof(rejected)));
     assert(command(Kind::FINISH) == Probe::Action::OK && hardware.writes == count + 1);
 }
 

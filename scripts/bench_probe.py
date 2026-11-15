@@ -41,7 +41,7 @@ MAX_TRAFFIC_INPUT = 1048576  # Independent finite diagnostic budget per command/
 COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "health", "memory", "stats", "load",
                       "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "communication", "persistence", "motion-profile", "motion-profile-start-speed", "motion-profile-start-speed-relation", "home-auxiliary", "debug",
                       "home-qualification-install", "home-qualification-revoke", "velocity-qualification-install", "velocity-qualification-revoke",
-                      "position-clear-qualification-install", "position-clear-qualification-revoke",
+                      "position-clear-qualification", "position-clear-qualification-install", "position-clear-qualification-revoke",
                       "read-identity", "read-config", "read-state", "velocity-read", "home-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "position-interrupt", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list",
                       "group-show", "group-status", "group-clear", "group-wiring", "group-set", "group-move", "group-stop", "group-read-state"})
 MAX_COMMANDS = 11  # Eight ordinary operations, recovery, reserved stop and local query.
@@ -72,7 +72,7 @@ READ_COMMANDS = ("probe", "capture-read", *TYPED_READS)
 HOST_FORMATS = ("8N1", "8N2", "8E1", "8O1")
 ADMISSION_FAILURES = frozenset({"busy", "recovery_required", "unavailable", "failed", "queue_full", "results_full",
     "ids_exhausted", "invalid", "already_terminal", "timing_unqualified", "unsupported", "axis_conflict",
-    "unresolved", "unimplemented", "qualification_required", "invalid_arguments", "invalid_address", "invalid_value", "invalid_field",
+    "unresolved", "unimplemented", "qualification_required", "reference_not_ready", "operating_limit", "invalid_arguments", "invalid_address", "invalid_value", "invalid_field",
     "unsupported_policy", "invalid_axis_configuration", "output_full", "output_capacity",
     "failure_policy_required", "duplicate_address"})
 
@@ -974,7 +974,7 @@ class Console:
         uncertain = False
         for p in fields.values():
             rows = [(e, raw) for e, raw in steps if e["register"] == p["register"]]
-            acknowledged = any(e["write"] and e["event"] == 0 and e["status"] == "OK" and e["qualified"] and e["response_confirmed"] and e["latest_us"] <= item["stationary_valid_until_us"] for e, raw in rows)
+            acknowledged = any(e["write"] and _evidence.write_execution(e, item["stationary_valid_until_us"]) == "acknowledged" for e, raw in rows)
             readbacks = [(e, raw) for e, raw in rows if not e["write"] and e["event"] == 0 and e["status"] == "OK" and e["qualified"] and e["response_confirmed"] and e["latest_us"] <= item["deadline_us"]]
             require(p["acknowledged"] == acknowledged and p["readback_known"] == bool(readbacks), "acknowledgement/readback provenance differs")
             if readbacks: require(p["readback"] == int.from_bytes(readbacks[-1][1][3:5], "big"), "readback value differs")
@@ -983,9 +983,7 @@ class Console:
             for e in writes:
                 if e["tx_accepted"] or e["execution_unknown"]:
                     effects |= p["field"]; execution = "unknown"
-                if e["event"] == 0 and e["qualified"] and e["response_confirmed"] and e["latest_us"] <= item["stationary_valid_until_us"]:
-                    if e["status"] == "OK": execution = "acknowledged"
-                    elif e["status"] == "EXCEPTION" and 1 <= e["detail"] <= 7 and e["detail"] != 5: execution = "rejected"
+                execution = _evidence.write_execution(e, item["stationary_valid_until_us"])
             require(p["execution"] == execution, "execution differs from write evidence")
             stored_settled = stored and echo_policy and p["readback_known"] and p["readback"] == p["requested"]
             uncertain |= (execution == "unknown" and not stored_settled) or (execution == "acknowledged" and (not p["readback_known"] or p["readback"] != p["requested"]))
@@ -994,7 +992,8 @@ class Console:
         successful_steps = 0
         for index, (e, raw) in enumerate(steps):
             deadline = item["stationary_valid_until_us"] if e["write"] else item["deadline_us"]
-            good = e["event"] == 0 and e["qualified"] and (e["response_confirmed"] or (stored and echo_policy and e["write"])) and e["latest_us"] <= deadline and e["status"] == "OK"
+            good = e["event"] == 0 and e["qualified"] and ((e["response_confirmed"] and
+                not (e["write"] and e["execution_unknown"])) or (stored and echo_policy and e["write"])) and e["latest_us"] <= deadline and e["status"] == "OK"
             if good and item["driver_kind"] == "update" and not e["write"]:
                 p = next(p for p in fields.values() if p["register"] == e["register"])
                 good = int.from_bytes(raw[3:5], "big") == p["requested"]
@@ -1088,7 +1087,7 @@ class Console:
                 expected_outcome = "deadline"
             elif e["status"] != "OK":
                 expected_outcome = "reply_error"
-            elif not e["response_confirmed"] and not (stored and echo_policy and e["write"]):
+            elif (not e["response_confirmed"] or (e["write"] and e["execution_unknown"])) and not (stored and echo_policy and e["write"]):
                 expected_outcome = "unconfirmed_response"
             elif item["driver_kind"] == "update" and not e["write"] and any(
                     p["register"] == e["register"] and p["requested"] != int.from_bytes(raw[3:5], "big")
@@ -1115,7 +1114,8 @@ class Console:
         if item["outcome"] == "unconfirmed_response":
             require(item["status"] == "ILLEGAL_VALUE" and item["detail"] == 17 and steps and
                     steps[-1][0]["event"] == 0 and steps[-1][0]["status"] == "OK" and
-                    steps[-1][0]["qualified"] and not steps[-1][0]["response_confirmed"] and
+                    steps[-1][0]["qualified"] and (not steps[-1][0]["response_confirmed"] or
+                        (steps[-1][0]["write"] and steps[-1][0]["execution_unknown"])) and
                     steps[-1][0]["latest_us"] <= (item["stationary_valid_until_us"] if steps[-1][0]["write"] else item["deadline_us"]), "unconfirmed failure lacks ambiguous response")
         if item["outcome"] == "deadline":
             require(item["status"] == "ILLEGAL_VALUE" and item["detail"] == 13 and steps, "deadline result is invalid")
@@ -1953,6 +1953,24 @@ class Console:
             raise BenchError("useaddr reply claims a bus operation or different target")
 
     @staticmethod
+    def _check_position_clear_qualification(item: dict) -> None:
+        """Inspect supplied facts without granting qualification or issuing traffic."""
+        if not item["ok"]:
+            if item.get("error") not in ADMISSION_FAILURES:
+                raise BenchError("invalid qualification inspection refusal")
+            return
+        flags = ("present", "valid", "semantics_qualified")
+        fields = ("target", "address", "generation", "configuration_generation")
+        if (any(type(item.get(key)) is not bool for key in flags) or
+                any(type(item.get(key)) is not int or not 0 <= item[key] <= (247 if key == "address" else 0xFFFFFFFF)
+                    for key in fields) or
+                (item["present"] and not all(item[key] > 0 for key in fields)) or
+                (not item["present"] and (any(item[key] for key in fields) or item["semantics_qualified"])) or
+                (item["valid"] and not (item["present"] and item["semantics_qualified"])) or
+                any(key in item for key in ("operation_id", "command_id", "tx_hex", "rx_hex"))):
+            raise BenchError("position-clear qualification inspection is inconsistent")
+
+    @staticmethod
     def _check_qualification(item: dict) -> None:
         """A local statement: accepted, or refused naming the fact or read it lacks."""
         result, fact, read = item.get("result"), item.get("fact"), item.get("read_first")
@@ -2387,6 +2405,8 @@ class Console:
             self._check_group_view(handle, item)
         if handle.command in QUALIFICATION_ROUTES:
             self._check_qualification(item)
+        if handle.command == "position-clear-qualification":
+            self._check_position_clear_qualification(item)
         if handle.command == "profile-list" and item["ok"]:
             expected = dict(manufacturer="stepperonline", manufacturer_name="STEPPERONLINE", profile="ess_rs", name="ESS-RS",
                             probe=True, identity=True, nonchanging=True, exact_model=False, firmware=False,
@@ -2913,6 +2933,7 @@ class Console:
             if command == "home-read": wire_command = "home read"
             if command == "motion-profile-start-speed": wire_command = "motion-profile start-speed"
             if command in QUALIFICATION_ROUTES: wire_command = QUALIFICATION_ROUTES[command]
+            if command == "position-clear-qualification": wire_command = "position-clear qualification"
             if command == "home-auxiliary": wire_command = "home auxiliary"
             if command == "position-interrupt": wire_command = "position interrupt"
             if command == "profile-list": wire_command = "profile list"

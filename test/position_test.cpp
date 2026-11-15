@@ -868,7 +868,30 @@ void testOperatingLimitsCommonParity() {
     // Native displacement still needs no host origin, gear or travel scale.
     assert(!axis().originKnown && !axis().units.commandStepsPerMotorTurn.numerator);
 }
+// Closure qualifies write evidence; delayed delivery only limits later work.
+static void testWriteClosureBoundaries() {
+    for (bool triggering : {false, true}) for (int offset : {-1, 0, 1})
+        for (uint8_t code : {0, 3, 5}) {
+        auto c = move(); if (triggering) consume(c);
+        Ess::PreparedMove work; assert(Ess::nextMove(c, c.servicedUs, work));
+        const uint64_t closure = work.deadlineUs + offset;
+        auto bytes = reply(c);
+        if (code) { bytes = {1, static_cast<uint8_t>(triggering ? 0x86 : 0x90), code}; crc(bytes); }
+        auto e = frame(c, bytes, closure - 10);
+        const uint64_t delivered = work.deadlineUs + 50;
+        assert(Ess::advanceMove(c, e, delivered));
+        const auto expected = offset > 0 || code == 5 ? ActionExecution::UNKNOWN :
+            code ? ActionExecution::REJECTED : ActionExecution::ACKNOWLEDGED;
+        assert((triggering ? c.execution : c.setupExecution) == expected);
+        const auto& kept = triggering ? c.triggerEvidence : c.stagingEvidence;
+        checkActionTransportEvidence(kept, e, e.transport.step, delivered);
+        assert(kept.status.code == (code ? Err::EXCEPTION : Err::OK));
+        assert(kept.length == bytes.size() && !std::memcmp(kept.raw, bytes.data(), bytes.size()));
+        if (offset > 0) assert(c.outcome == ActionOutcome::DEADLINE);
+    }
+}
 int main() {
+    testWriteClosureBoundaries();
     testRunningPollInterval();
     testRunningCompletionReportsEndpointMismatch(); testWriteReplyClassification(); testRelativeMoveChecksConsumedReference();
     testOperatingLimitsCommonParity();

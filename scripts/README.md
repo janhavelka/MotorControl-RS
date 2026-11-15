@@ -90,8 +90,15 @@ The stop target supplies the address. Firmware still checks the retained stop
 evidence and admission guards. This is an explicit action, never automatic
 cleanup after a failed stop. Ordinary `motor-release` is unchanged.
 
-## Reference preparation
+Write validators check retained bytes independently of execution classification.
+Late closure or supplied uncertainty stays UNKNOWN; malformed frames cannot
+claim codec success. The same rules apply to live and retained results.
+`Console.command("position-clear-qualification")` passively inspects the supplied
+fact's exact target/configuration binding. No installation or motor traffic follows.
+Home may report observed status/zero with an UNKNOWN trigger; the host preserves
+that failed result and never promotes it to a reference or successful home.
 
+## Reference preparation
 `prepare_references.py` downloads the nine references listed in the source
 inventory, validates their formats, extracts searchable PDF text, and writes
 `docs/reference/sources.json` with SHA-256 checksums.

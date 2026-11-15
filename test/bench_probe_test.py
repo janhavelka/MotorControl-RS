@@ -1810,11 +1810,17 @@ class Framing(unittest.TestCase):
         empty = dict(t["stop_failure_evidence"])
         t["activity_evidence"] = dict(empty); t["stop_write_evidence"] = dict(empty); t["stop_observation"] = dict(empty)
         t["last_observation"] = {key: empty[key] for key in ("step", "raw_hex", "earliest_us", "latest_us", "delivered_us")}
-        t["trigger_evidence"].update(earliest_us=501001, latest_us=501050, delivered_us=501100,
-                                     status="ILLEGAL_VALUE", detail=19)
+        # The codec still checked the echo; only the operation missed its budget.
+        t["trigger_evidence"].update(earliest_us=501001, latest_us=501050, delivered_us=501100)
         t["failure_evidence"] = dict(t["trigger_evidence"])
         t["stop_failure_evidence"].update(event=3, delivered_us=1000100, status="ILLEGAL_VALUE", detail=19)
         bench.Console._check_velocity(t, 1, self.VELOCITY_ARGS)
+        forged = copy.deepcopy(t)
+        raw = bytearray.fromhex(forged["trigger_evidence"]["raw_hex"]); raw[-1] ^= 1
+        forged["trigger_evidence"]["raw_hex"] = raw.hex()
+        forged["failure_evidence"] = dict(forged["trigger_evidence"])
+        with self.assertRaisesRegex(bench.BenchError, "codec result"):
+            bench.Console._check_velocity(forged, 1, self.VELOCITY_ARGS)
         t["needs_stop"] = False
         with self.assertRaisesRegex(bench.BenchError, "stop obligation"):
             bench.Console._check_velocity(t, 1, self.VELOCITY_ARGS)
@@ -1923,16 +1929,111 @@ class Framing(unittest.TestCase):
         with self.assertRaisesRegex(bench.BenchError, "failure lacks terminal evidence"):
             bench.Console._check_velocity(terminal, 1, self.VELOCITY_ARGS)
 
-    def test_velocity_late_start_ack_is_known_execution_with_failed_duration(self):
+    def test_velocity_late_start_reply_keeps_unknown_execution(self):
         t = velocity_terminal(2)
         t.update(ok=False, state="failed", outcome="deadline", status="ILLEGAL_VALUE", detail=19,
-                 uncertain=True, running_observed=False, observation_known=False, raw_alarm=None, raw_motion=None)
+                 execution="unknown", uncertain=True, running_observed=False, observation_known=False, raw_alarm=None, raw_motion=None)
         t["trigger_evidence"].update(earliest_us=501001, latest_us=501050, delivered_us=501100)
         t["failure_evidence"] = dict(t["trigger_evidence"])
         t["activity_evidence"] = dict(t["stop_failure_evidence"])
         t["last_observation"] = {key: t["stop_failure_evidence"][key] for key in ("step", "raw_hex", "earliest_us", "latest_us", "delivered_us")}
         t["stop_write_evidence"].update(earliest_us=501200, latest_us=501250, delivered_us=501300)
         bench.Console._check_velocity(t, 1, self.VELOCITY_ARGS)
+        t["execution"] = "acknowledged"
+        with self.assertRaises(bench.BenchError): bench.Console._check_velocity(t, 1, self.VELOCITY_ARGS)
+
+    def test_late_write_preserves_checked_codec_independently_of_execution(self):
+        action = action_terminal(2, "enable")
+        empty = copy.deepcopy(action["failure_evidence"])
+        action.update(ok=False, state="failed", outcome="deadline", status="ILLEGAL_VALUE", detail=11,
+                      execution="unknown", completion="not_observed", observation_known=False,
+                      raw_alarm=None, raw_motion=None, polls=0, serviced_us=10100)
+        action["write_evidence"].update(earliest_us=10001, latest_us=10050, delivered_us=10100)
+        action["last_observation"] = empty
+        action["failure_evidence"] = dict(action["write_evidence"])
+        bench.Console._check_action(action, "enable", 1, None)
+        home = home_terminal(2); empty_home = list(home["failure_evidence"])
+        home.update(ok=False, state="failed", outcome="deadline", status="ILLEGAL_VALUE", detail=20,
+                    execution="unknown", completion="not_observed", uncertain=True, observation_known=False,
+                    raw_alarm=0, raw_motion=0, polls=0, phase=1, deadline_us=1250, serviced_us=1260,
+                    completion_observed_us=0)
+        home["trigger_evidence"][9:12] = [1241, 1251, 1260]
+        for name in ("activity_evidence", "last_observation", "completion_evidence", "zero_evidence"):
+            home[name] = list(empty_home)
+        home["failure_evidence"] = list(home["trigger_evidence"])
+        bench.Console._check_home(home, 1, None)
+        for item, name, check in (
+                (action, "write_evidence", lambda t: bench.Console._check_action(t, "enable", 1, None)),
+                (home, "trigger_evidence", lambda t: bench.Console._check_home(t, 1, None))):
+            key = "raw_hex" if name == "write_evidence" else 2
+            for fault in ("crc", "echo"):
+                forged = copy.deepcopy(item)
+                raw = bytearray.fromhex(forged[name][key])
+                if fault == "crc": raw[-1] ^= 1
+                else:
+                    raw[5] ^= 1
+                    raw[-2:] = bench.wire_crc(raw[:-2]).to_bytes(2, "little")
+                forged[name][key] = raw.hex()
+                forged["failure_evidence"] = copy.deepcopy(forged[name])
+                with self.assertRaisesRegex(bench.BenchError, "codec result"):
+                    check(forged)
+
+    def test_supplied_write_uncertainty_survives_checked_echo_and_observation(self):
+        for item, check in (
+                (action_terminal(2, "enable"), lambda t: bench.Console._check_action(t, "enable", 1, None)),
+                (move_terminal(2), lambda t: bench.Console._check_move(t, 1, self.MOVE_ARGS))):
+            evidence = "write_evidence" if "action_kind" in item and item["action_kind"] else "trigger_evidence"
+            item[evidence]["execution_unknown"] = True
+            with self.assertRaises(bench.BenchError): check(item)
+            item["execution"] = "unknown"
+            check(item)
+        # Ordinary settings cannot use the stored-settings echo/readback policy.
+        item = driver_terminal(2, True)
+        item.update(ok=False, state="failed", outcome="unconfirmed_response", status="ILLEGAL_VALUE", detail=17,
+                    uncertain=True, completed_steps=0, serviced_us=1120)
+        item["evidence"] = item["evidence"][:1]
+        item["evidence"][0][11] = True
+        item["progress"][0][4:7] = [False, False, 0]
+        item["progress"][0][-1] = "unknown"
+        bench.Console._check_driver(item, 1, None)
+        item["progress"][0][4] = True; item["progress"][0][-1] = "acknowledged"
+        with self.assertRaises(bench.BenchError): bench.Console._check_driver(item, 1, None)
+
+    def test_unknown_home_can_report_observation_without_success(self):
+        def uncertain(t):
+            t.update(ok=False, state="failed", outcome="unconfirmed_response", status="ILLEGAL_VALUE", detail=24,
+                     execution="unknown", uncertain=True)
+            t["trigger_evidence"][6] = False
+            t["failure_evidence"] = copy.deepcopy(t["trigger_evidence"])
+        console = self.session(HomeSerial(uncertain))
+        handle = console.begin("home", home_args=("35", "60", "30", "100", "zero"), timeout_s=.1)
+        terminal = console.wait(handle)
+        self.assertEqual(terminal["completion"], "observed")
+        self.assertFalse(terminal["ok"])
+        inspected = console.command("result", operation_id=terminal["operation_id"], timeout_s=.1)
+        self.assertEqual(inspected["failure_evidence"], terminal["trigger_evidence"])
+        for change in (lambda t: t.update(uncertain=False), lambda t: t.update(homed_low_observed=False),
+                       lambda t: t["zero_evidence"].__setitem__(6, False),
+                       lambda t: t.update(failure_evidence=copy.deepcopy(t["zero_evidence"]))):
+            forged = copy.deepcopy(terminal); change(forged)
+            with self.assertRaises(bench.BenchError): bench.Console._check_home(forged, 1, None)
+
+    def test_position_clear_qualification_inspection_is_local_and_exact(self):
+        def respond(request_id, command, args):
+            if command != "position-clear": return Serial.normal(request_id, command, args)
+            self.assertEqual((command, args), ("position-clear", ["qualification"]))
+            return encoded(reply(request_id, "position-clear-qualification", present=True, valid=True,
+                target=1, address=1, generation=9, configuration_generation=3, semantics_qualified=True))
+        console = self.session(respond)
+        item = console.command("position-clear-qualification", timeout_s=.1)
+        self.assertTrue(item["valid"])
+        for fields in (dict(generation=0), dict(present=False), dict(semantics_qualified=False),
+                       dict(operation_id=1), dict(address=True)):
+            forged = dict(item, **fields)
+            with self.assertRaises(bench.BenchError): bench.Console._check_position_clear_qualification(forged)
+        empty = dict(item, present=False, valid=False, semantics_qualified=False,
+                     target=0, address=0, generation=0, configuration_generation=0)
+        bench.Console._check_position_clear_qualification(empty)
 
     def test_move_setup_policies_and_checked_partial_writes(self):
         import copy
@@ -2352,11 +2453,11 @@ class Framing(unittest.TestCase):
             ("timing_unqualified", dict(qualified=False, earliest_us=0, latest_us=0), "ILLEGAL_VALUE", 19, "unknown"),
             ("reply_error", dict(raw_hex="010600270009f9c6", status="CRC_ERROR", detail=6, frame_error=6), "CRC_ERROR", 6, "unknown"),
             ("reply_error", dict(raw_hex="018602c3a1", received_length=5, status="EXCEPTION", detail=2, frame_error=10), "EXCEPTION", 2, "rejected"),
-            ("deadline", dict(earliest_us=10000, latest_us=10001, delivered_us=10010), "ILLEGAL_VALUE", 16, "acknowledged"),
+            ("deadline", dict(earliest_us=10000, latest_us=10001, delivered_us=10010), "ILLEGAL_VALUE", 16, "unknown"),
         ):
             t = position_interrupt_terminal(2)
             t["trigger_evidence"].update(changes)
-            t.update(state="failed", outcome=outcome, status=status, detail=detail, execution=execution, uncertain=True,
+            t.update(state="failed", outcome=outcome, status=status, detail=detail, execution=execution, uncertain=execution != "rejected",
                 serviced_us=t["trigger_evidence"]["delivered_us"], failure_evidence=copy.deepcopy(t["trigger_evidence"]))
             cases.append(t)
         for index, terminal in enumerate(cases):
@@ -2385,7 +2486,7 @@ class Framing(unittest.TestCase):
         bad["trigger_evidence"]["latest_us"] += 1
         with self.assertRaises(bench.BenchError): bench.Console._check_position_interrupt(bad, 1, 40)
         t.update(state="failed", outcome="deadline", status="ILLEGAL_VALUE", detail=6,
-                 execution="acknowledged", uncertain=True)
+                 execution="unknown", uncertain=True)
         t["trigger_evidence"]["latest_us"] += 1
         t["failure_evidence"] = copy.deepcopy(t["trigger_evidence"])
         bench.Console._check_position_interrupt(t, 1, 40)
@@ -2521,9 +2622,9 @@ class Framing(unittest.TestCase):
             item.update(ok=False, state="failed", outcome="deadline", status="ILLEGAL_VALUE", detail=6,
                 completion="not_observed", serviced_us=evidence["delivered_us"], polls=0,
                 running_observed=False, observation_known=False, raw_alarm=None, raw_motion=None,
-                execution="acknowledged" if step == 1 and not local else "not_transmitted",
-                setup_execution="not_transmitted" if step == 0 and local else "acknowledged",
-                staging_applied=not (step == 0 and local), uncertain=not (step == 0 and local))
+                execution=("acknowledged" if evidence["latest_us"] <= 900 + age else "unknown") if step == 1 and not local else "not_transmitted",
+                setup_execution=("not_transmitted" if local else "acknowledged" if evidence["latest_us"] <= 900 + age else "unknown") if step == 0 else "acknowledged",
+                staging_applied=step != 0 or (not local and evidence["latest_us"] <= 900 + age), uncertain=not (step == 0 and local))
             item["staging_evidence" if step == 0 else "trigger_evidence"] = evidence
             item["failure_evidence"] = copy.deepcopy(evidence)
             if step == 0: item["trigger_evidence"] = copy.deepcopy(empty)
@@ -2531,11 +2632,19 @@ class Framing(unittest.TestCase):
             item["last_observation"] = empty
             return item
         # Local readiness expiry may precede the overall deadline; late closure
-        # and delayed delivery still preserve known acknowledgements independently.
+        # stays UNKNOWN; only on-time closure retains ACK despite delayed delivery.
         for item in (failure(0, 250, 1150, True), failure(1, 400, 1300, True),
                      failure(0, 250), failure(0, 300), failure(1, 500)):
             with self.subTest(item=item):
                 bench.Console._check_move(item, 1, self.MOVE_ARGS)
+                if item["failure_evidence"]["event"] == 0:
+                    forged = copy.deepcopy(item)
+                    name = "staging_evidence" if forged["failure_evidence"]["step"] == 0 else "trigger_evidence"
+                    raw = bytearray.fromhex(forged[name]["raw_hex"]); raw[-1] ^= 1
+                    forged[name]["raw_hex"] = raw.hex()
+                    forged["failure_evidence"] = dict(forged[name])
+                    with self.assertRaisesRegex(bench.BenchError, "codec result"):
+                        bench.Console._check_move(forged, 1, self.MOVE_ARGS)
         timely = move_terminal(2)
         timely["prerequisites"]["maximum_age_us"] = 1200  # Trigger closure equals cap2100; delivery2150.
         bench.Console._check_move(timely, 1, self.MOVE_ARGS)

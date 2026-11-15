@@ -736,7 +736,35 @@ static void testOptionalAgePolicy() {
     assert(c.state == ReadState::FAILED && c.outcome == Ess::DriverOutcome::DEADLINE);
     assert(work(c).kind == Ess::ActionWork::DONE && !work(c).length);
 }
+static void testWriteClosureBoundaries() {
+    for (int offset : {-1, 0, 1}) for (uint8_t code : {0, 1, 2, 3, 4, 5, 6, 7}) {
+        auto c = update(1, 300); const auto w = work(c);
+        std::vector<uint8_t> bytes(w.bytes, w.bytes + w.length);
+        if (code) { bytes = {1, 0x86, code}; crc(bytes); }
+        const auto e = frame(c, bytes.data(), bytes.size(), w.deadlineUs - 1 + offset);
+        assert(Ess::advanceDriver(c, e, w.deadlineUs + 50));
+        const auto expected = offset > 0 || code == 5 ? ActionExecution::UNKNOWN :
+            code ? ActionExecution::REJECTED : ActionExecution::ACKNOWLEDGED;
+        assert(c.progress[0].execution == expected && c.effects == 1);
+        assert(c.progress[0].acknowledged == (expected == ActionExecution::ACKNOWLEDGED));
+        const auto& kept = c.observations[0];
+        assert(kept.latestUs == w.deadlineUs + offset && kept.deliveredUs == w.deadlineUs + 50);
+        assert(kept.status.code == (code ? Err::EXCEPTION : Err::OK));
+        assert(kept.length == bytes.size() && !std::memcmp(kept.raw, bytes.data(), bytes.size()));
+        assert(c.state == ReadState::FAILED && work(c).kind == Ess::ActionWork::DONE);
+    }
+    for (unsigned kind = 0; kind < 3; ++kind) {
+        auto c = kind == 0 ? update() : kind == 1 ? positionStartUpdate() : auxiliaryUpdate();
+        const auto w = work(c);
+        auto e = frame(c, w.bytes, w.length, 220); e.transport.executionUnknown = true;
+        assert(Ess::advanceDriver(c, e, 222));
+        assert(c.progress[0].execution == ActionExecution::UNKNOWN && !c.progress[0].acknowledged && c.uncertain);
+        assert(c.outcome == Ess::DriverOutcome::UNCONFIRMED_RESPONSE && c.state == ReadState::FAILED);
+        assert(work(c).kind == Ess::ActionWork::DONE && c.observations[0].executionUnknown);
+    }
+}
 int main() {
+    testWriteClosureBoundaries();
     testOptionalAgePolicy();
     testAdmissionPrecedenceAndAliasing();
     testReadAndPairOrder(); testWholeCandidateAndPrerequisites(); testLimitDependencies();

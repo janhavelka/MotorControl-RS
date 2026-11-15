@@ -945,6 +945,68 @@ void oldFlagsAndPartialSetup() {
     assert(!app->coordinateReference.nativeKnown && view(id).homeContext->uncertain && axisReserved(*app,1));
     const auto unexpected = sentCount(); pump(); assert(sentCount() == unexpected);
 }
+uint32_t unconfirmedHome(int method, bool console = false) {
+    uint32_t id = 0;
+    if (console) {
+        command("@860 home " + std::to_string(method) + " 60 30 100 zero\n");
+        id = app->latestOperationId;
+    } else id = admit(method);
+    reply(id);
+    // Simulated topology cannot establish whether an FC06 echo is the drive.
+    // The real owner still validates and settles the complete transaction.
+    writeResponseConfirmed = false; reply(id); writeResponseConfirmed = true;
+    const auto current = console ? *view(id).homeContext : copiedHome(id);
+    assert(view(id).pending && current.execution == ActionExecution::UNKNOWN &&
+        current.phase == ESS::HomePhase::OBSERVING && sentCount() == 2);
+    assert(!app->owner.needsRecovery() && !app->coordinateReference.nativeKnown);
+    return id;
+}
+void unconfirmedHomeObservation(bool emit = false) {
+    for (const int method : {33,34,35}) for (const bool console : {false,true}) {
+        fresh(); qualify(false,method); const auto id = unconfirmedHome(method,console);
+        const auto trigger = view(id).homeContext->triggerEvidence;
+        if (method != 35) reply(id,observed(4));
+        reply(id,observed(3)); reply(id,words(0,0));
+        const auto result = console ? *view(id).homeContext : copiedHome(id);
+        assert(!view(id).pending && result.state == ActionState::FAILED && result.uncertain &&
+            result.outcome == ActionOutcome::UNCONFIRMED_RESPONSE && result.execution == ActionExecution::UNKNOWN &&
+            result.completion == ActionCompletion::OBSERVED && !app->coordinateReference.nativeKnown && axisReserved(*app,1));
+        assert(!std::memcmp(&trigger,&result.triggerEvidence,sizeof(trigger)) &&
+            !std::memcmp(&trigger,&result.failureEvidence,sizeof(trigger)));
+        assert(sentCount() == (method == 35 ? 4U : 5U));
+        const auto sent = sentCount(); pump(); assert(sentCount() == sent);
+        if (emit) emitRetainedResult(id);
+    }
+    if (emit) return;
+    for (unsigned fault = 0; fault < 7; ++fault) {
+        const int method = fault == 1 ? 33 : 35;
+        fresh(); qualify(fault == 0,method); const auto id = unconfirmedHome(method);
+        uint32_t stopping = 0;
+        if (fault < 2) serveUntilTerminal(id,observed(3)); // Stale high / missing RUNNING.
+        else if (fault == 2) reply(id,observed(4)); // Method 35 cannot report motion.
+        else {
+            reply(id,observed(3)); waitTx(id);
+            if (fault == 4) assert(revokeHomeQualification());
+            if (fault == 5) assert(cancel(app,id) == Probe::Action::OK);
+            if (fault == 6) {
+                StopPolicy policy; policy.behavior = StopBehavior::CONFIGURED_DECELERATION;
+                assert(submitStop(1,policy,stopping));
+            }
+            reply(id,words(0,fault == 3 ? 1 : 0)); pump();
+        }
+        const auto result = copiedHome(id);
+        assert(!view(id).pending && result.state == ActionState::FAILED && result.uncertain &&
+            result.execution == ActionExecution::UNKNOWN && result.completion == ActionCompletion::NOT_OBSERVED &&
+            !app->coordinateReference.nativeKnown && result.failureEvidence.step >= 2);
+        if (fault >= 4) assert(result.outcome == ActionOutcome::CANCELLED);
+        if (fault == 4 || fault == 6) assert(result.qualificationRevoked && result.zeroEvidence.length == 9);
+        if (stopping) {
+            reply(stopping); reply(stopping,words(0,1));
+            assert(!view(stopping).pending && copiedHome(id).uncertain);
+        }
+        const auto sent = sentCount(); pump(); assert(sentCount() == sent);
+    }
+}
 void stopAtBoundariesAndUnsentExpiry() {
     // Pending, staging in flight, staged, trigger in flight, observing,
     // final-zero pending and final-zero in flight all share urgent-stop policy.
@@ -1404,6 +1466,7 @@ void emitConsoleResults() {
 }
 }
 int main(int argc, char** argv) {
+    if (argc == 2 && !std::strcmp(argv[1],"--emit-uncertain-home-results")) { unconfirmedHomeObservation(true); return 0; }
     if (argc == 2 && !std::strcmp(argv[1],"--emit-console-results")) { emitConsoleResults(); return 0; }
     if (argc == 2 && !std::strcmp(argv[1],"--emit-qualification-replies")) { emitQualificationReplies(); return 0; }
     if (argc == 2 && !std::strcmp(argv[1],"--emit-integration-results")) {
@@ -1421,7 +1484,7 @@ int main(int argc, char** argv) {
     parameterReadApplicationPath(); parameterReadQualificationAndHistory(); parameterReadConsoleFailureAndCapacity(); parameterReadHumanTerminal();
     settingsAndDelayedParameterReads();
     lostSettingAckAcrossRecoveryAndNewAdmission(); oldReadAfterRebind();
-    productionAndFixtureGates(); completeAndInvalidateReference(); oldFlagsAndPartialSetup();
+    productionAndFixtureGates(); completeAndInvalidateReference(); oldFlagsAndPartialSetup(); unconfirmedHomeObservation();
     stopAtBoundariesAndUnsentExpiry(); orderedSharedMotionCachePreservesNewHomeReference();
     feedbackAfterHomeUsesTheNewZeroWitness();
 }

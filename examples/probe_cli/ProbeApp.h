@@ -4,6 +4,7 @@
 #include "../common/RtuBusOwner.h"
 #include "MoveRelation.h"
 #include "DriveGroup.h"
+#include "QualificationConsole.h"
 #include <MotorControlRS/profiles/ess_rs/Position.h>
 #include <MotorControlRS/profiles/ess_rs/Reads.h>
 #include <MotorControlRS/profiles/ess_rs/Velocity.h>
@@ -216,16 +217,23 @@ MotorControlRS::Status revokeHomeQualification();
 MotorControlRS::Status installVelocityQualification(const MotorControlRS::ESS_RS::VelocityPrerequisites&);
 /// Clear future velocity admission. An admitted run keeps its snapshot and its stop.
 MotorControlRS::Status revokeVelocityQualification();
-/** State that the zero-only position clear's semantics are qualified for this
- * axis. Call from the service task while idle; no traffic or motion occurs.
- * Each clear still needs fresh stopped, enabled, alarm-free state. */
+/** State that zero-only clear semantics are qualified for the current exact
+ * target, binding and configuration generation. Call from the service task while
+ * idle. No traffic occurs; each clear still needs fresh stopped, enabled,
+ * alarm-free state. Recovery, rebind and configuration changes expire the fact. */
 MotorControlRS::Status installPositionClearQualification();
-/// Clear future position-clear admission; an admitted action keeps its snapshot.
+/** Passive inspection. Absent preserves both outputs; valid checks the current
+ * target/binding/configuration, without claiming current stopped state. */
+bool inspectPositionClearQualification(PositionClearQualification& output, bool& valid);
+/// Revoke future and unsent clears. Transmitted actions settle with copied evidence.
 MotorControlRS::Status revokePositionClearQualification();
 /** Ordinary selected-axis home route. Zero generation selects current config;
  * nonzero is checked. Rejection preserves operationId. Results are retained
  * until releaseOperation; the console uses the same admission/owner path.
- * Returns BUSY without traffic during the 1 s enable settling window. */
+ * Returns BUSY without traffic during the 1 s enable settling window.
+ * Application policy requires checked subdivision and both native rate words
+ * times subdivision / 60 <= 50,000 increments/s. This is a nominal host ceiling,
+ * not physical rate qualification or a vendor limit; values are never clamped. */
 MotorControlRS::Status submitHome(const MotorControlRS::ESS_RS::HomeRequest&, uint32_t& operationId);
 /// Copy pending/terminal programmatic home evidence. Wrong/missing IDs preserve output.
 bool copyHomeResult(uint32_t operationId, MotorControlRS::ESS_RS::HomeContext& output);

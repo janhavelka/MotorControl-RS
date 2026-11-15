@@ -4,6 +4,18 @@
 
 ### Added
 
+- Write acknowledgement now uses the same inclusive closure deadline in all
+  seven ESS engines. Late replies and supplied execution uncertainty stay UNKNOWN.
+  Checked rejected writes preserve evidence without inventing changed settings or
+  a new move conflict when no setup was sent.
+- Position-clear qualification binds the exact target and configuration, with
+  passive API/console inspection and cancellation of revoked unsent clears.
+  Active origin alone permits ordinary moves. Reference readiness and home-rate
+  refusals are named; standalone home uses a nominal 50,000 increments/s ceiling.
+- Ambiguous valid home-trigger echoes permit bounded status/zero observation.
+  Observed completion cannot change UNKNOWN execution or publish a reference.
+  Console and host validation retain the same evidence and failure precedence.
+
 - Separate velocity poll dispatch/settlement deadlines and a guarded
   `rebindVelocityStop` continuation. Explicit and velocity-owned stops with
   zero accepted bytes can use one bounded recovery; original failures and

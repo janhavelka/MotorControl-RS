@@ -126,7 +126,7 @@ void serviceMotionProfile(App& a, App::MotionProfileState& session, uint64_t now
         a.simpleEndpointKnown = false;
         view.generation = a.axis.generation;
         a.movePrerequisites = ESS::MovePrerequisites(); a.velocityPrerequisites = ESS::VelocityPrerequisites();
-        a.homePrerequisites = ESS::HomePrerequisites(); a.positionClearQualified = false;
+        a.homePrerequisites = ESS::HomePrerequisites(); a.positionClearQualification = PositionClearQualification();
         invalidateMemberConfiguration(a, view.address, now); // The same drive as a group member.
     }
     const auto* result = a.owner.result(session.request);

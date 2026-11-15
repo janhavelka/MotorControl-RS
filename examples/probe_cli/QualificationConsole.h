@@ -6,7 +6,14 @@
 #include "HomeConsoleParser.h"
 #include <cstring>
 
-namespace MotorControlRSExample { namespace Probe {
+namespace MotorControlRSExample {
+/** Supplied clear semantics for one exact application binding/configuration. */
+struct PositionClearQualification {
+    MotorControlRS::ReadTarget target;
+    uint32_t configurationGeneration = 0;
+    bool semanticsQualified = false;
+};
+namespace Probe {
 
 enum class QualificationRoute : uint8_t { HOME, VELOCITY, POSITION_CLEAR, START_SPEED_RELATION };
 

@@ -286,10 +286,10 @@ Status advanceVelocity(VelocityContext& c, const ActionEvent& supplied, uint64_t
     else if (event.kind == ReadEventKind::DEADLINE) evidence.status = expiry(c);
     else evidence.status = failed(VelocityError::TRANSPORT_FAILURE, "velocity transport failed");
     if (c.phase == VelocityPhase::STAGING) {
-        c.stagingEvidence = evidence; c.setupExecution = Detail::classifyWrite(evidence);
+        c.stagingEvidence = evidence; c.setupExecution = Detail::classifyWrite(evidence, event.latestUs <= stepDeadline(c));
         c.stagingApplied = c.setupExecution == ActionExecution::ACKNOWLEDGED;
     } else if (c.phase == VelocityPhase::TRIGGER) {
-        c.triggerEvidence = evidence; c.execution = Detail::classifyWrite(evidence);
+        c.triggerEvidence = evidence; c.execution = Detail::classifyWrite(evidence, event.latestUs <= stepDeadline(c));
         c.needsStop = c.execution == ActionExecution::ACKNOWLEDGED || c.execution == ActionExecution::UNKNOWN;
     }
     c.servicedUs = now;
@@ -302,9 +302,9 @@ Status advanceVelocity(VelocityContext& c, const ActionEvent& supplied, uint64_t
     else if (event.kind == ReadEventKind::TRANSPORT_FAILURE) failStep(c, ActionOutcome::TRANSPORT_ERROR, evidence.status, evidence, now);
     else if (!event.qualified) failStep(c, ActionOutcome::TIMING_UNQUALIFIED,
         failed(VelocityError::TIMING_UNQUALIFIED, "velocity closure timing is unqualified"), evidence, now);
-    // A write closing late has failed its budget. An observation closing after
-    // stopDueUs merely ended the budget: its checked words still decide below.
-    else if (c.phase != VelocityPhase::OBSERVING && event.latestUs > stepDeadline(c))
+    // An admitted poll may settle after stopDueUs, within the overall deadline.
+    // Writes keep their tighter duration/readiness deadline.
+    else if (event.latestUs > (c.phase == VelocityPhase::OBSERVING ? c.deadlineUs : stepDeadline(c)))
         failStep(c, ActionOutcome::DEADLINE, expiry(c), evidence, now);
     else if (!evidence.status) failStep(c, ActionOutcome::REPLY_ERROR, evidence.status, evidence, now);
     else if (!supplied.responseConfirmed || (c.phase != VelocityPhase::OBSERVING && event.executionUnknown))

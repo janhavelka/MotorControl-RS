@@ -1,8 +1,8 @@
 # Standalone ESS completion and qualification
 
 Prepared 2026-10-23; status reviewed 2026-11-15. **Stages 01 and 15 are COMPLETE.
-Stages 02, 03, 05, 07, 11 and 14 are PARTIAL. Stages 04, 06, 08-10, 12, 13
-and 16-17 are NOT STARTED.**
+Stages 02, 03, 05, 07, 11, 14 and 16 are PARTIAL. Stages 04, 06, 08-10, 12, 13
+and 17 are NOT STARTED.**
 Stage 01's parameter reads are complete. The corrections and owner decisions of
 the [2 November code and promptset audit](../../reports/2026-11-02_standalone_promptset_audit.md)
 are applied here. That audit also lists stop-path and homing defects; check them
@@ -64,7 +64,7 @@ keeps those distinctions. Use the audit's Current owner column; Next stage is hi
 | 13 | [Coverage and release-scope reconciliation](13_closeout.md) | Every other stage has an explicit disposition, with rows for the N05 remainder and stage 14 | NOT STARTED |
 | 14 | [Delivered-software bench regression](14_bench_regression.md) | Recorded bench USB device present; no analyzer | PARTIAL: [routes pass, one persistent RUNNING failure unresolved](../../reports/2026-11-02_standalone_14_bench_regression.md) |
 | 15 | [Stop, recovery and result handling](../../reports/2026-11-15_standalone_15_stop_recovery.md) | Owner decision D1; original instructions [archived](../../archive/prompts/standalone/15_stop_recovery.md) | COMPLETE (software): 15a/15b/15c, 94 suites, package/Doxygen checks and exact-commit GCC/Clang/Arduino/IDF CI passed. New hardware checks NOT RUN. |
-| 16 | [Evidence and qualification corrections](16_evidence_qualification.md) | Independent audit verdicts; source and current qualification contracts | NOT STARTED |
+| 16 | [Evidence and qualification corrections](16_evidence_qualification.md) | Independent audit verdicts; source and current qualification contracts | PARTIAL: implementation, independent review and fresh 94-suite verification pass; exact-commit CI pending. [Record](../../reports/2026-11-15_standalone_16_evidence_qualification.md). |
 | 17 | [Measured application cleanup](17_application_cleanup.md) | Affected behavior characterized; 15/16 corrections first | NOT STARTED |
 
 This table is the single status record. Statuses are NOT STARTED, PARTIAL,

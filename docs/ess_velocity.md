@@ -45,6 +45,13 @@ transaction is admitted. Applications process captured completion first,
 retain checked on-time closure even under delayed delivery, and settle physical
 TX before changing phase/correlation. Wrong event bindings leave context intact.
 
+Staging and trigger acknowledgement require qualified closure within their
+original write deadline. Late closure stays UNKNOWN; late delivery of on-time
+closure preserves acknowledgement. JSON `write_deadline_us` records the earlier
+readiness/run cutoff, separately from `deadline_us` for the owned stop.
+An observation dispatched before `stop_due_us` may settle after it within the
+original operation budget; that read does not extend the run or authorize replay.
+
 The sequence writes the reviewed three-word velocity window, then START_SPEED
 only after checked staging; bounded alarm/motion reads may observe fresh RUNNING.
 The immutable `stopDueUs = admission + duration` includes setup. A wait releases

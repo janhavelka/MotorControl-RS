@@ -63,14 +63,27 @@ def write_rejected(code: int) -> bool:
     return 1 <= code <= 7 and code != 5
 
 
+def write_execution(evidence: dict, deadline: int) -> str:
+    """Classify checked wire evidence; host delivery does not renew its deadline."""
+    if not evidence["tx_accepted"] and not evidence["execution_unknown"]:
+        return "not_transmitted"
+    if (evidence["event"] == 0 and evidence["qualified"] and evidence["response_confirmed"] and
+            not evidence["execution_unknown"] and evidence["latest_us"] <= deadline):
+        if evidence["status"] == "OK":
+            return "acknowledged"
+        if evidence["status"] == "EXCEPTION" and write_rejected(evidence["detail"]):
+            return "rejected"
+    return "unknown"
+
+
 def home_inputs_permit(method: int, required: int, functions, wiring, inputs: int) -> bool:
     """Forbidden logical inputs, independent of which physical branch the drive takes."""
     for i, (function, wire) in enumerate(zip(functions, wiring)):
         active = inputs & (1 << i)
         if function in (2, 3) and active and method != 35 and not required & (1 << (function - 1)):
-            return False  # A limit outside the path contradicts it; an unneeded origin does not.
+            return False  # Host policy rejects an unneeded active limit, but not origin.
         if 4 <= function <= 6 and active:
-            return False  # Release, stop and emergency stop interrupt any method.
+            return False  # Host policy rejects active release/stop inputs.
         if 7 <= function <= 13 and (active or wire != 1):
             return False  # A motion trigger must be declared undriven.
     return True
@@ -764,11 +777,17 @@ def check_action(item: dict, command: str, address: int | None, policy: str | No
         evidence[name] = (entry, raw)
     write, raw = evidence["write_evidence"]
     require(write["step"] == 0 and not empty(write), "write token or evidence is inconsistent")
+    require(item["execution"] == write_execution(write, item["deadline_us"]),
+            "execution differs from checked write closure")
     reg, value = {"enable": (0x2D, 0x12), "motor-release": (0x2D, 0x11),
                   "alarm-clear": (0x2D, 0x21), "position-clear": (0x2D, 0x31),
                   "stop": (0x27, 0x100 if policy == "normal" else 0x200)}[command]
+    if write["event"] == 0:
+        require((write["status"], write["detail"], write["frame_error"]) ==
+                _reply_status(raw, write["received_length"], item["address"], 6, 8, (reg, value)),
+                "write codec result differs from retained frame")
     unconfirmed_write = (item["execution"] == "unknown" and
-        write["event"] == 0 and write["qualified"] and not write["response_confirmed"] and
+        write["event"] == 0 and write["qualified"] and (not write["response_confirmed"] or write["execution_unknown"]) and
         write["tx_complete"] and write["tx_accepted"] == 8 and write["status"] == "OK" and
         len(raw) == 8 and raw[:6] == bytes((item["address"], 6, reg >> 8, reg & 255, value >> 8, value & 255)) and
         wire_crc(raw) == 0 and write["latest_us"] <= item["deadline_us"])
@@ -791,9 +810,6 @@ def check_action(item: dict, command: str, address: int | None, policy: str | No
         require(write["tx_accepted"] == 0 and not write["execution_unknown"], "non-transmission contradicts TX evidence")
     else:
         require(write["tx_accepted"] > 0 or write["execution_unknown"], "unknown execution lacks transmission uncertainty")
-        require(not (write["qualified"] and write["response_confirmed"]
-                     and (write["status"] == "OK" or (write["status"] == "EXCEPTION" and write_rejected(write["detail"])))),
-                "unknown execution contradicts a checked acknowledgement or documented rejection")
     if item["observation_known"]:
         obs, raw = evidence["last_observation"]
         require(observable_write and item["polls"] >= 1
@@ -982,14 +998,7 @@ def check_position_interrupt(item: dict, address: int | None, original_id: int |
     trigger, trigger_empty = evidence["trigger_evidence"]
     failure, failure_empty = evidence["failure_evidence"]
     require(not trigger_empty and trigger["delivered_us"] == item["serviced_us"], "trigger lacks final event evidence")
-    if trigger["tx_accepted"] == 0 and not trigger["execution_unknown"]:
-        execution = "not_transmitted"
-    elif trigger["event"] == 0 and trigger["qualified"] and trigger["response_confirmed"] and trigger["status"] == "OK":
-        execution = "acknowledged"
-    elif trigger["event"] == 0 and trigger["qualified"] and trigger["response_confirmed"] and trigger["status"] == "EXCEPTION" and write_rejected(trigger["detail"]):
-        execution = "rejected"
-    else:
-        execution = "unknown"
+    execution = write_execution(trigger, cap)
     require(item.get("execution") == execution, "execution differs from transmission and checked response")
     if trigger["event"] != 0:
         outcome = {1: "transport_error", 2: "cancelled", 3: "deadline"}[trigger["event"]]
@@ -1000,7 +1009,7 @@ def check_position_interrupt(item: dict, address: int | None, original_id: int |
         outcome, status, detail = "deadline", "ILLEGAL_VALUE", 6 if cap < item["deadline_us"] else 16
     elif trigger["status"] != "OK":
         outcome, status, detail = "reply_error", trigger["status"], trigger["detail"]
-    elif not trigger["response_confirmed"]:
+    elif not trigger["response_confirmed"] or trigger["execution_unknown"]:
         outcome, status, detail = "unconfirmed_response", "ILLEGAL_VALUE", 20
     else:
         outcome, status, detail = "acknowledged", "OK", 0
@@ -1009,7 +1018,8 @@ def check_position_interrupt(item: dict, address: int | None, original_id: int |
             item.get("status") == status and type(item.get("detail")) is int and item["detail"] == detail,
             "outcome differs from terminal trigger evidence")
     require((failure_empty if succeeded else failure == trigger), "failure evidence differs from terminal trigger")
-    require(item["uncertain"] == (not succeeded and (trigger["tx_accepted"] > 0 or trigger["execution_unknown"])),
+    require(item["uncertain"] == (not succeeded and execution != "rejected" and
+            (trigger["tx_accepted"] > 0 or trigger["execution_unknown"])),
             "possible effects were discarded or invented")
     require(item["relation"]["observation_superseded"] or
             (outcome in ("cancelled", "deadline") and execution == "not_transmitted"),
@@ -1249,6 +1259,13 @@ def check_move(item: dict, address: int | None, arguments: tuple[str, ...] | Non
     for execution, name in (("setup_execution", "staging_evidence"), ("execution", "trigger_evidence")):
         require(item.get(execution) in ("not_transmitted", "acknowledged", "rejected", "unknown"), execution + " is invalid")
         entry, raw, empty = evidence[name]
+        prefix = stage_prefix if execution == "setup_execution" else (item["address"], 6, 0, 0x27, 0, 1 if kind == "relative" else 5)
+        if not empty and entry["event"] == 0:
+            echo = (prefix[2] * 256 + prefix[3], prefix[4] * 256 + prefix[5])
+            require((entry["status"], entry["detail"], entry["frame_error"]) ==
+                    _reply_status(raw, entry["received_length"], item["address"], prefix[1], 8, echo),
+                    name + " codec result differs from retained frame")
+        require(item[execution] == write_execution(entry, write_deadline), execution + " differs from checked write closure")
         if item[execution] == "acknowledged":
             confirmed(name, stage_prefix if execution == "setup_execution" else (item["address"], 6, 0, 0x27, 0, 1 if kind == "relative" else 5), 8)
         elif item[execution] == "rejected":
@@ -1260,9 +1277,6 @@ def check_move(item: dict, address: int | None, arguments: tuple[str, ...] | Non
             require(entry["tx_accepted"] == 0 and not entry["execution_unknown"], name + " contradicts non-transmission")
         else:
             require(not empty and (entry["tx_accepted"] > 0 or entry["execution_unknown"]), name + " uncertainty lacks TX")
-            require(not (entry["event"] == 0 and entry["qualified"] and entry["response_confirmed"] and
-                (entry["status"] == "OK" or (entry["status"] == "EXCEPTION" and write_rejected(entry["detail"])))),
-                name + " unknown execution contradicts checked acknowledgement/rejection")
     require(item["staging_applied"] == (item["setup_execution"] == "acknowledged"), "staging validity differs")
     stage, trigger = evidence["staging_evidence"][0], evidence["trigger_evidence"][0]
     if setup_count == 0:
@@ -1272,7 +1286,7 @@ def check_move(item: dict, address: int | None, arguments: tuple[str, ...] | Non
                 (not stage["qualified"] or verification["delivered_us"] <= stage["earliest_us"]), "staging precedes verification")
     trigger_raw = evidence["trigger_evidence"][1]
     unconfirmed_trigger = (item["execution"] == "unknown" and
-        trigger["event"] == 0 and trigger["qualified"] and not trigger["response_confirmed"] and
+        trigger["event"] == 0 and trigger["qualified"] and (not trigger["response_confirmed"] or trigger["execution_unknown"]) and
         trigger["tx_complete"] and trigger["tx_accepted"] == 8 and trigger["status"] == "OK" and
         trigger["detail"] == trigger["frame_error"] == 0 and len(trigger_raw) == 8 and
         trigger_raw[:6] == bytes((item["address"], 6, 0, 0x27, 0, 1 if kind == "relative" else 5)) and
@@ -1375,7 +1389,8 @@ def check_move(item: dict, address: int | None, arguments: tuple[str, ...] | Non
             expected = item["outcome"]
         require(item["outcome"] == expected, "failure outcome contradicts terminal evidence")
     require(item["uncertain"] == (not item["ok"] and bool(stage["tx_accepted"] or stage["execution_unknown"] or
-                trigger["tx_accepted"] or trigger["execution_unknown"])), "uncertainty differs from staging/trigger evidence")
+                (item["execution"] != "rejected" and (trigger["tx_accepted"] or trigger["execution_unknown"])))),
+            "uncertainty differs from staging/trigger evidence")
 
 
 def check_velocity(item: dict, address: int | None, arguments: tuple[str, ...] | None) -> None:
@@ -1469,13 +1484,20 @@ def check_velocity(item: dict, address: int | None, arguments: tuple[str, ...] |
             ("execution", "trigger_evidence", (item["address"], 6, 0, 0x27, 0, 2)),
             ("stop_execution", "stop_write_evidence", (item["address"], 6, 0, 0x27, 1 if item["stop_policy"] == "normal" else 2, 0))):
         execution = item.get(field); e, raw, empty = evidence[name]
+        if not empty and e["event"] == 0:
+            echo = (prefix[2] * 256 + prefix[3], prefix[4] * 256 + prefix[5])
+            require((e["status"], e["detail"], e["frame_error"]) ==
+                    _reply_status(raw, e["received_length"], item["address"], prefix[1], 8, echo),
+                    name + " codec result differs from retained frame")
         require(execution in ("not_transmitted", "acknowledged", "rejected", "unknown"), field + " invalid")
+        write_cap = item.get("write_deadline_us", item["stop_due_us"])
+        require(integer(write_cap, item["started_us"] + 1, item["stop_due_us"]), "write deadline is invalid")
+        require(execution == write_execution(e, item["deadline_us"] if field == "stop_execution" else write_cap),
+                field + " differs from checked write closure")
         if execution == "acknowledged": confirmed(name, prefix, 8)
         elif execution == "not_transmitted": require(e["tx_accepted"] == 0 and not e["execution_unknown"], name + " transmission contradiction")
         elif execution == "unknown":
-            require(not empty and (e["tx_accepted"] > 0 or e["execution_unknown"]) and not
-                    (e["event"] == 0 and e["qualified"] and e["response_confirmed"] and
-                     (e["status"] == "OK" or (e["status"] == "EXCEPTION" and write_rejected(e["detail"])))), name + " uncertainty absent or contradicts checked reply")
+            require(not empty and (e["tx_accepted"] > 0 or e["execution_unknown"]), name + " uncertainty lacks transmission")
         else:
             require(not empty and e["qualified"] and e["response_confirmed"] and e["status"] == "EXCEPTION" and e["frame_error"] == 10 and
                     len(raw) == 5 and raw[:2] == bytes((item["address"], prefix[1] | 128)) and write_rejected(raw[2]) and e["detail"] == raw[2] and wire_crc(raw) == 0,
@@ -1497,7 +1519,7 @@ def check_velocity(item: dict, address: int | None, arguments: tuple[str, ...] |
         activity, raw = confirmed("activity_evidence", (item["address"], 3, 4), 9)
         require(item["execution"] == "acknowledged" and raw[3:5] == b"\0\0" and int.from_bytes(raw[5:7], "big") & 4 and
                 not int.from_bytes(raw[5:7], "big") & 0x78 and 2 <= activity["step"] <= item["polls"] + 1 and
-                activity["earliest_us"] > evidence["trigger_evidence"][0]["delivered_us"] and activity["latest_us"] <= item["stop_due_us"], "running report differs")
+                activity["earliest_us"] > evidence["trigger_evidence"][0]["delivered_us"] and activity["latest_us"] <= item["deadline_us"], "running report differs")
     else:
         require(evidence["activity_evidence"][2], "unobserved activity retains a report")
     latest = item.get("last_observation")
@@ -1509,7 +1531,7 @@ def check_velocity(item: dict, address: int | None, arguments: tuple[str, ...] |
         require(len(raw) == 9 and raw[:3] == bytes((item["address"], 3, 4)) and wire_crc(raw) == 0 and
                 item["execution"] == "acknowledged" and item["polls"] >= 1 and latest["step"] == item["polls"] + 1 and
                 latest["earliest_us"] > evidence["trigger_evidence"][0]["delivered_us"] and
-                item["started_us"] <= latest["earliest_us"] <= latest["latest_us"] <= min(latest["delivered_us"], item["stop_due_us"]) and
+                item["started_us"] <= latest["earliest_us"] <= latest["latest_us"] <= min(latest["delivered_us"], item["deadline_us"]) and
                 latest["delivered_us"] <= item["serviced_us"] and item.get("raw_alarm") == int.from_bytes(raw[3:5], "big") and
                 item.get("raw_motion") == int.from_bytes(raw[5:7], "big"), "observation differs")
         if item["running_observed"]:
@@ -1578,7 +1600,8 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
             30 <= words[3] <= 2000 and words[4:] == [0, 0], "staging differs from reviewed zero-offset window")
     if arguments is not None: require(tuple(words[:4]) == home_arguments(arguments), "request differs from command")
     require(type(item.get("ok")) is bool and item.get("state") == ("succeeded" if item["ok"] else "failed") and
-            item.get("completion") == ("observed" if item["ok"] else "not_observed"), "state/completion is inconsistent")
+            item.get("completion") in ("observed", "not_observed") and
+            (not item["ok"] or item["completion"] == "observed"), "state/completion is inconsistent")
     require(item.get("outcome") in ({"observed"} if item["ok"] else
             {"reply_error", "transport_error", "cancelled", "deadline", "timing_unqualified", "unconfirmed_response", "observation_limit"}), "outcome is inconsistent")
     for flag in ("staging_applied", "uncertain", "running_observed", "homed_low_observed", "observation_known", "interrupted_by_stop"):
@@ -1678,9 +1701,15 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
     for name, field, prefix in (("staging_evidence", "setup_execution", bytes((item["address"], 16, 0, 0x31, 0, 6))),
                                 ("trigger_evidence", "execution", bytes((item["address"], 6, 0, 0x27, 0, 16)))):
         e, raw = evidence[name]
+        if e["delivered_us"] and e["event"] == 0:
+            echo = (int.from_bytes(prefix[2:4], "big"), int.from_bytes(prefix[4:6], "big"))
+            require((e["status"], e["detail"], e["frame_error"]) ==
+                    _reply_status(raw, e["received_length"], item["address"], prefix[1], 8, echo),
+                    name + " codec result differs from retained frame")
         require(e["step"] == (0 if name == "staging_evidence" else 1) or not e["delivered_us"], field + " token differs")
         execution = item.get(field)
         require(execution in ("not_transmitted", "acknowledged", "rejected", "unknown"), field + " invalid")
+        require(execution == write_execution(e, write_cap), field + " differs from checked write closure")
         if execution == "acknowledged": require(checked(name, prefix), field + " lacks checked echo")
         elif execution == "not_transmitted": require(not e["tx_accepted"] and not e["execution_unknown"], field + " contradicts TX")
         elif execution == "rejected":
@@ -1702,9 +1731,16 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
     require(item["uncertain"] == (not item["ok"] and any(evidence[n][0]["tx_accepted"] or evidence[n][0]["execution_unknown"] for n in ("staging_evidence", "trigger_evidence"))), "uncertainty differs")
     require(uint(item.get("raw_alarm"), 65535) and uint(item.get("raw_motion"), 65535) and
             isinstance(item.get("raw_position_words"), list) and len(item["raw_position_words"]) == 2 and all(uint(w, 65535) for w in item["raw_position_words"]), "raw outputs invalid")
-    if item["ok"]:
+    if item["completion"] == "observed":
         require(not item["interrupted_by_stop"], "interrupted home cannot complete successfully")
-        require(item["setup_execution"] == item["execution"] == "acknowledged" and item["homed_low_observed"] and item["observation_known"], "completion lacks fresh transition")
+        ambiguous = (item["execution"] == "unknown" and trigger["event"] == 0 and trigger["qualified"] and
+            (not trigger["response_confirmed"] or trigger["execution_unknown"]) and trigger["tx_complete"] and
+            trigger["latest_us"] <= write_cap and trigger["status"] == "OK" and
+            evidence["trigger_evidence"][1][:6] == bytes((item["address"], 6, 0, 0x27, 0, 16)) and
+            len(evidence["trigger_evidence"][1]) == 8 and wire_crc(evidence["trigger_evidence"][1]) == 0)
+        require(not revoked and item["setup_execution"] == "acknowledged" and
+                (item["execution"] == "acknowledged" if item["ok"] else ambiguous) and
+                item["homed_low_observed"] and item["observation_known"], "completion lacks fresh transition")
         comp, raw = evidence["completion_evidence"]
         require(len(raw) == status_length and checked("completion_evidence", raw[:-2]) and raw[:3] == bytes((item["address"], 3, status_bytes)) and
                 raw[3:5] == b"\0\0" and int.from_bytes(raw[5:7], "big") in (2, 3) and
@@ -1734,7 +1770,12 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
                     activity["delivered_us"] < comp["earliest_us"], "index search lacks new running evidence")
         else:
             require(not item["running_observed"] and not evidence["activity_evidence"][0]["delivered_us"], "current-position origin claims motion")
-        require(not evidence["failure_evidence"][0]["delivered_us"] and item["status"] == "OK" and item["detail"] == 0, "success retains failure")
+        if item["ok"]:
+            require(not evidence["failure_evidence"][0]["delivered_us"] and item["status"] == "OK" and item["detail"] == 0, "success retains failure")
+        else:
+            require(item["outcome"] == "unconfirmed_response" and item["status"] == "ILLEGAL_VALUE" and item["detail"] == 24 and
+                    item["failure_evidence"] == item["trigger_evidence"] and item["uncertain"],
+                    "observed status erased unconfirmed trigger failure")
     else:
         failure, raw = evidence["failure_evidence"]
         require(failure["delivered_us"] == item["serviced_us"] and failure["delivered_us"] > 0, "failure lacks terminal evidence")
@@ -1765,7 +1806,8 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
             unqualified = outcome == "timing_unqualified"
             require(item["status"] == "ILLEGAL_VALUE" and item["detail"] == (23 if unqualified else 24) and
                     failure["event"] == 0 and failure["qualified"] == (not unqualified) and
-                    (unqualified or (failure["status"] == "OK" and not failure["response_confirmed"])),
+                    (unqualified or (failure["status"] == "OK" and
+                        (not failure["response_confirmed"] or (failure["step"] < 2 and failure["execution_unknown"])))),
                     "response qualification failure differs from evidence")
         else:
             require(failure["event"] == 0 and failure["qualified"], "reply failure lacks qualified frame")

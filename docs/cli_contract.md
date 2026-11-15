@@ -361,6 +361,19 @@ own home staging consumes the home qualification, so another home needs `read st
 candidate, because staging writes them. Revoking cancels unsent home work
 and never stops the motor.
 
+`position-clear qualification` is passive inspection. Its canonical reply is
+`position-clear-qualification`, with `present`, `valid`, `target`, `address`,
+`generation`, `configuration_generation` and `semantics_qualified`. Validity
+describes the retained exact binding, not current standstill. Recovery invalidates
+the fact; reads cannot reinstall it. Revocation also cancels unsent clears.
+
+Ordinary moves report `reference_not_ready` when a known reference is not ready
+for consumption, including monitoring ownership. Stop monitoring and refresh the
+reference. Home reports `operating_limit` if either
+`native_rate_word * checked_subdivision / 60` exceeds the application's nominal
+50,000 increments/s ceiling.
+Both are admission refusals with unchanged output IDs and no traffic.
+
 `motion-profile start-speed relation RAW_WORD MIN_RPM` lifts the move lock that
 `motion-profile start-speed` sets. It requires a fresh `motion-profile read` showing
 that exact word, under the existing `installPositionStartSpeedRelation` rules. The

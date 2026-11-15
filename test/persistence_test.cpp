@@ -254,7 +254,29 @@ static void testOptionalAgePolicy() {
     v = verification(); v.maxAgeUs = 0;
     assert(Ess::verifyPersistence(c, v, now) && c.liveReadbackKnown && !c.verifiedFields);
 }
+static void testWriteClosureBoundaries() {
+    for (int offset : {-1, 0, 1}) for (uint8_t code : {0, 1, 2, 3, 4, 5, 6, 7}) {
+        auto c = operation(); Ess::PreparedPersistence work;
+        assert(Ess::nextPersistence(c, c.startedUs, work));
+        std::vector<uint8_t> bytes(work.bytes, work.bytes + work.length);
+        if (code) { bytes = {1, 0x86, code}; crc(bytes); }
+        const auto e = frame(c, bytes.data(), bytes.size(), c.deadlineUs - 10 + offset);
+        assert(Ess::advancePersistence(c, e, c.deadlineUs + 50));
+        const auto expected = offset > 0 || code == 5 ? ActionExecution::UNKNOWN :
+            code ? ActionExecution::REJECTED : ActionExecution::ACKNOWLEDGED;
+        assert(c.execution == expected && c.effects);
+        assert(c.uncertain == (expected == ActionExecution::UNKNOWN));
+        assert(c.writeEvidence.latestUs == uint64_t(2000 + offset) && c.writeEvidence.deliveredUs == 2050);
+        assert(c.writeEvidence.status.code == (code ? Err::EXCEPTION : Err::OK));
+        assert(c.writeEvidence.length == bytes.size() && !std::memcmp(c.writeEvidence.raw, bytes.data(), bytes.size()));
+    }
+    auto c = operation(); Ess::PreparedPersistence work; assert(Ess::nextPersistence(c, 1000, work));
+    auto e = frame(c, work.bytes, work.length); e.transport.executionUnknown = true;
+    assert(Ess::advancePersistence(c, e, 1120));
+    assert(c.execution == ActionExecution::UNKNOWN && c.uncertain);
+}
 int main() {
+    testWriteClosureBoundaries();
     testOptionalAgePolicy();
     preparation(); acknowledgementsAndLostReplies(); invalidEnvelopes();
     liveAndRestartVerification(); invalidVerification(); return 0;

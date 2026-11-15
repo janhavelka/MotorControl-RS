@@ -217,12 +217,12 @@ void factoryRestoreInvalidatesAssumptions() {
     app->axis.originKnown = app->axis.encoderOriginKnown = app->axis.softLimitsKnown = true;
     app->axis.units.commandStepsPerMotorTurn = MotorControlRS::UnitScale(400, 1, MotorControlRS::ScaleSource::QUALIFIED);
     app->axis.units.encoder.countsPerUnit = MotorControlRS::UnitScale(4000, 1, MotorControlRS::ScaleSource::QUALIFIED);
-    app->commandPolarityKnown = app->positionClearQualified = true;
+    app->commandPolarityKnown = true; assert(installPositionClearQualification());
     qualify(Persistence::FACTORY_RESTORE); app->persistencePrerequisites.completeBackupQualified = true;
     assert(command(Kind::BEGIN, Persistence::FACTORY_RESTORE) == Probe::Action::OK);
     const auto generation = app->axis.generation; waitTx();
     assert(app->axis.generation > generation && !app->axis.originKnown && !app->axis.encoderOriginKnown && !app->axis.softLimitsKnown);
-    assert(!app->axis.units.commandStepsPerMotorTurn.numerator && !app->commandPolarityKnown && !app->positionClearQualified);
+    assert(!app->axis.units.commandStepsPerMotorTurn.numerator && !app->commandPolarityKnown && !app->positionClearQualification.semanticsQualified);
     reply(); assert(app->persistence.outcome == ESS::PersistenceOutcome::ACKNOWLEDGED);
     assert(app->persistence.manualInterventionRequired && app->persistence.before.completeBackupQualified);
     verify(2); assert(app->persistence.communicationChanged);
@@ -333,7 +333,7 @@ void historicalCommunicationCannotFinishNewLease() {
     assert(app->commissioning.operationId == historical);
 }
 void requestedAddressSaveInvalidatesPhysicalAxis() {
-    fresh(); baseline();
+    fresh(); baseline(); assert(installPositionClearQualification());
     auto& p = app->commissioningPrerequisites;
     p.maxAgeUs = 5000000; p.stationaryQualified = p.effectsQualified = p.routeBackQualified = true;
     p.addressDipOffQualified = true; p.qualifiedRequest.field = ESS::CommunicationField::ADDRESS;
@@ -345,12 +345,12 @@ void requestedAddressSaveInvalidatesPhysicalAxis() {
     assert(app->commissioning.observedActiveTarget.address == 2 && app->axis.target.address == 1);
     snapshot(2, 2); app->axis.originKnown = app->axis.encoderOriginKnown = app->axis.softLimitsKnown = true;
     app->axis.units.commandStepsPerMotorTurn = MotorControlRS::UnitScale(400, 1, MotorControlRS::ScaleSource::QUALIFIED);
-    app->commandPolarityKnown = app->positionClearQualified = true;
+    app->commandPolarityKnown = true;
     const auto generation = app->axis.generation;
     begin(); waitTx();
     assert(app->persistence.target.address == 2 && app->axis.target.address == 1);
     assert(app->axis.generation > generation && !app->axis.originKnown && !app->axis.encoderOriginKnown && !app->axis.softLimitsKnown);
-    assert(!app->axis.units.commandStepsPerMotorTurn.numerator && !app->commandPolarityKnown && !app->positionClearQualified);
+    assert(!app->axis.units.commandStepsPerMotorTurn.numerator && !app->commandPolarityKnown && !app->positionClearQualification.semanticsQualified);
     reply();
 }
 void failedHostSetupRepairNeedsFreshBaseline() {

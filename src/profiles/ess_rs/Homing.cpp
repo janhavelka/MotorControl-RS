@@ -277,9 +277,9 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
     else if (event.kind == ReadEventKind::DEADLINE) evidence.status = expired(c);
     else evidence.status = failed(HomeError::TRANSPORT_FAILURE, "home transport failed");
     if (c.step == 0) {
-        c.stagingEvidence = evidence; c.setupExecution = Detail::classifyWrite(evidence);
+        c.stagingEvidence = evidence; c.setupExecution = Detail::classifyWrite(evidence, event.latestUs <= stepDeadline(c));
         c.stagingApplied = c.setupExecution == ActionExecution::ACKNOWLEDGED;
-    } else if (c.step == 1) { c.triggerEvidence = evidence; c.execution = Detail::classifyWrite(evidence); }
+    } else if (c.step == 1) { c.triggerEvidence = evidence; c.execution = Detail::classifyWrite(evidence, event.latestUs <= stepDeadline(c)); }
     else if (c.phase == HomePhase::ZERO_CHECK) {
         c.zeroEvidence = evidence;
         // Publish only what the zero decision below may use; zeroEvidence keeps every frame.
@@ -305,17 +305,26 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
         failed(HomeError::TIMING_UNQUALIFIED, "home closure timing is unqualified"));
     else if (event.latestUs > stepDeadline(c)) finish(c, ActionOutcome::DEADLINE, expired(c));
     else if (!evidence.status) finish(c, ActionOutcome::REPLY_ERROR, evidence.status);
-    else if (!supplied.responseConfirmed || (c.step < 2 && event.executionUnknown)) finish(c, ActionOutcome::UNCONFIRMED_RESPONSE,
+    else if ((!supplied.responseConfirmed || (c.step < 2 && event.executionUnknown)) && c.step != 1) finish(c, ActionOutcome::UNCONFIRMED_RESPONSE,
         failed(HomeError::UNCONFIRMED_RESPONSE, "frame source is not confirmed as the drive"));
     else if (c.step < 2) {
         if (nowUs >= c.deadlineUs) finish(c, ActionOutcome::DEADLINE, failed(HomeError::DEADLINE_EXPIRED, "no budget for next home step"));
         else if (c.step == 0 && nowUs >= stepDeadline(c)) finish(c, ActionOutcome::DEADLINE, expired(c));
         else if (c.step == 0) { ++c.step; c.phase = HomePhase::TRIGGER; c.eligibleUs = nowUs; }
-        else { c.phase = HomePhase::OBSERVING; wait(c, nowUs); }
+        else {
+            // A valid on-time echo may be local. Observe without confirming or
+            // replaying the trigger; transport failures have already ended above.
+            c.phase = HomePhase::OBSERVING; wait(c, nowUs);
+        }
     } else if (c.phase == HomePhase::ZERO_CHECK) {
         if (words[0] || words[1]) finish(c, ActionOutcome::REPLY_ERROR,
             failed(HomeError::ZERO_NOT_OBSERVED, "fresh position pair does not report zero"));
-        else { c.completion = ActionCompletion::OBSERVED; finish(c, ActionOutcome::OBSERVED, Ok()); }
+        else {
+            c.completion = ActionCompletion::OBSERVED;
+            if (c.execution == ActionExecution::ACKNOWLEDGED) finish(c, ActionOutcome::OBSERVED, Ok());
+            else finish(c, ActionOutcome::UNCONFIRMED_RESPONSE,
+                failed(HomeError::UNCONFIRMED_RESPONSE, "home state observed; trigger execution remains unknown"));
+        }
     } else {
         const bool runningEarlier = c.runningObserved;
         ++c.polls; c.lastObservation = evidence; c.observationKnown = true;
@@ -356,12 +365,15 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
             else wait(c, nowUs, runningEarlier);
         }
     }
-    if (c.state == ActionState::FAILED) c.failureEvidence = evidence;
+    if (c.state == ActionState::FAILED)
+        c.failureEvidence = c.completion == ActionCompletion::OBSERVED ? c.triggerEvidence : evidence;
     return Ok();
 }
 
 Status getHomeReference(const HomeContext& c, uint64_t nowUs, uint64_t maximumAgeUs, AxisReference& output) noexcept {
     if (c.qualificationRevoked) return invalid(HomeError::QUALIFICATION_REVOKED, "home admission revoked");
+    if (c.completion == ActionCompletion::OBSERVED && c.execution != ActionExecution::ACKNOWLEDGED)
+        return invalid(HomeError::REFERENCE_UNQUALIFIED, "observed home state does not confirm the trigger");
     if (c.state != ActionState::SUCCEEDED || c.completion != ActionCompletion::OBSERVED)
         return invalid(HomeError::NOT_COMPLETE, "home completion is not established");
     if (!c.prerequisites.referenceSemanticsQualified)

@@ -462,6 +462,19 @@ fails after a possible trigger reports that the drive may still be moving; nothi
 stops it automatically, so use `stop`, then `read state`.
 See [admission, completion and evidence limits](ess_homing.md).
 
+Both home rate words are checked against actual subdivision before any write:
+`native_word * subdivision / 60 <= 50,000`. Higher values return
+`operating_limit`; missing subdivision returns `unavailable`. This nominal host
+ceiling does not qualify homing speed or change the native source ranges.
+An observed home after an ambiguous trigger remains failed/UNKNOWN and provides
+no coordinate reference. Use the retained trigger and zero evidence separately.
+
+`position-clear qualification` inspects its exact target/configuration binding.
+Recovery or configuration changes require a new explicit install; fresh reads
+cannot restore old supplied facts. `revoke` cancels unsent clear work.
+For moves, `reference_not_ready` names a reference that cannot yet be consumed;
+settle monitoring and refresh state before retrying.
+
 ## Homing auxiliary configuration
 
 `home auxiliary CHOICE` explicitly selects one stored auxiliary choice0..11 for

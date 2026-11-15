@@ -88,9 +88,9 @@ Cancellation and recovery do not roll back or replay a partial update.
 
 An application may explicitly qualify `allowEchoReadback` for an exact I/O
 candidate on known unconnected affected terminals. This setting-only policy
-permits a checked, on-time FC06-shaped frame with unconfirmed source to yield
-the subsequent non-changing FC03 readback. The original frame remains
-unconfirmed, its acknowledgement remains false and its execution remains
+permits a checked, on-time FC06-shaped frame with unconfirmed source or supplied
+execution uncertainty to yield the subsequent non-changing FC03 readback. The
+original provenance is retained, its acknowledgement remains false and execution remains
 `UNKNOWN`; matching confirmed-source readback settles the observed stored
 setting, not the origin of that frame. A missing, malformed, mismatching or
 unconfirmed readback remains uncertain and prevents the next write. Checked

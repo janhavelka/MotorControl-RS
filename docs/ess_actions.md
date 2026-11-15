@@ -56,11 +56,16 @@ this is a conservative application policy. The manual's explicit stopped-state
 note on pages26/71 applies to factory restore/save, not position clear. The
 standalone also requires new, matching, enabled/stopped/alarm-free readiness
 and, when age expiry is enabled, caps the request deadline by that retained
-readiness age. Its separate `positionClearQualified` commissioning flag starts false,
+readiness age. Its separate `PositionClearQualification` starts absent,
 so `position-clear` replies `qualification_required` until it is stated with
 `position-clear qualification install clear-semantics` or
-`installPositionClearQualification`. `position-clear qualification revoke` clears it.
-The fresh state above is still required for every clear.
+`installPositionClearQualification`. Installation binds the exact selected target,
+binding and configuration generation. Recovery, rebinding and configuration changes
+expire it; later reads cannot restore it. `inspectPositionClearQualification` and
+`position-clear qualification` inspect the retained fact without traffic.
+`position-clear qualification revoke` clears it and cancels unsent clears.
+Transmitted clears settle with their evidence. The fresh state above is still
+required for every clear and rechecked before its first byte.
 
 The checked, source-confirmed acknowledgement is followed by bounded new FC03
 `0x000A/2` observations. Both words must be zero; old cached zero and the echo
@@ -111,6 +116,12 @@ An undocumented exception also retains its raw byte and codec status with UNKNOW
 execution, as does a matching echo with supplied execution uncertainty, keeping
 the application's conflict reservation. The bus owner's checked-response evidence
 does not itself supply that profile-specific interpretation.
+All seven write engines require closure at or before the yielded write deadline
+for ACKNOWLEDGED or REJECTED. A later closure remains UNKNOWN, even with valid
+bytes. On-time closure delivered late retains its evidence; it cannot renew the
+operation budget or permit another step after expiry. Supplied execution
+uncertainty also prevents acknowledgement. Raw reply evidence remains copied.
+
 Contexts copy bounded write, last-observation and failure evidence; borrowed
 event bytes are not retained. No timeout, cancellation, recovery or poll replays
 the write.

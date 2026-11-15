@@ -261,4 +261,40 @@ void uncertainStartIsNotAcknowledged() {
     assert(E::advanceMove(c, e, t.latestUs + 1));
     assert(c.execution == ActionExecution::UNKNOWN && c.outcome == ActionOutcome::UNCONFIRMED_RESPONSE && c.uncertain);
 }
-int main() { operatingBoundary(); setupPolicies(); intentSnapshotAndNormalSequence(); rejectionAndRawAccess(); failuresNeverStartOrReplay(); acknowledgementEvidence(); uncertainStartIsNotAcknowledged(); }
+void rejectedTriggerRetainsOnlyPossibleEffects() {
+    for (bool staged : {false, true}) for (uint8_t code : {1, 2, 3, 4, 5, 6, 7, 8}) {
+        auto m = motor(); m.setup = staged ? MoveSetup::WRITE_ALL : MoveSetup::USE_STORED;
+        E::MoveContext c; assert(m.prepareRelative(c, 1, 100, 10, 1000));
+        if (staged) reply(c);
+        const auto stage = c.stagingEvidence;
+        auto b = crc({1, 0x86, code});
+        ActionEvent e; auto& t = e.transport;
+        t.target = c.target; t.operationId = c.operationId; t.step = c.step;
+        t.frame = b.data(); t.length = b.size(); t.txAccepted = 8;
+        t.qualified = e.txComplete = e.responseConfirmed = true;
+        t.earliestUs = c.eligibleUs + 1; t.latestUs = c.eligibleUs + 2;
+        assert(E::advanceMove(c, e, t.latestUs + 1));
+        const bool rejected = code <= 7 && code != 5;
+        assert(c.execution == (rejected ? ActionExecution::REJECTED : ActionExecution::UNKNOWN));
+        assert(c.uncertain == (staged || !rejected));
+        assert(c.outcome == ActionOutcome::REPLY_ERROR && c.state == ActionState::FAILED);
+        assert(c.triggerEvidence.txAccepted == 8 && c.triggerEvidence.status.detail == code);
+        assert(c.triggerEvidence.length == b.size() && !std::memcmp(c.triggerEvidence.raw, b.data(), b.size()));
+        assert(c.stagingEvidence.txAccepted == stage.txAccepted && c.stagingApplied == staged);
+        E::PreparedMove next; assert(E::nextMove(c, c.servicedUs, next));
+        assert(next.kind == E::ActionWork::DONE && !next.length);
+    }
+    auto m = motor(); m.setup = MoveSetup::USE_STORED;
+    for (unsigned accepted : {0u, 3u, 8u}) {
+        E::MoveContext c; assert(m.prepareRelative(c, 2, 100, 10, 1000));
+        ActionEvent e; e.transport.target = c.target; e.transport.operationId = c.operationId;
+        e.transport.step = c.step; e.transport.kind = ReadEventKind::TRANSPORT_FAILURE;
+        e.transport.txAccepted = accepted; e.txComplete = accepted == 8;
+        assert(E::advanceMove(c, e, 100));
+        assert(c.uncertain == (accepted != 0));
+        assert(c.execution == (accepted ? ActionExecution::UNKNOWN : ActionExecution::NOT_TRANSMITTED));
+        E::PreparedMove next; assert(E::nextMove(c, 100, next) && next.kind == E::ActionWork::DONE);
+    }
+}
+int main() {
+    rejectedTriggerRetainsOnlyPossibleEffects(); operatingBoundary(); setupPolicies(); intentSnapshotAndNormalSequence(); rejectionAndRawAccess(); failuresNeverStartOrReplay(); acknowledgementEvidence(); uncertainStartIsNotAcknowledged(); }

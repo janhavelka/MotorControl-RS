@@ -31,10 +31,11 @@ inline void copyActionEvidence(ActionEvidence& evidence, const ActionEvent& supp
  * acknowledgement only from a confirmed qualified frame without supplied execution
  * uncertainty. Function manual p12 documents 01..07, but 05 is a read-range error:
  * it is an unexpected reply to a write and does not establish that the drive refused
- * it. Undocumented codes likewise retain UNKNOWN. onTime is the caller's own closure
- * rule; modules without one treat a late checked reply as evidence of that reply. */
+ * it. Undocumented codes likewise retain UNKNOWN. onTime means qualified closure
+ * at or before the yielded transaction deadline. Delivery time does not change
+ * that evidence; the caller separately checks the budget for continuation. */
 template <class Evidence>
-inline ActionExecution classifyWrite(const Evidence& evidence, bool onTime = true) noexcept {
+inline ActionExecution classifyWrite(const Evidence& evidence, bool onTime) noexcept {
     if (!evidence.txAccepted && !evidence.executionUnknown) return ActionExecution::NOT_TRANSMITTED;
     if (evidence.event == ReadEventKind::FRAME && evidence.qualified && evidence.responseConfirmed &&
         !evidence.executionUnknown && onTime) {

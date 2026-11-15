@@ -279,3 +279,28 @@ for executable in sys.argv[2:]:
     integration_records.append(records)
 assert integration_records[0] == integration_records[1], "Arduino/IDF cross-operation history differs"
 print("PASS: delayed reads/settings, lost ACK through reconciliation, and old reply after rebind on both frontends")
+
+uncertain_records = []
+for executable in sys.argv[2:]:
+    records = [json.loads(line, object_pairs_hook=unique_object) for line in
+               subprocess.check_output([executable, "--emit-uncertain-home-results"], text=True, timeout=20).splitlines()
+               if line.startswith("{")]
+    assert len(records) == 6
+    for record in records:
+        Console._check_home(record, 1, None)
+        check_fixture_routes(record, live_command="home")
+        assert not record["ok"] and record["execution"] == "unknown" and record["completion"] == "observed"
+        assert record["uncertain"] and record["outcome"] == "unconfirmed_response"
+        assert record["failure_evidence"] == record["trigger_evidence"]
+        for mutate in (lambda r: r.update(ok=True, state="succeeded", outcome="observed", status="OK", detail=0),
+                       lambda r: r.update(homed_low_observed=False),
+                       lambda r: r["zero_evidence"].__setitem__(6, False),
+                       lambda r: r.update(failure_evidence=copy.deepcopy(r["zero_evidence"])),
+                       lambda r: r.update(uncertain=False)):
+            forged = copy.deepcopy(record); mutate(forged)
+            try: Console._check_home(forged, 1, None)
+            except BenchError: pass
+            else: raise AssertionError("uncertain home lost its trigger or observation evidence")
+    uncertain_records.append(records)
+assert uncertain_records[0] == uncertain_records[1], "Arduino/IDF uncertain home evidence differs"
+print("PASS: both real application frontends retain UNKNOWN after observed home33/34/35")

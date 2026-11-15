@@ -7,6 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [Standalone 16: evidence and qualification](2026-11-15_standalone_16_evidence_qualification.md) | Write closure, exact qualification lifetime and bounded observation after an ambiguous home trigger. 94-suite verification passes; exact-commit CI pending, hardware NOT RUN. |
 | [Standalone 15: stop delivery](2026-11-15_standalone_15_stop_recovery.md) | Software complete: stop/recovery, public results, escalation and host accounting. 94 suites and four exact-commit CI jobs pass; new hardware checks NOT RUN. |
 | [Standalone audit revalidation](2026-11-15_standalone_audit_revalidation.md) | Current verdicts for the independent audit, corrected prompt status and repair order. A stop during staging readback no longer publishes a ready witness; larger stop/evidence work has bounded prompts. |
 | [Multi-drive promptset revalidation](2026-11-15_ess_multi_drive_promptset_audit.md) | M01-M06 checked against code/manuals. Confirmed group changes can erase enable waits; new 08/09 own that correction and independent member requests. Broadcast evidence claims and input commissioning prompts corrected; no new hardware run. |

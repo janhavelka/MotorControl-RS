@@ -200,7 +200,8 @@ void deadlineBoundaries() {
     for (uint64_t closure : {uint64_t(999), uint64_t(1000), uint64_t(1001)}) {
         c = prepare(); assert(E::advanceMove(c, frame(c, relativeInterrupt, 8, closure, closure), 2100));
         assert(c.outcome == (closure <= 1000 ? ActionOutcome::ACKNOWLEDGED : ActionOutcome::DEADLINE));
-        assert(c.execution == ActionExecution::ACKNOWLEDGED && c.completion == ActionCompletion::NOT_OBSERVED);
+        assert(c.execution == (closure <= 1000 ? ActionExecution::ACKNOWLEDGED : ActionExecution::UNKNOWN));
+        assert(c.completion == ActionCompletion::NOT_OBSERVED && c.triggerEvidence.status);
         assert(c.uncertain == (closure > 1000)); noMoreWork(c);
     }
     auto intent = command(); intent.stored.maximumAgeUs = 0;
@@ -238,7 +239,7 @@ void envelopesAndReplyEvidence() {
         if (fault == 8) bytes = withCrc({1, 3, 4, 0, 0, 0x80, 5}); // Old HOMED/RUNNING/ARRIVED is no trigger ACK.
         if (fault == 9) bytes = withCrc({1, 0x86, 3});
         assert(E::advanceMove(c, frame(c, bytes.data(), bytes.size()), 130));
-        assert(c.outcome == ActionOutcome::REPLY_ERROR && c.uncertain);
+        assert(c.outcome == ActionOutcome::REPLY_ERROR && c.uncertain == (fault != 9));
         assert(c.execution == (fault == 9 ? ActionExecution::REJECTED : ActionExecution::UNKNOWN));
         assert(c.completion == ActionCompletion::NOT_OBSERVED && !c.observationKnown && !c.runningObserved);
         assert(c.failureEvidence.length == bytes.size() && !std::memcmp(c.failureEvidence.raw, bytes.data(), bytes.size()));

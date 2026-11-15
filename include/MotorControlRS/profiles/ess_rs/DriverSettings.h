@@ -149,7 +149,8 @@ struct DriverPrerequisites {
     /** IO verification policy for known UNCONNECTED affected terminals, or
      * segment configuration with independently qualified trigger inhibition,
      * or exact independently qualified control/tuning-setting effects.
-     * A checked, on-time unconfirmed write echo may lead to a separate confirmed
+     * A checked, on-time write echo with unconfirmed source or supplied execution
+     * uncertainty may lead to a separate confirmed
      * readback. It never becomes an acknowledgement or proves activation. */
     bool allowEchoReadback = false;
     /** Independent qualification that external execution cannot occur during

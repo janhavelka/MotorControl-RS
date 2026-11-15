@@ -55,23 +55,24 @@ Method 18 remains unresolved independently of method 17.
 With `observeInputs=true`, the same rule applies at admission and on every poll,
 to logical levels sampled at that moment. Terminal functions follow the function
 manual's list (p27, p73-74). A failure is `INPUT_REQUIRED` with raw evidence retained.
-Failing a poll ends observation only: the host issues no stop, and the outcome
-stays uncertain until an explicit stop reconciles it.
+Failing a poll ends observation only: the host issues no stop. The failed result
+keeps its uncertainty. An explicit checked stop may reconcile the application
+motion interlock.
 
 | Assigned function | While active | Reason |
 | --- | --- | --- |
 | 1 Origin | Never a fault | Required by origin methods, passed or irrelevant on the others |
 | 2/3 limit the method requires | Allowed | Part of the trajectory; distinct from a soft-limit flag |
-| 2/3 limit the method does not require | Fails, except method 35 | Contradicts the documented path |
-| 4 Release, 5 Stop, 6 Emergency stop | Fails on every method | Interrupts the drive |
+| 2/3 limit the method does not require | Fails, except method 35 | Conservative host admission policy |
+| 4 Release, 5 Stop, 6 Emergency stop | Fails on every method | Conservative host admission policy |
 | 7..13 Motion and segment triggers | Fails on every method | Starts motion the host cannot attribute |
 | 14..17 Segment selectors | Ignored | Act only through a trigger |
 | Above 17 | Always rejects | Outside the documented X0..X3 range |
 
 Motion triggers 7..13 must also be declared `UNCONNECTED` even while inactive,
 because an edge can fall between polls. Functions 4..6 may stay wired. Limits are
-forbidden during 33 and 34 too: the documented Z search uses none, so an active limit
-is a contradiction rather than a branch. Method 35 has no search trajectory, so it
+forbidden during 33 and 34 too. This is a host guard; the code does not check
+direction or establish the drive's reaction to that input. Method 35 has no search trajectory, so it
 forbids no sensor level, but a release or stop input still fails it. The manual does not
 say whether a stop input affects a home at all; this rule is a conservative choice.
 
@@ -213,6 +214,15 @@ return and 30–2000 for ramp; the documented physical units/defaults do not
 resolve their wire scaling. Applications qualify the exact native values and
 their mechanical effects before admission.
 
+The standalone application also requires a checked subdivision and applies
+`native_rate_word * subdivision <= 50,000 * 60` to both search and return.
+Equality is admitted; higher values return `operating_limit` before any write.
+Missing subdivision returns `unavailable`. Values are never clamped, including
+method 35's configured words. This nominal ceiling shares the position policy's
+50,000 increments/s value. It is not a vendor limit or measured homing-rate
+qualification: native scaling, supplied facts and physical testing remain separate.
+The reusable core keeps its native bounds and caller qualification contract.
+
 `HomePrerequisites` binds qualification to the exact target and configuration
 generation. It requires qualified method/mechanics/direction, rates, ramp,
 zero offset, enabled stationary alarm-free readiness and actual interfering
@@ -255,6 +265,16 @@ echo after accepted transmission leaves execution unknown and never permits
 automatic replay. Partial or uncertain setup remains visible on failure.
 
 ## Completion, stop and reference
+
+A valid, qualified, on-time trigger echo with an unconfirmed source or supplied
+execution uncertainty permits bounded read-only observations. Required transitions
+and final zero can then set `completion=observed`, but `execution=unknown`,
+`outcome=unconfirmed_response`, failed state and uncertainty remain. The original
+trigger stays in `failureEvidence`; the final zero stays in `zeroEvidence`.
+No reference is published: status has no command identity that can resolve this
+ambiguity. A lost ACK, malformed frame, exception, late closure or unqualified
+trigger timing still ends the sequence. There is no recovery or trigger replay.
+Later read failures, stop, cancellation and revocation retain their precedence.
 
 Every implemented moving method requires fresh post-trigger RUNNING and HOMED-low observations,
 then stopped HOMED-high. IN_POSITION is not required: on firmware `0x0029` a home begun

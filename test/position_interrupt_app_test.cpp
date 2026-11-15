@@ -721,6 +721,50 @@ void testConsoleRouteAndRetention(bool emitResult = false) {
     assert(findRecord(*app,old) && findRecord(*app,replacement));
     assert(axisReserved(*app,1));
 }
+void testRejectedTriggerConservesIndependentEffects() {
+    const auto rejected = crc({1, 0x86, 3});
+    fresh(); baseline();
+    uint32_t stored = 0;
+    assert(moveBy(Rational(20), PositionUnit::STEPS, stored, 60, MoveSetup::USE_STORED));
+    const auto writes = hardware.writes;
+    moveReply(stored, rejected, RELATIVE); terminalResult(stored);
+    MoveRelation relation; const auto noSetup = copied(stored, relation);
+    assert(noSetup.execution == ActionExecution::REJECTED && !noSetup.uncertain);
+    assert(noSetup.setupExecution == ActionExecution::NOT_TRANSMITTED && !noSetup.stagingEvidence.txAccepted);
+    assert(noSetup.triggerEvidence.txAccepted == 8 && noSetup.triggerEvidence.status.detail == 3);
+    assert(hardware.writes == writes + 1 && !axisReserved(*app, 1) && !triggeredMotion(*app, 1));
+    // The transmitted request invalidated readiness. Refresh it explicitly;
+    // a known rejection must not require an unrelated stop to clear conflict.
+    command("@92 read state\n"); const auto refreshed = app->latestOperationId;
+    readReply(refreshed, words({0, 1})); readReply(refreshed, words({0, 0})); readReply(refreshed, words({0, 0, 0}));
+    terminalResult(refreshed); assert(releaseOperation(refreshed));
+    uint32_t next = 0; const auto refreshedWrites = hardware.writes;
+    assert(moveBy(Rational(20), PositionUnit::STEPS, next));
+    assert(next != stored && hardware.writes == refreshedWrites); // No automatic replay.
+
+    fresh(); baseline();
+    const auto staged = original(); moveReply(staged, crc({1, 16, 0, 0x21, 0, 5}));
+    moveReply(staged, rejected, RELATIVE); terminalResult(staged);
+    const auto afterSetup = copied(staged, relation);
+    assert(afterSetup.execution == ActionExecution::REJECTED && afterSetup.uncertain && afterSetup.stagingApplied);
+    assert(afterSetup.setupExecution == ActionExecution::ACKNOWLEDGED && axisReserved(*app, 1));
+    next = 0x1234; const auto blockedWrites = hardware.writes;
+    const auto blocked = moveBy(Rational(20), PositionUnit::STEPS, next);
+    assert(!blocked && next == 0x1234 && hardware.writes == blockedWrites);
+
+    fresh(); baseline();
+    const auto old = original(); startOriginal(old);
+    const auto replacement = interrupt(old);
+    moveReply(replacement, rejected, INTERRUPT_RELATIVE); terminalResult(replacement);
+    const auto result = copied(replacement, relation);
+    assert(result.execution == ActionExecution::REJECTED && !result.uncertain && !result.stagingEvidence.txAccepted);
+    const auto previous = copied(old, relation);
+    assert(previous.execution == ActionExecution::ACKNOWLEDGED && previous.uncertain);
+    assert(previous.triggerEvidence.txAccepted == 8 && axisReserved(*app, 1) && triggeredMotion(*app, 1));
+    next = 0x1234; const auto retainedWrites = hardware.writes;
+    assert(!moveBy(Rational(20), PositionUnit::STEPS, next));
+    assert(next == 0x1234 && hardware.writes == retainedWrites);
+}
 } // namespace
 int main(int argc, char** argv) {
     // Host-parser parity consumes the actual production formatter after the
@@ -729,6 +773,7 @@ int main(int argc, char** argv) {
         testConsoleRouteAndRetention(true); return 0;
     }
     assert(argc==1);
+    testRejectedTriggerConservesIndependentEffects();
     testProductionPathAndCopiedResults(); testRejectedCandidatesAndPhases();
     testInflightSettlementAndCompletionRace(); testPressureAndReservedStop();
     testFullResultsAndBlockedOutputDuringInterruptStop(); testLostInterruptAckReconciliationPreservesHistory();

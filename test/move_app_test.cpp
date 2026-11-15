@@ -728,7 +728,7 @@ void testPositionClearApiCliAndUncertainInvalidation() {
         ActionRequest clear; clear.kind = ActionKind::CLEAR_POSITION; clear.positionClearQualified = true;
         assert(host(app).startAction(app, 1, 1, clear, unchanged) == Probe::Action::QUALIFICATION_REQUIRED);
         assert(unchanged == 77 && hardware.writes == 0); // Caller cannot bypass app qualification.
-        app->positionClearQualified = true;
+        assert(installPositionClearQualification());
         clear.devicePosition = 1;
         assert(host(app).startAction(app, 2, 1, clear, unchanged) == Probe::Action::UNSUPPORTED);
         assert(unchanged == 77 && hardware.writes == 0);
@@ -806,7 +806,7 @@ void testExternalFeedbackDuringStopInvalidatesCoordinates() {
     }
 }
 void testPositionClearBadObservationKeepsConflict() {
-    fresh(); qualify(); coordinates(); app->positionClearQualified = true;
+    fresh(); qualify(); coordinates(); assert(installPositionClearQualification());
     command("@1 position-clear\n");
     const uint32_t operation = view(0).operationId;
     actionStep(operation);
@@ -1060,7 +1060,49 @@ void testPositionLimitUsesDriveSubdivision() {
     assert(host(app).cancel(app,id)==Probe::Action::OK);
     pump(); assert(hardware.writes==before);
 }
+void testQueuedPositionClearInvalidation() {
+    for (unsigned invalidation = 0; invalidation < 3; ++invalidation) {
+        fresh(); qualify(); coordinates(); assert(installPositionClearQualification());
+        ActionRequest clear; clear.kind = ActionKind::CLEAR_POSITION; uint32_t id = 999;
+        assert(startAction(app, 1, 1, clear, id) == Probe::Action::OK && !hardware.writes);
+        if (invalidation == 0) {
+            uint32_t recovery = 0; assert(recover(app, 2, recovery) == Probe::Action::OK);
+        } else if (invalidation == 1) {
+            // A newer checked configuration invalidates the pending clear.
+            invalidateAxis(*app);
+        } else {
+            // Fresh contradictory status cannot let a queued clear leave the owner.
+            auto& motion = app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+            motion.value.running = true; motion.value.rawMotion = 4;
+            motion.observedEarliestUs = motion.observedLatestUs = hardware.time;
+        }
+        pump();
+        const auto result = view(id);
+        assert(!result.pending && result.actionContext->outcome == ActionOutcome::CANCELLED);
+        assert(result.actionContext->execution == ActionExecution::NOT_TRANSMITTED && !hardware.writes);
+        assert(result.actionContext->request.positionClearQualified); // Frozen admitted fact remains copied.
+    }
+}
+void testMonitorReferenceRefusal() {
+    fresh(); qualify(); coordinates();
+    app->monitorState.settings.enabled = true; app->monitorState.remaining = 1;
+    app->monitorState.nextDueUs = hardware.time + 1000000;
+    auto requestValue = request(); uint32_t id = 999;
+    const auto status = submitMove(requestValue.position, requestValue.speedRpm, id);
+    assert(!status && status.detail == static_cast<int32_t>(Probe::Action::REFERENCE_NOT_READY));
+    assert(id == 999 && !hardware.writes && !app->owner.pending());
+    command("@400 move relative 20 steps native 60 configured\n");
+    assert(Serial.output.find("\"result\":\"reference_not_ready\"") != std::string::npos);
+    assert(!hardware.writes && !app->owner.pending());
+    // Earlier malformed intent still wins over the reference diagnostic.
+    requestValue.speedRpm = 0;
+    assert(startMove(app, 401, 1, requestValue, id) == Probe::Action::INVALID && id == 999);
+    app->monitorState.settings.enabled = false;
+    assert(submitMove(requestValue.position, 60, id));
+    assert(cancel(app, id) == Probe::Action::OK); pump(); assert(!hardware.writes);
+}
 int main() {
+    testQueuedPositionClearInvalidation(); testMonitorReferenceRefusal();
     testFailedPreparationAndCrossKindSlotReuse();
     testPositionLimitUsesDriveSubdivision();
     testVerificationReadDoesNotAdoptNewGeneration();

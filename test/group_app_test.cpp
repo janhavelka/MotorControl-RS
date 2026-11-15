@@ -726,9 +726,25 @@ void testStopDuringStageReadbackKeepsEvidenceWithoutWitness() {
     runUntil([&] { return terminal(*app, *findRecord(*app, stopped)); });
     assert(count(isStageFrame, from) == 2 && count(isAnyStart, from) == 0);
 }
+void testActiveOriginSharedReadiness() {
+    fresh();
+    for (auto& drive : drives) drive.second.regs[8] = 1; // Origin remains active after homing.
+    readyGroup();
+    uint32_t id = 999; assert(submitGroupMove(groupMove(Policy::LEAVE), id));
+    runUntil([&] { return terminalGroup(id); }, 2000000);
+    assert(groupOp(id).result.ok);
+    // Active positive/negative limits and assignments beyond3 still refuse.
+    for (uint16_t function : {uint16_t(2), uint16_t(3), uint16_t(4), uint16_t(7), uint16_t(17)}) {
+        fresh(); drives[2].regs[0x41] = function; drives[2].regs[8] = function <= 3 ? 1 : 0;
+        readyGroup(); const auto before = frames.size(); id = 999;
+        assert(!submitGroupMove(groupMove(Policy::LEAVE), id) && id == 999);
+        pump(); assert(frames.size() == before);
+    }
+}
 } // namespace
 
 int main() {
+    testActiveOriginSharedReadiness();
     testDeclarationRejectsAbsentAndUnexpectedResponders();
     testFullCapacityDeclarationMoveStopAndOutputOnError();
     testWorstCaseGroupLineFits();

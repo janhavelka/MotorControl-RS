@@ -112,8 +112,9 @@ acknowledgement or checked device rejection; on-time evidence may be delivered
 later without changing its timestamp.
 
 An explicitly qualified setting-only echo/readback policy may accept an on-time
-checked but source-unconfirmed FC06-shaped frame solely to perform a separate
-confirmed readback. The write's acknowledgement remains false and its execution
+checked FC06-shaped frame with unconfirmed source or supplied execution
+uncertainty solely to perform a separate confirmed readback. The original
+provenance is retained. The write's acknowledgement remains false and execution
 remains unknown. Matching readback settles the stored word, not active behavior,
 persistence, torque, stability or physical timing. Failed or mismatching readback
 retains uncertainty and prevents later writes.

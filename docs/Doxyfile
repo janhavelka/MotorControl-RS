@@ -1,7 +1,7 @@
 # Run from the repository root: doxygen docs/Doxyfile
 PROJECT_NAME = MotorControl-RS
 OUTPUT_DIRECTORY = build/doxygen
-INPUT = include examples/probe_cli/ProbeApp.h examples/probe_cli/ProbeConsole.h
+INPUT = include examples/probe_cli/ProbeApp.h examples/probe_cli/ProbeConsole.h examples/probe_cli/QualificationConsole.h
 RECURSIVE = YES
 FILE_PATTERNS = *.h
 EXTRACT_ALL = YES

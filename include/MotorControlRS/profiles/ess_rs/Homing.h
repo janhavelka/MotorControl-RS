@@ -157,11 +157,16 @@ Status nextHome(const HomeContext&, uint64_t nowUs, PreparedHome&) noexcept;
  * sampled input edges alone do not defeat qualified status/zero completion.
  * Unknown MOTION bits fail READINESS with raw evidence retained; known alarm/
  * fault reports take precedence. Unknown bits are not classified as drive faults.
+ * A valid, on-time trigger echo with unconfirmed source or supplied execution
+ * uncertainty permits bounded observation only. Satisfied transitions and zero
+ * set completion OBSERVED, but execution stays UNKNOWN and the operation fails
+ * UNCONFIRMED_RESPONSE with retained trigger evidence and no reference. Lost
+ * trigger replies and other transport/reply failures end without further work.
  * Wrong envelopes leave state unchanged; evidence is copied, never retained
  * by pointer. Qualified final evidence may be delivered after its deadline. */
 Status advanceHome(HomeContext&, const ActionEvent&, uint64_t nowUs) noexcept;
-/** Successful completion under the optional age policy plus qualified coordinate semantics
- * publishes native-zero evidence. Does not change host origin or generation;
+/** Acknowledged trigger, successful completion under the optional age policy and
+ * qualified coordinate semantics publish native-zero evidence. Does not change host origin or generation;
  * the application reconciles coordinate effects before retaining this witness.
  * maximumAgeUs=0 disables expiry, not the required post-trigger observations. */
 Status getHomeReference(const HomeContext&, uint64_t nowUs, uint64_t maximumAgeUs,

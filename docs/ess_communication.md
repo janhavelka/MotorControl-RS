@@ -54,7 +54,11 @@ The context separates previous/requested/readback register words, original and
 candidate endpoints/tuples, and the interface observed responding to a checked
 confirmation. A matching stored word can exist while the old tuple responds.
 A mismatch can still establish which candidate responded, while preserving the
-mismatch outcome. Neither observation proves identity, persistence or physical
+mismatch outcome. After a checked FC06 rejection, readback equal to the known
+previous word is expected and does not create new uncertainty. A different word,
+or a changed earlier readback, remains a contradiction. Accepted TX and the
+original rejection evidence stay retained in both cases.
+Neither observation proves identity, persistence or physical
 activation. Save/restart requirements and `activationUnknown` remain explicit.
 
 ## Application ownership and restoration

@@ -90,8 +90,9 @@ What it does not cover:
   owns this defect: treat a `stop normal` that ends `observation_limit` with RUNNING
   still set as possible endless motion, and send `stop fast`. Nothing escalates
   automatically.
-- Velocity runs and homing speeds are outside this policy. Their stops at high
-  rates were not tested.
+- Velocity runs and homing speeds gain no physical qualification from these
+  position tests. The standalone [home policy](ess_homing.md) separately applies
+  the same nominal 50,000 increments/s ceiling to both native rate words.
 - Raw codecs, other motors and other firmware.
 
 `positionSpeedLimit` returns the integer ceiling; `checkPositionLimits` is the
@@ -518,7 +519,11 @@ consume a terminal event and retain original diagnostics. No phase retries.
 `setupExecution`, `stagingApplied`, trigger `execution`, `completion` and
 `uncertain` have separate meanings. FC10 atomic application is undocumented:
 any accepted setup bytes on terminal failure conservatively retain possibly
-changed parameters, even when the trigger was not sent. A trigger echo is only
+changed parameters, even when the trigger was not sent. A checked rejected FC06
+trigger with no setup TX keeps `execution=REJECTED` and `uncertain=false`.
+Its reply remains retained. This cannot clear an interrupted original move's
+possible motion. Lost ACKs, late replies and partial staging retain uncertainty.
+A trigger echo is only
 acknowledgement. Old arrival or unqualified target equality alone does not
 establish completion. The default policy requires the RUNNING transition; the
 qualified feedback alternative below can confirm a move missed between polls. The retained activity and final
@@ -528,6 +533,11 @@ independently measured shaft motion.
 The standalone application extends the existing action service loop and axis
 reservation; it adds no scheduler or second queue. Admission starts on a
 quiescent bus so an earlier producer's queued write cannot cross staging.
+An active origin/function-1 level alone does not block an ordinary move; shared
+group-member readiness follows the same rule. Active limits and unsupported
+external trigger/velocity assignments still reject. A known reference held
+non-idle by monitoring returns `reference_not_ready`; settle monitoring and
+refresh the reference before retrying. Earlier admission guards keep precedence.
 Unrelated reads/other-target work may join afterward. Other cooperative ordinary
 writers use `checkAxisWrite`; stale target bindings reject before admission.
 Each producer invalidates affected observations and configuration/qualification

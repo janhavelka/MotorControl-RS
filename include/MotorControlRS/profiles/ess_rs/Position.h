@@ -112,6 +112,7 @@ enum class MoveAdmission : uint8_t { OBSERVED_STATE, NATIVE_INTENT };
  * triggerStep identifies the start token; later tokens read alarm/motion words.
  * One axis reservation must survive every staging/trigger/wait boundary.
  * uncertain includes a possibly/definitely applied setup on terminal failure;
+ * a checked rejected trigger without setup does not imply execution uncertainty;
  * execution separately describes the trigger, never physical completion. */
 struct MoveContext {
     MoveAdmission admission = MoveAdmission::OBSERVED_STATE;

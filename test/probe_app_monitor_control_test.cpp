@@ -228,6 +228,8 @@ void testWiringDeclarationsAreLocalAndGenerationChecked() {
     using namespace MotorControlRS;
     fresh();
     assert(selectTarget(app, 2) == Probe::Action::OK && selectTarget(app, 1) == Probe::Action::OK);
+    app->configuration.operationId = 77; app->configuration.target = app->axis.target;
+    assert(installPositionClearQualification());
     auto& retained = app->records[0]; retained.operationId = 100; retained.address = 1; retained.kind = App::OperationKind::ACTION;
     assert(ESS::prepareNormalStop(retained.action, app->axis.target, 100, nowUs(), nowUs() + REQUEST_US));
     ActionEvent failure; failure.transport.target = app->axis.target; failure.transport.operationId = 100;
@@ -237,7 +239,7 @@ void testWiringDeclarationsAreLocalAndGenerationChecked() {
     updateActionReservation(*app, retained); const auto original = retained.action;
     const auto binding = app->bindingGeneration, generation = app->axis.generation;
     app->axis.originKnown = app->axis.softLimitsKnown = app->coordinateReference.nativeKnown = true;
-    app->driverInputsQualified = app->positionClearQualified = true;
+    app->driverInputsQualified = true;
     app->movePrerequisites.readinessQualified = app->homePrerequisites.readinessQualified = true;
     app->configuration.operationId = 77; app->configuration.target = app->axis.target;
     app->configuration.raw.inputFunctions[0] = 2;
@@ -252,7 +254,7 @@ void testWiringDeclarationsAreLocalAndGenerationChecked() {
     assert(view.inputs[0] == InputWiring::UNCONNECTED && view.configurationGeneration == generation + 1);
     assert(view.target.generation == binding && app->bindingGeneration == binding);
     assert(!app->axis.originKnown && !app->axis.softLimitsKnown && !app->coordinateReference.nativeKnown);
-    assert(!app->driverInputsQualified && !app->positionClearQualified && !app->movePrerequisites.readinessQualified &&
+    assert(!app->driverInputsQualified && !app->positionClearQualification.semanticsQualified && !app->movePrerequisites.readinessQualified &&
         !app->homePrerequisites.readinessQualified);
     assert(app->configuration.operationId == 77 && !std::memcmp(&assignments, &app->configuration.raw, sizeof(assignments)));
     assert(!std::memcmp(&original, &retained.action, sizeof(original)) && axisReserved(*app, 1));

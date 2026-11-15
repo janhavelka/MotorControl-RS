@@ -212,6 +212,7 @@ Status advanceCommunication(CommunicationContext& c, const ActionEvent& supplied
             failed(CommunicationError::ADDRESS_ACK_UNRESOLVED, "address acknowledgement and activation rule unresolved"));
         else finish(c, CommunicationOutcome::ACKNOWLEDGED, Ok());
     } else {
+        const bool contradictsReadback = c.readbackKnown && readback != c.readback;
         evidence.readback = c.readback = readback;
         evidence.readbackKnown = c.readbackKnown = true;
         c.observedActiveTarget = target; c.observedActiveSerial = evidence.serial; c.observedActiveKnown = true;
@@ -219,8 +220,10 @@ Status advanceCommunication(CommunicationContext& c, const ActionEvent& supplied
             c.uncertain = false;
             finish(c, CommunicationOutcome::CONFIRMED, Ok());
         } else {
-            // A later contradiction reopens an earlier confirmation or rejection.
-            if (c.effects) c.uncertain = true;
+            // A checked rejection leaves the known previous value expected.
+            // Another value or a changed prior readback is a contradiction.
+            if (c.effects && (c.execution != ActionExecution::REJECTED ||
+                readback != c.previous || contradictsReadback)) c.uncertain = true;
             finish(c, CommunicationOutcome::READBACK_MISMATCH,
                 failed(CommunicationError::READBACK_MISMATCH, "communication register differs from candidate"));
         }

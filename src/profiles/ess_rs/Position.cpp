@@ -51,7 +51,8 @@ void finish(MoveContext& c, ActionOutcome outcome, Status status) {
     // A failed operation after any setup TX cannot establish untouched parameters.
     c.uncertain = c.state == ActionState::FAILED &&
         (c.stagingEvidence.txAccepted || c.stagingEvidence.executionUnknown ||
-         c.triggerEvidence.txAccepted || c.triggerEvidence.executionUnknown);
+         (c.triggerEvidence.txAccepted && c.execution != ActionExecution::REJECTED) ||
+         c.triggerEvidence.executionUnknown);
 }
 void wait(MoveContext& c, uint64_t nowUs, bool runningEarlier = false) {
     ++c.step;
@@ -395,9 +396,9 @@ Status advanceMove(MoveContext& c, const ActionEvent& supplied, uint64_t nowUs) 
         c.verificationLength = event.length < sizeof(c.verificationRaw) ? event.length : sizeof(c.verificationRaw);
         if (c.verificationLength) std::memcpy(c.verificationRaw, event.frame, c.verificationLength);
     } else if (setting) {
-        c.stagingEvidence = evidence; c.setupExecution = Detail::classifyWrite(evidence);
+        c.stagingEvidence = evidence; c.setupExecution = Detail::classifyWrite(evidence, event.latestUs <= stepDeadline(c));
         c.stagingApplied = c.setupExecution == ActionExecution::ACKNOWLEDGED;
-    } else if (triggering) { c.triggerEvidence = evidence; c.execution = Detail::classifyWrite(evidence); }
+    } else if (triggering) { c.triggerEvidence = evidence; c.execution = Detail::classifyWrite(evidence, event.latestUs <= stepDeadline(c)); }
     c.servicedUs = nowUs;
     if (event.kind == ReadEventKind::CANCEL) finish(c, ActionOutcome::CANCELLED, evidence.status);
     else if (event.kind == ReadEventKind::DEADLINE) finish(c, ActionOutcome::DEADLINE, evidence.status);

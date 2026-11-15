@@ -693,7 +693,49 @@ static void testRebindOnlyTheUnsentOwnedStop() {
         assert(!Ess::rebindVelocityStop(partial, rebound, partial.servicedUs)); before.check(partial); noWork(partial);
     }
 }
+// Closure qualifies write evidence; delayed delivery only limits later work.
+static void testWriteClosureBoundaries() {
+    for (bool triggering : {false, true}) for (int offset : {-1, 0, 1})
+        for (uint8_t code : {0, 3, 5}) {
+        auto c = velocity(); if (triggering) consume(c);
+        Ess::PreparedVelocity work; assert(Ess::nextVelocity(c, c.servicedUs, work));
+        const uint64_t closure = work.deadlineUs + offset;
+        auto bytes = reply(c);
+        if (code) { bytes = {1, static_cast<uint8_t>(triggering ? 0x86 : 0x90), code}; crc(bytes); }
+        auto e = frame(c, bytes, closure - 10);
+        const uint64_t delivered = work.deadlineUs + 50;
+        assert(Ess::advanceVelocity(c, e, delivered));
+        const auto expected = offset > 0 || code == 5 ? ActionExecution::UNKNOWN :
+            code ? ActionExecution::REJECTED : ActionExecution::ACKNOWLEDGED;
+        assert((triggering ? c.execution : c.setupExecution) == expected);
+        const auto& kept = triggering ? c.triggerEvidence : c.stagingEvidence;
+        checkActionTransportEvidence(kept, e, e.transport.step, delivered);
+        assert(kept.status.code == (code ? Err::EXCEPTION : Err::OK));
+        assert(kept.length == bytes.size() && !std::memcmp(kept.raw, bytes.data(), bytes.size()));
+        if (offset > 0) assert(c.outcome == ActionOutcome::DEADLINE);
+    }
+}
+static void testPollClosureKeepsOverallDeadline() {
+    for (int offset : {-1, 0, 1}) {
+        auto c = velocity(); trigger(c);
+        Ess::PreparedVelocity poll; assert(Ess::nextVelocity(c, c.eligibleUs, poll));
+        assert(!poll.write && c.eligibleUs < c.stopDueUs && poll.deadlineUs == c.deadlineUs);
+        const auto bytes = reply(c, 4);
+        auto e = frame(c, bytes, c.eligibleUs + 20);
+        e.transport.latestUs = c.deadlineUs + offset;
+        assert(Ess::advanceVelocity(c, e, c.deadlineUs + 50));
+        assert(c.observationKnown == (offset <= 0) && c.runningObserved == (offset <= 0));
+        assert(c.polls == (offset <= 0 ? 1 : 0));
+        assert(c.rawMotion == (offset <= 0 ? 4 : 0));
+        assert(c.state == ActionState::FAILED && c.outcome == ActionOutcome::DEADLINE && c.uncertain && c.needsStop);
+        assert(c.execution == ActionExecution::ACKNOWLEDGED && c.stop.execution == ActionExecution::NOT_TRANSMITTED);
+        if (offset > 0) checkActionTransportEvidence(c.failureEvidence, e, e.transport.step, c.deadlineUs + 50);
+        noWork(c);
+    }
+}
 int main() {
+    testPollClosureKeepsOverallDeadline();
+    testWriteClosureBoundaries();
     testObservationDispatchAndSettlementDeadlines(); testRebindOnlyTheUnsentOwnedStop();
     testWriteReplyClassification(); testObservationClosingAfterDurationEndsTheBudget(); testPollBudgetMustCoverDuration();
     testOptionalAgePolicy();

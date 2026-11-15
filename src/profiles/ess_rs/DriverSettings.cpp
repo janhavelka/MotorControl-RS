@@ -703,7 +703,8 @@ Status advanceDriver(DriverContext& c, const ActionEvent& supplied, uint64_t now
     else if (event.latestUs > transactionDeadline) finish(c, DriverOutcome::DEADLINE,
         failure(DriverError::DEADLINE_EXPIRED, "driver frame closure exceeds transaction budget"));
     else if (!evidence.status) finish(c, DriverOutcome::REPLY_ERROR, evidence.status);
-    else if (!supplied.responseConfirmed && !(evidence.write && allowsEchoReadback(c))) finish(c, DriverOutcome::UNCONFIRMED_RESPONSE,
+    else if ((!supplied.responseConfirmed || (evidence.write && event.executionUnknown)) &&
+             !(evidence.write && allowsEchoReadback(c))) finish(c, DriverOutcome::UNCONFIRMED_RESPONSE,
         failure(DriverError::UNCONFIRMED_RESPONSE, "driver response source is not confirmed"));
     else {
         if (progress && !evidence.write) {

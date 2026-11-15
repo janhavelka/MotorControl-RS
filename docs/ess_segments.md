@@ -114,8 +114,9 @@ earlier scalar fields applied. No device setting changes on a read, probe,
 ordinary move preparation or startup.
 
 The setting-only echo/readback policy, where explicitly qualified by the
-application for the exact safe candidate, preserves an unconfirmed FC06
-frame as `UNKNOWN` execution with acknowledgement false. Confirmed matching
+application for the exact safe candidate, permits a checked, on-time FC06 frame
+with unconfirmed source or supplied execution uncertainty. It preserves the
+original provenance, `UNKNOWN` execution and acknowledgement false. Confirmed matching
 FC03 readback establishes the observed stored value; it does not retroactively
 confirm the FC06 source, active engine interpretation, persistence or motion.
 Missing, malformed, mismatching or unconfirmed readback remains uncertain and

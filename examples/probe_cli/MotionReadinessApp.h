@@ -110,8 +110,9 @@ bool moveRequirements(const MotionFacts& f, const MotorControlRS::MoveRequest& r
         return false;
     // Unconnected wiring does not establish inactive assignments. Preserve them
     // and require the checked logical input report for each assigned input.
+    // Origin level alone does not trigger a serial move or act as a limit.
     for (uint8_t i = 0; i < 4; ++i)
-        if (raw.inputFunctions[i] > 3 || (raw.inputFunctions[i] && io.value.inputs[i])) return false;
+        if (raw.inputFunctions[i] > 3 || (raw.inputFunctions[i] >= 2 && io.value.inputs[i])) return false;
     if (!request.position.relative && !absoluteMoveReady(f, request, now)) return false;
 
     // Publish only after every guard passes; rejected preparation preserves out.

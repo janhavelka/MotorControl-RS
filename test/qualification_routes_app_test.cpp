@@ -64,6 +64,7 @@ void crossPollWait() {
 void exchange(const Bytes& reply, const Bytes& expected = {}) {
     crossPollWait();
     for (unsigned i = 0; i < 100000 && wire.size() <= answered; ++i) step();
+    if (wire.size() <= answered) std::fprintf(stderr, "Missing frame %zu; console: %s\n", answered, Serial.output.c_str());
     assert(wire.size() > answered);
     if (!expected.empty() && wire[answered] != expected) {
         std::fprintf(stderr, "Unexpected frame %u:", static_cast<unsigned>(answered));
@@ -86,16 +87,16 @@ void feed(const std::string& text) {
     for (const char c : text) app->console.feed(c);
     app->console.feed(static_cast<char>(10)); pump(2);
 }
-void readConfig() {
+void readConfig(uint16_t subdivision = 1000, uint16_t originFunction = 0) {
     command("@90 read config"); const auto id = app->latestOperationId;
-    exchange(words({0, 1000})); exchange(words({0, 0, 0})); exchange(words({0, 0, 0}));
-    exchange(words({0, 0, 0, 0, 0})); exchange(words({3, 4000}));
+    exchange(words({0, subdivision})); exchange(words({0, 0, 0})); exchange(words({0, 0, 0}));
+    exchange(words({0, originFunction, 0, 0, 0})); exchange(words({3, 4000}));
     assert(app->configuration.operationId == id);
     command("@91 release " + std::to_string(id));
 }
-void readState(uint16_t motion = 1) {
+void readState(uint16_t motion = 1, uint16_t inputs = 0) {
     command("@92 read state"); const auto id = app->latestOperationId;
-    exchange(words({0, motion})); exchange(words({0, 0})); exchange(words({0, 0, 0}));
+    exchange(words({0, motion})); exchange(words({inputs, 0})); exchange(words({0, 0, 0}));
     command("@93 release " + std::to_string(id));
 }
 void readHome(uint16_t method, uint16_t search = 60, uint16_t returning = 30, uint16_t ramp = 100, uint16_t auxiliary = 7, uint16_t offsetLow = 0) {
@@ -375,7 +376,7 @@ void positionClearThroughConsole() {
     command("position-clear"); saying("position-clear qualification install clear-semantics"); noNewFrames();
     command("@81 position-clear qualification install"); saying("\"result\":\"missing_fact\""); saying("\"fact\":\"clear-semantics\"");
     command("@82 position-clear qualification install bogus"); saying("\"result\":\"unknown_fact\""); saying("\"fact\":\"bogus\"");
-    command("@83 position-clear qualification"); saying("\"result\":\"invalid_arguments\""); noNewFrames();
+    command("@83 position-clear qualification"); saying("\"present\":false"); saying("\"valid\":false"); noNewFrames();
     command("@84 position-clear qualification install clear-semantics"); saying("\"result\":\"done\""); noNewFrames();
     // Every other check stands: the fact does not replace fresh stopped state.
     command("@85 position-clear 2"); saying("\"result\":\"unavailable\""); noNewFrames();
@@ -384,10 +385,127 @@ void positionClearThroughConsole() {
     exchange(clear, clear); exchange(words({0, 1})); exchange(words({0, 0}), crc({1, 3, 0, 10, 0, 2}));
     Probe::ResultView result; assert(lookup(app, id, result) && !result.pending && result.actionContext->completion == ActionCompletion::OBSERVED);
     command("@87 release " + std::to_string(id));
-    command("@88 position-clear"); saying("\"result\":\"unavailable\""); noNewFrames(); // Its own effect expired the state.
+    command("@88 position-clear"); saying("\"result\":\"qualification_required\""); noNewFrames(); // Its own effect changed the coordinate generation.
     readState();
     command("@89 position-clear qualification revoke"); saying("\"command\":\"position-clear-qualification-revoke\""); saying("\"result\":\"done\"");
     command("@89 position-clear"); saying("\"result\":\"qualification_required\""); noNewFrames();
+}
+void positionClearBindingAndRevocation() {
+    PositionClearQualification facts; facts.configurationGeneration = 999; bool valid = true;
+    fresh();
+    assert(!inspectPositionClearQualification(facts, valid) && facts.configurationGeneration == 999 && valid);
+    readConfig(); readState(); assert(installPositionClearQualification());
+    assert(inspectPositionClearQualification(facts, valid) && valid && facts.semanticsQualified);
+    const auto old = facts;
+    command("@1 position-clear qualification"); saying("\"present\":true"); saying("\"valid\":true"); noNewFrames();
+    command("@2 recover"); saying("\"result\":\"accepted\"");
+    for (unsigned i = 0; i < 100000 && app->owner.recovering(); ++i) step();
+    assert(!app->owner.recovering() && !app->owner.needsRecovery());
+    assert(inspectPositionClearQualification(facts, valid) && !valid && facts.target.generation == old.target.generation);
+    assert(!installPositionClearQualification()); // Old configuration cannot requalify a new binding.
+    readConfig(); readState();
+    command("@3 position-clear"); saying("\"result\":\"qualification_required\""); noNewFrames();
+    assert(installPositionClearQualification());
+    command("@4 wiring x0 connected"); saying("\"result\":\"done\"");
+    assert(!inspectPositionClearQualification(facts, valid));
+    readConfig(); readState();
+    command("@5 position-clear"); saying("\"result\":\"qualification_required\""); noNewFrames();
+    assert(installPositionClearQualification());
+    command("@6 useaddr 2"); saying("\"result\":\"done\"");
+    assert(!inspectPositionClearQualification(facts, valid)); noNewFrames();
+
+    // A pending ordinary read completes after explicit revocation. Its checked
+    // state cannot create a new supplied semantic fact.
+    fresh(); readConfig(); readState(); assert(installPositionClearQualification());
+    command("@7 read state"); const auto read = app->latestOperationId;
+    assert(revokePositionClearQualification());
+    exchange(words({0, 1})); exchange(words({0, 0})); exchange(words({0, 0, 0}));
+    command("@8 release " + std::to_string(read));
+    assert(!inspectPositionClearQualification(facts, valid));
+    command("@9 position-clear"); saying("\"result\":\"qualification_required\""); noNewFrames();
+
+    // Revoke before the owner dispatches. Reinstall cannot revive admitted work.
+    fresh(); readConfig(); readState(); assert(installPositionClearQualification());
+    for (const char c : std::string("@10 position-clear\n")) app->console.feed(c);
+    const auto cancelled = app->latestOperationId; const auto before = hardware.writes;
+    assert(revokePositionClearQualification()); pump();
+    Probe::ResultView result; assert(lookup(app, cancelled, result) && !result.pending);
+    assert(result.actionContext->outcome == ActionOutcome::CANCELLED &&
+        result.actionContext->execution == ActionExecution::NOT_TRANSMITTED && hardware.writes == before);
+    command("@11 release " + std::to_string(cancelled));
+    assert(installPositionClearQualification());
+    command("@12 position-clear"); const auto sent = app->latestOperationId;
+    for (unsigned i = 0; i < 25000 && hardware.writes == before; ++i) step();
+    assert(hardware.writes == before + 1 && revokePositionClearQualification());
+    const Bytes clear = crc({1, 6, 0, 0x2D, 0, 0x31});
+    exchange(clear, clear); exchange(words({0, 1})); exchange(words({0, 0}), ZERO_READ);
+    assert(lookup(app, sent, result) && !result.pending && result.actionContext->execution == ActionExecution::ACKNOWLEDGED);
+    assert(result.actionContext->completion == ActionCompletion::OBSERVED);
+}
+void positionClearWaitsForNewReadEvidence() {
+    for (bool configuration : {false, true}) {
+        fresh(); readConfig(); readState(); assert(installPositionClearQualification());
+        command(configuration ? "@13 read config" : "@13 read state");
+        const auto before = wire.size();
+        for (const char c : std::string("@14 position-clear\n")) app->console.feed(c);
+        const auto clear = app->latestOperationId;
+        assert(findRecord(*app, clear)->kind == App::OperationKind::ACTION);
+        assert(!app->owner.txAccepted(findRecord(*app, clear)->requestId));
+        exchange(configuration ? words({0, 2000}) : words({0, 4}));
+        Probe::ResultView result; assert(lookup(app, clear, result) && !result.pending);
+        assert(result.actionContext->outcome == ActionOutcome::CANCELLED &&
+            result.actionContext->execution == ActionExecution::NOT_TRANSMITTED);
+        for (std::size_t i = before; i < wire.size(); ++i) assert(wire[i][1] == 3);
+    }
+}
+void homeSubdivisionEnvelope() {
+    // At subdivision10,000, native rate word300 reaches the nominal policy exactly.
+    for (uint16_t subdivision : {uint16_t(0), uint16_t(399), uint16_t(10000), uint16_t(51200)}) {
+        for (uint16_t speed : {uint16_t(58), uint16_t(59), uint16_t(300), uint16_t(301)}) {
+            fresh(); readConfig(subdivision); readState(); readHome(33, speed);
+            command("@20 home qualification install 33 " + std::to_string(speed) +
+                " 30 100 mechanics rates ramp zero-offset auxiliary inputs index reference");
+            saying("\"result\":\"done\"");
+            const auto before = hardware.writes;
+            ESS::HomeRequest request; request.method = ESS::HomingMethod::METHOD_33; request.searchSpeed = speed;
+            uint32_t id = 999; const auto admitted = submitHome(request, id);
+            const bool known = subdivision >= 400;
+            const bool allowed = known && uint64_t(subdivision) * speed <= 3000000;
+            assert(bool(admitted) == allowed);
+            if (!allowed) {
+                assert(id == 999 && hardware.writes == before && !app->owner.pending());
+                assert(admitted.detail == static_cast<int32_t>(known ? Probe::Action::OPERATING_LIMIT : Probe::Action::UNAVAILABLE));
+            } else {
+                assert(findRecord(*app, id)->home.request.searchSpeed == speed);
+                assert(cancel(app, id) == Probe::Action::OK); pump(); assert(hardware.writes == before);
+            }
+        }
+    }
+    // Return speed has its own bound, even for nonmoving method 35's staged words.
+    for (uint16_t returning : {uint16_t(58), uint16_t(59)}) {
+        fresh(); readConfig(51200); readState(); readHome(35, 30, returning);
+        command("@21 home qualification install 35 30 " + std::to_string(returning) +
+            " 100 mechanics rates ramp zero-offset auxiliary inputs"); saying("\"result\":\"done\"");
+        const auto before = hardware.writes;
+        command("@22 home 35 30 " + std::to_string(returning) + " 100 zero");
+        saying(returning == 58 ? "\"result\":\"accepted\"" : "\"result\":\"operating_limit\"");
+        if (returning == 59) assert(hardware.writes == before && !app->owner.pending());
+    }
+}
+void homeThenMoveWithActiveOrigin() {
+    fresh(); command("@29 wiring x0 connected"); saying("\"result\":\"done\"");
+    readConfig(1000, 1); readState(1, 0); readHome(20);
+    command(installHome(20, std::string(HOME_FACTS) + " reference")); saying("\"result\":\"done\"");
+    command("@30 home 20 60 30 100 zero"); const auto home = app->latestOperationId;
+    exchange(writeReply(staging(20)), staging(20)); exchange(TRIGGER, TRIGGER);
+    exchange(status(4, 0), HOME_POLL); // Moving search, HOMED low.
+    exchange(status(3, 1), HOME_POLL); exchange(words({0, 0}), ZERO_READ);
+    Probe::ResultView result; assert(lookup(app, home, result) && !result.pending && result.homeContext->completion == ActionCompletion::OBSERVED);
+    command("@31 release " + std::to_string(home));
+    readConfig(1000, 1); readState(1, 1); readProfile(10);
+    command("@32 move relative 20 steps native 60 configured"); saying("\"result\":\"accepted\"");
+    const auto move = app->latestOperationId;
+    assert(findRecord(*app, move)->move.prerequisites.serialInputsPermit);
 }
 void startSpeedRelationRestoresMoves() {
     fresh(); readConfig(); readState();
@@ -486,6 +604,7 @@ int main() {
     searchBeyondBudgetEndsUncertainWithNoFurtherFrames();
     velocityThroughConsole();
     positionClearThroughConsole();
+    positionClearBindingAndRevocation(); positionClearWaitsForNewReadEvidence(); homeSubdivisionEnvelope(); homeThenMoveWithActiveOrigin();
     startSpeedRelationRestoresMoves();
     settledInterruptPairIsRecycled();
     return 0;

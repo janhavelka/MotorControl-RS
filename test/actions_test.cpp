@@ -419,7 +419,25 @@ void testZeroOnlyDeviceClearNeedsQualifiedFreshReadback() {
     assert(c.execution == ActionExecution::ACKNOWLEDGED && c.completion == ActionCompletion::NOT_OBSERVED);
 }
 } // namespace
+static void testWriteClosureBoundaries() {
+    for (int offset : {-1, 0, 1}) for (uint8_t code : {0, 3, 5}) {
+        auto c = action(ActionKind::STOP, 400);
+        std::vector<uint8_t> bytes(NORMAL, NORMAL + sizeof(NORMAL));
+        if (code) { bytes = {1, 0x86, code}; crc(bytes); }
+        auto e = frame(c, bytes.data(), bytes.size(), 390 + offset);
+        assert(Ess::advanceAction(c, e, 450));
+        const auto expected = offset > 0 || code == 5 ? ActionExecution::UNKNOWN :
+            code ? ActionExecution::REJECTED : ActionExecution::ACKNOWLEDGED;
+        assert(c.execution == expected && c.state == ActionState::FAILED);
+        assert(c.outcome == (offset > 0 || !code ? ActionOutcome::DEADLINE : ActionOutcome::REPLY_ERROR));
+        checkActionTransportEvidence(c.writeEvidence, e, 0, 450);
+        assert(c.writeEvidence.status.code == (code ? Err::EXCEPTION : Err::OK));
+        Ess::PreparedAction next; assert(Ess::nextAction(c, 450, next));
+        assert(next.kind == Ess::ActionWork::DONE && !next.length);
+    }
+}
 int main() {
+    testWriteClosureBoundaries();
     testObservationRetainsUnknownExecution(); testObservationPreservesWriteFailures();
     testExactCommandsAndCommonNativeParity(); testPolicyRejectionPreservesPreparedOperation();
     testEchoAcknowledgementAndReportedCompletionAreSeparate(); testInvalidEnvelopesAndDuplicatesDoNotMutate();

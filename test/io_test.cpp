@@ -251,7 +251,28 @@ static void testOptionalAgePolicy() {
     p.maxAgeUs = 0; p.previous.target.generation++;
     assert(!E::prepareDriverSettings(c, target(), 12, r, p, 100000, 110000)); saved.check(c);
 }
+static void testSuppliedUncertaintyNeedsReadbackPolicy() {
+    for (bool allowed : {false, true}) {
+        auto c = update(request(), allowed); const auto w = work(c);
+        const std::vector<uint8_t> bytes(w.bytes, w.bytes + w.length);
+        auto e = frame(c, bytes); e.transport.executionUnknown = true;
+        assert(E::advanceDriver(c, e, c.servicedUs + 3));
+        assert(c.progress[8].execution == ActionExecution::UNKNOWN && !c.progress[8].acknowledged && c.uncertain);
+        const Saved<E::DriverEvidence> retained(c.observations[0]);
+        if (!allowed) {
+            assert(c.state == ReadState::FAILED && c.outcome == E::DriverOutcome::UNCONFIRMED_RESPONSE);
+            assert(work(c).kind == E::ActionWork::DONE);
+        } else {
+            assert(c.state == ReadState::ACTIVE && !work(c).write);
+            supply(c, reply({0}));
+            assert(c.state == ReadState::SUCCEEDED && !c.uncertain && c.progress[8].readbackKnown);
+            assert(c.progress[8].execution == ActionExecution::UNKNOWN && !c.progress[8].acknowledged);
+            retained.check(c.observations[0]);
+        }
+    }
+}
 int main() {
+    testSuppliedUncertaintyNeedsReadbackPolicy();
     testOptionalAgePolicy();
     testAdmissionPrecedence();
     testChoicesAndDisable(); testRawAndImmutable(); testPrerequisitesAndMasks();

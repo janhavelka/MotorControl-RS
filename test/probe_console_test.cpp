@@ -1971,6 +1971,7 @@ void homeFixtures() {
     c = prepare(35, true); consume(c, 0, 0); consume(c, 0, 0); consume(c, 3, 0); consume(c, 3, 0); consume(c, 3, 0); emit("stale_homed", c);
     for (int failure = 1; failure <= 6; ++failure) {
         c = prepare(35, false); consume(c, 0, 0); consume(c, 0, failure);
+        if (failure == 4) { consume(c, 3, 0); consume(c, 0, 0); }
         emit(failure == 1 ? "lost_trigger_ack" : failure == 2 ? "cancelled" : failure == 3 ? "deadline" : failure == 4 ? "unconfirmed_trigger" : failure == 5 ? "exception" : "late_trigger_echo", c);
     }
     c = prepare(35, false); consume(c, 0, 7); emit("timing_unqualified", c);

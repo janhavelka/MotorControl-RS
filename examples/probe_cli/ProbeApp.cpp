@@ -40,6 +40,9 @@ constexpr uint32_t NORMAL_STOP_US = 2000000 + 2 * REQUEST_US, NORMAL_STOP_POLL_U
 // Move and home completion polls once RUNNING was reported. 64 of them cover the
 // largest ApplicationOptions::moveTimeoutMs; polls spent before RUNNING reduce this.
 constexpr uint32_t RUNNING_POLL_US = 500000;
+// Nominal application ceiling shared with position policy, not a vendor range or
+// measured homing speed. Exact native-word qualification remains required.
+constexpr uint32_t HOME_MAX_COMMAND_RATE = 50000;
 static_assert(static_cast<uint64_t>(ESS::ACTION_MAX_POLLS) * RUNNING_POLL_US >= 30000000, "polls must cover the largest move timeout");
 // Every stop deadline is fixed at admission and never renewed. This allowance
 // lets an in-flight transaction settle and one bounded recovery finish while a
@@ -229,7 +232,7 @@ struct App {
     bool motionObservationPending = false; // Our terminal move/stop still needs a stationary feedback baseline.
     int64_t simpleEndpoint = 0;
     uint32_t simpleEndpointGeneration = 0;
-    bool positionClearQualified = false; // Supplied commissioning semantics, independent of electrical qualification.
+    PositionClearQualification positionClearQualification;
     Probe::DebugSession debug;
     struct MotionProfileState {
         Probe::MotionProfileView view;
@@ -1079,6 +1082,17 @@ bool releaseFactsValid(const App& a, const ReleaseAfterStopPrerequisites& facts,
 }
 // groupStop: one member stop of a group operation, from the group pool. A declared
 // member is a stop target like the selected address, even with stale facts.
+bool positionClearQualificationValid(const App& a) {
+    const auto& p = a.positionClearQualification;
+    return p.semanticsQualified && p.target.id && a.axis.generation &&
+        Probe::sameTarget(p.target, a.axis.target) && p.target.generation == a.bindingGeneration &&
+        p.configurationGeneration == a.axis.generation;
+}
+bool positionClearReadiness(const App& a, uint8_t address, uint64_t now) {
+    const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+    return a.axis.target.address == address && Probe::fresh(motion, a.axis.target, now, a.observationAgeUs()) &&
+        !motion.value.running && !motion.value.released && !motion.value.rawAlarm && !motion.value.alarmFlag;
+}
 Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
                             const MotorControlRS::ActionRequest& request, uint32_t& operationId, bool groupStop,
                             uint32_t failedStopId = 0, const ReleaseAfterStopPrerequisites* releaseFacts = nullptr) {
@@ -1110,12 +1124,10 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
     }
     if (request.kind == ActionKind::CLEAR_POSITION) {
         if (request.devicePosition != 0) return Probe::Action::UNSUPPORTED;
-        if (!a.positionClearQualified) return Probe::Action::QUALIFICATION_REQUIRED;
+        if (!positionClearQualificationValid(a)) return Probe::Action::QUALIFICATION_REQUIRED;
         const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
         const uint64_t age = a.observationAgeUs();
-        if (a.axis.target.address != address || !Probe::fresh(motion, a.axis.target, now, age) ||
-            motion.value.running || motion.value.released || motion.value.rawAlarm || motion.value.alarmFlag)
-            return Probe::Action::UNAVAILABLE;
+        if (!positionClearReadiness(a, address, now)) return Probe::Action::UNAVAILABLE;
         const uint64_t readinessEnd = evidenceAgeDeadline(motion.observedEarliestUs, age);
         if (readinessEnd <= now) return Probe::Action::UNAVAILABLE;
         if (readinessEnd < deadline) deadline = readinessEnd;
@@ -1172,6 +1184,7 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
     record->serialGeneration = scanStop ? a.discovery.originalSerialGeneration : a.serial.generation;
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
     record->deadlineUs = preparedContext.deadlineUs; record->kind = App::OperationKind::ACTION; record->axisReserved = true;
+    record->configurationGeneration = a.axis.generation;
     if (scanStop) {
         record->discoveryStop = true;
         a.discovery.cancelRequested = true;
@@ -1358,6 +1371,9 @@ Probe::Action prepareSelectedMove(App& a, const MotorControlRS::MoveRequest& sup
         a.nextOperationId, request, prerequisites, now, deadline, options);
     if (!checked) {
         if (a.simple.admitting) a.simple.view.status = checked;
+        if (checked.code == Err::INVALID_CONFIG && checked.detail == static_cast<int32_t>(MoveError::READINESS) &&
+            reference.nativeKnown && (!reference.idle || !reference.stationary || reference.basis != RelativeBasis::ACTUAL))
+            return Probe::Action::REFERENCE_NOT_READY;
         return checked.code == Err::UNSUPPORTED ? Probe::Action::UNSUPPORTED : Probe::Action::INVALID;
     }
     return Probe::Action::OK;
@@ -1542,6 +1558,13 @@ void cancelInvalidHomes(App& a, uint64_t now) {
         }
     }
 }
+bool homeRatesWithinPolicy(const App& a, uint16_t search, uint16_t returning) {
+    const auto subdivision = a.configuration.raw.subdivision;
+    return a.configuration.operationId && Probe::sameTarget(a.configuration.target, a.axis.target) &&
+        subdivision >= 400 && subdivision <= 51200 &&
+        static_cast<uint64_t>(subdivision) * search <= uint64_t(HOME_MAX_COMMAND_RATE) * 60 &&
+        static_cast<uint64_t>(subdivision) * returning <= uint64_t(HOME_MAX_COMMAND_RATE) * 60;
+}
 Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
                         const ESS::HomeRequest& supplied, uint32_t& operationId) {
     using namespace MotorControlRS;
@@ -1570,6 +1593,8 @@ Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
     const uint64_t now = uart.sample();
     auto prerequisites = a.homePrerequisites;
     if (!homeReadiness(a, prerequisites, now)) return Probe::Action::UNAVAILABLE;
+    if (a.configuration.raw.subdivision < 400 || a.configuration.raw.subdivision > 51200) return Probe::Action::UNAVAILABLE;
+    if (!homeRatesWithinPolicy(a, supplied.searchSpeed, supplied.returnSpeed)) return Probe::Action::OPERATING_LIMIT;
     ESS::HomeRequest request = supplied;
     if (!request.configurationGeneration) request.configurationGeneration = a.axis.generation;
     // A search lasts as long as its travel, so it gets the same budget as a move.
@@ -2054,7 +2079,7 @@ void invalidateDriverAssumptions(App& a, uint8_t address, uint32_t changed, uint
             a.configuration.operationId = 0;
             a.simpleEndpointKnown = false; a.rememberedMoveGeneration = 0;
             a.movePrerequisites = ESS::MovePrerequisites(); a.velocityPrerequisites = ESS::VelocityPrerequisites();
-            a.homePrerequisites = ESS::HomePrerequisites(); a.positionClearQualified = false;
+            a.homePrerequisites = ESS::HomePrerequisites(); a.positionClearQualification = PositionClearQualification();
             for (auto& other : a.records) if (&other != changing && other.axisReserved && !terminal(a, other) &&
                 !(other.groupChild && other.address != address)) {
                 other.cancelContinuation = true;
@@ -2077,7 +2102,7 @@ void invalidateDriverAssumptions(App& a, uint8_t address, uint32_t changed, uint
         a.configuration.operationId = 0;
         a.movePrerequisites = ESS::MovePrerequisites(); a.velocityPrerequisites = ESS::VelocityPrerequisites();
         a.homePrerequisites = ESS::HomePrerequisites();
-        a.positionClearQualified = false;
+        a.positionClearQualification = PositionClearQualification();
     }
     if (a.driverSettings.target.address == address) a.driverSettings.operationId = 0;
     if (a.ioSettings.target.address == address) a.ioSettings.operationId = 0;
@@ -2622,6 +2647,18 @@ void serviceHeldStop(App& a, App::Record& record, uint64_t now) {
     if (admitted == Rtu::BusAdmission::ACCEPTED) { record.action = prepared; record.stopHeld = false; }
     else if (admitted != Rtu::BusAdmission::URGENT_FULL) endHeldStop(record, ReadEventKind::TRANSPORT_FAILURE, -4, now);
 }
+void cancelInvalidPositionClears(App& a, uint64_t now) {
+    for (auto& record : a.records) {
+        if (record.kind != App::OperationKind::ACTION || record.action.request.kind != MotorControlRS::ActionKind::CLEAR_POSITION ||
+            terminal(a, record) || record.action.step != 0 ||
+            (record.requestId.owner && a.owner.txAccepted(record.requestId))) continue;
+        if (positionClearQualificationValid(a) && positionClearReadiness(a, record.address, now) &&
+            Probe::sameTarget(record.action.target, a.positionClearQualification.target) &&
+            record.configurationGeneration == a.positionClearQualification.configurationGeneration) continue;
+        record.cancelContinuation = true;
+        if (record.requestId.owner) a.owner.cancelUnsent(record.requestId, now);
+    }
+}
 void cancelInvalidReleases(App& a, uint64_t now) {
     for (auto& record : a.records) {
         if (!record.releaseAfterStopId || terminal(a, record) || record.action.step != 0 ||
@@ -2634,6 +2671,7 @@ void cancelInvalidReleases(App& a, uint64_t now) {
 void advanceActions(App& a, uint64_t now) {
     cancelInvalidHomes(a, now);
     cancelInvalidReleases(a, now);
+    cancelInvalidPositionClears(a, now);
     for (auto& record : a.records) {
         // A cancelled held stop can finish before its recovery. Keep the later
         // recovery outcome as independent evidence even for terminal records.
@@ -3191,7 +3229,7 @@ void invalidateAfterBroadcast(App& a, uint64_t now) {
     a.coordinateReference = MotorControlRS::AxisReference();
     a.simpleEndpointKnown = false; a.motionObservationPending = true;
     a.movePrerequisites = ESS::MovePrerequisites(); a.velocityPrerequisites = ESS::VelocityPrerequisites();
-    a.homePrerequisites = ESS::HomePrerequisites(); a.positionClearQualified = false;
+    a.homePrerequisites = ESS::HomePrerequisites(); a.positionClearQualification = PositionClearQualification();
     a.rememberedMoveGeneration = 0;
 }
 Probe::Action selectTarget(void* context, uint8_t address) {
@@ -3222,7 +3260,7 @@ Probe::Action selectTarget(void* context, uint8_t address) {
     a.simple.desired.stepsPerTurn = Rational();
     a.coordinateReference = AxisReference();
     a.commandPolarityKnown = true;
-    a.positionClearQualified = false;
+    a.positionClearQualification = PositionClearQualification();
     a.movePrerequisites = ESS::MovePrerequisites();
     a.velocityPrerequisites = ESS::VelocityPrerequisites();
     a.homePrerequisites = ESS::HomePrerequisites();
@@ -3255,7 +3293,7 @@ Probe::Action wiring(void* context, const Probe::WiringRequest* requested, Probe
     if (!a.axis.generation || a.axis.generation == UINT32_MAX) return Probe::Action::IDS_EXHAUSTED;
     declaration = requested->state;
     invalidateAxis(a);
-    a.driverInputsQualified = false; a.positionClearQualified = false;
+    a.driverInputsQualified = false; a.positionClearQualification = PositionClearQualification();
     a.movePrerequisites = ESS::MovePrerequisites(); a.velocityPrerequisites = ESS::VelocityPrerequisites();
     a.homePrerequisites = ESS::HomePrerequisites();
     for (auto& block : a.stateCache.blocks) block.invalidatedUs = nowUs();
@@ -3343,6 +3381,9 @@ Probe::Host host(App* a) {
         if (!a.homePrerequisites.target.id) return false;
         auto checked = a.homePrerequisites;
         valid = homeReadiness(a, checked, nowUs()); output = a.homePrerequisites; return true;
+    };
+    h.inspectPositionClearQualification = [](void*, PositionClearQualification& output, bool& valid) {
+        return inspectPositionClearQualification(output, valid);
     };
     h.qualification = qualificationCommand;
     h.startPositionInterrupt = startPositionInterrupt;
@@ -3592,7 +3633,9 @@ MotorControlRS::Status submitMove(const MotorControlRS::PositionRequest& positio
     const auto admitted = startMove(app, 0, app->axis.target.address, request, operationId);
     if (admitted != Probe::Action::OK)
         return Status(admitted == Probe::Action::UNSUPPORTED ? Err::UNSUPPORTED : Err::INVALID_CONFIG,
-            static_cast<int32_t>(admitted), "move not admitted; inspect readiness, units, limits or owner capacity");
+            static_cast<int32_t>(admitted), admitted == Probe::Action::REFERENCE_NOT_READY ?
+                "move reference not ready; settle monitoring and refresh stationary reference" :
+                "move not admitted; inspect readiness, units, limits or owner capacity");
     findRecord(*app, operationId)->programmaticMove = true;
     return Ok();
 }
@@ -3752,13 +3795,25 @@ MotorControlRS::Status installPositionClearQualification() {
     if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
     if (!qualificationIdle(*app))
         return Status(Err::INVALID_CONFIG, static_cast<int32_t>(Probe::Action::BUSY), "position-clear qualification requires idle application");
-    app->positionClearQualified = true;
+    if (!platformReady || app->owner.needsRecovery() || uart.needsRecovery() ||
+        !app->axis.generation || !app->axis.target.id || !app->axis.target.generation ||
+        app->axis.target.generation != app->bindingGeneration || !app->configuration.operationId ||
+        !Probe::sameTarget(app->configuration.target, app->axis.target))
+        return Status(Err::INVALID_CONFIG, 0, "position-clear requires current binding and configuration");
+    app->positionClearQualification.target = app->axis.target;
+    app->positionClearQualification.configurationGeneration = app->axis.generation;
+    app->positionClearQualification.semanticsQualified = true;
     return Ok();
+}
+bool inspectPositionClearQualification(PositionClearQualification& output, bool& valid) {
+    if (!app || !app->positionClearQualification.semanticsQualified) return false;
+    valid = positionClearQualificationValid(*app); output = app->positionClearQualification; return true;
 }
 MotorControlRS::Status revokePositionClearQualification() {
     using namespace MotorControlRS;
     if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
-    app->positionClearQualified = false;
+    app->positionClearQualification = PositionClearQualification();
+    cancelInvalidPositionClears(*app, nowUs());
     return Ok();
 }
 bool copySettingsResult(uint32_t operationId, MotorControlRS::ESS_RS::DriverContext& output) {
@@ -3953,6 +4008,7 @@ void serviceApplication() {
         cancelInvalidPositionInterrupts(a, sampled);
         cancelInvalidHomes(a, sampled);
         cancelInvalidReleases(a, sampled);
+        cancelInvalidPositionClears(a, sampled);
         a.owner.service(sampled, recoveryReady);
         if (hadDE && !a.runner.transmitEnabled()) a.recoveryGuardUntilUs = nowUs() + RECOVER_US;
 #if MOTORCONTROLRS_LOAD_FIXTURE

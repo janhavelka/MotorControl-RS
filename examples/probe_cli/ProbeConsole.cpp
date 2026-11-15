@@ -616,7 +616,7 @@ HelpText helpText(const Entry& entry, const Host& host) {
         }
     } else if (entry.command == Command::POSITION_CLEAR) {
         if (host.qualification) {
-            text.syntax = "position-clear [address] | position-clear qualification install clear-semantics | position-clear qualification revoke";
+            text.syntax = "position-clear [address] | position-clear qualification | position-clear qualification install clear-semantics | position-clear qualification revoke";
             text.description = "Explicitly set the drive position counter to zero, after stating that its clear semantics are qualified.";
         }
     } else if (entry.command == Command::MOTION_PROFILE) {
@@ -693,6 +693,8 @@ const char* actionName(Action value) {
     case Action::UNRESOLVED: return "unresolved";
     case Action::UNIMPLEMENTED: return "unimplemented";
     case Action::QUALIFICATION_REQUIRED: return "qualification_required";
+    case Action::REFERENCE_NOT_READY: return "reference_not_ready";
+    case Action::OPERATING_LIMIT: return "operating_limit";
     }
     return "failed";
 }
@@ -1316,6 +1318,22 @@ void Console::dispatch() noexcept {
             boolean(data.memoryValid),static_cast<unsigned long>(data.stackFreeBytes),static_cast<unsigned long>(data.internalFree),static_cast<unsigned long>(data.psramFree))) emit();
         else error(id,"debug","output_capacity");
         return;
+    }
+    if (entry->command == Command::POSITION_CLEAR && count == first + 2 &&
+        !std::strcmp(tokens[first + 1], "qualification")) {
+        if (outputPending()) { ++inputDropped_; return; }
+        if (!host_.inspectPositionClearQualification) { error(id, "position-clear-qualification", "unavailable"); return; }
+        PositionClearQualification p; bool valid = false;
+        const bool present = host_.inspectPositionClearQualification(host_.context, p, valid);
+        std::size_t used = 0;
+        if (!append(output_, sizeof(output_), used,
+            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"position-clear-qualification\",\"ok\":true,\"present\":%s,\"valid\":%s,\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"semantics_qualified\":%s}",
+            static_cast<unsigned long>(id), boolean(present), boolean(present && valid),
+            static_cast<unsigned long>(p.target.id), p.target.address, static_cast<unsigned long>(p.target.generation),
+            static_cast<unsigned long>(p.configurationGeneration), boolean(p.semanticsQualified))) {
+            error(id, "position-clear-qualification", "output_full"); return;
+        }
+        emit(); return;
     }
     if ((entry->command == Command::HOME || entry->command == Command::VELOCITY || entry->command == Command::POSITION_CLEAR) &&
         count > first + 2 && !std::strcmp(tokens[first + 1], "qualification")) {
@@ -3125,13 +3143,15 @@ bool Console::formatVelocity(uint32_t id, uint32_t commandId, uint32_t operation
     char observedRaw[Ess::ACTION_MAX_REPLY_BYTES * 2 + 1];
     hex(c.lastObservation.raw, c.lastObservation.length, observedRaw, sizeof(observedRaw));
     const bool fits = append(output_, sizeof(output_), used,
-        "{\"type\":\"%s\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"command_id\":%lu,\"operation_id\":%lu,\"velocity\":true,\"ok\":%s,\"state\":\"%s\",\"outcome\":\"%s\",\"status\":\"%s\",\"detail\":%ld,\"setup_execution\":\"%s\",\"execution\":\"%s\",\"completion\":\"%s\",\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"started_us\":%llu,\"deadline_us\":%llu,\"stop_due_us\":%llu,\"serviced_us\":%llu,\"polls\":%u,\"phase\":%u,\"staging_applied\":%s,\"uncertain\":%s,\"needs_stop\":%s,\"running_observed\":%s,\"service_missed\":%s,\"observation_known\":%s,\"raw_alarm\":%s,\"raw_motion\":%s,\"native_rpm\":%d,\"ramp\":\"configured\",\"staging_words\":[%u,%u,%u],\"stop_policy\":\"%s\",\"requested\":{\"numerator\":%lld,\"denominator\":%llu,\"position_unit\":%u,\"time_unit\":%u,\"frame\":%u,\"duration_us\":%lu,\"rounding\":%u,\"approximate\":%s,\"maximum_quantization_error_rpm\":%.17g,\"maximum_approximation_error_rpm\":%.17g},\"rounding_error\":%.17g,\"approximation_error_bound\":%.17g,\"exact_arithmetic\":%s,\"requested_rpm_approximate\":%.17g,\"stop_execution\":\"%s\",\"stop_completion\":\"%s\",\"stop_outcome\":\"%s\",\"interrupted_by_stop\":%s,\"staging_evidence\":",
+        "{\"type\":\"%s\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"command_id\":%lu,\"operation_id\":%lu,\"velocity\":true,\"ok\":%s,\"state\":\"%s\",\"outcome\":\"%s\",\"status\":\"%s\",\"detail\":%ld,\"setup_execution\":\"%s\",\"execution\":\"%s\",\"completion\":\"%s\",\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"started_us\":%llu,\"deadline_us\":%llu,\"stop_due_us\":%llu,\"write_deadline_us\":%llu,\"serviced_us\":%llu,\"polls\":%u,\"phase\":%u,\"staging_applied\":%s,\"uncertain\":%s,\"needs_stop\":%s,\"running_observed\":%s,\"service_missed\":%s,\"observation_known\":%s,\"raw_alarm\":%s,\"raw_motion\":%s,\"native_rpm\":%d,\"ramp\":\"configured\",\"staging_words\":[%u,%u,%u],\"stop_policy\":\"%s\",\"requested\":{\"numerator\":%lld,\"denominator\":%llu,\"position_unit\":%u,\"time_unit\":%u,\"frame\":%u,\"duration_us\":%lu,\"rounding\":%u,\"approximate\":%s,\"maximum_quantization_error_rpm\":%.17g,\"maximum_approximation_error_rpm\":%.17g},\"rounding_error\":%.17g,\"approximation_error_bound\":%.17g,\"exact_arithmetic\":%s,\"requested_rpm_approximate\":%.17g,\"stop_execution\":\"%s\",\"stop_completion\":\"%s\",\"stop_outcome\":\"%s\",\"interrupted_by_stop\":%s,\"staging_evidence\":",
         inspection ? "reply" : "velocity", static_cast<unsigned long>(id), inspection ? "result" : "velocity",
         static_cast<unsigned long>(commandId), static_cast<unsigned long>(operationId), boolean(ok), ok ? "succeeded" : "failed",
         motorOutcome(c.outcome), Core::errToString(c.status.code), static_cast<long>(c.status.detail), executionName(c.setupExecution), executionName(c.execution),
         c.completion == Core::ActionCompletion::OBSERVED ? "observed" : "not_observed", static_cast<unsigned long>(c.target.id), c.target.address,
         static_cast<unsigned long>(c.target.generation), static_cast<unsigned long>(r.configurationGeneration),
-        static_cast<unsigned long long>(c.startedUs), static_cast<unsigned long long>(c.deadlineUs), static_cast<unsigned long long>(c.stopDueUs), static_cast<unsigned long long>(c.servicedUs),
+        static_cast<unsigned long long>(c.startedUs), static_cast<unsigned long long>(c.deadlineUs), static_cast<unsigned long long>(c.stopDueUs),
+        static_cast<unsigned long long>(std::min(c.stopDueUs, Core::evidenceAgeDeadline(c.prerequisites.observedUs, c.prerequisites.maximumAgeUs))),
+        static_cast<unsigned long long>(c.servicedUs),
         c.polls, static_cast<unsigned>(c.phase), boolean(c.stagingApplied), boolean(c.uncertain), boolean(c.needsStop), boolean(c.runningObserved), boolean(c.serviceMissed),
         boolean(c.observationKnown), alarm, motion, p.nativeRpm, c.words[0], c.words[1], c.words[2],
         r.stop.behavior == Core::StopBehavior::DIRECT ? "fast" : "normal", static_cast<long long>(r.value.numerator), static_cast<unsigned long long>(r.value.denominator),

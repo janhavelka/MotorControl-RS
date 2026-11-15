@@ -41,7 +41,7 @@ constexpr uint16_t CAPTURE_FIRST = 0x0130, CAPTURE_WORDS = 16;
 /** Host action result; admitted reads and recovery complete asynchronously. */
 enum class Action : uint8_t { OK, BUSY, RECOVERY_REQUIRED, UNAVAILABLE, FAILED,
     QUEUE_FULL, RESULTS_FULL, IDS_EXHAUSTED, INVALID, ALREADY_TERMINAL,
-    TIMING_UNQUALIFIED, UNSUPPORTED, AXIS_CONFLICT, UNRESOLVED, UNIMPLEMENTED, QUALIFICATION_REQUIRED };
+    TIMING_UNQUALIFIED, UNSUPPORTED, AXIS_CONFLICT, UNRESOLVED, UNIMPLEMENTED, QUALIFICATION_REQUIRED, REFERENCE_NOT_READY, OPERATING_LIMIT };
 
 enum class DebugMode : uint8_t { OFF, RAW, DECODED };
 /** Presentation only; \@ID commands always select JSON independently. */
@@ -353,6 +353,7 @@ struct Host {
     /** Finite homing through the public profile API; native words are copied. */
     Action (*startHome)(void*, uint32_t commandId, uint8_t address,
                        const MotorControlRS::ESS_RS::HomeRequest&, uint32_t& operationId) = nullptr;
+    bool (*inspectPositionClearQualification)(void*, PositionClearQualification&, bool& valid) = nullptr;
     bool (*inspectHomeQualification)(void*, MotorControlRS::ESS_RS::HomePrerequisites&, bool& valid) = nullptr;
     /** Typed commissioning facts from the console; synchronous and never bus traffic.
      * Calls the same install/revoke operations as the application API. */

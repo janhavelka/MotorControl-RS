@@ -887,7 +887,7 @@ template<size_t N> void testSwitchAdmission(const SwitchCase (&cases)[N]) {
             case 31: p.qualifiedMethod = Ess::HomingMethod::METHOD_35; break;
             case 32: ++p.target.id; break;
             case 33: {
-                // H-01: only a limit outside the method's path contradicts it; an origin never does.
+                // Host policy rejects an unneeded active limit, but not origin.
                 const uint8_t slot = source.functions[1] ? 2 : 1;
                 p.inputFunctions[slot] = source.functions[1] ? (source.functions[1] == 2 ? 3 : 2) : source.functions[0] == 2 ? 3 : 2;
                 p.inputWiring[slot] = InputWiring::CONNECTED;
@@ -1160,10 +1160,88 @@ static void testWriteReplyClassification() {
     auto started = home(); consume(started); auto bytes = reply(started); auto at = started.eligibleUs + 20;
     auto e = frame(started, bytes, at); e.transport.executionUnknown = true;
     assert(Ess::advanceHome(started, e, at + 20));
-    assert(started.execution == ActionExecution::UNKNOWN && started.outcome == ActionOutcome::UNCONFIRMED_RESPONSE && started.uncertain);
+    assert(started.execution == ActionExecution::UNKNOWN && started.state == ActionState::ACTIVE);
+    consume(started, 3); consume(started);
+    assert(started.completion == ActionCompletion::OBSERVED && started.outcome == ActionOutcome::UNCONFIRMED_RESPONSE && started.uncertain);
     // H-04: method 18 stays guarded; only its explanation changes.
     const auto* method18 = Ess::homeMethod(Ess::HomingMethod::METHOD_18);
     assert(method18 && method18->support == Ess::HomeSupport::UNRESOLVED && std::strstr(method18->reason, "caption"));
+}
+// A plausible trigger echo permits reads, never acknowledgement or a reference.
+static void testUnconfirmedTriggerObservation() {
+    auto uncertainTrigger = [](Ess::HomeContext& c, unsigned ambiguity) {
+        consume(c);
+        const auto bytes = reply(c); const auto at = c.eligibleUs + 20;
+        auto e = frame(c, bytes, at);
+        e.responseConfirmed = ambiguity == 1;
+        e.transport.executionUnknown = ambiguity != 0;
+        assert(Ess::advanceHome(c, e, at + 20));
+        assert(c.execution == ActionExecution::UNKNOWN && c.state == ActionState::ACTIVE && c.step == 2);
+        checkActionTransportEvidence(c.triggerEvidence, e, 1, at + 20);
+        Ess::PreparedHome work; assert(Ess::nextHome(c, c.eligibleUs, work));
+        assert(work.function == 3 && !work.write && work.reg == 6 && work.count == 2);
+    };
+    for (auto method : {Ess::HomingMethod::METHOD_33, Ess::HomingMethod::METHOD_34, Ess::HomingMethod::METHOD_35})
+        for (unsigned ambiguity = 0; ambiguity < 3; ++ambiguity) {
+            auto c = home(method); const auto deadline = c.deadlineUs;
+            uncertainTrigger(c, ambiguity); const Saved<Ess::ActionEvidence> retained(c.triggerEvidence);
+            if (method != Ess::HomingMethod::METHOD_35) consume(c, 4);
+            consume(c, 3); assert(c.phase == Ess::HomePhase::ZERO_CHECK);
+            consume(c);
+            assert(c.completion == ActionCompletion::OBSERVED && c.state == ActionState::FAILED && c.uncertain);
+            assert(c.outcome == ActionOutcome::UNCONFIRMED_RESPONSE && c.execution == ActionExecution::UNKNOWN);
+            assert(c.deadlineUs == deadline && c.zeroEvidence.status && c.zeroEvidence.responseConfirmed);
+            retained.check(c.triggerEvidence); retained.check(c.failureEvidence);
+            AxisReference reference; reference.nativePosition = 123;
+            const Saved<AxisReference> unchanged(reference);
+            const auto result = Ess::getHomeReference(c, c.servicedUs, 0, reference);
+            assert(!result && result.detail == static_cast<int32_t>(Ess::HomeError::REFERENCE_UNQUALIFIED));
+            unchanged.check(reference); done(c);
+        }
+    // Stale high and missing activity still exhaust observation; no zero read.
+    for (auto method : {Ess::HomingMethod::METHOD_33, Ess::HomingMethod::METHOD_35}) {
+        auto c = home(method, 3); uncertainTrigger(c, 0);
+        while (c.state == ActionState::ACTIVE) consume(c, 3);
+        assert(c.outcome == ActionOutcome::OBSERVATION_LIMIT && !c.zeroEvidence.length &&
+            c.completion == ActionCompletion::NOT_OBSERVED && c.uncertain); done(c);
+    }
+    auto moving = home(Ess::HomingMethod::METHOD_34); uncertainTrigger(moving, 0); consume(moving, 0);
+    while (moving.state == ActionState::ACTIVE) consume(moving, 3);
+    assert(moving.homedLowObserved && !moving.runningObserved && moving.outcome == ActionOutcome::OBSERVATION_LIMIT);
+    // New faults, cancellation and revocation retain precedence over the old echo.
+    for (unsigned failure = 0; failure < 5; ++failure) {
+        auto c = home(); uncertainTrigger(c, 0);
+        const Saved<Ess::ActionEvidence> retained(c.triggerEvidence);
+        if (failure == 0) consume(c, 4);
+        else if (failure == 1) assert(Ess::advanceHome(c, local(c, ReadEventKind::CANCEL), c.servicedUs + 1));
+        else {
+            consume(c, 3); assert(c.phase == Ess::HomePhase::ZERO_CHECK);
+            if (failure == 2) assert(Ess::revokeHome(c));
+            auto bytes = reply(c);
+            if (failure == 3) { bytes.resize(7); bytes[6] = 1; crc(bytes); }
+            auto e = frame(c, bytes, c.eligibleUs + 20);
+            if (failure == 4) e.responseConfirmed = false;
+            assert(Ess::advanceHome(c, e, c.eligibleUs + 40));
+        }
+        assert(c.state == ActionState::FAILED && c.completion == ActionCompletion::NOT_OBSERVED && c.uncertain);
+        const Ess::HomeError expected[] = {Ess::HomeError::UNEXPECTED_ACTIVITY, Ess::HomeError::CANCELLED,
+            Ess::HomeError::QUALIFICATION_REVOKED, Ess::HomeError::ZERO_NOT_OBSERVED, Ess::HomeError::UNCONFIRMED_RESPONSE};
+        assert(c.status.detail == static_cast<int32_t>(expected[failure]));
+        retained.check(c.triggerEvidence); assert(c.failureEvidence.step >= 2); done(c);
+    }
+    // No continuation after transport loss, malformed echo or unqualified timing.
+    for (unsigned failure = 0; failure < 4; ++failure) {
+        auto c = home(); consume(c); auto bytes = reply(c); const auto at = c.eligibleUs + 20;
+        if (failure == 1) bytes.back() ^= 1;
+        auto e = frame(c, bytes, at); e.responseConfirmed = false;
+        uint64_t now = at + 20;
+        if (failure == 0) { e = local(c, ReadEventKind::TRANSPORT_FAILURE); e.transport.txAccepted = 8; e.txComplete = true; }
+        if (failure == 2) { e.transport.qualified = false; e.transport.earliestUs = e.transport.latestUs = 0; }
+        if (failure == 3) { e.transport.latestUs = c.prerequisites.observedUs + c.prerequisites.maximumAgeUs + 1; now = e.transport.latestUs; }
+        assert(Ess::advanceHome(c, e, now));
+        assert(c.state == ActionState::FAILED && c.execution == ActionExecution::UNKNOWN && !c.polls);
+        assert(c.completion == ActionCompletion::NOT_OBSERVED && c.failureEvidence.step == 1); done(c);
+    }
 }
 static void testOptionalAgePolicy() {
     const uint64_t now = 100000, deadline = 110000;
@@ -1185,7 +1263,30 @@ static void testOptionalAgePolicy() {
     assert(c.state == ActionState::FAILED && c.outcome == ActionOutcome::DEADLINE);
     assert(Ess::nextHome(c, deadline, work) && work.kind == Ess::ActionWork::DONE && !work.length);
 }
+// Closure qualifies write evidence; delayed delivery only limits later work.
+static void testWriteClosureBoundaries() {
+    for (bool triggering : {false, true}) for (int offset : {-1, 0, 1})
+        for (uint8_t code : {0, 3, 5}) {
+        auto c = home(); if (triggering) consume(c);
+        Ess::PreparedHome work; assert(Ess::nextHome(c, c.servicedUs, work));
+        const uint64_t closure = work.deadlineUs + offset;
+        auto bytes = reply(c);
+        if (code) { bytes = {1, static_cast<uint8_t>(triggering ? 0x86 : 0x90), code}; crc(bytes); }
+        auto e = frame(c, bytes, closure - 10);
+        const uint64_t delivered = work.deadlineUs + 50;
+        assert(Ess::advanceHome(c, e, delivered));
+        const auto expected = offset > 0 || code == 5 ? ActionExecution::UNKNOWN :
+            code ? ActionExecution::REJECTED : ActionExecution::ACKNOWLEDGED;
+        assert((triggering ? c.execution : c.setupExecution) == expected);
+        const auto& kept = triggering ? c.triggerEvidence : c.stagingEvidence;
+        checkActionTransportEvidence(kept, e, e.transport.step, delivered);
+        assert(kept.status.code == (code ? Err::EXCEPTION : Err::OK));
+        assert(kept.length == bytes.size() && !std::memcmp(kept.raw, bytes.data(), bytes.size()));
+        if (offset > 0) assert(c.outcome == ActionOutcome::DEADLINE);
+    }
+}
 int main() {
+    testWriteClosureBoundaries();
     // Independent fixture age cannot be renewed by fresh motion observations.
     auto p = prerequisites(); p.qualifiedUs = 50; p.qualificationMaximumAgeUs = 100;
     p.observeInputs = true; p.ioObservedUs = 75; p.readbackObservedUs = 60;
@@ -1230,7 +1331,7 @@ int main() {
         done(c);
     }
     testPerMethodForbiddenInputs(); testNonHomingInputFunctions(); testZeroWordsPublishOnlyQualifiedFrames(); testWriteReplyClassification();
-    testOptionalAgePolicy();
+    testOptionalAgePolicy(); testUnconfirmedTriggerObservation();
     testDescriptorsAndNoTraffic(); testPreparationAndBounds(); testExactQualificationCannotBeReused(); testExactWireAndReference();
     testCorrelatedTransitions(); testFailuresAndEnvelopes(); testReadinessAndDelayedEvidence();
     testUnknownMotionCannotEstablishReference();

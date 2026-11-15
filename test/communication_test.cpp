@@ -194,7 +194,7 @@ void rejectionAndUncertainty() {
     b = reply(1, 1); e = frame(c, b.data(), b.size(), 350); e.transport.executionUnknown = true;
     assert(Ess::advanceCommunication(c, e, 370));
     assert(c.outcome == Ess::CommunicationOutcome::UNCONFIRMED_RESPONSE && !c.readbackKnown && !c.observedActiveKnown && c.uncertain);
-    // K-09: a later contradiction reopens uncertainty whenever effects are possible.
+    // K-09/R-10: expected rejection is distinct from contradictory readback.
     c = operation(); ack(c); confirm(c, false, 1);
     assert(c.outcome == Ess::CommunicationOutcome::CONFIRMED && !c.uncertain);
     assert(Ess::prepareCommunicationConfirmation(c, c.beforeTarget, c.beforeSerial, 1400, 2000));
@@ -204,7 +204,22 @@ void rejectionAndUncertainty() {
     c = operation(); b = {1, 0x86, 3}; crc(b);
     assert(Ess::advanceCommunication(c, frame(c, b.data(), b.size()), 220));
     assert(c.execution == ActionExecution::REJECTED && !c.uncertain);
+    const Saved<Ess::CommunicationEvidence> rejected(c.writeEvidence);
     confirm(c, false, 0);
+    assert(c.outcome == Ess::CommunicationOutcome::READBACK_MISMATCH && !c.uncertain && c.effects);
+    rejected.check(c.writeEvidence);
+    assert(Ess::prepareCommunicationConfirmation(c, c.beforeTarget, c.beforeSerial, 1400, 2000));
+    b = reply(1, 2);
+    assert(Ess::advanceCommunication(c, frame(c, b.data(), b.size(), 1500), 1520));
+    assert(c.outcome == Ess::CommunicationOutcome::READBACK_MISMATCH && c.uncertain && c.effects);
+    rejected.check(c.writeEvidence);
+    c = operation(); b = {1, 0x86, 3}; crc(b);
+    assert(Ess::advanceCommunication(c, frame(c, b.data(), b.size()), 220));
+    confirm(c, false, 1);
+    assert(!c.uncertain && c.execution == ActionExecution::REJECTED);
+    assert(Ess::prepareCommunicationConfirmation(c, c.beforeTarget, c.beforeSerial, 1400, 2000));
+    b = reply(1, 0);
+    assert(Ess::advanceCommunication(c, frame(c, b.data(), b.size(), 1500), 1520));
     assert(c.outcome == Ess::CommunicationOutcome::READBACK_MISMATCH && c.uncertain);
     c = operation(); assert(Ess::advanceCommunication(c, event(c, ReadEventKind::CANCEL), 120)); assert(!c.effects);
     confirm(c, false, 0);
@@ -255,7 +270,24 @@ static void testOptionalAgePolicy() {
     assert(c.state == ReadState::FAILED && c.outcome == Ess::CommunicationOutcome::DEADLINE);
     assert(Ess::nextCommunication(c, deadline, work) && work.kind == Ess::ActionWork::DONE && !work.length);
 }
+static void testWriteClosureBoundaries() {
+    for (int offset : {-1, 0, 1}) for (uint8_t code : {0, 1, 2, 3, 4, 5, 6, 7}) {
+        auto c = operation(); Ess::PreparedCommunication work;
+        assert(Ess::nextCommunication(c, c.startedUs, work));
+        std::vector<uint8_t> bytes(work.bytes, work.bytes + work.length);
+        if (code) { bytes = {1, 0x86, code}; crc(bytes); }
+        auto e = frame(c, bytes.data(), bytes.size(), c.deadlineUs - 10 + offset);
+        assert(Ess::advanceCommunication(c, e, c.deadlineUs + 50));
+        const auto expected = offset > 0 || code == 5 ? ActionExecution::UNKNOWN :
+            code ? ActionExecution::REJECTED : ActionExecution::ACKNOWLEDGED;
+        assert(c.execution == expected && c.effects);
+        assert(c.writeEvidence.wire.latestUs == uint64_t(1000 + offset) && c.writeEvidence.wire.deliveredUs == 1050);
+        assert(c.writeEvidence.wire.status.code == (code ? Err::EXCEPTION : Err::OK));
+        assert(c.writeEvidence.wire.length == bytes.size() && !std::memcmp(c.writeEvidence.wire.raw, bytes.data(), bytes.size()));
+    }
+}
 int main() {
+    testWriteClosureBoundaries();
     testOptionalAgePolicy();
     preparation(); oldAndNewContexts(); lostAndDelayed(); rejectionAndUncertainty(); immutableEnvelopes();
 }

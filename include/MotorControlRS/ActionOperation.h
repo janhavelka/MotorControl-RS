@@ -51,6 +51,10 @@ struct ActionEvent {
     bool txComplete = false;
 };
 enum class ActionState : uint8_t { EMPTY, ACTIVE, SUCCEEDED, FAILED };
+/** ACKNOWLEDGED/REJECTED require a checked, confirmed, qualified write reply
+ * closing at or before its transaction deadline, without execution uncertainty.
+ * Delayed delivery does not change this evidence or renew the operation budget.
+ * Acknowledgement is separate from completion and the terminal outcome. */
 enum class ActionExecution : uint8_t { NOT_TRANSMITTED, ACKNOWLEDGED, REJECTED, UNKNOWN };
 /** OBSERVED is a checked drive status report, not an independent physical
  * measurement of winding current, shaft standstill or stopping latency. */

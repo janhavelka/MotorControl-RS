@@ -71,7 +71,7 @@ struct CommunicationContext {
     uint16_t reg = 0, previous = 0, requested = 0, readback = 0;
     bool readbackKnown = false, observedActiveKnown = false;
     bool effects = false; ///< Any accepted/possibly sent write; retained even on a checked rejection.
-    bool uncertain = false, activationUnknown = true;
+    bool uncertain = false, activationUnknown = true; ///< Rejected FC06 plus unchanged previous readback does not add uncertainty.
     CommunicationRequirement restart = CommunicationRequirement::UNRESOLVED;
     CommunicationRequirement save = CommunicationRequirement::UNRESOLVED;
     uint8_t step = 0, confirmations = 0;

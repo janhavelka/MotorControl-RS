@@ -186,7 +186,7 @@ Status advanceAction(ActionContext& c, const ActionEvent& supplied, uint64_t now
     } else evidence.status = failed(ActionError::DEADLINE_EXPIRED, "action deadline expired");
     if (c.step == 0) {
         c.writeEvidence = evidence;
-        c.execution = Detail::classifyWrite(evidence);
+        c.execution = Detail::classifyWrite(evidence, event.latestUs <= c.deadlineUs);
     }
     c.servicedUs = nowUs;
     if (event.kind == ReadEventKind::CANCEL) finish(c, ActionOutcome::CANCELLED, evidence.status);

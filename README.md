@@ -106,6 +106,10 @@ and [ownership](docs/architecture.md).
 The standalone application exports `submitStop` and copied action results in
 `ProbeApp.h`. Stop escalation has reserved capacity, and a never-transmitted
 stop may use one bounded recovery. Transmitted writes are never replayed.
+Position-clear qualification is bound to the exact target and configuration;
+inspect it with `position-clear qualification`. The application also checks
+both home rates against a nominal 50,000 increments/s ceiling using the actual
+subdivision. See [homing](docs/ess_homing.md) for native bounds and source limits.
 
 ## Position defaults and limits
 
