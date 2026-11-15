@@ -2,19 +2,19 @@
 
 Execute this stage under [the execution contract](execution_contract.md), after
 the independently implemented subsets of 02-10. Status: NOT STARTED. Reinspect
-concurrent standalone ESS and TL57 changes before designing the actual dispatch seam.
+landed standalone ESS and current TL57 changes before extending the 02b dispatch seam.
 
 ## Work
 
-1. Add explicit selected-profile/target handling to the existing application,
-   with native Lichuan command routing and common motion vocabulary. Preserve
-   current ESS grammar/automation or introduce a deliberate versioned change
-   with migration tests. Do not create a second console with different semantics.
+1. Audit the 02b `lc57` family and each route delivered in 03..10. Preserve ESS
+   command meanings and the existing console protocol. There is no modal
+   profile selector; family-prefixed commands use the same installed APIs.
 2. Both Arduino and native ESP-IDF must call the same installed Lichuan APIs and
    shared application code. No register encoding, unit conversion or special
    motion workaround belongs only in a console handler or HIL path.
-3. Use the existing owner/runner with a Lichuan validator. Keep one physical bus
-   owner with fairness, priority stop and retained results. Preserve application-
+3. Use the existing owner/runner and 02b validator. Keep one physical bus owner
+   with priority stop and retained results. Claim fairness between families
+   only if each has a producer slot and tests exercise it. Preserve application-
    owned same-axis admission (currently in `ProbeApp.cpp`); the bus owner's
    `SequenceId` correlates work and does not reserve an axis. A completion routes
    by the admitted profile/target generation,
@@ -29,11 +29,21 @@ concurrent standalone ESS and TL57 changes before designing the actual dispatch 
 6. Extend help, capability output, status decoding, runtime debug observation
    and bounded Python tooling. Passive traffic observation must copy owner data
    without consuming protocol bytes or blocking under console pressure.
+   Route decoding by admitted profile; do not label LC traffic as failed ESS
+   decoding. Add LC bounded scans, profile-typed findings, `discover` parser
+   and Python support now. Unknown/unrouted profiles still reject before TX.
 7. Inspect FieldCore read-only: its ESS contexts, current 21-byte TX/192-byte RX
    transaction storage and supported serial tuples need separate integration
    review. Its current 8N1/selected 9600..115200 policy does not admit LC57BK's
    documented 4800 baud. Document this without importing its types or changing
    its sensor protocols. Record current facts, not old handoffs.
+
+## Deliver
+
+Extend `Lc57Console`, LC application/cache records, shared discovery scan and
+Python LC module. Add `test/lc57_scan_test.cpp` and mixed-profile owner/console
+cases in `test/lc57_app_test.cpp`. Review ESS `DiscoveryApp.h`, `DiscoveryScan.h`,
+`StateCache.h` and their tests against the landed seam, not copied assumptions.
 
 ## Verification and acceptance
 

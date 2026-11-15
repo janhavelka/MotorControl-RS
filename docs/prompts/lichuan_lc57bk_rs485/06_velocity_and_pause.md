@@ -7,19 +7,35 @@ Execute this stage under [the execution contract](execution_contract.md), after
 
 1. Implement the documented jog profile 0x2409/3 and separate positive/negative
    0x38/0x58 commands. Preserve native speed/ramp units and qualify any mapping
-   to the common exact velocity request independently of ESS formulas.
+   to the common exact velocity request independently of ESS formulas. Jog
+   speed has no printed unit; common rpm mapping requires caller qualification.
+   Reject `VelocityRamp::ACCELERATION`. Use explicit native millisecond ramps
+   with `VERIFIED_CONFIGURED`, retaining the unknown ramp reference speed.
 2. Explicitly distinguish a continuous native jog from an application-bounded
    velocity operation. A deadline cannot stop the drive by itself. Supply a
    required stop step/service deadline and retain `needsStop`/execution unknown
    when transport failure or service loss prevents confirmed stopping.
-3. Review segment-based speed commands 0x3m/0x5m for m=0..7 against their actual
-   parameter dependency. Expose only the reviewed variants; no invented online
-   speed update, watchdog/link-loss stop or automatic refresh requirement.
+   Require nonzero finite `durationUs`; zero speed remains a setting, not a run.
+   At expiry yield the first `0x00` stop, never success while jogging. Keep
+   ACKNOWLEDGED/stopped-unobserved separate from qualified stopped completion.
+   Use distinct dispatch and wire deadlines and the shared never-transmitted
+   stop recovery policy; no repeated start or already-transmitted stop.
+3. Segment-speed `0x3m`/`0x5m` for m=0..7 belongs to 07 after record support.
+   Native indefinite jog remains in the coverage ledger as not exposed by host
+   policy. No invented speed update, watchdog or refresh requirement.
 4. Treat 0x80 pause as a distinct native action with retained context. Its resume
    encoding and interaction with rearm/start are not established. Implement a
    resume operation only after resolving that evidence; keep unsupported otherwise.
 5. Stop can interrupt setup, jog or a paused operation with explicit queue and
    terminal-result behavior. Local cancellation preserves the need for a real stop.
+
+## Deliver
+
+LC `Velocity.h/.cpp`, `VelocityContext`, native jog/ramp intent and explicit
+pause; `test/lc57_velocity_test.cpp`, owner-backed app/CLI parity and lost-start,
+lost-poll and lost-stop cases. ESS `Velocity` supplies the bounded event pattern;
+verify its current deadline/recovery fixes before reuse. Duration is host intent,
+not a drive watchdog or hardware guarantee.
 
 ## Verification and acceptance
 

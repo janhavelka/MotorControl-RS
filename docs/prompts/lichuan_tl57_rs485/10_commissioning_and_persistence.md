@@ -1,7 +1,7 @@
 # 10 — Implement explicit serial commissioning and persistence
 
-Follow the [execution contract](execution_contract.md). Depends on stage 03 reads
-and reviewed action/settings behavior. Resolve TL-D02/10/11/14 per operation.
+Follow the [execution contract](execution_contract.md). Depends on stages 03/04/07/09
+reads, actions and shared settings behavior. Resolve TL-D02/10/11/14 per operation.
 
 1. Define address 0x0020, format 0x0021 and baud 0x0028 changes with actual DIP-source
    prerequisites, activation timing and response tuple. Do not confuse SW5 with
@@ -10,9 +10,13 @@ and reviewed action/settings behavior. Resolve TL-D02/10/11/14 per operation.
    application owner. Separate old/new tuple evidence; no blind fallback writes,
    automatic scans, retries or stale responses accepted after a tuple change.
 3. Implement save 0x0200 and restore 0x0100 at 0x004F as explicit disruptive operations
-   only after their completion contract is established. Retain backup, affected
-   field coverage, restart requirements and uncertainty. An ACK or self-clear
-   does not prove EEPROM durability. Automatic-clear parameters are not saved.
+   with separate command acknowledgement and unverified durable-completion
+   outcomes. Retain backup, affected-field coverage and restart uncertainty.
+   The manuals explicitly require save for written communication-control values
+   to survive power-off and exclude auto-zeroing parameters; exact saved fields
+   and duration are unstated. An ACK or self-clear never proves durability.
+   Unsupported tuple activation/restore prerequisites still fail before writes;
+   do not manufacture a successful completion contract from missing evidence.
 4. Distinguish fault clear 0x0300 from actual restart and factory restore. Never
    reset defaults as transport recovery. Current/encoder/tuning settings require
    exact-domain backup/restoration, not assumed generic safe values.

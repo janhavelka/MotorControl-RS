@@ -5,7 +5,7 @@
   "register_count": 127,
   "notes": [
     "Original PA labels are retained even where narrative labels disagree. Use separately reviewed wire addresses.",
-    "name_and_description and range are source-table text; name_en is an editorial translation.",
+    "name_and_description and range are reviewed source-table transcriptions; isolated extraction underscores and lost PA underscores were corrected against PDF images on 2026-11-15. Original extracts remain unchanged. name_en is editorial.",
     "All blank defaults are null. RW is a source declaration, not readiness, safe probe suitability, persistence or a permissible bulk window.",
     "Omitted addresses and the eighth word of each eight-address segment stride are not invented registers.",
     "Each table row is one 16-bit register. Signedness, paired semantics and allowable transfer windows need separate review."
@@ -233,7 +233,8 @@
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issues": [
-        "LC-D01"
+        "LC-D01",
+        "LC-D16"
       ]
     },
     {
@@ -251,7 +252,14 @@
       "source": "LC-USER",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issues": []
+      "issues": [],
+      "semantic_notes": [
+        {
+          "source": "LC-OP",
+          "pdf_page": 4,
+          "text": "Factory current is already set; the manual says no change is needed. Explicit commissioning only; units remain unspecified."
+        }
+      ]
     },
     {
       "parameter": "PA_018",
@@ -268,7 +276,14 @@
       "source": "LC-USER",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issues": []
+      "issues": [],
+      "semantic_notes": [
+        {
+          "source": "LC-OP",
+          "pdf_page": 4,
+          "text": "Factory current is already set; the manual says no change is needed. Explicit commissioning only; units remain unspecified."
+        }
+      ]
     },
     {
       "parameter": "PA_019",
@@ -338,7 +353,9 @@
       "source": "LC-USER",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issues": []
+      "issues": [
+        "LC-D18"
+      ]
     },
     {
       "parameter": "PA_023",
@@ -355,7 +372,9 @@
       "source": "LC-USER",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issues": []
+      "issues": [
+        "LC-D19"
+      ]
     },
     {
       "parameter": "PA_025",
@@ -478,7 +497,15 @@
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issues": [
-        "LC-D08"
+        "LC-D08",
+        "LC-D17"
+      ],
+      "semantic_notes": [
+        {
+          "source": "LC-USER",
+          "pdf_page": 6,
+          "text": "Input mask OFF=normally closed, ON=normally open."
+        }
       ]
     },
     {
@@ -498,6 +525,13 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D08"
+      ],
+      "semantic_notes": [
+        {
+          "source": "LC-USER",
+          "pdf_page": 7,
+          "text": "Output mask OFF=normally open, ON=normally closed; opposite to input mask."
+        }
       ]
     },
     {
@@ -533,7 +567,8 @@
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issues": [
-        "LC-D08"
+        "LC-D08",
+        "LC-D17"
       ]
     },
     {
@@ -556,7 +591,7 @@
     {
       "parameter": "PA_036",
       "address": 36,
-      "name_and_description": "DI2 功能选择\n具体参考 PA 034 说明",
+      "name_and_description": "DI2 功能选择\n具体参考 PA_034 说明",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -569,13 +604,14 @@
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issues": [
-        "LC-D08"
+        "LC-D08",
+        "LC-D17"
       ]
     },
     {
       "parameter": "PA_037",
       "address": 37,
-      "name_and_description": "_\nDI3 输入滤波时间",
+      "name_and_description": "DI3 输入滤波时间",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -592,7 +628,7 @@
     {
       "parameter": "PA_038",
       "address": 38,
-      "name_and_description": "DI3 功能选择\n具体参考 PA 034 说明",
+      "name_and_description": "DI3 功能选择\n具体参考 PA_034 说明",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -605,13 +641,14 @@
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issues": [
-        "LC-D08"
+        "LC-D08",
+        "LC-D17"
       ]
     },
     {
       "parameter": "PA_039",
       "address": 39,
-      "name_and_description": "_\nDI4 输入滤波时间",
+      "name_and_description": "DI4 输入滤波时间",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -628,7 +665,7 @@
     {
       "parameter": "PA_040",
       "address": 40,
-      "name_and_description": "DI4 功能选择\n具体参考 PA 034 说明",
+      "name_and_description": "DI4 功能选择\n具体参考 PA_034 说明",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -641,13 +678,14 @@
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issues": [
-        "LC-D08"
+        "LC-D08",
+        "LC-D17"
       ]
     },
     {
       "parameter": "PA_047",
       "address": 47,
-      "name_and_description": "_\nDO1 功能选择\n1:数字 IO 扩展\n2:故障输出（默认常闭）\n4:抱闸输出（默认常闭）\n8:到位输出（默认常闭）\n16:DI1 的扩展,跟随DI1 状态变化\n17:DI2 的扩展,跟随DI2 状态变化\n18:DI3 的扩展,跟随DI3 状态变化\n19:DI4 的扩展,跟随DI4 状态变化",
+      "name_and_description": "DO1 功能选择\n1:数字 IO 扩展\n2:故障输出（默认常闭）\n4:抱闸输出（默认常闭）\n8:到位输出（默认常闭）\n16:DI1 的扩展,跟随DI1 状态变化\n17:DI2 的扩展,跟随DI2 状态变化\n18:DI3 的扩展,跟随DI3 状态变化\n19:DI4 的扩展,跟随DI4 状态变化",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -666,7 +704,7 @@
     {
       "parameter": "PA_048",
       "address": 48,
-      "name_and_description": "DO2 功能选择\n具体参考 PA 047 说明",
+      "name_and_description": "DO2 功能选择\n具体参考 PA_047 说明",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -685,7 +723,7 @@
     {
       "parameter": "PA_054",
       "address": 54,
-      "name_and_description": "_\n485 通讯软件地址\n设置 Defaullt 档位驱动器地址",
+      "name_and_description": "485 通讯软件地址\n设置 Defaullt 档位驱动器地址",
       "range": "1~255",
       "default": null,
       "access": "RW",
@@ -718,7 +756,16 @@
       "source": "LC-USER",
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
-      "issues": []
+      "issues": [
+        "LC-D18"
+      ],
+      "semantic_notes": [
+        {
+          "source": "LC-USER",
+          "pdf_page": 19,
+          "text": "Troubleshooting suggests 16515 (0x4083), not a stated default. It omits documented phase-loss bit 3 and home-timeout bit 13. Range excludes zero; actual enforcement unknown."
+        }
+      ]
     },
     {
       "parameter": "PA_056",
@@ -740,7 +787,7 @@
     {
       "parameter": "PA_058",
       "address": 9218,
-      "name_and_description": "运行控制字\n0x1m:触发第 m 段指令(m=8,触发 PA 60~PA 65)；\n_ _\n0x20:触发回零；\n0x21:当前位置设为零点；\n0x3m:触发第 m 段速度正转(m=8,触发JOG 速度)；\n0x5m:触发第 m 段速度反转(m=8,触发JOG 速度)；\n0x40:最高减速度急停；\n0x80:暂停，可以恢复继续运行；\n注：m 设置0~7，触发0~7 段位置或速度。",
+      "name_and_description": "运行控制字\n0x1m:触发第 m 段指令(m=8,触发 PA_60~PA_65)；\n0x20:触发回零；\n0x21:当前位置设为零点；\n0x3m:触发第 m 段速度正转(m=8,触发JOG 速度)；\n0x5m:触发第 m 段速度反转(m=8,触发JOG 速度)；\n0x40:最高减速度急停；\n0x80:暂停，可以恢复继续运行；\n注：m 设置0~7，触发0~7 段位置或速度。",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -813,7 +860,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -833,7 +881,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -852,7 +901,8 @@
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issues": [
-        "LC-D03"
+        "LC-D03",
+        "LC-D16"
       ]
     },
     {
@@ -909,7 +959,8 @@
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issues": [
-        "LC-D03"
+        "LC-D03",
+        "LC-D16"
       ]
     },
     {
@@ -966,7 +1017,8 @@
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issues": [
-        "LC-D03"
+        "LC-D03",
+        "LC-D19"
       ]
     },
     {
@@ -986,7 +1038,9 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16",
+        "LC-D19"
       ]
     },
     {
@@ -1006,7 +1060,9 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16",
+        "LC-D19"
       ]
     },
     {
@@ -1159,7 +1215,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -1179,7 +1236,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -1261,7 +1319,7 @@
     {
       "parameter": "PA_086",
       "address": 9736,
-      "name_and_description": "位置 1 模式\n参考 PA 078 参数说明",
+      "name_and_description": "位置 1 模式\n参考 PA_078 参数说明",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -1280,7 +1338,7 @@
     {
       "parameter": "PA_087",
       "address": 9737,
-      "name_and_description": "_\n位置 1 低",
+      "name_and_description": "位置 1 低",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -1294,7 +1352,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -1314,7 +1373,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -1396,7 +1456,7 @@
     {
       "parameter": "PA_094",
       "address": 9744,
-      "name_and_description": "位置 2 模式\n参考 PA 078 参数说明",
+      "name_and_description": "位置 2 模式\n参考 PA_078 参数说明",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -1415,7 +1475,7 @@
     {
       "parameter": "PA_095",
       "address": 9745,
-      "name_and_description": "_\n位置 2 低",
+      "name_and_description": "位置 2 低",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -1429,7 +1489,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -1449,7 +1510,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -1531,7 +1593,7 @@
     {
       "parameter": "PA_102",
       "address": 9752,
-      "name_and_description": "位置 3 模式\n参考 PA 078 参数说明",
+      "name_and_description": "位置 3 模式\n参考 PA_078 参数说明",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -1550,7 +1612,7 @@
     {
       "parameter": "PA_103",
       "address": 9753,
-      "name_and_description": "_\n位置 3 低",
+      "name_and_description": "位置 3 低",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -1564,7 +1626,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -1584,7 +1647,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -1666,7 +1730,7 @@
     {
       "parameter": "PA_110",
       "address": 9760,
-      "name_and_description": "位置 4 模式\n参考 PA 078 参数说明",
+      "name_and_description": "位置 4 模式\n参考 PA_078 参数说明",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -1685,7 +1749,7 @@
     {
       "parameter": "PA_111",
       "address": 9761,
-      "name_and_description": "_\n位置 4 低",
+      "name_and_description": "位置 4 低",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -1699,7 +1763,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -1719,7 +1784,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -1801,7 +1867,7 @@
     {
       "parameter": "PA_118",
       "address": 9768,
-      "name_and_description": "位置5 模式\n参考PA 078 参数说明",
+      "name_and_description": "位置5 模式\n参考PA_078 参数说明",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -1820,7 +1886,7 @@
     {
       "parameter": "PA_119",
       "address": 9769,
-      "name_and_description": "_\n位置5 低",
+      "name_and_description": "位置5 低",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -1834,7 +1900,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -1854,7 +1921,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -1936,7 +2004,7 @@
     {
       "parameter": "PA_126",
       "address": 9776,
-      "name_and_description": "位置6 模式\n参考PA 078 参数说明",
+      "name_and_description": "位置6 模式\n参考PA_078 参数说明",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -1955,7 +2023,7 @@
     {
       "parameter": "PA_127",
       "address": 9777,
-      "name_and_description": "_\n位置6 低",
+      "name_and_description": "位置6 低",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -1969,7 +2037,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -1989,7 +2058,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -2071,7 +2141,7 @@
     {
       "parameter": "PA_134",
       "address": 9784,
-      "name_and_description": "位置7 模式\n参考PA 078 参数说明",
+      "name_and_description": "位置7 模式\n参考PA_078 参数说明",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -2090,7 +2160,7 @@
     {
       "parameter": "PA_135",
       "address": 9785,
-      "name_and_description": "_\n位置7 低",
+      "name_and_description": "位置7 低",
       "range": "0~65535",
       "default": null,
       "access": "RW",
@@ -2104,7 +2174,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -2124,7 +2195,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D03",
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -2257,7 +2329,8 @@
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issues": [
-        "LC-D08"
+        "LC-D08",
+        "LC-D17"
       ]
     },
     {
@@ -2296,7 +2369,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D04",
-        "LC-D09"
+        "LC-D09",
+        "LC-D16"
       ]
     },
     {
@@ -2316,7 +2390,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D04",
-        "LC-D09"
+        "LC-D09",
+        "LC-D16"
       ]
     },
     {
@@ -2336,7 +2411,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D04",
-        "LC-D01"
+        "LC-D01",
+        "LC-D16"
       ]
     },
     {
@@ -2356,7 +2432,8 @@
       "hardware": "NOT_TESTED",
       "issues": [
         "LC-D04",
-        "LC-D01"
+        "LC-D01",
+        "LC-D16"
       ]
     },
     {
@@ -2375,7 +2452,8 @@
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issues": [
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     },
     {
@@ -2394,7 +2472,8 @@
       "implementation": "NOT_IMPLEMENTED",
       "hardware": "NOT_TESTED",
       "issues": [
-        "LC-D04"
+        "LC-D04",
+        "LC-D16"
       ]
     }
   ]

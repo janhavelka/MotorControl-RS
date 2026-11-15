@@ -23,8 +23,11 @@
       "visually_reviewed_pdf_pages": [
         3,
         4,
-        6
-      ]
+        5,
+        6,
+        7
+      ],
+      "visual_review_note": "Physical pages 3..7 rechecked as images on 2026-11-15, including the previously unlisted jog and LED pages."
     },
     {
       "path": "vendor/lichuan_lc57bk_rs485/Lichuan_LC57BK-R_User_Manual_V1.1_CN.pdf",
@@ -61,7 +64,8 @@
         17,
         18,
         19
-      ]
+      ],
+      "visual_review_note": "Physical pages 3..19 rechecked as images on 2026-11-15; originals and extracts unchanged."
     },
     {
       "id": "LC-PRODUCT",

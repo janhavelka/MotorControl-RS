@@ -189,5 +189,51 @@
         "LC-D10"
       ]
     }
+  ],
+  "evidence_notes": [
+    "User listing screenshots are not retained in the repository; listing claims were not reverified on 2026-11-15.",
+    "LC-USER p3 describes 16384 PPR without an open-loop exception. LC-PRODUCT says open-loop models have no encoder, lists 1000 encoder lines/PPR for RC models and also says 16384ppr. LC-USER p6 states 4096 lines / 16384 pulses; no universal resolution is established.",
+    "LC-PRODUCT attributes below are from preserved 2026-10-23 HTML, rechecked 2026-11-15. They are candidate facts, not alias or hardware qualification."
+  ],
+  "manufacturer_candidates": [
+    {
+      "suffix": "56N100",
+      "source": "LC-PRODUCT",
+      "brake_body_length_mm": 125.7,
+      "shaft_diameters_mm": [
+        8,
+        10
+      ]
+    },
+    {
+      "suffix": "82N230",
+      "source": "LC-PRODUCT",
+      "brake_body_length_mm": 151.7,
+      "shaft_diameters_mm": [
+        8,
+        10
+      ],
+      "holding_torque_Nm": 2.3,
+      "mass_kg": 1.23,
+      "alias_to_82N220": "UNRESOLVED"
+    },
+    {
+      "suffix": "102N300",
+      "source": "LC-PRODUCT",
+      "brake_body_length_mm": 169.7,
+      "shaft_diameters_mm": [
+        8,
+        10
+      ]
+    },
+    {
+      "suffix": "112N350",
+      "source": "LC-PRODUCT",
+      "brake_body_length_mm": 179.7,
+      "shaft_diameters_mm": [
+        8,
+        10
+      ]
+    }
   ]
 }

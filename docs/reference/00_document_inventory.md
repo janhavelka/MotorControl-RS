@@ -85,7 +85,7 @@ HTML. See the [original-source inventory](../vendor/lichuan_tl57_rs485/README.md
 [hash manifest](lichuan_tl57_rs485_sources.json),
 [engineering comparison and issues](14_lichuan_tl57_rs485.md) and
 [separate promptset](../prompts/lichuan_tl57_rs485/README.md).
-The 203 register words, 52 unique published frames and six RS485 model candidates
+The 203 register words, 53 unique published frames and six RS485 model candidates
 are preparation evidence, not implemented or tested support. Three printed frames
 fail CRC checks; their original bytes remain retained. The English-manual candidate
 was unavailable; all three retained PDFs are Chinese. Original LC57BK and other

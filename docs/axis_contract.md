@@ -261,10 +261,12 @@ target/path against configured limits; rounding is not a way around a limit.
 Check native range, speed, acceleration/deceleration, optional jerk and
 profile-specific quantization independently. Limits use the active coordinate
 generation. Multi-turn soft limits require an established multi-turn reference.
-Relative endpoint checking requires trustworthy current/basis information;
-when a configured limit cannot be evaluated, fail the request rather than
-silently omit that check. Application interlocks remain external and may
-reject an otherwise valid preparation.
+Relative endpoint checking against configured soft limits requires trustworthy
+current/basis information; if that information is missing, fail the request.
+Native numeric bounds also apply to the displacement itself and do not require
+an unrelated origin/reference. When an established usable native reference is
+supplied, check the derived endpoint too. Application interlocks remain external
+and may reject an otherwise valid preparation.
 
 ## Position and angle semantics
 

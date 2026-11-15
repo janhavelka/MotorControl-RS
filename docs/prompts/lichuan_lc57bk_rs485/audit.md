@@ -1,5 +1,10 @@
 # LC57BK-R / RC promptset audit: corrections to apply before stage 01
 
+Application review, 2026-11-15: [finding-by-finding dispositions](audit_application.md)
+record the independent current-code/source check. Use the updated numbered
+stages as instructions. The work order below is retained as the dated audit;
+its proposed first-contact procedures are narrowed in [12A](12a_first_contact.md).
+
 Audited 2 November 2026 at `363255a`. Every finding was then re-verified individually
 at `513251d` against page images and current code, by reviewers told to disprove it.
 This file contains the corrected results. Part 5's status table describes `513251d`.

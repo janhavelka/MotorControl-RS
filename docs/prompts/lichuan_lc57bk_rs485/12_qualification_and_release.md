@@ -1,4 +1,4 @@
-# 12 — Lichuan qualification and release reconciliation
+# 12B — LC57BK qualification and release reconciliation
 
 Execute this stage under [the execution contract](execution_contract.md).
 Status: NOT STARTED. Software closeout is actionable; physical work requires an
@@ -6,7 +6,7 @@ identified, available and authorized Lichuan fixture. The ESS bench is not that 
 
 ## Software closeout
 
-1. Reconcile all 127 source rows, prose-only functions and LC-D01..LC-D15 against
+1. Reconcile all 127 source rows, prose-only functions and LC-D01..LC-D19 against
    actual callable APIs, CLI coverage and tests. Mark missing code separately
    from unresolved device behavior, unavailable fixtures and unsupported modes.
 2. Exercise clean source/install/PlatformIO packages, standalone headers,
@@ -16,8 +16,17 @@ identified, available and authorized Lichuan fixture. The ESS bench is not that 
    roadmap and release notes to the actual supported subset. Preserve the
    existing 1.0.0 tag; choose any new version under the real release policy.
    Packaging and a green build do not qualify every listed model or operation.
+4. Audit demonstrated reuse: neutral RTU envelopes, correlation/evidence helpers
+   and one LC settings context. Remove accidental duplicate implementations
+   introduced by this profile while retaining distinct device semantics and
+   public overload compatibility. Re-run affected profile/installed tests.
 
 ## Physical qualification when the fixture exists
+
+Begin with [12A first-contact questions](12a_first_contact.md) as soon as the
+relevant API route and fixture exist. They do not wait for software closeout
+and do not grant hardware authorization. This stage qualifies the resulting
+named subset; it does not automatically execute every research experiment.
 
 1. Record nameplate/model, open/closed-loop hardware, firmware/raw identity if
    available, source revision, supply, wiring, shaft/load condition, serial tuple,

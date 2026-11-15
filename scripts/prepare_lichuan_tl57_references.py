@@ -49,11 +49,11 @@ def main():
                     or any(by_address.get(a, {}).get("pair_start") != start for a in (start, start + 1))):
                 raise ValueError("incomplete or inconsistent documented pair")
     vectors = read_data("vectors")["vectors"]
-    check_vectors(vectors, by_id, 52, "WIRE_VALID_REVIEW_SEMANTICS", "REJECT_PUBLISHED_FRAME")
+    check_vectors(vectors, by_id, 53, "WIRE_VALID_REVIEW_SEMANTICS", "REJECT_PUBLISHED_FRAME")
     models = read_data("models")["models"]
     if len(models) != 6 or len({m["model"] for m in models}) != 6:
         raise ValueError("expected six RS485 model candidates")
-    print("PASS: 4 preserved sources/extracts, 203 register words, 52 frame checks, 6 model candidates; no hardware I/O")
+    print(f"PASS: 4 preserved sources/extracts, 203 register words, {len(vectors)} frame checks, 6 model candidates; no hardware I/O")
 
 
 if __name__ == "__main__":

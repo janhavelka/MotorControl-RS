@@ -27,8 +27,10 @@ The reference application demonstrates an RS485 transaction workflow, not a
 FieldCore product. Its RodTester motor module lives in FieldCore-node. MCU-specific
 UART/DE capture and memory choices stay in example adapters; the application
 supplies board pins explicitly. Other platforms can use the same core and
-portable runner with their own callbacks. Other manufacturers add profiles
-when real hardware and a concrete need justify them.
+portable runner with their own callbacks. The reviewed Lichuan promptsets
+authorize candidate implementation from preserved sources before hardware is
+available. Advertised support still requires a named model/firmware scope and
+its own fixture evidence; a compiled candidate is not a qualified profile.
 
 External drive I/O is optional for operations that do not depend on it.
 Profiles must expose their documented disabled/no-function assignments.

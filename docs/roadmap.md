@@ -97,22 +97,29 @@ post-enable wait; their limits remain in the [backlog](backlog.md).
 
 The [Lichuan LC57BK-R / RC promptset](prompts/lichuan_lc57bk_rs485/README.md)
 now supplies a concrete second-profile research target, preserved manuals and
-12 delivery stages. Source collection/extraction is complete for the retained
+revised delivery stages. Source collection/extraction is complete for the retained
 manuals; code implementation, exact-revision resolution and Lichuan physical
 qualification remain separate open milestones. Preserve ESS behavior while
 adding this profile to the same package.
 
 The separate [TLO57R / TLC57R promptset](prompts/lichuan_tl57_rs485/README.md)
 now covers the requested L-type RS485 family with three preserved manuals,
-register/frame/model extraction and 12 stages. It is a distinct profile from
+register/frame/model extraction and revised stages. It is a distinct profile from
 LC57BK, not a model alias or a CANopen/EtherCAT extension. Its research preparation
 is complete; implementation, unresolved firmware semantics and physical
 qualification remain independent milestones. Either Lichuan family may be
 implemented first after reviewing actual landed common changes.
 
-Both sets have received a [source/code correctness audit](reports/2026-10-23_lichuan_promptset_audit.md).
-Its prompt and evidence corrections do not complete their implementation stages
-or physical qualification milestones.
+Both sets received the [October source/code audit](reports/2026-10-23_lichuan_promptset_audit.md)
+and independent November audits. The 15 November application records for
+[LC57BK](prompts/lichuan_lc57bk_rs485/audit_application.md) and
+[TL57](prompts/lichuan_tl57_rs485/audit_application.md) check every finding against
+current evidence. Their [shared prerequisites](prompts/lichuan_shared/README.md)
+schedule substantial code and verification changes before dependent stages;
+02b delivers a real probe and family application/console route before later
+features. Prompt/evidence corrections complete neither profile implementation
+nor physical qualification. Candidate implementation may proceed from the
+preserved sources; advertised hardware support requires a qualified fixture.
 
 Other RS485 profiles require a concrete target and reviewed sources. CANopen
 belongs in a separate future library with the agreed motion vocabulary; no

@@ -53,7 +53,8 @@
         "TL-D03"
       ],
       "notes": [
-        "Reject published wire frame; preserve bytes without silently repairing the vendor example."
+        "Reject published wire frame; preserve bytes without silently repairing the vendor example.",
+        "calculated_crc_hex is the checksum of the printed payload only; substituting it does not repair the malformed frame."
       ],
       "hardware": "NOT_TESTED"
     },
@@ -96,6 +97,10 @@
         {
           "source_id": "TL-OP",
           "pdf_page": 8
+        },
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
         }
       ],
       "source_context": "01      10    00    37    00    02      04     00    00    03   E8    B1     E3",
@@ -269,7 +274,9 @@
       "shape_valid": true,
       "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
       "issue_ids": [],
-      "notes": [],
+      "notes": [
+        "Reassigns DI2 from default negative limit (0x0013=3, TL-USER p8) to position-path trigger."
+      ],
       "hardware": "NOT_TESTED"
     },
     {
@@ -535,7 +542,8 @@
         "TL-D07"
       ],
       "notes": [
-        "Changes input polarity; not an ordinary motion start/stop API. Physical input state and other assigned functions affect result."
+        "Changes input polarity; not an ordinary motion start/stop API. Physical input state and other assigned functions affect result.",
+        "Vendor polarity-write trigger; input-dependent behavior is unqualified and excluded from generic motion APIs by host policy."
       ],
       "hardware": "NOT_TESTED"
     },
@@ -566,7 +574,8 @@
         "TL-D07"
       ],
       "notes": [
-        "Changes input polarity; not an ordinary motion start/stop API. Physical input state and other assigned functions affect result."
+        "Changes input polarity; not an ordinary motion start/stop API. Physical input state and other assigned functions affect result.",
+        "Vendor polarity-write trigger; input-dependent behavior is unqualified and excluded from generic motion APIs by host policy."
       ],
       "hardware": "NOT_TESTED"
     },
@@ -589,7 +598,8 @@
         "TL-D07"
       ],
       "notes": [
-        "Changes input polarity; not an ordinary motion start/stop API. Physical input state and other assigned functions affect result."
+        "Changes input polarity; not an ordinary motion start/stop API. Physical input state and other assigned functions affect result.",
+        "Vendor polarity-write trigger; input-dependent behavior is unqualified and excluded from generic motion APIs by host policy."
       ],
       "hardware": "NOT_TESTED"
     },
@@ -614,7 +624,9 @@
       ],
       "notes": [
         "Changes input polarity; not an ordinary motion start/stop API. Physical input state and other assigned functions affect result.",
-        "Published 0x0011 selects bits0/4, contradicting the stated bits2/4."
+        "Published 0x0011 selects bits0/4, contradicting the stated bits2/4.",
+        "Vendor polarity-write trigger; input-dependent behavior is unqualified and excluded from generic motion APIs by host policy.",
+        "Text/mapping imply value 0x0014 at 0x0010; derived frame 01 06 00 10 00 14 88 00 is not a published frame."
       ],
       "hardware": "NOT_TESTED"
     },
@@ -626,6 +638,10 @@
         {
           "source_id": "TL-EX",
           "pdf_page": 10
+        },
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
         }
       ],
       "source_context": "01 06 00 4E 00 20 E8 05        停止",
@@ -657,7 +673,9 @@
       "shape_valid": true,
       "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
       "issue_ids": [],
-      "notes": [],
+      "notes": [
+        "Reassigns DI0 from default origin (0x0011=1, TL-USER p8) to speed-path trigger; homing expects DI0=1 (p15)."
+      ],
       "hardware": "NOT_TESTED"
     },
     {
@@ -1027,6 +1045,10 @@
         {
           "source_id": "TL-USER",
           "pdf_page": 24
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 16
         }
       ],
       "source_context": "Transcribed from the per-byte protocol table",
@@ -1046,6 +1068,10 @@
         {
           "source_id": "TL-USER",
           "pdf_page": 24
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 16
         }
       ],
       "source_context": "Transcribed from the per-byte protocol table",
@@ -1065,6 +1091,18 @@
         {
           "source_id": "TL-USER",
           "pdf_page": 24
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 16
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 17
+        },
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 25
         }
       ],
       "source_context": "Transcribed from the per-byte protocol table",
@@ -1084,6 +1122,10 @@
         {
           "source_id": "TL-USER",
           "pdf_page": 25
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 17
         }
       ],
       "source_context": "Transcribed from the per-byte protocol table",
@@ -1092,7 +1134,9 @@
       "shape_valid": true,
       "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
       "issue_ids": [],
-      "notes": [],
+      "notes": [
+        "0x00B0/2 is speed plus acceleration time, not a 32-bit pair. Retained for wire-shape/CRC tests; excluded from the initial pair-only FC10 host policy."
+      ],
       "hardware": "NOT_TESTED"
     },
     {
@@ -1103,6 +1147,10 @@
         {
           "source_id": "TL-USER",
           "pdf_page": 25
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 17
         }
       ],
       "source_context": "Transcribed from the per-byte protocol table",
@@ -1111,7 +1159,9 @@
       "shape_valid": true,
       "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
       "issue_ids": [],
-      "notes": [],
+      "notes": [
+        "0x00B0/2 is speed plus acceleration time, not a 32-bit pair. Retained for wire-shape/CRC tests; excluded from the initial pair-only FC10 host policy."
+      ],
       "hardware": "NOT_TESTED"
     },
     {
@@ -1122,6 +1172,14 @@
         {
           "source_id": "TL-USER",
           "pdf_page": 26
+        },
+        {
+          "source_id": "TL-OP",
+          "pdf_page": 18
+        },
+        {
+          "source_id": "TL-USER",
+          "pdf_page": 25
         }
       ],
       "source_context": "Transcribed from the per-byte protocol table",
@@ -1133,7 +1191,29 @@
         "TL-D03"
       ],
       "notes": [
-        "Reject published wire frame; preserve bytes without silently repairing the vendor example."
+        "Reject published wire frame; preserve bytes without silently repairing the vendor example.",
+        "calculated_crc_hex is the checksum of the printed payload only; substituting it does not repair the malformed frame."
+      ],
+      "hardware": "NOT_TESTED"
+    },
+    {
+      "id": "TL-V53",
+      "published_hex": "01 06 00 40 00 11 48 12",
+      "shape": "fc06_request_or_echo",
+      "sources": [
+        {
+          "source_id": "TL-EX",
+          "pdf_page": 12
+        }
+      ],
+      "source_context": "Serial-tool screenshot, send area 2: homing method 17.",
+      "crc_matches": true,
+      "calculated_crc_hex": "48 12",
+      "shape_valid": true,
+      "disposition": "WIRE_VALID_REVIEW_SEMANTICS",
+      "issue_ids": [],
+      "notes": [
+        "Published in a screenshot, not captured hardware evidence."
       ],
       "hardware": "NOT_TESTED"
     }

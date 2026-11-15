@@ -1,7 +1,7 @@
 # 10 — Communication settings and persistence
 
 Execute this stage under [the execution contract](execution_contract.md), after
-03-04 and applicable 09 settings. Status: NOT STARTED. LC-D06/D12/D14 are central.
+03-04, 07 and applicable 09 blocks. Status: NOT STARTED. LC-D06/D12/D14 are central.
 
 ## Work
 
@@ -9,6 +9,9 @@ Execute this stage under [the execution contract](execution_contract.md), after
    address depends on DIP software-selection mode. PA_049 is mentioned only
    by the operation guide, so its wire address/encoding must be established
    before any baud setter exists. Preserve source versus conservative host limits.
+   The DIP baud table has no software/default selector. No register exposes DIP
+   positions; stored `0x0036` does not prove the active address. PA_049 might
+   concern the COM link; that remains a hypothesis, not an RS485 baud API.
 2. For supported communication changes, require an explicit old/new tuple,
    endpoint reservation, activation plan, immutable deadlines and post-change
    non-changing check. Retain unknown activation after lost ACK; never replay
@@ -24,6 +27,16 @@ Execute this stage under [the execution contract](execution_contract.md), after
 5. Prepare restoration records that exclude motion-trigger replay. Factory
    restore must not silently reapply a prior run command, enable or auto-home.
    Do not repeatedly write EEPROM for test coverage or invent an endurance rating.
+   LC-USER p15 warns that frequent saves may cause drive faults. This is a
+   documented warning, not a measured endurance limit.
+
+## Deliver
+
+LC `Persistence.h/.cpp`, bounded `PersistenceContext` and explicit qualified
+communication handling, with `test/lc57_persistence_test.cpp` and
+`test/lc57_communication_test.cpp` for implemented subsets. Reuse 07's settings
+context and the ordinary app/CLI seam. ESS `Persistence`/`Communication` show
+partial evidence and immutable deadlines; their activation rules do not apply.
 
 ## Verification and acceptance
 

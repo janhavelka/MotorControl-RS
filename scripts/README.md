@@ -102,7 +102,7 @@ native tests use only the Python standard library. Original vendor files and
 historical bench evidence are not disposable build output.
 
 `prepare_lichuan_tl57_references.py` checks the separate TL57-R source bundle,
-203-word transcription, 52 published frames and six model candidates offline:
+203-word transcription, 53 published frames and six model candidates offline:
 
 ```sh
 python scripts/prepare_lichuan_tl57_references.py --check

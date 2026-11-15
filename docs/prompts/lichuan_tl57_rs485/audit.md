@@ -1,5 +1,10 @@
 # TL57-R promptset audit: corrections to apply before stage 01
 
+Current dispositions and corrected prompts are recorded in the
+[15 November application review](audit_application.md). This audit remains the
+dated input; its older source observations and proposed remedies are not current
+implementation claims.
+
 Audited 2 November 2026 at `b74a917`. Every finding was then re-audited individually
 at `513251d`, after `6ff2374` and `ba20c8b` changed the ESS code; the
 [ledger](#re-audit-ledger) records each verdict. This text is the corrected version.

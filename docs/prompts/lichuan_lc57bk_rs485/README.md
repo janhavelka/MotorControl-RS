@@ -3,8 +3,10 @@
 Prepared 2026-10-23. **Source collection and prompt preparation complete.
 All implementation stages are NOT STARTED; Lichuan hardware is NOT TESTED.**
 
-**Before stage 01, apply the [2 November audit](audit.md):** it adds a required
-stage 02b, replaces the status and stop gates and corrects the evidence review.
+The [2 November audit](audit.md) was checked against current source and original
+pages on 15 November. [Finding dispositions](audit_application.md) record corrections,
+narrowed claims and work transferred to concrete implementation stages.
+The audit itself is a dated input; the stages below are the current instructions.
 
 Add the requested Lichuan backpack RS485 family as an independent concrete profile
 inside **MotorControl-RS**, preserving ESS behavior and the existing framework
@@ -15,6 +17,8 @@ every numbered prompt. Dispatch one stage at a time, carrying its handoff into
 the next stage. Creating this promptset does not execute it.
 Shared discovery/dispatch gains an entry only when the corresponding code lands;
 do not assume this family is implemented before the separate TL57 promptset.
+Device policy is independent; the [application seam](../lichuan_shared/02_profile_integration_contract.md)
+is shared and implemented once by whichever family reaches it first.
 See the [2026-10-23 correctness audit](../../reports/2026-10-23_lichuan_promptset_audit.md)
 for source/code comparisons and corrections.
 
@@ -29,16 +33,18 @@ P/PC pulse variants, TL/CL/OL families, other manufacturers and CANopen are excl
 | --- | --- | --- |
 | 01 | [Resolve evidence and define coverage](01_evidence_and_coverage.md) | Can begin with preserved sources; unresolved hardware mappings stay explicit |
 | 02 | [Independent Lichuan codecs](02_codec.md) | 01 reviewed wire policy; no hardware required for checked vectors |
-| 03 | [Typed reads and non-changing discovery](03_reads_and_discovery.md) | 02; status/identity/scale claims gated independently |
+| 02b | [Profile registration and console family](02b_profile_integration.md) | 02; shared seam, validator and real probe route |
+| 03 | [Typed reads and capabilities](03_reads_and_discovery.md) | 02b; status/identity/scale claims gated independently |
 | 04 | [Explicit actions and stop sequences](04_actions_and_stop.md) | 02-03; exact stop/reset/enable semantics |
 | 05 | [Units and finite position operations](05_finite_position.md) | 03-04; model scale, sign, completion and trigger sequencing |
 | 06 | [Jog, velocity and pause semantics](06_velocity_and_pause.md) | 04-05; bounded service/stop policy; no guessed resume |
-| 07 | [Native stored segments](07_segments.md) | 04-05; per-window write evidence and cycle control |
-| 08 | [Homing and coordinate changes](08_homing.md) | 03-05; method-specific encoder/switch/homing-position evidence |
-| 09 | [I/O, protection and tuning settings](09_io_and_settings.md) | 02-03; unresolved no-function and masks remain guarded |
-| 10 | [Communication and persistence](10_commissioning_and_persistence.md) | 03-04,09; baud mapping, activation and restart evidence |
+| 07 | [Native stored segments and shared settings context](07_segments.md) | 04-06; per-window write evidence and cycle control |
+| 08 | [Homing and coordinate changes](08_homing.md) | 03-05,07; method-specific encoder/switch/homing-position evidence |
+| 09a..09d | [Motor/current, tuning, I/O, protection/timing](09_io_and_settings.md) | 03,07; four independently verified implementation blocks |
+| 10 | [Communication and persistence](10_commissioning_and_persistence.md) | 03-04,07, applicable 09 blocks; activation and restart evidence |
 | 11 | [Shared console and mixed-profile ownership](11_console_and_integration.md) | Implemented subsets of 02-10; preserve both framework paths and ESS |
-| 12 | [Physical qualification and release reconciliation](12_qualification_and_release.md) | Exact Lichuan fixture required for HIL; software closeout can proceed |
+| 12A | [First-contact questions](12a_first_contact.md) | Optional when fixture exists: reads after 03; finite positioning after 05; other features after their stage |
+| 12B | [Physical qualification and release reconciliation](12_qualification_and_release.md) | Exact Lichuan fixture required for HIL; software closeout can proceed |
 
 Dependencies are semantic prerequisites, not a demand to guess missing behavior
 or leave unrelated software work idle. A stage may finish an independently
@@ -53,7 +59,7 @@ native feature stays in the coverage denominator.
 - [127 parameter rows](../../reference/lichuan_lc57bk_rs485_registers.json),
   [21 audited example frames](../../reference/lichuan_lc57bk_rs485_vectors.json),
   and [eight listing variants](../../reference/lichuan_lc57bk_rs485_models.json).
-- English engineering interpretation with **LC-D01..LC-D15** discrepancies,
+- English engineering interpretation with **LC-D01..LC-D19** discrepancies,
   including the conflicting status address, PA-label drift, encoder resolution,
   signed positions, malformed exception example and unknown transport timing.
 - [Offline reference verification](../../../scripts/prepare_lichuan_references.py).
@@ -66,9 +72,10 @@ negative-encoding qualification, probe register, limits or bench settings.
 
 Run `python scripts/prepare_lichuan_references.py --check` and
 `python scripts/check_repository.py` for this documentation bundle. No product
-source, build registration, firmware or hardware behavior changes in this
-preparation. The dedicated reference verifier is not silently added to CI;
-stage 01 owns its appropriate registration alongside the future profile ledger.
+source, firmware or hardware behavior changes in this prompt correction.
+The tooling regression is registered in CMake; real-bundle checks are not yet
+registered in `verify.py`. Stage 01 owns that major registration change unless
+the shared tooling stage lands it first.
 Local checks do not imply remote CI or HIL ran. Implementation stages follow
 the impact-based verification policy in the execution contract and AGENTS.md.
 

@@ -1,11 +1,11 @@
 # 07 — Native segment records and serial execution
 
 Execute this stage under [the execution contract](execution_contract.md), after
-04-05. Status: NOT STARTED. Unlike ESS, this family documents serial segment starts.
+04-06. Status: NOT STARTED. Unlike ESS, this family documents serial segment starts.
 
 ## Work
 
-1. Implement typed segment indexes 0..7 and complete seven-word candidates at
+1. Extend 05's segment record with typed indexes 0..7 and seven-word candidates at
    0x2600+8*n: mode, target low/high, speed, acceleration/deceleration time and
    delay. Keep the unused stride word out of every bulk window.
 2. Preserve original PA-label differences while using reviewed wire addresses.
@@ -23,6 +23,24 @@ Execute this stage under [the execution contract](execution_contract.md), after
    dedicated qualification; never silently create a loop.
 5. Expose external DI-trigger/selector configuration as native settings. A serial
    write must not pretend to synthesize a physical input edge or qualify its wiring.
+
+## Deliver
+
+LC `Segments.h/.cpp` and one shared `Settings.h/.cpp`/`SettingsContext` for
+prior-read, candidate validation, updates, readback and partial evidence.
+Stages 08..10 reuse that context. Use ESS `Segments` and `DriverSettings` as
+structural examples; `test/lc57_segments_test.cpp` and
+`test/lc57_settings_test.cpp` cover the real owner-backed app/CLI routes.
+
+Reuse the S05 clear/start sequence, not a second implementation. Add segment
+speed `0x3m`/`0x5m`, m=0..7, only as a finite host run with an explicit expiry
+stop. The only documented stop for this mode is `0x40`; its mode-specific
+effect remains unqualified. An API requesting observed stopped completion
+rejects absent qualification. If a bounded implementation cannot satisfy the
+requested contract, retain the operation as unimplemented, not a placeholder.
+Do not infer its ramp source from the segment table or substitute jog's `0x00`.
+Settings require established quiescence including external trigger handling;
+stationary feedback alone does not inhibit a trigger during a partial update.
 
 ## Verification and acceptance
 

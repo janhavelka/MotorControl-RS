@@ -3,7 +3,9 @@
 ESS presence probes, typed identity/configuration reads and bounded scans are
 implemented through the shared application owner. See the
 [discovery API](ess_discovery.md) and [read API](ess_reads.md) for actual types,
-commands and limits. Other manufacturers are not implemented.
+commands and limits. Other manufacturers are not implemented. The Lichuan
+promptsets authorize candidate implementation; future inventory entries must
+distinguish compiled query candidates from hardware-qualified support.
 
 This contract defines query evidence, side effects and application ownership.
 Discovery performs reviewed reads only. A valid responder does not establish
@@ -159,7 +161,8 @@ host-setting restoration. CLI/direct API results must agree.
 
 Hardware qualification records probe latency and behavior with exact model,
 firmware and serial settings, plus evidence that the query does not perform
-a functional operation or consume state. Each profile remains explicitly
-unimplemented/unqualified until its own evidence exists. ESS is first;
+a functional operation or consume state. Track implementation and hardware
+qualification separately: native-tested candidate code can exist while its
+hardware behavior remains unqualified. ESS is first;
 Leadshine iEM-RS remains the contrasting design target. No generic probing
 command or universal response-time guarantee is presumed.

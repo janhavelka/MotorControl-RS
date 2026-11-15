@@ -299,21 +299,24 @@ more drives (now addresses 1, 2 and 4, star wiring).
   to retag maintenance work. [Release workflow](verification.md).
   Repository rename is complete in this
   checkout; it is no longer an integration blocker.
-- [ ] Select actual motors and reviewed source/firmware before implementing
+- [ ] Select concrete targets and reviewed source/firmware before implementing
   further RS485 profiles, non-Modbus framing or mixed-protocol discovery.
+  The two Lichuan candidates below are authorized for source-based implementation;
+  advertised hardware support still needs their own fixtures and evidence.
 - [x] Prepare the [Lichuan LC57BK-R / RC RS485 source bundle and promptset](prompts/lichuan_lc57bk_rs485/README.md):
   two exact-family manuals, 127 parameter rows, 21 audited frames and eight
   listing variants. This completes research preparation, not profile code.
 - [ ] Implement the Lichuan profile in the existing MotorControl-RS package,
-  following the 12 stages and [LC-D01..LC-D15 evidence issues](reference/13_lichuan_lc57bk_rs485.md).
+  following its revised stages and [LC-D01..LC-D19 evidence issues](reference/13_lichuan_lc57bk_rs485.md).
   Keep status-address, encoder, sign, I/O and communication ambiguities explicit.
 - [ ] Establish and qualify an actual Lichuan model/firmware/fixture separately
   from ESS; no Lichuan hardware test or availability is claimed by the listing.
 - [x] Prepare the separate [Lichuan TLO57R / TLC57R source bundle and promptset](prompts/lichuan_tl57_rs485/README.md):
-  three manuals (56 pages), 203 register words, 52 audited published frames and
+  three manuals (56 pages), 203 register words, 53 audited published frames and
   six RS485 model candidates. This completes research preparation only.
-- [ ] Implement the TL57-R profile independently of LC57BK, following its 12
-  stages and [TL-D01..TL-D14 evidence gates](reference/14_lichuan_tl57_rs485.md).
+- [ ] Implement the TL57-R profile with independent device policy and the shared
+  application seam, following its revised stages and
+  [TL-D01..TL-D15 evidence issues](reference/14_lichuan_tl57_rs485.md).
   Preserve the high-word-first signed targets, control-bit semantics, external
   path trigger restrictions and unresolved version/I/O/timing distinctions.
 - [ ] Identify and qualify an actual TL57 model/firmware/fixture; no TL57
@@ -321,10 +324,18 @@ more drives (now addresses 1, 2 and 4, star wiring).
 - [x] [Audit both Lichuan promptsets against original manuals and current code](reports/2026-10-23_lichuan_promptset_audit.md).
   Corrected access guards, coordinate/trigger requirements, source-policy claims
   and reference verification. Implementation and hardware milestones remain open.
-- [ ] Apply the [2 November LC57BK audit](prompts/lichuan_lc57bk_rs485/audit.md) before
-  its stage 01, and close its open ESS items: C1, C7..C9, C11..C14. C1 and C14 leave a
-  finite velocity run's own stop unsent; fix them before the first physical velocity test.
-  Decided for C14: the unsent stop takes the existing held-stop recovery path.
+- [x] Check both 2 November Lichuan audits against current code and original
+  sources and apply valid prompt/evidence corrections. The
+  [LC57BK](prompts/lichuan_lc57bk_rs485/audit_application.md),
+  [TL57](prompts/lichuan_tl57_rs485/audit_application.md) and
+  [shared](prompts/lichuan_shared/audit_application.md) records retain each
+  disposition, including rejected or narrowed audit proposals.
+- [ ] Execute the [shared code/tooling prerequisites](prompts/lichuan_shared/01_existing_code_and_tooling.md)
+  and family 02b integration stages. C1/C14 still leave a finite velocity run's
+  own stop unsent; fix them before physical velocity testing. The unsent stop
+  takes the bounded held-stop recovery path once; an uncertain transmitted
+  start or stop is never replayed. Other ESS items retain their current
+  dispositions and stage-specific checks in the shared review.
 - [ ] Develop CANopen in a separate future library, initially the verified
   CL86-C subset, after obtaining firmware-matched manual/EDS and transport
   evidence. Preserve the common motion vocabulary; extract shared types only

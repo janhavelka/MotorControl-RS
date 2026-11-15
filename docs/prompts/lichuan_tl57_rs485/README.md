@@ -23,16 +23,17 @@ existing branch. This preparation does not dispatch implementation or hardware.
 
 | Stage | Deliverable | Dependency / principal gate |
 | --- | --- | --- |
-| 01 | [Evidence and coverage policy](01_evidence_and_coverage.md) | Original PDFs and TL-D01..14 reviewed |
+| 01 | [Evidence and coverage policy](01_evidence_and_coverage.md) | Original PDFs and TL-D01..15 reviewed |
 | 02 | [Checked TL57 codecs](02_codec.md) | 01 reviewed windows/types; preserve malformed examples |
-| 03 | [Typed reads and discovery](03_reads_and_discovery.md) | 02; version labels and feedback interpretation explicit |
+| 02b | [Profile and console integration](02b_profile_integration.md) | 02 and applicable shared integration/tooling blocks; real minimal probe before further APIs |
+| 03 | [Typed reads and discovery](03_reads_and_discovery.md) | 02b; version labels and feedback interpretation explicit |
 | 04 | [Actions and stopping](04_actions_and_stop.md) | 03; stop/enable/fault distinctions |
 | 05 | [Finite signed positioning](05_finite_position.md) | 04; reference/scale and fresh completion evidence |
 | 06 | [JOG and velocity contract](06_jog_and_velocity.md) | 04; native JOG bit, stop semantics and service policy |
-| 07 | [Stored position/speed paths](07_segments.md) | 02/03; 16 slots, gaps, external trigger restriction |
-| 08 | [Homing and limits](08_homing_and_limits.md) | 04/05; method-specific prerequisites and origin effects |
-| 09 | [I/O and native settings](09_io_and_settings.md) | Reviewed exact values; unresolved tuning stays guarded |
-| 10 | [Communication and persistence](10_commissioning_and_persistence.md) | Backup/activation/uncertainty contracts; restart qualification separate |
+| 07 | [Stored position/speed paths](07_segments.md) | 02b/03; shared settings context, 16 slots and explicit trigger restrictions |
+| 08 | [Homing and limits](08_homing_and_limits.md) | 04/05/07; method-specific prerequisites and origin effects |
+| 09 | [I/O and native settings](09_io_and_settings.md) | 03/07; reviewed exact values; unresolved tuning stays guarded |
+| 10 | [Communication and persistence](10_commissioning_and_persistence.md) | 03/04/07/09; backup/activation/uncertainty; restart qualification separate |
 | 11 | [Shared console and profile integration](11_console_and_integration.md) | Landed supported stages; same API on Arduino/IDF |
 | 12 | [Qualification and release scope](12_qualification_and_release.md) | Exact fixture/firmware and all retained implementation evidence |
 
@@ -41,15 +42,18 @@ evidence-gated. A guard is not implementation completion. The per-stage handoff
 must enumerate implemented, unsupported, unresolved and hardware-tested behavior.
 See the [23 October correctness audit](../../reports/2026-10-23_lichuan_promptset_audit.md)
 for source-checked corrections; the implementation stages remain unstarted.
-**Before stage 01, apply the [2 November audit](audit.md):** it adds a required
-stage 02b, replaces the stop gate and corrects the evidence review.
+The [2 November audit](audit.md) is retained as reviewed input. The
+[15 November dispositions](audit_application.md) record corrections applied here,
+including narrowed completion/qualification claims. The
+[shared prerequisites](../lichuan_shared/README.md) own cross-family source and
+tooling work; perform that work once, then each family extends it.
 
 ## Prepared artifacts
 
 - [Three original PDFs and product snapshot](../../vendor/lichuan_tl57_rs485/README.md): 56 PDF pages with SHA-256 provenance.
 - [203-word register transcription](../../reference/lichuan_tl57_rs485_registers.json), including all 16 position/speed slots and undocumented gaps.
-- [52 published-frame checks](../../reference/lichuan_tl57_rs485_vectors.json): three bad CRCs retained; two also malformed.
-- [Six-model matrix](../../reference/lichuan_tl57_rs485_models.json) and [14 evidence issues](../../reference/14_lichuan_tl57_rs485.md).
+- [53 published-frame checks](../../reference/lichuan_tl57_rs485_vectors.json): three bad CRCs retained; two also malformed.
+- [Six-model matrix](../../reference/lichuan_tl57_rs485_models.json) and [15 evidence issues](../../reference/14_lichuan_tl57_rs485.md).
 
 Preparation checks:
 

@@ -30,3 +30,9 @@ models, operations, limits, passes, failures, unrun checks and remaining issues.
 Archive only completed prompt work. Release publication and FieldCore integration
 remain subject to their existing workflows and separately authorized scope; no
 automatic tag, release, broad family support or hardware-complete claim follows.
+
+Review the eleven questions in the reference under their actual fixture gates;
+they are not a blanket admission checklist for unrelated operations. Record
+native status evidence separately from checked target arrival. Confirm shared
+helpers and per-stage API/CLI routes were implemented before duplicate contexts
+grew; closeout must not defer the first integration seam to this stage.
