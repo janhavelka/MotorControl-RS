@@ -1,6 +1,7 @@
 # Standalone 15/16 independent audit
 
-Status: corrections implemented; final verification in progress.
+**Status: PROCESSED.** All confirmed in-scope findings are corrected and verified.
+Standalone 15 and 16 remain SOFTWARE COMPLETE. Physical gates remain separate.
 
 Baseline: `4a5d09d011edac91ec1aa78a747493aac61dc82b` on `main`.
 The audit reread the full archived [15](../archive/prompts/standalone/15_stop_recovery.md)
@@ -49,8 +50,10 @@ home-policy backlog item and repaired a broken sentence in the CLI guide.
   becomes a reference from sampled status alone.
 
 The source reviewer reopened function-manual PDF pages 12, 67, 68 and 70-73.
-Function PDF SHA-256:
+Hardware-manual pages 8 and 11-12 were also checked. Function PDF SHA-256:
 `0ca2d7f6b69404ead3ba9af982076c54f86eb16b1c24ba237f344aac079b81eb`.
+Hardware PDF SHA-256:
+`44a16a4e164e8434702bf6f0e3f14e446c732d997111d189202fb627c961dfa0`.
 No new vendor interpretation, register access or motion mode was introduced.
 FieldCore's stricter active-input admission remains a deliberate consumer
 difference. Its framework and product types were not imported.
@@ -65,8 +68,32 @@ difference. Its framework and product types were not imported.
 - The first integrated run passed 93/94 suites. Its verifier self-test still
   expected only the old two fixture arguments. The test now requires all six
   frontend fixtures and rejects missing, swapped or duplicated paths.
-- Fresh integrated verification, exact-commit CI and final evidence archive:
-  pending at this report revision.
+  The verifier refused reuse of that directory; the final run used a new one.
+- Final clean run: `python scripts/verify.py --mode quick --build-dir build/audit1516_final`.
+  PASS: all 94 suites and all 15 verification steps, including source/install
+  consumers, generated files, references, inventory and documentation checks.
+- Doxygen: PASS, no diagnostics. Inventory remains 54 operations and 145
+  classified public functions, with five named native gaps. No coverage expansion.
+
+Implementation commit: `599c5dd2b64e9a2546a77ab3b40f023bd21d6572`.
+[CI run 43714750845](https://github.com/janhavelka/MotorControl-RS/actions/runs/43714750845)
+finished successfully on that exact commit. Downloaded artifacts match their
+published SHA-256 digests; each summary reports PASS and every check exits zero.
+
+| Job | Artifact ID | Verified scope |
+| --- | --- | --- |
+| native (gcc) | 14162655457 | 94 suites; source/install consumers and package checks |
+| native (clang) | 14161872713 | 94 suites; source/install consumers and package checks |
+| arduino | 14162716132 | 94 suites and all four pinned PlatformIO environments |
+| idf | 14162321714 | 94 suites; S3 app/core, S2 core and portable S2 with IDF 5.5.5 |
+
+The [evidence archive](2026-11-15_standalone_15_16_audit_evidence.zip) contains
+reproducers, initial failures, actual console records, reviewer dispositions,
+final local logs and all four CI artifacts with their metadata.
+Archive SHA-256:
+`1642d60525049c3e766b2a9ac1c6365503cead5831206e850eac5c29c4da80d6`.
+The final report/archive closeout changes documentation only; local repository
+checks apply, without another required remote campaign.
 
 Independent reviewers checked the fixes across their original boundaries.
 No new scheduler, queue, transport owner, recovery loop or replay was added.

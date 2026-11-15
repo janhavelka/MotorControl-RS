@@ -3,6 +3,8 @@
 Completed software instructions, archived 15 November 2026. Do not dispatch
 again. See the [implementation and verification record](../../../reports/2026-11-15_standalone_16_evidence_qualification.md).
 Hardware checks remain separate.
+The [independent follow-up audit](../../../reports/2026-11-15_standalone_15_16_audit.md)
+records further result/evidence corrections and their verification.
 
 Read the [execution contract](../../../prompts/standalone/execution_contract.md) and the
 [current audit](../../../reports/2026-11-15_standalone_audit_revalidation.md).

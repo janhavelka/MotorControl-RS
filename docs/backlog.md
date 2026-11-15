@@ -80,6 +80,10 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   home rate policy and bounded observation after an ambiguous trigger. Fresh
   94-suite verification and four exact-commit CI jobs pass. The nominal home
   ceiling and native range do not establish physical rate qualification.
+- [x] Complete the [independent 15/16 audit](reports/2026-11-15_standalone_15_16_audit.md):
+  retain deadline and recovery evidence, defer incomplete result delivery,
+  enforce exact qualification expiry and check host execution/readback claims.
+  Fresh 94-suite verification and all four exact-commit CI jobs pass.
 - [ ] Add standalone headless submission/results for velocity start, enable,
   ordinary release, alarm clear, position clear and host recovery in a separate
   application API block. Stage 15 delivers independent stop and qualified
