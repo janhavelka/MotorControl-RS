@@ -42,7 +42,8 @@ Ess::VelocityContext velocity() {
     assert(Ess::prepareVelocity(c, axis(), 12, request(), prerequisites(), 100, 10000, options())); return c;
 }
 ActionEvent local(const Ess::VelocityContext& c, ReadEventKind kind) {
-    ActionEvent e; e.transport.target = c.target; e.transport.operationId = c.operationId;
+    ActionEvent e; e.transport.target = c.phase == Ess::VelocityPhase::STOPPING ? c.stop.target : c.target;
+    e.transport.operationId = c.operationId;
     e.transport.step = c.step; e.transport.kind = kind; return e;
 }
 std::vector<uint8_t> reply(const Ess::VelocityContext& c, uint16_t flags = 4, uint16_t alarm = 0) {
@@ -597,7 +598,103 @@ static void testPollBudgetMustCoverDuration() {
     ActionOptions application; application.pollIntervalUs = 20000; application.maxPolls = Ess::ACTION_MAX_POLLS;
     assert(prepare(admitted, 1000000, application));
 }
+static void testObservationDispatchAndSettlementDeadlines() {
+    auto c = velocity(); Ess::PreparedVelocity work;
+    assert(Ess::nextVelocity(c, c.servicedUs, work));
+    assert(work.dispatchDeadlineUs == c.stopDueUs && work.deadlineUs == c.stopDueUs);
+    consume(c);
+    assert(Ess::nextVelocity(c, c.servicedUs, work));
+    assert(work.write && work.dispatchDeadlineUs == c.stopDueUs && work.deadlineUs == c.stopDueUs);
+    consume(c);
+    assert(Ess::nextVelocity(c, c.stopDueUs - 1, work));
+    assert(!work.write && work.kind == Ess::ActionWork::TRANSACTION);
+    assert(work.dispatchDeadlineUs == c.stopDueUs && work.deadlineUs == c.deadlineUs);
+    for (uint64_t now : {c.stopDueUs, c.stopDueUs + 1}) {
+        assert(Ess::nextVelocity(c, now, work));
+        assert(work.kind == Ess::ActionWork::WAIT && !work.length);
+    }
+    // A poll already admitted before the cutoff may close on either side of it.
+    for (uint64_t closure : {c.stopDueUs - 1, c.stopDueUs, c.stopDueUs + 1}) {
+        auto polled = c; const auto bytes = reply(polled);
+        auto event = frame(polled, bytes, closure - 10);
+        assert(Ess::advanceVelocity(polled, event, closure));
+        assert(polled.runningObserved && !polled.serviceMissed && polled.outcome == ActionOutcome::NONE);
+        assert((polled.phase == Ess::VelocityPhase::STOPPING) == (closure >= c.stopDueUs));
+        assert(polled.stopDueUs == c.stopDueUs && polled.deadlineUs == c.deadlineUs);
+    }
+    assert(Ess::serviceVelocity(c, c.stopDueUs));
+    assert(Ess::nextVelocity(c, c.servicedUs, work));
+    assert(work.write && work.urgent && work.dispatchDeadlineUs == c.deadlineUs && work.deadlineUs == c.deadlineUs);
+    auto p = prerequisites(); p.maximumAgeUs = 100;
+    assert(Ess::prepareVelocity(c, axis(), 12, request(), p, 100, 10000, options()));
+    assert(Ess::nextVelocity(c, 100, work));
+    assert(work.deadlineUs == 180 && work.dispatchDeadlineUs == 180);
+}
+static void testRebindOnlyTheUnsentOwnedStop() {
+    auto c = velocity(); consume(c);
+    auto lost = local(c, ReadEventKind::TRANSPORT_FAILURE);
+    lost.transport.txAccepted = 8; lost.transport.executionUnknown = lost.txComplete = true;
+    lost.transport.transportDetail = 17;
+    assert(Ess::advanceVelocity(c, lost, c.servicedUs + 20));
+    assert(c.phase == Ess::VelocityPhase::STOPPING && c.execution == ActionExecution::UNKNOWN);
+    const auto original = c;
+    ReadTarget rebound = c.stop.target; ++rebound.generation;
+    const uint64_t now = c.servicedUs + 100;
+    assert(Ess::rebindVelocityStop(c, rebound, now));
+    auto expected = original;
+    expected.stop.target = rebound;
+    expected.servicedUs = expected.eligibleUs = expected.stop.servicedUs = expected.stop.eligibleUs = now;
+    Saved<Ess::VelocityContext>(expected).check(c);
+    Ess::PreparedVelocity work;
+    assert(Ess::nextVelocity(c, now, work) && work.target.generation == rebound.generation && work.urgent);
+    const auto bytes = reply(c);
+    auto stale = frame(c, bytes, now + 20); stale.transport.target = original.target;
+    const Saved<Ess::VelocityContext> saved(c);
+    assert(!Ess::advanceVelocity(c, stale, now + 40)); saved.check(c);
+    consume(c); consume(c, 0);
+    assert(c.state == ActionState::FAILED && c.outcome == original.outcome);
+    assert(c.status.code == original.status.code && c.execution == ActionExecution::UNKNOWN);
+    assert(c.completion == ActionCompletion::OBSERVED && !c.needsStop);
+    assert(c.target.generation == original.target.generation && c.stop.target.generation == rebound.generation);
+    assert(c.stopDueUs == original.stopDueUs && c.deadlineUs == original.deadlineUs);
+    Saved<Ess::ActionEvidence>(original.stagingEvidence).check(c.stagingEvidence);
+    Saved<Ess::ActionEvidence>(original.triggerEvidence).check(c.triggerEvidence);
+    Saved<Ess::ActionEvidence>(original.failureEvidence).check(c.failureEvidence);
+    // Failed admission is inert, including partial TX, old generations and expiry.
+    for (unsigned bad = 0; bad < 14; ++bad) {
+        auto rejected = original; auto target = rebound; uint64_t at = now;
+        switch (bad) {
+        case 0: rejected.state = ActionState::FAILED; break;
+        case 1: rejected.phase = Ess::VelocityPhase::TRIGGER; break;
+        case 2: rejected.stop.state = ActionState::FAILED; break;
+        case 3: rejected.stop.step = 1; break;
+        case 4: rejected.stop.execution = ActionExecution::UNKNOWN; break;
+        case 5: rejected.stop.writeEvidence.txAccepted = 1; break;
+        case 6: rejected.stop.writeEvidence.executionUnknown = true; break;
+        case 7: rejected.stop.writeEvidence.deliveredUs = original.servicedUs; break;
+        case 8: ++target.id; break;
+        case 9: ++target.address; break;
+        case 10: target.generation = 0; break;
+        case 11: target.generation = original.target.generation; break;
+        case 12: at = original.servicedUs - 1; break;
+        case 13: at = original.deadlineUs; break;
+        }
+        const Saved<Ess::VelocityContext> before(rejected);
+        assert(!Ess::rebindVelocityStop(rejected, target, at)); before.check(rejected);
+    }
+    for (std::size_t accepted = 1; accepted < 8; ++accepted) {
+        auto partial = original;
+        auto failure = local(partial, ReadEventKind::TRANSPORT_FAILURE);
+        failure.transport.txAccepted = accepted; failure.transport.executionUnknown = true;
+        assert(Ess::advanceVelocity(partial, failure, partial.servicedUs + 1));
+        assert(partial.state == ActionState::FAILED && partial.needsStop);
+        assert(partial.stop.execution == ActionExecution::UNKNOWN && partial.stop.writeEvidence.txAccepted == accepted);
+        const Saved<Ess::VelocityContext> before(partial);
+        assert(!Ess::rebindVelocityStop(partial, rebound, partial.servicedUs)); before.check(partial); noWork(partial);
+    }
+}
 int main() {
+    testObservationDispatchAndSettlementDeadlines(); testRebindOnlyTheUnsentOwnedStop();
     testWriteReplyClassification(); testObservationClosingAfterDurationEndsTheBudget(); testPollBudgetMustCoverDuration();
     testOptionalAgePolicy();
     testGoldenFramesCommonParityAndFiniteStop(); testRejectedParametersUnchanged(); testSignRangesAndLatchedSettings();

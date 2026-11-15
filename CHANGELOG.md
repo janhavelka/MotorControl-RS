@@ -4,6 +4,12 @@
 
 ### Added
 
+- Separate velocity poll dispatch/settlement deadlines and a guarded
+  `rebindVelocityStop` continuation. Explicit and velocity-owned stops with
+  zero accepted bytes can use one bounded recovery; original failures and
+  recovery evidence remain retained. Partial or lost stop writes never replay.
+- The real stop-path fixture now runs on both Arduino and native ESP-IDF adapters.
+
 - Typed console routes state commissioning facts on the ordinary image, with no bus
   traffic: `home qualification install|revoke`, `velocity qualification install|revoke`,
   `position-clear qualification install|revoke` and `motion-profile start-speed relation`.

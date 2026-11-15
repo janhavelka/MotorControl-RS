@@ -3,8 +3,14 @@
 // claim below is asserted against the bytes on the fake wire.
 #include "../examples/probe_cli/ProbeApp.cpp"
 #include "fakes/esp32_uart/UsbConsoleFixture.h"
+#if MOTORCONTROLRS_TEST_IDF
+#include "fakes/esp32_uart/FakeUsb.h"
+#include "../examples/probe_idf/main/IdfPlatform.cpp"
+#include "../examples/common/BoardPins.h"
+#else
 #include "../examples/probe_cli/ArduinoPlatform.cpp"
 #include "../examples/probe_cli/main.cpp"
+#endif
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -228,6 +234,111 @@ void stopSubmittedAfterUartFault() {
     untilWire(FAST_STOP); assert(wire.size() == 1);
     reply(stopping); reply(stopping, words({0, 0}));
     assert(actionOf(stopping).completion == ActionCompletion::OBSERVED);
+}
+// R-02: harvest the owner's terminal zero-byte failure, not just a queued token.
+// Service the real owner up to its result boundary before the app consumes it.
+uint32_t stopWithSettledZeroTxFault() {
+    fresh(); known();
+    ActionRequest stop; stop.kind = ActionKind::STOP; stop.stop.behavior = StopBehavior::DIRECT;
+    uint32_t stopping = 0;
+    assert(startAction(app, 1, 1, stop, stopping) == Probe::Action::OK);
+    auto* record = findRecord(*app, stopping);
+    const auto request = record->requestId;
+    hardware.rx.push_back(1); hardware.rx.push_back(3);
+    for (unsigned i = 0; i < 10000 && !app->owner.result(request); ++i) {
+        advanceHardware(hardware.time + 10);
+        app->owner.service(uart.sample());
+    }
+    const auto* settled = app->owner.result(request);
+    assert(settled && !settled->transport.txAccepted && !settled->transport.txComplete);
+    assert(!settled->executionUnknown && hardware.writes == 0);
+    const auto outcome = settled->outcome;
+    const auto reason = settled->transport.reason;
+    step();
+    assert(record->stopHeld && record->stopBeforeRecoveryKnown && !record->requestId.owner);
+    assert(record->stopBeforeRecovery.id.slot == request.slot &&
+        record->stopBeforeRecovery.id.generation == request.generation);
+    assert(record->stopBeforeRecovery.outcome == outcome && record->stopBeforeRecovery.transport.reason == reason);
+    assert(!record->stopBeforeRecovery.transport.txAccepted && !record->stopBeforeRecovery.executionUnknown);
+    assert(record->stopRecoveryOperationId == app->recovery.operationId && record->stopRecoveryOperationId);
+    assert(!app->owner.result(request)); // The copy survives release of owner storage.
+    return stopping;
+}
+void settledZeroTxStopRecoversOnce() {
+    const auto stopping = stopWithSettledZeroTxFault();
+    auto* record = findRecord(*app, stopping);
+    const auto deadline = record->deadlineUs;
+    const auto recovery = record->stopRecoveryOperationId;
+    const auto failedBinding = record->stopBeforeRecovery.expected.targetGeneration;
+    untilWire(FAST_STOP);
+    assert(actionOf(stopping).deadlineUs == deadline && frames(FAST_STOP) == 1);
+    assert(actionOf(stopping).target.generation != failedBinding);
+    assert(record->stopBeforeRecovery.expected.targetGeneration == failedBinding);
+    assert(view(recovery).recoveryResult.outcome == Rtu::RecoveryOutcome::RECOVERED);
+    reply(stopping); reply(stopping, words({0, 0}));
+    assert(actionOf(stopping).execution == ActionExecution::ACKNOWLEDGED &&
+        actionOf(stopping).completion == ActionCompletion::OBSERVED);
+    assert(record->stopBeforeRecoveryKnown && record->stopRecoveryOperationId == recovery);
+    noMoreFrames(3000);
+    assert(frames(FAST_STOP) == 1 && app->recovery.operationId == recovery);
+    const auto recovered = record->stopRecoveryResult;
+    assert(recovered.id == record->stopRecoveryId && recovered.outcome == Rtu::RecoveryOutcome::RECOVERED);
+    uint32_t laterRecovery = 0;
+    assert(startRecovery(*app, 2, false, laterRecovery) == Probe::Action::OK && laterRecovery != recovery);
+    until(laterRecovery, 3000000);
+    assert(record->stopRecoveryOperationId == recovery && record->stopRecoveryResult.id == recovered.id &&
+        record->stopRecoveryResult.outcome == recovered.outcome &&
+        record->stopRecoveryResult.requestedUs == recovered.requestedUs &&
+        record->stopRecoveryResult.finishedUs == recovered.finishedUs);
+    assert(actionOf(stopping).completion == ActionCompletion::OBSERVED && frames(FAST_STOP) == 1);
+}
+void settledZeroTxStopRecoveryFailure() {
+    const auto stopping = stopWithSettledZeroTxFault();
+    auto* record = findRecord(*app, stopping);
+    const auto recovery = record->stopRecoveryOperationId;
+    fakeUart.status.rxd = 0; // No quiet receive interval; recovery cannot clear it.
+    until(stopping);
+    assert(actionOf(stopping).execution == ActionExecution::NOT_TRANSMITTED &&
+        actionOf(stopping).completion == ActionCompletion::NOT_OBSERVED &&
+        actionOf(stopping).outcome == ActionOutcome::TRANSPORT_ERROR);
+    assert(view(recovery).recoveryResult.outcome == Rtu::RecoveryOutcome::EXPIRED);
+    assert(record->stopRecoveryResult.outcome == Rtu::RecoveryOutcome::EXPIRED);
+    assert(record->stopBeforeRecoveryKnown && wire.empty());
+    noMoreFrames(3000);
+    assert(app->recovery.operationId == recovery);
+}
+void settledZeroTxStopDeadlineAndCancellation() {
+    for (const bool cancelStop : {false, true}) {
+        const auto stopping = stopWithSettledZeroTxFault();
+        auto* record = findRecord(*app, stopping);
+        const auto deadline = record->deadlineUs;
+        const auto recovery = record->stopRecoveryOperationId;
+        if (cancelStop) {
+            assert(cancel(app, stopping) == Probe::Action::OK);
+            step();
+        } else {
+            advanceHardware(deadline);
+            serviceApplication();
+        }
+        assert(!view(stopping).pending && actionOf(stopping).execution == ActionExecution::NOT_TRANSMITTED);
+        assert(actionOf(stopping).outcome == (cancelStop ? ActionOutcome::CANCELLED : ActionOutcome::DEADLINE));
+        assert(actionOf(stopping).deadlineUs == deadline && record->stopBeforeRecoveryKnown);
+        until(recovery, 3000000);
+        noMoreFrames(3000);
+        assert(wire.empty() && app->recovery.operationId == recovery);
+    }
+}
+void incompleteStopTxIsNeverRecovered() {
+    fresh(); known(); hardware.txCharacterUs = 0;
+    const auto stopping = accepted("@1 stop fast");
+    waitTx(stopping); until(stopping);
+    const auto& stopped = actionOf(stopping);
+    assert(stopped.execution == ActionExecution::UNKNOWN && stopped.writeEvidence.txAccepted == 8 &&
+        !stopped.writeEvidence.txComplete && stopped.completion == ActionCompletion::NOT_OBSERVED);
+    assert(!findRecord(*app, stopping)->stopBeforeRecoveryKnown && !app->recovery.operationId);
+    assert(wire.size() == 1 && frames(FAST_STOP) == 1 && app->owner.needsRecovery());
+    noMoreFrames(3000);
+    assert(frames(FAST_STOP) == 1 && !app->recovery.operationId);
 }
 // A-01(c): the stop is submitted while an explicit recovery runs.
 void stopDuringExplicitRecovery() {
@@ -495,6 +606,10 @@ int main() {
         {"queuedStopSurvivesLostPoll", queuedStopSurvivesLostPoll},
         {"stopSubmittedAfterFault", stopSubmittedAfterFault},
         {"stopSubmittedAfterUartFault", stopSubmittedAfterUartFault},
+        {"settledZeroTxStopRecoversOnce", settledZeroTxStopRecoversOnce},
+        {"settledZeroTxStopRecoveryFailure", settledZeroTxStopRecoveryFailure},
+        {"settledZeroTxStopDeadlineAndCancellation", settledZeroTxStopDeadlineAndCancellation},
+        {"incompleteStopTxIsNeverRecovered", incompleteStopTxIsNeverRecovered},
         {"stopDuringExplicitRecovery", stopDuringExplicitRecovery},
         {"explicitRecoverHoldsQueuedStop", explicitRecoverHoldsQueuedStop},
         {"transmittedStopStaysUnknown", transmittedStopStaysUnknown},

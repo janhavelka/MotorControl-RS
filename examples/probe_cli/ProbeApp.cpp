@@ -150,6 +150,10 @@ struct App {
         bool discoveryStop = false; ///< Urgent stop waits for the scan's original tuple.
         bool stopHeld = false; ///< Never-transmitted stop waiting for one bounded recovery.
         uint64_t stopRecoveryId = 0; ///< The one recovery this held stop waited for.
+        uint32_t stopRecoveryOperationId = 0;
+        Rtu::RecoveryResult stopRecoveryResult; ///< Copied terminal recovery; later recovery cannot replace it.
+        bool stopBeforeRecoveryKnown = false;
+        Rtu::Completion stopBeforeRecovery; ///< Settled zero-byte attempt, copied before owner release.
         ESS::ActionContext action;
         bool programmaticMove = false;
         ESS::MoveContext move;
@@ -503,7 +507,7 @@ void invalidateAxis(App& a, const App::Record* changing = nullptr, uint64_t samp
     if (!sampled) sampled = nowUs();
     if (!MotorControlRS::invalidateAxisReference(a.axis, a.coordinateReference)) a.axis.generation = 0;
     a.axis.target.generation = a.bindingGeneration;
-    for (auto& record : a.records) if (&record != changing &&
+    for (auto& record : a.records) if (&record != changing && !record.stopHeld &&
         !(record.groupChild && record.address != a.axis.target.address) &&
         (record.kind == App::OperationKind::MOVE || record.kind == App::OperationKind::VELOCITY || record.kind == App::OperationKind::HOME ||
          (record.kind == App::OperationKind::DRIVER && record.driver.kind == ESS::DriverKind::UPDATE) ||
@@ -951,7 +955,10 @@ MotorControlRS::ActionEvent actionEvent(const App::Record& record, ReadEventKind
     switch (record.kind) {
     case App::OperationKind::HOME: event.transport.target = record.home.target; event.transport.step = record.home.step; break;
     case App::OperationKind::DRIVER: event.transport.target = record.driver.target; event.transport.step = record.driver.step; break;
-    case App::OperationKind::VELOCITY: event.transport.target = record.velocity.target; event.transport.step = record.velocity.step; break;
+    case App::OperationKind::VELOCITY:
+        event.transport.target = record.velocity.phase == ESS::VelocityPhase::STOPPING ?
+            record.velocity.stop.target : record.velocity.target;
+        event.transport.step = record.velocity.step; break;
     case App::OperationKind::MOVE: event.transport.target = record.move.target; event.transport.step = record.move.step; break;
     case App::OperationKind::ACTION: event.transport.target = record.action.target; event.transport.step = record.action.step; break;
     case App::OperationKind::EMPTY: case App::OperationKind::TRANSACTION: case App::OperationKind::TYPED_READ: break;
@@ -1286,6 +1293,7 @@ Probe::Action admitVelocityStep(App& a, App::Record& record, const ESS::Prepared
     request.wire.replyLength = prepared.write ? ESS::WRITE_RESPONSE_LEN : ESS::expectedReadRegistersLen(prepared.count);
     request.wire.responseTimeoutUs = a.serial.timing.responseTimeoutUs; request.wire.replyGapUs = a.serial.timing.replyGapUs;
     request.wire.deadlineUs = prepared.deadlineUs;
+    request.dispatchDeadlineUs = prepared.dispatchDeadlineUs;
     request.expected.address = prepared.target.address; request.expected.function = prepared.function;
     request.expected.target = prepared.target.id; request.expected.targetGeneration = prepared.target.generation;
     request.expected.first = prepared.reg; request.expected.count = prepared.count;
@@ -2445,14 +2453,33 @@ bool invalidatesMotion(const App::Record& record) {
     return false;
 }
 Probe::Action startRecovery(App&, uint32_t, bool, uint32_t&);
+ESS::ActionContext* stopContext(App::Record& record) {
+    if (record.kind == App::OperationKind::ACTION && record.action.request.kind == MotorControlRS::ActionKind::STOP)
+        return &record.action;
+    if (record.kind == App::OperationKind::VELOCITY && record.velocity.phase == ESS::VelocityPhase::STOPPING)
+        return &record.velocity.stop;
+    return nullptr;
+}
 // A stop write with no accepted byte may wait for recovery: sending it afterwards
 // is its first transmission, not a replay. Anything already on the wire stays
 // with its own transaction and outcome.
 void holdStop(App& a, App::Record& record, uint64_t now) {
-    if (record.kind != App::OperationKind::ACTION || record.action.request.kind != MotorControlRS::ActionKind::STOP ||
-        record.action.step != 0 || record.stopHeld || record.discoveryStop || record.cancelContinuation) return;
+    const auto* stop = stopContext(record);
+    if (!stop || stop->state != MotorControlRS::ActionState::ACTIVE || stop->step != 0 ||
+        stop->execution != MotorControlRS::ActionExecution::NOT_TRANSMITTED ||
+        stop->writeEvidence.txAccepted || stop->writeEvidence.executionUnknown ||
+        record.stopHeld || record.stopRecoveryId || record.discoveryStop || record.cancelContinuation) return;
     if (record.requestId.owner) {
-        if (!a.owner.cancelUnsent(record.requestId, now) || !a.owner.release(record.requestId)) return;
+        const auto* settled = a.owner.result(record.requestId);
+        if (!settled) {
+            if (!a.owner.cancelUnsent(record.requestId, now)) return;
+            settled = a.owner.result(record.requestId);
+        }
+        if (!settled || settled->transport.txAccepted || settled->transport.txComplete || settled->executionUnknown) return;
+        record.stopBeforeRecovery = *settled;
+        record.stopBeforeRecoveryKnown = true;
+        observeCommunication(a, *settled);
+        if (!a.owner.release(record.requestId)) return;
         record.requestId = Rtu::RequestId();
     }
     record.stopHeld = true;
@@ -2468,12 +2495,37 @@ void endHeldStop(App::Record& record, ReadEventKind kind, int32_t detail, uint64
 void serviceHeldStop(App& a, App::Record& record, uint64_t now) {
     if (record.cancelContinuation) { endHeldStop(record, ReadEventKind::CANCEL, 0, now); return; }
     if (now >= record.deadlineUs) { endHeldStop(record, ReadEventKind::DEADLINE, 0, now); return; }
-    if (a.owner.recovering()) { record.stopRecoveryId = a.recovery.id; return; }
+    if (a.owner.recovering()) {
+        record.stopRecoveryId = a.recovery.id;
+        record.stopRecoveryOperationId = a.recovery.operationId;
+        return;
+    }
     if (a.owner.needsRecovery() || uart.needsRecovery()) {
         uint32_t recovery = 0;
-        if (!record.stopRecoveryId && startRecovery(a, 0, true, recovery) == Probe::Action::OK)
+        if (!record.stopRecoveryId && startRecovery(a, 0, true, recovery) == Probe::Action::OK) {
             record.stopRecoveryId = a.recovery.id;
-        else endHeldStop(record, ReadEventKind::TRANSPORT_FAILURE, -2, now);
+            record.stopRecoveryOperationId = recovery;
+        } else endHeldStop(record, ReadEventKind::TRANSPORT_FAILURE, -2, now);
+        return;
+    }
+    if (record.kind == App::OperationKind::VELOCITY) {
+        auto target = record.velocity.stop.target;
+        if (target.generation != a.bindingGeneration) {
+            target.generation = a.bindingGeneration;
+            if (!ESS::rebindVelocityStop(record.velocity, target, now)) {
+                endHeldStop(record, ReadEventKind::TRANSPORT_FAILURE, -3, now);
+                return;
+            }
+        }
+        ESS::PreparedVelocity work;
+        if (!ESS::nextVelocity(record.velocity, now, work) || work.kind != ESS::ActionWork::TRANSACTION) {
+            endHeldStop(record, ReadEventKind::TRANSPORT_FAILURE, -3, now);
+            return;
+        }
+        const auto admitted = admitVelocityStep(a, record, work, now);
+        if (admitted == Probe::Action::OK) record.stopHeld = false;
+        else if (admitted != Probe::Action::RESULTS_FULL && admitted != Probe::Action::QUEUE_FULL)
+            endHeldStop(record, ReadEventKind::TRANSPORT_FAILURE, -4, now);
         return;
     }
     // Recovery changed the binding generation. The operation, policy and fixed
@@ -2493,6 +2545,11 @@ void serviceHeldStop(App& a, App::Record& record, uint64_t now) {
 void advanceActions(App& a, uint64_t now) {
     cancelInvalidHomes(a, now);
     for (auto& record : a.records) {
+        // A cancelled held stop can finish before its recovery. Keep the later
+        // recovery outcome as independent evidence even for terminal records.
+        if (record.stopRecoveryId && !record.stopRecoveryResult.id)
+            if (const auto* recovered = a.owner.recoveryResult(record.stopRecoveryId))
+                record.stopRecoveryResult = *recovered;
         if (record.discoveryStop && a.discovery.owned) {
             if (now < record.deadlineUs) continue;
             record.discoveryStop = false;
@@ -2633,7 +2690,8 @@ void advanceActions(App& a, uint64_t now) {
                 (record.kind == App::OperationKind::MOVE &&
                     (record.move.admission == ESS::MoveAdmission::NATIVE_INTENT ? record.move.stored.configurationGeneration :
                      record.move.prepared.configurationGeneration) != recordGeneration(a, record)) ||
-                (record.kind == App::OperationKind::VELOCITY && record.velocity.request.configurationGeneration != a.axis.generation) ||
+                (record.kind == App::OperationKind::VELOCITY && record.velocity.phase != ESS::VelocityPhase::STOPPING &&
+                    record.velocity.request.configurationGeneration != a.axis.generation) ||
                 (record.kind == App::OperationKind::HOME && (!a.axis.generation || record.configurationGeneration != a.axis.generation)))
                 advanceOperation(record, actionEvent(record, ReadEventKind::CANCEL), now);
             else if (record.kind == App::OperationKind::VELOCITY) {
@@ -2713,6 +2771,8 @@ Probe::Action startRecovery(App& a, uint32_t commandId, bool automatic, uint32_t
     if (a.recovery.operationId) {
         const auto* finished = a.owner.recoveryResult(a.recovery.id);
         if (!finished || (!a.recovery.delivered && !automatic)) return Probe::Action::RESULTS_FULL;
+        for (auto& record : a.records)
+            if (record.stopRecoveryId == a.recovery.id) record.stopRecoveryResult = *finished;
         if (!a.recovery.delivered) {
             a.recovery.retained = *finished;
             a.recoveryDisplaced = a.recovery;
@@ -2721,8 +2781,8 @@ Probe::Action startRecovery(App& a, uint32_t commandId, bool automatic, uint32_t
         a.recovery = App::Recovery();
     }
     const uint64_t now = uart.sample(); uint64_t id = 0;
-    for (std::size_t i = REQUEST_CAPACITY + 1; i < REQUEST_CAPACITY + 1 + URGENT_RECORDS; ++i)
-        if (!terminal(a, a.records[i])) holdStop(a, a.records[i], now);
+    for (auto& record : a.records)
+        if (!terminal(a, record)) holdStop(a, record, now);
     if (a.owner.recover(now, now + RECOVERY_BUDGET_US, id) != Rtu::RecoveryAdmission::ACCEPTED) return Probe::Action::FAILED;
     // Recovery invalidates the scan's saved generation, including work that
     // has not reached the owner yet. Settle any admitted query and restore the

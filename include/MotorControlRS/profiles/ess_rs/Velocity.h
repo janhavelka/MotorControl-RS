@@ -58,6 +58,7 @@ struct PreparedVelocity {
     uint16_t reg = 0, count = 0, value = 0;
     bool write = false, urgent = false;
     uint64_t deadlineUs = 0, eligibleUs = 0;
+    uint64_t dispatchDeadlineUs = 0; ///< Latest owner dispatch; an admitted poll may settle after this time.
 };
 /** Fully validates zero/sign/range, configured ramps, readiness and explicit
  * stop before any request is yielded. The target conversion uses the common
@@ -79,6 +80,17 @@ Status prepareVelocity(VelocityContext&, const AxisConfig&, uint32_t operationId
  * unobserved stop settlement retains needsStop, never a watchdog guarantee.
  * Expiry cannot establish standstill. It does not retry or recover transport. */
 Status serviceVelocity(VelocityContext&, uint64_t nowUs) noexcept;
+/** Rebind only the owned, never-transmitted stop after caller-owned recovery.
+ * The caller must settle/release its previous transaction before calling.
+ * Requires the same target id/address and a newer nonzero binding generation.
+ * The run target, request, evidence and both deadlines remain unchanged.
+ * No staging/start replay, transport recovery or I/O occurs. Output unchanged
+ * on rejection; a transmitted, completed or cancelled stop cannot be rebound. */
+Status rebindVelocityStop(VelocityContext&, const ReadTarget&, uint64_t nowUs) noexcept;
+/** Yield separate dispatch and settlement deadlines. Observation dispatch ends
+ * at stopDueUs; an already dispatched poll retains the operation deadline and
+ * the application's bounded response timeout. Setup/start retain readiness
+ * expiry. Stops retain the original operation deadline. */
 Status nextVelocity(const VelocityContext&, uint64_t nowUs, PreparedVelocity&) noexcept;
 /** Copied checked evidence and fresh RUNNING reports do not establish target
  * speed or acceleration. Success additionally requires the existing stop's new

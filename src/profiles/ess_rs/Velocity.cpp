@@ -176,12 +176,33 @@ Status serviceVelocity(VelocityContext& c, uint64_t now) noexcept {
     return Ok();
 }
 
+Status rebindVelocityStop(VelocityContext& c, const ReadTarget& target, uint64_t now) noexcept {
+    const auto& stop = c.stop;
+    if (c.state != ActionState::ACTIVE || c.phase != VelocityPhase::STOPPING || !c.needsStop ||
+        stop.state != ActionState::ACTIVE || stop.request.kind != ActionKind::STOP || stop.step ||
+        stop.execution != ActionExecution::NOT_TRANSMITTED || stop.writeEvidence.txAccepted ||
+        stop.writeEvidence.txComplete || stop.writeEvidence.executionUnknown || stop.writeEvidence.deliveredUs)
+        return invalid(VelocityError::INVALID_STATE, "velocity stop is not an unsent continuation");
+    if (!target.id || !isValidAddress(target.address) || target.id != c.target.id || target.address != c.target.address ||
+        target.id != stop.target.id || target.address != stop.target.address || target.generation <= stop.target.generation)
+        return invalid(VelocityError::INVALID_TARGET, "velocity stop needs the same target and a newer binding");
+    if (now < c.servicedUs || now < stop.servicedUs)
+        return invalid(VelocityError::CLOCK_ERROR, "velocity stop clock moved backwards");
+    if (now >= c.deadlineUs || now >= stop.deadlineUs)
+        return failed(VelocityError::DEADLINE_EXPIRED, "velocity stop deadline expired");
+    c.stop.target = target;
+    c.servicedUs = c.eligibleUs = c.stop.servicedUs = c.stop.eligibleUs = now;
+    return Ok();
+}
+
 Status nextVelocity(const VelocityContext& c, uint64_t now, PreparedVelocity& output) noexcept {
     if (c.state == ActionState::EMPTY) return invalid(VelocityError::INVALID_STATE, "velocity is empty");
     if (now < c.servicedUs) return invalid(VelocityError::CLOCK_ERROR, "velocity clock moved backwards");
     PreparedVelocity next;
     next.target = c.target; next.operationId = c.operationId; next.step = c.step;
-    next.deadlineUs = stepDeadline(c); next.eligibleUs = c.eligibleUs;
+    next.dispatchDeadlineUs = stepDeadline(c);
+    next.deadlineUs = c.phase == VelocityPhase::OBSERVING ? c.deadlineUs : next.dispatchDeadlineUs;
+    next.eligibleUs = c.eligibleUs;
     if (c.state != ActionState::ACTIVE) { output = next; return Ok(); }
     if (now >= c.deadlineUs) return failed(VelocityError::DEADLINE_EXPIRED, "velocity deadline expired");
     if (c.phase == VelocityPhase::STOPPING) {
@@ -190,12 +211,13 @@ Status nextVelocity(const VelocityContext& c, uint64_t now, PreparedVelocity& ou
         next.kind = stop.kind; next.write = stop.write; next.urgent = stop.write;
         next.reg = stop.reg; next.count = stop.write ? 1 : stop.count; next.value = stop.value;
         next.function = stop.write ? 6 : 3; next.length = stop.length;
-        next.deadlineUs = stop.deadlineUs; next.eligibleUs = stop.eligibleUs;
+        next.target = stop.target;
+        next.deadlineUs = next.dispatchDeadlineUs = stop.deadlineUs; next.eligibleUs = stop.eligibleUs;
         if (stop.length) std::memcpy(next.bytes, stop.bytes, stop.length);
     } else if (c.phase == VelocityPhase::OBSERVING && now >= c.stopDueUs) {
         next.kind = ActionWork::WAIT; next.eligibleUs = c.stopDueUs; // serviceVelocity transitions without an admitted token.
     } else {
-        if (now >= next.deadlineUs) return expiry(c);
+        if (now >= next.dispatchDeadlineUs) return expiry(c);
         if (now < c.eligibleUs) { next.kind = ActionWork::WAIT; output = next; return Ok(); }
         next.kind = ActionWork::TRANSACTION; next.write = c.phase != VelocityPhase::OBSERVING;
         if (c.phase == VelocityPhase::STAGING) {
@@ -217,7 +239,8 @@ Status nextVelocity(const VelocityContext& c, uint64_t now, PreparedVelocity& ou
 Status advanceVelocity(VelocityContext& c, const ActionEvent& supplied, uint64_t now) noexcept {
     const auto& event = supplied.transport;
     if (c.state != ActionState::ACTIVE) return invalid(VelocityError::INVALID_STATE, "velocity is not active");
-    if (!sameTarget(c.target, event.target) || c.operationId != event.operationId || c.step != event.step)
+    const auto& target = c.phase == VelocityPhase::STOPPING ? c.stop.target : c.target;
+    if (!sameTarget(target, event.target) || c.operationId != event.operationId || c.step != event.step)
         return invalid(VelocityError::WRONG_CORRELATION, "velocity event correlation mismatch");
     if (now < c.servicedUs) return invalid(VelocityError::CLOCK_ERROR, "velocity clock moved backwards");
     if (c.phase == VelocityPhase::STOPPING) {

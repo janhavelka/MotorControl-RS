@@ -7,6 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [Standalone 15: stop delivery](2026-11-15_standalone_15_stop_recovery.md) | Stop/recovery implementation, focused regressions and remaining integration/bench checks. |
 | [Standalone audit revalidation](2026-11-15_standalone_audit_revalidation.md) | Current verdicts for the independent audit, corrected prompt status and repair order. A stop during staging readback no longer publishes a ready witness; larger stop/evidence work has bounded prompts. |
 | [Multi-drive promptset revalidation](2026-11-15_ess_multi_drive_promptset_audit.md) | M01-M06 checked against code/manuals. Confirmed group changes can erase enable waits; new 08/09 own that correction and independent member requests. Broadcast evidence claims and input commissioning prompts corrected; no new hardware run. |
 | [Multi-drive 02: drive group](2026-11-13_multi_drive_02_drive_group.md) | Three drives move at the same time by unicast: 672 of 672 group moves on target, 236 of 236 group stops confirmed on every member, including a 1 h and a 30 min soak. Up to 15 members; staged starts span about 16 ms over three drives (38 ms sequential). |

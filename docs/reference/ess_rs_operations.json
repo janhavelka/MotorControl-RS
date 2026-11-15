@@ -869,7 +869,8 @@
           "prepareVelocity",
           "nextVelocity",
           "advanceVelocity",
-          "serviceVelocity"
+          "serviceVelocity",
+          "rebindVelocityStop"
         ]
       },
       "cli_commands": [
@@ -907,7 +908,8 @@
           "prepareVelocity",
           "nextVelocity",
           "advanceVelocity",
-          "serviceVelocity"
+          "serviceVelocity",
+          "rebindVelocityStop"
         ]
       },
       "cli_commands": [
@@ -3449,7 +3451,8 @@
       "symbols": [
         "advanceVelocity",
         "nextVelocity",
-        "serviceVelocity"
+        "serviceVelocity",
+        "rebindVelocityStop"
       ],
       "classification": "SEQUENCER",
       "reason": "Finite velocity with explicit stop/service deadlines and immutable prerequisites.",

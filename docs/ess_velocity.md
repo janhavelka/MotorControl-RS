@@ -59,8 +59,9 @@ records SERVICE_MISSED, even if a later checked stop succeeds. This is a host
 service obligation, not an ESS refresh/watchdog or physical stop latency bound.
 Urgent storage pressure, an in-flight transaction and recovery can delay or
 prevent dispatch; the original overall deadline never renews. Stop expiry retains
-`needsStop`, stop outcome and execution evidence separately. Faults cannot be
-bypassed, automatically recovered or replayed to obtain success. A lost start
+`needsStop`, stop outcome and execution evidence separately. The application may
+run one bounded transport recovery for the explicit stop only when no stop byte
+was accepted. The original run failure and its evidence remain unchanged. A lost start
 acknowledgement remains UNKNOWN even after a subsequent checked stop; primary
 failure and cleanup failure remain separate. Local cancellation ends the local
 sequence without sending stop, retaining needsStop/uncertainty. Explicit stop
@@ -69,7 +70,7 @@ staging reserves the physical address until reconciliation; result release and
 host recovery do not clear that uncertainty.
 
 The reference console uses one cooperative owner and caller-owned PSRAM records.
-Eight ordinary operation records, one monitor and one explicit stop remain;
+Eight ordinary operation records and the separate monitor/stop reservations remain;
 velocity does not add a task or a second UART. Terminal results are inspectable
 until explicit release; backpressure retains complete results and correlation.
 
@@ -84,8 +85,9 @@ Units: rpm, steps/s, fullsteps/s, counts/s, turns/s, deg/s, rad/s, mm/s.
 Frames: native/motor/load. Optional `round exact|nearest|zero|floor|ceil ERROR`
 and `approx ERROR` use strict exact-number parsing; optional final address is
 1..247. This reference limits requested/effective speed to +/-60 native RPM and
-duration to 1..1000 ms, with an additional immutable 2 s stop budget, 20 ms observation
-interval and 64 polls. This is a proposed software envelope, not physical
+duration to 1..1000 ms. A direct stop has an additional immutable 2 s budget and
+20 ms poll interval; normal stop has a 3 s budget and 50 ms interval for the
+configured ramp. Both allow at most 64 polls. This is a software envelope, not physical
 qualification. Qualification starts false and `velocity` replies
 `qualification_required` until the facts are stated:
 
@@ -108,6 +110,21 @@ Preparation rejects a duration that `maxPolls * pollIntervalUs` cannot cover; th
 observation budget and starts the stop without a failure, though alarm and fault
 words in that frame still count. A stop still due more than one poll interval
 late is a missed service obligation.
+
+`PreparedVelocity::dispatchDeadlineUs` is the latest owner handoff, separate
+from `deadlineUs`, the wire settlement deadline. Observation dispatch ends at
+`stopDueUs`; an already admitted poll may settle under the original operation
+deadline and normal response timeout. Staging and trigger keep their tighter
+duration/readiness deadlines. The application forwards both deadlines to the
+same owner.
+
+The application also holds a terminal zero-byte stop attempt for the one
+recovery, copying its owner completion before release. It retains the recovery
+operation ID separately from the run and stop outcomes. `rebindVelocityStop`
+only rebinds an active, never-transmitted nested stop to a newer generation of
+the same target. The outer run target, prerequisites, failure and deadlines
+stay unchanged. Old-generation replies reject. Partial stop TX, lost stop ACK,
+local cancellation and an expired deadline never permit another transmission.
 
 The Python `velocity` scenario validates strict command/operation correlation,
 finite duration and raw checked evidence. It shares the finite move scenario's

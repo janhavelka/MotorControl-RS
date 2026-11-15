@@ -162,7 +162,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         endif()
         add_test(NAME idf_app COMMAND idf_app_test)
         # Reuse identical operation/failure assertions with both framework startup adapters.
-        foreach(suite move_app group_app position_interrupt_app simple_motion_app control_app velocity_app home_app position_start_speed_app homing_auxiliary_app)
+        foreach(suite move_app group_app position_interrupt_app simple_motion_app control_app velocity_app home_app position_start_speed_app homing_auxiliary_app stop_path_app)
             add_executable(idf_${suite}_test test/${suite}_test.cpp
                 examples/probe_cli/DebugSession.cpp
                 examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
