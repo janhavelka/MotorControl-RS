@@ -22,6 +22,8 @@ def main():
     parser.add_argument("--download-missing", action="store_true")
     parser.add_argument("--extract", action="store_true")
     args = parser.parse_args()
+    if args.check and (args.download_missing or args.extract):
+        parser.error("--check cannot be combined with --download-missing or --extract")
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     records = manifest["references"]
     by_id = check_sources(records, 3, args.download_missing, args.extract)

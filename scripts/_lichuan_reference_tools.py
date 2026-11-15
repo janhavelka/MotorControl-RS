@@ -9,7 +9,6 @@ from pathlib import Path
 import re
 
 import fitz
-import requests
 
 
 DOCS = Path(__file__).resolve().parents[1] / "docs"
@@ -64,6 +63,8 @@ def check_sources(records, expected_count, download_missing=False, extract=False
         if record.get("text_extract") and record["format"] != "pdf":
             raise ValueError("only PDF sources can have text extracts")
         if not path.exists() and download_missing:
+            import requests
+
             # Stable origin URLs obtain fresh CDN redirects; recorded signatures expire.
             response = requests.get(record["url"], headers={
                 "User-Agent": "Mozilla/5.0", "Referer": record["referer"]}, timeout=(15, 60))
@@ -102,19 +103,24 @@ def valid_shape(frame, shape):
     shape = {"fc06": "fc06_request_or_echo", "invalid_exception": "exception"}.get(shape, shape)
     if shape not in {"exception", "fc03_reply", "fc10_request", "fc03_request", "fc06_request_or_echo", "fc10_reply"}:
         raise ValueError(f"unknown frame shape: {shape}")
-    if not 5 <= len(frame) <= 256:
+    if not 5 <= len(frame) <= 256 or frame[0] > 247:
+        return False
+    # Address zero is a write broadcast, never a read or a response. Exception
+    # values remain raw: documented meanings belong to the family evidence.
+    if frame[0] == 0 and shape not in ("fc06_request_or_echo", "fc10_request"):
         return False
     if shape == "exception":
         return len(frame) == 5 and frame[1] in (0x83, 0x86, 0x90)
     if shape == "fc03_reply":
-        return frame[1] == 3 and frame[2] > 0 and frame[2] % 2 == 0 and len(frame) == 5 + frame[2]
+        return frame[1] == 3 and 0 < frame[2] <= 250 and frame[2] % 2 == 0 and len(frame) == 5 + frame[2]
     if shape == "fc10_request":
-        return (len(frame) >= 9 and frame[1] == 16 and frame[6] > 0
+        return (len(frame) >= 9 and frame[1] == 16 and 1 <= int.from_bytes(frame[4:6], "big") <= 123
                 and frame[6] == 2 * int.from_bytes(frame[4:6], "big")
                 and len(frame) == 9 + frame[6])
     functions = {"fc03_request": 3, "fc06_request_or_echo": 6, "fc10_reply": 16}
     return (len(frame) == 8 and frame[1] == functions[shape]
-            and (shape == "fc06_request_or_echo" or int.from_bytes(frame[4:6], "big") > 0))
+            and (shape == "fc06_request_or_echo" or
+                 1 <= int.from_bytes(frame[4:6], "big") <= (125 if shape == "fc03_request" else 123)))
 
 
 def check_vectors(vectors, by_id, expected_count, valid_disposition, rejected_disposition):

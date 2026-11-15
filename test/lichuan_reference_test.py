@@ -1,9 +1,11 @@
 """Offline regressions for source restoration and research-vector validation."""
 
 import copy
+import builtins
 import hashlib
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
@@ -42,7 +44,7 @@ class SourceChecks(unittest.TestCase):
 
     def test_restore_uses_stable_origin_and_preserves_existing_snapshot(self):
         response = Mock(content=self.data)
-        with patch.object(checker.requests, "get", return_value=response) as get:
+        with patch("requests.get", return_value=response) as get:
             checker.check_sources([self.record], 1, download_missing=True)
             self.assertEqual(get.call_args.args[0], self.record["url"])
             self.assertEqual(self.path.read_bytes(), self.data)
@@ -51,7 +53,7 @@ class SourceChecks(unittest.TestCase):
             get.assert_not_called()
 
     def test_changed_download_is_never_saved(self):
-        with patch.object(checker.requests, "get", return_value=Mock(content=b"changed")):
+        with patch("requests.get", return_value=Mock(content=b"changed")):
             with self.assertRaisesRegex(ValueError, "snapshot differs"):
                 checker.check_sources([self.record], 1, download_missing=True)
         self.assertFalse(self.path.exists())
@@ -59,7 +61,7 @@ class SourceChecks(unittest.TestCase):
     def test_changed_existing_file_is_not_replaced(self):
         self.write_snapshot()
         self.path.write_bytes(b"changed existing snapshot")
-        with patch.object(checker.requests, "get") as get:
+        with patch("requests.get") as get:
             with self.assertRaisesRegex(ValueError, "snapshot differs"):
                 checker.check_sources([self.record], 1, download_missing=True)
             get.assert_not_called()
@@ -69,6 +71,18 @@ class SourceChecks(unittest.TestCase):
         self.write_snapshot()
         self.record["pages"] = 1
         with self.assertRaisesRegex(ValueError, "page count differs"):
+            checker.check_sources([self.record], 1)
+
+    def test_offline_sources_do_not_require_requests(self):
+        self.write_snapshot()
+        original_import = builtins.__import__
+
+        def without_requests(name, *args, **kwargs):
+            if name == "requests":
+                raise ImportError("downloads unavailable")
+            return original_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=without_requests):
             checker.check_sources([self.record], 1)
 
     def test_extract_rejects_missing_pages_labels_and_changed_text(self):
@@ -160,6 +174,26 @@ class VectorChecks(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "disposition"):
             self.check([vector])
 
+    def test_address_and_quantity_bounds_preserve_raw_exception_codes(self):
+        for payload, shape in (("F8 06 00 01 00 01", "fc06"),
+                               ("00 03 00 01 00 01", "fc03_request"),
+                               ("00 83 02", "exception"),
+                               ("00 10 00 01 00 01", "fc10_reply"),
+                               ("01 03 00 01 00 7E", "fc03_request"),
+                               ("01 10 00 01 00 7C", "fc10_reply"),
+                               ("01 10 00 01 00 7C F8 " + "00 " * 248, "fc10_request")):
+            with self.subTest(payload=payload[:25], shape=shape):
+                with self.assertRaisesRegex(ValueError, "disposition"):
+                    self.check([self.vector(payload, shape)])
+        for payload, shape in (("F7 03 00 00 00 7D", "fc03_request"),
+                               ("01 10 00 00 00 7B", "fc10_reply"),
+                               ("00 06 00 01 00 01", "fc06"),
+                               ("01 83 05", "exception"),
+                               ("01 83 FF", "exception")):
+            with self.subTest(payload=payload, shape=shape):
+                self.check([self.vector(payload, shape)])
+
+
     def test_byte_count_unknown_shape_and_invented_disposition_rejected(self):
         for key, value in (("bytes", 9), ("shape", "unknown"), ("disposition", "HARDWARE_PROVEN"),
                            ("shape_valid", False), ("crc_matches", False)):
@@ -187,6 +221,18 @@ class VectorChecks(unittest.TestCase):
                 vector.update(edits)
                 with self.assertRaises(ValueError):
                     self.check([vector])
+
+
+class CommandLineChecks(unittest.TestCase):
+    def test_check_rejects_mutating_options_before_loading_sources(self):
+        scripts = Path(__file__).resolve().parents[1] / "scripts"
+        for name in ("prepare_lichuan_references.py", "prepare_lichuan_tl57_references.py"):
+            for option in ("--extract", "--download-missing"):
+                with self.subTest(script=name, option=option):
+                    result = subprocess.run([sys.executable, str(scripts / name), "--check", option],
+                                            capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn("--check cannot be combined", result.stderr)
 
 
 if __name__ == "__main__":
