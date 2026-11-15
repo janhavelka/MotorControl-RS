@@ -1191,7 +1191,7 @@ static void testUnconfirmedTriggerObservation() {
             assert(c.completion == ActionCompletion::OBSERVED && c.state == ActionState::FAILED && c.uncertain);
             assert(c.outcome == ActionOutcome::UNCONFIRMED_RESPONSE && c.execution == ActionExecution::UNKNOWN);
             assert(c.deadlineUs == deadline && c.zeroEvidence.status && c.zeroEvidence.responseConfirmed);
-            retained.check(c.triggerEvidence); retained.check(c.failureEvidence);
+            retained.check(c.triggerEvidence); checkSameActionEvidence(c.triggerEvidence,c.failureEvidence);
             AxisReference reference; reference.nativePosition = 123;
             const Saved<AxisReference> unchanged(reference);
             const auto result = Ess::getHomeReference(c, c.servicedUs, 0, reference);

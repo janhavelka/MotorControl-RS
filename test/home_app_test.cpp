@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Actual cooperative application; all qualifications are simulated fixtures.
 #include "../examples/probe_cli/ProbeApp.cpp"
+#include "ActionEvidenceChecks.h"
 #include "fakes/esp32_uart/UsbConsoleFixture.h"
 #if MOTORCONTROLRS_TEST_IDF
 #include "fakes/esp32_uart/FakeUsb.h"
@@ -971,8 +972,8 @@ void unconfirmedHomeObservation(bool emit = false) {
         assert(!view(id).pending && result.state == ActionState::FAILED && result.uncertain &&
             result.outcome == ActionOutcome::UNCONFIRMED_RESPONSE && result.execution == ActionExecution::UNKNOWN &&
             result.completion == ActionCompletion::OBSERVED && !app->coordinateReference.nativeKnown && axisReserved(*app,1));
-        assert(!std::memcmp(&trigger,&result.triggerEvidence,sizeof(trigger)) &&
-            !std::memcmp(&trigger,&result.failureEvidence,sizeof(trigger)));
+        checkSameActionEvidence(trigger,result.triggerEvidence);
+        checkSameActionEvidence(trigger,result.failureEvidence);
         assert(sentCount() == (method == 35 ? 4U : 5U));
         const auto sent = sentCount(); pump(); assert(sentCount() == sent);
         if (emit) emitRetainedResult(id);

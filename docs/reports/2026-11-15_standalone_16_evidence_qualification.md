@@ -110,6 +110,13 @@ The first run in `build/stage16_final_verify` passed 93/94 suites: repository
 links failed because the report was still being written. That failed log is
 retained; the fresh run has no failures. Exact-commit CI is pending.
 
+The first Clang CI run on `b35bccc` failed three home suites at a whole-struct
+`memcmp` in the new fixture. Member copies need not preserve compiler padding.
+The corrected fixture checks every evidence member and all retained raw bytes.
+The related core copy check uses the same helper; the communication regression
+snapshots the original object's bytes instead of a memberwise copy. Production
+code and expected wire bytes are unchanged. Failed CI logs are retained.
+
 Hardware qualification is NOT RUN. Source scales, method 18,
 negative methods, nonzero offsets, physical switches, drive faults and electrical
 timing retain their existing owners.
