@@ -35,8 +35,12 @@ Recent work adds native velocity/homing reads, start-speed and homing-auxiliary
 setters, stored-profile interruption and 27 switch homing methods. The console
 also stages validated position-profile archives without starting motion; see
 [candidate staging](docs/ess_position.md#candidate-profile-staging). The console
-can install explicit homing, velocity and position-clear qualification facts;
+can install explicit homing, velocity, position-clear and per-terminal I/O facts;
 installation itself sends no motor command. See the [console guide](docs/console.md).
+I/O commissioning covers inputs 0-17, outputs 0-5/9-10 and canonical custom
+outputs. It checks polarity, intermediate writes, declared loads and trigger
+inhibition. Wired effects and restart behavior need separate evidence; see
+[I/O policy](docs/ess_io.md).
 The [prompt index](docs/prompts/README.md) separates completed work from open work.
 
 Drive groups accept up to 15 independent relative or absolute requests through

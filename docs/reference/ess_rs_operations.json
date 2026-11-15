@@ -1026,7 +1026,8 @@
           "test/driver_settings_test.cpp",
           "test/driver_app_test.cpp",
           "test/driver_console_parity_test.py",
-          "test/installed_consumer/main.cpp"
+          "test/installed_consumer/main.cpp",
+          "test/io_qualification_app_test.cpp"
         ]
       },
       "hardware": {
@@ -1036,7 +1037,7 @@
         ],
         "reason": "Physical settings writes/restore and soft-limit movement remain gated by source/timing/reference evidence."
       },
-      "reason": "All seven single-word candidates validate before traffic; stopped/input qualification, checked ACK/readback progress and possible-change effects; no rollback/retry or implicit save.",
+      "reason": "All seven single-word candidates validate before traffic. Per-terminal CONFIGURE facts replace the private input gate; the passive subdivision path remains. Independent live IO and caller-fact ages cap writes. Checked ACK/readback and possible-change effects remain separate; no rollback, retry or implicit save.",
       "choices": [
         "DefaultDirection.NORMAL",
         "DefaultDirection.REVERSED",
@@ -1363,7 +1364,8 @@
         "evidence": [
           "test/io_test.cpp",
           "test/io_app_test.cpp",
-          "test/probe_console_test.cpp"
+          "test/probe_console_test.cpp",
+          "test/io_qualification_app_test.cpp"
         ]
       },
       "hardware": {
@@ -1373,7 +1375,7 @@
         ],
         "reason": "Thirteen explicit passive/unloaded settings updates and exact restoration PASS as stored-register evidence. Full assignment/physical-function qualification NOT_RUN; checked FC06 source/ACK remains unconfirmed, matching FC03 readback settles only stored values."
       },
-      "reason": "ESS four inputs/two outputs, explicit function zero, bounded checked raw/provenance and exact stopped-state effects; active/persistence/electrical state unknown. Custom2 and custom cross-mapping remain unavailable.",
+      "reason": "Per-terminal exact commissioning facts admit inputs0?17, outputs0?5/9?10 and canonical custom outputs. Every FC06 intermediate is checked; connected terminals require confirmed replies. Source-qualified status/polarity mapping and declared load limits stay explicit; no replay or automatic rollback. Output11/cross-mapping, startup and physical effects remain unresolved or untested.",
       "choices": [
         "InputFunction.UNDEFINED",
         "InputFunction.ORIGIN",
@@ -3683,6 +3685,33 @@
       "api": "installPositionStartSpeedRelation",
       "facts": [],
       "reason": "Binds the stated minimum rpm to the exact word of a fresh profile read. Held in RAM: a controller restart forgets the requirement and uses the stored word under the startup policy."
+    },
+    {
+      "route": "io qualification install",
+      "wire_command": "io-qualification-install",
+      "syntax": "io qualification install [member] ADDRESS xN FUNCTION POLARITY PURPOSE MAPPING [triggers-inhibited] [protection-removal]",
+      "api": "installIoQualification",
+      "facts": [
+        "triggers-inhibited",
+        "protection-removal"
+      ],
+      "reason": "Installs one exact terminal candidate and stated purpose. Output form declares load and allowed levels. Selected and member contexts are separate; no motor traffic."
+    },
+    {
+      "route": "io qualification inspect",
+      "wire_command": "io-qualification-inspect",
+      "syntax": "io qualification inspect [member] ADDRESS TERMINAL PURPOSE",
+      "api": "copyIoQualification",
+      "facts": [],
+      "reason": "Copies retained terminal facts, read identities and validity without renewing their age or creating physical evidence."
+    },
+    {
+      "route": "io qualification revoke",
+      "wire_command": "io-qualification-revoke",
+      "syntax": "io qualification revoke [member] ADDRESS TERMINAL PURPOSE",
+      "api": "revokeIoQualification",
+      "facts": [],
+      "reason": "Clears future qualification and cancels unsent dependent work. In-flight evidence remains; this is not a motor stop."
     }
   ]
 }

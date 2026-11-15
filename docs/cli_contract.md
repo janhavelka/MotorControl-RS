@@ -64,6 +64,7 @@ guides define complete arguments and prerequisites.
 | `velocity read [address]` | One checked native JOG-parameter read; canonical `velocity-read`, no writes or qualification |
 | `velocity` | [Finite velocity](ess_velocity.md) with explicit duration and stop policy |
 | `home qualification install METHOD SEARCH RETURN RAMP FACT...`, `home qualification revoke`, `velocity qualification install FACT...`, `velocity qualification revoke`, `position-clear qualification install clear-semantics`, `position-clear qualification revoke` | [Named commissioning facts](#qualification-routes), local and on the ordinary image |
+| `io qualification install|inspect|revoke ...` | [Exact terminal facts](#terminal-qualification), local; assignment, drive configuration, finite move and segment purposes stay separate |
 | `motion-profile start-speed relation RAW_WORD MIN_RPM` | State the minimum speed for the stored start-speed word |
 | `enable`, `motor-release`, `alarm-clear`, `position-clear`, `stop normal\|fast` | Explicit [drive actions](ess_actions.md) |
 | `home read [address]` | One checked seven-word native parameter read; canonical `home-read`, no writes or qualification |
@@ -403,6 +404,56 @@ inputs and copied revocation; a settled final-zero reply cannot override a
 revoked admission. Methods1–14/17/19–30/33–35 are the implemented subset. Switch methods require the
 method-specific checked input binding and caller qualification;1–14 require Z,
 17/19–30 do not. `caps` and `home methods` advertise the same thirty choices.
+
+## Terminal qualification
+
+These protocol-3 additions call the public I/O qualification APIs. They send no
+drive traffic and do not change terminal wiring declarations or settings.
+`caps.qualification_routes.io` reports whether the callback is available.
+
+```text
+io qualification install [member] ADDRESS xN FUNCTION POLARITY PURPOSE MAPPING [triggers-inhibited] [protection-removal]
+io qualification install ADDRESS yN FUNCTION POLARITY CUSTOM assign MAPPING LOAD LEVELS
+io qualification inspect [member] ADDRESS TERMINAL PURPOSE
+io qualification revoke [member] ADDRESS TERMINAL PURPOSE
+```
+
+`ADDRESS` is required. Without `member`, it must name the selected axis. With
+`member`, it names a declared group member and accepts only input `finite-move`
+facts. The two contexts have independent generations and do not share facts.
+Inputs are X0-X3; outputs are Y0-Y1. `FUNCTION` is a decimal input code0-17 or
+output code0-5/9-10. `POLARITY` and `CUSTOM` are single bits0/1, not register masks.
+Output11 and unsupported output codes reject before admission.
+
+| Token | Values and meaning |
+| --- | --- |
+| `PURPOSE` | `assign`, `configure`, `finite-move`, `segment`; install each purpose separately |
+| `MAPPING` | `unknown`, `before`, `after`: independently established status location relative to inversion |
+| `triggers-inhibited` | External triggering remains inhibited during the operation; an inactive sample alone does not establish this |
+| `protection-removal` | Removal or polarity change of a connected protection assignment; allowed only for `assign` |
+| `LOAD` | `none`, `indicator`, `control`: the declared attached output load |
+| `LEVELS` | `inactive`, `active`, `either`: output levels the load permits at every intermediate write |
+
+The install path captures the exact checked settings/state baseline and passes
+the stated facts and candidate to `installIoQualification`. `unknown` mapping
+does not authorize a polarity interpretation. Missing evidence names the needed
+read. No command supplies omitted facts or qualifies motion from assignment intent.
+Setting writes remain explicit `io set` or `driver set` operations. Accepted
+changes invalidate dependent facts; neither reads nor local recovery reinstall them.
+
+Canonical reply names are `io-qualification-install`, `io-qualification-inspect`
+and `io-qualification-revoke`. Install/revoke use the local `done`/refusal schema
+above, with no operation ID. Inspection adds `present`, `valid`, `member`, the
+target/configuration binding, settings/state operation IDs, wiring, previous and
+candidate words, raw reported levels, observation and qualification times, and
+the exact supplied facts. `bus_traffic` is false. Inspection does not refresh age.
+Programmatic callers set the qualification age. The console uses the configured
+observation age bound; later reads do not renew that supplied-fact age. Live
+evidence keeps its separate age check.
+
+The host uses these canonical command names with `host_args` containing exactly
+the tokens after install/inspect/revoke. It checks the same128-byte/22-token bounds
+and rejects unknown, duplicate, extra and inapplicable tokens before serial output.
 
 ## Verification and qualification
 

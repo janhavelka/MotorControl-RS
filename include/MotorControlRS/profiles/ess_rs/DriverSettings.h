@@ -116,6 +116,22 @@ struct DriverObservation {
     uint32_t positiveBits = 0, negativeBits = 0;
     DriverEvidence provenance[DRIVER_READ_STEPS];
 };
+/** The manuals do not locate status bits relative to polarity inversion.
+ * A non-UNKNOWN value is an independently qualified source/fixture fact. */
+enum class IoStatusMapping : uint8_t { UNKNOWN, BEFORE_INVERSION, AFTER_INVERSION };
+struct IoInputFacts {
+    bool supplied = false;
+    IoStatusMapping statusMapping = IoStatusMapping::UNKNOWN;
+    bool externalTriggersInhibited = false; ///< Continuing inhibition, not one inactive sample.
+    bool protectionRemovalQualified = false; ///< Connected limit/release/stop removal or polarity change.
+};
+enum class IoOutputLoad : uint8_t { UNDECLARED, NO_LOAD, INDICATOR, CONTROL };
+struct IoOutputFacts {
+    bool supplied = false;
+    IoStatusMapping statusMapping = IoStatusMapping::UNKNOWN;
+    IoOutputLoad load = IoOutputLoad::UNDECLARED;
+    uint8_t allowedLevels = 0; ///< Bit 0 permits inactive, bit 1 active, after inversion, at every intermediate write.
+};
 /** Application-supplied qualifications bound to the exact stopped observation.
  * Enabling soft limits additionally needs qualified native bounds, homing and
  * a reference from the same generation. Raw limit reads alone prove none of it.
@@ -140,6 +156,11 @@ struct DriverPrerequisites {
     uint32_t ioConfigurationGeneration = 0;
     uint16_t actualInputs = 0, actualOutputs = 0;
     uint64_t ioEarliestUs = 0, ioLatestUs = 0;
+    IoInputFacts inputFacts[4];
+    IoOutputFacts outputFacts[2];
+    /** Caller qualification lifetime is separate from refreshed live I/O.
+     * Zero maximum age disables expiry; the original operation deadline remains. */
+    uint64_t ioQualificationUs = 0, ioQualificationMaxAgeUs = 0;
     /** Independent application qualification of the exact candidate and its
      * external effects. An asserted input may be reinterpreted by reassignment.
      * UNCONNECTED is distinct from a disabled function; none proves no output

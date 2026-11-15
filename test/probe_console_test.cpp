@@ -2373,6 +2373,90 @@ void testIndependentLocalHooksAndRemovedAliases() {
         f.contains(route[0] == 's' ? "segment" : std::string(route).substr(0, std::string(route).find(' ')).c_str());
     }
 }
+void testIoQualificationRoutes(bool fixtures = false) {
+    using namespace MotorControlRSExample;
+    using Kind = Probe::IoQualificationCommand::Kind;
+    struct Local {
+        Fake fake;
+        unsigned calls = 0;
+        Probe::IoQualificationCommand last;
+        IoQualification stored;
+        bool valid = false;
+    } local;
+    Probe::Host hook;
+    hook.context = &local;
+    hook.emitLine = [](void* c, const char* line, std::size_t length) { return Fake::emit(&static_cast<Local*>(c)->fake, line, length); };
+    hook.ioQualification = [](void* c, const Probe::IoQualificationCommand& request, IoQualification& out, bool& valid) {
+        auto& s = *static_cast<Local*>(c); ++s.calls; s.last = request;
+        out = s.stored; valid = s.valid; return Probe::QualificationReply(Probe::Action::OK);
+    };
+    Probe::Console console(hook, Probe::Format::JSON);
+    send(console, "@1 io qualification install 247 x3 17 1 assign after triggers-inhibited protection-removal\n");
+    assert(local.calls == 1 && local.last.kind == Kind::INSTALL && local.last.address == 247 && local.last.terminal == 3 &&
+        local.last.function == 17 && local.last.polarity == 1 && local.last.purpose == IoPurpose::ASSIGN &&
+        local.last.input.supplied && local.last.input.statusMapping == Ess::IoStatusMapping::AFTER_INVERSION &&
+        local.last.input.externalTriggersInhibited && local.last.input.protectionRemovalQualified && !local.last.output.supplied);
+    local.fake.contains("\"command\":\"io-qualification-install\""); local.fake.contains("\"result\":\"done\"");
+    for (const char* mapping : {"unknown", "before", "after"}) {
+        send(console, std::string("io qualification install member 2 x0 7 0 finite-move ") + mapping + " triggers-inhibited\n");
+        assert(local.last.member && local.last.address == 2 && local.last.purpose == IoPurpose::FINITE_MOVE && !local.last.input.protectionRemovalQualified);
+    }
+    for (const auto purpose : {"configure", "finite-move", "segment"}) {
+        send(console, std::string("io qualification install 1 x1 0 0 ") + purpose + " unknown\n");
+        assert(local.last.input.supplied && !local.last.input.externalTriggersInhibited && !local.last.input.protectionRemovalQualified);
+    }
+    const std::string longest = "@4294967295 io qualification install 247 x3 17 1 assign before triggers-inhibited protection-removal\n";
+    assert(longest.size() <= Probe::LINE_CAPACITY); send(console, longest);
+    send(console, "io qualification install 1 y1 10 1 1 assign before control either\n");
+    assert(local.last.terminal == 5 && local.last.function == 10 && local.last.polarity == 1 && local.last.custom == 1 &&
+        local.last.output.supplied && local.last.output.load == Ess::IoOutputLoad::CONTROL && local.last.output.allowedLevels == 3 &&
+        local.last.output.statusMapping == Ess::IoStatusMapping::BEFORE_INVERSION && !local.last.input.supplied);
+    for (const char* invalid : {
+        "install 0 x0 0 0 assign unknown", "install 248 x0 0 0 assign unknown", "install 1 x4 0 0 assign unknown",
+        "install 1 x00 0 0 assign unknown", "install 1 y2 0 0 0 assign unknown none either",
+        "install 1 x0 18 0 assign unknown", "install 1 x0 1.0 0 assign unknown", "install 1 x0 0 2 assign unknown",
+        "install 1 x0 0 0 guessed unknown", "install 1 x0 0 0 assign guessed", "install 1 x0 0 0 assign unknown all",
+        "install 1 x0 0 0 assign unknown triggers-inhibited triggers-inhibited", "install 1 x0 0 0 configure unknown protection-removal",
+        "install member 2 x0 0 0 assign unknown", "install 1 y0 11 0 0 assign unknown none either",
+        "install 1 y0 6 0 0 assign unknown none either", "install 1 y0 9 0 2 assign unknown none either",
+        "install 1 y0 9 0 0 configure unknown none either", "install 1 y0 9 0 0 assign unknown guessed either",
+        "install 1 y0 9 0 0 assign unknown none guessed", "install member 2 y0 0 0 0 assign unknown none either",
+        "install 1 y0 9 0 0 assign unknown none either extra", "inspect 1 x0", "inspect 1 x0 assign extra",
+        "inspect member 2 x0 configure", "revoke 1 y0 finite-move", "revoke 1 x0 assign extra", "install member"}) {
+        const auto calls = local.calls;
+        send(console, std::string("io qualification ") + invalid + "\n");
+        local.fake.contains("\"ok\":false"); assert(local.calls == calls);
+    }
+    send(console, "io qualification inspect 1 x0 assign\n");
+    local.fake.contains("\"present\":false"); local.fake.contains("\"valid\":false"); local.fake.contains("\"bus_traffic\":false");
+    if (fixtures) std::printf("{\"case\":\"absent\",\"record\":%s}\n", local.fake.lines.back().c_str());
+    auto& stored = local.stored;
+    stored.target.id = 77; stored.target.address = 2; stored.target.generation = 3;
+    stored.member = true; stored.terminal = 0; stored.purpose = IoPurpose::FINITE_MOVE;
+    stored.configurationGeneration = 4; stored.settingsOperationId = 8; stored.stateOperationId = 9;
+    stored.wiring = MotorControlRS::InputWiring::CONNECTED;
+    stored.previousFunction = stored.function = 7; stored.reportedInputs = 2;
+    stored.observedEarliestUs = 10; stored.observedLatestUs = 20; stored.qualifiedUs = 30; stored.maximumAgeUs = 100;
+    stored.input.supplied = true; stored.input.statusMapping = Ess::IoStatusMapping::AFTER_INVERSION;
+    stored.input.externalTriggersInhibited = true; local.valid = true;
+    send(console, "io qualification inspect member 2 x0 finite-move\n");
+    local.fake.contains("\"present\":true"); local.fake.contains("\"valid\":true"); local.fake.contains("\"member\":true");
+    local.fake.contains("\"settings_operation_id\":8"); local.fake.contains("\"mapping\":\"after\"");
+    if (fixtures) std::printf("{\"case\":\"member\",\"record\":%s}\n", local.fake.lines.back().c_str());
+    assert(local.fake.lines.back().size() < Probe::OUTPUT_CAPACITY);
+    stored.target.address = 1; stored.member = false; stored.terminal = 5; stored.purpose = IoPurpose::ASSIGN;
+    stored.previousFunction = 4; stored.function = 10; stored.custom = 1;
+    stored.input = {}; stored.output.supplied = true; stored.output.statusMapping = Ess::IoStatusMapping::BEFORE_INVERSION;
+    stored.output.load = Ess::IoOutputLoad::INDICATOR; stored.output.allowedLevels = 3; local.valid = false;
+    send(console, "io qualification inspect 1 y1 assign\n");
+    local.fake.contains("\"valid\":false"); local.fake.contains("\"load\":\"indicator\""); local.fake.contains("\"allowed_levels\":3");
+    if (fixtures) std::printf("{\"case\":\"output\",\"record\":%s}\n", local.fake.lines.back().c_str());
+    send(console, "io qualification revoke member 2 x0 finite-move\n");
+    assert(local.last.kind == Kind::REVOKE && local.last.member && local.last.purpose == IoPurpose::FINITE_MOVE);
+    send(console, "help io\n"); local.fake.contains("protection-removal");
+    send(console, "caps\n"); local.fake.contains("\"io\":true"); local.fake.contains("\"writes\":false");
+    local.fake.untouched();
+}
 void testWiringAndProfileRoutes() {
     Fake f;
     unsigned calls = 0, changes = 0;
@@ -2654,6 +2738,7 @@ void testVelocityReadGrammar() {
     send(c,"@8 help velocity\n"); f.contains("velocity read [address]");
 }
 int main(int argc, char** argv) {
+    if (argc == 2 && !std::strcmp(argv[1], "--io-qualification-fixtures")) { testIoQualificationRoutes(true); return 0; }
     if (argc == 2 && !std::strcmp(argv[1],"--home-read-fixtures")) { homeReadFixtures(true); return 0; }
     if (argc == 2 && !std::strcmp(argv[1],"--velocity-read-fixtures")) { velocityReadFixtures(true); return 0; }
     if (argc == 2 && !std::strcmp(argv[1], "--home-boundary-fixtures")) {
@@ -2676,6 +2761,7 @@ int main(int argc, char** argv) {
     testSimpleMotionGrammarAndReports();
     testIndependentLocalHooksAndRemovedAliases();
     testWiringAndProfileRoutes();
+    testIoQualificationRoutes();
     testSegmentGrammarAndCorrelation();
     testControlRoutes();
     testTuningRoutes();

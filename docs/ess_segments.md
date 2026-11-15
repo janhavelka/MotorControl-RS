@@ -85,6 +85,17 @@ output loads. It does require that external triggering cannot reinterpret a
 record update as a live action; unwired, disabled and unknown inputs are
 different states, and inputs are never reassigned implicitly.
 
+For assigned external controls, the standalone application accepts separate
+per-input `IoPurpose::SEGMENT` records through `inspectIoQualification` and
+`installIoQualification`. Each record binds the checked assignment, polarity,
+wiring and IO sample to the exact target/configuration and caller age. Active
+functions 2 through 13 reject; functions 7 through 17 require continued source
+inhibition. The application then binds those facts to the exact segment candidate.
+`ASSIGN`, `CONFIGURE` and `FINITE_MOVE` records do not grant this permission.
+The existing unconnected, passive-input configuration path remains available.
+Accepted writes revoke future facts; reads do not renew them. Neither path
+qualifies external execution, trigger timing or selection of a segment.
+
 An update consists of checked single-word writes followed by separate checked
 readbacks. There is no rollback, automatic retry, save or invented atomic
 application guarantee. Requested, acknowledged, read-back and active values
@@ -181,12 +192,11 @@ The application retains larger settings contexts/cache and console storage
 in PSRAM; capture/driver state and stacks remain internal. The report records
 actual memory watermarks and service/capture gaps for the named image.
 
-FieldCore's actual RS485 task was reinspected read-only. Its bounded
-request/work/result workflow remains a useful integration reference; its
-request-identical prefix stripping, measurement payload and immediate active
-cancellation cannot stand in for retained checked FC06 evidence, stored
-readback settlement or physical TX settlement. The core imports no FieldCore,
-UART, MCU, console or scheduler types.
+FieldCore integration remains consumer-owned. Its current motor module and bus
+owner retain exact command identities, independent stop results and uncertain
+write effects. This application owns its terminal qualification and segment
+configuration policy. The core imports no FieldCore, UART, MCU, console or
+scheduler types.
 
 The [fresh combined audit](archive/reports/ess_release_16_17_audit_2026-10-04.md) checks
 stored-segment and control-setting contracts. Write acknowledgement or checked device

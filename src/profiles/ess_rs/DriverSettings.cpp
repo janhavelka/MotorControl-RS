@@ -195,9 +195,11 @@ uint64_t stationaryDeadline(const DriverContext& c) {
         const uint64_t settingsUntil = evidenceAgeDeadline(attempted, p.maxAgeUs);
         if (settingsUntil < deadline) deadline = settingsUntil;
     }
-    if (c.group == DriverGroup::IO) {
+    if (p.ioLevelsQualified) {
         const uint64_t ioUntil = evidenceAgeDeadline(p.ioEarliestUs, p.maxAgeUs);
         if (ioUntil < deadline) deadline = ioUntil;
+        const uint64_t qualificationUntil = evidenceAgeDeadline(p.ioQualificationUs, p.ioQualificationMaxAgeUs);
+        if (qualificationUntil < deadline) deadline = qualificationUntil;
     }
     if (segmentGroup(c.group) || singleSettingGroup(c.group)) {
         const uint64_t triggerUntil = evidenceAgeDeadline(p.triggerEarliestUs, p.maxAgeUs);
@@ -431,6 +433,119 @@ Status validateIntermediateCurrentTuple(const DriverRequest& request,
     }
     return Ok();
 }
+bool ioLevel(IoStatusMapping mapping, bool observed, bool oldPolarity, bool polarity, bool& level) {
+    if (mapping > IoStatusMapping::AFTER_INVERSION) return false;
+    if (mapping == IoStatusMapping::UNKNOWN) {
+        if (oldPolarity || polarity) return false;
+        level = observed;
+    } else {
+        const bool before = observed ^ (mapping == IoStatusMapping::AFTER_INVERSION && oldPolarity);
+        level = before ^ polarity;
+    }
+    return true;
+}
+Status validateIoEvidence(const ReadTarget& target, const DriverRequest& request,
+                          const DriverPrerequisites& p, uint64_t nowUs) {
+    if (!p.ioLevelsQualified || !sameTarget(p.ioTarget, target) ||
+        p.ioConfigurationGeneration != request.configurationGeneration ||
+        (p.actualInputs & ~0xFu) || (p.actualOutputs & ~3u) ||
+        p.ioEarliestUs > p.ioLatestUs || p.ioLatestUs > nowUs ||
+        !evidenceAgeValid(p.ioEarliestUs, nowUs, p.maxAgeUs) ||
+        p.ioQualificationUs > nowUs ||
+        !evidenceAgeValid(p.ioQualificationUs, nowUs, p.ioQualificationMaxAgeUs))
+        return invalid(DriverError::IO_EVIDENCE_REQUIRED, "fresh qualified actual IO levels required");
+    return Ok();
+}
+Status validateInputChange(uint8_t terminal, uint8_t index, const uint16_t* state,
+                           const DriverPrerequisites& p) {
+    const uint16_t mask = uint16_t(1) << terminal;
+    const uint16_t oldFunction = p.previous.raw[8 + terminal], function = state[8 + terminal];
+    const bool connected = p.inputWiring[terminal] == InputWiring::CONNECTED;
+    const bool polarityChanged = ((state[7] ^ p.previous.raw[7]) & mask) != 0;
+    const IoInputFacts& facts = p.inputFacts[terminal];
+    if (oldFunction > 17 || function > 17 || facts.statusMapping > IoStatusMapping::AFTER_INVERSION)
+        return invalid(DriverError::IO_EFFECTS_REQUIRED, "input function or status mapping is unresolved");
+    const bool legacy = !connected && oldFunction <= 3 && function <= 3 &&
+        (!polarityChanged || (!oldFunction && !function));
+    if (!facts.supplied && !legacy)
+        return invalid(DriverError::IO_EFFECTS_REQUIRED, "terminal input facts required");
+    if (connected && oldFunction >= 2 && oldFunction <= 6 &&
+        ((index == 8 + terminal && function != oldFunction) || (index == 7 && polarityChanged)) &&
+        !facts.protectionRemovalQualified)
+        return invalid(DriverError::IO_EFFECTS_REQUIRED, "connected protection removal requires an explicit fact");
+    if ((oldFunction >= 4 || function >= 4) && !facts.externalTriggersInhibited)
+        return invalid(DriverError::TRIGGER_POLICY_REQUIRED, "external triggers must remain inhibited during input configuration");
+    if (index == 7 && polarityChanged && facts.statusMapping == IoStatusMapping::UNKNOWN &&
+        (connected || oldFunction || function))
+        return invalid(DriverError::IO_EFFECTS_REQUIRED, "input polarity mapping is unresolved");
+    bool level = false;
+    if (function >= 4 && function <= 13 &&
+        (!ioLevel(facts.statusMapping, (p.actualInputs & mask) != 0,
+                  (p.previous.raw[7] & mask) != 0, (state[7] & mask) != 0, level) || level))
+        return invalid(DriverError::IO_EFFECTS_REQUIRED, "control input must be known inactive at every write");
+    if (index == 7 && polarityChanged && oldFunction && oldFunction < 14) {
+        if (!facts.supplied || facts.statusMapping == IoStatusMapping::UNKNOWN ||
+            !ioLevel(facts.statusMapping, (p.actualInputs & mask) != 0,
+                     (p.previous.raw[7] & mask) != 0, (state[7] & mask) != 0, level) || level)
+            return invalid(DriverError::IO_EFFECTS_REQUIRED, "polarity change cannot activate an assigned input");
+    }
+    return Ok();
+}
+Status validateOutputChange(uint8_t terminal, uint8_t index, const uint16_t* state,
+                            const DriverPrerequisites& p) {
+    const IoOutputFacts& facts = p.outputFacts[terminal];
+    const bool connected = p.outputWiring[terminal] == InputWiring::CONNECTED;
+    if (!facts.supplied && !connected) return Ok();
+    if (!facts.supplied || facts.statusMapping > IoStatusMapping::AFTER_INVERSION ||
+        facts.load == IoOutputLoad::UNDECLARED || facts.load > IoOutputLoad::CONTROL ||
+        (connected && facts.load == IoOutputLoad::NO_LOAD) ||
+        (!connected && facts.load != IoOutputLoad::NO_LOAD) ||
+        !facts.allowedLevels || (facts.allowedLevels & ~3u))
+        return invalid(DriverError::IO_EFFECTS_REQUIRED, "declared output load and allowed levels required");
+    const uint16_t mask = uint16_t(1) << terminal;
+    if (index == 12 && ((state[12] ^ p.previous.raw[12]) & mask) &&
+        facts.statusMapping == IoStatusMapping::UNKNOWN)
+        return invalid(DriverError::IO_EFFECTS_REQUIRED, "output polarity mapping is unresolved");
+    // Automatic signals and no-function have no stable electrical-state promise.
+    // Canonical custom outputs have a known requested signal before inversion.
+    uint8_t possible = 3;
+    if (state[13 + terminal] == 9 + terminal) {
+        const bool level = ((state[15] ^ state[12]) & mask) != 0;
+        possible = level ? 2 : 1;
+        if (index == 12) {
+            bool observed = false;
+            if (!ioLevel(facts.statusMapping, (p.actualOutputs & mask) != 0,
+                         (p.previous.raw[12] & mask) != 0, (state[12] & mask) != 0, observed))
+                possible = 3;
+            else possible |= observed ? 2 : 1;
+        }
+    }
+    if (possible & ~facts.allowedLevels)
+        return invalid(DriverError::IO_EFFECTS_REQUIRED, "intermediate output state is outside the declared load policy");
+    return Ok();
+}
+Status validateIoOrder(const DriverRequest& request, const DriverPrerequisites& p) {
+    uint16_t state[DRIVER_FIELD_COUNT];
+    std::memcpy(state, p.previous.raw, sizeof(state));
+    // Keep this order identical to the published FC06 order in prepareDriverSettings.
+    for (uint8_t index = 7; index < DRIVER_FIELD_COUNT; ++index) {
+        if (!(request.fields & bit(index))) continue;
+        const uint16_t changed = state[index] ^ requested(request, index);
+        state[index] = requested(request, index);
+        for (uint8_t i = 0; i < 4; ++i) {
+            if (index != 8 + i && !(index == 7 && (changed & (1u << i)))) continue;
+            const Status checked = validateInputChange(i, index, state, p);
+            if (!checked) return checked;
+        }
+        for (uint8_t i = 0; i < 2; ++i) {
+            const bool custom = index == 15 && (state[13 + i] == 9 + i || (changed & (1u << i)));
+            if (index != 13 + i && !custom && !(index == 12 && (changed & (1u << i)))) continue;
+            const Status checked = validateOutputChange(i, index, state, p);
+            if (!checked) return checked;
+        }
+    }
+    return Ok();
+}
 Status validateIoEffects(const ReadTarget& target, const DriverRequest& request,
                          const DriverPrerequisites& prerequisites, uint64_t nowUs) {
     const DriverObservation& previous = prerequisites.previous;
@@ -438,12 +553,8 @@ Status validateIoEffects(const ReadTarget& target, const DriverRequest& request,
     for (uint8_t index : maskIndices)
         if ((request.fields & bit(index)) && !legal(index, previous.raw[index]))
             return invalid(DriverError::INVALID_CANDIDATE, "reserved stored IO mask bits cannot be overwritten");
-    if (!prerequisites.ioLevelsQualified || !sameTarget(prerequisites.ioTarget, target) ||
-        prerequisites.ioConfigurationGeneration != request.configurationGeneration ||
-        (prerequisites.actualInputs & ~0xFu) || (prerequisites.actualOutputs & ~3u) ||
-        prerequisites.ioEarliestUs > prerequisites.ioLatestUs || prerequisites.ioLatestUs > nowUs ||
-        !evidenceAgeValid(prerequisites.ioEarliestUs, nowUs, prerequisites.maxAgeUs))
-        return invalid(DriverError::IO_EVIDENCE_REQUIRED, "fresh qualified actual IO levels required");
+    const Status evidence = validateIoEvidence(target, request, prerequisites, nowUs);
+    if (!evidence) return evidence;
     const DriverRequest& qualified = prerequisites.qualifiedIo;
     if ((prerequisites.ioEffectsQualifiedFields & request.fields) != request.fields ||
         qualified.group != DriverGroup::IO || qualified.configurationGeneration != request.configurationGeneration ||
@@ -458,6 +569,11 @@ Status validateIoEffects(const ReadTarget& target, const DriverRequest& request,
     if (request.fields & bit(15)) affectedOutputs |= request.customOutput ^ previous.raw[15];
     for (uint8_t i = 0; i < 4; ++i) if (request.fields & bit(8 + i)) affectedInputs |= 1u << i;
     for (uint8_t i = 0; i < 2; ++i) if (request.fields & bit(13 + i)) affectedOutputs |= 1u << i;
+    if (request.fields & bit(15))
+        for (uint8_t i = 0; i < 2; ++i)
+            if (previous.raw[13 + i] == 9 + i ||
+                ((request.fields & bit(13 + i)) && requested(request, 13 + i) == 9 + i))
+                affectedOutputs |= 1u << i;
     for (uint8_t i = 0; i < 4; ++i)
         if ((affectedInputs & (1u << i)) && (prerequisites.inputWiring[i] == InputWiring::UNKNOWN || prerequisites.inputWiring[i] > InputWiring::CONNECTED))
             return invalid(DriverError::WIRING_REQUIRED, "affected input wiring must be declared");
@@ -480,7 +596,7 @@ Status validateIoEffects(const ReadTarget& target, const DriverRequest& request,
                 return invalid(DriverError::CUSTOM_DEPENDENCY, "custom bits require corresponding terminal's canonical custom function; cross-mapping unresolved");
         }
     }
-    return Ok();
+    return validateIoOrder(request, prerequisites);
 }
 } // namespace
 
@@ -577,6 +693,9 @@ Status prepareDriverSettings(DriverContext& output, const ReadTarget& target, ui
     if (request.group == DriverGroup::IO) {
         const Status effects = validateIoEffects(target, request, prerequisites, nowUs);
         if (!effects) return effects;
+    } else if (prerequisites.ioLevelsQualified) {
+        const Status evidence = validateIoEvidence(target, request, prerequisites, nowUs);
+        if (!evidence) return evidence;
     }
     const DriverObservation& previous = prerequisites.previous;
     const bool disabling = request.group == DriverGroup::DRIVE && (request.fields & bit(3)) && request.softLimitEnable == SoftLimitEnable::LIMITS_OFF;

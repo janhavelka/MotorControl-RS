@@ -4,6 +4,7 @@
 #include "ConsoleNumbers.h"
 #include "HomeConsoleParser.h"
 #include "HomeConsoleFormat.h"
+#include "IoQualificationConsole.h"
 #include "ConsoleReport.h"
 #include "MotorControlRS/Version.h"
 #include "MotorControlRS/profiles/ess_rs/Traffic.h"
@@ -549,6 +550,8 @@ const char* helpExample(Command command, const Host& host) {
         return host.qualification ? "velocity read\n  velocity qualification install rpm ramp inputs" : nullptr;
     case Command::POSITION_CLEAR:
         return host.qualification ? "position-clear qualification install clear-semantics" : nullptr;
+    case Command::IO:
+        return host.ioQualification ? "io read 1\n  io qualification inspect 1 x0 assign" : "io read 1";
     default: return nullptr;
     }
 }
@@ -634,6 +637,11 @@ HelpText helpText(const Entry& entry, const Host& host) {
             text.syntax = "motion-profile read|inspect|restore|forget | motion-profile stage ACC DEC RPM TARGET_W0 TARGET_W1 ORDER ADDRESS [model firmware] | motion-profile start-speed <native> | motion-profile start-speed relation RAW_WORD MIN_RPM";
             text.description = "Read, inspect or restore position parameters; explicitly set native start speed; a set locks moves until start-speed relation states the minimum rpm for the stored word. A controller restart forgets that lock and uses the stored word under the startup policy.";
         }
+    } else if (entry.command == Command::IO && host.ioQualification) {
+        text.syntax = "io read [address] | io set FIELD VALUE [FIELD VALUE ...] [address] | io qualification install [member] ADDRESS xN FUNCTION POLARITY PURPOSE MAPPING [triggers-inhibited] [protection-removal] | io qualification install ADDRESS yN FUNCTION POLARITY CUSTOM assign MAPPING LOAD LEVELS | io qualification inspect [member] ADDRESS TERMINAL PURPOSE | io qualification revoke [member] ADDRESS TERMINAL PURPOSE";
+        text.description = "Read or update I/O settings, or state exact terminal facts. Purposes: assign, configure, finite-move, segment; member supports finite-move. Mapping: unknown, before, after; load: none, indicator, control; levels: inactive, active, either. Qualification is local.";
+        text.bus = host.startDriver && host.snapshot;
+        if (!text.bus) text.syntax = "io qualification install [member] ADDRESS xN FUNCTION POLARITY PURPOSE MAPPING [triggers-inhibited] [protection-removal] | io qualification install ADDRESS yN FUNCTION POLARITY CUSTOM assign MAPPING LOAD LEVELS | io qualification inspect [member] ADDRESS TERMINAL PURPOSE | io qualification revoke [member] ADDRESS TERMINAL PURPOSE";
     } else if (entry.command == Command::STATS) {
         if (!host.snapshot) text.syntax = "stats reset";
         else if (!host.resetStats) text.syntax = "stats";
@@ -1231,6 +1239,48 @@ void Console::qualificationRoute(uint32_t id, QualificationRoute route, const ch
     qualificationReply(id, command, reply.reason ? reply.reason : actionName(reply.result),
         reply.readFirst ? "read_first" : nullptr, reply.readFirst);
 }
+void Console::ioQualificationRoute(uint32_t id, const char* const* tokens, std::size_t count) noexcept {
+    using Kind = IoQualificationCommand::Kind;
+    const char* command = count && !std::strcmp(tokens[0], "inspect") ? "io-qualification-inspect" :
+        count && !std::strcmp(tokens[0], "revoke") ? "io-qualification-revoke" : "io-qualification-install";
+    if (!host_.ioQualification) { error(id, command, "unavailable"); return; }
+    IoQualificationCommand request;
+    const char* named = nullptr;
+    if (const char* rejected = IoQualificationConsole::parse(tokens, count, request, named)) {
+        qualificationReply(id, command, rejected, named ? "fact" : nullptr, named); return;
+    }
+    IoQualification view;
+    bool valid = false;
+    const QualificationReply reply = host_.ioQualification(host_.context, request, view, valid);
+    if (reply.result != Action::OK) {
+        qualificationReply(id, command, reply.reason ? reply.reason : actionName(reply.result),
+            reply.readFirst ? "read_first" : nullptr, reply.readFirst); return;
+    }
+    if (request.kind != Kind::INSPECT) {
+        qualificationReply(id, command, "done", nullptr, nullptr, true); return;
+    }
+    const bool input = request.terminal < 4;
+    std::size_t used = 0;
+    if (!append(output_, sizeof(output_), used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":true,\"result\":\"done\",\"present\":%s,\"valid\":%s,\"member\":%s,\"address\":%u,\"terminal\":\"%c%u\",\"purpose\":\"%s\",\"target\":%lu,\"generation\":%lu,\"configuration_generation\":%lu,\"settings_operation_id\":%lu,\"state_operation_id\":%lu,\"wiring\":%u,\"previous_function\":%u,\"previous_polarity\":%u,\"previous_custom\":%u,\"function\":%u,\"polarity\":%u,\"custom\":%u,\"reported_inputs\":%u,\"reported_outputs\":%u,\"observed_earliest_us\":%llu,\"observed_latest_us\":%llu,\"qualified_us\":%llu,\"maximum_age_us\":%llu,\"facts_supplied\":%s,\"mapping\":\"%s\",\"triggers_inhibited\":%s,\"protection_removal\":%s,\"load\":\"%s\",\"allowed_levels\":%u,\"bus_traffic\":false}",
+        static_cast<unsigned long>(id), command, boolean(view.target.id != 0), boolean(valid), boolean(view.target.id ? view.member : request.member),
+        view.target.id ? view.target.address : request.address, input ? 'x' : 'y',
+        view.target.id ? (input ? view.terminal : view.terminal - 4) : (input ? request.terminal : request.terminal - 4),
+        IoQualificationConsole::purposeName(view.target.id ? view.purpose : request.purpose),
+        static_cast<unsigned long>(view.target.id), static_cast<unsigned long>(view.target.generation),
+        static_cast<unsigned long>(view.configurationGeneration), static_cast<unsigned long>(view.settingsOperationId),
+        static_cast<unsigned long>(view.stateOperationId), static_cast<unsigned>(view.wiring),
+        view.previousFunction, view.previousPolarity, view.previousCustom, view.function, view.polarity, view.custom,
+        view.reportedInputs, view.reportedOutputs, static_cast<unsigned long long>(view.observedEarliestUs),
+        static_cast<unsigned long long>(view.observedLatestUs), static_cast<unsigned long long>(view.qualifiedUs),
+        static_cast<unsigned long long>(view.maximumAgeUs), boolean(input ? view.input.supplied : view.output.supplied),
+        IoQualificationConsole::mappingName(input ? view.input.statusMapping : view.output.statusMapping),
+        boolean(view.input.externalTriggersInhibited), boolean(view.input.protectionRemovalQualified),
+        IoQualificationConsole::loadName(view.output.load), view.output.allowedLevels)) {
+        error(id, command, "output_full"); return;
+    }
+    emit();
+}
 void Console::dispatch() noexcept {
     char* tokens[22] = {}; // Full-width rationals, path policies and bounded preview options.
     std::size_t count = 0;
@@ -1262,6 +1312,9 @@ void Console::dispatch() noexcept {
         error(id, capability, "unsupported"); return;
     }
     if (!entry) { error(id, "unknown", "unknown_command"); return; }
+    if (entry->command == Command::IO && count > first + 1 && !std::strcmp(tokens[first + 1], "qualification")) {
+        ioQualificationRoute(id, tokens + first + 2, count - first - 2); return;
+    }
     if (entry->command == Command::DISCOVER) {
         if (!host_.discovery) { error(id,"discover","unavailable"); return; }
         DiscoveryCommand request; bool inspect=false;
@@ -2274,7 +2327,8 @@ void Console::dispatch() noexcept {
         case Command::MOVE: return host_.startMove && host_.snapshot && host_.axis;
         case Command::VELOCITY: return host_.snapshot && (host_.startTypedRead || (host_.startVelocity && host_.axis));
         case Command::SUBDIVISION: return host_.simpleMotion != nullptr;
-        case Command::TUNING: case Command::CONTROL: case Command::SEGMENT: case Command::IO: case Command::DRIVER: return host_.startDriver && host_.snapshot;
+        case Command::IO: return host_.ioQualification || (host_.startDriver && host_.snapshot);
+        case Command::TUNING: case Command::CONTROL: case Command::SEGMENT: case Command::DRIVER: return host_.startDriver && host_.snapshot;
         case Command::HOME: return true; // Method inventory is local; execution checks its own hooks.
         case Command::PROFILE: return true; // Local inventory does not need a transport.
         case Command::READ: case Command::READ_IDENTITY: case Command::READ_CONFIG: case Command::READ_STATE: return host_.startTypedRead != nullptr;
@@ -2373,8 +2427,8 @@ void Console::dispatch() noexcept {
         }
         used=std::strlen(output_); if(used) --used;
         const bool routes = host_.qualification != nullptr;
-        if(!append(output_,sizeof(output_),used,",\"position_interrupt_stored\":%s,\"position_interrupt_completion\":\"not_observed\",\"position_interrupt_new_target\":false,\"qualification_routes\":{\"home\":%s,\"velocity\":%s,\"position_clear\":%s,\"start_speed_relation\":%s}}",
-            boolean(callable(Command::POSITION)), boolean(routes), boolean(routes), boolean(routes), boolean(routes))) { error(id,"caps","output_capacity"); return; }
+        if(!append(output_,sizeof(output_),used,",\"position_interrupt_stored\":%s,\"position_interrupt_completion\":\"not_observed\",\"position_interrupt_new_target\":false,\"qualification_routes\":{\"home\":%s,\"velocity\":%s,\"position_clear\":%s,\"start_speed_relation\":%s,\"io\":%s}}",
+            boolean(callable(Command::POSITION)), boolean(routes), boolean(routes), boolean(routes), boolean(routes), boolean(host_.ioQualification != nullptr))) { error(id,"caps","output_capacity"); return; }
         emit(); return;
     }
     if (entry->command == Command::STATS && arg) {

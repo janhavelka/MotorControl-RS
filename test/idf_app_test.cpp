@@ -244,7 +244,7 @@ void testSharedCompleteInventoryAndRejectedRequestsNoTx() {
     command("@7 help motion-profile\n"); contains("motion-profile start-speed relation RAW_WORD MIN_RPM");
     command("@2 caps\n");
     for (const char* field : {"\"io_settings\":true", "\"control_settings\":true", "\"tuning\":true", "\"persistence\":true", "\"discovery\":true", "\"segment_execution\":\"external_input\"",
-                              "\"qualification_routes\":{\"home\":true,\"velocity\":true,\"position_clear\":true,\"start_speed_relation\":true}"}) contains(field);
+                              "\"qualification_routes\":{\"home\":true,\"velocity\":true,\"position_clear\":true,\"start_speed_relation\":true,\"io\":true}"}) contains(field);
     for (const char* invalid : {"@3 io set x4 none\n", "@4 segment position 17 read\n", "@5 tuning collision set current 1\n", "@6 move relative 1.25 steps native 60 configured\n",
                                 "@8 home qualification install 35 60 30 100 mechanics\n", "@9 velocity qualification install rpm\n", "@10 position-clear qualification install\n",
                                 "@11 motion-profile start-speed relation 30\n", "@12 home qualification install 35 60 30 100 all\n"}) {

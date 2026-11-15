@@ -1447,6 +1447,83 @@ class Framing(unittest.TestCase):
         result = console.command("velocity", velocity_args=("30", "rpm", "native", "200", "configured", "normal"), address=1)
         self.assertEqual(result["result"], "qualification_required"); self.assertTrue(console.synchronized)
 
+    def test_io_qualification_preserves_exact_facts_and_context(self):
+        def handler(i, command, args):
+            if command == "io":
+                self.assertEqual(args[0], "qualification")
+                return encoded(reply(i, "io-qualification-" + args[1], result="done"))
+            return Serial.normal(i, command, args)
+        console = self.session(handler)
+        requests = (
+            ("install", ("247", "x3", "17", "1", "assign", "before", "triggers-inhibited", "protection-removal")),
+            ("install", ("member", "2", "x0", "7", "0", "finite-move", "after", "triggers-inhibited")),
+            ("install", ("1", "x0", "0", "0", "configure", "unknown")),
+            ("install", ("1", "y1", "10", "1", "1", "assign", "after", "control", "either")),
+            ("revoke", ("1", "y1", "assign")),
+            ("revoke", ("member", "2", "x0", "finite-move")),
+        )
+        for action, tokens in requests:
+            console.command("io-qualification-" + action, host_args=tokens)
+            self.assertEqual(self.port.writes[-1].decode().split()[1:], ["io", "qualification", action, *tokens])
+        for function in range(18):
+            value = bench.io_qualification_arguments("io-qualification-install", ("1", "x0", str(function), "0", "assign", "unknown"))
+            self.assertEqual(value["function"], function)
+            self.assertFalse(value["triggers_inhibited"] or value["protection_removal"])
+        console.next_id = 0xFFFFFFFF
+        console.command("io-qualification-install", host_args=requests[0][1])
+        self.assertLessEqual(len(self.port.writes[-1]), 128)
+        self.assertLessEqual(len(self.port.writes[-1].split()), 22)
+
+    def test_io_qualification_invalid_tokens_never_reach_serial(self):
+        console = self.session()
+        bad = (
+            ("install", ()), ("install", ("member",)),
+            ("install", ("0", "x0", "0", "0", "assign", "unknown")),
+            ("install", ("248", "x0", "0", "0", "assign", "unknown")),
+            ("install", ("1", "x4", "0", "0", "assign", "unknown")),
+            ("install", ("1", "x00", "0", "0", "assign", "unknown")),
+            ("install", ("1", "x0", "18", "0", "assign", "unknown")),
+            ("install", ("1", "x0", "1.0", "0", "assign", "unknown")),
+            ("install", ("1", "x0", "0", "2", "assign", "unknown")),
+            ("install", ("1", "x0", "0", "0", "assign", "guessed")),
+            ("install", ("1", "x0", "0", "0", "assign", "unknown", "all")),
+            ("install", ("1", "x0", "0", "0", "assign", "unknown", "triggers-inhibited", "triggers-inhibited")),
+            ("install", ("1", "x0", "0", "0", "configure", "unknown", "protection-removal")),
+            ("install", ("member", "1", "x0", "0", "0", "assign", "unknown")),
+            ("install", ("1", "y0", "11", "0", "0", "assign", "unknown", "none", "either")),
+            ("install", ("1", "y0", "6", "0", "0", "assign", "unknown", "none", "either")),
+            ("install", ("1", "y0", "0", "0", "2", "assign", "unknown", "none", "either")),
+            ("install", ("1", "y0", "0", "0", "0", "assign", "unknown", "guess", "either")),
+            ("install", ("1", "y0", "0", "0", "0", "assign", "unknown", "none", "guess")),
+            ("install", ("1", "y0", "0", "0", "0", "assign", "unknown", "none", "either", "extra")),
+            ("inspect", ("1", "x0")), ("inspect", ("1", "x0", "assign", "extra")),
+            ("revoke", ("member", "2", "x0", "configure")), ("revoke", ("1", "y0", "finite-move")),
+        )
+        for action, tokens in bad:
+            with self.subTest(action=action, tokens=tokens), self.assertRaises(ValueError):
+                console.begin("io-qualification-" + action, host_args=tokens)
+        with self.assertRaises(ValueError):
+            console.begin("io-qualification-revoke", host_args=("1", "x0", "assign"), address=1)
+        self.assertEqual(len(self.port.writes), 1)
+
+    def test_io_qualification_cannot_claim_a_write_or_operation(self):
+        for fields in (dict(result="accepted"), dict(result="done", operation_id=0), dict(result="done", command_id=7),
+                       dict(result="done", bus_traffic=True), dict(result="done", tx_hex="0106"), dict(result="done", tx_bytes=8)):
+            def handler(i, command, args):
+                if command == "io": return encoded(reply(i, "io-qualification-install", **fields))
+                return Serial.normal(i, command, args)
+            console = self.session(handler)
+            with self.subTest(fields=fields), self.assertRaises(bench.BenchError):
+                console.command("io-qualification-install", host_args=("1", "x0", "0", "0", "assign", "unknown"))
+        for fields in (dict(result="qualification_required"), dict(result="reads_required", read_first="io read")):
+            def refused(i, command, args):
+                if command == "io": return encoded(reply(i, "io-qualification-install", ok=False, **fields))
+                return Serial.normal(i, command, args)
+            console = self.session(refused)
+            result = console.command("io-qualification-install", host_args=("1", "x0", "0", "0", "assign", "unknown"))
+            self.assertEqual(result["result"], fields["result"])
+            self.assertTrue(console.synchronized)
+
     def test_home_qualification_gate_is_one_attempt_with_no_cleanup_write(self):
         def handler(i, command, args):
             if command == "home":

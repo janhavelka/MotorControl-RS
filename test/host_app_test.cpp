@@ -4,6 +4,7 @@
 #include "fakes/esp32_uart/UsbConsoleFixture.h"
 #include "../examples/probe_cli/ArduinoPlatform.cpp"
 #include "../examples/probe_cli/main.cpp"
+#include "fakes/esp32_uart/QualifiedInputFixture.h"
 #include <cassert>
 #include <cstdlib>
 #include <cstdio>
@@ -109,6 +110,7 @@ void testPreserveLogicalConfigurationAndInvalidateConfidence() {
     fresh(); const uint32_t operation = probeNow(); finishProbe(operation);
     assert(app->known && app->modelKnown && app->communicationKnown);
     const auto oldResult = view(operation).probe.transport;
+    QualifiedInputFixture::install();
     const uint32_t axisGeneration = app->axis.generation, binding = app->bindingGeneration;
     app->axis.originKnown = true; app->axis.originNative = 123;
     app->axis.originSource = MotorControlRS::ScaleSource::ASSUMED;
@@ -120,8 +122,8 @@ void testPreserveLogicalConfigurationAndInvalidateConfidence() {
     auto& block = app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
     block.valid = true; block.value.target = app->axis.target;
     block.observedEarliestUs = block.observedLatestUs = hardware.time;
-    app->configuration.operationId = 23; app->configuration.raw.baud = 4;
-    app->driverSettings.operationId = 24; app->driverInputsQualified = true;
+    app->configuration.raw.baud = 4;
+    app->driverSettings.operationId = 24;
     app->actionConflicts[0] = 2;
     const auto before = query(); Probe::HostSnapshot state;
     assert(change(request(9600, HostFormat::E8_1), state) == Probe::Action::OK);
@@ -134,7 +136,7 @@ void testPreserveLogicalConfigurationAndInvalidateConfidence() {
     assert(prepared.configurationGeneration == app->axis.generation && prepared.target.generation == binding);
     assert(!app->known && !app->modelKnown && !app->communicationKnown && !app->knownTargets[0]);
     assert(!Probe::fresh(block, app->axis.target, hardware.time, 5000000));
-    assert(!app->configuration.operationId && !app->driverSettings.operationId && !app->driverInputsQualified);
+    assert(!app->configuration.operationId && !app->driverSettings.operationId && !QualifiedInputFixture::retained());
     assert(view(operation).probe.transport.endedUs == oldResult.endedUs);
     assert(view(operation).probe.rawModel == 60);
     const auto* retained = findRecord(*app, operation);

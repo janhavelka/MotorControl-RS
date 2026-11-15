@@ -568,6 +568,50 @@ void testConsumedReferenceUsesOperationTimeAndCoversWrites() {
     assert(Ess::prepareMoveRelative(c, axis(), &reference, 12, request(), p, 100, 10000));
     assert(!c.prepared.endpointKnown && c.prepared.effectiveNative == 25);
 }
+void testIndependentInputEvidenceDeadline() {
+    auto p = prerequisites(); p.maximumAgeUs = 0;
+    p.inputEvidenceDeadlineUs = 550000;
+    Ess::MoveContext c;
+    assert(Ess::prepareMoveRelative(c, axis(), nullptr, 12, request(), p, 500000, 1000000, options()));
+    assert(c.prerequisites.observedUs == 80 && c.prerequisites.maximumAgeUs == 0);
+    Ess::PreparedMove work;
+    assert(Ess::nextMove(c, 500000, work) && work.deadlineUs == 550000);
+    const Saved<Ess::MoveContext> saved(c); const Saved<Ess::PreparedMove> savedWork(work);
+    assert(!Ess::nextMove(c, 550000, work)); saved.check(c); savedWork.check(work);
+    assert(!Ess::prepareMoveRelative(c, axis(), nullptr, 13, request(), p, 550000, 1000000, options()));
+    saved.check(c);
+    p.inputEvidenceDeadlineUs = 0;
+    assert(!Ess::prepareMoveRelative(c, axis(), nullptr, 13, request(), p, 500000, 1000000, options()));
+    saved.check(c);
+    p.inputEvidenceDeadlineUs = 550000;
+    p.observedUs = 499900; p.maximumAgeUs = 1000;
+    assert(Ess::prepareMoveRelative(c, axis(), nullptr, 12, request(), p, 500000, 1000000, options()));
+    assert(Ess::nextMove(c, 500000, work) && work.deadlineUs == 500900); // Earlier motion age still wins.
+
+    p.maximumAgeUs = 0;
+    assert(Ess::prepareMoveRelative(c, axis(), nullptr, 12, request(), p, 500000, 1000000, options()));
+    auto bytes = reply(c);
+    assert(Ess::advanceMove(c, frame(c, bytes, 549990), 550100));
+    assert(c.stagingApplied && c.uncertain && c.execution == ActionExecution::NOT_TRANSMITTED);
+    assert(c.status.detail == static_cast<int32_t>(MoveError::READINESS)); noMoreWork(c);
+    assert(Ess::prepareMoveRelative(c, axis(), nullptr, 12, request(), p, 500000, 1000000, options()));
+    consume(c); bytes = reply(c);
+    assert(Ess::advanceMove(c, frame(c, bytes, 549990), 550100));
+    assert(c.execution == ActionExecution::ACKNOWLEDGED && c.state == ActionState::ACTIVE);
+    assert(Ess::nextMove(c, c.eligibleUs, work) && work.deadlineUs == 1000000);
+    consume(c, 4); consume(c, 1); assert(c.state == ActionState::SUCCEEDED);
+
+    AxisReference reference; reference.target = axis().target; reference.configurationGeneration = axis().generation;
+    reference.nativeKnown = reference.stationary = reference.idle = true; reference.source = ScaleSource::QUALIFIED;
+    reference.observedUs = 499900; reference.maximumAgeUs = 5100;
+    p.inputEvidenceDeadlineUs = 501000;
+    assert(Ess::prepareMoveRelative(c, axis(), &reference, 12, request(), p, 500000, 1000000, options()));
+    assert(Ess::nextMove(c, 500000, work) && work.deadlineUs == 501000);
+    const Saved<Ess::MoveContext> withReference(c);
+    p.inputEvidenceDeadlineUs = std::numeric_limits<uint64_t>::max();
+    assert(!Ess::prepareMoveRelative(c, axis(), &reference, 12, request(), p, 500000, 1000000, options()));
+    withReference.check(c); // Reference age must cover the actual combined write budget.
+}
 void testAbsoluteAndAngleReuseSequenceAndRetainReference() {
     auto a = axis(); a.originKnown = true; a.originSource = ScaleSource::QUALIFIED;
     a.units.commandStepsPerMotorTurn = UnitScale(1000, 1, ScaleSource::QUALIFIED);
@@ -905,6 +949,7 @@ int main() {
     testBorrowedEvidenceInput();
     testFreshCompletionLimitsAndDelayedService(); testDriveFaultAndPreviousObservationRetention();
     testWriteDeadlinesRetainReadinessAndOperationBudgets();
+    testIndependentInputEvidenceDeadline();
     testConsumedReferenceUsesOperationTimeAndCoversWrites();
     testAbsoluteAndAngleReuseSequenceAndRetainReference(); testAbsoluteReferenceAndZeroGatesPreserveOutput();
 }

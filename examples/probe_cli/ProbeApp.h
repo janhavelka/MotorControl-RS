@@ -6,6 +6,7 @@
 #include "DriveGroup.h"
 #include "ProfileCandidate.h"
 #include "QualificationConsole.h"
+#include "IoQualification.h"
 #include <MotorControlRS/profiles/ess_rs/Position.h>
 #include <MotorControlRS/profiles/ess_rs/Reads.h>
 #include <MotorControlRS/profiles/ess_rs/Velocity.h>
@@ -34,6 +35,26 @@ bool beginApplication(const Esp32S3Uart::Pins&, bool receiverDisabledDuringTrans
                       const ApplicationOptions& = ApplicationOptions());
 /// One bounded cooperative console/owner service turn, including an idle yield.
 void serviceApplication();
+
+/** Copy a fresh terminal baseline with caller facts unset. Outputs and assignment
+ * changes use the selected target's checked IO settings. Other purposes may use
+ * a declared group member's checked configuration. Rejection preserves output. */
+MotorControlRS::Status inspectIoQualification(uint8_t address, uint8_t terminal, IoPurpose, IoQualification& output, bool member = false);
+/** Validate and copy one exact supplied record while idle. No motor traffic.
+ * Non-assignment purposes require candidate == current assignment. */
+MotorControlRS::Status installIoQualification(const IoQualification&);
+/** Copy retained facts and their current validity. Does not refresh their age. */
+bool copyIoQualification(uint8_t address, uint8_t terminal, IoPurpose, IoQualification& output, bool& valid, bool member = false);
+/** Revoke future use and cancel unsent dependent work. Local revocation is not a stop. */
+MotorControlRS::Status revokeIoQualification(uint8_t address, uint8_t terminal, IoPurpose, bool member = false);
+/** Read one typed settings group through the ordinary owner. Segment groups
+ * require index 1..16. Copy results with copySettingsResult; release explicitly.
+ * Calls run in the service task and preserve operationId on rejection. */
+MotorControlRS::Status submitDriverRead(uint8_t address, MotorControlRS::ESS_RS::DriverGroup,
+                                      uint32_t& operationId, uint8_t segmentIndex = 0);
+/** Submit an exact selected-axis settings candidate using retained checked reads
+ * and supplied qualification. Same API as console settings writes; no replay. */
+MotorControlRS::Status submitDriverSettings(uint8_t address, const MotorControlRS::ESS_RS::DriverRequest&, uint32_t& operationId);
 
 /** Explicit stop on a selected or previously checked address, through the same
  * admission and owner path as the console. Rejection preserves operationId.

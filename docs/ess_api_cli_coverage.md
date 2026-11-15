@@ -48,6 +48,13 @@ unspecified-access records remain visible. Choice totals are 121 implemented
 one no-operation value. These counts are implementation accounting, not full
 device or physical qualification.
 
+Ten checked host-only qualification routes include I/O install, inspect and
+revoke. They call the public application API and create no register coverage.
+Input functions 0-17 and output functions 0-5/9-10 use exact terminal facts,
+intermediate-write validation and the ordinary `io set` route. DRIVE fields
+consume separately installed configuration facts. The legacy passive subdivision
+route remains. See [I/O](ess_io.md) and [driver settings](ess_driver_settings.md).
+
 | Public role | Existing callable surface | Console relationship |
 | --- | --- | --- |
 | Typed device operations | ESS read/action/move/velocity/home/settings/communication/persistence preparations; common wrappers reuse ESS preparations | Producing common/profile routes call these functions through one application owner |

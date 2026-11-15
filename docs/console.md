@@ -558,6 +558,33 @@ cannot restore old supplied facts. `revoke` cancels unsent clear work.
 For moves, `reference_not_ready` names a reference that cannot yet be consumed;
 settle monitoring and refresh state before retrying.
 
+## Terminal commissioning
+
+`io read ADDRESS` reads terminal settings. `read state ADDRESS` supplies live
+input/output status. Wiring declarations and commissioning facts remain separate
+from both reads. Use `help io` for the exact
+[terminal qualification grammar](cli_contract.md#terminal-qualification).
+
+`io qualification install ...` states one terminal's exact candidate and purpose.
+It does not write a setting. Use `io set` for the later setting change, then read
+again. `assign`, `configure`, `finite-move` and `segment` facts are independent;
+stating assignment facts cannot authorize a later move. Inputs accept explicit
+trigger inhibition and protection removal facts. Outputs require a declared load
+and permitted levels. Before/after status mapping is a supplied source or fixture
+fact; choosing `unknown` does not establish it.
+
+Inspect a selected-axis input without traffic:
+
+```text
+io qualification inspect 1 x0 assign
+```
+
+Use `member` before the address to inspect, install or revoke a declared member's
+`finite-move` input facts. Selected-axis and member facts never transfer between
+contexts. `revoke` removes the specified future fact; it does not stop a motor.
+The console rejects missing evidence or facts before a write. Existing `result`,
+`cancel` and `release` handling still applies to explicit setting operations.
+
 ## Homing auxiliary configuration
 
 `home auxiliary CHOICE` explicitly selects one stored auxiliary choice0..11 for

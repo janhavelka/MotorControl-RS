@@ -4,6 +4,7 @@
 #include "fakes/esp32_uart/UsbConsoleFixture.h"
 #include "../examples/probe_cli/ArduinoPlatform.cpp"
 #include "../examples/probe_cli/main.cpp"
+#include "fakes/esp32_uart/QualifiedInputFixture.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -228,9 +229,13 @@ void testWiringDeclarationsAreLocalAndGenerationChecked() {
     using namespace MotorControlRS;
     fresh();
     assert(selectTarget(app, 2) == Probe::Action::OK && selectTarget(app, 1) == Probe::Action::OK);
-    app->configuration.operationId = 77; app->configuration.target = app->axis.target;
+    assert(app->inputWiring[0] == InputWiring::UNKNOWN);
+    Probe::WiringRequest connected; connected.state = InputWiring::CONNECTED;
+    Probe::WiringSnapshot connectedView; assert(host(app).wiring(app, &connected, connectedView) == Probe::Action::OK);
+    QualifiedInputFixture::install();
     assert(installPositionClearQualification());
-    auto& retained = app->records[0]; retained.operationId = 100; retained.address = 1; retained.kind = App::OperationKind::ACTION;
+    auto* available = freeRecord(*app); assert(available);
+    auto& retained = *available; retained.operationId = 100; retained.address = 1; retained.kind = App::OperationKind::ACTION;
     assert(ESS::prepareNormalStop(retained.action, app->axis.target, 100, nowUs(), nowUs() + REQUEST_US));
     ActionEvent failure; failure.transport.target = app->axis.target; failure.transport.operationId = 100;
     failure.transport.kind = ReadEventKind::TRANSPORT_FAILURE; failure.transport.txAccepted = 8;
@@ -239,24 +244,22 @@ void testWiringDeclarationsAreLocalAndGenerationChecked() {
     updateActionReservation(*app, retained); const auto original = retained.action;
     const auto binding = app->bindingGeneration, generation = app->axis.generation;
     app->axis.originKnown = app->axis.softLimitsKnown = app->coordinateReference.nativeKnown = true;
-    app->driverInputsQualified = true;
     app->movePrerequisites.readinessQualified = app->homePrerequisites.readinessQualified = true;
-    app->configuration.operationId = 77; app->configuration.target = app->axis.target;
-    app->configuration.raw.inputFunctions[0] = 2;
+    const auto configurationId = app->configuration.operationId;
     const auto assignments = app->configuration.raw;
     const auto writes = hardware.writes, resets = hardware.rxResets, configurations = hardware.configCalls;
     Probe::WiringSnapshot view;
     platformReady = false; app->serial.blocked = true;
-    assert(host(app).wiring(app, nullptr, view) == Probe::Action::OK && view.inputs[0] == InputWiring::UNKNOWN);
+    assert(host(app).wiring(app, nullptr, view) == Probe::Action::OK && view.inputs[0] == InputWiring::CONNECTED);
     platformReady = true; app->serial.blocked = false;
     Probe::WiringRequest declaration; declaration.state = InputWiring::UNCONNECTED;
     assert(host(app).wiring(app, &declaration, view) == Probe::Action::OK);
     assert(view.inputs[0] == InputWiring::UNCONNECTED && view.configurationGeneration == generation + 1);
     assert(view.target.generation == binding && app->bindingGeneration == binding);
     assert(!app->axis.originKnown && !app->axis.softLimitsKnown && !app->coordinateReference.nativeKnown);
-    assert(!app->driverInputsQualified && !app->positionClearQualification.semanticsQualified && !app->movePrerequisites.readinessQualified &&
+    assert(!QualifiedInputFixture::retained() && !app->positionClearQualification.semanticsQualified && !app->movePrerequisites.readinessQualified &&
         !app->homePrerequisites.readinessQualified);
-    assert(app->configuration.operationId == 77 && !std::memcmp(&assignments, &app->configuration.raw, sizeof(assignments)));
+    assert(app->configuration.operationId == configurationId && !std::memcmp(&assignments, &app->configuration.raw, sizeof(assignments)));
     assert(!std::memcmp(&original, &retained.action, sizeof(original)) && axisReserved(*app, 1));
     assert(host(app).wiring(app, &declaration, view) == Probe::Action::OK && app->axis.generation == generation + 1);
     feed("@90 wiring y1 connected\n"); drain();

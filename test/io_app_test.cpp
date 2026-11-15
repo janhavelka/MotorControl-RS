@@ -162,7 +162,7 @@ void conflictAndPassiveReads() {
     fresh(); const auto first = readIo(); stateEvidence();
     app->axis.originKnown = true; const auto generation = app->axis.generation;
     readIo(0); // External changed assignment invalidates dependent confidence.
-    assert(app->axis.generation > generation && !app->axis.originKnown && !app->driverInputsQualified);
+    assert(app->axis.generation > generation && !app->axis.originKnown);
     assert(app->ioSettings.raw[8] == 0 && app->ioSettings.configurationGeneration == app->axis.generation);
     assert(view(first).driverContext->observations[0].raw[6] == 1);
     const auto baseline = app->ioSettings.operationId;

@@ -95,6 +95,8 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   effects; exporting a core builder alone does not close these application gaps.
 - [ ] Extend per-function readiness in
   [multi-drive 04](prompts/ess_multi_drive/04_input_programming.md).
+  Implemented; final verification is recorded in its
+  [report](reports/2026-11-16_multi_drive_04_input_programming.md).
   R-01's narrow active-origin refusal is corrected in standalone 16. Resolve K-01's
   endpoint/tolerance question through [standalone 08](prompts/standalone/08_motion_measurement.md).
 - [ ] Apply the bounded cleanup in [standalone 17](prompts/standalone/17_application_cleanup.md)
@@ -304,8 +306,9 @@ more drives (now addresses 1, 2 and 4, star wiring).
 - [ ] Program inputs and outputs as needed: functions 4-17 with stated
   commissioning facts, polarity on assigned terminals, connected outputs, routes
   for `0x0050`/`0x0051`, per-function move readiness, and the power-up state
-  ([multi-drive 04](prompts/ess_multi_drive/04_input_programming.md)). Today the
-  console admits only functions 0-3 on unconnected terminals.
+  ([multi-drive 04](prompts/ess_multi_drive/04_input_programming.md)). Software
+  is implemented and under final verification. Wired effects, status/polarity
+  mapping and restart persistence remain separate evidence work.
 - [ ] Start motion from a shared input edge: function 7 with a staged profile
   first (absolute mode preferred), then PT segments with PIN selection, the
   negative PV speed encoding, and observation and stop of input-started motion ([multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)).

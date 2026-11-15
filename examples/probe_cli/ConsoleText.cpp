@@ -346,6 +346,7 @@ bool hint(Writer& writer, const Value& report) {
         if (equal(command, "home-qualification-install") || equal(command, "home-qualification-revoke")) command = key("home");
         if (equal(command, "velocity-qualification-install") || equal(command, "velocity-qualification-revoke")) command = key("velocity");
         if (equal(command, "position-clear-qualification-install") || equal(command, "position-clear-qualification-revoke")) command = key("position-clear");
+        if (equal(command, "io-qualification-install") || equal(command, "io-qualification-inspect") || equal(command, "io-qualification-revoke")) command = key("io");
         if (equal(command, "velocity-read")) command = key("velocity");
         if (equal(command, "motion-profile-start-speed") || equal(command, "motion-profile-start-speed-relation") || equal(command, "motion-profile-stage")) command = key("motion-profile");
         return writer.text("Hint: help ") && writer.string(command) && writer.text(" shows syntax and prerequisites.\n");

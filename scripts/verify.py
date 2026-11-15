@@ -45,7 +45,8 @@ def check_inventory(root, listing, build):
     native.update({name: name+"_test" for name in
                    ("codec_independent", "probe_app_load", "idf_move_app",
                     "idf_simple_motion_app", "idf_position_interrupt_app", "idf_control_app", "idf_velocity_app", "idf_home_app",
-                    "idf_position_start_speed_app", "idf_motion_profile_app", "idf_homing_auxiliary_app", "idf_group_app", "idf_stop_path_app")})
+                    "idf_position_start_speed_app", "idf_motion_profile_app", "idf_homing_auxiliary_app", "idf_group_app", "idf_stop_path_app",
+                    "idf_io_qualification_app")})
     native["units_preview"] = "units_preview"
     for name, binary in native.items():
         command = by_name.get(name, {}).get("command", [])

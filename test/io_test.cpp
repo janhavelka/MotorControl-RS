@@ -64,6 +64,14 @@ E::DriverPrerequisites prerequisites(const E::DriverRequest& r, const E::DriverC
     p.ioEarliestUs = 110; p.ioLatestUs = 120;
     for (auto& w : p.inputWiring) w = InputWiring::UNCONNECTED;
     for (auto& w : p.outputWiring) w = InputWiring::UNCONNECTED;
+    for (auto& f : p.inputFacts) {
+        f.supplied = true; f.statusMapping = E::IoStatusMapping::BEFORE_INVERSION;
+        f.externalTriggersInhibited = true; f.protectionRemovalQualified = true;
+    }
+    for (auto& f : p.outputFacts) {
+        f.supplied = true; f.statusMapping = E::IoStatusMapping::BEFORE_INVERSION;
+        f.load = E::IoOutputLoad::NO_LOAD; f.allowedLevels = 3;
+    }
     p.ioEffectsQualifiedFields = r.fields; p.qualifiedIo = r;
     return p;
 }
@@ -146,7 +154,7 @@ void testPrerequisitesAndMasks() {
     p = prerequisites(r); r.fields |= 1; rejected(r, p);
     r = request(); r.group = E::DriverGroup::DRIVE; rejected(r, prerequisites(r));
     r = request(7); r.inputPolarity = 1; p = prerequisites(r); p.inputWiring[0] = InputWiring::UNKNOWN; rejected(r, p);
-    p = prerequisites(r); p.actualInputs = 1; // Asserted input is allowed only by independent exact effects qualification.
+    p = prerequisites(r); p.actualInputs = 1; // Qualified pre-inversion status becomes inactive after the write.
     assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000)); assert(work(c).value == 1);
     p.ioEffectsQualifiedFields = 0; rejected(r, p);
     auto alias = update(); const Saved<E::DriverContext> before(alias);
@@ -156,7 +164,11 @@ void testPrerequisitesAndMasks() {
 void testFullUpdatePartialAndCustom() {
     auto r = request(); r.fields = 0x3FE00; r.inputPolarity = 15; r.outputPolarity = 3; r.customOutput = 3;
     r.outputFunctions[0] = E::OutputFunction::CUSTOM_0; r.outputFunctions[1] = E::OutputFunction::CUSTOM_1;
-    auto c = update(r); assert(c.fieldCount == 9);
+    const auto fullUpdate = [&r]() {
+        auto p = prerequisites(r); p.actualInputs = 15;
+        E::DriverContext c; assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000)); return c;
+    };
+    auto c = fullUpdate(); assert(c.fieldCount == 9);
     const uint16_t registers[] = {0x40, 0x41, 0x42, 0x43, 0x44, 0x4B, 0x4C, 0x4D, 0x4F};
     for (uint8_t step = 0; step < 9; ++step) {
         const auto w = work(c); assert(w.write && w.count == 1 && w.reg == registers[step]);
@@ -165,7 +177,7 @@ void testFullUpdatePartialAndCustom() {
     }
     assert(c.state == ReadState::SUCCEEDED && c.completedSteps == 18 && c.effects == r.fields);
     for (uint8_t boundary = 0; boundary < 18; ++boundary) {
-        auto partial = update(r);
+        auto partial = fullUpdate();
         while (partial.step < boundary) {
             const auto next = work(partial);
             if (next.write) ack(partial); else supply(partial, reply({partial.progress[partial.order[partial.step / 2]].requested}));
@@ -239,6 +251,116 @@ void testEchoReadbackAndFaults() {
     assert(!E::nextDriver(c, 295, untouched)); saved.check(untouched);
     e = local(c, ReadEventKind::DEADLINE); assert(E::advanceDriver(c, e, 295) && !c.effects && c.deadlineUs == 9000);
 }
+void testInputCommissioningMatrix() {
+    for (uint16_t function = 0; function <= 17; ++function)
+        for (auto wiring : {InputWiring::UNKNOWN, InputWiring::UNCONNECTED, InputWiring::CONNECTED})
+            for (uint16_t level : {0, 1}) {
+                auto r = request(); r.inputFunctions[0] = static_cast<E::InputFunction>(function);
+                auto p = prerequisites(r); p.inputWiring[0] = wiring; p.actualInputs = level;
+                const bool accepted = wiring != InputWiring::UNKNOWN && !(level && function >= 4 && function <= 13);
+                if (!accepted) { rejected(r, p); continue; }
+                E::DriverContext c; assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+                assert(work(c).reg == 0x41 && work(c).value == function);
+                ack(c); supply(c, reply({function})); assert(c.state == ReadState::SUCCEEDED);
+                p.inputFacts[0].supplied = false;
+                if (wiring == InputWiring::CONNECTED || function >= 4) rejected(r, p);
+                else assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+            }
+    for (uint16_t function = 4; function <= 17; ++function) {
+        auto r = request(); r.inputFunctions[0] = static_cast<E::InputFunction>(function);
+        auto p = prerequisites(r); p.inputFacts[0].externalTriggersInhibited = false; rejected(r, p);
+    }
+    for (uint16_t oldFunction = 2; oldFunction <= 6; ++oldFunction) {
+        auto r = request(); auto p = prerequisites(r, read(0, 0, 0, oldFunction));
+        p.inputWiring[0] = InputWiring::CONNECTED; p.inputFacts[0].protectionRemovalQualified = false;
+        rejected(r, p); p.inputFacts[0].protectionRemovalQualified = true;
+        E::DriverContext c; assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+        r = request(7); r.inputPolarity = 1;
+        p = prerequisites(r, read(0, 0, 0, oldFunction)); p.inputWiring[0] = InputWiring::CONNECTED;
+        p.actualInputs = 1; p.inputFacts[0].protectionRemovalQualified = false;
+        rejected(r, p); // Clearing an asserted protection through inversion also needs explicit intent.
+        p.inputFacts[0].protectionRemovalQualified = true;
+        assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+    }
+}
+void testInputPolarityOrder() {
+    auto r = request(7); r.fields |= mask(8); r.inputPolarity = 1;
+    auto p = prerequisites(r, read(0, 0, 0, 7));
+    // Final NONE is safe, but inversion runs first while the old trigger exists.
+    rejected(r, p);
+    p.inputFacts[0].statusMapping = E::IoStatusMapping::UNKNOWN; rejected(r, p);
+    p.inputFacts[0].statusMapping = E::IoStatusMapping::AFTER_INVERSION; rejected(r, p);
+    p.actualInputs = 1; E::DriverContext c;
+    assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+    assert(work(c).reg == 0x40);
+    // Separate observed disable permits the legacy unconnected NONE inversion.
+    p = prerequisites(r, read(0, 0, 0, 0)); p.inputFacts[0] = E::IoInputFacts();
+    assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+    r = request(); r.inputFunctions[0] = E::InputFunction::STOP;
+    p = prerequisites(r, read(1)); p.inputFacts[0].statusMapping = E::IoStatusMapping::UNKNOWN; rejected(r, p);
+    p.inputFacts[0].statusMapping = E::IoStatusMapping::AFTER_INVERSION;
+    assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000)); // Do not invert an after-inversion read twice.
+    p.inputFacts[0].statusMapping = E::IoStatusMapping::BEFORE_INVERSION; rejected(r, p);
+    p.actualInputs = 1;
+    assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+    p.inputFacts[0].statusMapping = static_cast<E::IoStatusMapping>(3); rejected(r, p);
+}
+void testOutputLoadsAndOrder() {
+    for (uint16_t function : {0, 1, 2, 3, 4, 5, 9, 10}) {
+        auto r = request(13); r.outputFunctions[0] = static_cast<E::OutputFunction>(function);
+        auto p = prerequisites(r); p.outputWiring[0] = InputWiring::CONNECTED;
+        p.outputFacts[0].load = E::IoOutputLoad::INDICATOR;
+        E::DriverContext c; assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+        ack(c); supply(c, reply({function})); assert(c.state == ReadState::SUCCEEDED);
+        assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+        ack(c, false); assert(c.outcome == E::DriverOutcome::UNCONFIRMED_RESPONSE && c.uncertain);
+        p.allowEchoReadback = true; rejected(r, p); p.allowEchoReadback = false;
+        p.outputFacts[0].supplied = false; rejected(r, p);
+    }
+    auto r = request(12); r.fields |= mask(15); r.outputPolarity = 1; r.customOutput = 1;
+    auto p = prerequisites(r, read(0, 0, 0, 1, 9)); p.outputWiring[0] = InputWiring::CONNECTED;
+    p.outputFacts[0].load = E::IoOutputLoad::CONTROL; p.outputFacts[0].allowedLevels = 1;
+    rejected(r, p); // Final inactive does not excuse the earlier inverted active custom output.
+    p.outputFacts[0].allowedLevels = 3; E::DriverContext c;
+    assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+    p.outputFacts[0].statusMapping = E::IoStatusMapping::UNKNOWN; rejected(r, p);
+    r = request(12); r.outputPolarity = 1;
+    p = prerequisites(r, read(0, 0, 1, 1, 9)); p.outputWiring[0] = InputWiring::CONNECTED;
+    p.outputFacts[0].load = E::IoOutputLoad::CONTROL; p.outputFacts[0].allowedLevels = 1;
+    // Stored custom=1 predicts inactive after inversion, but the fresh status=0
+    // predicts activation. Preserve both possibilities instead of trusting storage.
+    rejected(r, p);
+    r = request(15); p = prerequisites(r, read(0, 0, 0, 1, 9));
+    p.outputWiring[0] = InputWiring::CONNECTED; p.outputFacts[0].load = E::IoOutputLoad::CONTROL;
+    p.allowEchoReadback = true; rejected(r, p); // Same-value custom writes still address the connected terminal.
+    r = request(13); r.outputFunctions[0] = E::OutputFunction::ALARM;
+    p = prerequisites(r); p.outputWiring[0] = InputWiring::CONNECTED;
+    p.outputFacts[0].load = E::IoOutputLoad::CONTROL; p.outputFacts[0].allowedLevels = 1;
+    rejected(r, p); // A current inactive sample does not promise a stable alarm output.
+    p.outputFacts[0].allowedLevels = 3;
+    assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+}
+void testCommissioningAge() {
+    const auto r = request(); auto p = prerequisites(r);
+    p.ioQualificationUs = 90; p.ioQualificationMaxAgeUs = 150;
+    E::DriverContext c; assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+    assert(E::driverWriteDeadline(c) == 240);
+    p.ioEarliestUs = 195; p.ioLatestUs = 199;
+    assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+    assert(E::driverWriteDeadline(c) == 240); // Refresh never renews the caller fact.
+    p.ioQualificationMaxAgeUs = 100; rejected(r, p);
+    p.ioQualificationUs = 201; rejected(r, p);
+    E::DriverContext prior;
+    assert(E::prepareDriverRead(prior, target(), 11, 17, 100, 10000));
+    supply(prior, reply({0, 400})); supply(prior, reply({0, 0, 0}));
+    supply(prior, reply({0, 0, 0, 0})); supply(prior, reply({0, 0}));
+    E::DriverRequest drive; drive.configurationGeneration = 17; drive.fields = mask(1); drive.subdivision = 800;
+    p = prerequisites(drive, prior); p.inputsPermit = true;
+    p.ioQualificationUs = 90; p.ioQualificationMaxAgeUs = 150;
+    assert(E::prepareDriverSettings(c, target(), 12, drive, p, 200, 9000));
+    assert(E::driverWriteDeadline(c) == 240);
+    p.ioTarget.generation++; rejected(drive, p);
+}
 } // namespace
 static void testOptionalAgePolicy() {
     const auto r = request(); auto p = prerequisites(r); p.maxAgeUs = 0;
@@ -272,6 +394,7 @@ static void testSuppliedUncertaintyNeedsReadbackPolicy() {
     }
 }
 int main() {
+    testInputCommissioningMatrix(); testInputPolarityOrder(); testOutputLoadsAndOrder(); testCommissioningAge();
     testSuppliedUncertaintyNeedsReadbackPolicy();
     testOptionalAgePolicy();
     testAdmissionPrecedence();

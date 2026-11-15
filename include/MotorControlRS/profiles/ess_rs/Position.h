@@ -5,6 +5,7 @@
 #pragma once
 #include "MotorControlRS/MoveOperation.h"
 #include "MotorControlRS/profiles/ess_rs/Actions.h"
+#include <limits>
 
 namespace MotorControlRS { namespace ESS_RS {
 constexpr std::size_t MOVE_REQUEST_BYTES = 19;
@@ -104,6 +105,10 @@ struct MovePrerequisites {
     WordOrder wordOrder = WordOrder::HIGH_WORD_FIRST;
     uint16_t rawAlarm = 0, rawMotion = 0;
     uint64_t observedUs = 0, maximumAgeUs = 0; ///< Zero disables age expiry; otherwise admission/new writes require age below this immutable budget. Operation deadlines still apply.
+    /** Independent expiry of input observations and caller input qualification.
+     * It caps setup/trigger writes without changing the motion observation age.
+     * The default adds no expiry. A completed trigger keeps its observation budget. */
+    uint64_t inputEvidenceDeadlineUs = std::numeric_limits<uint64_t>::max();
 };
 enum class MoveAdmission : uint8_t { OBSERVED_STATE, NATIVE_INTENT };
 /** Caller-owned, read-only between API calls. WRITE_ALL stages then starts.

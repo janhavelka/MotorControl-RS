@@ -50,6 +50,24 @@ reject. Geometry changes under enabled or unknown limits require an explicit
 OFF candidate, which is written and read back first. Geometry changes and
 enabling limits together reject until the changed interpretation is reconciled.
 
+The standalone application supplies this input policy through
+`inspectIoQualification` and `installIoQualification` in `ProbeApp.h`.
+Install one `CONFIGURE` record for each input against checked configuration
+and IO observations. Records carry the exact target, configuration generation,
+assignment, polarity, declared wiring, observation identity and caller age.
+Functions 2 through 13 must be inactive; functions 7 through 17 also need
+continued external trigger inhibition. The status/polarity mapping is a
+separate source or fixture fact. Fresh reads do not renew caller qualification.
+
+These records admit the input-effects part of direction, word-order,
+soft-limit, over-limit and external PT/PV setting changes. They do not supply
+missing limit-pair encoding, a homed reference or permission for motion.
+Subdivision-only updates retain their existing passive-input path; they need
+checked stopped feedback and known unconnected inputs with functions 0 through 3.
+Possible writes revoke future qualification and dependent group-member facts.
+An admitted operation keeps its copied facts, original deadline and write
+evidence through completion or cancellation. No write is replayed.
+
 Enabling requires the fresh device homing-complete flag, a qualified reference
 from the same configuration generation, ordered native limits in the qualified
 subset, and their exact corresponding raw pairs. `qualifiedPositiveWords` and
@@ -121,7 +139,7 @@ CLI group size; the direct API accepts all seven single-word fields.
 Host `axis` configuration remains distinct. Operations use ordinary retained
 capacity (eight frontend records), existing command correlation, explicit result
 inspection/release, cancellation and the reserved stop/recovery paths. Compact
-terminal evidence fits the shared 8192-byte output bound.
+terminal evidence fits the shared 49,152-byte output bound.
 
 `python scripts/bench_probe.py --port COM13 --log <new.jsonl> driver-read` performs
 one checked read, immutable result inspection and explicit release. It does not

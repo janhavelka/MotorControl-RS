@@ -11,6 +11,7 @@
 #include "MoveRelation.h"
 #include "DiscoveryScan.h"
 #include "QualificationConsole.h"
+#include "IoQualification.h"
 #include "DriveGroup.h"
 #include "ProfileCandidate.h"
 #include "MotorControlRS/profiles/ess_rs/Codec.h"
@@ -363,6 +364,9 @@ struct Host {
     /** Typed commissioning facts from the console; synchronous and never bus traffic.
      * Calls the same install/revoke operations as the application API. */
     QualificationReply (*qualification)(void*, const QualificationCommand&) = nullptr;
+    /** Per-terminal facts and inspection through the public application API.
+     * This callback is local and never submits a drive operation. */
+    QualificationReply (*ioQualification)(void*, const IoQualificationCommand&, IoQualification&, bool& valid) = nullptr;
     Action (*recover)(void*, uint32_t commandId, uint32_t& operationId) = nullptr;
     /** Fixture-only bench route: one fixed address-0 frame, then a silent window.
      * Not a production API; reported through reportProbe with broadcast=true. */
@@ -474,6 +478,7 @@ private:
                          bool ordinaryStop = false, uint32_t replacedOperationId = 0, bool stopEscalation = false) noexcept;
     void parameterRead(uint32_t id, MotorControlRS::ESS_RS::ReadKind, const char* address) noexcept;
     void qualificationRoute(uint32_t id, QualificationRoute, const char* const* tokens, std::size_t count) noexcept;
+    void ioQualificationRoute(uint32_t id, const char* const* tokens, std::size_t count) noexcept;
     void qualificationReply(uint32_t id, const char* command, const char* result, const char* label, const char* value, bool ok = false) noexcept;
     void emit(uint32_t terminalOperation = 0, bool humanText = false) noexcept;
     bool outstanding(uint32_t id) const noexcept;

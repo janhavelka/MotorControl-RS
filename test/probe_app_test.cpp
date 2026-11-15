@@ -950,11 +950,11 @@ void readStep(uint32_t operation, uint8_t index, const std::vector<uint8_t>& byt
         view(operation).typedRead->step == index; ++i) step();
     assert(view(operation).typedRead->step != index || !view(operation).pending);
 }
-void completeConfig(uint32_t operation, uint16_t wordOrder = 1, uint16_t algorithm = 2) {
+void completeConfig(uint32_t operation, uint16_t wordOrder = 1, uint16_t algorithm = 2, uint16_t polarity = 0x8005) {
     readStep(operation, 0, registerReply({1, 1000}));
     readStep(operation, 1, registerReply({0, 0, 0}));
     readStep(operation, 2, registerReply({1, 0, wordOrder}));
-    readStep(operation, 3, registerReply({0x8005, 0, 1, 6, 17}));
+    readStep(operation, 3, registerReply({polarity, 0, 1, 6, 17}));
     readStep(operation, 4, registerReply({algorithm, 4000})); pump(100);
 }
 void testTypedReadRoutesAndAtomicPublication() {
@@ -992,18 +992,26 @@ void testTypedReadRoutesAndAtomicPublication() {
     Probe::ResultView released; assert(!lookup(app, config, released));
 }
 void seedConfigAssumptions() {
+    uint32_t state = 0;
+    assert(startTypedRead(app, 9, 1, ESS::ReadKind::STATE, state, false) == Probe::Action::OK);
+    readStep(state, 0, registerReply({0, 1})); readStep(state, 1, registerReply({0, 0}));
+    readStep(state, 2, registerReply({0, 0, 0})); pump(100);
+    for (uint8_t terminal = 0; terminal < 4; ++terminal) {
+        IoQualification q; assert(inspectIoQualification(1, terminal, IoPurpose::CONFIGURE, q));
+        q.input.supplied = true; q.input.statusMapping = ESS::IoStatusMapping::AFTER_INVERSION;
+        q.input.externalTriggersInhibited = true; assert(installIoQualification(q));
+    }
     app->axis.originKnown = true;
     app->axis.units.commandStepsPerMotorTurn = MotorControlRS::UnitScale(1000, 1, MotorControlRS::ScaleSource::QUALIFIED);
     app->movePrerequisites.commandUnitsVerified = true;
-    app->driverInputsQualified = true;
     app->motionProfile.view.generation = app->axis.generation;
 }
 void testFailedConfigRefreshInvalidatesOnlyContradictedCurrentKnowledge() {
     for (unsigned scenario = 0; scenario < 3; ++scenario) {
-        fresh(); timerCapture(); command("@1 read config\n"); completeConfig(view(0).operationId);
+        fresh(); timerCapture(); command("@1 read config\n"); completeConfig(view(0).operationId, 1, 2, 5);
         const auto previous = app->configuration;
-        command("@2 read config\n"); const auto id = view(0).operationId;
         seedConfigAssumptions();
+        command("@2 read config\n"); const auto id = view(0).operationId;
         const auto generation = app->axis.generation;
         uint32_t dependent = 0;
         if (scenario == 1) assert(startTypedRead(app, 4, 1, ESS::ReadKind::STATE, dependent, false) == Probe::Action::OK);
@@ -1048,13 +1056,13 @@ void driverReadStep(uint32_t id, const std::vector<uint8_t>& bytes) {
 void testFailedDriveAndInputRefreshInvalidateCheckedChanges() {
     for (const auto group : {ESS::DriverGroup::DRIVE, ESS::DriverGroup::IO}) {
         for (const bool cached : {false, true}) for (const bool changed : {false, true}) {
-            fresh(); timerCapture(); command("@1 read config\n"); completeConfig(view(0).operationId);
+            fresh(); timerCapture(); command("@1 read config\n"); completeConfig(view(0).operationId, 1, 2, 5);
             const auto previous = app->configuration;
             ESS::DriverRequest request; request.group = group; uint32_t id = 0;
             if (cached) {
                 assert(startDriver(app, 2, 1, ESS::DriverKind::READ, request, id) == Probe::Action::OK);
                 driverReadStep(id, group == ESS::DriverGroup::DRIVE ? registerReply({1, 1000}) :
-                    registerReply({0x8005, 0, 1, 6, 17}));
+                    registerReply({5, 0, 1, 6, 17}));
                 driverReadStep(id, group == ESS::DriverGroup::DRIVE ? registerReply({1, 0, 1}) : registerReply({0, 0, 0}));
                 driverReadStep(id, group == ESS::DriverGroup::DRIVE ? registerReply({0, 0, 0, 0}) : registerReply({0}));
                 if (group == ESS::DriverGroup::DRIVE) driverReadStep(id, registerReply({0, 0}));
@@ -1062,11 +1070,11 @@ void testFailedDriveAndInputRefreshInvalidateCheckedChanges() {
                 assert(view(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS);
             }
             const auto baseline = group == ESS::DriverGroup::DRIVE ? app->driverSettings.operationId : app->ioSettings.operationId;
-            assert(startDriver(app, 3, 1, ESS::DriverKind::READ, request, id) == Probe::Action::OK);
             seedConfigAssumptions(); const auto generation = app->axis.generation;
+            assert(startDriver(app, 3, 1, ESS::DriverKind::READ, request, id) == Probe::Action::OK);
             driverReadStep(id, group == ESS::DriverGroup::DRIVE ?
                 registerReply({1, static_cast<uint16_t>(changed ? 2000 : 1000)}) :
-                registerReply({0x8005, static_cast<uint16_t>(changed ? 1 : 0), 1, 6, 17}));
+                registerReply({5, static_cast<uint16_t>(changed ? 1 : 0), 1, 6, 17}));
             driverReadStep(id, {1, 0x83, 2, 0xC0, 0xF1}); pump(100);
             assert(!app->owner.needsRecovery() && view(id).driverContext->outcome == ESS::DriverOutcome::REPLY_ERROR);
             assert(app->configuration.raw.subdivision == previous.raw.subdivision);
@@ -1074,7 +1082,8 @@ void testFailedDriveAndInputRefreshInvalidateCheckedChanges() {
                 assert(!app->driverSettings.operationId && !app->ioSettings.operationId);
                 assert(app->axis.generation == generation + 1 && !app->axis.originKnown);
                 assert(!app->configuration.operationId && !app->movePrerequisites.commandUnitsVerified);
-                if (group == ESS::DriverGroup::IO) assert(!app->driverInputsQualified);
+                IoQualification q; bool valid = true;
+                assert(!copyIoQualification(1, 0, IoPurpose::CONFIGURE, q, valid) || !valid);
             } else {
                 assert(app->axis.generation == generation && app->axis.originKnown);
                 assert(app->configuration.operationId == previous.operationId && app->movePrerequisites.commandUnitsVerified);

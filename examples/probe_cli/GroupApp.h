@@ -14,7 +14,7 @@ MotionFacts memberFacts(const App& a, const App::GroupMember& m, const MotorCont
     // Members keep no start-speed relation. Once it is revoked, the shared
     // rule refuses the member (startSpeedRelationRequired).
     return MotionFacts(m.axis, m.configuration, m.profile, m.state, m.startSpeedRelationRequired,
-        NO_START_SPEED_RELATION, a.bindingGeneration, a.serial.generation, a.observationAgeUs(), reference);
+        NO_START_SPEED_RELATION, a.bindingGeneration, a.serial.generation, a.observationAgeUs(), reference, m.ioQualifications);
 }
 bool knownTarget(const App& a, uint8_t address) {
     return (a.knownTargets[address / 8] & (1U << (address % 8))) != 0;
@@ -690,6 +690,7 @@ Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveR
                 prerequisites.rawAlarm = motion.value.rawAlarm; prerequisites.rawMotion = motion.value.rawMotion;
                 prerequisites.observedUs = motion.observedEarliestUs;
             }
+            capMoveIoAge(facts, prerequisites);
             prerequisites.wordOrderKnown = m.configuration.wordOrderKnown;
             prerequisites.wordOrder = m.configuration.wordOrder;
             prerequisites.subdivision = m.configuration.raw.subdivision;
@@ -714,6 +715,7 @@ Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveR
         record.operationId = a.nextOperationId++; record.address = m.address;
         record.deadlineUs = deadline; record.kind = App::OperationKind::MOVE; record.axisReserved = true;
         record.groupChild = record.groupWaiting = true; record.configurationGeneration = m.axis.generation;
+        record.ioQualificationMask = moveIoMask(m.ioQualifications);
         op.result.members[i].address = m.address; op.result.members[i].operationId = record.operationId;
         op.result.members[i].request = *groupIntent(supplied, individual, m.address);
     }
@@ -825,6 +827,7 @@ Probe::Action groupWiring(App& a, const Probe::GroupCommand& command, uint8_t& b
     if (declaration == command.wiring) return Probe::Action::OK;
     if (groupBusy(a)) return Probe::Action::BUSY;
     declaration = command.wiring;
+    clearIoQualifications(a, command.address);
     for (auto& block : member->state.blocks) block.invalidatedUs = nowUs();
     return Probe::Action::OK;
 }

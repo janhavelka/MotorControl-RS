@@ -23,7 +23,7 @@ class VerificationFailures(unittest.TestCase):
         tests = [{"name": name, "command": [str(build / (binary + suffix))]} for name, binary in
                  [("foo", "foo_test"), ("units_preview", "units_preview"),
                   *[(n, n + "_test") for n in ("codec_independent", "probe_app_load", "idf_move_app",
-                                              "idf_simple_motion_app", "idf_position_interrupt_app", "idf_control_app", "idf_velocity_app", "idf_home_app", "idf_position_start_speed_app", "idf_homing_auxiliary_app", "idf_group_app", "idf_stop_path_app", "idf_motion_profile_app")]]]
+                                              "idf_simple_motion_app", "idf_position_interrupt_app", "idf_control_app", "idf_velocity_app", "idf_home_app", "idf_position_start_speed_app", "idf_homing_auxiliary_app", "idf_group_app", "idf_stop_path_app", "idf_motion_profile_app", "idf_io_qualification_app")]]]
         tests.append({"name": "foo_python", "command": [sys.executable, str(root / "test/foo_test.py")]})
         for name, script, args in (("version_generated", "generate_version.py", ["check"]),
                 ("registers_generated", "generate_ess_registers.py", ["--check"]),

@@ -43,6 +43,7 @@ COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "h
                       "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "communication", "persistence", "motion-profile", "motion-profile-stage", "motion-profile-start-speed", "motion-profile-start-speed-relation", "home-auxiliary", "debug",
                       "home-qualification-install", "home-qualification-revoke", "velocity-qualification-install", "velocity-qualification-revoke",
                       "position-clear-qualification", "position-clear-qualification-install", "position-clear-qualification-revoke",
+                      "io-qualification-install", "io-qualification-inspect", "io-qualification-revoke",
                       "read-identity", "read-config", "read-state", "velocity-read", "home-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "position-interrupt", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list",
                       "group-show", "group-status", "group-clear", "group-wiring", "group-set", "group-move", "group-stop", "group-read-state",
                       "group-axis", "group-reference", "group-plan-begin", "group-plan-add", "group-plan-show", "group-plan-clear", "group-plan-submit"})
@@ -92,11 +93,15 @@ QUALIFICATION_ROUTES = {"home-qualification-install": "home qualification instal
                         "position-clear-qualification-install": "position-clear qualification install",
                         "position-clear-qualification-revoke": "position-clear qualification revoke",
                         "motion-profile-start-speed-relation": "motion-profile start-speed relation"}
+IO_QUALIFICATION_ROUTES = {"io-qualification-" + action: "io qualification " + action
+                           for action in ("install", "inspect", "revoke")}
+IO_PURPOSES = ("assign", "configure", "finite-move", "segment")
+IO_MAPPINGS = ("unknown", "before", "after")
 QUALIFICATION_FACT_REFUSALS = frozenset({"missing_fact", "unknown_fact", "duplicate_fact", "fact_not_applicable"})
 QUALIFICATION_REFUSALS = QUALIFICATION_FACT_REFUSALS | frozenset({
     "reads_required", "stored_auxiliary_differs", "stored_offset_nonzero", "drive_not_ready",
-    "stored_ramp_out_of_range", "stored_word_differs", "axis_configuration_unknown", "qualification_rejected",
-    "busy", "axis_conflict", "unavailable", "invalid", "unresolved", "unimplemented", "invalid_arguments", "failed"})
+    "stored_ramp_out_of_range", "stored_word_differs", "axis_configuration_unknown", "qualification_rejected", "qualification_required",
+    "busy", "axis_conflict", "unavailable", "invalid", "unresolved", "unimplemented", "invalid_arguments", "invalid_address", "failed"})
 SWITCH_HOME_METHODS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30)
 
 
@@ -120,6 +125,50 @@ def qualification_arguments(command: str, tokens: tuple[str, ...]) -> None:
         facts, known = tokens, VELOCITY_FACTS if command == "velocity-qualification-install" else POSITION_CLEAR_FACTS
     if len(facts) != len(set(facts)) or any(fact not in known for fact in facts):
         raise ValueError("qualification facts must be distinct names from " + ", ".join(known))
+
+
+def io_qualification_arguments(command: str, tokens: tuple[str, ...]) -> dict:
+    """One exact terminal and purpose; every installation fact is supplied by the caller."""
+    if (command not in IO_QUALIFICATION_ROUTES or not isinstance(tokens, tuple) or
+            any(type(token) is not str for token in tokens)):
+        raise ValueError("I/O qualification requires a known route and tuple of tokens")
+    member = tokens[:1] == ("member",)
+    if member:
+        tokens = tokens[1:]
+    def integer(token, low, high):
+        if not token.isascii() or not token.isdigit() or not low <= int(token) <= high:
+            raise ValueError("I/O qualification value is outside its range")
+        return int(token)
+    if len(tokens) < 3 or not re.fullmatch(r"x[0-3]|y[0-1]", tokens[1]):
+        raise ValueError("I/O qualification requires ADDRESS TERMINAL and an explicit purpose")
+    result = dict(member=member, address=integer(tokens[0], 1, 247), terminal=tokens[1])
+    input_terminal = tokens[1][0] == "x"
+    if command != "io-qualification-install":
+        if len(tokens) != 3:
+            raise ValueError("I/O qualification inspect/revoke requires ADDRESS TERMINAL PURPOSE")
+        result["purpose"] = tokens[2]
+    elif input_terminal:
+        if len(tokens) < 6:
+            raise ValueError("input qualification requires FUNCTION POLARITY PURPOSE MAPPING")
+        result.update(function=integer(tokens[2], 0, 17), polarity=integer(tokens[3], 0, 1),
+                      purpose=tokens[4], mapping=tokens[5])
+        facts = tokens[6:]
+        if (len(facts) != len(set(facts)) or any(fact not in ("triggers-inhibited", "protection-removal") for fact in facts) or
+                ("protection-removal" in facts and result["purpose"] != "assign")):
+            raise ValueError("input qualification facts are duplicate, unknown or not applicable")
+        result.update(triggers_inhibited="triggers-inhibited" in facts, protection_removal="protection-removal" in facts)
+    else:
+        if len(tokens) != 9:
+            raise ValueError("output qualification requires FUNCTION POLARITY CUSTOM assign MAPPING LOAD LEVELS")
+        result.update(function=integer(tokens[2], 0, 10), polarity=integer(tokens[3], 0, 1), custom=integer(tokens[4], 0, 1),
+                      purpose=tokens[5], mapping=tokens[6], load=tokens[7], levels=tokens[8])
+        if result["function"] not in (*range(6), 9, 10) or result["load"] not in ("none", "indicator", "control") or result["levels"] not in ("inactive", "active", "either"):
+            raise ValueError("output qualification function, load or levels are unsupported")
+    if (result["purpose"] not in IO_PURPOSES or (not input_terminal and result["purpose"] != "assign") or
+            (member and (not input_terminal or result["purpose"] != "finite-move")) or
+            ("mapping" in result and result["mapping"] not in IO_MAPPINGS)):
+        raise ValueError("I/O qualification purpose or status mapping is unsupported")
+    return result
 
 
 def discovery_arguments(tokens: tuple[str, ...]) -> dict:
@@ -2223,6 +2272,45 @@ class Console:
             raise BenchError("qualification reply is not an exact local disposition")
 
     @staticmethod
+    def _check_io_qualification(handle: Command, item: dict) -> None:
+        Console._check_qualification(item)
+        if (any(key in item for key in ("operation_id", "command_id", "tx_hex", "rx_hex", "tx_bytes", "rx_bytes", "tx_accepted")) or
+                ("bus_traffic" in item and item["bus_traffic"] is not False)):
+            raise BenchError("I/O qualification claims a drive operation")
+        if not item["ok"] or handle.command != "io-qualification-inspect":
+            return
+        requested = io_qualification_arguments(handle.command, handle.host_args)
+        def require(condition):
+            if not condition:
+                raise BenchError("I/O qualification inspection has an invalid binding or fact")
+        def integer(value, high=0xFFFFFFFF):
+            return type(value) is int and 0 <= value <= high
+        flags = ("present", "valid", "member", "facts_supplied", "triggers_inhibited", "protection_removal")
+        identifiers = ("target", "generation", "configuration_generation", "settings_operation_id", "state_operation_id")
+        words = ("previous_function", "previous_polarity", "previous_custom", "function", "polarity", "custom", "reported_inputs", "reported_outputs")
+        times = ("observed_earliest_us", "observed_latest_us", "qualified_us", "maximum_age_us")
+        require(all(type(item.get(key)) is bool for key in flags) and item.get("bus_traffic") is False)
+        require(all(item.get(key) == requested[key] and type(item.get(key)) is type(requested[key]) for key in ("address", "terminal", "purpose", "member")))
+        require(all(integer(item.get(key)) for key in identifiers) and all(integer(item.get(key), 65535) for key in words) and
+                all(integer(item.get(key), 0xFFFFFFFFFFFFFFFF) for key in times))
+        require(integer(item.get("wiring"), 2) and integer(item.get("allowed_levels"), 3) and item.get("mapping") in IO_MAPPINGS and
+                item.get("load") in ("undeclared", "none", "indicator", "control"))
+        require(not item["valid"] or (item["present"] and item["facts_supplied"]))
+        if not item["present"]:
+            require(not any(item[key] for key in (*identifiers, *words, *times, "wiring", "allowed_levels", "facts_supplied", "triggers_inhibited", "protection_removal")) and
+                    item["mapping"] == "unknown" and item["load"] == "undeclared")
+            return
+        require(all(item[key] > 0 for key in identifiers) and item["wiring"] != 0 and
+                item["observed_earliest_us"] <= item["observed_latest_us"] and
+                all(item[key] <= 1 for key in ("previous_polarity", "previous_custom", "polarity", "custom")))
+        if requested["terminal"][0] == "x":
+            require(item["function"] <= 17 and item["load"] == "undeclared" and item["allowed_levels"] == 0 and
+                    (not item["protection_removal"] or requested["purpose"] == "assign"))
+        else:
+            require(item["function"] in (*range(6), 9, 10) and item["load"] != "undeclared" and item["allowed_levels"] > 0 and
+                    not item["triggers_inhibited"] and not item["protection_removal"])
+
+    @staticmethod
     def _check_wiring(handle: Command, item: dict) -> None:
         """A local declaration/query carries bounded context and never an operation."""
         requested = wiring_arguments(handle.host_args)
@@ -2767,6 +2855,8 @@ class Console:
             self.group_context = None
         if handle.command in QUALIFICATION_ROUTES:
             self._check_qualification(item)
+        if handle.command in IO_QUALIFICATION_ROUTES:
+            self._check_io_qualification(handle, item)
         if handle.command == "position-clear-qualification":
             self._check_position_clear_qualification(item)
         if handle.command == "profile-list" and item["ok"]:
@@ -3193,6 +3283,9 @@ class Console:
         elif command in QUALIFICATION_ROUTES:
             host_args = () if host_args is None else host_args
             qualification_arguments(command, host_args)
+        elif command in IO_QUALIFICATION_ROUTES:
+            host_args = () if host_args is None else host_args
+            io_qualification_arguments(command, host_args)
         elif command == "wiring":
             host_args = () if host_args is None else host_args
             wiring_arguments(host_args)
@@ -3326,6 +3419,7 @@ class Console:
             if command == "motion-profile-start-speed": wire_command = "motion-profile start-speed"
             if command == "motion-profile-stage": wire_command = "motion-profile stage"
             if command in QUALIFICATION_ROUTES: wire_command = QUALIFICATION_ROUTES[command]
+            if command in IO_QUALIFICATION_ROUTES: wire_command = IO_QUALIFICATION_ROUTES[command]
             if command == "position-clear-qualification": wire_command = "position-clear qualification"
             if command == "home-auxiliary": wire_command = "home auxiliary"
             if command == "position-interrupt": wire_command = "position interrupt"

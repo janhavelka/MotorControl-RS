@@ -22,6 +22,8 @@ CONSOLE = ROOT / "examples/probe_cli/ProbeConsole.cpp"
 ROUTE_SOURCES = {"grammar": ROOT / "examples/probe_cli/QualificationConsole.h",
                  "handler": ROOT / "examples/probe_cli/QualificationApp.h",
                  "api": ROOT / "examples/probe_cli/ProbeApp.h"}
+IO_ROUTE_SOURCES = {"grammar": ROOT / "examples/probe_cli/IoQualificationConsole.h",
+                    "handler": ROOT / "examples/probe_cli/IoQualificationApp.h"}
 PUBLIC_DECLARATION = re.compile(
     r"^(?:(?:inline|constexpr)\s+)*(?:const\s+)?[A-Za-z_][\w:]*(?:\s*\*)?\s+([A-Za-z_]\w*)\s*\(", re.MULTILINE)
 
@@ -175,7 +177,8 @@ def check_host_routes(routes, keys):
     """
     console = CONSOLE.read_text(encoding="utf-8")
     grammar, handler, api = (ROUTE_SOURCES[name].read_text(encoding="utf-8") for name in ("grammar", "handler", "api"))
-    produced = set(re.findall(r'"([a-z-]+-qualification-(?:install|revoke)|motion-profile-start-speed-relation)"', console))
+    io_grammar, io_handler = (IO_ROUTE_SOURCES[name].read_text(encoding="utf-8") for name in ("grammar", "handler"))
+    produced = set(re.findall(r'"([a-z-]+-qualification-(?:install|revoke)|io-qualification-inspect|motion-profile-start-speed-relation)"', console))
     listed = set()
     for route in routes:
         keys(route, "route wire_command syntax api facts reason", "host route")
@@ -188,10 +191,13 @@ def check_host_routes(routes, keys):
         if route.get("syntax") not in {part.strip() for literal in re.findall(r'"([^"]*)"', console) for part in literal.split("|")}:
             raise ValueError("host route grammar absent from production help: " + str(name))
         symbol = route.get("api", "")
-        if not re.search(r"\b" + re.escape(symbol) + r"\s*\(", api) or not re.search(r"\b" + re.escape(symbol) + r"\s*\(", handler):
+        route_handler = io_handler if name.startswith("io-qualification-") else handler
+        if not re.search(r"\b" + re.escape(symbol) + r"\s*\(", api) or not re.search(r"\b" + re.escape(symbol) + r"\s*\(", route_handler):
             raise ValueError("host route handler does not call its application API: " + str(name))
         for fact in route.get("facts", []):
-            if '{"' + fact + '", &QualificationCommand::' not in grammar:
+            found = ('std::strcmp(tokens[i], "' + fact + '")') in io_grammar if name.startswith("io-qualification-") else (
+                '{"' + fact + '", &QualificationCommand::') in grammar
+            if not found:
                 raise ValueError("host route fact absent from the parser: " + str(fact))
     if listed != produced:
         raise ValueError("console qualification routes differ from host_routes: " + ", ".join(sorted(listed ^ produced)))

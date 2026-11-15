@@ -55,6 +55,9 @@ Probe::Action beginPositionStage(App& a, App::StageSession& s, const MotorContro
         !ESS::buildWritePositionProfile(target.address, profile, wordOrder, checked, sizeof(checked)))
         return Probe::Action::INVALID;
     s = App::StageSession();
+    s.ioQualificationMask = moveIoMask(a.ioQualifications);
+    for (uint8_t i = 0; i < a.group.count; ++i)
+        if (&a.group.members[i].stage == &s) s.ioQualificationMask = moveIoMask(a.group.members[i].ioQualifications);
     auto& v = s.view;
     v.target = target; v.operationId = operationId; v.configurationGeneration = configurationGeneration;
     v.serialGeneration = a.serial.generation;
@@ -217,9 +220,11 @@ Probe::Action startSelectedStage(App& a, const MotorControlRS::MoveRequest& supp
     const uint64_t deadline = now + static_cast<uint64_t>(a.options.moveTimeoutMs) * 1000;
     const auto prepared = prepareSelectedMove(a, supplied, now, deadline, a.stagePrepared);
     if (prepared != Probe::Action::OK) return prepared;
+    ESS::PreparedMove work;
+    if (!ESS::nextMove(a.stagePrepared, now, work)) return Probe::Action::INVALID;
     const auto admitted = beginPositionStage(a, a.stage, a.axis.target, a.axis.generation, a.stagePrepared.words,
         a.nextOperationId, now, a.stagePrepared.prerequisites.wordOrder,
-        std::min(deadline, now > UINT64_MAX - 2 * REQUEST_US ? UINT64_MAX : now + 2 * REQUEST_US));
+        std::min(work.deadlineUs, now > UINT64_MAX - 2 * REQUEST_US ? UINT64_MAX : now + 2 * REQUEST_US));
     if (admitted != Probe::Action::OK) return admitted;
     operationId = a.nextOperationId++;
     return Probe::Action::OK;

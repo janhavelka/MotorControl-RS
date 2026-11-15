@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from bench_probe import BenchError, Console, MAX_LINE, unique_object
@@ -50,3 +51,37 @@ for line in output.splitlines():
     seen.add(name)
 assert seen == expected, (seen, expected)
 print(f"PASS: {len(seen)} actual core/console IO terminals accepted by Python")
+
+output = subprocess.check_output([sys.argv[1], "--io-qualification-fixtures"], text=True, timeout=10)
+seen = set()
+for line in output.splitlines():
+    fixture = json.loads(line, object_pairs_hook=unique_object)
+    name, record = fixture["case"], fixture["record"]
+    assert name in ("absent", "member", "output") and name not in seen
+    tokens = {"absent": ("1", "x0", "assign"), "member": ("member", "2", "x0", "finite-move"), "output": ("1", "y1", "assign")}[name]
+    handle = SimpleNamespace(command="io-qualification-inspect", host_args=tokens)
+    Console._check_io_qualification(handle, record)
+    mutations = [lambda r: r.update(member=not r["member"]), lambda r: r.update(address=3),
+                 lambda r: r.update(terminal="x1"), lambda r: r.update(purpose="segment"),
+                 lambda r: r.update(operation_id=0), lambda r: r.update(bus_traffic=True),
+                 lambda r: r.update(mapping="guessed"), lambda r: r.update(allowed_levels=4)]
+    if name == "absent":
+        mutations += [lambda r: r.update(valid=True), lambda r: r.update(target=1)]
+    else:
+        mutations += [lambda r: r.update(settings_operation_id=0), lambda r: r.update(protection_removal=True),
+                      lambda r: r.update(observed_latest_us=1)]
+        if name == "member":
+            mutations += [lambda r: r.update(facts_supplied=False), lambda r: r.update(load="indicator")]
+        else:
+            mutations += [lambda r: r.update(load="undeclared"), lambda r: r.update(allowed_levels=0)]
+    for mutate in mutations:
+        broken = copy.deepcopy(record); mutate(broken)
+        try:
+            Console._check_io_qualification(handle, broken)
+        except BenchError:
+            pass
+        else:
+            raise AssertionError((name, "invalid I/O qualification accepted"))
+    seen.add(name)
+assert seen == {"absent", "member", "output"}
+print("PASS: actual I/O qualification inspection accepted by Python")

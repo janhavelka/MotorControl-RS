@@ -8,7 +8,8 @@ common-relative group and staged starts are delivered. M02 is resolved: 08 retai
 enable waits, and 09 adds independent member targets and references. Software CI
 and the short three-drive/enable-reselection checks pass
 ([report](../../reports/2026-11-15_multi_drive_09_member_motion_requests.md)).
-Multi-drive 04 is the next software stage. Multi-drive 06 has
+Multi-drive 04 is implemented and under final verification
+([report](../../reports/2026-11-16_multi_drive_04_input_programming.md)). Multi-drive 06 has
 partial unicast evidence; wired-trigger qualification remains open. Multi-drive
 07 waits for owner-controlled power isolation. No new campaign is started by
 these corrections.
@@ -27,8 +28,8 @@ inputs programmable as needed. Current facts are:
   synchronization guarantee or input-to-motion delay.
 - The standalone application supports up to 15 group members and checked staged
   starts, with recorded physical evidence for three drives.
-- Ordinary input assignment remains limited to functions 0-3 on unconnected
-  terminals. Broader commissioning and input-start observation remain open.
+- Per-terminal commissioning admits inputs 0-17 and outputs 0-5/9-10 with
+  explicit facts. Wired effects and input-start observation remain open.
 
 Follow the [standalone execution contract](../standalone/execution_contract.md)
 and its owner decisions D1-D5 with every stage, on the existing branch. Its
@@ -44,7 +45,7 @@ examples and their host tools. FieldCore-node stays read-only.
 | --- | --- | --- |
 | M01 | Valid source gap; old implementation description superseded. Hardware p11 reserves address 0; function p69 leaves custom-node 0/248-255 unexplained. Core codecs remain unicast. The runner and five-frame fixture now support transmit-only trials; the three-drive outcome is NO-GO. Collided recordings do not identify every responder. | 01 complete; 03 not applicable; 07 investigation |
 | M02 | Resolved by 08/09: retained per-target enable waits, copied member intents, independent conversion/reference facts and inert console plans. Exact-commit CI and short three-drive/reselection checks pass. Identity admission remains limited to recorded model/firmware words `0x4EEA/0x0029`; wider physical qualification stays in 06. | 02, 08 and 09 complete |
-| M03 | Valid application restriction (`qualifyIoEffects`, `startDriver`, `moveRequirements`). Core supports functions 0-17 with prerequisites; ordinary application admission stays narrow. Broader rules must account for sensors, trigger inhibition, intermediate writes and unresolved status/polarity mapping. PIN selectors are not universally neutral; edge-triggered PV is still velocity. | 04 |
+| M03 | Implemented per-terminal facts, intermediate-write checks, confirmed connected writes and shared move rules; final verification is in progress. Unknown status/polarity mapping remains guarded. PIN selectors need inhibition; edge-triggered PV remains velocity. | 04 |
 | M04 | Valid missing input-start observation/arming route. Prepared finite staging is delivered; separate archive import is not required for it. PT target writes and shared-start semantics still depend on standalone 04/06. Function 7's held-level behavior is unqualified; `0x0050` selects input position mode. Negative PV encoding is unresolved; nonnegative stored settings already exist. Ordinary serial stops exist, but their interaction with an active external trigger is unqualified. | 05 |
 | M05 | Since 12 November the bench has three drives (1, 2, 4) on short star wiring, with power and RS485 only. There is no trigger wire or wired input. | 06; physical gates of 01-05 |
 | M06 | Valid unresolved questions; sending/answering them is not established here. Hardware p9 describes unspecified startup input state; function pp73-74 give assignment defaults 1,2,3,0. These may describe different things, so a register contradiction is not proven. Saved persistence, held-trigger behavior and edge-to-motion delay need specific evidence. The [review](../../reports/2026-11-12_broadcast_and_sync_review.md#questions-for-the-vendor) retains vendor questions. | Owner; 04, 05, 07 |
@@ -71,7 +72,7 @@ drives ([report](../../reports/2026-11-12_multi_drive_write_motion_stress.md)).
 | 01 | [Broadcast acceptance test](01_broadcast_acceptance.md) | D6 approved; three-drive link clean at addresses 1, 2 and 4 | COMPLETE: NO-GO ([report](../../reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)) |
 | 02 | [Drive group in the standalone application](02_drive_group.md) | Original subset extended by 08/09 | COMPLETE: member-specific requests and retained waits verified; wider qualification remains in 06 |
 | 03 | [Broadcast start and stop](03_broadcast_operations.md) | Reopened 01 with GO, D7, checked staging and qualified command words | NOT APPLICABLE: 01 is NO-GO |
-| 04 | [Input and output programming](04_input_programming.md) | None for software; wired inputs for physical claims | NOT STARTED |
+| 04 | [Input and output programming](04_input_programming.md) | None for software; wired inputs for physical claims | PARTIAL: implemented; final verification and unconnected bench checks in progress ([report](../../reports/2026-11-16_multi_drive_04_input_programming.md)) |
 | 05 | [Input-triggered start](05_input_triggered_start.md) | 04 delivered; existing checked staging for function 7; standalone 04/06 for PT segments; wired trigger for physical claims | NOT STARTED |
 | 06 | [Multi-drive qualification and closeout](06_two_drive_qualification.md) | Recorded three-drive fixture; wired trigger for 05 cases | PARTIAL: unicast group evidence exists; remaining case mapping, wired trigger and physical timing open |
 | 07 | [Why some broadcast starts and stops were ignored](07_broadcast_misses.md) | Owner powers the drives one at a time; bias fitted for the last row | BLOCKED(input) |

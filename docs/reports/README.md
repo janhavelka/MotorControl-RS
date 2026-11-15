@@ -7,6 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
+| [Multi-drive 04: terminal commissioning](2026-11-16_multi_drive_04_input_programming.md) | Per-terminal facts, intermediate-write checks and shared finite-move rules implemented. Final verification and unconnected bench checks in progress; wired effects remain unqualified. |
 | [Multi-drive 09: independent member requests](2026-11-15_multi_drive_09_member_motion_requests.md) | COMPLETE: member intents/references, 95 suites and four exact-commit CI jobs pass. Three-drive staged/sequential moves, urgent stop, enable/reselection and profile restoration pass. M02 resolved; wider physical limits stay open. |
 | [Multi-drive 08 / standalone 02 independent audit](2026-11-15_multi_drive_08_standalone_02_audit.md) | PROCESSED: candidate/group relation and profile invalidation, pending-result cancellation parity and stale coverage wording corrected. All 95 suites and exact-commit GCC/Clang/Arduino/IDF CI pass; board checks remain NOT RUN. |
 | [Standalone 02: profile candidates and archives](2026-11-15_standalone_02_profile_staging.md) | Candidate admission, retained results and ordinary host/console staging without motion. Later M09 checks confirm candidate restoration on all three drives; wider standalone 14 regression remains separate. |

@@ -166,6 +166,7 @@ struct App {
         uint32_t replacedOperationId = 0, releaseAfterStopId = 0;
         ReleaseAfterStopPrerequisites releasePrerequisites;
         bool programmaticMove = false;
+        uint8_t ioQualificationMask = 0; ///< Admitted dependencies survive clearing future facts.
         ESS::MoveContext move;
         ESS::StoredPositionQualification storedPosition; ///< Original admission provenance; qualified only after its checked trigger.
         MoveRelation moveRelation;
@@ -222,7 +223,7 @@ struct App {
     MotorControlRS::InputWiring outputWiring[2];
     ESS::DriverObservation driverObserved; // Scratch for whole-read publication/effects comparison.
     ESS::DriverPrerequisites driverPrerequisites; // PSRAM scratch; no large stack copies.
-    bool driverInputsQualified = false; // Explicit commissioning evidence, no console bypass.
+    IoQualification ioQualifications[6]; // One purpose and candidate per terminal.
     MotorControlRS::AxisConfig axis;
     bool commandPolarityKnown = true; // Host declaration; invalidated by possible device-direction changes.
     MotorControlRS::AxisReference coordinateReference; // Qualified command-coordinate evidence; never inferred from an unsigned/raw zero.
@@ -283,6 +284,7 @@ struct App {
         Rtu::RequestId request;
         uint8_t phase = 0; ///< 0 none, 1 FC10 write, 2 FC03 readback.
         bool applied = false; ///< Success already published as a stored-word witness.
+        uint8_t ioQualificationMask = 0;
         uint8_t tx[32] = {};
     } stage;
     struct CandidateSession : StageSession {
@@ -307,6 +309,7 @@ struct App {
         Probe::StateCache state;
         Probe::GroupReference coordinate; ///< Explicit caller witness bound to this member's checked reads.
         MotorControlRS::InputWiring inputWiring[4] = {}, outputWiring[2] = {};
+        IoQualification ioQualifications[4]; // Member inputs never borrow selected-axis facts.
         bool startSpeedRelationRequired = false; ///< This drive needs a relation that group moves cannot supply.
         StageSession stage;
         // Stored-word witness, as rememberedMoveWords for the selected axis: the
@@ -415,6 +418,7 @@ void invalidateMemberConfiguration(App& a, uint8_t address, uint64_t now) {
     if (!member) return;
     member->storedKnown = false;
     member->configuration.operationId = 0;
+    for (auto& q : member->ioQualifications) q = IoQualification();
     invalidateMemberCoordinates(*member);
     for (auto& block : member->state.blocks) block.invalidatedUs = now;
 }
@@ -541,6 +545,7 @@ bool reading(const App& a) {
 // Raw observations keep their original transport generation. Only derived host
 // coordinates are invalidated; exhaustion disables preparation instead of wrap.
 void invalidateAxis(App& a, const App::Record* changing = nullptr, uint64_t sampled = 0) {
+    for (auto& q : a.ioQualifications) q = IoQualification();
     a.bootOriginPending = false; // Loss of knowledge must never silently select a new zero.
     a.bootCoordinates = false;
     a.motionObservationPending = false;
@@ -1072,6 +1077,7 @@ bool signedFeedback(uint32_t raw, int64_t& native) {
     native = raw > INT32_MAX ? static_cast<int64_t>(raw) - (int64_t(1) << 32) : static_cast<int64_t>(raw);
     return native >= -0x0FFFFFFF && native <= 0x0FFFFFFF;
 }
+#include "IoQualificationApp.h"
 #include "MotionReadinessApp.h"
 #include "MotionProfileApp.h"
 void cancelSimplePreparation(App&, uint8_t, uint64_t);
@@ -1379,6 +1385,7 @@ Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
     record->serialTuple = a.serial.active; record->serialGeneration = a.serial.generation;
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
     record->deadlineUs = deadline; record->kind = App::OperationKind::MOVE; record->axisReserved = true;
+    record->ioQualificationMask = moveIoMask(a.ioQualifications);
     captureStoredPosition(a, *record, now);
     operationId = a.latestOperationId = record->operationId;
     return Probe::Action::OK;
@@ -1396,6 +1403,7 @@ Probe::Action prepareSelectedMove(App& a, const MotorControlRS::MoveRequest& sup
         prerequisites.rawAlarm = motion.value.rawAlarm; prerequisites.rawMotion = motion.value.rawMotion;
         prerequisites.observedUs = motion.observedEarliestUs;
     }
+    capMoveIoAge(selectedFacts(a), prerequisites);
     if (a.positionStartSpeedRelationRequired) {
         uint16_t minimumRpm = 0;
         if (!positionStartingSpeed(a, now, minimumRpm)) return Probe::Action::UNAVAILABLE;
@@ -1671,9 +1679,10 @@ Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
 // Register-only commissioning policy scoped to the affected terminals. Active
 // input controls/inversion require separately reviewed effects; unwired never
 // implies disabled. Output function 0 proves no electrical de-energization.
-void qualifyIoEffects(App& a, ESS::DriverPrerequisites& p, const ESS::DriverRequest& request) {
+void qualifyIoEffects(App& a, ESS::DriverPrerequisites& p, const ESS::DriverRequest& request, uint64_t now) {
     using MotorControlRS::InputWiring;
     p.qualifiedIo = request;
+    p.ioQualificationUs = now;
     for (uint8_t i = 0; i < 4; ++i) {
         p.inputWiring[i] = a.inputWiring[i];
         const uint32_t field = uint32_t(1) << (10 + i);
@@ -1708,6 +1717,44 @@ void qualifyIoEffects(App& a, ESS::DriverPrerequisites& p, const ESS::DriverRequ
         for (uint8_t i = 0; i < 2; ++i)
             if ((changed & (uint16_t(1) << i)) && a.outputWiring[i] != InputWiring::UNCONNECTED) safe = false;
         if (safe) p.ioEffectsQualifiedFields |= request.fields & field;
+    }
+    // Explicit facts qualify only this terminal's exact final candidate and
+    // original read identities. The core also checks each intermediate write.
+    bool admitted[6] = {};
+    for (uint8_t i = 0; i < 6; ++i) {
+        const auto& q = a.ioQualifications[i];
+        if (q.purpose != IoPurpose::ASSIGN || !ioQualificationCurrent(a, q, now, true)) continue;
+        const bool input = i < 4;
+        const uint8_t pin = input ? i : i - 4;
+        const uint32_t field = uint32_t(1) << (input ? 10 + i : 15 + pin);
+        const uint32_t polarityField = static_cast<uint32_t>(input ? ESS::DriverField::INPUT_POLARITY : ESS::DriverField::OUTPUT_POLARITY);
+        const uint16_t function = request.fields & field ?
+            static_cast<uint16_t>(input ? static_cast<uint16_t>(request.inputFunctions[i]) : static_cast<uint16_t>(request.outputFunctions[pin])) :
+            p.previous.raw[input ? 8 + i : 13 + pin];
+        const uint16_t polarity = ((request.fields & polarityField ?
+            (input ? request.inputPolarity : request.outputPolarity) : p.previous.raw[input ? 7 : 12]) >> pin) & 1;
+        const uint16_t custom = input ? 0 : ((request.fields & static_cast<uint32_t>(ESS::DriverField::CUSTOM_OUTPUT) ?
+            request.customOutput : p.previous.raw[15]) >> pin) & 1;
+        const bool affected = (request.fields & field) ||
+            ((request.fields & polarityField) && polarity != q.previousPolarity) ||
+            (!input && (request.fields & static_cast<uint32_t>(ESS::DriverField::CUSTOM_OUTPUT)) &&
+             (custom != q.previousCustom || q.previousFunction == 9 + pin || function == 9 + pin));
+        if (!affected) continue;
+        if (q.function != function || q.polarity != polarity || q.custom != custom) continue;
+        admitted[i] = true;
+        p.ioEffectsQualifiedFields |= request.fields & field;
+        if (input) p.inputFacts[i] = q.input; else p.outputFacts[pin] = q.output;
+        copyIoTimes(p, q);
+    }
+    for (uint8_t index : {uint8_t(7), uint8_t(12), uint8_t(15)}) {
+        const uint32_t field = static_cast<uint32_t>(ESS::driverFieldAt(index));
+        if (!(request.fields & field)) continue;
+        const uint16_t candidate = index == 7 ? request.inputPolarity : index == 12 ? request.outputPolarity : request.customOutput;
+        const uint16_t changed = candidate ^ p.previous.raw[index];
+        bool all = true;
+        for (uint8_t i = 0; i < (index == 7 ? 4 : 2); ++i)
+            if ((changed & (1u << i)) && !admitted[index == 7 ? i : 4 + i]) all = false;
+        if (all) p.ioEffectsQualifiedFields |= field;
     }
 }
 Probe::Action checkIoWrite(const App& a, const Rtu::BusRequest& request) {
@@ -1981,7 +2028,8 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
         prerequisites.rawAlarm = motion.value.rawAlarm; prerequisites.rawMotion = motion.value.rawMotion;
         prerequisites.stationaryEarliestUs = motion.observedEarliestUs;
         prerequisites.stationaryLatestUs = motion.observedLatestUs;
-        prerequisites.inputsPermit = a.driverInputsQualified;
+        prerequisites.inputsPermit = supplied.group == ESS::DriverGroup::DRIVE &&
+            commissionedSettingsInputs(a, IoPurpose::CONFIGURE, prerequisites, now);
         ESS::DriverRequest request = supplied;
         if (!request.configurationGeneration) request.configurationGeneration = generation;
         if (request.group == ESS::DriverGroup::DRIVE &&
@@ -2011,8 +2059,8 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
             prerequisites.ioTarget = target; prerequisites.ioConfigurationGeneration = generation;
             prerequisites.actualInputs = io.value.rawInputs; prerequisites.actualOutputs = io.value.rawOutputs;
             prerequisites.ioEarliestUs = io.observedEarliestUs; prerequisites.ioLatestUs = io.observedLatestUs;
-            qualifyIoEffects(a, prerequisites, request);
-            prerequisites.allowEchoReadback = true; // Stored-value settlement on safe unwired terminals only.
+            qualifyIoEffects(a, prerequisites, request, now);
+            prerequisites.allowEchoReadback = !writeResponseConfirmed; // Connected terminals require the confirmed path.
         }
         if (request.group == ESS::DriverGroup::CONTROL_SETTINGS || ESS::isTuningGroup(request.group)) {
             // Explicit standalone bench identification, independent of wire-code
@@ -2081,6 +2129,11 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
             for (uint8_t i = 0; i < 4; ++i)
                 inhibited = inhibited && a.inputWiring[i] == InputWiring::UNCONNECTED &&
                     a.ioSettings.raw[8 + i] <= 3;
+            const bool commissioned = commissionedSettingsInputs(a, IoPurpose::SEGMENT, prerequisites, now);
+            if (commissioned) {
+                inhibited = true;
+                earliest = prerequisites.ioEarliestUs; latest = prerequisites.ioLatestUs;
+            }
             prerequisites.externalTriggerInhibitedQualified = inhibited;
             prerequisites.triggerTarget = target; prerequisites.triggerConfigurationGeneration = generation;
             prerequisites.triggerEarliestUs = earliest; prerequisites.triggerLatestUs = latest;
@@ -2109,10 +2162,22 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
     record->kind = App::OperationKind::DRIVER; record->axisReserved = kind == ESS::DriverKind::UPDATE;
     operationId = a.latestOperationId = record->operationId; return Probe::Action::OK;
 }
+Probe::Action driverCommand(void* context, uint32_t commandId, uint8_t address, ESS::DriverKind kind,
+                            const ESS::DriverRequest& request, uint32_t& operationId) {
+    if (kind != ESS::DriverKind::READ && kind != ESS::DriverKind::UPDATE) return Probe::Action::INVALID;
+    const auto result = kind == ESS::DriverKind::READ ?
+        submitDriverRead(address, request.group, operationId, request.segmentIndex) :
+        submitDriverSettings(address, request, operationId);
+    if (!result) return static_cast<Probe::Action>(result.detail);
+    auto* record = findRecord(*static_cast<App*>(context), operationId);
+    record->commandId = commandId; record->programmaticSettings = false;
+    return Probe::Action::OK;
+}
 // Apply possible changes as soon as TX is accepted. Readback never rewrites
 // historical contexts or silently promotes stored codes into active settings.
 void invalidateDriverAssumptions(App& a, uint8_t address, uint32_t changed, uint64_t now, const App::Record* changing = nullptr,
                                 ESS::DriverGroup group = ESS::DriverGroup::DRIVE) {
+    clearIoQualifications(a, address);
     if (group == ESS::DriverGroup::POSITION_START_SPEED)
         revokePositionStartSpeedRelation(a, address);
     invalidateMemberConfiguration(a, address, now);
@@ -2157,10 +2222,6 @@ void invalidateDriverAssumptions(App& a, uint8_t address, uint32_t changed, uint
     if (a.controlSettings.target.address == address) a.controlSettings.operationId = 0;
     for (auto& cache : a.tuningSettings)
         if (cache.target.address == address) cache.operationId = 0;
-    if ((tuning && group == ESS::DriverGroup::FILTERS && (changed & 1)) ||
-        (!tuning && (changed & (0x0003FE00u | static_cast<uint32_t>(ESS::DriverField::INTERRUPTION) |
-        static_cast<uint32_t>(ESS::DriverField::POSITION_MODE)))))
-        a.driverInputsQualified = false;
     invalidateObservations(a, address, now);
 }
 void driverEffects(App& a, App::Record& record, uint32_t effects, uint64_t now) {
@@ -3328,7 +3389,7 @@ void invalidateTargetKnowledge(App& a, uint64_t now) {
     for (auto& cache : a.tuningSettings) cache.operationId = 0;
     for (auto& block : a.stateCache.blocks) block.invalidatedUs = now;
     invalidateGroupFacts(a, now);
-    a.driverInputsQualified = false;
+    clearIoQualifications(a, a.axis.target.address);
     a.movePrerequisites.readinessQualified = false;
     a.velocityPrerequisites.readinessQualified = false;
     a.homePrerequisites.readinessQualified = false;
@@ -3414,7 +3475,7 @@ Probe::Action wiring(void* context, const Probe::WiringRequest* requested, Probe
     if (!a.axis.generation || a.axis.generation == UINT32_MAX) return Probe::Action::IDS_EXHAUSTED;
     declaration = requested->state;
     invalidateAxis(a);
-    a.driverInputsQualified = false; a.positionClearQualification = PositionClearQualification();
+    clearIoQualifications(a, a.axis.target.address); a.positionClearQualification = PositionClearQualification();
     a.movePrerequisites = ESS::MovePrerequisites(); a.velocityPrerequisites = ESS::VelocityPrerequisites();
     a.homePrerequisites = ESS::HomePrerequisites();
     for (auto& block : a.stateCache.blocks) block.invalidatedUs = nowUs();
@@ -3496,7 +3557,7 @@ Probe::Host host(App* a) {
     h.startTypedRead = typedRead;
     h.beginInteractiveWork = recycleInteractiveResults;
     h.startAction = startAction; h.startReleaseAfterStop = startReleaseAfterStop;
-    h.startMove = startMove; h.startVelocity = startVelocity; h.startDriver = startDriver; h.startHome = startHome;
+    h.startMove = startMove; h.startVelocity = startVelocity; h.startDriver = driverCommand; h.startHome = startHome;
     h.inspectHomeQualification = [](void* context, ESS::HomePrerequisites& output, bool& valid) {
         const auto& a = *static_cast<App*>(context);
         if (!a.homePrerequisites.target.id) return false;
@@ -3511,6 +3572,7 @@ Probe::Host host(App* a) {
     h.simpleMotion = simpleMotion;
     h.monitor = monitor; h.motionProfile = motionProfileCommand; h.stageProfile = startProfileCandidate; h.debug = debugCommand;
     h.axis = axisCommand; h.hostSerial = hostSerial; h.selectTarget = selectTarget;
+    h.ioQualification = ioQualificationCommand;
     h.wiring = wiring;
     h.communication = communication; h.persistence = persistence;
     h.discovery = discoveryCommand;
@@ -3633,7 +3695,7 @@ void deliver(App& a) {
                         const auto& updated = a.configuration.raw;
                         const bool inputsChanged = !same || old.inputPolarity != updated.inputPolarity ||
                             std::memcmp(old.inputFunctions, updated.inputFunctions, sizeof(old.inputFunctions)) != 0;
-                        if (inputsChanged) a.driverInputsQualified = false;
+                        if (inputsChanged) clearIoQualifications(a, record.address);
                         uint32_t effects = 0;
                         if (a.driverSettings.target.id && (a.driverSettings.operationId || !currentConfig) &&
                             Probe::sameTarget(a.driverSettings.target, record.read.target))
@@ -3843,6 +3905,21 @@ bool copyReadResult(uint32_t operationId, MotorControlRS::ESS_RS::ReadContext& o
     if (!record || record->kind != App::OperationKind::TYPED_READ || record->monitored) return false;
     output = record->read; return true;
 }
+MotorControlRS::Status submitDriverRead(uint8_t address, ESS::DriverGroup group, uint32_t& operationId, uint8_t segmentIndex) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(Probe::Action::UNAVAILABLE), "application is not started");
+    ESS::DriverRequest request; request.group = group; request.segmentIndex = segmentIndex;
+    const auto admitted = startDriver(app, 0, address, ESS::DriverKind::READ, request, operationId);
+    if (admitted != Probe::Action::OK) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted), "settings read not admitted");
+    findRecord(*app, operationId)->programmaticSettings = true; return Ok();
+}
+MotorControlRS::Status submitDriverSettings(uint8_t address, const ESS::DriverRequest& request, uint32_t& operationId) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(Probe::Action::UNAVAILABLE), "application is not started");
+    const auto admitted = startDriver(app, 0, address, ESS::DriverKind::UPDATE, request, operationId);
+    if (admitted != Probe::Action::OK) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted), "settings update not admitted");
+    findRecord(*app, operationId)->programmaticSettings = true; return Ok();
+}
 MotorControlRS::Status submitPositionStartSpeed(uint32_t native, uint32_t& operationId) {
     using namespace MotorControlRS;
     if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
@@ -3942,6 +4019,64 @@ bool copySettingsResult(uint32_t operationId, MotorControlRS::ESS_RS::DriverCont
     const auto* record = findRecord(*app, operationId);
     if (!record || record->kind != App::OperationKind::DRIVER) return false;
     output = record->driver; return true;
+}
+MotorControlRS::Status inspectIoQualification(uint8_t address, uint8_t terminal, IoPurpose purpose,
+                                            IoQualification& output, bool member) {
+    using namespace MotorControlRS;
+    if (!app || !ioSnapshot(*app, address, terminal, purpose, member, uart.sample(), output))
+        return Status(Err::INVALID_CONFIG, 0, "fresh exact settings and IO reads required");
+    return Ok();
+}
+MotorControlRS::Status installIoQualification(const IoQualification& supplied) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    if (!ioIdle(*app)) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(Probe::Action::BUSY), "IO qualification requires idle application");
+    auto* retained = retainedIo(*app, supplied.target.address, supplied.terminal, supplied.member);
+    if (!retained || !ioQualificationCurrent(*app, supplied, uart.sample(), true))
+        return Status(Err::INVALID_CONFIG, 0, "exact terminal facts and checked baseline required");
+    *retained = supplied; return Ok();
+}
+bool copyIoQualification(uint8_t address, uint8_t terminal, IoPurpose purpose, IoQualification& output, bool& valid, bool member) {
+    if (!app) return false;
+    const auto* retained = retainedIo(*app, address, terminal, member);
+    if (!retained || !retained->target.id || retained->purpose != purpose) return false;
+    valid = ioQualificationCurrent(*app, *retained, uart.sample());
+    output = *retained; return true;
+}
+MotorControlRS::Status revokeIoQualification(uint8_t address, uint8_t terminalIndex, IoPurpose purpose, bool member) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    auto* retained = retainedIo(*app, address, terminalIndex, member);
+    if (!retained || purpose > IoPurpose::SEGMENT) return Status(Err::INVALID_CONFIG, 0, "invalid terminal context");
+    if (retained->purpose == purpose) *retained = IoQualification();
+    const uint64_t now = uart.sample();
+    // An in-flight frame settles normally. Cancellation does not erase its
+    // evidence, imply a motor stop or grant a retry.
+    for (auto& record : app->records) {
+        bool dependent = purpose == IoPurpose::FINITE_MOVE && record.kind == App::OperationKind::MOVE &&
+            (record.ioQualificationMask & (1u << terminalIndex));
+        if (record.kind == App::OperationKind::DRIVER && record.driver.kind == ESS::DriverKind::UPDATE) {
+            const auto group = record.driver.group;
+            const bool matching = (purpose == IoPurpose::ASSIGN && group == ESS::DriverGroup::IO) ||
+                (purpose == IoPurpose::CONFIGURE && group == ESS::DriverGroup::DRIVE) ||
+                (purpose == IoPurpose::SEGMENT && segmentGroup(group));
+            dependent = matching && (terminalIndex < 4 ? record.driver.prerequisites.inputFacts[terminalIndex].supplied :
+                record.driver.prerequisites.outputFacts[terminalIndex - 4].supplied);
+        }
+        if (dependent && record.operationId && record.address == address && record.groupChild == member && !terminal(*app, record)) {
+            record.cancelContinuation = true;
+            if (record.requestId.owner) app->owner.cancelUnsent(record.requestId, now);
+        }
+    }
+    if (purpose == IoPurpose::FINITE_MOVE) {
+        auto* m = member ? groupMember(*app, address) : nullptr;
+        auto& stage = m ? m->stage : app->stage;
+        if (stage.view.pending && (stage.ioQualificationMask & (1u << terminalIndex))) {
+            stage.view.cancelled = true;
+            if (stage.request.owner) app->owner.cancelUnsent(stage.request, now);
+        }
+    }
+    return Ok();
 }
 MotorControlRS::Status installHomeQualification(const ESS::HomePrerequisites& supplied) {
     using namespace MotorControlRS;

@@ -21,19 +21,52 @@ struct MotionFacts {
     uint32_t bindingGeneration, serialGeneration;
     uint64_t maximumAgeUs;
     const MotorControlRS::AxisReference* reference; ///< Absolute targets only; null refuses them.
+    const IoQualification* inputQualifications;
     MotionFacts(const MotorControlRS::AxisConfig& axisConfig, const ESS::ConfigObservation& config,
                 const App::MotionProfileState& motionProfile, const Probe::StateCache& cache,
                 bool relationRequired, const PositionStartSpeedRelation& relation,
                 uint32_t binding, uint32_t serial, uint64_t maximumAge,
-                const MotorControlRS::AxisReference* axisReference = nullptr)
+                const MotorControlRS::AxisReference* axisReference = nullptr, const IoQualification* io = nullptr)
         : axis(axisConfig), configuration(config), profile(motionProfile), state(cache),
           startSpeedRelationRequired(relationRequired), startSpeedRelation(relation),
-          bindingGeneration(binding), serialGeneration(serial), maximumAgeUs(maximumAge), reference(axisReference) {}
+          bindingGeneration(binding), serialGeneration(serial), maximumAgeUs(maximumAge), reference(axisReference), inputQualifications(io) {}
     const Probe::StateCache::Block& block(ESS::StateBlock kind) const { return state.blocks[static_cast<uint8_t>(kind)]; }
 };
 MotionFacts selectedFacts(const App& a, const MotorControlRS::AxisReference* reference = nullptr) {
     return MotionFacts(a.axis, a.configuration, a.motionProfile, a.stateCache, a.positionStartSpeedRelationRequired,
-        a.positionStartSpeedRelation, a.bindingGeneration, a.serial.generation, a.observationAgeUs(), reference);
+        a.positionStartSpeedRelation, a.bindingGeneration, a.serial.generation, a.observationAgeUs(), reference, a.ioQualifications);
+}
+bool moveInputPolicy(const MotionFacts& f, uint64_t now) {
+    const auto& raw = f.configuration.raw;
+    const auto& io = f.block(ESS::StateBlock::IO);
+    for (uint8_t i = 0; i < 4; ++i) {
+        const uint16_t function = raw.inputFunctions[i], polarity = (raw.inputPolarity >> i) & 1;
+        if (function > 17 || (function >= 8 && function <= 10) || function == 13) return false;
+        const IoQualification* q = f.inputQualifications ? f.inputQualifications + i : nullptr;
+        const bool qualified = q && q->purpose == IoPurpose::FINITE_MOVE && q->terminal == i &&
+            Probe::sameTarget(q->target, f.axis.target) && q->configurationGeneration == f.axis.generation &&
+            q->function == function && q->polarity == polarity && ioFactsValid(*q, now);
+        bool active = false;
+        if (function && !effectiveInput(io.value.rawInputs, i, polarity, polarity,
+            qualified ? q->input.statusMapping : ESS::IoStatusMapping::UNKNOWN, active)) return false;
+        if (function >= 2 && function <= 12 && active) return false;
+        if ((function == 7 || function == 11 || function == 12 || function >= 14) &&
+            (!qualified || !q->input.externalTriggersInhibited)) return false;
+    }
+    return true;
+}
+// Bound later queued writes by the original supplied fact age as well as the
+// state sample. Fresh reads cannot renew a commissioning statement.
+void capMoveIoAge(const MotionFacts& f, ESS::MovePrerequisites& p) {
+    p.inputEvidenceDeadlineUs = MotorControlRS::evidenceAgeDeadline(
+        f.block(ESS::StateBlock::IO).observedEarliestUs, f.maximumAgeUs);
+    if (!f.inputQualifications) return;
+    for (uint8_t i = 0; i < 4; ++i) {
+        const auto& q = f.inputQualifications[i];
+        if (!q.target.id || q.purpose != IoPurpose::FINITE_MOVE || !q.maximumAgeUs) continue;
+        p.inputEvidenceDeadlineUs = std::min(p.inputEvidenceDeadlineUs,
+            MotorControlRS::evidenceAgeDeadline(q.qualifiedUs, q.maximumAgeUs));
+    }
 }
 bool motionProfileEndpoint(const MotionFacts& f, const App::MotionProfileState& profile) {
     const auto& view = profile.view;
@@ -119,8 +152,7 @@ bool moveRequirements(const MotionFacts& f, const MotorControlRS::MoveRequest& r
     // Unconnected wiring does not establish inactive assignments. Preserve them
     // and require the checked logical input report for each assigned input.
     // Origin level alone does not trigger a serial move or act as a limit.
-    for (uint8_t i = 0; i < 4; ++i)
-        if (raw.inputFunctions[i] > 3 || (raw.inputFunctions[i] >= 2 && io.value.inputs[i])) return false;
+    if (!moveInputPolicy(f, now)) return false;
     if (!request.position.relative && !absoluteMoveReady(f, request, now)) return false;
 
     // Publish only after every guard passes; rejected preparation preserves out.

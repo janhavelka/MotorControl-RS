@@ -9,6 +9,14 @@ these same relative/absolute preparations and completion rules. Member scales,
 origins and references stay separate. Wrapped group requests remain unsupported.
 Checked staging and start acknowledgement never prove completion by themselves.
 
+Selected axes and group members share the [input-function policy](ess_io.md).
+Inactive release/stop inputs permit finite moves. Position/home/PT triggers
+and PIN selectors also require a separately installed source-inhibition policy;
+PV and JOG assignments remain excluded. The caller's qualification age and the
+live IO sample have independent expiry. `MovePrerequisites::inputEvidenceDeadlineUs`
+caps setup and trigger writes without changing MOTION age or the completion
+budget. Prepared staging carries that same deadline.
+
 **Known motor limitations:** some high-subdivision speed/ramp combinations leave
 firmware `0x0029` reporting RUNNING after expected travel. See the
 [measured cases](reports/2026-10-07_position_completion.md) and

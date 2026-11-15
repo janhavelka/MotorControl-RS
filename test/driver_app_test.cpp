@@ -62,11 +62,11 @@ void configReply(uint32_t operation, const std::vector<uint8_t>& supplied) {
 }
 uint32_t readConfig(uint16_t direction = 0, uint16_t subdivision = 1000, uint16_t input0 = 1,
                     uint16_t inputPolarity = 0, uint8_t address = 1,
-                    uint16_t algorithm = 1, uint16_t encoder = 4000) {
+                    uint16_t algorithm = 1, uint16_t encoder = 4000, uint16_t order = 0) {
     uint32_t id = 0;
     assert(host(app).startTypedRead(app,70,address,ESS::ReadKind::CONFIG,id) == Probe::Action::OK);
     configReply(id,words({direction,subdivision},address)); configReply(id,words({0,0,0},address));
-    configReply(id,words({1,0,0},address)); configReply(id,words({inputPolarity,input0,2,3,0},address));
+    configReply(id,words({1,0,order},address)); configReply(id,words({inputPolarity,input0,2,3,0},address));
     configReply(id,words({algorithm,encoder},address));
     for (unsigned i = 0; i < 100; ++i) step();
     assert(!view(id).pending && view(id).typedRead->state == ReadState::SUCCEEDED);
@@ -75,16 +75,35 @@ uint32_t readConfig(uint16_t direction = 0, uint16_t subdivision = 1000, uint16_
 }
 void qualify() {
     // This fixture's qualification never propagates to production or COM13.
-    writeResponseConfirmed = true; app->driverInputsQualified = true; app->knownTargets[0] |= 2;
-    auto& motion = app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
-    motion.valid = true; motion.value.target = app->axis.target; motion.value.rawMotion = 1;
-    motion.value.enabled = motion.value.inPosition = true;
-    motion.observedEarliestUs = motion.observedLatestUs = hardware.time;
+    assert(writeResponseConfirmed);
+    app->knownTargets[0] |= 2;
+    if (!app->configuration.operationId) {
+        const auto& driver = app->driverSettings;
+        const auto& control = app->controlSettings;
+        readConfig(driver.operationId ? driver.raw[0] : 0, driver.operationId ? driver.raw[1] : 1000,
+            1, 0, 1, control.operationId ? control.raw[0] : 1,
+            control.operationId ? control.raw[1] : 4000, driver.operationId ? driver.raw[2] : 0);
+    }
+    uint32_t state = 0;
+    assert(host(app).startTypedRead(app,71,1,ESS::ReadKind::STATE,state) == Probe::Action::OK);
+    configReply(state,words({0,1})); configReply(state,words({0,0})); configReply(state,words({0,0,0}));
+    for (uint8_t terminal = 0; terminal < 4; ++terminal) {
+        IoQualification facts;
+        assert(inspectIoQualification(1,terminal,IoPurpose::CONFIGURE,facts));
+        facts.input.supplied = true;
+        facts.input.statusMapping = ESS::IoStatusMapping::AFTER_INVERSION;
+        facts.input.externalTriggersInhibited = true;
+        assert(installIoQualification(facts));
+    }
     app->axis.units.commandStepsPerMotorTurn = UnitScale(1000,1,ScaleSource::QUALIFIED);
     app->axis.originKnown = app->axis.softLimitsKnown = true;
     app->coordinateReference.target = app->axis.target; app->coordinateReference.nativeKnown = true;
     app->coordinateReference.configurationGeneration = app->axis.generation;
     app->coordinateReference.observedUs = hardware.time; app->coordinateReference.maximumAgeUs = 5000000;
+}
+bool inputsQualified() {
+    IoQualification facts; bool valid = false;
+    return copyIoQualification(1,0,IoPurpose::CONFIGURE,facts,valid) && valid;
 }
 ESS::DriverRequest update() {
     ESS::DriverRequest r; r.fields = static_cast<uint16_t>(ESS::DriverField::DIRECTION) |
@@ -109,17 +128,15 @@ void gatesAndReadContext() {
     const auto writes = hardware.writes;
     assert(host(app).startDriver(app,2,1,ESS::DriverKind::UPDATE,request,untouched) == Probe::Action::UNSUPPORTED);
     assert(untouched == 99 && hardware.writes == writes);
-    qualify(); request = update(); request.subdivision = 399;
+    qualify(); const auto qualifiedWrites = hardware.writes; request = update(); request.subdivision = 399;
     assert(host(app).startDriver(app,2,1,ESS::DriverKind::UPDATE,request,untouched) == Probe::Action::INVALID);
     request = update(); writeResponseConfirmed = false;
     assert(host(app).startDriver(app,2,1,ESS::DriverKind::UPDATE,request,untouched) == Probe::Action::OK);
-    assert(hardware.writes == writes);
+    assert(hardware.writes == qualifiedWrites);
     assert(view(read).driverContext->configurationGeneration == immutable.configurationGeneration);
 }
 void successAndEffects() {
     fresh(); readSettings(); qualify();
-    app->configuration.operationId = 99; app->configuration.target = app->axis.target;
-    app->configuration.wordOrderKnown = true;
     const auto generation = app->axis.generation; const auto id = admit(update());
     waitTx(id);
     assert(app->axis.generation > generation && !app->axis.originKnown && !app->coordinateReference.nativeKnown);
@@ -207,11 +224,11 @@ void externalChangesAndRecovery() {
 void configurationReconcilesDriverBaseline() {
     fresh(); const auto original = readSettings(); qualify();
     const auto generation = app->axis.generation;
-    assert(!app->configuration.operationId);
+    assert(app->configuration.operationId);
     readConfig(1,1600);
     assert(app->axis.generation > generation && !app->axis.originKnown && !app->coordinateReference.nativeKnown);
     assert(!app->commandPolarityKnown && !app->axis.units.commandStepsPerMotorTurn.numerator);
-    assert(!app->driverSettings.operationId && !app->driverInputsQualified);
+    assert(!app->driverSettings.operationId && !inputsQualified());
     assert(app->configuration.raw.direction == 1 && app->configuration.raw.subdivision == 1600);
     assert(view(original).driverContext->configurationGeneration == generation);
     assert(view(original).driverContext->observations[0].raw[3] == 0);
@@ -270,7 +287,7 @@ void hostChangesPreserveCrossReadBaselines() {
                 Probe::HostRequest restore; restore.restore = true;
                 assert(host(app).hostSerial(app,&restore,serial) == Probe::Action::OK);
                 assert(app->axis.generation == generation && app->bindingGeneration == binding);
-                assert(app->axis.originKnown && !app->driverInputsQualified && writeResponseConfirmed);
+                assert(app->axis.originKnown && !inputsQualified() && writeResponseConfirmed);
                 assert(!app->configuration.operationId && !app->driverSettings.operationId &&
                        !app->controlSettings.operationId && !app->ioSettings.operationId);
                 if (configFirst) readSharedGroup(group,changed);
@@ -300,7 +317,7 @@ void changedInputsInvalidateQualification() {
         fresh(); readConfig(); qualify();
         const auto generation = app->axis.generation;
         readConfig(0,1000,change == 0 ? 17 : 1,change == 1 ? 1 : 0);
-        assert(app->axis.generation > generation && !app->driverInputsQualified);
+        assert(app->axis.generation > generation && !inputsQualified());
         assert(!app->axis.originKnown && !app->coordinateReference.nativeKnown);
         readSettings();
         const auto writes = hardware.writes; uint32_t unchanged = 99;
@@ -316,17 +333,17 @@ void secondaryReadsPreserveAxisBaseline() {
         assert(app->driverSettings.operationId == original && app->driverSettings.target.address == 1);
         assert(view(secondary).driverContext->target.address == 2);
         readSettings(0,0,1000,1,change == 0 ? 1 : 0,change == 1 ? 0 : 1);
-        assert(app->axis.generation > generation && !app->axis.originKnown && !app->driverInputsQualified);
+        assert(app->axis.generation > generation && !app->axis.originKnown && !inputsQualified());
         assert(view(original).driverContext->observations[3].raw[4] == 0);
     }
     fresh(); const auto original = readConfig(); qualify();
     const auto generation = app->axis.generation;
     const auto secondary = readConfig(1,1600,17,1,2);
     assert(app->configuration.operationId == original && app->configuration.target.address == 1);
-    assert(app->axis.generation == generation && app->axis.originKnown && app->driverInputsQualified);
+    assert(app->axis.generation == generation && app->axis.originKnown && inputsQualified());
     assert(view(secondary).typedRead->target.address == 2);
     readConfig(0,1000,17);
-    assert(app->axis.generation > generation && !app->driverInputsQualified);
+    assert(app->axis.generation > generation && !inputsQualified());
 }
 void olderConfigCannotReplaceNewerDriver() {
     fresh(); qualify(); uint32_t config = 0, driver = 0;
@@ -386,7 +403,8 @@ void backpressureAndPolarityParity() {
 } // namespace
 void subdivisionUsesCheckedPassiveInputs() {
     fresh(); readConfig(); readSettings(); qualify();
-    app->driverInputsQualified=false; // No hidden qualification switch.
+    for (uint8_t terminal = 0; terminal < 4; ++terminal)
+        assert(revokeIoQualification(1,terminal,IoPurpose::CONFIGURE)); // Passive subdivision needs no supplied facts.
     auto& io=app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
     auto& feedback=app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::FEEDBACK)];
     for (auto* block : {&io,&feedback}) {

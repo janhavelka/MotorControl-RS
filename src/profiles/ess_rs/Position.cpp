@@ -29,10 +29,14 @@ bool staging(const MoveContext& c) { return !verifying(c) && c.step < c.triggerS
 std::size_t requestLength(const MoveContext& c) {
     return staging(c) && c.setupCount > 1 ? 9 + 2 * c.setupCount : READ_REQUEST_LEN;
 }
+uint64_t prerequisiteDeadline(const MovePrerequisites& p) {
+    const uint64_t motion = evidenceAgeDeadline(p.observedUs, p.maximumAgeUs);
+    return p.inputEvidenceDeadlineUs < motion ? p.inputEvidenceDeadlineUs : motion;
+}
 uint64_t readinessDeadline(const MoveContext& c) {
     if (c.interruption == PositionInterruption::INTERRUPT_CURRENT)
         return evidenceAgeDeadline(c.stored.qualifiedUs, c.stored.maximumAgeUs);
-    return evidenceAgeDeadline(c.prerequisites.observedUs, c.prerequisites.maximumAgeUs);
+    return prerequisiteDeadline(c.prerequisites);
 }
 uint64_t stepDeadline(const MoveContext& c) {
     const uint64_t readiness = readinessDeadline(c);
@@ -248,6 +252,7 @@ static Status prepareMove(MoveContext& output, const AxisConfig& axis, const Axi
         return invalid(MoveError::STALE_CONFIGURATION, "move word order is unresolved");
     if (!prerequisites.readinessQualified || !prerequisites.serialInputsPermit ||
         !evidenceAgeValid(prerequisites.observedUs, nowUs, prerequisites.maximumAgeUs) ||
+        nowUs >= prerequisites.inputEvidenceDeadlineUs ||
         prerequisites.rawAlarm || (prerequisites.rawMotion & (FAULTS | RUNNING)))
         return invalid(MoveError::READINESS, "fresh enabled stationary alarm-free serial readiness is required");
     MoveContext prepared;
@@ -261,7 +266,7 @@ static Status prepareMove(MoveContext& output, const AxisConfig& axis, const Axi
     const Status arithmetic = preparePosition(request.position, axis, reference, prepared.prepared);
     if (!arithmetic) return arithmetic;
     if (prepared.prepared.endpointKnown && reference && reference->nativeKnown) {
-        const uint64_t readinessEnd = evidenceAgeDeadline(prerequisites.observedUs, prerequisites.maximumAgeUs);
+        const uint64_t readinessEnd = prerequisiteDeadline(prerequisites);
         const uint64_t writeEnd = readinessEnd < deadlineUs ? readinessEnd : deadlineUs;
         if (evidenceAgeDeadline(reference->observedUs, reference->maximumAgeUs) < writeEnd)
             return invalid(MoveError::READINESS, "native reference freshness must cover both write budgets");

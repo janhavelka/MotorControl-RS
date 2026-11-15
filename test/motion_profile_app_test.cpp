@@ -618,7 +618,9 @@ int main(int argc,char** argv) {
     assert(moveRequirements(*app,request,hardware.time,p) && p.negativeTwosComplementVerified);
     request.position.value=Rational(-100); assert(moveRequirements(*app,request,hardware.time,p)); // HW-13
     request.position.value=Rational(100); app->stateCache.blocks[1].value.inputs[1]=true;
+    app->stateCache.blocks[1].value.rawInputs |= 2; // Keep raw and decoded fixture levels consistent.
     assert(!moveRequirements(*app,request,hardware.time,p)); app->stateCache.blocks[1].value.inputs[1]=false;
+    app->stateCache.blocks[1].value.rawInputs &= ~2u;
     uint32_t operation=0;
     assert(startMove(app,2,1,request,operation)==Probe::Action::OK);
     auto* r=findRecord(*app,operation); assert(r);

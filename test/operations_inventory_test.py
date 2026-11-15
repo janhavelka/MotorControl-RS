@@ -35,9 +35,13 @@ class Coverage(unittest.TestCase):
 
     def test_qualification_routes_are_real_producing_routes(self):
         routes = {route["wire_command"]: route for route in INVENTORY["host_routes"]}
-        self.assertEqual(len(routes), 7)
-        self.assertEqual(operations.check(INVENTORY, LEDGER)["summary"]["host_routes"], 7)
+        self.assertEqual(len(routes), 10)
+        self.assertEqual(operations.check(INVENTORY, LEDGER)["summary"]["host_routes"], 10)
         self.assertEqual(routes["home-qualification-install"]["api"], "installHomeQualification")
+        self.assertEqual(routes["io-qualification-install"]["api"], "installIoQualification")
+        self.assertEqual(routes["io-qualification-inspect"]["api"], "copyIoQualification")
+        self.rejected(lambda value: next(row for row in value["host_routes"] if row["wire_command"] == "io-qualification-install")["facts"].append("all"))
+        self.rejected(lambda value: next(row for row in value["host_routes"] if row["wire_command"] == "io-qualification-install").update(api="prepareDriverSettings"))
         self.rejected(lambda value: value["host_routes"].pop())
         self.rejected(lambda value: value["host_routes"].append(dict(value["host_routes"][0], wire_command="home-qualification-all", route="home qualification all")))
         self.rejected(lambda value: value["host_routes"].append(copy.deepcopy(value["host_routes"][0])))

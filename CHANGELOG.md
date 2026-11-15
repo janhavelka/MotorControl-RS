@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- I/O settings check each intermediate FC06 state. Connected terminals use
+  confirmed replies; explicit protection removal and output load limits apply.
+- Input qualification keeps its original lifetime across refreshed reads.
+  Revocation cancels dependent unsent work even after future facts were consumed;
+  selected-axis staging keeps the prepared write deadline.
 - The portable S2 consumer checks console lines without a redundant full-size
   buffer; the production console keeps its full group output capacity.
 - Candidate profile staging preserves start-speed relation revocation across
@@ -21,6 +26,10 @@
 
 ### Added
 
+- Per-terminal I/O qualification through public application, console and host
+  routes. Assignment, drive settings, segment settings and finite moves use
+  separate purposes. Selected axes and group members share function-specific
+  move rules; PV/JOG assignments remain excluded from finite position moves.
 - Independent group-member relative/absolute requests, explicit member coordinate
   facts and inert console/host plans. All members are checked before writes;
   staging, starts, stops and results retain their own evidence.
