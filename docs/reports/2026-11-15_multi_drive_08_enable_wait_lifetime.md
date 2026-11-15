@@ -4,6 +4,10 @@ Software complete at `a670c09670164ace09a029f1428fc542d344ec1a`. Local checks
 and all four exact-commit CI jobs pass. Board regression is NOT RUN: the read-only preflight returned
 NO_RESPONSE. HW-15 remains open; the one-second host policy is unchanged.
 
+The later [independent M08/S02 audit](2026-11-15_multi_drive_08_standalone_02_audit.md)
+reproduces the old defect and rechecks current lifetime/admission paths. It found
+no new M08 defect; separate candidate/group corrections are recorded there.
+
 ## Defect and correction
 
 Baseline `28e5352e34dd02d9c7d8a815f7934d1e2b30f1ad` kept enable waits in group

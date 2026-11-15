@@ -269,7 +269,7 @@ struct App {
     uint32_t bindingGeneration = 1;
     uint8_t actionConflicts[32] = {}; ///< Physical address conflicts survive result release and host recovery.
     uint8_t knownTargets[32] = {}; ///< Checked physical addresses, independent of the latest passive observation.
-    uint8_t startSpeedWritten[32] = {}; ///< Possible start-speed writes this boot, by address (RAM only).
+    uint8_t startSpeedRelationRevoked[32] = {}; ///< Per-address relation revocation survives group replacement (RAM only).
     MotorControlRS::ReadTarget communicationTarget;
     uint64_t communicationEarliestUs = 0, communicationLatestUs = 0;
     bool communicationKnown = false;
@@ -305,7 +305,7 @@ struct App {
         MotionProfileState profile; ///< Checked 0x0020/6 readback of this member.
         Probe::StateCache state;
         MotorControlRS::InputWiring inputWiring[4] = {}, outputWiring[2] = {};
-        bool startSpeedRelationRequired = false; ///< A possible start-speed write reached this drive.
+        bool startSpeedRelationRequired = false; ///< This drive needs a relation that group moves cannot supply.
         StageSession stage;
         // Stored-word witness, as rememberedMoveWords for the selected axis: the
         // checked staged words a USE_STORED start may rely on.
@@ -1865,7 +1865,7 @@ void reconcileSingleSettingPrior(App& a, const App::Record& record) {
         if (raw > 3000 ||
             (motionProfileBound(a) && raw != a.motionProfile.view.current[0]) ||
             (a.positionStartSpeedRelation.target.id && raw != a.positionStartSpeedRelation.rawStartSpeed)) {
-            revokePositionStartSpeedRelation(a);
+            revokePositionStartSpeedRelation(a, record.address);
             a.motionProfile.view.ok = false;
             a.rememberedMoveGeneration = 0;
         }
@@ -2080,21 +2080,13 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
 void invalidateDriverAssumptions(App& a, uint8_t address, uint32_t changed, uint64_t now, const App::Record* changing = nullptr,
                                 ESS::DriverGroup group = ESS::DriverGroup::DRIVE) {
     if (group == ESS::DriverGroup::POSITION_START_SPEED)
-        a.startSpeedWritten[address / 8] |= static_cast<uint8_t>(1U << (address % 8));
-    if (auto* member = groupMember(a, address)) {
-        // Members keep no start-speed relation: after a possible start-speed
-        // write this boot, that member stays unready for group moves.
-        if (group == ESS::DriverGroup::POSITION_START_SPEED) member->startSpeedRelationRequired = true;
-        invalidateMemberConfiguration(a, address, now);
-    }
+        revokePositionStartSpeedRelation(a, address);
+    invalidateMemberConfiguration(a, address, now);
     if (singleSettingGroup(group)) {
         // Storing a start speed or future homing policy proves no counter change.
         // Keep historical snapshots, but expire their generation and all future
         // prepared work. Local bit 0 must never be interpreted as DIRECTION.
         if (address == a.axis.target.address) {
-            if (group == ESS::DriverGroup::POSITION_START_SPEED) {
-                revokePositionStartSpeedRelation(a);
-            }
             a.axis.generation = !a.axis.generation || a.axis.generation == UINT32_MAX ? 0 : a.axis.generation + 1;
             a.coordinateReference = MotorControlRS::AxisReference();
             a.configuration.operationId = 0;

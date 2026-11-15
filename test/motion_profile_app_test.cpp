@@ -513,7 +513,35 @@ void emitSnapshotAfterCandidate(bool restored) {
     assert(Serial.output.find("\"command\":\"motion-profile\"")!=std::string::npos);
     std::printf("%s",Serial.output.c_str());
 }
+std::string pendingCandidateStop(const std::string& phase) {
+    candidateFresh();
+    candidateCommand("@604 motion-profile stage 100 200 60 0 100 0 1\n");
+    assert(Serial.output.find("\"result\":\"accepted\"")!=std::string::npos);
+    const auto id=app->latestOperationId;
+    const auto deadline=candidateResult(id).stage.deadlineUs;
+    if(phase!="prior") candidateReply(id,words({10,100,100,30,0,7}));
+    if(phase=="readback") candidateReply(id,crc({1,16,0,0x21,0,5}));
+    assert(phase=="prior" || phase=="write" || phase=="readback");
+    for(unsigned i=0;i<25000 && !app->owner.txAccepted(app->profileCandidate.request);++i) step();
+    assert(app->owner.txAccepted(app->profileCandidate.request));
+    candidateCommand("@605 stop normal\n");
+    assert(Serial.output.find("\"result\":\"accepted\"")!=std::string::npos && app->latestOperationId!=id);
+    const auto result=candidateResult(id);
+    assert(result.stage.pending && result.stage.cancelled && !result.stage.staged);
+    assert(!std::strcmp(result.error,"cancelled") && result.stage.deadlineUs==deadline);
+    assert(result.stage.execution==(phase=="prior" ? ActionExecution::NOT_TRANSMITTED :
+        phase=="write" ? ActionExecution::UNKNOWN : ActionExecution::ACKNOWLEDGED));
+    assert(!releaseProfileCandidate(id));
+    candidateCommand("@990 result "+std::to_string(id)+"\n");
+    assert(Serial.output.find("\"profile_stage\":true")!=std::string::npos);
+    candidateNoMotion(true);
+    return Serial.output;
+}
 void emitCandidateResult(const std::string& scenario) {
+    if(scenario.compare(0,13,"pending-stop-")==0) {
+        const auto output=pendingCandidateStop(scenario.substr(13));
+        std::printf("%s",output.c_str()); return;
+    }
     candidateFresh(); auto c=candidate();
     if(scenario=="unchanged") { c.words[1]=100; c.words[2]=30; c.words[4]=7; }
     const auto id=candidateSubmit(c);
@@ -553,6 +581,7 @@ int main(int argc,char** argv) {
     testCandidateBlocksOtherReads();
     testCandidateDeadlineAndStaleAdmission();
     testCandidateStopRecoveryAndResultPressure();
+    for(const auto phase:{"prior","write","readback"}) pendingCandidateStop(phase);
     testCandidateNeedsNewRelationAndKeepsMotionLimits();
     candidatePreservesSnapshotEvidence(false);
     candidatePreservesSnapshotEvidence(true);

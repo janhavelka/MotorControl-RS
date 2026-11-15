@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Candidate profile staging preserves start-speed relation revocation across
+  group changes, invalidates contradicted group profiles, and reports pending
+  stop cancellation consistently to the host.
 - Per-address enable waits survive selection, group changes, recovery and rebinding.
   Selected staging and group admission use the same original deadline and write
   evidence. Drive-address changes cannot bypass an active wait.

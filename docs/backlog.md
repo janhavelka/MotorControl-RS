@@ -50,6 +50,8 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   ([standalone 02](reports/2026-11-15_standalone_02_profile_staging.md)). Fresh session reads,
   one retained result slot and the shared owner preserve deadlines and evidence.
   `0x0020` remains separate; no automatic rollback or move replay.
+  The [independent follow-up audit](reports/2026-11-15_multi_drive_08_standalone_02_audit.md)
+  corrects group readiness and pending-cancellation result handling.
 - [ ] Run the candidate/export/import short board regression on the new image.
   The 15 November preflight found the recorded board, but address 1 did not
   respond after explicit host recovery. See the

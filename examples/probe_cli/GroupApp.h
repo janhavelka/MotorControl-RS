@@ -11,8 +11,8 @@
 
 const PositionStartSpeedRelation NO_START_SPEED_RELATION = PositionStartSpeedRelation();
 MotionFacts memberFacts(const App& a, const App::GroupMember& m) {
-    // Members keep no start-speed relation. After a possible start-speed write
-    // the shared rule refuses the member (startSpeedRelationRequired).
+    // Members keep no start-speed relation. Once it is revoked, the shared
+    // rule refuses the member (startSpeedRelationRequired).
     return MotionFacts(m.axis, m.configuration, m.profile, m.state, m.startSpeedRelationRequired,
         NO_START_SPEED_RELATION, a.bindingGeneration, a.serial.generation, a.observationAgeUs());
 }
@@ -569,7 +569,7 @@ Probe::Action startGroupSet(App& a, uint32_t commandId, const Probe::GroupComman
         m.axis.target.id = m.axis.target.address = m.address; m.axis.target.generation = a.bindingGeneration;
         m.axis.supportedRelativeBases = 1; // Reviewed ESS actual-position relative basis.
         m.axis.units.settings = a.axis.units.settings; // No command scale is inferred for another drive.
-        m.startSpeedRelationRequired = (a.startSpeedWritten[m.address / 8] & (1U << (m.address % 8))) != 0;
+        m.startSpeedRelationRequired = (a.startSpeedRelationRevoked[m.address / 8] & (1U << (m.address % 8))) != 0;
         std::memcpy(m.inputWiring, inputs[i], sizeof(m.inputWiring));
         std::memcpy(m.outputWiring, outputs[i], sizeof(m.outputWiring));
     }

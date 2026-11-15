@@ -211,6 +211,11 @@ relation, and invalidates configuration/state/profile readiness. Refresh these
 reads and explicitly install the relation before a move that needs it. Candidate
 success does not publish a prepared-move witness. The saved drive-read original,
 raw read/restore evidence and its wire qualification remain historical evidence.
+Relation revocation is retained by address across group clear/redeclaration and
+recovery. Group moves cannot supply a relation and stay guarded for that address;
+the selected-axis path can install one after fresh reads. Unrelated members keep
+their own readiness. A fresh prior read that contradicts the known start word
+also revokes the relation, even when the candidate itself is unchanged.
 Imported bytes never set the snapshot's `saved`, `original`, `ok` or
 `closureQualified` fields. `motion-profile restore` still uses the original read
 from the drive, independently of the candidate.
@@ -220,6 +225,8 @@ and its evidence remains copied. Cancellation wins over a matching final
 readback. A late queued stage gets no new budget. Ordinary reads and snapshot
 replacement are blocked while the candidate owns its session; urgent stop stays
 available. Lost or partial writes remain UNKNOWN and are never resent.
+Pending `result ID` replies report cancellation immediately while the in-flight
+transaction settles, retaining its later write/readback evidence.
 
 The Python host owns files; firmware stores none. See the
 [archive commands](../scripts/README.md#position-profile-archives) and

@@ -5,6 +5,10 @@ regression is NOT RUN: the recorded board answered, but the drive did not.
 This closes N03 in software without changing the release 1.0.0 artifact or
 claiming physical qualification for the new route.
 
+The later [independent M08/S02 audit](2026-11-15_multi_drive_08_standalone_02_audit.md)
+records corrections to candidate/group readiness and pending cancellation
+inspection. The original delivery evidence below remains dated to its commit.
+
 ## Delivered behavior
 
 Implementation: `0e3b559e5bf6d7affb71ca16974747e76f550250`.

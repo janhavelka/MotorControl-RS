@@ -5,7 +5,8 @@ void copyCandidate(const App::CandidateSession& s, Probe::ProfileCandidateResult
     out.candidate = s.candidate; out.stage = s.view;
     std::memcpy(out.original, s.original, sizeof(out.original));
     std::memcpy(out.before, s.before, sizeof(out.before));
-    out.priorEvidence = s.priorEvidence; out.unchanged = s.unchanged; out.error = s.error;
+    out.priorEvidence = s.priorEvidence; out.unchanged = s.unchanged;
+    out.error = s.view.cancelled && !std::strcmp(s.error, "none") ? "cancelled" : s.error;
 }
 void endCandidate(App::CandidateSession& s, const char* error, uint64_t now) {
     s.error = error;
@@ -16,12 +17,14 @@ void invalidateCandidateWords(App& a, uint8_t address) {
     for (auto& record : a.records)
         if (record.address == address) record.storedPosition.qualified = false;
     a.motionProfile.view.ok = a.motionProfile.view.restored = false; // Keep raw bytes and wire qualification.
+    if (auto* member = groupMember(a, address))
+        member->profile.view.ok = member->profile.view.restored = false;
 }
 void candidateEffects(App& a, App::CandidateSession& s, uint64_t now) {
     if (s.effectsInvalidated || s.phase != 1 || !s.request.owner || !a.owner.txAccepted(s.request)) return;
     s.effectsInvalidated = true;
     invalidateCandidateWords(a, s.view.target.address);
-    revokePositionStartSpeedRelation(a);
+    revokePositionStartSpeedRelation(a, s.view.target.address);
     a.configuration.operationId = 0;
     a.movePrerequisites = ESS::MovePrerequisites(); a.velocityPrerequisites = ESS::VelocityPrerequisites();
     a.homePrerequisites = ESS::HomePrerequisites(); a.positionClearQualification = PositionClearQualification();
@@ -113,7 +116,7 @@ void serviceProfileCandidate(App& a, uint64_t now) {
         a.owner.release(s.request); s.request = Rtu::RequestId();
         if (v.cancelled) { endCandidate(s, !std::strcmp(s.error, "none") ? "cancelled" : s.error, now); return; }
         if (!checked) { endCandidate(s, "prior_read", now); return; }
-        if (s.before[0] != a.motionProfile.view.current[0]) revokePositionStartSpeedRelation(a);
+        if (s.before[0] != a.motionProfile.view.current[0]) revokePositionStartSpeedRelation(a, v.target.address);
         if (std::memcmp(s.before, a.motionProfile.view.current, sizeof(s.before))) invalidateCandidateWords(a, v.target.address);
         if (!std::memcmp(s.before + 1, v.words, sizeof(v.words))) {
             s.unchanged = true; std::memcpy(v.readback, s.before + 1, sizeof(v.readback)); v.readbackKnown = true;

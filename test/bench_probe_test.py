@@ -6860,6 +6860,22 @@ def check_profile_stage_fixtures(executables):
                 assert live[key]==inspected[key]==record[key]
             assert len(port.writes)==3 and handle.operation_id in console.operations
             records.append(record)
+        for phase in ("prior", "write", "readback"):
+            output=subprocess.check_output([executable,"--emit-profile-stage","pending-stop-"+phase],text=True,timeout=10)
+            assert len(output.encode("utf-8"))<=bench.MAX_LINE
+            record=json.loads(output,object_pairs_hook=bench.unique_object)
+            assert record["pending"] and record["cancelled"] and not record["staged"] and record["error"]=="cancelled"
+            # A new host can inspect a cancelled candidate while its frame still settles.
+            clock=Clock()
+            def handler(i,command,args):
+                return encoded(dict(record,id=i)) if command=="result" else Serial.normal(i,command,args)
+            port=Serial(handler,fragment=17)
+            console=bench.Console(port,clock=clock,sleeper=clock.sleep)
+            console.identify(timeout_s=.1)
+            inspected=console.command("result",operation_id=record["operation_id"],timeout_s=.1)
+            assert inspected["pending"] and inspected["error"]=="cancelled" and console.synchronized
+            assert len(port.writes)==2 and b"result" in port.writes[-1]
+            records.append(record)
         for restored in (False,True):
             args=[executable,"--emit-profile-snapshot-after-stage"]+(["restored"] if restored else [])
             output=subprocess.check_output(args,text=True,timeout=10)

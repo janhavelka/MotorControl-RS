@@ -91,7 +91,8 @@ the installed core performs no UART, clock, retry, queue, heap or logging work.
 | Control and tuning | `control read|set`, `tuning GROUP read|set` | ESS typed parameter validation and common settings sequence |
 | Commissioning/persistence | `communication ...`, `persistence ...` | Explicit public preparations and exclusive application sessions |
 | Drive group | `group set|show|status|clear|wiring`, `group read state`, `group move relative ... [start staged|sequential] on-failure ...`, `group stop normal|fast` | `declareGroup`, `clearGroup`, `declareGroupWiring`, `inspectGroup`, `submitGroupStateRead`, `submitGroupMove`, `submitGroupStop`, `copyGroupResult`, `releaseOperation`; up to 15 members; per-member typed reads, the shared move-readiness rules, staging without a start and the ESS position sequence, and urgent stops; physical claims beyond the bench's three drives NOT RUN |
-| Staging without a start | none yet (application API only) | `stagePositionMove`, `copyPositionStage`: shared move preparation, one FC10 0x0021/5 write and one checked FC03 readback; the remembered words let `submitMove(..., MoveSetup::USE_STORED)` send only the start |
+| Prepared-move staging | application API only | `stagePositionMove`, `copyPositionStage`: shared move preparation, one FC10 0x0021/5 write and one checked FC03 readback; the remembered words let `submitMove(..., MoveSetup::USE_STORED)` send only the start |
+| Profile candidates | `motion-profile stage ACC DEC RPM TARGET_W0 TARGET_W1 ORDER ADDRESS [model firmware]` | `submitProfileCandidate`, `copyProfileCandidate`, `releaseProfileCandidate`: fresh prior read, shared staging owner and retained result; no start or prepared-move witness |
 | Host session and wiring | `useaddr ADDRESS`, `host ...`, `wiring [x0..x3|y0..y1 unknown|unconnected|connected]` | Idle local target selection, explicit wiring declarations and settled UART tuple callback; no drive setting change |
 | Local lifecycle | `result [ID]`, `release ID`, `cancel [ID]`, `monitor ...`, `stats reset`, `recover` | Non-consuming retained inspection, explicit release/cancel, finite polling, host recovery |
 | Diagnostics/profile snapshot | `debug off|raw|decoded`, `motion-profile read|inspect|restore|forget`, `load ...`, `capture-read` | Installed traffic capture/decoder, typed position-profile codecs, bounded application adapters |
@@ -156,8 +157,9 @@ Successful stored reconciliation does not manufacture an acknowledgement.
 The snapshot is volatile application storage. A controller restart loses it
 while the motor can retain its staged parameters; the
 [console integration report](archive/reports/ess_release_23_2026-10-05.md) records such
-a bench case. Session restoration cannot recover an archive lost on host restart.
-Arbitrary archived parameter preparation remains a named gap below.
+a bench case. Host files preserve exported words separately; importing a
+[candidate](ess_position.md#candidate-profile-staging) still requires fresh
+session evidence. File bytes never replace the drive-read original snapshot.
 
 The local `wiring` command queries declarations or explicitly changes one
 terminal's declaration while idle. It supplies operation prerequisites without
@@ -171,9 +173,9 @@ assignment, and disabled outputs do not promise an electrical level.
 ## Coverage and explicit gaps
 
 [Finite scenarios](bench_scenarios.md) exercise these same typed routes
-and retain strict result/parser evidence. Same-session backup restoration closes
-a harness lifetime defect; it does not implement the arbitrary archived/native
-parameter gaps below or grant missing physical qualification.
+and retain strict result/parser evidence. Same-session restoration and candidate
+staging are implemented. Their tests do not close the remaining native gaps
+below or grant missing physical qualification.
 
 [The complete inventory](reference/ess_rs_operations.json) retains every ledger
 record and named choice. It separately classifies installed public helpers,

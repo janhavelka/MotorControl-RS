@@ -336,9 +336,10 @@ facts: run `group set` again. A write to a member drive expires that member.
 Moves and enables expire the member's state: run `group read state` again. Each
 address has its own 1 s post-enable wait, even after removal from the group.
 `group status` reports the retained deadline for each current member.
-A member drive that may have received a
-start-speed write this boot stays unready for group moves until the controller
-restarts; use the selected-axis route and its start-speed relation instead.
+A member whose start-speed relation was revoked stays unready for group moves
+until the controller restarts; use the selected-axis route and its relation
+instead. This includes possible start-speed/candidate writes and a changed
+observed start word. Clearing or redeclaring the group does not clear the guard.
 
 `result ID` inspects a group result. `release ID` of a group move also frees each
 member's move result, which `result CHILD_ID` shows until then. A delivered group

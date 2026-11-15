@@ -11,6 +11,10 @@ partial unicast evidence; wired-trigger qualification remains open. Multi-drive
 07 waits for owner-controlled power isolation. No new campaign is started by
 these corrections.
 
+The [independent M08/S02 audit](../../reports/2026-11-15_multi_drive_08_standalone_02_audit.md)
+rechecks enable waits and corrects candidate/group readiness. It adds no new
+physical qualification or member-request scope.
+
 The owner wants several ESS drives started together. If the drive accepts
 broadcast, the owner wants the library to use it. The owner also wants the drive
 inputs programmable as needed. Current facts are:

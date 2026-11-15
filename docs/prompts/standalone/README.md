@@ -16,6 +16,8 @@ checks the old findings against current code. Use its verdicts for remaining
 work; a historical finding is not proof that the defect still exists.
 The [independent 15/16 follow-up audit](../../reports/2026-11-15_standalone_15_16_audit.md)
 records the later result-lifetime and host-validation corrections.
+The [M08/S02 follow-up audit](../../reports/2026-11-15_multi_drive_08_standalone_02_audit.md)
+records the candidate/group readiness and pending-result corrections.
 
 N01, N02, N03, N04, N07 and the 27 planned switch methods are implemented. Their
 [delivery reports](../../reports/README.md) retain tests and CI evidence.

@@ -49,7 +49,10 @@ bool motionProfileBound(const MotionFacts& f) {
     return motionProfileEndpoint(f, f.profile) && f.profile.view.generation == f.axis.generation;
 }
 bool motionProfileBound(const App& a) { return motionProfileBound(selectedFacts(a)); }
-void revokePositionStartSpeedRelation(App& a) {
+void revokePositionStartSpeedRelation(App& a, uint8_t address) {
+    a.startSpeedRelationRevoked[address / 8] |= static_cast<uint8_t>(1U << (address % 8));
+    if (auto* member = groupMember(a, address)) member->startSpeedRelationRequired = true;
+    if (address != a.axis.target.address) return;
     a.positionStartSpeedRelationRequired = true;
     a.positionStartSpeedRelation = PositionStartSpeedRelation();
     a.movePrerequisites.startSpeedKnown = a.movePrerequisites.readinessQualified = false;

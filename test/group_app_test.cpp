@@ -730,6 +730,106 @@ void readSelectedFacts() {
         runUntil([] { return !app->owner.active() && !app->owner.pending() && !reading(*app) && !app->motionProfile.view.pending; });
     }
 }
+void testCandidateRelationSurvivesGroupChanges() {
+    // An equal candidate leaves the existing startup policy alone. A changed
+    // start word or any possible candidate write revokes it for that address.
+    for (unsigned scenario = 0; scenario < 4; ++scenario) {
+        fresh({1, 2});
+        drives[1].regs[0x0041] = drives[1].regs[0x0042] = drives[1].regs[0x0043] = 0;
+        readSelectedFacts(); readyGroup({1, 2});
+        Probe::ProfileCandidate candidate;
+        candidate.address = 1; candidate.wordOrder = app->configuration.wordOrder;
+        std::memcpy(candidate.words, app->motionProfile.view.current + 1, sizeof(candidate.words));
+        if (scenario == 1) drives[1].regs[0x0020] = 11; // Contradict the saved start word in the fresh prior read.
+        if (scenario >= 2) candidate.words[1] = 200;
+        if (scenario == 3) dropReply = [](const std::vector<uint8_t>& frame) { return frame[1] == 16; };
+        const auto from = frames.size();
+        uint32_t candidateId = 0;
+        assert(submitProfileCandidate(candidate, candidateId));
+        Probe::ProfileCandidateResult result;
+        runUntil([&] { return copyProfileCandidate(candidateId, result) && !result.stage.pending; });
+        assert(result.unchanged == (scenario < 2));
+        assert(result.stage.staged == (scenario != 3));
+        assert(result.stage.execution == (scenario < 2 ? ActionExecution::NOT_TRANSMITTED :
+            scenario == 2 ? ActionExecution::ACKNOWLEDGED : ActionExecution::UNKNOWN));
+        assert(count(isWrite, from) == (scenario < 2 ? 0U : 1U) && count(isAnyStart, from) == 0);
+        assert(drives[1].regs[0x0020] == (scenario == 1 ? 11 : 10));
+        assert(app->positionStartSpeedRelationRequired == (scenario != 0));
+        assert(groupMember(*app, 1)->startSpeedRelationRequired == (scenario != 0));
+        assert(!groupMember(*app, 2)->startSpeedRelationRequired);
+        assert(releaseProfileCandidate(candidateId));
+        if (scenario == 3) { dropReply = nullptr; recoverBus(40); }
+
+        readyGroup({1, 2});
+        if (scenario == 0) {
+            uint32_t move = 0;
+            assert(submitGroupMove(groupMove(Policy::LEAVE), move));
+            runUntil([&] { return terminalGroup(move); }, 2000000);
+            assert(groupOp(move).result.ok && releaseOperation(move));
+            continue;
+        }
+        for (unsigned declaration = 0; declaration < 2; ++declaration) {
+            if (declaration) { assert(clearGroup()); readyGroup({2, 1}); }
+            assert(groupMember(*app, 1)->startSpeedRelationRequired);
+            assert(!groupMember(*app, 2)->startSpeedRelationRequired);
+            const auto before = frames.size();
+            for (const auto mode : {Mode::STAGED, Mode::SEQUENTIAL}) {
+                uint32_t move = 777;
+                assert(!submitGroupMove(groupMove(Policy::LEAVE, mode), move) && move == 777);
+            }
+            pump(); assert(frames.size() == before);
+        }
+        // A different address still uses its own unrevoked startup policy.
+        readyGroup({2});
+        uint32_t move = 0;
+        const auto before = frames.size();
+        assert(submitGroupMove(groupMove(Policy::LEAVE), move));
+        runUntil([&] { return terminalGroup(move); }, 2000000);
+        assert(groupOp(move).result.ok && count(isAnyStart, before) == 1 && releaseOperation(move));
+    }
+}
+void testUnchangedCandidateInvalidatesContradictedGroupProfile() {
+    fresh({1, 2});
+    drives[1].regs[0x0041] = drives[1].regs[0x0042] = drives[1].regs[0x0043] = 0;
+    readSelectedFacts(); readyGroup({1, 2});
+    auto& member = *groupMember(*app, 1);
+    const auto historical = member.profile.view;
+    const auto generation = member.axis.generation;
+    Probe::ProfileCandidate candidate;
+    candidate.address = 1; candidate.wordOrder = app->configuration.wordOrder;
+    std::memcpy(candidate.words, historical.current + 1, sizeof(candidate.words));
+    candidate.words[1] = drives[1].regs[0x0022] = 200;
+    candidate.words[3] = drives[1].regs[0x0024] = 75;
+    const auto from = frames.size();
+    uint32_t candidateId = 0;
+    assert(submitProfileCandidate(candidate, candidateId));
+    Probe::ProfileCandidateResult result;
+    runUntil([&] { return copyProfileCandidate(candidateId, result) && !result.stage.pending; });
+    assert(result.stage.staged && result.unchanged && result.stage.execution == ActionExecution::NOT_TRANSMITTED);
+    assert(count(isWrite, from) == 0 && result.before[2] == 200 && result.before[4] == 75);
+    assert(!memberCurrent(*app, member) && !member.profile.view.ok && !member.profile.view.restored);
+    assert(memberCurrent(*app, *groupMember(*app, 2)));
+    assert(member.axis.generation == generation && member.profile.view.saved);
+    assert(!member.startSpeedRelationRequired && !app->positionStartSpeedRelationRequired);
+    assert(!std::memcmp(member.profile.view.original, historical.original, sizeof(historical.original)));
+    assert(!std::memcmp(member.profile.view.current, historical.current, sizeof(historical.current)));
+    assert(member.profile.view.rxLength == historical.rxLength &&
+        !std::memcmp(member.profile.view.rx, historical.rx, historical.rxLength));
+    assert(member.profile.view.closureQualified == historical.closureQualified &&
+        member.profile.view.closureEarliestUs == historical.closureEarliestUs &&
+        member.profile.view.closureLatestUs == historical.closureLatestUs);
+    assert(releaseProfileCandidate(candidateId));
+    uint32_t move = 777;
+    const auto before = frames.size();
+    for (const auto mode : {Mode::STAGED, Mode::SEQUENTIAL})
+        assert(!submitGroupMove(groupMove(Policy::LEAVE, mode), move) && move == 777);
+    pump(); assert(frames.size() == before);
+    readyGroup({1});
+    assert(groupMember(*app, 1)->profile.view.current[2] == 200);
+    assert(submitGroupMove(groupMove(Policy::LEAVE), move));
+    runUntil([&] { return terminalGroup(move); }, 2000000);
+    assert(groupOp(move).result.ok && drives[1].regs[0x0022] == 200 && count(isAnyStart, before) == 1);
+}
 void testRemovedMemberSelectedWaitAndExpiry() {
     fresh(); readyGroup({1, 2}); enableDrive(1, 11); enableDrive(2, 12);
     const auto first = app->enableWaits[1], second = app->enableWaits[2];
@@ -1036,6 +1136,8 @@ int main(int argc, char** argv) {
         return 0;
     }
     testEnableWaitSurvivesGroupChanges();
+    testCandidateRelationSurvivesGroupChanges();
+    testUnchangedCandidateInvalidatesContradictedGroupProfile();
     testRemovedMemberSelectedWaitAndExpiry();
     testEnableWaitCapacityAndAddressBounds();
     testPossibleEnableKeepsWaitAndEvidence();

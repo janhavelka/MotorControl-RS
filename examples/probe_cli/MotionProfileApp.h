@@ -193,7 +193,7 @@ void serviceMotionProfile(App& a, App::MotionProfileState& session, uint64_t now
     if (&session == &a.motionProfile &&
         ((view.saved && view.current[0] != words[0]) ||
          (a.positionStartSpeedRelation.target.id && a.positionStartSpeedRelation.rawStartSpeed != words[0]))) {
-        revokePositionStartSpeedRelation(a);
+        revokePositionStartSpeedRelation(a, view.address);
     }
     std::memcpy(view.current, words, sizeof(words));
     if (&session == &a.motionProfile) {
