@@ -13,7 +13,7 @@ and its bench runs on drives 1, 2 and 4.
 - **Start spread is about 38 ms over three drives.** Every member stages its own
   move before its start. Consecutive start frames were 17.0–17.2 ms apart
   (drive 1 to 2) and 20.8–21.2 ms apart (drive 2 to 4). A staging-only path
-  ([standalone 02](../prompts/standalone/02_profile_staging.md)) would shorten it.
+  ([standalone 02](../archive/prompts/standalone/02_profile_staging.md)) would shorten it.
 - **Group stops are confirmed on every member.**
   - 10 of 10 group stops (5 normal, 5 fast) stopped all three drives mid-move.
   - Each member's stop was acknowledged and its standstill observed.

@@ -1,15 +1,16 @@
 # 02 - Stage a position profile without starting motion
 
-Software delivered on 15 November 2026; see the [stage table](README.md#stage-status)
-and [verification report](../../reports/2026-11-15_standalone_02_profile_staging.md).
-The instructions below record the delivered scope. Keep the short board
-regression pending under stage 14 until the recorded drive responds.
+Completed software instructions, archived 15 November 2026. Do not dispatch
+again. See the [verification report](../../../reports/2026-11-15_standalone_02_profile_staging.md).
+The short board regression remains pending under
+[stage 14](../../../prompts/standalone/14_bench_regression.md) until the drive responds.
 
-Read [README](README.md), [execution contract](execution_contract.md) and the
-[audit finding map](audit.md) together with this prompt.
+Read [README](../../../prompts/standalone/README.md),
+[execution contract](../../../prompts/standalone/execution_contract.md) and the
+[audit finding map](../../../prompts/standalone/audit.md) together with this prompt.
 
 Finding: **N03**. N04's start-speed setter is already
-[implemented](../../reports/2026-10-29_ess_position_start_speed.md).
+[implemented](../../../reports/2026-10-29_ess_position_start_speed.md).
 
 ## Entry gate
 

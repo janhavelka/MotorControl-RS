@@ -146,7 +146,7 @@ Hardware qualification is NOT RUN. Source scales, method 18,
 negative methods, nonzero offsets, physical switches, drive faults and electrical
 timing retain their existing owners.
 
-Next software work is [standalone 02](../prompts/standalone/02_profile_staging.md)
+Next software work is [standalone 02](../archive/prompts/standalone/02_profile_staging.md)
 candidate/archive import. [Standalone 14](../prompts/standalone/14_bench_regression.md)
 owns the short regression on the new image: fresh configuration/state, clear
 qualification lifecycle, low-rate 35 then 33/34 with supplied facts, explicit

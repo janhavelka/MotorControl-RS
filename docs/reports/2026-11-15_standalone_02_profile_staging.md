@@ -1,12 +1,13 @@
 # Standalone 02: profile candidates and archives, 15 November 2026
 
-Software implementation is ready; final verification is in progress. New board
+Software implementation and verification are complete. New board
 regression is NOT RUN: the recorded board answered, but the drive did not.
 This closes N03 in software without changing the release 1.0.0 artifact or
 claiming physical qualification for the new route.
 
 ## Delivered behavior
 
+Implementation: `0e3b559e5bf6d7affb71ca16974747e76f550250`.
 Baseline: `1c1a95e`, fetched and synchronized before edits. The installed typed
 profile builder and prepared-move staging already existed. This change adds
 `submitProfileCandidate`, `copyProfileCandidate` and `releaseProfileCandidate`
@@ -59,6 +60,9 @@ No framework or FieldCore type enters the core.
 
 Parallel reviews covered owner/evidence lifetime, vendor/range/coverage rules
 and host/console handling. The lead checked findings against code and tests.
+The final owner/lifetime rereview found no further confirmed defect. It checked
+cancellation across the prior-read handoff, possible-write invalidation, retained
+results, raw snapshot history and unknown-order restore refusal.
 
 | Finding | Correction and regression |
 | --- | --- |
@@ -88,7 +92,11 @@ unchanged, cancellation, lost/malformed replies and preserved snapshot history.
 Archive tests cover host restart, untrusted schema/type/size data, advisory start
 speed, optional identity, no-write mismatches and retained results.
 
-- Fresh quick verifier: pending final result.
+- Fresh quick verifier: PASS, 95 registered suites and all 15 checks in
+  `build/standalone02_release_verify`. Source/install consumers and strict public
+  headers pass. The initial failed registration-fixture run is retained.
+- Python host: 342 tests PASS, plus 18 real C++ output records checked across
+  both frontends. Inventory negative fixtures: 37 tests PASS.
 - Doxygen: PASS.
 - Operation inventory and negative fixtures: PASS, 55 producing operations,
   145 classified installed functions, four named gaps. N03's stable
@@ -96,7 +104,29 @@ speed, optional identity, no-write mismatches and retained results.
   historical owner `09/11` is retained in its reason. Shared register counts are
   recomputed, not subtracted: 172 implemented writes, three partial write
   registers and 18 guarded pair writes remain.
-- Exact-commit firmware CI: pending.
+- Exact-commit CI: [run 43722114454](https://github.com/janhavelka/MotorControl-RS/actions/runs/43722114454)
+  completed successfully on the implementation commit above. GCC and Clang each
+  passed all 15 checks. Arduino passed all four environments. Native IDF passed
+  the S3 app, S3/S2 core consumers and portable S2 application fixture. All four
+  jobs ran 95 suites. This is build evidence, not physical qualification.
+
+Downloaded artifacts were checked against GitHub's SHA-256 digests and their
+terminal summaries. IDs: `native-gcc` 14164649599, `native-clang` 14164529847,
+`arduino` 14164983103 and `native-idf` 14165231622.
+
+The [evidence archive](2026-11-15_standalone_02_profile_staging_evidence.zip)
+retains failed/passing local logs, real console records, source hashes, layout
+commands/results, bench traffic and all four CI artifacts with their metadata.
+Archive SHA-256:
+`d614fe4c6319ff02a41982c8939d9bb46abf3273d4d68c1e3ca54ec2ba39e3ae`.
+
+Local core package SHA-256:
+`7ada1538ef83d7e4dfb77081b7faf7aa1267b8bd500abc7d72f7351196bfbc67`.
+No tag or release was created.
+Completed software instructions are [archived](../archive/prompts/standalone/02_profile_staging.md).
+The active stage 14 prompt retains the pending physical checks. The final
+closeout changes only documentation and evidence; it does not change the
+implementation verified above.
 
 Compile-only layout measurements used baseline `1c1a95e` and the current source,
 with the same fake platform headers for each compiler. ESP32-S3 used GCC 14.2.0

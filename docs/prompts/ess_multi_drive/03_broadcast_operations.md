@@ -16,7 +16,7 @@ and command words, a GO outcome, and the existing D7 population rules.
 
 The multi-drive 02 group and prepared-move staging are delivered. Reuse
 `stagePositionMove`, `copyPositionStage` and `PositionStageApp.h`; completion
-of [standalone 02](../standalone/02_profile_staging.md)'s separate archive and
+of [standalone 02](../../reports/2026-11-15_standalone_02_profile_staging.md)'s separate archive and
 candidate workflow is not a prerequisite for this existing capability.
 
 ## Inspect before editing

@@ -58,7 +58,16 @@ earlier minima do not qualify a changed image.
    route: record them as drive RAM changes until a motor power cycle, and do not
    claim restoration. Switch methods need a real fixture and are outside this
    stage.
-5. `motion-profile start-speed` latches move admission until
+5. Candidate profiles from [standalone 02](../../reports/2026-11-15_standalone_02_profile_staging.md):
+   export the current six-word profile through the ordinary host route. Stage
+   the equal archive and verify `unchanged` with no write. Then stage one bounded
+   changed candidate, retain its result, check five-word readback and unchanged
+   `0x0020`. After fresh configuration/state reads, explicitly restore and verify
+   the drive-read original. No start, EEPROM save, automatic rollback or replay
+   is allowed. Inspect/release results explicitly. A possible candidate write
+   revokes the start-speed relation; refresh evidence and install the actual
+   relation before any dependent move.
+6. `motion-profile start-speed` latches move admission until
    `motion-profile start-speed relation RAW_WORD MIN_RPM`; test it last.
 
 ## Bench rules for images without the stop fixes
@@ -77,7 +86,8 @@ no longer apply; use the stop behavior in the current CLI contract.
 
 Record a result for `position_interrupt_stored`, `home_parameters`,
 `home_zero_offset`, `home_start`, `homing_auxiliary_write` and
-`position_start_speed_write`, using NOT RUN with the reason where a step did not
+`position_start_speed_write` and `position_profile_candidate_staging`, using
+NOT RUN with the reason where a step did not
 execute. Keep raw traffic, timing, memory readings, restored settings and settings
 left changed. Follow
 AGENTS for a failing scenario, and never replay an uncertain write. A short

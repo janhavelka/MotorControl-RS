@@ -60,7 +60,7 @@ post-enable wait; their limits remain in the [backlog](backlog.md).
 ## Next delivery blocks
 
 1. **Bench-check the delivered software.**
-   [Standalone 02](prompts/standalone/02_profile_staging.md) delivers the ordinary
+   [Standalone 02](reports/2026-11-15_standalone_02_profile_staging.md) delivers the ordinary
    candidate/archive route. [15 stop/recovery](reports/2026-11-15_standalone_15_stop_recovery.md)
    and [16 evidence/qualification](reports/2026-11-15_standalone_16_evidence_qualification.md)
    are software complete; their new-image bench regression is still NOT RUN.

@@ -26,8 +26,8 @@ qualification belongs to multi-drive 06.
 `stagePositionMove` and `PositionStageApp.h` already stage a prepared finite
 move without starting it. STAGED group moves use this capability for every
 member before issuing starts. SEQUENTIAL remains an explicit alternative.
-[Standalone 02](../standalone/02_profile_staging.md) owns the separate remaining
-archive/candidate-import and console work; it is not a prerequisite for the
+[Standalone 02](../../reports/2026-11-15_standalone_02_profile_staging.md) delivers
+the separate archive/candidate console route; it is not a prerequisite for the
 delivered group staging path.
 
 ## Inspect before editing

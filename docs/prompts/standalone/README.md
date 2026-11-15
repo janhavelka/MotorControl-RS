@@ -36,7 +36,7 @@ keeps those distinctions. Use the audit's Current owner column; Next stage is hi
 ## Next work
 
 1. Run the short [14 bench regression](14_bench_regression.md) on the new image,
-   including [02: candidate staging](02_profile_staging.md). Its ordinary archive
+   including [02: candidate staging](../../reports/2026-11-15_standalone_02_profile_staging.md). Its ordinary archive
    route is software complete; the drive did not answer the latest preflight.
 2. Include the completed stop/evidence changes in that regression.
    [15 stop/recovery](../../reports/2026-11-15_standalone_15_stop_recovery.md) and
@@ -52,7 +52,7 @@ keeps those distinctions. Use the audit's Current owner column; Next stage is hi
 | Stage | Deliverable | Dependencies / starting gate | Status |
 | --- | --- | --- | --- |
 | 01 | [Native velocity and homing parameter reads](../../ess_reads.md) | Public API and ordinary console routes delivered | COMPLETE |
-| 02 | [Position candidate/archive staging](02_profile_staging.md) | Candidate staging leaves `0x0020` unchanged. | COMPLETE (software): public submit/copy/release, ordinary console and host archives, shared owner and retained results. New board regression NOT RUN after NO_RESPONSE ([report](../../reports/2026-11-15_standalone_02_profile_staging.md)) |
+| 02 | [Position candidate/archive staging](../../reports/2026-11-15_standalone_02_profile_staging.md) | Candidate staging leaves `0x0020` unchanged; original instructions [archived](../../archive/prompts/standalone/02_profile_staging.md). | COMPLETE (software): 95 suites, package/Doxygen and exact-commit GCC/Clang/Arduino/IDF CI passed. Public API, console and host archives retain their results. New board regression NOT RUN after NO_RESPONSE. |
 | 03 | [Remaining position replacement evidence](03_position_interrupt.md) | Stored retrigger delivered; dispatch remaining work as "N05 evidence" | PARTIAL |
 | 04 | [Paired values and wire forms](04_paired_values.md) | Vendor clarification, or the one fixture-only `0x0060/2` experiment authorized by D4 | NOT STARTED |
 | 05 | [Unresolved homing semantics and physical qualification](05_homing.md) | Reads, auxiliary and 27 switch methods delivered; stage 04 for nonzero offsets; real fixture for switch methods | PARTIAL: 33/34/35 tested on the free shaft; unresolved methods, offsets and switch fixtures remain |

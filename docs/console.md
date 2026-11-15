@@ -354,7 +354,9 @@ five words and one checked readback, no start. A matching readback records the
 remembered words, so a following `submitMove(..., MoveSetup::USE_STORED)` sends
 only the start. A stop cancels staging, including a final readback already on
 the wire: its evidence is retained but it cannot publish remembered words.
-It has no console route yet ([standalone 02](prompts/standalone/02_profile_staging.md)).
+Prepared-move staging remains programmatic. Archive candidates use
+`motion-profile stage`; that route retains its own result and does not publish
+a prepared-move witness. See the [candidate contract](ess_position.md#candidate-profile-staging).
 
 Storage: the group adds one move record per member and two stop records per
 member to the application (PSRAM); every dependent quota is sized from the

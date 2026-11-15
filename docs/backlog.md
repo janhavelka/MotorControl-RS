@@ -47,7 +47,7 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   before extending it; [standalone 03](prompts/standalone/03_position_interrupt.md)
   owns that work.
 - [x] Stage validated position-profile candidates and host archives without motion
-  ([standalone 02](prompts/standalone/02_profile_staging.md)). Fresh session reads,
+  ([standalone 02](reports/2026-11-15_standalone_02_profile_staging.md)). Fresh session reads,
   one retained result slot and the shared owner preserve deadlines and evidence.
   `0x0020` remains separate; no automatic rollback or move replay.
 - [ ] Run the candidate/export/import short board regression on the new image.

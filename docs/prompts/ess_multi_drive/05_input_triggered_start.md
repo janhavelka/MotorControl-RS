@@ -11,7 +11,7 @@ Finding: **M04**, including the negative PV speed encoding.
 
 - Multi-drive 04 delivered.
 - Function 7 needs the checked profile write without a start from
-  [standalone 02](../standalone/02_profile_staging.md). The application already
+  [standalone 02](../../reports/2026-11-15_standalone_02_profile_staging.md). The application already
   provides `stagePositionMove` and `copyPositionStage`; use that production
   path. Its separate console/archive-import work is not an entry gate here.
 - PT segments (function 12) also need stored-target writes from
