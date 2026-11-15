@@ -11,8 +11,9 @@ Finding: **M02**.
 The common-relative group implementation and staged starts are delivered, with
 three-drive evidence in the [13 November report](../../reports/2026-11-13_multi_drive_02_drive_group.md).
 The original requirement for different member targets is still open. M02 is
-PARTIAL against that full requirement. Continue with
-[multi-drive 08](08_enable_wait_lifetime.md) for enable-wait lifetime and
+PARTIAL against that full requirement. The
+[multi-drive 08](08_enable_wait_lifetime.md) software correction is delivered;
+its board regression remains pending. Continue software work with
 [multi-drive 09](09_member_motion_requests.md) for member-specific requests.
 Do not rebuild the delivered group or treat its finite bench results as missing.
 
@@ -35,7 +36,7 @@ Paths are relative to the repository root. Read implementations, callers and
 tests, not just declarations:
 
 examples/probe_cli/GroupApp.h, PositionStageApp.h, ProbeApp.h, ProbeApp.cpp (`selectTarget` for `useaddr`,
-`enableSettleAddress`, `axisReserved`, the `STOP_RECORDS` urgent quota),
+`enableWaits`, `enableSettling`, `axisReserved`, the `STOP_RECORDS` urgent quota),
 CommunicationApp.h (binding generation), MotionReadinessApp.h,
 SimpleMotion.h, SimpleMotionApp.h, StateCache.h, ProbeConsole.cpp/.h,
 ConsoleText.cpp; examples/common/RtuBusOwner.h and its tests; docs/bus_owner.md,

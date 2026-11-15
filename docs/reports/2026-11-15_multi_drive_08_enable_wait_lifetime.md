@@ -1,7 +1,7 @@
 # Multi-drive 08: enable-wait lifetime, 15 November 2026
 
-Software correction delivered. Final verification and commit evidence are being
-collected. Board regression is NOT RUN: the read-only preflight returned
+Software complete at `a670c09670164ace09a029f1428fc542d344ec1a`. Local checks
+and all four exact-commit CI jobs pass. Board regression is NOT RUN: the read-only preflight returned
 NO_RESPONSE. HW-15 remains open; the one-second host policy is unchanged.
 
 ## Defect and correction
@@ -81,11 +81,27 @@ reservation and eviction rules; the full bounded address table avoids that state
 - Doxygen: PASS. Repository references/docs/metadata and checked operation
   inventory: PASS. Inventory remains 54 operations, 145 classified public
   functions and five named gaps; this lifetime fix adds no operation.
-- Exact-commit firmware CI: pending.
+- [CI run 43718003688](https://github.com/janhavelka/MotorControl-RS/actions/runs/43718003688)
+  verifies implementation commit `a670c09670164ace09a029f1428fc542d344ec1a`.
+  GCC, Clang, Arduino and IDF jobs all completed successfully. Each ran all 94
+  suites and package consumers. Arduino built `bench_s3_units`, `bench_s3_probe`,
+  `bench_s3_load_poll` and `bench_s3_load_timer`; IDF 5.5.5 built the S3 app,
+  S3 core, S2 core and S2 portable consumer.
 
-The final evidence archive will include the original failing diagnostic, source
-hashes, focused/quick verification, layout commands/results, CI artifacts and
-the read-only bench log.
+| CI artifact | ID |
+| --- | --- |
+| native-gcc | 14162883997 |
+| native-clang | 14163850541 |
+| arduino | 14163232842 |
+| native-idf | 14163641847 |
+
+All four downloaded artifact digests match GitHub metadata and contain PASS
+summaries. The [evidence archive](2026-11-15_multi_drive_08_enable_wait_lifetime_evidence.zip)
+retains the original failing diagnostic, source hashes, focused/quick logs,
+layout commands/results, CI metadata/artifacts and the read-only bench log.
+Archive SHA-256: `0152c9b2a7c110849dbfa299e8ce0729594704cbfc96796c94817978a36894fc`.
+The final closeout changes documentation/evidence only and uses local
+documentation checks.
 
 ## Bench and remaining work
 

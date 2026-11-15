@@ -19,8 +19,8 @@ Read `ProbeApp.cpp` (enable-result handling, `enableSettling`, `selectTarget`),
 `ProbeApp.h` and `test/group_app_test.cpp`. Reinspect the current FieldCore
 motor module and owner read-only. Inspect CI and reuse its verification commands.
 
-Enable waits currently live in each group member and one legacy last-address
-slot. Reconstructing or clearing the group discards member waits while preserving
+At baseline `28e5352`, enable waits lived in each group member and one legacy
+last-address slot. Reconstructing or clearing the group discarded member waits while preserving
 only that last address. Reproduce with two enabled addresses and a redeclaration
 that omits the last-enabled member. Check both selected-axis and group admission
 before the earlier member's original wait expires. A host selection must not

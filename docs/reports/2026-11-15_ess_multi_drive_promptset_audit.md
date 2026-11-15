@@ -1,8 +1,8 @@
 # ESS multi-drive promptset revalidation, 15 November 2026
 
 **Status: PROCESSED on 15 November 2026.** Finding dispositions and prompt
-corrections were delivered in commit `53678eb`. The remaining implementation
-and hardware work documented below has the dated correction noted here.
+corrections were delivered in commit `53678eb`. Follow-up implementation status
+is recorded below; other open work remains.
 
 **Follow-up, 15 November:** multi-drive 08 fixes M02's enable-wait lifetime defect.
 The [implementation report](2026-11-15_multi_drive_08_enable_wait_lifetime.md)
