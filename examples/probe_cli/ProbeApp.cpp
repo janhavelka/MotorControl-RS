@@ -49,17 +49,19 @@ constexpr uint32_t STOP_RECOVERY_US = REQUEST_US + RECOVERY_BUDGET_US;
 // 0.6 s after an enable frame, with no status bit showing readiness. Not documented.
 constexpr uint32_t ENABLE_SETTLE_US = 1000000;
 constexpr std::size_t REQUEST_CAPACITY = 8, ORDINARY_PENDING = 4, STOP_RECORDS = 2, OUTPUT_LINES = 8;
+constexpr std::size_t STOP_ESCALATIONS = 2;
 // Drive-group pools, sized from Probe::GROUP_CAPACITY. One move record per
 // member, beside the ordinary results, so every member holds its move while
 // ordinary reads keep their eight. One stop and one escalation per member, beside
-// the two stop records of explicit `stop`. The owner's result and urgent quotas
+// the four records of explicit `stop`. The owner's result and urgent quotas
 // cover every pool, so no pool can starve another. The ordinary queue stays
 // ORDINARY_PENDING deep: member polls are admitted oldest-eligible first, so the
 // queue delays a member's poll by a few transactions and never starves it.
 constexpr std::size_t GROUP_MOVE_RECORDS = Probe::GROUP_CAPACITY;
 constexpr std::size_t GROUP_STOP_RECORDS = 2 * Probe::GROUP_CAPACITY;
-constexpr std::size_t URGENT_RECORDS = STOP_RECORDS + GROUP_STOP_RECORDS;
-constexpr std::size_t GROUP_STOP_FIRST = REQUEST_CAPACITY + 1 + STOP_RECORDS;
+constexpr std::size_t URGENT_RECORDS = STOP_RECORDS + STOP_ESCALATIONS + GROUP_STOP_RECORDS;
+constexpr std::size_t STOP_ESCALATION_FIRST = REQUEST_CAPACITY + 1 + STOP_RECORDS;
+constexpr std::size_t GROUP_STOP_FIRST = STOP_ESCALATION_FIRST + STOP_ESCALATIONS;
 constexpr std::size_t GROUP_MOVE_FIRST = GROUP_STOP_FIRST + GROUP_STOP_RECORDS;
 constexpr std::size_t RECORD_COUNT = GROUP_MOVE_FIRST + GROUP_MOVE_RECORDS;
 constexpr std::size_t RESULT_SLOTS = REQUEST_CAPACITY + GROUP_MOVE_RECORDS + URGENT_RECORDS;
@@ -155,6 +157,9 @@ struct App {
         bool stopBeforeRecoveryKnown = false;
         Rtu::Completion stopBeforeRecovery; ///< Settled zero-byte attempt, copied before owner release.
         ESS::ActionContext action;
+        bool programmaticAction = false, stopEscalation = false;
+        uint32_t replacedOperationId = 0, releaseAfterStopId = 0;
+        ReleaseAfterStopPrerequisites releasePrerequisites;
         bool programmaticMove = false;
         ESS::MoveContext move;
         ESS::StoredPositionQualification storedPosition; ///< Original admission provenance; qualified only after its checked trigger.
@@ -469,7 +474,7 @@ bool terminal(const App& a, const App::Record& record) {
     }
     return false;
 }
-bool axisReserved(const App& a, uint8_t address = 0) {
+bool axisReserved(const App& a, uint8_t address = 0, bool includeHistory = true) {
     if (a.simple.view.pending && !a.simple.admitting && (!address || address == a.simple.view.address)) return true;
     // A staging write without a start still owns its drive until it settles.
     if (a.stage.view.pending && (!address || a.stage.view.target.address == address)) return true;
@@ -478,11 +483,11 @@ bool axisReserved(const App& a, uint8_t address = 0) {
     if ((a.motionProfile.view.pending || a.motionProfile.view.restoreUnsettled) &&
         (!address || a.motionProfile.view.address == address)) return true;
     // Recovery changes correlation generation, not the physical target's uncertainty.
-    if (address) {
+    if (includeHistory && address) {
         if (a.actionConflicts[address / 8] & (1U << (address % 8))) return true;
-    } else for (const auto value : a.actionConflicts) if (value) return true;
+    } else if (includeHistory) for (const auto value : a.actionConflicts) if (value) return true;
     for (const auto& record : a.records)
-        if (record.axisReserved && (!address || record.address == address)) return true;
+        if (record.axisReserved && (includeHistory || !terminal(a, record)) && (!address || record.address == address)) return true;
     return false;
 }
 bool acting(const App& a) {
@@ -1022,32 +1027,73 @@ bool confirmedStop(const App::Record& record) {
 // acknowledges a delivered confirmed stop, then uses a free slot, then overwrites
 // the oldest delivered failed stop (counted). A running or undelivered stop stays.
 // The selected-address pool and the group pool follow the same rule.
-App::Record* stopRecord(App& a, bool group = false) {
+App::Record* availableStopRecord(App& a, std::size_t first, std::size_t count) {
     App::Record* available = nullptr;
     App::Record* oldest = nullptr;
-    const std::size_t first = group ? GROUP_STOP_FIRST : REQUEST_CAPACITY + 1;
-    for (std::size_t i = first; i < first + (group ? GROUP_STOP_RECORDS : STOP_RECORDS); ++i) {
+    App::Record* confirmed = nullptr;
+    for (std::size_t i = first; i < first + count; ++i) {
         App::Record& candidate = a.records[i];
         if (!candidate.operationId) { if (!available) available = &candidate; continue; }
         if (!terminal(a, candidate) || !candidate.delivered) continue;
-        if (confirmedStop(candidate)) return &candidate;
+        if (confirmedStop(candidate)) {
+            if (!confirmed || candidate.operationId < confirmed->operationId) confirmed = &candidate;
+            continue;
+        }
         if (!oldest || candidate.operationId < oldest->operationId) oldest = &candidate;
     }
-    return available ? available : oldest;
+    return confirmed ? confirmed : available ? available : oldest;
+}
+App::Record* stopRecord(App& a, bool group = false, uint8_t address = 0,
+                      MotorControlRS::StopBehavior behavior = MotorControlRS::StopBehavior::UNSPECIFIED) {
+    if (group) return availableStopRecord(a, GROUP_STOP_FIRST, GROUP_STOP_RECORDS);
+    // One undelivered escalation per address leaves the other reserve usable.
+    for (std::size_t i = STOP_ESCALATION_FIRST; i < GROUP_STOP_FIRST; ++i)
+        if (a.records[i].operationId && a.records[i].address == address &&
+            (!terminal(a, a.records[i]) || !a.records[i].delivered)) return nullptr;
+    if (auto* primary = availableStopRecord(a, REQUEST_CAPACITY + 1, STOP_RECORDS)) return primary;
+    if (behavior != MotorControlRS::StopBehavior::DIRECT) return nullptr;
+    for (std::size_t i = REQUEST_CAPACITY + 1; i < STOP_ESCALATION_FIRST; ++i)
+        if (a.records[i].operationId && a.records[i].address == address &&
+            a.records[i].action.request.stop.behavior == MotorControlRS::StopBehavior::CONFIGURED_DECELERATION)
+            return availableStopRecord(a, STOP_ESCALATION_FIRST, STOP_ESCALATIONS);
+    return nullptr;
+}
+bool failedTransmittedStop(App& a, uint32_t id) {
+    const auto* record = findRecord(a, id);
+    return record && record->kind == App::OperationKind::ACTION && !record->groupChild &&
+        record->action.request.kind == MotorControlRS::ActionKind::STOP &&
+        record->action.state == MotorControlRS::ActionState::FAILED &&
+        (record->action.execution == MotorControlRS::ActionExecution::UNKNOWN ||
+         record->action.execution == MotorControlRS::ActionExecution::ACKNOWLEDGED) &&
+        record->action.completion == MotorControlRS::ActionCompletion::NOT_OBSERVED &&
+        (a.actionConflicts[record->address / 8] & (1U << (record->address % 8))) &&
+        record->action.writeEvidence.txAccepted != 0 && record->address == a.axis.target.address &&
+        sameTuple(record->serialTuple, a.serial.active);
+}
+bool releaseFactsValid(const App& a, const ReleaseAfterStopPrerequisites& facts, uint64_t now) {
+    return facts.target.id == a.axis.target.id && facts.target.address == a.axis.target.address &&
+        facts.target.generation == a.bindingGeneration && facts.configurationGeneration == a.axis.generation &&
+        facts.configurationGeneration && facts.qualifiedUs <= now &&
+        (!a.observationAgeUs() || now - facts.qualifiedUs <= a.observationAgeUs()) &&
+        facts.mechanicsPermitRelease && facts.externalTriggersInhibited;
 }
 // groupStop: one member stop of a group operation, from the group pool. A declared
 // member is a stop target like the selected address, even with stale facts.
 Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
-                            const MotorControlRS::ActionRequest& request, uint32_t& operationId, bool groupStop) {
+                            const MotorControlRS::ActionRequest& request, uint32_t& operationId, bool groupStop,
+                            uint32_t failedStopId = 0, const ReleaseAfterStopPrerequisites* releaseFacts = nullptr) {
     using namespace MotorControlRS;
     const bool scanStop = a.discovery.owned && request.kind == ActionKind::STOP &&
         address == a.discovery.originalTarget.address;
     if (a.owner.commissioningOwned() || (a.discovery.owned && !scanStop)) return Probe::Action::BUSY;
+    if (scanStop && a.discovery.phase == Probe::DiscoveryPhase::INTERLOCK) return Probe::Action::RECOVERY_REQUIRED;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
     if (!a.nextOperationId) return Probe::Action::IDS_EXHAUSTED;
     const uint64_t now = uart.sample();
     const bool stop = request.kind == ActionKind::STOP;
+    if (releaseFacts && (request.kind != ActionKind::RELEASE || !failedTransmittedStop(a, failedStopId) ||
+        !releaseFactsValid(a, *releaseFacts, now))) return Probe::Action::QUALIFICATION_REQUIRED;
     if (groupStop && (!stop || scanStop || !groupMember(a, address))) return Probe::Action::INVALID;
     if (!stop && groupSequencing(a)) return Probe::Action::BUSY;
     ActionRequest admittedRequest = request;
@@ -1079,16 +1125,16 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
     ESS::ActionContext preparedContext;
     const Status prepared = ESS::prepareAction(preparedContext, target, a.nextOperationId, admittedRequest, now, deadline, actionOptions);
     if (!prepared) return prepared.code == Err::UNSUPPORTED ? Probe::Action::UNSUPPORTED : Probe::Action::INVALID;
-    // A transport fault never refuses a stop: it is held for one bounded recovery.
-    // A discovery scan owns its tuple and keeps its explicit recover/restore route.
+    // Ordinary stops may wait for one recovery. Discovery owns its tuple and
+    // must first complete its explicit recovery/restoration contract.
     const bool faulted = a.owner.needsRecovery() || uart.needsRecovery();
     if (faulted && (!stop || scanStop)) return Probe::Action::RECOVERY_REQUIRED;
     const bool selectedStop = stop && !scanStop && (address == a.axis.target.address || groupStop);
     if (!(a.knownTargets[address / 8] & (1U << (address % 8))) && !selectedStop &&
         !(scanStop && a.discoveryOriginalKnown)) return Probe::Action::UNAVAILABLE;
-    if (!stop && axisReserved(a, address)) return Probe::Action::AXIS_CONFLICT;
+    if (!stop && axisReserved(a, address, releaseFacts == nullptr)) return Probe::Action::AXIS_CONFLICT;
     App::Record* record = nullptr;
-    if (stop) record = stopRecord(a, groupStop);
+    if (stop) record = stopRecord(a, groupStop, address, request.stop.behavior);
     else for (std::size_t i = 0; i < REQUEST_CAPACITY; ++i)
         if (!a.records[i].operationId) { record = &a.records[i]; break; }
     if (!record) return Probe::Action::RESULTS_FULL;
@@ -1096,6 +1142,7 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
     if (!ESS::nextAction(preparedContext, now, work) || work.kind != ESS::ActionWork::TRANSACTION)
         return Probe::Action::FAILED;
     const bool replacingStop = record->operationId != 0;
+    const uint32_t replacedOperationId = record->operationId;
     const bool overwritingEvidence = replacingStop && !confirmedStop(*record);
     if (!replacingStop) record->action = preparedContext;
     const auto admitted = scanStop || faulted ? Rtu::BusAdmission::ACCEPTED : admitActionStep(a, *record, work, now);
@@ -1113,6 +1160,13 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
         record->action = preparedContext;
     }
     record->stopHeld = faulted;
+    if (record->stopHeld && a.owner.recovering()) {
+        record->stopRecoveryId = a.recovery.id;
+        record->stopRecoveryOperationId = a.recovery.operationId;
+    }
+    record->stopEscalation = stop && !groupStop && record >= &a.records[STOP_ESCALATION_FIRST];
+    record->replacedOperationId = replacedOperationId;
+    if (releaseFacts) { record->releaseAfterStopId = failedStopId; record->releasePrerequisites = *releaseFacts; }
     record->groupChild = groupStop;
     record->serialTuple = scanStop ? a.discovery.originalTuple : a.serial.active;
     record->serialGeneration = scanStop ? a.discovery.originalSerialGeneration : a.serial.generation;
@@ -1143,6 +1197,28 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
 Probe::Action startAction(void* context, uint32_t commandId, uint8_t address,
                           const MotorControlRS::ActionRequest& request, uint32_t& operationId) {
     return startActionIn(*static_cast<App*>(context), commandId, address, request, operationId, false);
+}
+Probe::Action inspectRelease(App& a, uint32_t stopId, ReleaseAfterStopPrerequisites& output) {
+    if (!failedTransmittedStop(a, stopId)) return Probe::Action::INVALID;
+    if (a.owner.needsRecovery() || uart.needsRecovery() || a.serial.blocked || a.serial.configuring)
+        return Probe::Action::RECOVERY_REQUIRED;
+    if (a.discovery.owned || a.owner.commissioningOwned() || axisReserved(a, a.axis.target.address, false))
+        return Probe::Action::BUSY;
+    ReleaseAfterStopPrerequisites facts;
+    facts.target = a.axis.target; facts.target.generation = a.bindingGeneration;
+    facts.configurationGeneration = a.axis.generation; facts.qualifiedUs = uart.sample();
+    output = facts;
+    return Probe::Action::OK;
+}
+Probe::Action startReleaseAfterStop(void* context, uint32_t commandId, uint32_t stopId, uint32_t& operationId) {
+    auto& a = *static_cast<App*>(context);
+    ReleaseAfterStopPrerequisites facts;
+    const auto inspected = inspectRelease(a, stopId, facts);
+    if (inspected != Probe::Action::OK) return inspected;
+    // The console grammar explicitly supplies these two fixture facts.
+    facts.mechanicsPermitRelease = facts.externalTriggersInhibited = true;
+    MotorControlRS::ActionRequest request; request.kind = MotorControlRS::ActionKind::RELEASE;
+    return startActionIn(a, commandId, facts.target.address, request, operationId, false, stopId, &facts);
 }
 Probe::Action admissionResult(Rtu::BusAdmission result) {
     switch (result) {
@@ -2495,6 +2571,10 @@ void endHeldStop(App::Record& record, ReadEventKind kind, int32_t detail, uint64
 void serviceHeldStop(App& a, App::Record& record, uint64_t now) {
     if (record.cancelContinuation) { endHeldStop(record, ReadEventKind::CANCEL, 0, now); return; }
     if (now >= record.deadlineUs) { endHeldStop(record, ReadEventKind::DEADLINE, 0, now); return; }
+    if (record.stopRecoveryId && a.recovery.id && record.stopRecoveryId != a.recovery.id) {
+        endHeldStop(record, ReadEventKind::TRANSPORT_FAILURE, -2, now);
+        return;
+    }
     if (a.owner.recovering()) {
         record.stopRecoveryId = a.recovery.id;
         record.stopRecoveryOperationId = a.recovery.operationId;
@@ -2542,8 +2622,18 @@ void serviceHeldStop(App& a, App::Record& record, uint64_t now) {
     if (admitted == Rtu::BusAdmission::ACCEPTED) { record.action = prepared; record.stopHeld = false; }
     else if (admitted != Rtu::BusAdmission::URGENT_FULL) endHeldStop(record, ReadEventKind::TRANSPORT_FAILURE, -4, now);
 }
+void cancelInvalidReleases(App& a, uint64_t now) {
+    for (auto& record : a.records) {
+        if (!record.releaseAfterStopId || terminal(a, record) || record.action.step != 0 ||
+            (record.requestId.owner && a.owner.txAccepted(record.requestId))) continue;
+        if (releaseFactsValid(a, record.releasePrerequisites, now) && failedTransmittedStop(a, record.releaseAfterStopId)) continue;
+        record.cancelContinuation = true;
+        if (record.requestId.owner) a.owner.cancelUnsent(record.requestId, now);
+    }
+}
 void advanceActions(App& a, uint64_t now) {
     cancelInvalidHomes(a, now);
+    cancelInvalidReleases(a, now);
     for (auto& record : a.records) {
         // A cancelled held stop can finish before its recovery. Keep the later
         // recovery outcome as independent evidence even for terminal records.
@@ -2551,9 +2641,10 @@ void advanceActions(App& a, uint64_t now) {
             if (const auto* recovered = a.owner.recoveryResult(record.stopRecoveryId))
                 record.stopRecoveryResult = *recovered;
         if (record.discoveryStop && a.discovery.owned) {
-            if (now < record.deadlineUs) continue;
+            if (now < record.deadlineUs && a.discovery.phase != Probe::DiscoveryPhase::INTERLOCK) continue;
             record.discoveryStop = false;
-            advanceOperation(record, actionEvent(record, ReadEventKind::DEADLINE), now);
+            advanceOperation(record, actionEvent(record, now >= record.deadlineUs ?
+                ReadEventKind::DEADLINE : ReadEventKind::TRANSPORT_FAILURE), now);
             updateActionReservation(a, record);
         }
         if (record.discoveryStop) {
@@ -2694,6 +2785,9 @@ void advanceActions(App& a, uint64_t now) {
                     record.velocity.request.configurationGeneration != a.axis.generation) ||
                 (record.kind == App::OperationKind::HOME && (!a.axis.generation || record.configurationGeneration != a.axis.generation)))
                 advanceOperation(record, actionEvent(record, ReadEventKind::CANCEL), now);
+            else if (stopContext(record) && stopContext(record)->step > 0 &&
+                (a.owner.needsRecovery() || uart.needsRecovery()))
+                advanceOperation(record, actionEvent(record, ReadEventKind::TRANSPORT_FAILURE), now);
             else if (record.kind == App::OperationKind::VELOCITY) {
                 // Evidence above is consumed before elapsed time. A borrowed
                 // admitted token must settle before stop changes its correlation.
@@ -2811,6 +2905,18 @@ Probe::Action startRecovery(App& a, uint32_t commandId, bool automatic, uint32_t
     a.recovery.automatic = a.recovery.delivered = automatic;
     a.recoveryGuardUntilUs = std::max(a.recoveryGuardUntilUs, now + RECOVER_US);
     operationId = a.recovery.operationId;
+    // Attach at admission, even if recovery finishes before the next service.
+    // A later explicit recovery cannot extend an old stop's one-attempt budget.
+    for (auto& record : a.records) if (record.stopHeld) {
+        if (record.stopRecoveryId) {
+            endHeldStop(record, record.cancelContinuation ? ReadEventKind::CANCEL :
+                now >= record.deadlineUs ? ReadEventKind::DEADLINE : ReadEventKind::TRANSPORT_FAILURE, -2, now);
+            updateActionReservation(a, record);
+        } else {
+            record.stopRecoveryId = id;
+            record.stopRecoveryOperationId = operationId;
+        }
+    }
     if (!automatic) a.latestOperationId = operationId;
     return Probe::Action::OK;
 }
@@ -2873,6 +2979,8 @@ bool lookup(void* context, uint32_t operationId, Probe::ResultView& out) {
     }
     case App::OperationKind::ACTION: {
         out.actionContext = &record->action; out.pending = !terminal(a, *record);
+        out.ordinaryStop = record->action.request.kind == MotorControlRS::ActionKind::STOP && !record->groupChild;
+        out.stopEscalation = record->stopEscalation; out.replacedOperationId = record->replacedOperationId;
         out.interruptedByStop = record->interruptedByStop; return true;
     }
     case App::OperationKind::TYPED_READ: {
@@ -2954,6 +3062,12 @@ Probe::Action cancel(void* context, uint32_t operationId) {
         return Probe::Action::OK;
     }
     if (record->kind == App::OperationKind::TYPED_READ) {
+        record->cancelContinuation = true;
+        a.owner.cancelUnsent(record->requestId, uart.sample());
+        return Probe::Action::OK;
+    }
+    if (record->kind == App::OperationKind::TRANSACTION && !record->broadcastFrame) {
+        if (terminal(a, *record)) return Probe::Action::ALREADY_TERMINAL;
         record->cancelContinuation = true;
         a.owner.cancelUnsent(record->requestId, uart.sample());
         return Probe::Action::OK;
@@ -3222,7 +3336,8 @@ Probe::Host host(App* a) {
     h.startProbe = probe; h.startCaptureRead = captureRead; h.recover = recover; h.resetStats = reset;
     h.startTypedRead = typedRead;
     h.beginInteractiveWork = recycleInteractiveResults;
-    h.startAction = startAction; h.startMove = startMove; h.startVelocity = startVelocity; h.startDriver = startDriver; h.startHome = startHome;
+    h.startAction = startAction; h.startReleaseAfterStop = startReleaseAfterStop;
+    h.startMove = startMove; h.startVelocity = startVelocity; h.startDriver = startDriver; h.startHome = startHome;
     h.inspectHomeQualification = [](void* context, ESS::HomePrerequisites& output, bool& valid) {
         const auto& a = *static_cast<App*>(context);
         if (!a.homePrerequisites.target.id) return false;
@@ -3299,7 +3414,7 @@ void recycleInteractiveResults(void* context) {
 }
 void deliver(App& a) {
     for (auto& record : a.records) {
-        if (!record.operationId || record.delivered || record.groupChild) continue;
+        if (!record.operationId || record.delivered || record.groupChild || record.programmaticAction) continue;
         if (record.monitored) {
             if (!terminal(a, record)) continue;
             // This explicit consumer already harvested each non-consuming block.
@@ -3699,6 +3814,43 @@ bool copyHomeResult(uint32_t operationId, ESS::HomeContext& output) {
     if (!record || record->kind != App::OperationKind::HOME || !record->programmaticHome) return false;
     output = record->home; return true;
 }
+MotorControlRS::Status submitStop(uint8_t address, const MotorControlRS::StopPolicy& policy, uint32_t& operationId) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    ActionRequest request; request.kind = ActionKind::STOP; request.stop = policy;
+    const auto admitted = startAction(app, 0, address, request, operationId);
+    if (admitted != Probe::Action::OK) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted), "stop not admitted");
+    findRecord(*app, operationId)->programmaticAction = true;
+    return Ok();
+}
+bool copyActionResult(uint32_t operationId, ActionResult& output) {
+    if (!app || !operationId) return false;
+    auto* record = findRecord(*app, operationId);
+    if (!record || record->kind != App::OperationKind::ACTION || !record->programmaticAction) return false;
+    output.action = record->action; output.pending = !terminal(*app, *record);
+    output.interruptedByStop = record->interruptedByStop;
+    output.stopEscalation = record->stopEscalation; output.replacedOperationId = record->replacedOperationId;
+    output.recoveryOperationId = record->stopRecoveryOperationId;
+    output.beforeRecoveryKnown = record->stopBeforeRecoveryKnown; output.beforeRecovery = record->stopBeforeRecovery;
+    output.recovery = record->stopRecoveryResult;
+    if (!output.pending) { record->delivered = true; record->deliveredUs = nowUs(); }
+    return true;
+}
+MotorControlRS::Status inspectReleaseAfterStop(uint32_t stopId, ReleaseAfterStopPrerequisites& output) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    const auto inspected = inspectRelease(*app, stopId, output);
+    return inspected == Probe::Action::OK ? Ok() : Status(Err::INVALID_CONFIG, static_cast<int32_t>(inspected), "release facts unavailable");
+}
+MotorControlRS::Status submitReleaseAfterStop(uint32_t stopId, const ReleaseAfterStopPrerequisites& facts, uint32_t& operationId) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    ActionRequest request; request.kind = ActionKind::RELEASE;
+    const auto admitted = startActionIn(*app, 0, facts.target.address, request, operationId, false, stopId, &facts);
+    if (admitted != Probe::Action::OK) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted), "release not admitted");
+    findRecord(*app, operationId)->programmaticAction = true;
+    return Ok();
+}
 bool releaseOperation(uint32_t operationId) {
     if (!app || !operationId) return false;
     if (auto* group = groupOperation(*app, operationId)) return releaseGroup(*app, *group) == Probe::Action::OK;
@@ -3800,6 +3952,7 @@ void serviceApplication() {
 #endif
         cancelInvalidPositionInterrupts(a, sampled);
         cancelInvalidHomes(a, sampled);
+        cancelInvalidReleases(a, sampled);
         a.owner.service(sampled, recoveryReady);
         if (hadDE && !a.runner.transmitEnabled()) a.recoveryGuardUntilUs = nowUs() + RECOVER_US;
 #if MOTORCONTROLRS_LOAD_FIXTURE

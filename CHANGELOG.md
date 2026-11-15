@@ -9,6 +9,13 @@
   zero accepted bytes can use one bounded recovery; original failures and
   recovery evidence remain retained. Partial or lost stop writes never replay.
 - The real stop-path fixture now runs on both Arduino and native ESP-IDF adapters.
+- Public standalone `submitStop` and copied action results, with two protected
+  fast-stop escalation slots beside two primary stop results. Console results
+  identify exact slot replacement. Qualified release after a failed stop is
+  explicit and preserves motion uncertainty; enable/alarm clear stay blocked.
+- Cancelling a transmitted ordinary probe lets it settle without faulting the
+  bus. Discovery restoration failures and post-ACK stop bus faults end promptly
+  with their actual evidence.
 
 - Typed console routes state commissioning facts on the ordinary image, with no bus
   traffic: `home qualification install|revoke`, `velocity qualification install|revoke`,

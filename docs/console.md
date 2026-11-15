@@ -147,11 +147,21 @@ conflict. An uncertain write is never automatically retried.
 
 The next explicit stop replaces a delivered successful stop result in its
 reserved slot, so repeated successful stops do not fill ordinary storage.
-Stops have two reserved result slots. A failed or unknown stop stays retained in
-its slot; once both are in use, the next stop overwrites the oldest delivered failed
-result and counts it in `drv.stop_evidence_overwritten`. Active or undelivered stops
-are not replaced. Local cancellation, `stats reset` and `recover` never substitute for
-a confirmed motor stop.
+Stops have two primary result slots and two fast-escalation reserves. A failed
+or unknown stop stays retained until explicit release or documented reuse after
+delivery. Reuse prefers the oldest delivered confirmed stop, then a free slot,
+then the oldest delivered failed stop (counted in `drv.stop_evidence_overwritten`).
+When primary slots are full, fast escalation of a retained same-address normal
+stop can use a reserve. Each address may hold one active or undelivered escalation.
+Active or undelivered results are not replaced. JSON reports the exact replaced
+operation ID and reserve use. Local cancellation, `stats reset` and `recover`
+never substitute for a confirmed motor stop.
+
+After a failed transmitted stop, a qualified free-shaft release can use
+`motor-release after-stop ID mechanics-permit-release triggers-inhibited`.
+Those words assert actual fixture facts. Release does not prove standstill or
+clear the retained motion conflict. Enable and alarm clear remain blocked.
+See [the release contract](ess_actions.md#programmatic-stop-and-explicit-release).
 
 For basic communication inspection:
 

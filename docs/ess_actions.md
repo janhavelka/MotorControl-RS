@@ -135,9 +135,10 @@ and device position clear also invalidate host origin/reference generation. Reje
 unsent cancellation leave those assumptions intact. Fresh explicit reads can
 restore current state; action result observations keep their own provenance.
 
-Stop policy and all capacity checks precede supersession. Two dedicated frontend
-records, two console correlations and the owner's urgent transaction/result quota
-of two are reserved for stop, so `stop fast` can escalate a running `stop normal`.
+Stop policy and all capacity checks precede supersession. Two primary stop
+records and two fast-escalation reserves have their own console correlations
+and owner capacity. Normal stops retained for two addresses cannot block either
+address's first fast escalation. Group stops keep their separate member pools.
 Rejected/unsupported/full admission leaves active work and its queue intact.
 Accepted stop cancels only unsent same-address action work, including an older
 stop's unsent write and polls, through `cancelUnsent`; an in-flight transaction
@@ -145,15 +146,19 @@ settles and its evidence remains retained. Its unsent continuation is then cance
 Stop uses priority admission without a readiness refresh.
 
 Stop storage does not depend on ordinary result capacity. The next stop replaces a
-delivered confirmed stop, then uses a free stop record, then overwrites the oldest
+oldest delivered confirmed stop, then uses a free stop record, then overwrites the oldest
 delivered failed stop and increments `stop_evidence_overwritten`. A running or
-undelivered stop is never replaced; if both records hold one, the stop returns
-`results_full`.
+undelivered stop is never replaced. If the primary pool is full, a fast stop may
+use an escalation reserve only with a retained normal stop for that address.
+Only one active or undelivered escalation per address is allowed. The same
+replacement order applies within each pool; exhausted capacity returns
+`results_full` without changing earlier work. Ordinary stop admission and result
+JSON carry `replaced_operation_id` (zero when none) and `stop_escalation`.
 
 Stop does not require a prior probe of the selected axis, so a controller reset cannot
 block it. Another address still needs checked knowledge of that target.
 
-A transport fault holds a never-transmitted stop rather than refusing it. This covers
+A transport fault can hold an ordinary never-transmitted stop. This covers
 a stop submitted while recovery is needed, a stop queued when an in-flight transaction
 faults, and a stop submitted during a running recovery. The application runs the
 existing recovery path once, with its usual invalidations, then prepares the stop
@@ -164,8 +169,20 @@ preparation; the deadline stays the one fixed at admission, which includes
 retry. Sending it afterwards is a first transmission, not a replay. A stop whose TX was
 accepted is never held or resent: a lost reply stays `execution=unknown` until a new
 explicit stop. Nothing else resumes, and an interrupted operation's result, uncertainty
-and raw evidence stay independent. A stop during a discovery scan keeps the scan's
-explicit recover-then-restore route.
+and raw evidence stay independent. The copied zero-byte owner attempt and recovery
+result remain attached to the stop. A second recovery cannot replace that attempt.
+
+During discovery, only the known original target can accept a stop. The scan
+settles its current query and restores its original tuple before the first stop
+byte. A restoration interlock ends an accepted stop as untransmitted transport
+failure. A new stop while the scan is faulted returns `recovery_required`;
+commissioning ownership returns `busy`. Neither guesses an address or tuple.
+Use explicit host recovery, scan restoration and a new stop after those gates.
+
+If the bus faults after the stop ACK, observation ends as transport failure.
+The ACK remains retained; stopped completion stays unobserved. Cancelling an
+ordinary probe lets its in-flight transaction settle and preserves its result;
+it does not fault the bus merely to end a non-changing read.
 
 `interrupted_by_stop` remains explicit even if an already in-flight final
 observation establishes completion before settlement; actual completion and the
@@ -182,6 +199,7 @@ different observations; no input changes occur implicitly. Use the explicit
 | --- | --- |
 | `enable [address]` | Enable windings, then observe flags |
 | `motor-release [address]` | Release windings, then observe flags |
+| `motor-release after-stop ID mechanics-permit-release triggers-inhibited` | Qualified release after an exact retained failed stop |
 | `alarm-clear [address]` | Clear resettable alarms |
 | `position-clear [address]` | Explicitly zero the device counter, once [qualified](cli_contract.md#qualification-routes) |
 | `stop normal [address]` | Stop using configured deceleration |
@@ -194,9 +212,40 @@ operation IDs. `result` inspects retained evidence without consuming it. The
 console retains stop admission replies under output pressure as compact fields,
 then emits them after the currently blocked line and before terminal delivery.
 Ordinary output/correlation pressure cannot consume their reserved slots or erase
-either action outcome. Every stop is attempted and answered. Only when all three
-retained replies are occupied does the newest replace the last, counted in
-`drv.input_dropped`.
+either action outcome. The bounded reply queue covers four ordinary stops, two
+group stops and one refusal. Accepted replies are never displaced by refusals;
+excess input is counted in `drv.input_dropped`.
+
+## Programmatic stop and explicit release
+
+`ProbeApp.h::submitStop(address, policy, id)` uses the same application path as
+the console. `copyActionResult` copies action, recovery and pre-recovery evidence.
+A terminal copy acknowledges delivery; it does not erase the result. Call
+`releaseOperation` to free it, or let the documented stop replacement policy
+reuse a delivered slot. Wrong IDs, wrong kinds and console-owned IDs preserve
+the output. Call these functions from the application's service task.
+
+After a transmitted stop fails with motion unresolved, only a separately
+qualified release has an exception to ordinary action admission. Inspect the
+exact failed stop with `inspectReleaseAfterStop`, supply actual
+`mechanicsPermitRelease` and `externalTriggersInhibited` facts, then call
+`submitReleaseAfterStop`. The snapshot binds current target, configuration and
+qualification time. Stale facts cancel unsent work; an in-flight frame settles.
+Active work, commissioning and transport faults still block release.
+
+Release removes winding drive. Its RELEASED observation does not prove
+standstill, reset the drive or clear the old motion conflict. Enable and alarm
+clear remain blocked while motion is unresolved. There is no automatic release,
+enable, alarm clear or motion restart. Function-manual physical pages 26 and 71
+give these separate commands, not a combined recovery sequence. Loaded mechanics
+need their own release qualification; the free-shaft authorization is not general.
+
+Application API inventory: independent stop and qualified release now have public
+submission and copied results. Ordinary velocity start, enable, unqualified
+release, alarm clear, position clear and host recovery still use internal console
+Host callbacks. Their core APIs exist, but that is not a standalone headless API.
+Keep these exports as follow-up application work; this stage does not add wrappers
+without their admission/result contracts.
 
 The Python harness offers explicit one-attempt action commands and strict
 terminal validation. It does not add actions to read/load campaigns or retry

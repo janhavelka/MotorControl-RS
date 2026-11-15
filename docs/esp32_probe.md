@@ -318,7 +318,8 @@ human text; `@1..4294967295` selects correlated JSONL, for example:
 Command correlation IDs and operation IDs are separate. Acceptance is followed
 by one asynchronous terminal carrying the original correlation. Duplicate
 outstanding IDs fail before admission. The console allows nine ordinary
-correlations and two reserved stops; actual bus/frontend admission also depends
+correlations and four reserved ordinary stops, plus two group-stop correlations;
+actual bus/frontend admission also depends
 on its queue and retained-result capacity. `drv` reports both.
 
 `result ID` inspects without consuming. Ordinary successful human results may

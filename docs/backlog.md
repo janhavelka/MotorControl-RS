@@ -76,6 +76,11 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
 - [ ] Finish [standalone 16](prompts/standalone/16_evidence_qualification.md):
   reply evidence, qualification lifetime and home admission policy. Do not
   equate the native rate range with a tested operating envelope.
+- [ ] Add standalone headless submission/results for velocity start, enable,
+  ordinary release, alarm clear, position clear and host recovery in a separate
+  application API block. Stage 15 delivers independent stop and qualified
+  release only. Reuse current console admission and retain each operation's
+  effects; exporting a core builder alone does not close these application gaps.
 - [ ] Resolve R-01's active-origin refusal in standalone 16; broader per-function
   readiness stays in [multi-drive 04](prompts/ess_multi_drive/04_input_programming.md).
   Resolve K-01's

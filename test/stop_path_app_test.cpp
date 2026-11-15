@@ -25,12 +25,12 @@ void step(uint32_t us = 10) {
     if (hardware.writes != seenWrites) { seenWrites = hardware.writes; wire.push_back(hardware.tx); }
 }
 void pump(unsigned n = 1000) { while (n--) step(); }
-void fresh() {
+void fresh(const ApplicationOptions& options = ApplicationOptions()) {
     if (app) { app->~App(); std::free(app); app = nullptr; }
     uart.~Esp32S3Uart(); new (&uart) Esp32S3Uart;
     resetHardware(); resetUsbConsole(); platformReady = writeResponseConfirmed = false;
     assert(beginApplication({Board::kRs485TxPin, Board::kRs485RxPin, Board::kRs485DeRePin,
-        Board::kRs485DeReActiveHigh}, Board::kRs485ReceiverDisabledDuringTransmit));
+        Board::kRs485DeReActiveHigh}, Board::kRs485ReceiverDisabledDuringTransmit, options));
     hardware.txCharacterUs = 87; assert(uart.startCapture(20, timing().holdUs));
     wire.clear(); seenWrites = 0; assert(app && !hardware.writes);
 }
@@ -39,8 +39,8 @@ std::vector<uint8_t> crc(std::vector<uint8_t> v) {
     const uint16_t c = ESS::calcCrc16(v.data(), v.size());
     v.push_back(static_cast<uint8_t>(c)); v.push_back(static_cast<uint8_t>(c >> 8)); return v;
 }
-std::vector<uint8_t> words(std::initializer_list<uint16_t> values) {
-    std::vector<uint8_t> result = {1, 3, static_cast<uint8_t>(values.size() * 2)};
+std::vector<uint8_t> words(std::initializer_list<uint16_t> values, uint8_t address = 1) {
+    std::vector<uint8_t> result = {address, 3, static_cast<uint8_t>(values.size() * 2)};
     for (const auto value : values) { result.push_back(static_cast<uint8_t>(value >> 8)); result.push_back(static_cast<uint8_t>(value)); }
     return crc(result);
 }
@@ -142,6 +142,14 @@ void assertRecovered(const char* context) {
     assert(!app->owner.needsRecovery() && !uart.needsRecovery());
 }
 ESS::ActionContext actionOf(uint32_t id) { return *view(id).actionContext; }
+uint32_t apiStop(uint8_t address = 1, StopBehavior behavior = StopBehavior::DIRECT) {
+    StopPolicy policy; policy.behavior = behavior;
+    uint32_t id = 0; assert(submitStop(address, policy, id) && id);
+    return id;
+}
+ActionResult copiedAction(uint32_t id) {
+    ActionResult result; assert(copyActionResult(id, result)); return result;
+}
 
 // T2: stop fast escalates a stop normal that is still observing.
 void escalatesRunningNormalStop() {
@@ -176,11 +184,15 @@ void escalatesPastUndeliveredStopReport() {
     const auto fast = latest(); assert(fast != normal);
     reply(fast); reply(fast, words({0, 0}));
     assert(frames(FAST_STOP) == 1 && actionOf(normal).completion == ActionCompletion::OBSERVED);
-    // Two reports waiting for output is the explicit limit, never a silent loss.
+    // A retained normal stop leaves a separate fast-escalation reserve.
     assert(!findRecord(*app, fast)->delivered);
-    uint32_t refused = 777; assert(startAction(app, 4, 1, stop, refused) == Probe::Action::RESULTS_FULL && refused == 777);
+    for (const char c : std::string("@4 stop fast\n")) app->console.feed(c);
+    const auto escalation = latest(); assert(escalation != fast);
+    assert(findRecord(*app, escalation)->stopEscalation);
+    reply(escalation); reply(escalation, words({0, 0}));
+    uint32_t refused = 777; assert(startAction(app, 5, 1, stop, refused) == Probe::Action::RESULTS_FULL && refused == 777);
     Serial.writeCapacity = 64; pump(8000);
-    assert(findRecord(*app, normal)->delivered && findRecord(*app, fast)->delivered);
+    assert(findRecord(*app, normal)->delivered && findRecord(*app, fast)->delivered && findRecord(*app, escalation)->delivered);
 }
 // T3 / A-01(b): the stop is queued behind a poll whose reply is lost.
 void queuedStopSurvivesLostPoll() {
@@ -239,9 +251,7 @@ void stopSubmittedAfterUartFault() {
 // Service the real owner up to its result boundary before the app consumes it.
 uint32_t stopWithSettledZeroTxFault() {
     fresh(); known();
-    ActionRequest stop; stop.kind = ActionKind::STOP; stop.stop.behavior = StopBehavior::DIRECT;
-    uint32_t stopping = 0;
-    assert(startAction(app, 1, 1, stop, stopping) == Probe::Action::OK);
+    const auto stopping = apiStop();
     auto* record = findRecord(*app, stopping);
     const auto request = record->requestId;
     hardware.rx.push_back(1); hardware.rx.push_back(3);
@@ -262,6 +272,11 @@ uint32_t stopWithSettledZeroTxFault() {
     assert(!record->stopBeforeRecovery.transport.txAccepted && !record->stopBeforeRecovery.executionUnknown);
     assert(record->stopRecoveryOperationId == app->recovery.operationId && record->stopRecoveryOperationId);
     assert(!app->owner.result(request)); // The copy survives release of owner storage.
+    const auto exposed = copiedAction(stopping);
+    assert(exposed.pending && exposed.beforeRecoveryKnown && exposed.recoveryOperationId == record->stopRecoveryOperationId);
+    assert(exposed.beforeRecovery.id.generation == request.generation && exposed.beforeRecovery.id.slot == request.slot &&
+        exposed.beforeRecovery.outcome == outcome && exposed.beforeRecovery.transport.reason == reason);
+    assert(!exposed.beforeRecovery.transport.txAccepted && !exposed.beforeRecovery.executionUnknown && !exposed.recovery.id);
     return stopping;
 }
 void settledZeroTxStopRecoversOnce() {
@@ -291,6 +306,10 @@ void settledZeroTxStopRecoversOnce() {
         record->stopRecoveryResult.requestedUs == recovered.requestedUs &&
         record->stopRecoveryResult.finishedUs == recovered.finishedUs);
     assert(actionOf(stopping).completion == ActionCompletion::OBSERVED && frames(FAST_STOP) == 1);
+    const auto exposed = copiedAction(stopping);
+    assert(!exposed.pending && exposed.recoveryOperationId == recovery && exposed.recovery.id == recovered.id &&
+        exposed.recovery.outcome == recovered.outcome && exposed.recovery.finishedUs == recovered.finishedUs &&
+        exposed.beforeRecovery.expected.targetGeneration == failedBinding);
 }
 void settledZeroTxStopRecoveryFailure() {
     const auto stopping = stopWithSettledZeroTxFault();
@@ -324,6 +343,10 @@ void settledZeroTxStopDeadlineAndCancellation() {
         assert(actionOf(stopping).outcome == (cancelStop ? ActionOutcome::CANCELLED : ActionOutcome::DEADLINE));
         assert(actionOf(stopping).deadlineUs == deadline && record->stopBeforeRecoveryKnown);
         until(recovery, 3000000);
+        const auto exposed = copiedAction(stopping);
+        assert(!exposed.pending && exposed.beforeRecoveryKnown && exposed.recoveryOperationId == recovery &&
+            exposed.recovery.id == record->stopRecoveryId &&
+            exposed.recovery.outcome == view(recovery).recoveryResult.outcome);
         noMoreFrames(3000);
         assert(wire.empty() && app->recovery.operationId == recovery);
     }
@@ -579,13 +602,14 @@ void everyStopGetsAnExplicitReply() {
     for (const char c : std::string("@2 status\n")) app->console.feed(c);
     assert(app->console.outputPending());
     const auto dropped = app->console.inputDropped();
-    for (const char c : std::string("@3 stop normal\n@4 stop fast\n@5 stop fast\n")) app->console.feed(c);
+    for (const char c : std::string("@3 stop normal\n@4 stop fast\n@5 stop fast\n@6 stop fast\n")) app->console.feed(c);
     assert(app->console.inputDropped() == dropped);
     pump(100);
     Serial.writeCapacity = 64; Serial.output.clear(); pump(8000);
     assert(said("\"id\":3,\"command\":\"stop\",\"ok\":true,\"result\":\"accepted\""));
     assert(said("\"id\":4,\"command\":\"stop\",\"ok\":true,\"result\":\"accepted\""));
-    assert(said("\"id\":5,\"command\":\"stop\",\"ok\":false,\"result\":\"busy\""));
+    assert(said("\"id\":5,\"command\":\"stop\",\"ok\":true,\"result\":\"accepted\""));
+    assert(said("\"id\":6,\"command\":\"stop\",\"ok\":false,\"result\":\"results_full\""));
     assert(app->console.inputDropped() == dropped);
 }
 // Non-transport host ownership keeps today's refusal.
@@ -596,6 +620,312 @@ void hostBlocksStillRefuse() {
     assert(app->owner.beginConfiguration(uart.sample()));
     ActionRequest stop; stop.kind = ActionKind::STOP; stop.stop.behavior = StopBehavior::DIRECT;
     uint32_t unchanged = 7; assert(startAction(app, 2, 1, stop, unchanged) == Probe::Action::RECOVERY_REQUIRED && unchanged == 7);
+}
+// Public callers retain their result until they copy it; console output is irrelevant.
+void headlessStopResults() {
+    fresh(); known(); Serial.output.clear();
+    uint32_t previous = 0;
+    for (unsigned i = 0; i < 3; ++i) {
+        const auto id = apiStop();
+        auto pending = copiedAction(id);
+        assert(pending.pending && pending.action.operationId == id && !pending.stopEscalation);
+        assert(pending.replacedOperationId == previous && !releaseOperation(id));
+        assert(!findRecord(*app, id)->delivered);
+        reply(id); reply(id, words({0, 0})); pump(200);
+        assert(!findRecord(*app, id)->delivered && !releaseOperation(id));
+        assert(Serial.output.find("\"operation_id\":" + std::to_string(id)) == std::string::npos);
+        const auto done = copiedAction(id);
+        assert(!done.pending && done.action.execution == ActionExecution::ACKNOWLEDGED &&
+            done.action.completion == ActionCompletion::OBSERVED && findRecord(*app, id)->delivered);
+        if (previous) { ActionResult absent; assert(!copyActionResult(previous, absent)); }
+        previous = id;
+    }
+    assert(releaseOperation(previous) && !releaseOperation(previous));
+    assert(frames(FAST_STOP) == 3 && !app->stopEvidenceOverwritten);
+    noMoreFrames(3000);
+}
+void wrongActionCopyPreservesOutput() {
+    fresh(); known();
+    const auto stop = apiStop();
+    ActionResult output = copiedAction(stop);
+    output.recoveryOperationId = 789;
+    assert(!copyActionResult(0, output) && !copyActionResult(UINT32_MAX, output));
+    assert(output.action.operationId == stop && output.recoveryOperationId == 789 && output.pending);
+    uint32_t read = 0; assert(submitHomingParameterRead(read));
+    assert(!copyActionResult(read, output));
+    assert(output.action.operationId == stop && output.recoveryOperationId == 789 && output.pending);
+    assert(!findRecord(*app, stop)->delivered && !findRecord(*app, read)->delivered);
+    fresh(); known();
+    const auto consoleStop = accepted("@1 stop fast");
+    assert(!copyActionResult(consoleStop, output));
+    assert(output.action.operationId == stop && output.recoveryOperationId == 789);
+}
+// Two distinct normal stops must each retain a fast escalation under pressure.
+void escalationCapacityAcrossAddresses() {
+    fresh(); known(); app->knownTargets[0] |= 4;
+    const auto normal1 = apiStop(1, StopBehavior::CONFIGURED_DECELERATION);
+    reply(normal1); reply(normal1, words({0, 4}));
+    const auto normal2 = apiStop(2, StopBehavior::CONFIGURED_DECELERATION);
+    const auto firstDeadline = actionOf(normal1).deadlineUs;
+    const auto secondDeadline = actionOf(normal2).deadlineUs;
+    const auto fast1 = apiStop(1);
+    const auto first = copiedAction(fast1);
+    assert(first.pending && first.stopEscalation && !first.replacedOperationId);
+    StopPolicy direct; direct.behavior = StopBehavior::DIRECT;
+    uint32_t unchanged = 777;
+    const auto duplicate = submitStop(1, direct, unchanged);
+    assert(!duplicate && duplicate.detail == static_cast<int32_t>(Probe::Action::RESULTS_FULL) && unchanged == 777);
+    assert(copiedAction(fast1).pending && !findRecord(*app, fast1)->cancelContinuation);
+    const auto fast2 = apiStop(2);
+    assert(copiedAction(fast2).stopEscalation && !copiedAction(fast2).replacedOperationId);
+    // Both normal results survive; only the first normal stop had reached TX.
+    pump(100);
+    const auto old1 = view(normal1), old2 = view(normal2);
+    assert(!old1.pending && old1.interruptedByStop && old1.actionContext->execution == ActionExecution::ACKNOWLEDGED);
+    assert(old1.actionContext->outcome == ActionOutcome::CANCELLED && old1.actionContext->deadlineUs == firstDeadline);
+    assert(!old2.pending && old2.interruptedByStop && old2.actionContext->execution == ActionExecution::NOT_TRANSMITTED);
+    assert(old2.actionContext->outcome == ActionOutcome::CANCELLED && old2.actionContext->deadlineUs == secondDeadline);
+    reply(fast1); reply(fast2); // Urgent writes precede ordinary observation polls.
+    reply(fast1, words({0, 0})); reply(fast2, words({0, 0}, 2));
+    assert(copiedAction(fast1).action.completion == ActionCompletion::OBSERVED);
+    assert(copiedAction(fast2).action.completion == ActionCompletion::OBSERVED);
+    // Primary results are still undelivered. Reuse the oldest confirmed reserve.
+    const auto again = apiStop(1);
+    const auto replacement = copiedAction(again);
+    assert(replacement.stopEscalation && replacement.replacedOperationId == fast1);
+    assert(!findRecord(*app, fast1) && findRecord(*app, normal1) && findRecord(*app, normal2));
+    reply(again); reply(again, words({0, 0}));
+    assert(copiedAction(again).action.completion == ActionCompletion::OBSERVED);
+    assert(frames(NORMAL_STOP) == 1 && frames(crc({2, 6, 0, 0x27, 1, 0})) == 0);
+    assert(frames(FAST_STOP) == 2 && frames(crc({2, 6, 0, 0x27, 2, 0})) == 1);
+    assert(!app->stopEvidenceOverwritten && !axisReserved(*app));
+    for (const auto id : {normal1, normal2, again, fast2}) { copiedAction(id); assert(releaseOperation(id)); }
+    noMoreFrames(3000);
+}
+// R-05: an interlocked observation cannot wait until the action deadline.
+void stopObservationFaultKeepsAcknowledgement() {
+    fresh(); known();
+    const auto id = apiStop(); reply(id);
+    const auto before = copiedAction(id);
+    assert(before.pending && before.action.execution == ActionExecution::ACKNOWLEDGED);
+    hardware.rx.push_back(1); hardware.rx.push_back(3);
+    pump(500);
+    const auto ended = copiedAction(id);
+    assert(!ended.pending && ended.action.outcome == ActionOutcome::TRANSPORT_ERROR);
+    assert(ended.action.execution == ActionExecution::ACKNOWLEDGED &&
+        ended.action.completion == ActionCompletion::NOT_OBSERVED);
+    assert(ended.action.writeEvidence.txAccepted == before.action.writeEvidence.txAccepted &&
+        ended.action.writeEvidence.txComplete == before.action.writeEvidence.txComplete);
+    assert(hardware.time + 500000 < ended.action.deadlineUs && axisReserved(*app, 1));
+    assert(!ended.recoveryOperationId && !app->recovery.operationId && frames(FAST_STOP) == 1);
+    noMoreFrames(3000);
+}
+// Settle the real recovery before the application consumes its completion.
+void settleRecoveryWithoutActionService() {
+    advanceHardware(std::max(hardware.time, app->recoveryGuardUntilUs));
+    app->recovery.prepared = uart.clear(); assert(app->recovery.prepared);
+    for (unsigned i = 0; i < 30000 && app->owner.recovering(); ++i) {
+        advanceHardware(hardware.time + 100);
+        app->owner.service(uart.sample(), app->recovery.prepared);
+    }
+    assert(!app->owner.recovering());
+    assert(app->owner.recoveryResult(app->recovery.id)->outcome == Rtu::RecoveryOutcome::RECOVERED);
+}
+// Completing one recovery and starting another cannot silently relink a held stop.
+void heldStopKeepsFirstRecoveryIdentity() {
+    for (const bool delayedService : {false, true}) {
+        const auto id = stopWithSettledZeroTxFault();
+        auto* record = findRecord(*app, id);
+        const auto recovery = record->stopRecoveryOperationId;
+        const auto ownerRecovery = record->stopRecoveryId;
+        const auto deadline = record->deadlineUs;
+        settleRecoveryWithoutActionService();
+        assert(record->stopHeld && wire.empty());
+        deliver(*app); assert(app->recovery.delivered);
+        uint32_t second = 0;
+        assert(startRecovery(*app, 100, false, second) == Probe::Action::OK && second != recovery);
+        // The owner may complete recovery 2 in this turn before action service.
+        step(delayedService ? RECOVER_US + 1000 : 10);
+        assert(!view(id).pending && actionOf(id).outcome == ActionOutcome::TRANSPORT_ERROR);
+        assert(actionOf(id).execution == ActionExecution::NOT_TRANSMITTED && actionOf(id).deadlineUs == deadline);
+        assert(record->stopRecoveryOperationId == recovery && record->stopRecoveryId == ownerRecovery);
+        assert(record->stopRecoveryResult.id == ownerRecovery &&
+            record->stopRecoveryResult.outcome == Rtu::RecoveryOutcome::RECOVERED);
+        until(second); noMoreFrames(3000);
+        assert(wire.empty() && record->stopRecoveryOperationId == recovery && record->stopRecoveryResult.id == ownerRecovery);
+    }
+}
+void allHeldStopsBindRecoveryBeforeFirstService() {
+    fresh(); known(); app->knownTargets[0] |= 4;
+    hardware.rx.push_back(1); hardware.rx.push_back(3); uart.sample();
+    assert(uart.needsRecovery());
+    const uint32_t first = apiStop(1), second = apiStop(2);
+    assert(findRecord(*app, first)->stopHeld && findRecord(*app, second)->stopHeld && wire.empty());
+    uint32_t recovery = 0;
+    assert(startRecovery(*app, 0, true, recovery) == Probe::Action::OK);
+    const auto ownerRecovery = app->recovery.id;
+    for (const auto id : {first, second}) {
+        const auto* record = findRecord(*app, id);
+        assert(record->stopRecoveryId == ownerRecovery && record->stopRecoveryOperationId == recovery);
+    }
+    settleRecoveryWithoutActionService();
+    deliver(*app); assert(app->recovery.delivered);
+    uint32_t nextRecovery = 0;
+    assert(startRecovery(*app, 101, false, nextRecovery) == Probe::Action::OK && nextRecovery != recovery);
+    step(RECOVER_US + 1000);
+    for (const auto id : {first, second}) {
+        const auto result = copiedAction(id);
+        assert(!result.pending && result.action.outcome == ActionOutcome::TRANSPORT_ERROR);
+        assert(result.action.execution == ActionExecution::NOT_TRANSMITTED && !result.action.writeEvidence.txAccepted);
+        assert(result.recoveryOperationId == recovery && result.recovery.id == ownerRecovery &&
+            result.recovery.outcome == Rtu::RecoveryOutcome::RECOVERED);
+    }
+    until(nextRecovery); noMoreFrames(3000); assert(wire.empty());
+}
+void stopAdmittedDuringRecoveryKeepsItsCompletion() {
+    fresh(); known();
+    uint32_t recovery = 0;
+    assert(startRecovery(*app, 100, false, recovery) == Probe::Action::OK);
+    const auto ownerRecovery = app->recovery.id;
+    const auto id = apiStop();
+    auto* record = findRecord(*app, id);
+    assert(record->stopHeld && record->stopRecoveryId == ownerRecovery && record->stopRecoveryOperationId == recovery);
+    const auto deadline = record->deadlineUs;
+    settleRecoveryWithoutActionService();
+    assert(record->stopHeld && !record->stopRecoveryResult.id && wire.empty());
+    reply(id); reply(id, words({0, 0}));
+    const auto result = copiedAction(id);
+    assert(!result.pending && result.action.completion == ActionCompletion::OBSERVED);
+    assert(result.action.deadlineUs == deadline && frames(FAST_STOP) == 1);
+    assert(result.recoveryOperationId == recovery && result.recovery.id == ownerRecovery &&
+        result.recovery.outcome == Rtu::RecoveryOutcome::RECOVERED);
+    noMoreFrames(3000); assert(frames(FAST_STOP) == 1 && app->recovery.operationId == recovery);
+}
+uint32_t failedStopForRelease(uint32_t maxAgeMs = 0) {
+    ApplicationOptions options; options.observationMaxAgeMs = maxAgeMs;
+    fresh(options); known();
+    const auto failed = apiStop(); waitTx(failed); until(failed);
+    assert(copiedAction(failed).action.execution == ActionExecution::UNKNOWN && axisReserved(*app, 1));
+    ReleaseAfterStopPrerequisites facts;
+    assert(!inspectReleaseAfterStop(failed, facts)); // The transport must recover first.
+    uint32_t recovery = 0; assert(startRecovery(*app, 100, false, recovery) == Probe::Action::OK);
+    runRecovery(recovery);
+    const auto probeId = accepted("@101 probe 1");
+    waitTx(probeId); deliver(words({60})); until(probeId); pump(200);
+    assert(view(probeId).probe.outcome == Rtu::Outcome::SUCCESS && releaseOperation(probeId));
+    assert(inspectReleaseAfterStop(failed, facts));
+    assert(!facts.mechanicsPermitRelease && !facts.externalTriggersInhibited);
+    return failed;
+}
+ReleaseAfterStopPrerequisites releaseFacts(uint32_t failed) {
+    ReleaseAfterStopPrerequisites facts;
+    assert(inspectReleaseAfterStop(failed, facts));
+    facts.mechanicsPermitRelease = facts.externalTriggersInhibited = true;
+    return facts;
+}
+void qualifiedReleasePreservesMotionUncertainty() {
+    const auto failed = failedStopForRelease(100);
+    const auto original = copiedAction(failed);
+    const auto facts = releaseFacts(failed);
+    const auto before = wire.size();
+    uint32_t unchanged = 987;
+    for (unsigned which = 0; which < 9; ++which) {
+        auto invalid = facts;
+        switch (which) {
+        case 0: invalid.target.id++; break;
+        case 1: invalid.target.address++; break;
+        case 2: invalid.target.generation++; break;
+        case 3: invalid.configurationGeneration++; break;
+        case 4: invalid.qualifiedUs = hardware.time + 1; break;
+        case 5: invalid.qualifiedUs = hardware.time - 100001; break;
+        case 6: invalid.mechanicsPermitRelease = false; break;
+        case 7: invalid.externalTriggersInhibited = false; break;
+        case 8: invalid.configurationGeneration = 0; break;
+        }
+        assert(!submitReleaseAfterStop(failed, invalid, unchanged) && unchanged == 987 && wire.size() == before);
+    }
+    assert(!submitReleaseAfterStop(failed + 1000, facts, unchanged) && unchanged == 987);
+    for (const auto* operation : {"enable", "alarm-clear", "motor-release"}) {
+        command(std::string("@102 ") + operation + "\n");
+        assert(said("\"result\":\"axis_conflict\"") && wire.size() == before);
+    }
+    const auto current = releaseFacts(failed);
+    uint32_t releaseId = 0; assert(submitReleaseAfterStop(failed, current, releaseId));
+    assert(!submitReleaseAfterStop(failed, current, unchanged) && unchanged == 987); // Live work still owns the axis.
+    reply(releaseId); reply(releaseId, words({0, 0x14})); // RELEASED and RUNNING coexist.
+    const auto released = copiedAction(releaseId), retained = copiedAction(failed);
+    assert(released.action.request.kind == ActionKind::RELEASE && released.action.completion == ActionCompletion::OBSERVED);
+    assert(released.action.rawMotion == 0x14 && axisReserved(*app, 1));
+    assert(retained.action.execution == original.action.execution && retained.action.outcome == original.action.outcome &&
+        retained.action.writeEvidence.txAccepted == original.action.writeEvidence.txAccepted);
+    assert(frames(crc({1, 6, 0, 0x2d, 0, 0x11})) == 1 && frames(FAST_STOP) == 1);
+    assert(releaseOperation(releaseId));
+    command("@103 enable\n"); assert(said("\"result\":\"axis_conflict\""));
+    command("@104 alarm-clear\n"); assert(said("\"result\":\"axis_conflict\""));
+    noMoreFrames(3000);
+}
+void qualifiedReleaseNeverReplays() {
+    const auto failed = failedStopForRelease();
+    uint32_t releaseId = 0; assert(submitReleaseAfterStop(failed, releaseFacts(failed), releaseId));
+    waitTx(releaseId); until(releaseId);
+    const auto result = copiedAction(releaseId);
+    assert(result.action.execution == ActionExecution::UNKNOWN && result.action.outcome == ActionOutcome::TRANSPORT_ERROR);
+    assert(copiedAction(failed).action.execution == ActionExecution::UNKNOWN && axisReserved(*app, 1));
+    assert(frames(crc({1, 6, 0, 0x2d, 0, 0x11})) == 1 && frames(FAST_STOP) == 1);
+    noMoreFrames(3000);
+}
+void releaseQualificationExpiresBeforeTx() {
+    const auto failed = failedStopForRelease(1);
+    uint32_t releaseId = 0; assert(submitReleaseAfterStop(failed, releaseFacts(failed), releaseId));
+    step(2000); until(releaseId);
+    const auto expired = copiedAction(releaseId);
+    assert(expired.action.execution == ActionExecution::NOT_TRANSMITTED && expired.action.outcome == ActionOutcome::CANCELLED);
+    assert(!frames(crc({1, 6, 0, 0x2d, 0, 0x11})) && frames(FAST_STOP) == 1 && axisReserved(*app, 1));
+    noMoreFrames(3000);
+}
+void releaseRequiresFailedTransmittedStop() {
+    for (const bool cancelBeforeTx : {false, true}) {
+        fresh(); known();
+        const auto id = apiStop();
+        if (cancelBeforeTx) { assert(cancel(app, id) == Probe::Action::OK); until(id); }
+        else { reply(id); reply(id, words({0, 0})); }
+        const auto result = copiedAction(id);
+        assert(result.action.execution == (cancelBeforeTx ? ActionExecution::NOT_TRANSMITTED : ActionExecution::ACKNOWLEDGED));
+        ReleaseAfterStopPrerequisites output; output.target.id = 999; output.qualifiedUs = 555;
+        assert(!inspectReleaseAfterStop(id, output) && output.target.id == 999 && output.qualifiedUs == 555);
+        uint32_t unchanged = 999;
+        assert(!submitReleaseAfterStop(id, output, unchanged) && unchanged == 999);
+        noMoreFrames(3000);
+    }
+}
+void releaseQualificationClosesAfterObservedStop() {
+    const auto failed = failedStopForRelease();
+    const auto facts = releaseFacts(failed);
+    const auto stopping = apiStop();
+    reply(stopping); reply(stopping, words({0, 0}));
+    assert(!axisReserved(*app, 1) && copiedAction(failed).action.execution == ActionExecution::UNKNOWN);
+    ReleaseAfterStopPrerequisites output; output.target.id = 999;
+    assert(!inspectReleaseAfterStop(failed, output) && output.target.id == 999);
+    uint32_t unchanged = 777;
+    assert(!submitReleaseAfterStop(failed, facts, unchanged) && unchanged == 777);
+    assert(frames(FAST_STOP) == 2 && !frames(crc({1, 6, 0, 0x2d, 0, 0x11})));
+    noMoreFrames(3000);
+}
+void qualifiedReleaseConsoleParity() {
+    const auto failed = failedStopForRelease();
+    const auto before = wire.size();
+    const auto prefix = "@102 motor-release after-stop " + std::to_string(failed);
+    command(prefix + " mechanics-permit-release\n"); assert(!said("\"result\":\"accepted\""));
+    command(prefix + " mechanics-permit-release triggers-inhibited extra\n"); assert(!said("\"result\":\"accepted\""));
+    assert(wire.size() == before);
+    const auto releasing = accepted(prefix + " mechanics-permit-release triggers-inhibited");
+    reply(releasing); reply(releasing, words({0, 0x14})); pump(200);
+    const auto result = actionOf(releasing);
+    assert(result.request.kind == ActionKind::RELEASE && result.completion == ActionCompletion::OBSERVED && result.rawMotion == 0x14);
+    assert(axisReserved(*app, 1) && copiedAction(failed).action.execution == ActionExecution::UNKNOWN);
+    assert(frames(crc({1, 6, 0, 0x2d, 0, 0x11})) == 1 && frames(FAST_STOP) == 1);
+    assert(findRecord(*app, releasing)->delivered && !findRecord(*app, releasing)->programmaticAction);
+    noMoreFrames(3000);
 }
 }
 int main() {
@@ -623,6 +953,19 @@ int main() {
         {"automaticRecoveryDisplacesUndeliveredResult", automaticRecoveryDisplacesUndeliveredResult},
         {"everyStopGetsAnExplicitReply", everyStopGetsAnExplicitReply},
         {"hostBlocksStillRefuse", hostBlocksStillRefuse},
+        {"headlessStopResults", headlessStopResults},
+        {"wrongActionCopyPreservesOutput", wrongActionCopyPreservesOutput},
+        {"escalationCapacityAcrossAddresses", escalationCapacityAcrossAddresses},
+        {"stopObservationFaultKeepsAcknowledgement", stopObservationFaultKeepsAcknowledgement},
+        {"heldStopKeepsFirstRecoveryIdentity", heldStopKeepsFirstRecoveryIdentity},
+        {"allHeldStopsBindRecoveryBeforeFirstService", allHeldStopsBindRecoveryBeforeFirstService},
+        {"stopAdmittedDuringRecoveryKeepsItsCompletion", stopAdmittedDuringRecoveryKeepsItsCompletion},
+        {"qualifiedReleasePreservesMotionUncertainty", qualifiedReleasePreservesMotionUncertainty},
+        {"qualifiedReleaseNeverReplays", qualifiedReleaseNeverReplays},
+        {"releaseQualificationExpiresBeforeTx", releaseQualificationExpiresBeforeTx},
+        {"releaseRequiresFailedTransmittedStop", releaseRequiresFailedTransmittedStop},
+        {"releaseQualificationClosesAfterObservedStop", releaseQualificationClosesAfterObservedStop},
+        {"qualifiedReleaseConsoleParity", qualifiedReleaseConsoleParity},
     };
     for (const auto& scenario : scenarios) {
         std::puts(scenario.name); std::fflush(stdout);

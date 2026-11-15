@@ -103,6 +103,10 @@ See [position](docs/ess_position.md), [actions/stop](docs/ess_actions.md),
 [observations](docs/ess_reads.md), [units/coordinates](docs/axis_preparation.md)
 and [ownership](docs/architecture.md).
 
+The standalone application exports `submitStop` and copied action results in
+`ProbeApp.h`. Stop escalation has reserved capacity, and a never-transmitted
+stop may use one bounded recovery. Transmitted writes are never replayed.
+
 ## Position defaults and limits
 
 Typed finite positioning defaults to all of:

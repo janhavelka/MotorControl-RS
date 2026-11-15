@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include "../common/Esp32S3Uart.h"
+#include "../common/RtuBusOwner.h"
 #include "MoveRelation.h"
 #include "DriveGroup.h"
 #include <MotorControlRS/profiles/ess_rs/Position.h>
@@ -31,6 +32,44 @@ bool beginApplication(const Esp32S3Uart::Pins&, bool receiverDisabledDuringTrans
                       const ApplicationOptions& = ApplicationOptions());
 /// One bounded cooperative console/owner service turn, including an idle yield.
 void serviceApplication();
+
+/** Explicit stop on a selected or previously checked address, through the same
+ * admission and owner path as the console. Rejection preserves operationId.
+ * Two primary results and two same-address fast-escalation reserves are separate
+ * from ordinary work. A never-transmitted stop may use one bounded recovery;
+ * a transmitted stop is never replayed. Call from the service task. */
+MotorControlRS::Status submitStop(uint8_t address, const MotorControlRS::StopPolicy&, uint32_t& operationId);
+/** Copied application action evidence. Recovery and the zero-byte attempt before
+ * recovery remain separate from the action's eventual write and observation. */
+struct ActionResult {
+    MotorControlRS::ESS_RS::ActionContext action;
+    bool pending = false, interruptedByStop = false, stopEscalation = false;
+    uint32_t replacedOperationId = 0, recoveryOperationId = 0;
+    bool beforeRecoveryKnown = false;
+    Rtu::Completion beforeRecovery;
+    Rtu::RecoveryResult recovery;
+};
+/** Copy a programmatic stop or qualified-release result. A terminal copy marks
+ * delivery, allowing explicit releaseOperation or documented stop-slot reuse.
+ * Pending copies do not release storage. Wrong IDs/kinds preserve output. */
+bool copyActionResult(uint32_t operationId, ActionResult& output);
+struct ReleaseAfterStopPrerequisites {
+    MotorControlRS::ReadTarget target;
+    uint32_t configurationGeneration = 0;
+    uint64_t qualifiedUs = 0;
+    bool mechanicsPermitRelease = false, externalTriggersInhibited = false;
+};
+/** Inspect the current binding/configuration/time for an exact retained failed
+ * transmitted stop on the selected axis. Supplied-fact flags are returned false.
+ * No traffic, fixture inference or change to the failed stop occurs. */
+MotorControlRS::Status inspectReleaseAfterStop(uint32_t failedStopId, ReleaseAfterStopPrerequisites& output);
+/** Explicitly release winding drive after that failed stop. Supply the actual
+ * mechanical and external-trigger facts against inspectReleaseAfterStop's
+ * snapshot. Generation and observation-age policy are checked again before TX.
+ * RELEASED does not prove standstill or clear possible-motion uncertainty.
+ * Enable/alarm clear remain blocked; no restart or replay follows. */
+MotorControlRS::Status submitReleaseAfterStop(uint32_t failedStopId,
+    const ReleaseAfterStopPrerequisites&, uint32_t& operationId);
 
 /** Submit through the same owner/admission/polling path as console moves.
  * Existing configuration, state and motion-profile reads establish readiness.

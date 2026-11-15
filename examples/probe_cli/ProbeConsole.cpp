@@ -82,9 +82,9 @@ const Entry COMMANDS[] = {
     {"tuning", Command::TUNING, "tuning filters|current-loop|la|collision read [address] | tuning GROUP set FIELD INTEGER [FIELD INTEGER ...] [address]; filters: input-filter pulse-low-pass deviation-threshold arrival-window arrival-time pulse-mean; current-loop: multiplier kp ki kc; la: kp1 kv1 node1 kp2 kv2 node2 kvf position-ki; collision: threshold current", "qualified_stopped_native_tuning_and_checked_readback", true, "Read or update named filter, current-loop, LA or collision parameters."},
     {"home", Command::HOME, "home methods | home read [address] | home auxiliary <0..11> | home method search_native return_native ramp_native zero [address]", "checked_parameter_read_auxiliary_setting_or_qualified_homing", true, "Read homing parameters, select auxiliary configuration, list methods or request qualified homing."},
     {"enable", Command::ENABLE, "enable [address]", "request_enable_then_observe_flags", true, "Request motor enable and observe the resulting flags."},
-    {"motor-release", Command::MOTOR_RELEASE, "motor-release [address]", "request_release_then_observe_flags", true, "Request motor release and observe the resulting flags."},
+    {"motor-release", Command::MOTOR_RELEASE, "motor-release [address] | motor-release after-stop ID mechanics-permit-release triggers-inhibited", "request_release_then_observe_flags", true, "Request motor release; after-stop requires explicit mechanical and trigger facts."},
     {"alarm-clear", Command::ALARM_CLEAR, "alarm-clear [address]", "request_clear_resettable_alarm_then_observe_flags", true, "Request alarm clearing and check the drive flags."},
-    {"stop", Command::STOP, "stop normal|fast [address]", "priority_stop_with_explicit_policy_then_observe_flags", true, "normal: stop with deceleration; fast: ESS emergency stop without the ramp. A transport fault starts one bounded recovery, then one send. A sent stop whose reply is lost is never resent; stop fast can escalate a running stop normal."},
+    {"stop", Command::STOP, "stop normal|fast [address]", "priority_stop_with_explicit_policy_then_observe_flags", true, "normal: stop with deceleration; fast: ESS emergency stop without the ramp. An admitted ordinary stop may recover once before its first send; target, tuple, lease and capacity checks still apply. A sent stop whose reply is lost is never resent; stop fast can escalate a running stop normal."},
     {"move", Command::MOVE, "move relative|absolute value unit frame native_rpm configured [setup write|verify|stored] [basis actual|commanded|queued] [round mode error [approx error]] [address] | move angle value unit frame positive|negative|shortest reject|positive|negative native_rpm configured [setup write|verify|stored] [round mode error [approx error]] [address]", "finite_move_through_public_coordinate_preparation", true, "Advanced move: explicit frame, rounding and setup policy; ordinary moves use moveby/moveto."},
     {"position-clear", Command::POSITION_CLEAR, "position-clear [address]", "explicit_device_position_zero_only", true, "Explicitly set the drive position counter to zero."},
     {"velocity", Command::VELOCITY, "velocity read [address] | velocity value rpm|steps/s|fullsteps/s|counts/s|turns/s|deg/s|rad/s|mm/s native|motor|load duration_ms configured normal|fast [round mode error [approx error]] [address]", "checked_parameter_read_or_finite_serial_velocity_with_explicit_stop", true, "Read native velocity parameters or request finite velocity with an explicit stop policy."},
@@ -852,9 +852,9 @@ bool Console::humanResult(uint32_t operationId) const noexcept {
     return false;
 }
 std::size_t Console::availableSlot(bool stop, bool groupStop) const noexcept {
-    // Ordinary, then the stop and its escalation, then a group stop and its escalation.
-    const std::size_t begin = groupStop ? OUTSTANDING_CAPACITY + 1 : stop ? OUTSTANDING_CAPACITY - 1 : 0;
-    const std::size_t end = groupStop ? OUTSTANDING_SLOTS : stop ? OUTSTANDING_CAPACITY + 1 : OUTSTANDING_CAPACITY - 1;
+    // Nine ordinary correlations, four ordinary stop slots, then two group stops.
+    const std::size_t begin = groupStop ? OUTSTANDING_CAPACITY + 3 : stop ? OUTSTANDING_CAPACITY - 1 : 0;
+    const std::size_t end = groupStop ? OUTSTANDING_SLOTS : stop ? OUTSTANDING_CAPACITY + 3 : OUTSTANDING_CAPACITY - 1;
     for (std::size_t i = begin; i < end; ++i)
         if (!outstanding_[i].commandId) return i;
     return OUTSTANDING_SLOTS;
@@ -900,7 +900,8 @@ bool Console::serviceOutput() noexcept {
         outputFormat_ = reply.format;
         // action emits at most this one additional line. Each nested call
         // removes one retained reply, so the depth is bounded by their capacity.
-        action(reply.id, reply.command, reply.result, reply.address, reply.operationId);
+        action(reply.id, reply.command, reply.result, reply.address, reply.operationId,
+               reply.ordinaryStop, reply.replacedOperationId, reply.stopEscalation);
         return !outputPending_;
     }
     return true;
@@ -922,7 +923,32 @@ void Console::error(uint32_t id, const char* command, const char* reason) noexce
     emit();
 }
 
-void Console::action(uint32_t id, const char* command, Action result, uint8_t address, uint32_t operationId) noexcept {
+void Console::retainStopReply(uint32_t id, const char* command, Action result, uint8_t address,
+                              uint32_t operationId, bool ordinaryStop, uint32_t replacedOperationId,
+                              bool stopEscalation) noexcept {
+    std::size_t slot = 0;
+    while (slot < STOP_REPLY_CAPACITY && stopReplies_[slot].pending) ++slot;
+    if (slot == STOP_REPLY_CAPACITY) {
+        // Never discard an accepted operation's correlation. At most six
+        // accepted stop admissions fit; excess refusal replies may be dropped.
+        while (slot && stopReplies_[slot - 1].result == Action::OK) --slot;
+        ++inputDropped_;
+        if (!slot) return;
+        --slot;
+        // Append the new admission after older accepted replies. Their operation
+        // IDs must remain ordered even when a refusal frees a queue position.
+        for (std::size_t i = slot; i + 1 < STOP_REPLY_CAPACITY; ++i) stopReplies_[i] = stopReplies_[i + 1];
+        slot = STOP_REPLY_CAPACITY - 1;
+    }
+    StopReply& reply = stopReplies_[slot];
+    reply.pending = true; reply.id = id; reply.command = command;
+    reply.address = address; reply.result = result; reply.operationId = operationId;
+    reply.ordinaryStop = ordinaryStop; reply.replacedOperationId = replacedOperationId;
+    reply.stopEscalation = stopEscalation; reply.format = outputFormat_;
+}
+
+void Console::action(uint32_t id, const char* command, Action result, uint8_t address, uint32_t operationId,
+                     bool ordinaryStop, uint32_t replacedOperationId, bool stopEscalation) noexcept {
     const bool typed = std::strcmp(command, "read-identity") == 0 || std::strcmp(command, "read-config") == 0 || std::strcmp(command, "read-state") == 0 || std::strcmp(command, "velocity-read") == 0 || std::strcmp(command, "home-read") == 0;
     const bool motor = std::strcmp(command, "position-interrupt") == 0 || std::strcmp(command, "home-auxiliary") == 0 || std::strcmp(command, "motion-profile-start-speed") == 0 || std::strcmp(command, "enable") == 0 || std::strcmp(command, "motor-release") == 0 || std::strcmp(command, "alarm-clear") == 0 || std::strcmp(command, "position-clear") == 0 || std::strcmp(command, "stop") == 0 || std::strncmp(command, "move-", 5) == 0 || std::strcmp(command, "velocity") == 0 || std::strcmp(command, "home") == 0 || std::strcmp(command, "driver") == 0 || (std::strcmp(command, "io") == 0 || std::strcmp(command, "segment") == 0 || std::strcmp(command, "control") == 0 || std::strcmp(command, "tuning") == 0) ||
         std::strcmp(command, "group-set") == 0 || std::strcmp(command, "group-move") == 0 ||
@@ -932,6 +958,11 @@ void Console::action(uint32_t id, const char* command, Action result, uint8_t ad
         static_cast<unsigned long>(id), command, boolean(result == Action::OK),
         result == Action::OK && !typed && !motor && (std::strcmp(command, "probe") != 0 && std::strcmp(command, "capture-read") != 0 && std::strcmp(command, "recover") != 0 && std::strcmp(command, "broadcast") != 0) ? "done" : actionName(result), address,
         static_cast<unsigned long>(operationId), typed ? (std::strcmp(command, "read-identity") == 0 ? ",\"read_kind\":\"identity\"" : std::strcmp(command, "read-config") == 0 ? ",\"read_kind\":\"config\"" : std::strcmp(command, "velocity-read") == 0 ? ",\"read_kind\":\"velocity_parameters\"" : std::strcmp(command, "home-read") == 0 ? ",\"read_kind\":\"homing_parameters\"" : ",\"read_kind\":\"state\"") : "");
+    if (result == Action::OK && ordinaryStop) {
+        std::size_t used = std::strlen(output_) - 1;
+        if (!append(output_, sizeof(output_), used, ",\"replaced_operation_id\":%lu,\"stop_escalation\":%s}",
+            static_cast<unsigned long>(replacedOperationId), boolean(stopEscalation))) return;
+    }
     emit();
 }
 
@@ -1926,6 +1957,28 @@ void Console::dispatch() noexcept {
         action(id, command, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0);
         return;
     }
+    if (entry->command == Command::MOTOR_RELEASE && count > first + 1 &&
+        std::strcmp(tokens[first + 1], "after-stop") == 0) {
+        uint32_t stopId = 0;
+        if (count != first + 5 || !number(tokens[first + 2], stopId) || !stopId ||
+            std::strcmp(tokens[first + 3], "mechanics-permit-release") != 0 ||
+            std::strcmp(tokens[first + 4], "triggers-inhibited") != 0) {
+            error(id, "motor-release", "invalid_arguments"); return;
+        }
+        if (outputPending()) { ++inputDropped_; return; }
+        if (!host_.startReleaseAfterStop || !host_.result) { error(id, "motor-release", "unavailable"); return; }
+        const bool available = availableSlot() != OUTSTANDING_SLOTS;
+        uint32_t operationId = 0;
+        if (available) beginWork();
+        const Action result = available ? host_.startReleaseAfterStop(host_.context, id, stopId, operationId) : Action::BUSY;
+        ResultView view;
+        if (result == Action::OK) {
+            track(id, operationId);
+            host_.result(host_.context, operationId, view);
+        }
+        action(id, "motor-release", result, view.address, result == Action::OK ? operationId : 0);
+        return;
+    }
     Core::ActionRequest request;
     const char* actionCommand = nullptr;
     std::size_t actionArgs = first + 1;
@@ -1960,18 +2013,14 @@ void Console::dispatch() noexcept {
         if (available) beginWork();
         const Action result = available ? host_.startAction(host_.context, id, static_cast<uint8_t>(address), request, operationId) : Action::BUSY;
         if (result == Action::OK) track(id, operationId, stop);
+        ResultView stopView;
+        if (stop && result == Action::OK && host_.result)
+            host_.result(host_.context, operationId, stopView);
         if (stop && outputPending()) {
-            // Every stop is attempted and answered. Only when all reply slots are
-            // full does the newest reply replace the last, counted as dropped.
-            std::size_t slot = 0;
-            while (slot + 1 < STOP_REPLY_CAPACITY && stopReplies_[slot].pending) ++slot;
-            if (stopReplies_[slot].pending) ++inputDropped_;
-            StopReply& reply = stopReplies_[slot];
-            reply.pending = true; reply.id = id;
-            reply.address = static_cast<uint8_t>(address); reply.result = result;
-            reply.operationId = result == Action::OK ? operationId : 0;
-            reply.format = outputFormat_;
-        } else action(id, actionCommand, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0);
+            retainStopReply(id, actionCommand, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0,
+                            stopView.ordinaryStop, stopView.replacedOperationId, stopView.stopEscalation);
+        } else action(id, actionCommand, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0,
+                      stopView.ordinaryStop, stopView.replacedOperationId, stopView.stopEscalation);
         return;
     }
     if (entry->command == Command::GROUP) { group(id, tokens + first + 1, count - first - 1); return; }
@@ -2280,6 +2329,13 @@ void Console::dispatch() noexcept {
                 !view.actionContext ? "null" : view.actionContext->request.kind == Core::ActionKind::ENABLE ? "\"enable\"" : view.actionContext->request.kind == Core::ActionKind::RELEASE ? "\"release\"" : view.actionContext->request.kind == Core::ActionKind::CLEAR_ALARM ? "\"clear_alarm\"" : view.actionContext->request.kind == Core::ActionKind::CLEAR_POSITION ? "\"clear_position\"" : "\"stop\"",
                 view.actionContext ? stopPolicy(view.actionContext->request) : "null", view.moveContext ? (view.moveContext->request.position.wrapped ? "\"angle\"" : view.moveContext->request.position.relative ? "\"relative\"" : "\"absolute\"") : "null", boolean(view.velocityContext != nullptr), boolean(view.driverContext != nullptr), boolean(view.homeContext != nullptr));
             std::size_t used = std::strlen(output_);
+            if (view.ordinaryStop) {
+                --used;
+                if (!append(output_, sizeof(output_), used, ",\"replaced_operation_id\":%lu,\"stop_escalation\":%s}",
+                    static_cast<unsigned long>(view.replacedOperationId), boolean(view.stopEscalation))) {
+                    error(id, "result", "output_full"); return;
+                }
+            }
             if (view.moveContext) {
                 --used;
                 if (!append(output_, sizeof(output_), used, ",\"position_interrupt\":%s",
@@ -2293,7 +2349,7 @@ void Console::dispatch() noexcept {
         else if (view.driverContext) formatDriver(id, view.commandId, view.operationId, *view.driverContext, true);
         else if (view.velocityContext) formatVelocity(id, view.commandId, view.operationId, *view.velocityContext, true, view.interruptedByStop);
         else if (view.moveContext) formatMove(id, view.commandId, view.operationId, *view.moveContext, true, view.interruptedByStop, view.moveRelation);
-        else if (view.actionContext) formatAction(id, view.commandId, view.operationId, *view.actionContext, true, view.interruptedByStop);
+        else if (view.actionContext) formatAction(id, view.commandId, view.operationId, *view.actionContext, true, view.interruptedByStop, &view);
         else if (view.typedRead) formatRead(id, view.commandId, view.operationId, *view.typedRead, true);
         else if (view.recovery) formatRecovery(id, view.commandId, view.operationId, view.recoveryResult, true);
         else formatProbe(id, view.commandId, view.address, view.operationId, view.probe, true);
@@ -2593,7 +2649,10 @@ bool Console::reportAction(uint32_t id, uint32_t operationId, const Ess::ActionC
     for (auto& item : outstanding_) if (item.commandId == id && item.operationId == operationId && !item.transferred) {
         outputFormat_ = item.format;
         syntax_=helpCommand_=nullptr;
-        if (!formatAction(id, id, operationId, context, false, interruptedByStop)) return false;
+        ResultView view;
+        if (context.request.kind == Core::ActionKind::STOP && host_.result)
+            host_.result(host_.context, operationId, view);
+        if (!formatAction(id, id, operationId, context, false, interruptedByStop, &view)) return false;
         // A successful immediate emit may already have cleared this slot.
         if (item.operationId == operationId) item.transferred = true;
         return true;
@@ -2724,7 +2783,8 @@ bool Console::formatDriver(uint32_t id, uint32_t commandId, uint32_t operationId
 }
 
 bool Console::formatAction(uint32_t id, uint32_t commandId, uint32_t operationId,
-                           const Ess::ActionContext& context, bool inspection, bool interruptedByStop) noexcept {
+                           const Ess::ActionContext& context, bool inspection, bool interruptedByStop,
+                           const ResultView* view) noexcept {
     std::size_t used = 0;
     const bool ok = context.state == Core::ActionState::SUCCEEDED && context.completion == Core::ActionCompletion::OBSERVED;
     char alarm[8] = "null", motion[8] = "null";
@@ -2754,6 +2814,9 @@ bool Console::formatAction(uint32_t id, uint32_t commandId, uint32_t operationId
         fits = fits && append(output_, sizeof(output_), used, ",\"device_position\":%lld,\"position_clear_qualified\":%s,\"raw_position\":%s,\"raw_position_words\":%s",
             static_cast<long long>(context.request.devicePosition), boolean(context.request.positionClearQualified), position, words);
     }
+    if (view && view->ordinaryStop)
+        fits = fits && append(output_, sizeof(output_), used, ",\"replaced_operation_id\":%lu,\"stop_escalation\":%s",
+            static_cast<unsigned long>(view->replacedOperationId), boolean(view->stopEscalation));
     fits = fits && append(output_, sizeof(output_), used, "}");
     if (!fits) return false; // Keep the complete host result available; never publish partial JSON.
     if (!appendReportSerial(used)) return false;
@@ -3350,13 +3413,7 @@ void Console::group(uint32_t id, const char* const* tokens, std::size_t count) n
     const uint32_t operationId = result == Action::OK ? reply.operationId : 0;
     if (result == Action::OK) track(id, operationId, false, stop);
     if (stop && outputPending()) {
-        std::size_t slot = 0;
-        while (slot + 1 < STOP_REPLY_CAPACITY && stopReplies_[slot].pending) ++slot;
-        if (stopReplies_[slot].pending) ++inputDropped_;
-        StopReply& retained = stopReplies_[slot];
-        retained.pending = true; retained.id = id; retained.command = "group-stop";
-        retained.address = reply.address; retained.result = result;
-        retained.operationId = operationId; retained.format = outputFormat_;
+        retainStopReply(id, command, result, reply.address, operationId);
     } else action(id, command, result, reply.address, operationId);
 }
 

@@ -31,8 +31,8 @@ constexpr std::size_t GROUP_MEMBER_LINE_BYTES = 1024;
 constexpr std::size_t OUTPUT_CAPACITY = GROUP_MEMBER_LINE_BYTES * (GROUP_CAPACITY + 1) > 8192 ?
     GROUP_MEMBER_LINE_BYTES * (GROUP_CAPACITY + 1) : 8192;
 constexpr std::size_t OUTSTANDING_CAPACITY = 10; // Advertised by protocol 3: nine ordinary correlations plus one stop.
-constexpr std::size_t OUTSTANDING_SLOTS = OUTSTANDING_CAPACITY + 1 + GROUP_STOP_OPERATIONS; // Adds the stop escalation and two group stops.
-constexpr std::size_t STOP_REPLY_CAPACITY = 3; // Admission replies retained under output pressure.
+constexpr std::size_t OUTSTANDING_SLOTS = OUTSTANDING_CAPACITY + 3 + GROUP_STOP_OPERATIONS; // Four ordinary stops and two group stops.
+constexpr std::size_t STOP_REPLY_CAPACITY = 7; // Four stops, two group stops and one refusal under output pressure.
 constexpr std::size_t PROBE_TX_CAPACITY = 8;
 constexpr std::size_t PROBE_RX_CAPACITY = 64;
 // Fixed non-consuming FC03 timing fixture; function manual physical p77.
@@ -281,6 +281,8 @@ struct ResultView {
     uint32_t commandId = 0, operationId = 0;
     uint8_t address = 0;
     bool pending = false, recovery = false, captureRead = false;
+    bool ordinaryStop = false, stopEscalation = false;
+    uint32_t replacedOperationId = 0; ///< Delivered stop result replaced by this admission; zero means none.
     const MotorControlRS::ESS_RS::ReadContext* typedRead = nullptr; ///< Borrowed only during formatting.
     const MotorControlRS::ESS_RS::ActionContext* actionContext = nullptr;
     const MotorControlRS::ESS_RS::MoveContext* moveContext = nullptr; ///< Borrowed only during formatting.
@@ -329,6 +331,10 @@ struct Host {
                             MotorControlRS::ESS_RS::ReadKind, uint32_t& operationId) = nullptr;
     Action (*startAction)(void*, uint32_t commandId, uint8_t address,
                          const MotorControlRS::ActionRequest&, uint32_t& operationId) = nullptr;
+    /** Explicit release after a retained failed stop, with named mechanical and
+     * trigger-inhibition facts supplied by the console command. */
+    Action (*startReleaseAfterStop)(void*, uint32_t commandId, uint32_t stopId,
+                                   uint32_t& operationId) = nullptr;
     /** One finite move admission through the installed preparation API; no request pointer is retained. */
     Action (*startMove)(void*, uint32_t commandId, uint8_t address,
                        const MotorControlRS::MoveRequest&, uint32_t& operationId) = nullptr;
@@ -395,9 +401,9 @@ struct Host {
  * prefix. Optional @1..4294967295 prefix selects JSON and supplies a host
  * correlation id; plain commands use the configured presentation and
  * monotonically increasing local ids (wrapping to 1), skipping
- * outstanding correlations. Nine ordinary commands and two stops may be outstanding;
- * the second stop slot allows escalation. Two more slots hold a group stop and
- * its escalation. Protocol 3 still advertises capacity 10.
+ * outstanding correlations. Nine ordinary commands and four stops may be outstanding;
+ * two stop slots reserve cross-address escalation. Two more slots hold a group
+ * stop and its escalation. Protocol 3 still advertises capacity 10.
  * duplicate explicit IDs fail before callbacks. Operation result retention
  * belongs to the host and is released only by its explicit release hook.
  * Host callbacks and terminal reports share one task. Place this object in PSRAM if
@@ -453,7 +459,10 @@ private:
     void dispatch() noexcept;
     void beginWork() noexcept;
     void error(uint32_t id, const char* command, const char* reason) noexcept;
-    void action(uint32_t id, const char* command, Action result, uint8_t address = 0, uint32_t operationId = 0) noexcept;
+    void action(uint32_t id, const char* command, Action result, uint8_t address = 0, uint32_t operationId = 0,
+                bool ordinaryStop = false, uint32_t replacedOperationId = 0, bool stopEscalation = false) noexcept;
+    void retainStopReply(uint32_t id, const char* command, Action result, uint8_t address, uint32_t operationId,
+                         bool ordinaryStop = false, uint32_t replacedOperationId = 0, bool stopEscalation = false) noexcept;
     void parameterRead(uint32_t id, MotorControlRS::ESS_RS::ReadKind, const char* address) noexcept;
     void qualificationRoute(uint32_t id, QualificationRoute, const char* const* tokens, std::size_t count) noexcept;
     void qualificationReply(uint32_t id, const char* command, const char* result, const char* label, const char* value, bool ok = false) noexcept;
@@ -474,7 +483,8 @@ private:
     bool formatRead(uint32_t id, uint32_t commandId, uint32_t operationId,
                     const MotorControlRS::ESS_RS::ReadContext&, bool inspection) noexcept;
     bool formatAction(uint32_t id, uint32_t commandId, uint32_t operationId,
-                      const MotorControlRS::ESS_RS::ActionContext&, bool inspection, bool interruptedByStop) noexcept;
+                      const MotorControlRS::ESS_RS::ActionContext&, bool inspection, bool interruptedByStop,
+                      const ResultView* = nullptr) noexcept;
     bool formatMove(uint32_t id, uint32_t commandId, uint32_t operationId,
                     const MotorControlRS::ESS_RS::MoveContext&, bool inspection, bool interruptedByStop,
                     const MoveRelation& = MoveRelation()) noexcept;
@@ -511,11 +521,13 @@ private:
     uint32_t nextId_ = 1;
     struct Outstanding { uint32_t commandId = 0, operationId = 0; bool transferred = false; Format format = Format::HUMAN; } outstanding_[OUTSTANDING_SLOTS];
     uint32_t pendingTerminalOperation_ = 0;
-    // Retain one stop admission under output pressure without a second line buffer.
+    // Retain stop admissions under output pressure without another line buffer.
     struct StopReply {
         bool pending = false;
         const char* command = "stop"; ///< stop or group-stop; static text.
         uint32_t id = 0, operationId = 0;
+        uint32_t replacedOperationId = 0;
+        bool ordinaryStop = false, stopEscalation = false;
         uint8_t address = 0;
         Action result = Action::FAILED;
         Format format = Format::HUMAN;

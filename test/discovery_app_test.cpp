@@ -401,7 +401,7 @@ void consoleAndDirectProductionParity() {
     assert(host(app).result(app, app->latestOperationId, result) && !result.pending);
     assert(result.probe.rawModel == scan().findings[0].probe.rawModel && hardware.writes == 2);
 }
-void deferredStopDeadlineReleasesAxisWhileScanIsInterlocked() {
+void deferredStopFailsPromptlyWhenScanIsInterlocked() {
     fresh(); uint32_t probeId = 0;
     assert(host(app).startProbe(app, 1, 1, probeId) == Probe::Action::OK);
     reply(0, words(1, {0x4EEA}));
@@ -413,20 +413,149 @@ void deferredStopDeadlineReleasesAxisWhileScanIsInterlocked() {
     stop.stop.behavior = MotorControlRS::StopBehavior::CONFIGURED_DECELERATION;
     uint32_t stopId = 0;
     assert(host(app).startAction(app, 2, 1, stop, stopId) == Probe::Action::OK);
+    const auto deadline = findRecord(*app, stopId)->deadlineUs;
     assert(axisReserved(*app, 1));
     waitSettled(); assert(scan().phase == ScanPhase::INTERLOCK && app->owner.needsRecovery());
     Probe::ResultView result;
-    for (unsigned i = 0; i < 10000; ++i) {
-        assert(host(app).result(app, stopId, result));
-        if (!result.pending) break;
-        step(1000);
-    }
+    step(); // Deliver the scan's failed restoration to the deferred stop.
+    assert(host(app).result(app, stopId, result));
     assert(!result.pending && result.actionContext);
-    assert(result.actionContext->outcome == MotorControlRS::ActionOutcome::DEADLINE);
+    assert(result.actionContext->outcome == MotorControlRS::ActionOutcome::TRANSPORT_ERROR);
     assert(result.actionContext->execution == MotorControlRS::ActionExecution::NOT_TRANSMITTED);
     assert(result.actionContext->completion == MotorControlRS::ActionCompletion::NOT_OBSERVED);
+    assert(result.actionContext->deadlineUs == deadline && hardware.time < deadline);
+    assert(!result.actionContext->writeEvidence.txAccepted);
     assert(!axisReserved(*app, 1) && scan().phase == ScanPhase::INTERLOCK && scan().owned && hardware.writes == 2);
+    assert(scan().outcome == ScanOutcome::PREEMPTED && !scan().restored && !app->recovery.id);
     pump(1000); assert(hardware.writes == 2); // No deferred FC06 write or scan replay.
+}
+void interlockedScanRejectsStopWithoutChangingItsResult() {
+    fresh(); uint32_t probeId = 0;
+    assert(host(app).startProbe(app, 1, 1, probeId) == Probe::Action::OK);
+    reply(0, words(1, {0x4EEA}));
+    const auto candidates = range(2, 3);
+    assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+    waitTx(1); waitSettled();
+    assert(scan().phase == ScanPhase::INTERLOCK && scan().owned && app->owner.needsRecovery());
+    const auto outcome = scan().outcome;
+    const auto generation = app->bindingGeneration;
+    const auto nextId = app->nextOperationId;
+    const auto requests = scan().requests;
+    MotorControlRS::ActionRequest stop; stop.kind = MotorControlRS::ActionKind::STOP;
+    for (const auto behavior : {MotorControlRS::StopBehavior::CONFIGURED_DECELERATION,
+                                MotorControlRS::StopBehavior::DIRECT}) {
+        stop.stop.behavior = behavior;
+        uint32_t stopId = 0xCAFE;
+        assert(host(app).startAction(app, 2, 1, stop, stopId) == Probe::Action::RECOVERY_REQUIRED);
+        assert(stopId == 0xCAFE && app->nextOperationId == nextId && !axisReserved(*app, 1));
+        assert(scan().outcome == outcome && scan().requests == requests && !scan().cancelRequested);
+        assert(app->bindingGeneration == generation && !app->recovery.id);
+    }
+    pump(1000); assert(hardware.writes == 2 && scan().phase == ScanPhase::INTERLOCK);
+}
+void failedScanRestorationEndsDeferredStopWithoutLaterTransmission() {
+    fresh(); uint32_t probeId = 0;
+    assert(host(app).startProbe(app, 1, 1, probeId) == Probe::Action::OK);
+    reply(0, words(1, {0x4EEA}));
+    const auto original = app->serial.active;
+    auto candidates = range(2, 3); candidates.tupleCount = 1; candidates.tuples[0].baud = 9600;
+    assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+    waitTx(1); assert(app->serial.active.baud == 9600);
+    MotorControlRS::ActionRequest stop; stop.kind = MotorControlRS::ActionKind::STOP;
+    stop.stop.behavior = MotorControlRS::StopBehavior::DIRECT;
+    uint32_t stopId = 0;
+    assert(host(app).startAction(app, 1, 1, stop, stopId) == Probe::Action::OK);
+    const auto deadline = findRecord(*app, stopId)->deadlineUs;
+    hardware.configFailCalls = {hardware.configCalls + 1};
+    reply(1, words(2, {0x4EEA})); waitSettled(); step();
+    assert(scan().phase == ScanPhase::INTERLOCK && scan().outcome == ScanOutcome::RESTORE_FAILED);
+    Probe::ResultView result;
+    assert(host(app).result(app, stopId, result) && !result.pending && result.actionContext);
+    assert(result.actionContext->outcome == MotorControlRS::ActionOutcome::TRANSPORT_ERROR);
+    assert(result.actionContext->execution == MotorControlRS::ActionExecution::NOT_TRANSMITTED);
+    assert(!result.actionContext->writeEvidence.txAccepted && !axisReserved(*app, 1));
+    assert(result.actionContext->deadlineUs == deadline && hardware.time < deadline);
+    assert(sameTuple(result.serialTuple, original) && !app->recovery.id && hardware.writes == 2);
+    const auto observed = scan().findings[0].probe.provenance.latestUs;
+    hardware.configFailCalls.clear();
+    assert(control(Probe::DiscoveryCommandKind::RESTORE) == Probe::Action::OK);
+    waitSettled(); pump(1000);
+    assert(scan().restored && sameTuple(app->serial.active, original));
+    assert(scan().findings[0].probe.provenance.latestUs == observed && hardware.writes == 2);
+    assert(host(app).result(app, stopId, result) && !result.pending &&
+        result.actionContext->execution == MotorControlRS::ActionExecution::NOT_TRANSMITTED);
+}
+void commissioningLeaseRejectsStopWithoutConsumingCapacity() {
+    fresh(); uint64_t lease = 0;
+    assert(app->owner.beginCommissioning(uart.sample(), lease));
+    const auto nextId = app->nextOperationId;
+    MotorControlRS::ActionRequest stop; stop.kind = MotorControlRS::ActionKind::STOP;
+    for (const auto behavior : {MotorControlRS::StopBehavior::CONFIGURED_DECELERATION,
+                                MotorControlRS::StopBehavior::DIRECT}) {
+        stop.stop.behavior = behavior;
+        uint32_t stopId = 0xCAFE;
+        assert(host(app).startAction(app, 1, 1, stop, stopId) == Probe::Action::BUSY);
+        assert(stopId == 0xCAFE && app->nextOperationId == nextId && !axisReserved(*app, 1));
+        assert(app->owner.commissioningOwned() && !app->owner.pending() && !app->owner.active());
+    }
+    pump(1000); assert(!hardware.writes && !app->recovery.id);
+    assert(app->owner.endCommissioning(lease, uart.sample()));
+    uint32_t stopId = 0;
+    assert(host(app).startAction(app, 2, 1, stop, stopId) == Probe::Action::OK);
+    waitTx(0); assert(hardware.tx == crc({1, 6, 0, 0x27, 2, 0}));
+    writeResponseConfirmed = true;
+    reply(0, hardware.tx); reply(1, words(1, {0, 0}));
+    Probe::ResultView result;
+    assert(host(app).result(app, stopId, result) && !result.pending && result.actionContext);
+    assert(result.actionContext->completion == MotorControlRS::ActionCompletion::OBSERVED);
+    assert(hardware.writes == 2 && !app->owner.needsRecovery());
+}
+void ordinaryProbeCancellationSettlesBeforeNextReadAndStop(bool receiving) {
+    fresh(); uint32_t probeId = 0;
+    assert(host(app).startProbe(app, 1, 1, probeId) == Probe::Action::OK);
+    waitTx(0); reviewedFrame(1, 1);
+    if (receiving) {
+        for (unsigned i = 0; i < 10000 && app->runner.phase() != Rtu::Phase::RECEIVE; ++i) step();
+        assert(app->runner.phase() == Rtu::Phase::RECEIVE);
+    } else assert(app->runner.transmitEnabled());
+    const auto request = findRecord(*app, probeId)->requestId;
+    const auto generation = app->bindingGeneration;
+    assert(app->owner.txAccepted(request) == 8);
+    assert(host(app).cancel(app, probeId) == Probe::Action::OK);
+    assert(findRecord(*app, probeId)->cancelContinuation);
+    assert(!app->owner.needsRecovery() && !uart.needsRecovery() && !app->recovery.id);
+    Probe::ResultView result;
+    assert(host(app).result(app, probeId, result) && result.pending);
+    reply(0, words(1, {0x4EEA}));
+    assert(host(app).result(app, probeId, result) && !result.pending);
+    assert(result.probe.outcome == Rtu::Outcome::SUCCESS && result.probe.rawModel == 0x4EEA);
+    assert(result.probe.transport.txAccepted == 8 && result.probe.transport.closureQualified);
+    assert(result.probe.cancellation == Rtu::Cancellation::NONE && !result.probe.executionUnknown);
+    const auto closure = result.probe.observedLatestUs;
+    assert(!app->owner.needsRecovery() && !uart.needsRecovery() && !app->recovery.id);
+    assert(app->bindingGeneration == generation);
+    assert(host(app).cancel(app, probeId) == Probe::Action::ALREADY_TERMINAL);
+
+    uint32_t readId = 0;
+    assert(host(app).startTypedRead(app, 2, 1, ESS::ReadKind::VELOCITY_PARAMETERS, readId) == Probe::Action::OK);
+    reply(1, words(1, {60, 100, 100}));
+    assert(host(app).result(app, readId, result) && !result.pending && result.typedRead);
+    assert(result.typedRead->outcome == MotorControlRS::ReadOutcome::SUCCESS);
+    MotorControlRS::ActionRequest stop; stop.kind = MotorControlRS::ActionKind::STOP;
+    stop.stop.behavior = MotorControlRS::StopBehavior::DIRECT;
+    uint32_t stopId = 0;
+    assert(host(app).startAction(app, 3, 1, stop, stopId) == Probe::Action::OK);
+    waitTx(2); assert(hardware.tx == crc({1, 6, 0, 0x27, 2, 0}));
+    writeResponseConfirmed = true;
+    reply(2, hardware.tx); reply(3, words(1, {0, 0}));
+    assert(host(app).result(app, stopId, result) && !result.pending && result.actionContext);
+    assert(result.actionContext->execution == MotorControlRS::ActionExecution::ACKNOWLEDGED);
+    assert(result.actionContext->completion == MotorControlRS::ActionCompletion::OBSERVED);
+    assert(host(app).result(app, probeId, result) && result.probe.observedLatestUs == closure);
+    assert(result.probe.rawModel == 0x4EEA && result.probe.outcome == Rtu::Outcome::SUCCESS);
+    pump(1000);
+    assert(hardware.writes == 4 && app->bindingGeneration == generation);
+    assert(!app->owner.needsRecovery() && !uart.needsRecovery() && !app->recovery.id);
 }
 void fullOrdinaryResultsCannotConsumeScanOrStopStorage() {
     fresh();
@@ -654,7 +783,12 @@ int main() {
     timeoutOnCandidateNeedsExplicitRecovery(); overallDeadlineIncludesAdapterSetup();
     capturedClosureSurvivesLateCancellationDelivery(); urgentStopUsesReservedCapacityAndDoesNotReplayScan();
     consoleAndDirectProductionParity();
-    deferredStopDeadlineReleasesAxisWhileScanIsInterlocked();
+    deferredStopFailsPromptlyWhenScanIsInterlocked();
+    interlockedScanRejectsStopWithoutChangingItsResult();
+    failedScanRestorationEndsDeferredStopWithoutLaterTransmission();
+    commissioningLeaseRejectsStopWithoutConsumingCapacity();
+    ordinaryProbeCancellationSettlesBeforeNextReadAndStop(false);
+    ordinaryProbeCancellationSettlesBeforeNextReadAndStop(true);
     fullOrdinaryResultsCannotConsumeScanOrStopStorage();
     explicitRecoveryCannotResumeUnharvestedScan();
     urgentStopRestoresOriginalTupleBeforeDispatch();

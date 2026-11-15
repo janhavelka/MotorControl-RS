@@ -27,6 +27,8 @@ struct Fake {
     unsigned loads = 0, loadChanges = 0;
     unsigned typedReads = 0, monitors = 0, monitorChanges = 0;
     unsigned actions = 0;
+    unsigned releasesAfterStop = 0;
+    uint32_t actionCommandId = 0, releaseStopId = 0;
     unsigned debugCalls = 0;
     Probe::DebugSnapshot debugState;
     unsigned moves = 0;
@@ -113,8 +115,20 @@ struct Fake {
     static Probe::Action startAction(void* context, uint32_t commandId, uint8_t address,
                                     const MotorControlRS::ActionRequest& request, uint32_t& operation) {
         Fake& self = *static_cast<Fake*>(context); ++self.actions;
+        self.actionCommandId = commandId;
         self.actionRequest = request; self.id = commandId; self.address = address;
         if (self.actionResult == Probe::Action::OK) operation = self.nextOperation++;
+        return self.actionResult;
+    }
+    static Probe::Action startReleaseAfterStop(void* context, uint32_t commandId, uint32_t stopId,
+                                             uint32_t& operation) {
+        Fake& self = *static_cast<Fake*>(context); ++self.releasesAfterStop;
+        self.actionCommandId = commandId; self.releaseStopId = stopId;
+        if (self.actionResult == Probe::Action::OK) {
+            operation = self.nextOperation++;
+            self.view.operationId = operation; self.view.commandId = commandId;
+            self.view.address = 6; // The retained stop supplies the target, not the selected address.
+        }
         return self.actionResult;
     }
     static Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
@@ -1030,7 +1044,7 @@ void testActionRoutesAndStopPressure() {
     for (unsigned i = 0; i < 5; ++i) {
         Fake fake; auto host = fake.host(false, true); host.startAction = Fake::startAction;
         Probe::Console console(host, Probe::Format::JSON); send(console, std::string("@42 ") + commands[i] + "\n");
-        assert(fake.actions == 1 && fake.address == 2 && fake.id == 42);
+        assert(fake.actions == 1 && fake.address == 2 && fake.actionCommandId == 42);
         assert(fake.actionRequest.kind == (i < 1 ? Core::ActionKind::ENABLE : i < 2 ? Core::ActionKind::RELEASE : i < 3 ? Core::ActionKind::CLEAR_ALARM : Core::ActionKind::STOP));
         if (i >= 3) assert(fake.actionRequest.stop.behavior == (i < 4 ? Core::StopBehavior::CONFIGURED_DECELERATION : Core::StopBehavior::DIRECT));
         fake.contains("\"result\":\"accepted\"");
@@ -1067,6 +1081,95 @@ void testActionRoutesAndStopPressure() {
     fake.actionResult = Probe::Action::TIMING_UNQUALIFIED; fake.blocked = true;
     send(console, "@600 status\n@601 stop normal\n"); assert(fake.actions == 3);
     fake.blocked = false; assert(console.serviceOutput()); fake.contains("timing_unqualified");
+}
+
+void testStopRetentionMetadataAndPressure() {
+    namespace Core = MotorControlRS;
+    Fake fake; auto host = fake.host(false, true); host.startAction = Fake::startAction;
+    Probe::Console console(host, Probe::Format::JSON);
+    Ess::ActionContext stop;
+    stop.operationId = 100; stop.target.id = stop.target.address = 2;
+    stop.request.kind = Core::ActionKind::STOP; stop.request.stop.behavior = Core::StopBehavior::DIRECT;
+    stop.state = Core::ActionState::ACTIVE;
+    fake.view.operationId = 100; fake.view.commandId = 7; fake.view.address = 2;
+    fake.view.pending = true; fake.view.actionContext = &stop;
+    fake.view.ordinaryStop = true; fake.view.stopEscalation = true; fake.view.replacedOperationId = 45;
+    send(console, "@7 stop fast 2\n");
+    fake.contains("\"replaced_operation_id\":45,\"stop_escalation\":true");
+    send(console, "@8 result 100\n");
+    fake.contains("\"result\":\"pending\"");
+    fake.contains("\"replaced_operation_id\":45,\"stop_escalation\":true");
+    stop.state = Core::ActionState::FAILED; stop.outcome = Core::ActionOutcome::TRANSPORT_ERROR;
+    fake.view.pending = false;
+    assert(console.reportAction(7, 100, stop));
+    fake.contains("\"replaced_operation_id\":45,\"stop_escalation\":true");
+    send(console, "@9 result 100\n");
+    fake.contains("\"replaced_operation_id\":45,\"stop_escalation\":true");
+
+    // Four accepted replies keep their copied identities despite output pressure
+    // and later result-view changes. Refusal floods cannot replace those replies.
+    Fake pressured; auto pressureHost = pressured.host(false, true); pressureHost.startAction = Fake::startAction;
+    Probe::Console blocked(pressureHost, Probe::Format::JSON);
+    pressured.blocked = true; send(blocked, "@1 status\n");
+    for (uint32_t i = 0; i < 4; ++i) {
+        pressured.view.ordinaryStop = true; pressured.view.stopEscalation = i >= 2;
+        pressured.view.replacedOperationId = 50 + i;
+        send(blocked, "@" + std::to_string(10 + i) + (i < 2 ? " stop normal 1\n" : " stop fast 1\n"));
+    }
+    assert(pressured.actions == 4);
+    for (uint32_t id = 20; id < 35; ++id) send(blocked, "@" + std::to_string(id) + " stop fast 1\n");
+    assert(pressured.actions == 4 && blocked.inputDropped() == 12);
+    pressured.view.replacedOperationId = 999;
+    pressured.blocked = false; assert(blocked.serviceOutput());
+    assert(pressured.lines.size() == 1 + Probe::STOP_REPLY_CAPACITY);
+    for (uint32_t i = 0; i < 4; ++i) {
+        const auto& line = pressured.lines[i + 1];
+        assert(line.find("\"id\":" + std::to_string(10 + i) + ",") != std::string::npos);
+        assert(line.find("\"operation_id\":" + std::to_string(100 + i)) != std::string::npos);
+        assert(line.find("\"replaced_operation_id\":" + std::to_string(50 + i)) != std::string::npos);
+        assert(line.find(i < 2 ? "\"stop_escalation\":false" : "\"stop_escalation\":true") != std::string::npos);
+    }
+
+    Fake reordered; auto orderHost = reordered.host(false, true); orderHost.startAction = Fake::startAction;
+    Probe::Console ordered(orderHost, Probe::Format::JSON);
+    reordered.blocked = true; send(ordered, "@1 status\n");
+    reordered.actionResult = Probe::Action::BUSY;
+    for (uint32_t id = 2; id < 6; ++id) send(ordered, "@" + std::to_string(id) + " stop normal 1\n");
+    reordered.actionResult = Probe::Action::OK; reordered.view.ordinaryStop = true;
+    for (uint32_t id = 6; id < 10; ++id) send(ordered, "@" + std::to_string(id) + " stop fast 1\n");
+    assert(ordered.inputDropped() == 1);
+    reordered.blocked = false; assert(ordered.serviceOutput());
+    uint32_t expectedOperation = 100;
+    for (const auto& line : reordered.lines) if (line.find("\"result\":\"accepted\"") != std::string::npos)
+        assert(line.find("\"operation_id\":" + std::to_string(expectedOperation++)) != std::string::npos);
+    assert(expectedOperation == 104);
+}
+
+void testReleaseAfterStopGrammarAndRouting() {
+    Fake fake; auto host = fake.host(false, true); host.startAction = Fake::startAction;
+    host.startReleaseAfterStop = Fake::startReleaseAfterStop;
+    Probe::Console console(host, Probe::Format::JSON);
+    for (const char* text : {
+        "motor-release after-stop", "motor-release after-stop 0 mechanics-permit-release triggers-inhibited",
+        "motor-release after-stop 4294967296 mechanics-permit-release triggers-inhibited",
+        "motor-release after-stop 42 mechanics-permit-release", "motor-release after-stop 42 triggers-inhibited",
+        "motor-release after-stop 42 mechanics-permit-release triggers-inhibited extra",
+        "motor-release after-stop 42 all-true triggers-inhibited"}) {
+        send(console, std::string(text) + "\n"); fake.contains("invalid_arguments");
+        assert(!fake.actions && !fake.releasesAfterStop);
+    }
+    send(console, "@55 motor-release after-stop 42 mechanics-permit-release triggers-inhibited\n");
+    assert(fake.releasesAfterStop == 1 && fake.releaseStopId == 42 && fake.actionCommandId == 55 && !fake.actions);
+    fake.contains("\"command\":\"motor-release\""); fake.contains("\"address\":6"); fake.contains("\"operation_id\":100");
+    assert(fake.lines.back().find("replaced_operation_id") == std::string::npos);
+    send(console, "@56 motor-release 2\n");
+    assert(fake.actions == 1 && fake.releasesAfterStop == 1 && fake.address == 2);
+    send(console, "@57 help motor-release\n"); fake.contains("after-stop ID mechanics-permit-release triggers-inhibited");
+
+    Fake absent; auto absentHost = absent.host(false, true); absentHost.startAction = Fake::startAction;
+    Probe::Console withoutHook(absentHost, Probe::Format::JSON);
+    send(withoutHook, "@1 motor-release after-stop 42 mechanics-permit-release triggers-inhibited\n");
+    absent.contains("unavailable"); assert(!absent.actions && !absent.releasesAfterStop);
 }
 
 void testMaximumActionAndInvalidatedCacheFormatting() {
@@ -2603,6 +2706,8 @@ int main(int argc, char** argv) {
     testHostArgumentsAndBackpressure();
     testZeroRadiansAndApproximateCancellationMatchApi();
     testActionRoutesAndStopPressure();
+    testStopRetentionMetadataAndPressure();
+    testReleaseAfterStopGrammarAndRouting();
     testMaximumActionAndInvalidatedCacheFormatting();
     testMoveRoutesExactParsingAndRetainedReports();
     testMaximumMoveReportFitsFixedOutput();

@@ -185,14 +185,17 @@ interrupted operation and stop outcomes. Requested deceleration and device
 queue policy must be supported; bus failure cannot guarantee physical stopping.
 Stop interrupts simple preparation only after urgent admission succeeds.
 
-A transport fault does not refuse a stop. A stop that has not been transmitted is
+A transport fault can defer an ordinary stop. A stop that has not been transmitted is
 accepted with an operation ID, starts or joins one bounded recovery and is sent once
 after `RECOVERED`. Its deadline is fixed at admission and includes a recovery
 allowance. If recovery fails or expires, the stop ends with
 `execution=not_transmitted` and an explicit outcome, with no retry. A transmitted
 stop whose reply is lost stays `execution=unknown` and only a new explicit stop sends
 again. Nothing else resumes after recovery. Discovery and commissioning ownership and
-host configuration blocks still refuse with their existing results.
+host configuration blocks still refuse with their existing results. Discovery
+may accept a stop only for its known original target, after restoring the tuple.
+A restoration interlock ends that accepted stop without TX. A bus fault after
+a stop ACK ends observation promptly with the ACK and unobserved completion retained.
 
 `stop fast` can escalate a running `stop normal`: the old stop's unsent write and later
 polls end, and both results stay retained. `recover` releases a delivered terminal
@@ -202,20 +205,36 @@ Cancellation ends unsent work/local waiting. An in-flight frame settles naturall
 An advanced `move` that holds an established coordinate reference needs an idle axis,
 so run `monitor off` first; it is rejected before TX otherwise.
 
-`cancel` of a move, velocity, home, action, setting or typed read and `monitor off` do
+`cancel` of an ordinary probe, move, velocity, home, action, setting or typed read and `monitor off` do
 not interlock the bus. Uncertain transmitted effects stay retained. It does not reverse
 a write or erase evidence.
 No timeout, startup, recovery, discovery or polling path automatically replays
 motor commands. ACK is distinct from observed completion; old completion flags
 cannot satisfy a new operation.
 
-`version` still reports `outstanding_capacity: 10` for protocol 3; the stop-escalation
-correlation and two group-stop correlations are additional. A group stop sends one
+`version` still reports `outstanding_capacity: 10` for protocol 3. Nine ordinary
+correlations coexist with four reserved stop correlations and two group-stop
+correlations. A group stop sends one
 urgent stop per member from its own pool (one stop and one escalation per member).
-The owner's urgent quota covers this pool and the two selected-address stop records,
+The owner's urgent quota covers this pool and four ordinary stop records,
 so neither starves the other. `drv` adds `stop_evidence_overwritten` and
 `automatic_recovery_operation_id`. An automatic recovery has no command correlation and
 emits no report; `result ID` inspects it until the next recovery replaces it.
+
+Ordinary stop acceptance, pending and terminal JSON include immutable
+`replaced_operation_id` and `stop_escalation`. Zero means no replaced result.
+Primary stop storage has two slots; two further slots admit only fast escalation
+of retained same-address normal stops. At most one active/undelivered escalation
+per address is allowed. Within each pool, reuse the oldest delivered confirmed
+stop, then a free slot, then the oldest delivered failed stop. Never infer host
+replacement from address or slot order when these explicit fields are present.
+
+`motor-release after-stop ID mechanics-permit-release triggers-inhibited` supplies
+two explicit fixture facts for an exact retained failed transmitted stop on the
+selected axis. It calls the same admission as `submitReleaseAfterStop`.
+Missing/extra tokens reject. RELEASED does not clear motion uncertainty; enable
+and alarm clear remain blocked until checked stop reconciles it. See the
+[action API and limits](ess_actions.md#programmatic-stop-and-explicit-release).
 
 `result ID` is non-consuming. Explicit correlated/API and failed/uncertain
 results remain retained until released. Delivered successful human-command
