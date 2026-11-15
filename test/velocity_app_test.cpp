@@ -149,14 +149,14 @@ void gatesAndParity() {
         const auto id = view(0).operationId;
         assert(view(id).velocityContext->prepared.nativeRpm == 30);
         velocityStep(id); assert(hardware.tx.size() == 15 && hardware.tx[3] == 0x1D);
-        uint8_t bytes[8]; Rtu::RequestId other;
+        uint8_t bytes[8];
         Rtu::BusRequest write; write.expected.address = write.expected.target = 1;
         write.expected.targetGeneration = app->bindingGeneration;
         write.expected.function = 6; write.expected.first = 0x1D; write.expected.count = 1;
         write.wire.bytes = bytes; write.wire.length = ESS::buildWriteSingleRegister(1,0x1D,50,bytes,sizeof(bytes));
         write.wire.replyLength = 8; write.wire.responseTimeoutUs = app->serial.timing.responseTimeoutUs;
         write.wire.deadlineUs = nowUs() + REQUEST_US; write.validator = Rtu::essValidator();
-        assert(admitAxisWrite(*app,write,nowUs(),other) == Probe::Action::AXIS_CONFLICT);
+        assert(checkAxisWrite(*app,write) == Probe::Action::AXIS_CONFLICT);
         velocityStep(id); assert(hardware.tx[1] == 6 && hardware.tx[5] == 2);
         velocityStep(id, registers(1,{0,4})); assert(view(id).velocityContext->runningObserved);
         const auto due = view(id).velocityContext->stopDueUs;

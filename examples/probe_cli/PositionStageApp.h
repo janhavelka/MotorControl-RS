@@ -68,6 +68,7 @@ void servicePositionStage(App& a, App::StageSession& s, uint64_t now) {
         if ((v.cancelled || stale) && !accepted) a.owner.cancelUnsent(s.request, now);
         const auto* result = a.owner.result(s.request);
         if (!result) return;
+        const auto outcome = result->outcome;
         const auto& t = result->transport;
         const bool checked = result->outcome == Rtu::Outcome::SUCCESS && t.reason == Rtu::Reason::FRAME &&
             t.closureQualified && t.txComplete;
@@ -84,6 +85,13 @@ void servicePositionStage(App& a, App::StageSession& s, uint64_t now) {
                 v.readback, STAGE_WORDS, count).isOk() && count == STAGE_WORDS;
         }
         a.owner.release(s.request); s.request = Rtu::RequestId();
+        // Settle the borrowed reply first, then let cancellation win. A matching
+        // readback is retained evidence, not permission to publish a new witness.
+        if (v.cancelled || stale) {
+            v.cancelled = true;
+            finishStage(s, false, Status(Err::INVALID_CONFIG, 0, "stage cancelled"), now);
+            return;
+        }
         if (s.phase == 2) {
             const bool match = v.readbackKnown && std::memcmp(v.readback, v.words, sizeof(v.words)) == 0;
             finishStage(s, match, match ? Ok() : Status(v.readbackKnown ? Err::ILLEGAL_VALUE : Err::FRAME_ERROR, 0,
@@ -91,8 +99,8 @@ void servicePositionStage(App& a, App::StageSession& s, uint64_t now) {
             return;
         }
         if (v.execution != ActionExecution::ACKNOWLEDGED) {
-            finishStage(s, false, Status(result->outcome == Rtu::Outcome::DEVICE_REJECTED ? Err::EXCEPTION : Err::FRAME_ERROR,
-                static_cast<int32_t>(result->outcome), "stage write not acknowledged"), now);
+            finishStage(s, false, Status(outcome == Rtu::Outcome::DEVICE_REJECTED ? Err::EXCEPTION : Err::FRAME_ERROR,
+                static_cast<int32_t>(outcome), "stage write not acknowledged"), now);
             return;
         }
         s.phase = 2;

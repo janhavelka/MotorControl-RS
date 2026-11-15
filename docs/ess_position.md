@@ -529,9 +529,9 @@ The standalone application extends the existing action service loop and axis
 reservation; it adds no scheduler or second queue. Admission starts on a
 quiescent bus so an earlier producer's queued write cannot cross staging.
 Unrelated reads/other-target work may join afterward. Other cooperative ordinary
-writers use `admitAxisWrite`; stale target bindings reject before admission,
-and accepted independent writes invalidate affected observations and the current
-axis's configuration/qualifications. Reservation rejects same-axis target, speed
+writers use `checkAxisWrite`; stale target bindings reject before admission.
+Each producer invalidates affected observations and configuration/qualification
+when its first write byte is accepted. Reservation rejects same-axis target, speed
 and configuration writes between staging and trigger. Host configuration rejects
 while reserved. Changed configuration readback invalidates move continuations,
 including input assignments/polarity and soft/over-limit settings. An admitted

@@ -95,6 +95,14 @@
 
 ### Changed
 
+- Revalidated the standalone ESS audit against current code and original
+  manuals. Corrected stale staging, homing, sign and restart claims. Added
+  bounded prompts for remaining stop/recovery, evidence and cleanup work.
+- Removed the unused `admitAxisWrite` wrapper. Tests now call the production
+  write-policy check; real writers still invalidate evidence at TX acceptance.
+  Homing refusal text now describes host policy without claiming undocumented
+  drive reactions.
+
 - Unified author, copyright and contact metadata: THYMOS Solution s.r.o., Jan Havelka, info@thymos.cz.
 - The default position ceiling is 50,000 command increments/s, down from 200,000
   (`PositionLimits::maximumCommandRate`). Above about 60,000/s, firmware `0x0029` can
@@ -169,6 +177,10 @@
   Its support remains unresolved.
 
 ### Fixed
+
+- A stop during position-stage readback now keeps the settled write/read
+  evidence but cannot mark the cancelled stage ready or publish stored words.
+  Both frontend application tests cover this race.
 
 - The stress tool no longer resumes after a USB stall when its cleanup stop is
   refused, missing, failed or uncertain. It requires the matching observed-stop

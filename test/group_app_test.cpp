@@ -695,6 +695,37 @@ void testSelectedAxisStageThenStoredStart() {
     runUntil([&] { return copyPositionStage(stage, view) && !view.pending; }, 2000000);
     assert(!view.staged && view.execution == ActionExecution::UNKNOWN && app->rememberedMoveGeneration == 0);
 }
+void testStopDuringStageReadbackKeepsEvidenceWithoutWitness() {
+    fresh({1});
+    for (const char* line : {"@1 read config\n", "@2 motion-profile read\n", "@3 read state\n"}) {
+        command(line);
+        runUntil([] { return !app->owner.active() && !app->owner.pending() && !reading(*app) && !app->motionProfile.view.pending; });
+    }
+    PositionRequest position;
+    position.value = Rational(150);
+    position.unit = PositionUnit::STEPS;
+    position.frame = CoordinateFrame::NATIVE;
+    position.relative = true;
+    position.configurationGeneration = app->axis.generation;
+    uint32_t stage = 0;
+    const auto from = frames.size();
+    assert(stagePositionMove(position, 60, stage));
+    runUntil([] { return app->stage.phase == 2 && app->stage.request.owner &&
+        app->owner.txAccepted(app->stage.request) != 0; });
+    ActionRequest stop;
+    stop.kind = ActionKind::STOP;
+    stop.stop.behavior = StopBehavior::DIRECT;
+    uint32_t stopped = 0;
+    assert(startAction(app, 9, 1, stop, stopped) == Probe::Action::OK);
+    Probe::PositionStageView view;
+    runUntil([&] { return copyPositionStage(stage, view) && !view.pending; });
+    assert(view.cancelled && !view.staged && !view.status.isOk());
+    assert(view.execution == ActionExecution::ACKNOWLEDGED && view.readbackKnown);
+    assert(std::memcmp(view.words, view.readback, sizeof(view.words)) == 0);
+    assert(app->rememberedMoveGeneration == 0);
+    runUntil([&] { return terminal(*app, *findRecord(*app, stopped)); });
+    assert(count(isStageFrame, from) == 2 && count(isAnyStart, from) == 0);
+}
 } // namespace
 
 int main() {
@@ -710,6 +741,7 @@ int main() {
     testGenerationInvalidation();
     testIdleOnlyDeclarationAndExclusiveSequence();
     testSelectedAxisStageThenStoredStart();
+    testStopDuringStageReadbackKeepsEvidenceWithoutWitness();
     std::puts("Drive group application tests passed");
     return 0;
 }

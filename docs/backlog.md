@@ -1,6 +1,6 @@
 # Implementation and qualification backlog
 
-Status reviewed on 4 November 2026; multi-drive items added on 12 November.
+Standalone status reviewed on 15 November 2026; multi-drive records are dated separately.
 This page lists remaining work. The [standalone prompts](prompts/standalone/README.md)
 and the [multi-drive prompts](prompts/ess_multi_drive/README.md) define the active ESS tasks;
 the [changelog](../CHANGELOG.md) and [reports](reports/README.md) record delivery.
@@ -48,8 +48,10 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   owns that work.
 - [ ] Implement remaining standalone native staging, including
   restoring an arbitrary archived position profile without starting motion.
+  Prepared-move staging exists through `stagePositionMove`; candidate import,
+  its retained result and console/host route remain in
+  [standalone 02](prompts/standalone/02_profile_staging.md).
   Host reset loses the RAM backup; never replay a move as restoration.
-  [Evidence](archive/reports/ess_release_23_2026-10-05.md).
 - [ ] Resolve signed stored-target encoding, admissible limit/stored-target
   write forms, and home-offset order/sign/scale before exposing their setters.
 - [ ] Resolve method 18's conflicting signal captions and collision methods
@@ -67,15 +69,26 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
 
 ## Open re-audit findings
 
-- [ ] Fix R-01 (an active origin blocks ordinary moves, including right after a
-  successful home) and R-02 (a never-transmitted stop lost to bus noise during its
-  quiet wait, short of decision D1), then the low-severity R-03 to R-15, and finish
-  K-01's window judgement and K-02's closure rule.
-  [Findings and evidence](reports/2026-11-02_standalone_promptset_audit.md#re-audit-2-november-2026).
+- [ ] Finish [standalone 15](prompts/standalone/15_stop_recovery.md): a velocity
+  poll at its duration boundary can leave the run's stop unsent; faults can
+  also strand that stop. Cover zero-TX terminal stops, recovery, escalation,
+  public stop access and host result accounting. D1 is already decided.
+- [ ] Finish [standalone 16](prompts/standalone/16_evidence_qualification.md):
+  reply evidence, qualification lifetime and home admission policy. Do not
+  equate the native rate range with a tested operating envelope.
+- [ ] Resolve R-01's active-origin refusal in standalone 16; broader per-function
+  readiness stays in [multi-drive 04](prompts/ess_multi_drive/04_input_programming.md).
+  Resolve K-01's
+  endpoint/tolerance question through [standalone 08](prompts/standalone/08_motion_measurement.md).
+- [ ] Apply the bounded cleanup in [standalone 17](prompts/standalone/17_application_cleanup.md)
+  after correctness work. The
+  [current revalidation](reports/2026-11-15_standalone_audit_revalidation.md)
+  distinguishes defects, already fixed items, deliberate policy and physical limits.
 
 - [ ] Resolve the [2 November persistent RUNNING failure](reports/2026-11-02_standalone_14_bench_regression.md#the-failure): once in four
   interrupted moves at 1,000 increments/s, far below earlier cases, clearing only with a power cycle. Capture supply voltage and continuous status on a rerun.
-- [ ] Fix R-16 (home has no command-rate limit) and R-17 (a stuck drive leaves no release route without a controller reset).
+- [ ] Close R-16's home rate policy in 16 and R-17's explicit stuck-drive action
+  contract in 15; neither permits hidden automatic release or motion restart.
 
 ## Exact-drive behavior and motion evidence
 

@@ -9,6 +9,9 @@ Reinspect actual sources and affected callers/tests before each stage; the audit
 is a dated baseline, not authority over later code. Finding labels A-, H-, K-,
 V-, P- and D- refer to the
 [2 November audit](../../reports/2026-11-02_standalone_promptset_audit.md).
+Its [15 November revalidation](../../reports/2026-11-15_standalone_audit_revalidation.md)
+records current verdicts and the follow-up owners. R- findings come from the
+same November audit; C- findings come from its linked independent ESS reviews.
 
 ## Scope and ownership
 
@@ -34,7 +37,7 @@ Stage numbers collide, so use these names:
 | `ess_release_NN` | `docs/archive/reports/ess_release_NN_*` | Dated reports of the archived ESS delivery sequence |
 
 For the current owner of a finding, use the Current disposition / owner column
-in the [audit](audit.md).
+in the [audit](audit.md) for N/Q rows and the revalidation for runtime findings.
 
 ## Owner decisions
 

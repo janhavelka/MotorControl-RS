@@ -68,9 +68,9 @@ Status inputReadiness(const HomePrerequisites& p, uint16_t inputs) {
     if (p.inputPolarity & ~uint16_t(15) || inputs & ~uint16_t(15))
         return invalid(HomeError::INPUT_REQUIRED, "unknown input polarity or logical level bits");
     const auto* method = homeMethod(p.qualifiedMethod);
-    // A method's documented path uses only its required inputs. A limit outside them
-    // contradicts that path, while an origin it does not need is simply passed.
-    // Method 35 has no search trajectory, so no sensor level contradicts it.
+    // Host policy rejects active limits outside the method's required inputs.
+    // This does not prove the drive's direction-specific response. An unrelated
+    // origin is allowed; method 35 has no moving search and permits sensor levels.
     const uint8_t forbidden = p.qualifiedMethod == HomingMethod::METHOD_35 ? 0 :
         uint8_t(LIMIT_ROLES & ~method->requiredInputs);
     uint8_t available = 0;
@@ -85,10 +85,10 @@ Status inputReadiness(const HomePrerequisites& p, uint16_t inputs) {
             const uint8_t role = uint8_t(1u << (function - 1));
             if (p.inputWiring[i] == InputWiring::CONNECTED) available |= role;
             if (active && (forbidden & role))
-                return invalid(HomeError::INPUT_REQUIRED, "active limit input contradicts the method path");
+                return invalid(HomeError::INPUT_REQUIRED, "active nonrequired limit rejected by home policy");
         } else if (function >= 4 && function <= 6) {
-            // Release, stop and emergency stop interrupt whichever method is running.
-            if (active) return invalid(HomeError::INPUT_REQUIRED, "active release or stop input interrupts home");
+            // Reject active release/stop inputs without assuming their trajectory effect.
+            if (active) return invalid(HomeError::INPUT_REQUIRED, "active release or stop input rejected by home policy");
         } else if (function >= 7 && function <= 13) {
             // Position, speed, jog, home and segment triggers start motion the host cannot
             // attribute, and an edge can fall between polls, so nothing may drive them.

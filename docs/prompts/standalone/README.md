@@ -1,7 +1,8 @@
 # Standalone ESS completion and qualification
 
-Prepared 2026-10-23; status reviewed 2026-11-04. **Stages 02, 03, 05, 07, 11 and 14
-are PARTIAL. Stages 04, 06, 08-10, 12 and 13 are NOT STARTED.**
+Prepared 2026-10-23; status reviewed 2026-11-15. **Stage 01 is COMPLETE.
+Stages 02, 03, 05, 07, 11 and 14 are PARTIAL. Stages 04, 06, 08-10, 12, 13
+and 15-17 are NOT STARTED.**
 Stage 01's parameter reads are complete. The corrections and owner decisions of
 the [2 November code and promptset audit](../../reports/2026-11-02_standalone_promptset_audit.md)
 are applied here. That audit also lists stop-path and homing defects; check them
@@ -9,7 +10,10 @@ against current code before bench work. The [2 November bench regression](../../
 tested the new routes. The later overnight run found an unresolved USB output
 stall. The [4 November stop study](../../reports/2026-11-04_stop_normal_rate_ceiling.md)
 led to the 50,000 increments/s default ceiling. Neither run closes the remaining
-source, drive-fault or fixture work.
+source, drive-fault or fixture work. The
+[15 November revalidation](../../reports/2026-11-15_standalone_audit_revalidation.md)
+checks the old findings against current code. Use its verdicts for remaining
+work; a historical finding is not proof that the defect still exists.
 
 N01, N02, N04, N07 and the 27 planned switch methods are implemented. Their
 [delivery reports](../../reports/README.md) retain tests and CI evidence.
@@ -27,6 +31,23 @@ A missing native operation is different from an intentional unresolved guard.
 A recorded drive failure is different from a proven library defect. The audit
 keeps those distinctions. Use the audit's Current owner column; Next stage is historical.
 
+## Next work
+
+1. Run [15: stop and recovery](15_stop_recovery.md). It owns the remaining
+   unsent-stop and finite-velocity stop defects. Finish it before physical
+   velocity tests; do not repeat already fixed A-series issues.
+2. Run [16: evidence and qualification](16_evidence_qualification.md) in its
+   bounded parts. Fix stale qualification and inconsistent reply evidence
+   before extending the affected motion routes.
+3. Finish [02: candidate staging](02_profile_staging.md). Prepared-move staging
+   already exists; arbitrary archive import and its console/host route do not.
+4. Continue 03-12 only where their stated evidence or fixture exists. Stage 14
+   remains the short hardware regression. [17: application cleanup](17_application_cleanup.md)
+   is lower priority and must preserve behavior. Stage 13 reconciles actual
+   dispositions, including blocked source and physical work.
+
+## Stage status
+
 | Stage | Deliverable | Dependencies / starting gate | Status |
 | --- | --- | --- | --- |
 | 01 | [Native velocity and homing parameter reads](../../ess_reads.md) | Public API and ordinary console routes delivered | COMPLETE |
@@ -43,6 +64,9 @@ keeps those distinctions. Use the audit's Current owner column; Next stage is hi
 | 12 | [S2/SDK and flash-read qualification](12_platforms.md) | Actual S2 hardware for UART claims; bench S3 in bootloader mode with esptool 5.3.0 | NOT STARTED |
 | 13 | [Coverage and release-scope reconciliation](13_closeout.md) | Every other stage has an explicit disposition, with rows for the N05 remainder and stage 14 | NOT STARTED |
 | 14 | [Delivered-software bench regression](14_bench_regression.md) | Recorded bench USB device present; no analyzer | PARTIAL: [routes pass, one persistent RUNNING failure unresolved](../../reports/2026-11-02_standalone_14_bench_regression.md) |
+| 15 | [Stop, recovery and result handling](15_stop_recovery.md) | Current code/reproducers; owner decision D1 already settled | NOT STARTED |
+| 16 | [Evidence and qualification corrections](16_evidence_qualification.md) | Independent audit verdicts; source and current qualification contracts | NOT STARTED |
+| 17 | [Measured application cleanup](17_application_cleanup.md) | Affected behavior characterized; 15/16 corrections first | NOT STARTED |
 
 This table is the single status record. Statuses are NOT STARTED, PARTIAL,
 BLOCKED(input) and COMPLETE.

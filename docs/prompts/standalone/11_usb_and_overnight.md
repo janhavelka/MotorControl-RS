@@ -18,9 +18,11 @@ docs/reports/2026-10-07_overnight_hil.md, 2026-10-06_firmware_health.md; example
 
 ## Work
 
-1. Confirm the exact firmware includes the captured HWCDC lost-event correction.
-   Preserve the captured stall and earlier unattributed no-dump stall as distinct
-   findings; do not assume the correction explains both.
+1. Confirm the exact firmware uses the shared IDF USB driver that replaced HWCDC.
+   Preserve the old HWCDC race, the no-dump stall and HW-12 on the replacement
+   driver as distinct findings. Later clean runs do not explain HW-12.
+   Reuse the existing `bench_stress.py` diagnostics and checked USB-recovery stop;
+   a refused, missing or uncertain stop ends the run even with `--recover`.
 2. Prepare bounded USB input-saturation/host-disconnect/slow-reader cases with
    observable sent/received sequencing and retained outcomes. Console discard
    counters cannot prove absence of SDK RX-ring loss.
@@ -30,6 +32,8 @@ docs/reports/2026-10-07_overnight_hil.md, 2026-10-06_firmware_health.md; example
 4. Keep the four accumulated active hours from the narrower rate study as their
    own evidence. Do not relabel them as an overnight pass or combine runs to
    conceal a failed aggregate.
+   The 2-3 November run and 13 November four-hour soak are further dated
+   evidence, not a closure of the USB-stall or incoming-saturation findings.
 
 ## Acceptance and handoff
 

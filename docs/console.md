@@ -326,7 +326,9 @@ The application API `stagePositionMove` and `copyPositionStage` stage the
 selected axis the same way: the shared move preparation, one FC10 write of the
 five words and one checked readback, no start. A matching readback records the
 remembered words, so a following `submitMove(..., MoveSetup::USE_STORED)` sends
-only the start. It has no console route yet ([standalone 02](prompts/standalone/02_profile_staging.md)).
+only the start. A stop cancels staging, including a final readback already on
+the wire: its evidence is retained but it cannot publish remembered words.
+It has no console route yet ([standalone 02](prompts/standalone/02_profile_staging.md)).
 
 Storage: the group adds one move record per member and two stop records per
 member to the application (PSRAM); every dependent quota is sized from the

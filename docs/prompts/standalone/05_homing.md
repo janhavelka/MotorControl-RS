@@ -42,8 +42,9 @@ into the physical checklist.
    Record input assignments, effective polarity, the X0-X3 default conflict
    (V-01), the >10 ms input pulse requirement (hardware p9), each initial-location
    branch, actual search/return/index behavior, bounded travel, stop and origin
-   evidence. Record H-02's assumptions as bench observations: ARRIVED after
-   homing, RUNNING is reported during homing, HOMED falling after the trigger,
+   evidence. ARRIVED/IN_POSITION is not required: HW-11 showed a completed home
+   without it. Keep that regression. Recheck H-02's remaining assumptions:
+   RUNNING is reported during moving homing, HOMED falling after the trigger,
    position reading exactly 0, the meaning of bits 5 and 6, and INPUT_STATUS
    polarity. `0x0017` over-limit parking (p70, default free) is the only hint at a
    limit reaction, unstated for homing. The drive executes the trajectory; sampled

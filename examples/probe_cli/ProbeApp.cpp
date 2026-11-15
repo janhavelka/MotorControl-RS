@@ -1148,7 +1148,8 @@ Probe::Action admissionResult(Rtu::BusAdmission result) {
     default: return Probe::Action::INVALID;
     }
 }
-// Other cooperative producers use this admission adapter for ordinary writes.
+// Ordinary writers check this policy before owner admission. Each producer
+// invalidates affected observations when its first write byte is accepted.
 // The operation executor below already owns its same-axis reservation. A raw
 // call to the bus owner cannot substitute for this application policy boundary.
 Probe::Action checkAxisWrite(const App& a, const Rtu::BusRequest& request) {
@@ -1164,25 +1165,6 @@ Probe::Action checkAxisWrite(const App& a, const Rtu::BusRequest& request) {
         return Probe::Action::UNAVAILABLE;
     if (axisReserved(a, request.expected.address)) return Probe::Action::AXIS_CONFLICT;
     return Probe::Action::OK;
-}
-inline Probe::Action admitAxisWrite(App& a, const Rtu::BusRequest& request, uint64_t now, Rtu::RequestId& id) {
-    const Probe::Action checked = checkAxisWrite(a, request);
-    if (checked != Probe::Action::OK) return checked;
-    const Probe::Action admitted = admissionResult(a.owner.admit(request, now, id));
-    if (admitted == Probe::Action::OK && request.expected.address == a.axis.target.address) {
-        // Even an uncertain independent write can change configuration or state.
-        // Require new reads and qualification before any subsequent move.
-        invalidateAxis(a);
-        a.configuration.operationId = 0;
-        a.movePrerequisites = ESS::MovePrerequisites();
-        a.velocityPrerequisites = ESS::VelocityPrerequisites();
-        a.homePrerequisites = ESS::HomePrerequisites();
-    }
-    if (admitted == Probe::Action::OK) {
-        invalidateObservations(a, request.expected.address, now);
-        invalidateMemberConfiguration(a, request.expected.address, now);
-    }
-    return admitted;
 }
 Probe::Action prepareSelectedMove(App&, const MotorControlRS::MoveRequest&, uint64_t, uint64_t, ESS::MoveContext&);
 Probe::Action admitMoveStep(App& a, App::Record& record, const ESS::PreparedMove& prepared, uint64_t now) {

@@ -29,9 +29,11 @@ src/profiles/ess_rs/Codec.cpp, Position.cpp, DriverSettings.cpp, ControlSettings
    for limits) and the p8 frame `00 00 13 88`. p30's big-endian prose is byte-level.
    p70 prints the default 0. Value 1 ('High position at the back') has no worked
    example. p30's list is `0x000A/0B`, `0x0024/25`, `0x0037-3A` and segment pulse
-   pairs `0x0060/61` to `0x00BA/BB`, elided. Still unresolved: negative wire
-   encoding, soft-limit and offset units, FC10 acceptance and atomicity for the
-   limit and stored pairs, and confirmation on firmware `0x0029`. Homing offset:
+   pairs `0x0060/61` to `0x00BA/BB`, elided. Negative active-position targets and
+   feedback are bench-verified as two's complement on firmware `0x0029`
+   (HW-13); do not repeat that work or extend it to other pairs. Still unresolved:
+   negative stored-target/limit/offset encoding, soft-limit and offset units,
+   and FC10 acceptance and atomicity for the limit and stored pairs. Homing offset:
    offset access (RW, p73) and high/low labels are printed; word order is not
    documented: it is absent from p30 although p29 calls that table all high and low
    parameters, and its only frame has zero words (p20). Do not remove the write

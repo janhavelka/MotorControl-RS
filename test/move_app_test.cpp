@@ -207,39 +207,21 @@ void testFailedPreparationAndCrossKindSlotReuse() {
     assert(hardware.writes == 1 && !axisReserved(*app, 1));
 }
 void testIndependentWritesRespectQualificationAndMoveStartup() {
-    fresh(); uint8_t bytes[8] = {}; Rtu::RequestId write;
+    fresh(); uint8_t bytes[8] = {};
     const auto unqualified = configurationWrite(bytes, sizeof(bytes));
-    assert(admitAxisWrite(*app, unqualified, nowUs(), write) == Probe::Action::UNAVAILABLE);
-    assert(!write.owner && hardware.writes == 0 && !app->owner.pending());
+    assert(checkAxisWrite(*app, unqualified) == Probe::Action::UNAVAILABLE);
     qualify(); const auto configured = configurationWrite(bytes, sizeof(bytes));
-    auto& unrelated = app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::FEEDBACK)];
-    unrelated.valid = true; unrelated.value.target = app->axis.target; unrelated.value.target.address = 2;
-    unrelated.value.target.id = 2; unrelated.observedEarliestUs = unrelated.observedLatestUs = nowUs();
     const uint32_t generation = app->axis.generation;
     auto stale = configured; --stale.expected.targetGeneration;
-    assert(admitAxisWrite(*app, stale, nowUs(), write) == Probe::Action::INVALID);
+    assert(checkAxisWrite(*app, stale) == Probe::Action::INVALID);
     stale = configured; stale.expected.target = 2;
-    assert(admitAxisWrite(*app, stale, nowUs(), write) == Probe::Action::INVALID);
-    assert(!write.owner && hardware.writes == 0 && !app->owner.pending());
+    assert(checkAxisWrite(*app, stale) == Probe::Action::INVALID);
+    assert(checkAxisWrite(*app, configured) == Probe::Action::OK);
+    // Policy checks alone neither admit a write nor invalidate observations.
+    assert(hardware.writes == 0 && !app->owner.pending());
     assert(app->axis.generation == generation && app->configuration.operationId);
-    assert(admitAxisWrite(*app, configured, nowUs(), write) == Probe::Action::OK);
-    assert(app->axis.generation == generation + 1 && !app->configuration.operationId);
-    assert(!app->movePrerequisites.commandUnitsVerified);
-    const auto& motion = app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
-    assert(motion.valid && !Probe::fresh(motion, app->axis.target, nowUs(), 1000000));
-    assert(unrelated.valid && !unrelated.invalidatedUs);
-    uint32_t unchanged = 77;
-    assert(host(app).startMove(app, 1, 1, request(), unchanged) == Probe::Action::BUSY);
-    assert(unchanged == 77 && app->owner.pending() == 1 && hardware.writes == 0);
-    for (unsigned i = 0; i < 1000 && !app->owner.txAccepted(write); ++i) step();
-    assert(app->owner.txAccepted(write) == 8);
-    scheduleReply(hardware.writeStarted + 8 * 87 + 1000, acknowledgement());
-    for (unsigned i = 0; i < 25000 && !app->owner.result(write); ++i) step();
-    assert(app->owner.result(write) && app->owner.result(write)->outcome == Rtu::Outcome::SUCCESS);
-    assert(hardware.writes == 1 && !axisReserved(*app, 1));
-    assert(host(app).startMove(app, 2, 1, request(), unchanged) == Probe::Action::UNAVAILABLE);
-    assert(unchanged == 77 && hardware.writes == 1);
 }
+
 void testStageReservationAndFreshCompletion() {
     fresh(); qualify(); const uint32_t operation = admitMove();
     moveStep(operation);
@@ -258,9 +240,9 @@ void testStageReservationAndFreshCompletion() {
             ESS::buildWriteSingleRegister(1, reg, 1, bytes, sizeof(bytes));
         competing.wire.bytes = bytes; competing.wire.replyLength = 8;
         competing.wire.responseTimeoutUs = app->serial.timing.responseTimeoutUs; competing.wire.deadlineUs = nowUs() + REQUEST_US;
-        competing.validator = Rtu::essValidator(); Rtu::RequestId id;
-        assert(admitAxisWrite(*app, competing, nowUs(), id) == Probe::Action::AXIS_CONFLICT);
-        assert(!id.owner && app->owner.pending() == pending && hardware.writes == writes);
+        competing.validator = Rtu::essValidator();
+        assert(checkAxisWrite(*app, competing) == Probe::Action::AXIS_CONFLICT);
+        assert(app->owner.pending() == pending && hardware.writes == writes);
     }
     moveStep(operation); assert(hardware.tx[1] == 6 && hardware.tx[3] == 0x27 && hardware.tx[5] == 1);
     assert(view(operation).moveContext->execution == ActionExecution::ACKNOWLEDGED);

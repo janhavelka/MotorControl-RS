@@ -237,7 +237,8 @@ bool copyGroupResult(uint32_t operationId, Probe::GroupResult& output);
  * A matching readback records the stored-word witness, so a following
  * submitMove(..., MoveSetup::USE_STORED) for the same request sends only the
  * start. Any later write, settings change, profile restore, broadcast, rebinding
- * or recovery ends the witness. A stop on the axis cancels unsent staging.
+ * or recovery ends the witness. A stop cancels staging; an in-flight reply
+ * settles and its evidence remains, but cannot publish a stored-word witness.
  * One session: a new stage replaces a finished one. Rejection preserves ID. */
 MotorControlRS::Status stagePositionMove(const MotorControlRS::PositionRequest& position, uint16_t speedRpm,
                                          uint32_t& operationId);

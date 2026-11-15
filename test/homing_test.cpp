@@ -1044,8 +1044,8 @@ static void completesWithSample(Ess::HomeContext& c, bool moving, uint16_t sampl
     consumeInputs(c, 3, 0); assert(c.phase == Ess::HomePhase::ZERO_CHECK);
     consume(c); assert(c.state == ActionState::SUCCEEDED && c.completion == ActionCompletion::OBSERVED);
 }
-// H-01: which assigned limits each documented path may never meet, transcribed from
-// the trajectories on function manual p32-67 rather than from the implementation.
+// H-01: required inputs come from function manual p32-67. The forbidden limits
+// express conservative host policy, not a measured drive response.
 static void testPerMethodForbiddenInputs() {
     using M = Ess::HomingMethod;
     const uint16_t ORIGIN = 1, POSITIVE = 2, NEGATIVE = 4;
@@ -1081,7 +1081,7 @@ static void testPerMethodForbiddenInputs() {
     Ess::HomeContext c; assert(Ess::prepareHome(c, axis(), 12, request(M::METHOD_17), p, 100, 10000, options()));
     completesWithSample(c, true, 1);
 }
-// H-01: release/stop inputs interrupt, triggers must be undriven, selectors are inert.
+// H-01 host policy: reject active release/stop inputs and driven triggers; allow selectors.
 static void testNonHomingInputFunctions() {
     using M = Ess::HomingMethod;
     const auto withFunction = [](M method, uint8_t required, uint16_t function, InputWiring wiring, uint16_t inputs) {

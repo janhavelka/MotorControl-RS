@@ -51,10 +51,14 @@ is documented by inference: p30 "0: high position first", the high/low labels
 ("High position at the back") has no worked example. Target units are pulses
 (p16, p22, p70, p75). This does not calibrate pulses to shaft motion.
 
-These pages do not establish FC10 acceptance, and every guard below stays. Still
-unresolved: negative wire encoding, soft-limit and offset units, FC10 acceptance
-and atomicity for the limit and stored pairs, and confirmation on firmware
-`0x0029`. Homing offset: offset access (RW, p73) and high/low labels are printed;
+These pages do not establish further FC10 acceptance, and every guard below
+stays. Negative active-position targets and feedback were later verified as
+two's complement on firmware `0x0029` (HW-13 in the
+[November bench audit](reports/2026-11-02_standalone_promptset_audit.md)).
+That evidence does not qualify negative stored targets, limits or homing offsets.
+Their encoding, soft-limit and offset units, and FC10 acceptance and atomicity
+for limit and stored pairs remain unresolved. Homing offset: offset access
+(RW, p73) and high/low labels are printed;
 word order is not documented: it is absent from p30 although p29 calls that table
 all high and low parameters, and its only frame has zero words (p20).
 
@@ -62,7 +66,7 @@ all high and low parameters, and its only frame has zero words (p20).
 
 | Field | Pair addresses | Source range and signed meaning | Word order | Admissible write / remaining proof |
 | --- | --- | --- | --- | --- |
-| Active position target | `0x0024–0x0025` | Unit pulses (p16, p70). p16 gives positive/negative direction; p70 prints malformed `-0xFFFFFFF` to `0xFFFFFFFF`. Negative wire encoding and applicable device bounds remain unresolved. | Configurable by `0x0019`, p30; high word at the lower address at `0x0019=0` by inference, p8/p30/p70 | `0x0024/2` or containing `0x0021/5`; the typed move sequence selects a reviewed window under its setup policy. |
+| Active position target | `0x0024–0x0025` | Unit pulses (p16, p70). p70 prints malformed `-0xFFFFFFF` to `0xFFFFFFFF`; typed paths use the conservative magnitude bound `0x0FFFFFFF`. Negative two's-complement targets are verified on firmware `0x0029` (HW-13); other firmware remains conditional. | Configurable by `0x0019`, p30; high word at the lower address at `0x0019=0` by inference, p8/p30/p70 | `0x0024/2` or containing `0x0021/5`; the typed move sequence selects a reviewed window under its setup policy. |
 | Homing offset | `0x0035–0x0036` | p73: `-0xFFFFFFF` to `0xFFFFFFF`; negative encoding and native scale unresolved. | High/low labels on p19/p73; word order not documented (absent from p30) | Only containing `0x0031/6` is reviewed. Standalone offset write and a typed homing setter remain unavailable. |
 | Positive software limit | `0x0037–0x0038` | p73: `-0xFFFFFFF` to `0xFFFFFFF`; negative encoding and native scale unresolved. | Configurable, p30 | No established admissible write window. Applies only after homing, p29/p73. |
 | Negative software limit | `0x0039–0x003A` | Same p73 range and uncertainties | Configurable, p30 | No established admissible write window. Applies only after homing, p29/p73. |

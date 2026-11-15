@@ -59,9 +59,12 @@ post-enable wait; their limits remain in the [backlog](backlog.md).
 
 ## Next delivery blocks
 
-1. **Maintain the tested implementation.** Scope any further refactor as new
-   work, preserving frames, event ordering, deadlines, retained
-   uncertainty and command syntax. Keep current guides separate from history.
+1. **Finish the current audit repairs.** Run
+   [standalone 15](prompts/standalone/15_stop_recovery.md) for stop/recovery,
+   then [16](prompts/standalone/16_evidence_qualification.md) for evidence and
+   qualification. The [15 November review](reports/2026-11-15_standalone_audit_revalidation.md)
+   gives each old finding a current verdict. Put optional cleanup after these
+   corrections; preserve frames, deadlines, retained results and command syntax.
 2. **Resolve evidence-backed gaps.** Investigate exact-drive failures and source
    ambiguities before extending native access, velocity/ramp semantics, homing,
    paired setters or tuning. Keep the operation inventory current.
@@ -69,6 +72,8 @@ post-enable wait; their limits remain in the [backlog](backlog.md).
    Stored-profile retrigger remains ACK-only. Broader N05 replacement needs
    [staging and completion evidence](ess_position.md#remaining-replacement-work).
    Method 18, collision homing and nonzero offsets remain guarded.
+   Standalone 02 already has prepared-move staging; archive/candidate import
+   and its console/host route remain unfinished.
 3. **Qualify remaining hardware behavior.** Repeat overnight testing; measure
    independent shaft/electrical behavior; use actual fixtures for external I/O,
    restart/persistence, wire faults and loaded mechanics. The complete list and

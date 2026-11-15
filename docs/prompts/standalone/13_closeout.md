@@ -7,7 +7,8 @@ Findings: **All N/Q rows and the FieldCore correction**.
 
 ## Entry gate
 
-Every other stage, including [14](14_bench_regression.md), has a factual completion,
+Every other stage, including [14](14_bench_regression.md) and the
+[15-17 audit follow-ups](README.md#stage-status), has a factual completion,
 partial, blocked or deferred disposition. Require explicit rows for the N05 remainder
 and the bench regression. The stage is reachable, because blocked and deferred
 dispositions count.
@@ -26,7 +27,7 @@ docs/reference/ess_rs_operations.json; scripts/check_ess_operations.py; docs/ess
 1. Reaudit actual source and producing API/CLI routes. Recompute gap/choice/
    read/write counts; do not manually subtract overlapping categories or treat
    raw codecs, metadata, no-operation choices or fixtures as implemented APIs.
-2. Trace each N/Q finding to code/test evidence, physical report or exact unmet
+2. Trace each N/Q finding and every retained runtime-audit finding to code/test evidence, physical report or exact unmet
    dependency. Preserve historical failed results and unsupported capability
    boundaries. Check the FieldCore status read-only again; do not claim its
    dependency pin automatically contains standalone main changes.

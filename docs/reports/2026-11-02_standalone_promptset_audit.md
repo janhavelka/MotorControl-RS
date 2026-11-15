@@ -1,5 +1,9 @@
 # Code and standalone promptset audit - 2 November 2026
 
+Current disposition: the [15 November revalidation](2026-11-15_standalone_audit_revalidation.md)
+checks these findings against later code and assigns remaining work. The
+findings, reproductions and decisions below remain their dated record.
+
 This is a work list for the AI coder. It audits the library, the example firmware
 and the [standalone promptset](../prompts/standalone/README.md) against the source,
 the original vendor PDFs and retained bench evidence. Line numbers refer to commit

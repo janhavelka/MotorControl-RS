@@ -42,8 +42,10 @@ src/profiles/ess_rs/Communication.cpp, Persistence.cpp; examples/probe_cli/Commu
    recovery and save, p26 says "it is necessary to ensure that the motor is in the
    stopped state, otherwise the relevant instructions will be ignored".
    No EEPROM endurance figure is documented, so limit save cycles by policy.
-   Read `0x0041..0x0044` after each restart (V-01): if hardware p9 holds, saved
-   input functions do not survive power-on and homing inputs fail admission.
+   Read `0x0041..0x0044` and the logical input state after each restart (V-01).
+   Hardware p9 calls the initial input state unspecified; it does not explicitly
+   say saved assignments are erased. Check assignment retention and signal
+   activation separately. Never reuse pre-restart homing qualification.
 4. Verify stale work cannot resume after recovery and a new stop/reconciliation
    result cannot overwrite the original possibly executed operation.
 
