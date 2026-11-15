@@ -60,9 +60,10 @@ post-enable wait; their limits remain in the [backlog](backlog.md).
 ## Next delivery blocks
 
 1. **Finish the current audit repairs.** Run
-   [standalone 15](prompts/standalone/15_stop_recovery.md) for stop/recovery,
-   then [16](prompts/standalone/16_evidence_qualification.md) for evidence and
-   qualification. The [15 November review](reports/2026-11-15_standalone_audit_revalidation.md)
+   [standalone 16](prompts/standalone/16_evidence_qualification.md) for evidence
+   and qualification. [Stage 15 stop/recovery software is complete](reports/2026-11-15_standalone_15_stop_recovery.md),
+   with its new-image bench regression still NOT RUN.
+   The [15 November review](reports/2026-11-15_standalone_audit_revalidation.md)
    gives each old finding a current verdict. Put optional cleanup after these
    corrections; preserve frames, deadlines, retained results and command syntax.
 2. **Resolve evidence-backed gaps.** Investigate exact-drive failures and source

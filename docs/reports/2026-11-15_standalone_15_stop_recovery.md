@@ -1,11 +1,12 @@
 # Standalone 15: stop delivery and result handling
 
-Baseline: `2f41e27` on `main`, 15 November 2026. Motors were unpowered.
-No serial port was opened and no firmware was flashed. FieldCore-node was
+Baseline: `2f41e27` on `main`, 15 November 2026. This was a software-only run;
+bench power/state was not inspected. No serial port was opened and no firmware
+was flashed. FieldCore-node was
 inspected read-only at `c40ea8341edf8d665460b902cafefbe857a7f73f`.
 
-Status: PARTIAL. Blocks 15a, 15b and 15c are implemented. Final integrated
-verification and exact-commit CI remain.
+Status: COMPLETE (software). Blocks 15a, 15b and 15c passed independent review,
+fresh integrated verification and exact-commit CI. Hardware checks are NOT RUN.
 
 ## 15a: deadlines and the first stop transmission
 
@@ -136,8 +137,68 @@ be refused and in-flight probe cancellation to abort the wire transaction.
 Those checks now exercise the delivered contract: reserve admission followed by
 duplicate refusal and retained results; natural checked probe settlement under
 USB pressure without recovery. The focused four affected suites pass. The
-initial failed verifier/CI records are retained; final fresh checks follow.
+initial failed verifier/CI records are retained.
+
+Final implementation/test commit: `dd2b1b22969026579f8e6ba51653b5bd80647b25`.
+Fresh Windows GCC verification passed all 94 registered suites and all 15 steps
+in `build/stage15_final_verified`. This includes inventory, reference/generator
+checks, strict standalone headers and packaged source/installed consumers.
+The local package SHA-256 is
+`58ea58d9235efb049aebffb9475735dc232dfd2710e30ac685c06a1eef52b799`;
+its changelog includes the final documentation follow-up. Doxygen passed.
+
+[Exact-commit CI run 43707791219](https://github.com/janhavelka/MotorControl-RS/actions/runs/43707791219):
+
+| Job | Status | Suites / verifier steps | Artifact |
+| --- | --- | --- | --- |
+| GCC | PASS | 94 / 15 | [native-gcc](https://github.com/janhavelka/MotorControl-RS/actions/runs/43707791219/artifacts/14159192688) |
+| Clang | PASS | 94 / 15 | [native-clang](https://github.com/janhavelka/MotorControl-RS/actions/runs/43707791219/artifacts/14158967997) |
+| Arduino | PASS | 94 / 16, all four environments | [arduino](https://github.com/janhavelka/MotorControl-RS/actions/runs/43707791219/artifacts/14159771113) |
+| Native ESP-IDF | PASS | 94 / 19, S3 app/core and S2 core/portable builds | [native-idf](https://github.com/janhavelka/MotorControl-RS/actions/runs/43707791219/artifacts/14159176946) |
+
+All four artifact ZIP hashes and their terminal summaries were checked.
+The [evidence archive](2026-11-15_standalone_15_stop_recovery_evidence.zip)
+keeps baseline reproducers, the initial failed verification, final local logs,
+compiler size/stack measurements and CI summaries/hash manifest.
+Archive SHA-256:
+`cce623416308d929bc0bc49f2fbbe8439e976dffe1440519186b413dfe4998b7`.
+
+Final reviewer dispositions: source/velocity/discovery, stop ownership/results,
+and console/host accounting each have no remaining confirmed in-scope defect.
+The second-recovery race and qualified-release refusal mismatch found during
+review have independent regressions. The final general-app fixture correction
+was also independently reviewed. No test gate or golden wire vector was weakened.
+
+Completed instructions are [archived](../archive/prompts/standalone/15_stop_recovery.md).
+Final report, navigation and changelog updates are documentation only; their
+local consistency checks do not require another remote verification campaign.
 
 Hardware qualification is NOT RUN. Native injected faults do not authorize
-physical moving-link-loss experiments. The final handoff will list the image,
-bounded bench cases, expected evidence and restoration requirements.
+physical moving-link-loss experiments. No new flashed image or motor state is
+claimed. Existing drive-fault, switch-fixture, electrical and soak limits remain.
+
+## Bench handoff
+
+Use the recorded USB identity and current authorization in the
+[bench guide](../hardware_bench.md). Build the verified source, record the actual
+firmware hash, then inspect model/firmware, serial tuple, configuration, profile
+and stopped state. Save before-values and prepare explicit stop/restoration.
+
+1. At rest, cancel a transmitted ordinary probe, collect its checked result,
+   then issue a fresh read and stop. Expect no cancellation-induced recovery.
+2. Run three explicit stops and inspect/release their results. Check exact
+   replacement IDs and retained old terminal evidence in the host log.
+3. If two recorded addresses are present, check normal-stop then fast-stop
+   admission for both. Retain all IDs; do not substitute broadcast.
+4. Use small finite position moves within the default limits for normal/fast
+   interruption and bounded console pressure. Check feedback and retain traffic,
+   deadlines, stop outcomes and memory/service measurements.
+5. Restore saved RAM settings and verify stopped state. Keep any original failed
+   outcome unchanged even if cleanup succeeds.
+
+Do not induce moving link loss, run unbounded velocity, silently release or
+restart the motor, or manufacture a failed stop merely to exercise release.
+Qualified physical release requires a real eligible failed stop and the supplied
+fixture facts. Finish standalone 16's affected qualification/evidence corrections
+before extending velocity/home tests. Standalone 14 owns the short regression;
+the source/drive investigations keep their existing prompt owners.

@@ -69,10 +69,12 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
 
 ## Open re-audit findings
 
-- [ ] Finish [standalone 15](prompts/standalone/15_stop_recovery.md): a velocity
-  poll at its duration boundary can leave the run's stop unsent; faults can
-  also strand that stop. Cover zero-TX terminal stops, recovery, escalation,
-  public stop access and host result accounting. D1 is already decided.
+- [x] Finish [standalone 15 software](reports/2026-11-15_standalone_15_stop_recovery.md):
+  velocity poll deadlines, unsent-stop recovery, two-address escalation,
+  public stop/copied results, qualified release and host accounting. All 94
+  suites and exact-commit GCC/Clang/Arduino/IDF checks pass.
+- [ ] Run the stage 15 image through [standalone 14](prompts/standalone/14_bench_regression.md).
+  New physical checks were NOT RUN; native faults do not qualify real stop timing.
 - [ ] Finish [standalone 16](prompts/standalone/16_evidence_qualification.md):
   reply evidence, qualification lifetime and home admission policy. Do not
   equate the native rate range with a tested operating envelope.
@@ -92,8 +94,8 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
 
 - [ ] Resolve the [2 November persistent RUNNING failure](reports/2026-11-02_standalone_14_bench_regression.md#the-failure): once in four
   interrupted moves at 1,000 increments/s, far below earlier cases, clearing only with a power cycle. Capture supply voltage and continuous status on a rerun.
-- [ ] Close R-16's home rate policy in 16 and R-17's explicit stuck-drive action
-  contract in 15; neither permits hidden automatic release or motion restart.
+- [ ] Close R-16's home rate policy in 16. Stage 15 delivered R-17's explicit
+  release contract; it permits no hidden release, enable or motion restart.
 
 ## Exact-drive behavior and motion evidence
 

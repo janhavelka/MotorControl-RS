@@ -107,8 +107,9 @@ explicit settled host discard path.
 All callbacks run in the cooperative owner task. Inputs are copied by admission;
 borrowed result views last through synchronous formatting. Commands have host
 correlation IDs, separate from operation IDs. Nine ordinary correlations and
-two reserved stop correlations are separate from retained operation storage.
-The second stop slot permits escalation; protocol 3 still advertises capacity 10.
+four reserved ordinary-stop correlations and two group-stop correlations are
+separate from retained operation storage. Two stop records are primary and two
+reserve same-address fast escalation. Protocol 3 still advertises capacity 10.
 Result/status inspection is non-consuming. Successful human-console results are
 recycled before the next bus command only after both bounded output queues have
 drained. Failed/uncertain results and explicit correlated/JSON/API results remain

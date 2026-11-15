@@ -16,6 +16,9 @@
 - Cancelling a transmitted ordinary probe lets it settle without faulting the
   bus. Discovery restoration failures and post-ACK stop bus faults end promptly
   with their actual evidence.
+- Host stop accounting follows exact firmware replacement IDs and preserves
+  old logged evidence. Ordinary, recovery, primary-stop, escalation and group
+  result quotas stay separate. Older images keep explicit stop-result release.
 
 - Typed console routes state commissioning facts on the ordinary image, with no bus
   traffic: `home qualification install|revoke`, `velocity qualification install|revoke`,

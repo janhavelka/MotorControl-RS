@@ -1,5 +1,9 @@
 # Standalone ESS audit revalidation - 15 November 2026
 
+**Status: PROCESSED.** Standalone 15's assigned software findings are corrected
+and verified. Remaining source, qualification and physical findings retain their
+owners below; processed does not mean the whole promptset is complete.
+
 Baseline: `13cf955` on `main`. This review checks the findings in the
 [2 November independent audit](2026-11-02_standalone_promptset_audit.md)
 against current code and its callers/tests. It also checks the shared ESS C
@@ -10,7 +14,8 @@ Lichuan implementation set.
 At the audit baseline, stop delivery had reachable gaps, including the finite
 velocity run's own stop. Standalone 15a/15b corrected those paths in `6ee9f01`
 and `bee5fb0`; current dispositions below point to their regressions. Host
-accounting R-06 is also corrected; final integrated verification is in progress. See the
+accounting R-06 is also corrected. Fresh verification and all four CI jobs passed
+on `dd2b1b2`. See the
 [stage 15 report](2026-11-15_standalone_15_stop_recovery.md). A dated successful
 run does not close an untested fault path.
 
@@ -45,10 +50,10 @@ delivered and missing parts; **policy/limit** means the observed behavior is
 intentional or needs evidence before a change. A proposed helper is not a
 required implementation.
 
-The new work owners are [15 stop/recovery](../prompts/standalone/15_stop_recovery.md),
-[16 evidence/qualification](../prompts/standalone/16_evidence_qualification.md)
-and [17 cleanup](../prompts/standalone/17_application_cleanup.md). Their blocks
-are separately testable. Existing stages keep their source/physical work.
+[15 stop/recovery](../archive/prompts/standalone/15_stop_recovery.md) is completed
+software. Next is [16 evidence/qualification](../prompts/standalone/16_evidence_qualification.md),
+then [17 cleanup](../prompts/standalone/17_application_cleanup.md) at stable
+boundaries. Existing stages keep their source/physical work.
 
 ## Application findings
 
@@ -271,7 +276,7 @@ the small code corrections and prompt coverage. The original author was not
 the sole reviewer of S-01, M-01 or R-11. No Lichuan implementation or prompt
 corrections are included; concurrent work in those files remains separate.
 
-## Verification
+## Original audit verification
 
 Focused group/staging tests: both frontend variants PASS, with the new S-01
 test failing before the fix. The combined move/velocity/home/group selection

@@ -13,7 +13,8 @@ Do not change FieldCore. Keep both family protocols separate above the owner.
 
 ## 1. Consume the ESS stop and velocity corrections
 
-[Standalone 15](../standalone/15_stop_recovery.md) owns ESS C1/C11/C12/C14.
+[Standalone 15](../../reports/2026-11-15_standalone_15_stop_recovery.md) delivered
+the bounded ESS C1/C11/C12/C14 corrections.
 Do not implement a second copy of that work here. Before either Lichuan JOG
 sequence or its application motion route is delivered, require its relevant
 15a/15b results and review the landed source/tests:

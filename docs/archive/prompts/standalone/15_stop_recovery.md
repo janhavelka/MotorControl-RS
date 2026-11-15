@@ -1,7 +1,11 @@
 # 15 - Finish stop delivery and result handling
 
-Read the [execution contract](execution_contract.md) and the
-[current audit](../../reports/2026-11-15_standalone_audit_revalidation.md).
+Completed software instructions, archived 15 November 2026. Do not dispatch
+again. See the [implementation and verification record](../../../reports/2026-11-15_standalone_15_stop_recovery.md).
+Hardware checks remain separate.
+
+Read the [execution contract](../../../prompts/standalone/execution_contract.md) and the
+[current audit](../../../reports/2026-11-15_standalone_audit_revalidation.md).
 This stage owns R-02..R-06, R-17 and the ESS portions of C1, C11, C12 and C14.
 It does not implement a second manufacturer or a new bus scheduler.
 
