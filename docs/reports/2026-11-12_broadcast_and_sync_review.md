@@ -1,5 +1,10 @@
 # Broadcast and multi-drive start review, 12 November 2026
 
+**Status: PROCESSED on 15 November 2026.** All M01-M06 findings were revalidated
+and their corrections or follow-up prompts delivered in commit `53678eb`.
+Processed means the audit review is complete; unresolved implementation and
+hardware work remain open in the linked revalidation and multi-drive promptset.
+
 Current disposition is in the [15 November revalidation](2026-11-15_ess_multi_drive_promptset_audit.md).
 The original source/code review below is dated: group staging is now delivered,
 three drives have unicast evidence, and the broadcast campaign is NO-GO.

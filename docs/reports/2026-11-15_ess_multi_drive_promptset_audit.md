@@ -1,5 +1,9 @@
 # ESS multi-drive promptset revalidation, 15 November 2026
 
+**Status: PROCESSED on 15 November 2026.** Finding dispositions and prompt
+corrections were delivered in commit `53678eb`. The remaining implementation
+and hardware work documented below is still open.
+
 The six findings in the [12 November review](2026-11-12_broadcast_and_sync_review.md)
 were checked individually against current source, callers/tests, original
 manuals and retained bench evidence. No separate independent `audit.md` was
