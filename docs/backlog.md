@@ -96,8 +96,9 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
 
 - [ ] Resolve the [2 November persistent RUNNING failure](reports/2026-11-02_standalone_14_bench_regression.md#the-failure): once in four
   interrupted moves at 1,000 increments/s, far below earlier cases, clearing only with a power cycle. Capture supply voltage and continuous status on a rerun.
-- [ ] Close R-16's home rate policy in 16. Stage 15 delivered R-17's explicit
-  release contract; it permits no hidden release, enable or motion restart.
+- [x] Close R-16's application home rate policy in 16. Physical rate qualification
+  remains open. Stage 15's R-17 release contract permits no hidden release,
+  enable or motion restart.
 
 ## Exact-drive behavior and motion evidence
 

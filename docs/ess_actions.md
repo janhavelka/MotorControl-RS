@@ -236,12 +236,20 @@ A terminal copy acknowledges delivery; it does not erase the result. Call
 reuse a delivered slot. Wrong IDs, wrong kinds and console-owned IDs preserve
 the output. Call these functions from the application's service task.
 
+The application result stays pending until its attached recovery finishes,
+even if cancellation has already ended the core action. Pending copies do not
+acknowledge delivery or permit slot reuse. Console action results and `result ID`
+include `stop_recovery` when recovery was used: its operation ID, copied outcome
+and any zero-byte attempt before recovery. Later recovery cannot replace these
+copies. Group results also wait for their children's recovery evidence.
+
 After a transmitted stop fails with motion unresolved, only a separately
 qualified release has an exception to ordinary action admission. Inspect the
 exact failed stop with `inspectReleaseAfterStop`, supply actual
 `mechanicsPermitRelease` and `externalTriggersInhibited` facts, then call
 `submitReleaseAfterStop`. The snapshot binds current target, configuration and
 qualification time. Stale facts cancel unsent work; an in-flight frame settles.
+With an age limit, facts expire at the limit, including before queued TX.
 Active work, commissioning and transport faults still block release.
 
 Release removes winding drive. Its RELEASED observation does not prove

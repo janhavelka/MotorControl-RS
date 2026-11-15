@@ -733,7 +733,33 @@ static void testPollClosureKeepsOverallDeadline() {
         noWork(c);
     }
 }
+static void testExpiredPollCopiesFailurePrefix() {
+    auto c = velocity(); trigger(c); consume(c, 4);
+    const auto before = c;
+    Ess::PreparedVelocity poll; assert(Ess::nextVelocity(c, c.eligibleUs, poll));
+    assert(poll.kind == Ess::ActionWork::TRANSACTION && !poll.write);
+    uint8_t prefix[] = {1, 3, 4, 0};
+    auto e = local(c, ReadEventKind::DEADLINE);
+    e.transport.txAccepted = 8; e.txComplete = true;
+    e.transport.transportDetail = 12345;
+    e.transport.frame = prefix; e.transport.length = sizeof(prefix);
+    assert(Ess::advanceVelocity(c, e, c.deadlineUs));
+    assert(c.state == ActionState::FAILED && c.outcome == ActionOutcome::DEADLINE);
+    assert(c.status.detail == static_cast<int32_t>(VelocityError::DEADLINE_EXPIRED));
+    assert(c.needsStop && c.uncertain && c.serviceMissed && c.runningObserved);
+    assert(c.execution == ActionExecution::ACKNOWLEDGED && c.stop.execution == ActionExecution::NOT_TRANSMITTED);
+    checkActionTransportEvidence(c.failureEvidence, e, e.transport.step, c.deadlineUs);
+    assert(c.failureEvidence.length == sizeof(prefix) && !std::memcmp(c.failureEvidence.raw, prefix, sizeof(prefix)));
+    checkSameActionEvidence(c.lastObservation, before.lastObservation);
+    checkSameActionEvidence(c.triggerEvidence, before.triggerEvidence);
+    assert(c.stopDueUs == before.stopDueUs && c.deadlineUs == before.deadlineUs);
+    const auto retained = c.failureEvidence;
+    std::memset(prefix, 0x55, sizeof(prefix));
+    assert(Ess::serviceVelocity(c, c.deadlineUs + 1));
+    checkSameActionEvidence(c.failureEvidence, retained); noWork(c);
+}
 int main() {
+    testExpiredPollCopiesFailurePrefix();
     testPollClosureKeepsOverallDeadline();
     testWriteClosureBoundaries();
     testObservationDispatchAndSettlementDeadlines(); testRebindOnlyTheUnsentOwnedStop();

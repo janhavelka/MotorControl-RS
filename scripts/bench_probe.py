@@ -1438,9 +1438,13 @@ class Console:
                     require(not wire["qualified"] and not wire["response_confirmed"], "local event claims a response")
             if c["verification_known"]:
                 require(all(p[3] >= (c["restart_us"] if c["restart_observed"] else wire["delivered_us"]) for p in after["provenance"]), "verification reused stale reads")
-            if wire["delivered_us"] and wire.get("status") == "OK":
-                expected_raw=bytes([before["endpoint"]["address"],6,0,45,0,c["value"]])
-                require(raw[:-2] == expected_raw and len(raw) == 8 and wire_crc(raw[:-2]) == int.from_bytes(raw[-2:],"little"), "invalid write echo")
+            if wire["delivered_us"] and wire["event"] == 0:
+                require((wire.get("status"), wire.get("detail"), wire["frame_error"]) ==
+                        _evidence._reply_status(raw, wire["received_length"], before["endpoint"]["address"],
+                                                6, 8, (c["register"], c["value"])), "write status differs from raw reply")
+            if c["state"] != 1:
+                require(EXECUTIONS[c["execution"]] == _evidence.write_execution(wire, c["deadline_us"]),
+                        "execution differs from write evidence")
             if c["execution"] == 1 or c["state"] == 2:
                 require(c["state"] == 2 and c["outcome"] == 1 and c["execution"] == 1 and c.get("status") == wire.get("status") == "OK" and
                         wire["qualified"] and wire["response_confirmed"] and wire["tx_complete"] and not wire["execution_unknown"] and
@@ -1603,11 +1607,15 @@ class Console:
                 if wire["event"] == 0:
                     require(wire["tx_accepted"] == 8 and wire["tx_complete"], "FRAME without completed request")
                 else:require(not wire["qualified"] and not wire["response_confirmed"], "local event claims response")
-                if wire.get("status") == "OK":
-                    require(wire["event"] == 0 and wire["frame_error"] == 0 and len(raw) in (7,8) and wire_crc(raw[:-2]) == int.from_bytes(raw[-2:],"little"), "successful codec lacks valid CRC/frame")
-                    expected_raw=bytes([evidence["endpoint"]["address"],6 if index == 0 else 3])
-                    expected_raw+=(c["register"].to_bytes(2,"big")+c["requested"].to_bytes(2,"big")) if index == 0 else bytes([2])+raw[3:5]
-                    require(raw[:-2] == expected_raw, "successful frame differs from request")
+                if wire["event"] == 0:
+                    require((wire.get("status"), wire.get("detail"), wire["frame_error"]) ==
+                            _evidence._reply_status(raw, wire["received_length"], evidence["endpoint"]["address"],
+                                6 if index == 0 else 3, 8 if index == 0 else 7,
+                                (c["register"], c["requested"]) if index == 0 else None), "wire status differs from raw reply")
+                else:
+                    require(wire.get("status") != "OK", "local event claims successful codec status")
+                require(type(evidence.get("readback_known")) is bool and type(evidence.get("readback")) is int and
+                        0 <= evidence["readback"] <= 65535, "invalid retained readback")
                 if evidence.get("readback_known"):
                     require(index > 0 and wire.get("status") == "OK" and wire["qualified"] and wire["response_confirmed"] and
                             not wire["execution_unknown"] and wire["latest_us"] <= evidence["deadline_us"] and evidence.get("readback") == int.from_bytes(raw[3:5],"big"), "unproven readback")
@@ -1623,6 +1631,25 @@ class Console:
             write=observations[0]["wire"]
             if c["write_outcome"]:
                 require(c["effects"] == bool(write["tx_accepted"] or write["execution_unknown"]), "lost write effects")
+                execution = _evidence.write_execution(write, observations[0]["deadline_us"])
+                if c["field"] == "address" and execution == "acknowledged":
+                    execution = "unknown"  # The address activation rule remains unresolved.
+                require(EXECUTIONS[c["execution"]] == execution, "execution differs from write evidence")
+                uncertain = execution in ("acknowledged", "unknown")
+                previous_readback = None
+                for evidence in c["confirmation_evidence"]:
+                    if not evidence.get("readback_known"):
+                        continue
+                    readback = evidence["readback"]
+                    if readback == c["requested"]:
+                        uncertain = False
+                    elif c["effects"] and (execution != "rejected" or readback != c["previous"] or
+                            (previous_readback is not None and readback != previous_readback)):
+                        uncertain = True
+                    previous_readback = readback
+                require(c["uncertain"] == uncertain, "uncertainty differs from write and readback evidence")
+                require(c["readback_known"] == (previous_readback is not None) and
+                        (previous_readback is None or c["readback"] == previous_readback), "readback differs from retained evidence")
                 if c["execution"] == 1 or c["write_outcome"] in (1,2):
                     require(write.get("status") == "OK" and write["qualified"] and write["response_confirmed"] and
                             not write["execution_unknown"] and write["latest_us"] <= observations[0]["deadline_us"] and
@@ -2525,6 +2552,8 @@ class Console:
                     "recovery", "capture_read", "read_kind", "action_kind", "stop_policy", "move_kind",
                     "velocity", "driver", "home", "position_interrupt", "relation"}:
                 raise BenchError("pending position interruption contains terminal evidence")
+            if action_kind == "stop" or velocity:
+                _evidence.check_stop_recovery(item)
             return
 
         # Every discriminator has now been checked, including inactive flags.

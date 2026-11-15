@@ -14,6 +14,8 @@ source, drive-fault or fixture work. The
 [15 November revalidation](../../reports/2026-11-15_standalone_audit_revalidation.md)
 checks the old findings against current code. Use its verdicts for remaining
 work; a historical finding is not proof that the defect still exists.
+The [independent 15/16 follow-up audit](../../reports/2026-11-15_standalone_15_16_audit.md)
+records the later result-lifetime and host-validation corrections.
 
 N01, N02, N04, N07 and the 27 planned switch methods are implemented. Their
 [delivery reports](../../reports/README.md) retain tests and CI evidence.

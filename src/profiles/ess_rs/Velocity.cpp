@@ -296,7 +296,10 @@ Status advanceVelocity(VelocityContext& c, const ActionEvent& supplied, uint64_t
     if (event.kind == ReadEventKind::CANCEL) {
         c.failureEvidence = evidence; finish(c, ActionOutcome::CANCELLED, evidence.status);
     } else if (event.kind == ReadEventKind::DEADLINE && c.phase == VelocityPhase::OBSERVING && now >= c.stopDueUs) {
-        // The finite observation budget ended; deadline is not standstill evidence.
+        // An unsent poll may expire at the dispatch cutoff. A settled attempt
+        // keeps its transport failure before the stop budget is considered.
+        if (event.txAccepted || event.length || event.executionUnknown)
+            retainFailure(c, ActionOutcome::DEADLINE, evidence.status, &evidence);
         beginStop(c, now);
     } else if (event.kind == ReadEventKind::DEADLINE) failStep(c, ActionOutcome::DEADLINE, evidence.status, evidence, now);
     else if (event.kind == ReadEventKind::TRANSPORT_FAILURE) failStep(c, ActionOutcome::TRANSPORT_ERROR, evidence.status, evidence, now);
@@ -309,7 +312,7 @@ Status advanceVelocity(VelocityContext& c, const ActionEvent& supplied, uint64_t
     else if (!evidence.status) failStep(c, ActionOutcome::REPLY_ERROR, evidence.status, evidence, now);
     else if (!supplied.responseConfirmed || (c.phase != VelocityPhase::OBSERVING && event.executionUnknown))
         failStep(c, ActionOutcome::UNCONFIRMED_RESPONSE,
-        failed(VelocityError::UNCONFIRMED_RESPONSE, "frame source is not confirmed as the drive"), evidence, now);
+        failed(VelocityError::UNCONFIRMED_RESPONSE, "response source or write execution is unconfirmed"), evidence, now);
     else if (c.phase == VelocityPhase::STAGING) {
         if (now >= stepDeadline(c)) failStep(c, ActionOutcome::DEADLINE, expiry(c), evidence, now);
         else { c.phase = VelocityPhase::TRIGGER; ++c.step; c.eligibleUs = now; }

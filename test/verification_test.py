@@ -72,7 +72,7 @@ class VerificationFailures(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "missing or wrong native test"):
                         verify.check_inventory(root, wrong, build)
 
-    def test_interrupt_host_requires_both_real_frontend_fixtures(self):
+    def test_host_requires_both_frontends_for_interrupt_stop_and_velocity(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             listing, build = self.inventory(root)
@@ -81,12 +81,17 @@ class VerificationFailures(unittest.TestCase):
             suffix = ".exe" if verify.os.name == "nt" else ""
             args = ["--position-interrupt-fixtures", *[str(build / (name+suffix)) for name in
                     ("position_interrupt_app_test", "idf_position_interrupt_app_test")]]
+            args += ["--stop-recovery-fixtures", *[str(build / (name+suffix)) for name in
+                     ("stop_path_app_test", "idf_stop_path_app_test", "velocity_app_test", "idf_velocity_app_test")]]
             entry = {"name": "bench_probe", "command": [sys.executable, str(script), *args]}
             listing["tests"].append(entry)
             verify.check_inventory(root, listing, build)
-            for invalid in ([], args[:-1], args[1:], [args[0], args[2], args[1]]):
+            invalid_args = [[], args[:3], args[1:], [args[0], args[2], args[1], *args[3:]],
+                            [*args[:4], args[5], args[4], *args[6:]], [*args[:-1], args[-2]]]
+            invalid_args += [args[:i] + args[i+1:] for i in range(len(args))]
+            for invalid in invalid_args:
                 entry["command"] = [sys.executable, str(script), *invalid]
-                with self.subTest(args=invalid), self.assertRaisesRegex(RuntimeError, "wrong position interruption fixtures"):
+                with self.subTest(args=invalid), self.assertRaisesRegex(RuntimeError, "wrong position interruption or stop recovery fixtures"):
                     verify.check_inventory(root, listing, build)
 
     def test_required_command_identity_and_modes(self):

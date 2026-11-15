@@ -204,7 +204,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             add_test(NAME bench_probe COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/test/bench_probe_test.py
                 --position-interrupt-fixtures $<TARGET_FILE:position_interrupt_app_test>
-                $<TARGET_FILE:idf_position_interrupt_app_test>)
+                  $<TARGET_FILE:idf_position_interrupt_app_test>
+                  --stop-recovery-fixtures $<TARGET_FILE:stop_path_app_test> $<TARGET_FILE:idf_stop_path_app_test>
+                  $<TARGET_FILE:velocity_app_test> $<TARGET_FILE:idf_velocity_app_test>)
             add_test(NAME velocity_console_parity COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/test/velocity_console_parity_test.py
                 $<TARGET_FILE:probe_console_test>)

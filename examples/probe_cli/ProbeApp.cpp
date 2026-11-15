@@ -477,6 +477,10 @@ bool terminal(const App& a, const App::Record& record) {
     }
     return false;
 }
+bool resultPending(const App& a, const App::Record& record) {
+    // Cancellation can finish the action before its attached recovery settles.
+    return !terminal(a, record) || (record.stopRecoveryId && !record.stopRecoveryResult.id);
+}
 bool axisReserved(const App& a, uint8_t address = 0, bool includeHistory = true) {
     if (a.simple.view.pending && !a.simple.admitting && (!address || address == a.simple.view.address)) return true;
     // A staging write without a start still owns its drive until it settles.
@@ -1037,7 +1041,7 @@ App::Record* availableStopRecord(App& a, std::size_t first, std::size_t count) {
     for (std::size_t i = first; i < first + count; ++i) {
         App::Record& candidate = a.records[i];
         if (!candidate.operationId) { if (!available) available = &candidate; continue; }
-        if (!terminal(a, candidate) || !candidate.delivered) continue;
+        if (resultPending(a, candidate) || !candidate.delivered) continue;
         if (confirmedStop(candidate)) {
             if (!confirmed || candidate.operationId < confirmed->operationId) confirmed = &candidate;
             continue;
@@ -1052,7 +1056,7 @@ App::Record* stopRecord(App& a, bool group = false, uint8_t address = 0,
     // One undelivered escalation per address leaves the other reserve usable.
     for (std::size_t i = STOP_ESCALATION_FIRST; i < GROUP_STOP_FIRST; ++i)
         if (a.records[i].operationId && a.records[i].address == address &&
-            (!terminal(a, a.records[i]) || !a.records[i].delivered)) return nullptr;
+            (resultPending(a, a.records[i]) || !a.records[i].delivered)) return nullptr;
     if (auto* primary = availableStopRecord(a, REQUEST_CAPACITY + 1, STOP_RECORDS)) return primary;
     if (behavior != MotorControlRS::StopBehavior::DIRECT) return nullptr;
     for (std::size_t i = REQUEST_CAPACITY + 1; i < STOP_ESCALATION_FIRST; ++i)
@@ -1076,12 +1080,9 @@ bool failedTransmittedStop(App& a, uint32_t id) {
 bool releaseFactsValid(const App& a, const ReleaseAfterStopPrerequisites& facts, uint64_t now) {
     return facts.target.id == a.axis.target.id && facts.target.address == a.axis.target.address &&
         facts.target.generation == a.bindingGeneration && facts.configurationGeneration == a.axis.generation &&
-        facts.configurationGeneration && facts.qualifiedUs <= now &&
-        (!a.observationAgeUs() || now - facts.qualifiedUs <= a.observationAgeUs()) &&
+        facts.configurationGeneration && MotorControlRS::evidenceAgeValid(facts.qualifiedUs, now, a.observationAgeUs()) &&
         facts.mechanicsPermitRelease && facts.externalTriggersInhibited;
 }
-// groupStop: one member stop of a group operation, from the group pool. A declared
-// member is a stop target like the selected address, even with stale facts.
 bool positionClearQualificationValid(const App& a) {
     const auto& p = a.positionClearQualification;
     return p.semanticsQualified && p.target.id && a.axis.generation &&
@@ -1093,6 +1094,7 @@ bool positionClearReadiness(const App& a, uint8_t address, uint64_t now) {
     return a.axis.target.address == address && Probe::fresh(motion, a.axis.target, now, a.observationAgeUs()) &&
         !motion.value.running && !motion.value.released && !motion.value.rawAlarm && !motion.value.alarmFlag;
 }
+// A declared group member is a stop target even when its readiness facts are stale.
 Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
                             const MotorControlRS::ActionRequest& request, uint32_t& operationId, bool groupStop,
                             uint32_t failedStopId = 0, const ReleaseAfterStopPrerequisites* releaseFacts = nullptr) {
@@ -2996,6 +2998,9 @@ bool lookup(void* context, uint32_t operationId, Probe::ResultView& out) {
     out.serialTuple = record->serialTuple; out.serialGeneration = record->serialGeneration;
     out.commandId = record->commandId; out.operationId = operationId; out.address = record->address;
     out.captureRead = record->captureRead;
+    out.stopRecoveryOperationId = record->stopRecoveryOperationId;
+    if (record->stopRecoveryResult.id) out.stopRecovery = &record->stopRecoveryResult;
+    if (record->stopBeforeRecoveryKnown) out.stopBeforeRecovery = &record->stopBeforeRecovery;
     switch (record->kind) {
     case App::OperationKind::EMPTY: return false;
     case App::OperationKind::TRANSACTION: break;
@@ -3007,7 +3012,7 @@ bool lookup(void* context, uint32_t operationId, Probe::ResultView& out) {
         out.driverContext = &record->driver; out.pending = !terminal(a, *record); return true;
     }
     case App::OperationKind::VELOCITY: {
-        out.velocityContext = &record->velocity; out.pending = !terminal(a, *record);
+        out.velocityContext = &record->velocity; out.pending = resultPending(a, *record);
         out.interruptedByStop = record->interruptedByStop; return true;
     }
     case App::OperationKind::MOVE: {
@@ -3016,7 +3021,7 @@ bool lookup(void* context, uint32_t operationId, Probe::ResultView& out) {
         out.interruptedByStop = record->interruptedByStop; return true;
     }
     case App::OperationKind::ACTION: {
-        out.actionContext = &record->action; out.pending = !terminal(a, *record);
+        out.actionContext = &record->action; out.pending = resultPending(a, *record);
         out.ordinaryStop = record->action.request.kind == MotorControlRS::ActionKind::STOP && !record->groupChild;
         out.stopEscalation = record->stopEscalation; out.replacedOperationId = record->replacedOperationId;
         out.interruptedByStop = record->interruptedByStop; return true;
@@ -3135,7 +3140,8 @@ Probe::Action release(void* context, uint32_t operationId) {
         record->moveRelation.replacementOperationId : record->moveRelation.originalOperationId;
     const auto* peer = findRecord(a, peerId);
     if (peer && !terminal(a, *peer)) return Probe::Action::BUSY;
-    if (!record->delivered || (record->requestId.owner && !a.owner.release(record->requestId))) return Probe::Action::BUSY;
+    if (resultPending(a, *record) || !record->delivered ||
+        (record->requestId.owner && !a.owner.release(record->requestId))) return Probe::Action::BUSY;
     clearRecord(*record); return Probe::Action::OK;
 }
 Probe::Action monitor(void* context, const Probe::MonitorSettings* requested, Probe::MonitorSnapshot& out) {
@@ -3882,7 +3888,7 @@ bool copyActionResult(uint32_t operationId, ActionResult& output) {
     if (!app || !operationId) return false;
     auto* record = findRecord(*app, operationId);
     if (!record || record->kind != App::OperationKind::ACTION || !record->programmaticAction) return false;
-    output.action = record->action; output.pending = !terminal(*app, *record);
+    output.action = record->action; output.pending = resultPending(*app, *record);
     output.interruptedByStop = record->interruptedByStop;
     output.stopEscalation = record->stopEscalation; output.replacedOperationId = record->replacedOperationId;
     output.recoveryOperationId = record->stopRecoveryOperationId;

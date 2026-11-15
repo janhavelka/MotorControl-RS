@@ -675,6 +675,48 @@ bool actionEvidence(char* output, std::size_t capacity, std::size_t& used, const
         static_cast<unsigned long long>(evidence.earliestUs), static_cast<unsigned long long>(evidence.latestUs), static_cast<unsigned long long>(evidence.deliveredUs),
         static_cast<long>(evidence.transportDetail), Core::errToString(evidence.status.code), static_cast<long>(evidence.status.detail), static_cast<unsigned>(evidence.frameError));
 }
+const char* recoveryOutcomeName(Rtu::RecoveryOutcome outcome) {
+    switch (outcome) {
+    case Rtu::RecoveryOutcome::RECOVERED: return "recovered";
+    case Rtu::RecoveryOutcome::EXPIRED: return "expired";
+    case Rtu::RecoveryOutcome::READ_ERROR: return "read_error";
+    case Rtu::RecoveryOutcome::TRANSPORT_ERROR: return "transport_error";
+    }
+    return "expired";
+}
+bool stopRecoveryEvidence(char* output, std::size_t capacity, std::size_t& used, const ResultView* view) {
+    if (!view || !view->stopRecoveryOperationId) return true;
+    if (!append(output, capacity, used, ",\"stop_recovery\":{\"operation_id\":%lu,\"pending\":%s,\"result\":",
+        static_cast<unsigned long>(view->stopRecoveryOperationId), boolean(!view->stopRecovery))) return false;
+    if (view->stopRecovery) {
+        const auto& r = *view->stopRecovery;
+        if (!append(output, capacity, used,
+            "{\"id\":%llu,\"ok\":%s,\"outcome\":\"%s\",\"transport\":\"%s\",\"requested_us\":%llu,\"deadline_us\":%llu,\"finished_us\":%llu,\"interrupted_slot\":%u,\"interrupted_generation\":%llu}",
+            static_cast<unsigned long long>(r.id), boolean(r.outcome == Rtu::RecoveryOutcome::RECOVERED),
+            recoveryOutcomeName(r.outcome), Rtu::reasonName(r.reason),
+            static_cast<unsigned long long>(r.requestedUs), static_cast<unsigned long long>(r.deadlineUs),
+            static_cast<unsigned long long>(r.finishedUs), static_cast<unsigned>(r.interrupted.slot),
+            static_cast<unsigned long long>(r.interrupted.generation))) return false;
+    } else if (!append(output, capacity, used, "null")) return false;
+    if (!append(output, capacity, used, ",\"before_attempt\":")) return false;
+    if (view->stopBeforeRecovery) {
+        const auto& c = *view->stopBeforeRecovery;
+        const auto& t = c.transport;
+        char raw[Rtu::MAX_FRAME * 2 + 1]; hex(c.raw, t.rxLength, raw, sizeof(raw));
+        if (!append(output, capacity, used,
+            "{\"request_slot\":%u,\"request_generation\":%llu,\"target\":%lu,\"generation\":%lu,\"address\":%u,\"function\":%u,\"register\":%u,\"value\":%u,\"admitted_us\":%llu,\"deadline_us\":%llu,\"dispatch_deadline_us\":%llu,\"outcome\":%u,\"cancellation\":%u,\"transport\":\"%s\",\"tx_accepted\":%u,\"tx_complete\":%s,\"raw_hex\":\"%s\",\"received_length\":%u,\"rx_truncated\":%s,\"execution_unknown\":%s,\"started_us\":%llu,\"ended_us\":%llu,\"qualified\":%s,\"earliest_us\":%llu,\"latest_us\":%llu,\"status\":\"%s\",\"detail\":%ld}",
+            static_cast<unsigned>(c.id.slot), static_cast<unsigned long long>(c.id.generation),
+            static_cast<unsigned long>(c.expected.target), static_cast<unsigned long>(c.expected.targetGeneration),
+            c.expected.address, c.expected.function, c.expected.first, c.expected.value,
+            static_cast<unsigned long long>(c.admittedUs), static_cast<unsigned long long>(c.deadlineUs),
+            static_cast<unsigned long long>(c.dispatchDeadlineUs), static_cast<unsigned>(c.outcome), static_cast<unsigned>(c.cancellation),
+            Rtu::reasonName(t.reason), t.txAccepted, boolean(t.txComplete), raw, t.rxLength, boolean(t.rxTruncated), boolean(c.executionUnknown),
+            static_cast<unsigned long long>(t.startedUs), static_cast<unsigned long long>(t.endedUs), boolean(t.closureQualified),
+            static_cast<unsigned long long>(t.closureEarliestUs), static_cast<unsigned long long>(t.closureLatestUs),
+            Core::errToString(c.validation.code), static_cast<long>(c.validation.detail))) return false;
+    } else if (!append(output, capacity, used, "null")) return false;
+    return append(output, capacity, used, "}");
+}
 const char* actionName(Action value) {
     switch (value) {
     case Action::OK: return "accepted";
@@ -2361,11 +2403,14 @@ void Console::dispatch() noexcept {
                     (view.moveRelation.originalOperationId && !moveRelation(output_, sizeof(output_), used, view.moveRelation)) ||
                     !append(output_, sizeof(output_), used, "}")) { error(id, "result", "output_full"); return; }
             }
-            if (!appendReportSerial(used)) { error(id, "result", "output_full"); return; }
+            --used;
+            if (!stopRecoveryEvidence(output_, sizeof(output_), used, &view) ||
+                !append(output_, sizeof(output_), used, "}") ||
+                !appendReportSerial(used)) { error(id, "result", "output_full"); return; }
             emit();
         } else if (view.homeContext) formatHome(id, view.commandId, view.operationId, *view.homeContext, true, view.interruptedByStop);
         else if (view.driverContext) formatDriver(id, view.commandId, view.operationId, *view.driverContext, true);
-        else if (view.velocityContext) formatVelocity(id, view.commandId, view.operationId, *view.velocityContext, true, view.interruptedByStop);
+        else if (view.velocityContext) formatVelocity(id, view.commandId, view.operationId, *view.velocityContext, true, view.interruptedByStop, &view);
         else if (view.moveContext) formatMove(id, view.commandId, view.operationId, *view.moveContext, true, view.interruptedByStop, view.moveRelation);
         else if (view.actionContext) formatAction(id, view.commandId, view.operationId, *view.actionContext, true, view.interruptedByStop, &view);
         else if (view.typedRead) formatRead(id, view.commandId, view.operationId, *view.typedRead, true);
@@ -2835,7 +2880,7 @@ bool Console::formatAction(uint32_t id, uint32_t commandId, uint32_t operationId
     if (view && view->ordinaryStop)
         fits = fits && append(output_, sizeof(output_), used, ",\"replaced_operation_id\":%lu,\"stop_escalation\":%s",
             static_cast<unsigned long>(view->replacedOperationId), boolean(view->stopEscalation));
-    fits = fits && append(output_, sizeof(output_), used, "}");
+    fits = fits && stopRecoveryEvidence(output_, sizeof(output_), used, view) && append(output_, sizeof(output_), used, "}");
     if (!fits) return false; // Keep the complete host result available; never publish partial JSON.
     if (!appendReportSerial(used)) return false;
     emit(inspection ? 0 : operationId);
@@ -3126,7 +3171,9 @@ bool Console::reportVelocity(uint32_t id, uint32_t operationId, const Ess::Veloc
     for (auto& item : outstanding_) if (item.commandId == id && item.operationId == operationId && !item.transferred) {
         outputFormat_ = item.format;
         syntax_=helpCommand_=nullptr;
-        if (!formatVelocity(id, id, operationId, context, false, interruptedByStop)) return false;
+        ResultView view;
+        if (host_.result) host_.result(host_.context, operationId, view);
+        if (!formatVelocity(id, id, operationId, context, false, interruptedByStop, &view)) return false;
         if (item.operationId == operationId) item.transferred = true;
         return true;
     }
@@ -3134,7 +3181,7 @@ bool Console::reportVelocity(uint32_t id, uint32_t operationId, const Ess::Veloc
 }
 
 bool Console::formatVelocity(uint32_t id, uint32_t commandId, uint32_t operationId,
-                             const Ess::VelocityContext& c, bool inspection, bool interruptedByStop) noexcept {
+                             const Ess::VelocityContext& c, bool inspection, bool interruptedByStop, const ResultView* view) noexcept {
     std::size_t used = 0;
     const auto& r = c.request; const auto& p = c.prepared;
     const bool ok = c.state == Core::ActionState::SUCCEEDED && c.completion == Core::ActionCompletion::OBSERVED;
@@ -3166,9 +3213,10 @@ bool Console::formatVelocity(uint32_t id, uint32_t commandId, uint32_t operation
         actionEvidence(output_, sizeof(output_), used, c.stop.writeEvidence) && append(output_, sizeof(output_), used, ",\"stop_observation\":") &&
         actionEvidence(output_, sizeof(output_), used, c.stop.lastObservation) && append(output_, sizeof(output_), used, ",\"stop_failure_evidence\":") &&
         actionEvidence(output_, sizeof(output_), used, c.stop.failureEvidence) && append(output_, sizeof(output_), used,
-        ",\"last_observation\":{\"step\":%u,\"raw_hex\":\"%s\",\"earliest_us\":%llu,\"latest_us\":%llu,\"delivered_us\":%llu}}",
+        ",\"last_observation\":{\"step\":%u,\"raw_hex\":\"%s\",\"earliest_us\":%llu,\"latest_us\":%llu,\"delivered_us\":%llu}",
         c.lastObservation.step, observedRaw, static_cast<unsigned long long>(c.lastObservation.earliestUs),
-        static_cast<unsigned long long>(c.lastObservation.latestUs), static_cast<unsigned long long>(c.lastObservation.deliveredUs));
+        static_cast<unsigned long long>(c.lastObservation.latestUs), static_cast<unsigned long long>(c.lastObservation.deliveredUs)) &&
+        stopRecoveryEvidence(output_, sizeof(output_), used, view) && append(output_, sizeof(output_), used, "}");
     if (!fits || !appendReportSerial(used)) return false;
     emit(inspection ? 0 : operationId); return true;
 }
@@ -3302,13 +3350,7 @@ bool Console::formatRead(uint32_t id, uint32_t commandId, uint32_t operationId,
 
 bool Console::formatRecovery(uint32_t id, uint32_t commandId, uint32_t operationId,
                              const Rtu::RecoveryResult& result, bool inspection) noexcept {
-    const char* outcome = "expired";
-    switch (result.outcome) {
-    case Rtu::RecoveryOutcome::RECOVERED: outcome = "recovered"; break;
-    case Rtu::RecoveryOutcome::EXPIRED: break;
-    case Rtu::RecoveryOutcome::READ_ERROR: outcome = "read_error"; break;
-    case Rtu::RecoveryOutcome::TRANSPORT_ERROR: outcome = "transport_error"; break;
-    }
+    const char* outcome = recoveryOutcomeName(result.outcome);
     const int written = std::snprintf(output_, sizeof(output_),
         "{\"type\":\"%s\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"command_id\":%lu,\"operation_id\":%lu,\"ok\":%s,\"recovery\":true,\"outcome\":\"%s\",\"transport\":\"%s\",\"requested_us\":%llu,\"deadline_us\":%llu,\"finished_us\":%llu}",
         inspection ? "reply" : "recovery", static_cast<unsigned long>(id), inspection ? "result" : "recover",

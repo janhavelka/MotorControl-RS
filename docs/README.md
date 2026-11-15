@@ -66,6 +66,7 @@ rating or a guarantee of absolute reliability.
 - [Default-limit boundary tests](reports/2026-10-07_position_limits.md): 408 motion/stop cases and rejection checks.
 - [November bench regression](reports/2026-11-02_standalone_14_bench_regression.md): reads, setters, homing 33/34/35 and ACK-only interruption; persistent RUNNING remains open.
 - [Evidence and qualification corrections](reports/2026-11-15_standalone_16_evidence_qualification.md): software verified on GCC, Clang, Arduino and ESP-IDF; new hardware checks remain open.
+- [Independent standalone 15/16 audit](reports/2026-11-15_standalone_15_16_audit.md): follow-up result retention and host evidence corrections.
 - [Current stop ceiling](reports/2026-11-04_stop_normal_rate_ceiling.md): 190 stops at the new limit, with no failure in that test.
 - [Four-hour rate experiment](reports/2026-10-07_rate_boundary.md): tested envelope and retained failures outside it.
 - [High-subdivision source review](reference/12_ess_rs_motion_web_review.md): manuals, vendor information and unresolved drive behavior.

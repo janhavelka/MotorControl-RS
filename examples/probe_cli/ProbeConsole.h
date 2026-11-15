@@ -283,6 +283,9 @@ struct ResultView {
     bool pending = false, recovery = false, captureRead = false;
     bool ordinaryStop = false, stopEscalation = false;
     uint32_t replacedOperationId = 0; ///< Delivered stop result replaced by this admission; zero means none.
+    uint32_t stopRecoveryOperationId = 0;
+    const Rtu::RecoveryResult* stopRecovery = nullptr; ///< Copied terminal recovery, borrowed during formatting.
+    const Rtu::Completion* stopBeforeRecovery = nullptr; ///< Settled zero-byte attempt, if one existed.
     const MotorControlRS::ESS_RS::ReadContext* typedRead = nullptr; ///< Borrowed only during formatting.
     const MotorControlRS::ESS_RS::ActionContext* actionContext = nullptr;
     const MotorControlRS::ESS_RS::MoveContext* moveContext = nullptr; ///< Borrowed only during formatting.
@@ -493,7 +496,8 @@ private:
                     const MotorControlRS::ESS_RS::MoveContext&, bool inspection, bool interruptedByStop,
                     const MoveRelation&) noexcept;
     bool formatVelocity(uint32_t id, uint32_t commandId, uint32_t operationId,
-                        const MotorControlRS::ESS_RS::VelocityContext&, bool inspection, bool interruptedByStop) noexcept;
+                        const MotorControlRS::ESS_RS::VelocityContext&, bool inspection, bool interruptedByStop,
+                        const ResultView* view) noexcept;
     bool formatDriver(uint32_t id, uint32_t commandId, uint32_t operationId,
                       const MotorControlRS::ESS_RS::DriverContext&, bool inspection) noexcept;
     bool formatHome(uint32_t id, uint32_t commandId, uint32_t operationId,

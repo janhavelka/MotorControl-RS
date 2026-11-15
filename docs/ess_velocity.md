@@ -125,6 +125,10 @@ deadline and normal response timeout. Staging and trigger keep their tighter
 duration/readiness deadlines. The application forwards both deadlines to the
 same owner.
 
+If a transmitted observation reaches the overall deadline, its transport
+failure and raw bytes remain in `failureEvidence`. An unsent poll expiring at
+the dispatch cutoff can still proceed to the stop without a poll failure.
+
 The application also holds a terminal zero-byte stop attempt for the one
 recovery, copying its owner completion before release. It retains the recovery
 operation ID separately from the run and stop outcomes. `rebindVelocityStop`
@@ -132,6 +136,9 @@ only rebinds an active, never-transmitted nested stop to a newer generation of
 the same target. The outer run target, prerequisites, failure and deadlines
 stay unchanged. Old-generation replies reject. Partial stop TX, lost stop ACK,
 local cancellation and an expired deadline never permit another transmission.
+Velocity terminal lines and `result ID` expose the saved recovery and zero-byte
+attempt under `stop_recovery`, independently of the run and final stop evidence.
+Delivery waits for an attached recovery to settle, including after cancellation.
 
 The Python `velocity` scenario validates strict command/operation correlation,
 finite duration and raw checked evidence. It shares the finite move scenario's

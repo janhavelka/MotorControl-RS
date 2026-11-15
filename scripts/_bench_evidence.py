@@ -693,8 +693,78 @@ def velocity_arguments(arguments: tuple[str, ...]) -> dict:
     return result
 
 
+def check_stop_recovery(item: dict) -> None:
+    """Validate optional copied recovery without changing the motor outcome."""
+    if "stop_recovery" not in item:
+        return
+
+    def require(condition, message):
+        if not condition:
+            raise BenchError("stop recovery " + message)
+
+    attached = item["stop_recovery"]
+    require(isinstance(attached, dict) and operation_id(attached.get("operation_id"))
+            and attached["operation_id"] != item.get("operation_id")
+            and type(attached.get("pending")) is bool, "identity is invalid")
+    pending = attached["pending"]
+    result = attached.get("result")
+    require("result" in attached and "before_attempt" in attached
+            and pending == (result is None), "result presence differs")
+    require(not pending or item.get("result") == "pending", "terminal result lost pending recovery")
+    if result is not None:
+        require(isinstance(result, dict), "result is invalid")
+        check_counts(result, ("id", "requested_us", "deadline_us", "finished_us", "interrupted_slot",
+                              "interrupted_generation"), "stop recovery")
+        outcome = result.get("outcome")
+        require(result["id"] > 0 and outcome in ("recovered", "expired", "read_error", "transport_error")
+                and type(result.get("ok")) is bool and result["ok"] == (outcome == "recovered")
+                and isinstance(result.get("transport"), str), "outcome differs")
+        require(result["requested_us"] < result["deadline_us"]
+                and result["requested_us"] <= result["finished_us"]
+                and (not result["ok"] or (result["finished_us"] < result["deadline_us"]
+                                          and result["transport"] == "NONE")), "deadline differs")
+        require((outcome != "expired" or (result["finished_us"] >= result["deadline_us"]
+                                          and result["transport"] == "REQUEST_DEADLINE"))
+                and (outcome != "transport_error" or result["transport"] == "NONE")
+                and (outcome != "read_error" or result["transport"] in ("RX_ERROR", "CLOCK_ERROR")),
+                "failure reason differs")
+    before = attached["before_attempt"]
+    if before is None:
+        return
+    require(isinstance(before, dict), "attempt is invalid")
+    check_counts(before, ("request_slot", "request_generation", "target", "generation", "address",
+                         "function", "register", "value", "admitted_us", "deadline_us", "dispatch_deadline_us",
+                         "outcome", "cancellation", "tx_accepted", "received_length", "started_us", "ended_us",
+                         "earliest_us", "latest_us"), "stop recovery attempt")
+    require(before["request_generation"] > 0 and before["target"] > 0 and before["generation"] > 0
+            and 1 <= before["address"] <= 247 and before["function"] == 6
+            and before["register"] == 0x27 and before["value"] in (0x100, 0x200), "attempt is not an exact stop")
+    for key in ("target", "address"):
+        require(key not in item or before[key] == item[key], "attempt target differs")
+    require(item.get("stop_policy") not in ("normal", "fast") or
+            before["value"] == (0x100 if item["stop_policy"] == "normal" else 0x200), "attempt policy differs")
+    require(before["admitted_us"] < before["deadline_us"]
+            and (not before["dispatch_deadline_us"] or before["dispatch_deadline_us"] <= before["deadline_us"])
+            and ("deadline_us" not in item or before["deadline_us"] == item["deadline_us"]), "attempt deadline differs")
+    require(before["outcome"] in (0, 1, 5, 6) and before["cancellation"] <= 3
+            and before.get("transport") in ("NONE", "NO_RESPONSE", "PARTIAL_RESPONSE", "LENGTH", "GAP", "EARLY_REPLY",
+                "RX_OVERFLOW", "RX_ERROR", "TX_ERROR", "TX_TIMEOUT", "BUS_TIMEOUT", "DIRECTION_ERROR", "ECHO_ERROR",
+                "CANCELLED", "CLOCK_ERROR", "CAPTURE_TIMEOUT", "TIMING_UNCERTAIN", "REQUEST_DEADLINE")
+            and isinstance(before.get("status"), str)
+            and type(before.get("detail")) is int and -2**31 <= before["detail"] < 2**31, "attempt outcome differs")
+    require(all(type(before.get(k)) is bool for k in ("tx_complete", "rx_truncated", "execution_unknown", "qualified"))
+            and before["tx_accepted"] == 0 and not before["tx_complete"] and not before["execution_unknown"]
+            and not before["qualified"],
+            "transmitted stop cannot be retried after recovery")
+    raw = before.get("raw_hex")
+    require(isinstance(raw, str) and re.fullmatch(r"(?:[0-9A-Fa-f]{2}){0,256}", raw) is not None
+            and len(raw) // 2 == before["received_length"] and before["earliest_us"] <= before["latest_us"],
+            "attempt raw evidence differs")
+
+
 def check_action(item: dict, command: str, address: int | None, policy: str | None) -> None:
     """Separate a confirmed write acknowledgement from a later drive report."""
+    check_stop_recovery(item)
     def require(condition, message):
         if not condition:
             raise BenchError("action " + message)
@@ -1395,6 +1465,7 @@ def check_move(item: dict, address: int | None, arguments: tuple[str, ...] | Non
 
 def check_velocity(item: dict, address: int | None, arguments: tuple[str, ...] | None) -> None:
     """Retain start uncertainty separately from a checked, finite stop report."""
+    check_stop_recovery(item)
     def require(condition, message):
         if not condition: raise BenchError("velocity " + message)
     def integer(value, low=0, high=2**64 - 1): return type(value) is int and low <= value <= high

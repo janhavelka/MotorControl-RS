@@ -76,9 +76,11 @@ def check_inventory(root, listing, build):
             python_command(registered, path)
             args = registered["command"][2:]
             expected = [str((build / (binary+suffix)).resolve()) for binary in
-                        ("position_interrupt_app_test", "idf_position_interrupt_app_test")]
-            if not args or args[0] != "--position-interrupt-fixtures" or [str(Path(arg).resolve()) for arg in args[1:]] != expected:
-                raise RuntimeError("wrong position interruption fixtures: bench_probe_test.py")
+                        ("position_interrupt_app_test", "idf_position_interrupt_app_test", "stop_path_app_test",
+                         "idf_stop_path_app_test", "velocity_app_test", "idf_velocity_app_test")]
+            if (len(args) != 8 or args[0] != "--position-interrupt-fixtures" or args[3] != "--stop-recovery-fixtures" or
+                    [str(Path(arg).resolve()) for arg in args[1:3] + args[4:]] != expected):
+                raise RuntimeError("wrong position interruption or stop recovery fixtures: bench_probe_test.py")
         elif path.name.endswith("_console_parity_test.py") or path.name == "discovery_harness_test.py":
             target = "discovery_console_test" if path.name == "discovery_harness_test.py" else "probe_console_test"
             python_command(registered, path)

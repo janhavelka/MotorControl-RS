@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+
+- Velocity retains a transmitted poll's evidence when the overall deadline expires.
+- Stop results wait for attached recovery before delivery or slot reuse. Action
+  and velocity JSON retain recovery and zero-byte attempt evidence across later recovery.
+- Release qualification expires at the exact age limit, including while queued.
+- Host communication and persistence checks derive write outcomes from raw evidence;
+  contradictory communication readback cannot suppress uncertainty.
+
 ### Added
 
 - Write acknowledgement now uses the same inclusive closure deadline in all

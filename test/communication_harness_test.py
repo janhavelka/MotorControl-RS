@@ -22,14 +22,14 @@ def observation(step=0, *, failed=False):
     raw+=bench.wire_crc(raw).to_bytes(2,"little")
     wire=dict(step=step,event=1 if failed else 0,tx_accepted=8,tx_complete=True,response_confirmed=not failed,
               qualified=not failed,execution_unknown=failed,earliest_us=0 if failed else 1100,
-              latest_us=0 if failed else 1150,delivered_us=1200,frame_error=0,status="TIMEOUT" if failed else "OK",
+              latest_us=0 if failed else 1150,delivered_us=1200,frame_error=0,status="TIMEOUT" if failed else "OK",detail=0,
               raw_hex="" if failed else raw.hex(),received_length=0 if failed else len(raw))
     return dict(eligible_us=1000,deadline_us=20000,wire=wire,endpoint=endpoint(),readback_known=bool(step and not failed),readback=3 if step else 0)
 
 
 def context(**changes):
     c=dict(operation_id=5,field="baud",register=20,previous=0,requested=3,readback=0,readback_known=False,
-           observed_active_known=False,activation_unknown=True,effects=True,uncertain=False,execution=1,state=2,
+           observed_active_known=False,activation_unknown=True,effects=True,uncertain=True,execution=1,state=2,
            outcome=1,write_outcome=1,step=0,confirmations=0,save="unresolved",restart="required",status="OK",detail=0,
            deadline_us=20000,before=endpoint(),requested_endpoint=endpoint(baud=9600),observed_active=endpoint(),
            write_evidence=observation(),confirmation_evidence=[])
@@ -88,10 +88,68 @@ class Campaign:
         return item
 
 
+# Exact inspection replies emitted by the real application/owner/runner with UART
+# fakes at 4a5d09d. Calls use the existing communication_app_test.cpp helpers.
+# Cases: rejected03; rejected03 plus unchanged readback; exception05;
+# rejected03 plus requested-then-previous readbacks; address echo;
+# pending write; rejected03 plus pending confirmation. Each starts fresh.
+APPLICATION_INSPECTIONS = tuple(json.loads(line) for line in r'''
+{"type":"reply","profile":"ess_rs","id":999,"command":"communication","ok":true,"result":"done","action":-1,"pending":false,"owned":true,"route_ready":true,"save_sent":false,"restart_performed":false,"write_replayed":false,"plan":null,"context":{"operation_id":2,"field":"baud","register":20,"previous":0,"requested":1,"readback":0,"readback_known":false,"observed_active_known":false,"activation_unknown":true,"effects":true,"uncertain":false,"execution":2,"state":3,"outcome":5,"write_outcome":5,"step":0,"confirmations":0,"save":"unresolved","restart":"required","status":"EXCEPTION","detail":3,"deadline_us":742738,"before":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"requested_endpoint":{"target":1,"address":1,"generation":1,"baud":38400,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"observed_active":{"target":0,"address":0,"generation":0,"baud":0,"data_bits":0,"parity":0,"stop_bits":0,"serial_known":false},"write_evidence":{"endpoint":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"eligible_us":242738,"deadline_us":742738,"readback_known":false,"readback":0,"wire":{"step":0,"event":0,"raw_hex":"0186030261","received_length":5,"tx_accepted":8,"tx_complete":true,"response_confirmed":true,"qualified":true,"execution_unknown":false,"earliest_us":248240,"latest_us":248268,"delivered_us":248290,"transport_detail":1,"status":"EXCEPTION","detail":3,"frame_error":10}},"confirmation_evidence":[]},"host":{"active":{"baud":115200,"format":"8N1"},"active_known":true,"blocked":false,"serial_generation":2,"actual_baud":115211,"failure":"none"}}
+{"type":"reply","profile":"ess_rs","id":999,"command":"communication","ok":true,"result":"done","action":-1,"pending":false,"owned":true,"route_ready":true,"save_sent":false,"restart_performed":false,"write_replayed":false,"plan":null,"context":{"operation_id":2,"field":"baud","register":20,"previous":0,"requested":1,"readback":0,"readback_known":true,"observed_active_known":true,"activation_unknown":true,"effects":true,"uncertain":false,"execution":2,"state":3,"outcome":4,"write_outcome":5,"step":1,"confirmations":1,"save":"unresolved","restart":"required","status":"ILLEGAL_VALUE","detail":18,"deadline_us":954631,"before":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"requested_endpoint":{"target":1,"address":1,"generation":1,"baud":38400,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"observed_active":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"write_evidence":{"endpoint":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"eligible_us":242738,"deadline_us":742738,"readback_known":false,"readback":0,"wire":{"step":0,"event":0,"raw_hex":"0186030261","received_length":5,"tx_accepted":8,"tx_complete":true,"response_confirmed":true,"qualified":true,"execution_unknown":false,"earliest_us":248240,"latest_us":248268,"delivered_us":248290,"transport_detail":1,"status":"EXCEPTION","detail":3,"frame_error":10}},"confirmation_evidence":[{"endpoint":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"eligible_us":454631,"deadline_us":954631,"readback_known":true,"readback":0,"wire":{"step":1,"event":0,"raw_hex":"0103020000B844","received_length":7,"tx_accepted":8,"tx_complete":true,"response_confirmed":true,"qualified":true,"execution_unknown":false,"earliest_us":460305,"latest_us":460337,"delivered_us":460367,"transport_detail":1,"status":"OK","detail":0,"frame_error":0}}]},"host":{"active":{"baud":115200,"format":"8N1"},"active_known":true,"blocked":false,"serial_generation":2,"actual_baud":115211,"failure":"none"}}
+{"type":"reply","profile":"ess_rs","id":999,"command":"communication","ok":true,"result":"done","action":-1,"pending":false,"owned":true,"route_ready":true,"save_sent":false,"restart_performed":false,"write_replayed":false,"plan":null,"context":{"operation_id":2,"field":"baud","register":20,"previous":0,"requested":1,"readback":0,"readback_known":false,"observed_active_known":false,"activation_unknown":true,"effects":true,"uncertain":true,"execution":3,"state":3,"outcome":5,"write_outcome":5,"step":0,"confirmations":0,"save":"unresolved","restart":"required","status":"EXCEPTION","detail":5,"deadline_us":742738,"before":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"requested_endpoint":{"target":1,"address":1,"generation":1,"baud":38400,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"observed_active":{"target":0,"address":0,"generation":0,"baud":0,"data_bits":0,"parity":0,"stop_bits":0,"serial_known":false},"write_evidence":{"endpoint":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"eligible_us":242738,"deadline_us":742738,"readback_known":false,"readback":0,"wire":{"step":0,"event":0,"raw_hex":"0186058263","received_length":5,"tx_accepted":8,"tx_complete":true,"response_confirmed":true,"qualified":true,"execution_unknown":false,"earliest_us":248240,"latest_us":248268,"delivered_us":248290,"transport_detail":1,"status":"EXCEPTION","detail":5,"frame_error":10}},"confirmation_evidence":[]},"host":{"active":{"baud":115200,"format":"8N1"},"active_known":true,"blocked":false,"serial_generation":2,"actual_baud":115211,"failure":"none"}}
+{"type":"reply","profile":"ess_rs","id":999,"command":"communication","ok":true,"result":"done","action":-1,"pending":false,"owned":true,"route_ready":true,"save_sent":false,"restart_performed":false,"write_replayed":false,"plan":null,"context":{"operation_id":2,"field":"baud","register":20,"previous":0,"requested":1,"readback":0,"readback_known":true,"observed_active_known":true,"activation_unknown":true,"effects":true,"uncertain":true,"execution":2,"state":3,"outcome":4,"write_outcome":5,"step":2,"confirmations":2,"save":"unresolved","restart":"required","status":"ILLEGAL_VALUE","detail":18,"deadline_us":756040,"before":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"requested_endpoint":{"target":1,"address":1,"generation":1,"baud":38400,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"observed_active":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"write_evidence":{"endpoint":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"eligible_us":242738,"deadline_us":742738,"readback_known":false,"readback":0,"wire":{"step":0,"event":0,"raw_hex":"0186030261","received_length":5,"tx_accepted":8,"tx_complete":true,"response_confirmed":true,"qualified":true,"execution_unknown":false,"earliest_us":248240,"latest_us":248268,"delivered_us":248290,"transport_detail":1,"status":"EXCEPTION","detail":3,"frame_error":10}},"confirmation_evidence":[{"endpoint":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"eligible_us":249299,"deadline_us":749299,"readback_known":true,"readback":1,"wire":{"step":1,"event":0,"raw_hex":"01030200017984","received_length":7,"tx_accepted":8,"tx_complete":true,"response_confirmed":true,"qualified":true,"execution_unknown":false,"earliest_us":254969,"latest_us":255001,"delivered_us":255031,"transport_detail":1,"status":"OK","detail":0,"frame_error":0}},{"endpoint":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"eligible_us":256040,"deadline_us":756040,"readback_known":true,"readback":0,"wire":{"step":2,"event":0,"raw_hex":"0103020000B844","received_length":7,"tx_accepted":8,"tx_complete":true,"response_confirmed":true,"qualified":true,"execution_unknown":false,"earliest_us":261720,"latest_us":261752,"delivered_us":261782,"transport_detail":1,"status":"OK","detail":0,"frame_error":0}}]},"host":{"active":{"baud":115200,"format":"8N1"},"active_known":true,"blocked":false,"serial_generation":2,"actual_baud":115211,"failure":"none"}}
+{"type":"reply","profile":"ess_rs","id":999,"command":"communication","ok":true,"result":"done","action":-1,"pending":false,"owned":true,"route_ready":true,"save_sent":false,"restart_performed":false,"write_replayed":false,"plan":null,"context":{"operation_id":2,"field":"address","register":19,"previous":1,"requested":2,"readback":0,"readback_known":false,"observed_active_known":false,"activation_unknown":true,"effects":true,"uncertain":true,"execution":3,"state":3,"outcome":2,"write_outcome":2,"step":0,"confirmations":0,"save":"required","restart":"unresolved","status":"ILLEGAL_VALUE","detail":19,"deadline_us":742738,"before":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"requested_endpoint":{"target":1,"address":2,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"observed_active":{"target":0,"address":0,"generation":0,"baud":0,"data_bits":0,"parity":0,"stop_bits":0,"serial_known":false},"write_evidence":{"endpoint":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"eligible_us":242738,"deadline_us":742738,"readback_known":false,"readback":0,"wire":{"step":0,"event":0,"raw_hex":"010600130002F9CE","received_length":8,"tx_accepted":8,"tx_complete":true,"response_confirmed":true,"qualified":true,"execution_unknown":false,"earliest_us":248508,"latest_us":248548,"delivered_us":248554,"transport_detail":1,"status":"OK","detail":0,"frame_error":0}},"confirmation_evidence":[]},"host":{"active":{"baud":115200,"format":"8N1"},"active_known":true,"blocked":false,"serial_generation":2,"actual_baud":115211,"failure":"none"}}
+{"type":"reply","profile":"ess_rs","id":999,"command":"communication","ok":true,"result":"done","action":-1,"pending":true,"owned":true,"route_ready":true,"save_sent":false,"restart_performed":false,"write_replayed":false,"plan":null,"context":{"operation_id":2,"field":"baud","register":20,"previous":0,"requested":1,"readback":0,"readback_known":false,"observed_active_known":false,"activation_unknown":true,"effects":false,"uncertain":false,"execution":0,"state":1,"outcome":0,"write_outcome":0,"step":0,"confirmations":0,"save":"unresolved","restart":"required","status":"OK","detail":0,"deadline_us":742738,"before":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"requested_endpoint":{"target":1,"address":1,"generation":1,"baud":38400,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"observed_active":{"target":0,"address":0,"generation":0,"baud":0,"data_bits":0,"parity":0,"stop_bits":0,"serial_known":false},"write_evidence":{"endpoint":{"target":0,"address":0,"generation":0,"baud":0,"data_bits":0,"parity":0,"stop_bits":0,"serial_known":false},"eligible_us":0,"deadline_us":0,"readback_known":false,"readback":0,"wire":{"step":0,"event":0,"raw_hex":"","received_length":0,"tx_accepted":0,"tx_complete":false,"response_confirmed":false,"qualified":false,"execution_unknown":false,"earliest_us":0,"latest_us":0,"delivered_us":0,"transport_detail":0,"status":"OK","detail":0,"frame_error":0}},"confirmation_evidence":[]},"host":{"active":{"baud":115200,"format":"8N1"},"active_known":true,"blocked":false,"serial_generation":1,"actual_baud":115211,"failure":"none"}}
+{"type":"reply","profile":"ess_rs","id":999,"command":"communication","ok":true,"result":"done","action":-1,"pending":true,"owned":true,"route_ready":true,"save_sent":false,"restart_performed":false,"write_replayed":false,"plan":null,"context":{"operation_id":2,"field":"baud","register":20,"previous":0,"requested":1,"readback":0,"readback_known":false,"observed_active_known":false,"activation_unknown":true,"effects":true,"uncertain":false,"execution":2,"state":1,"outcome":0,"write_outcome":5,"step":1,"confirmations":1,"save":"unresolved","restart":"required","status":"OK","detail":0,"deadline_us":749299,"before":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"requested_endpoint":{"target":1,"address":1,"generation":1,"baud":38400,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"observed_active":{"target":0,"address":0,"generation":0,"baud":0,"data_bits":0,"parity":0,"stop_bits":0,"serial_known":false},"write_evidence":{"endpoint":{"target":1,"address":1,"generation":1,"baud":115200,"data_bits":8,"parity":1,"stop_bits":1,"serial_known":true},"eligible_us":242738,"deadline_us":742738,"readback_known":false,"readback":0,"wire":{"step":0,"event":0,"raw_hex":"0186030261","received_length":5,"tx_accepted":8,"tx_complete":true,"response_confirmed":true,"qualified":true,"execution_unknown":false,"earliest_us":248240,"latest_us":248268,"delivered_us":248290,"transport_detail":1,"status":"EXCEPTION","detail":3,"frame_error":10}},"confirmation_evidence":[{"endpoint":{"target":0,"address":0,"generation":0,"baud":0,"data_bits":0,"parity":0,"stop_bits":0,"serial_known":false},"eligible_us":0,"deadline_us":0,"readback_known":false,"readback":0,"wire":{"step":0,"event":0,"raw_hex":"","received_length":0,"tx_accepted":0,"tx_complete":false,"response_confirmed":false,"qualified":false,"execution_unknown":false,"earliest_us":0,"latest_us":0,"delivered_us":0,"transport_detail":0,"status":"OK","detail":0,"frame_error":0}}]},"host":{"active":{"baud":115200,"format":"8N1"},"active_known":true,"blocked":false,"serial_generation":2,"actual_baud":115211,"failure":"none"}}
+'''.strip().splitlines())
+
+
 class CommunicationTests(unittest.TestCase):
     def console(self, factory=response):
         clock=Clock();port=Port(factory);console=bench.Console(port,clock=clock,sleeper=clock.sleep);console.identified=True
         return console,port
+    def emitted(self, index, mutate=None):
+        item = copy.deepcopy(APPLICATION_INSPECTIONS[index])
+        if mutate:
+            mutate(item["context"])
+        c, _ = self.console(lambda tokens: item)
+        return c.command("communication", host_args=("inspect",), timeout_s=.1)
+    def test_actual_application_rejections_history_address_echo_and_pending(self):
+        for index, original in enumerate(APPLICATION_INSPECTIONS):
+            with self.subTest(index=index):
+                self.assertEqual(self.emitted(index)["context"], original["context"])
+    def test_actual_write_closure_and_supplied_uncertainty_determine_execution(self):
+        def boundary(c, late):
+            e = c["write_evidence"]
+            e["deadline_us"] = c["deadline_us"] = e["wire"]["latest_us"] - int(late)
+            e["wire"]["delivered_us"] += 1000000
+        self.assertEqual(self.emitted(0, lambda c: boundary(c, False))["context"]["execution"], 2)
+        mutations = (
+            lambda c: boundary(c, True),
+            lambda c: c["write_evidence"]["wire"].update(execution_unknown=True),
+            lambda c: c["write_evidence"]["wire"].update(detail=5),
+            lambda c: c["write_evidence"]["wire"].update(raw_hex="0186030000"),
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate), self.assertRaises(bench.BenchError):
+                self.emitted(0, mutate)
+        for execution in (0, 1, 2):
+            with self.subTest(execution=execution), self.assertRaises(bench.BenchError):
+                self.emitted(2, lambda c: c.update(execution=execution, uncertain=False))
+        with self.assertRaises(bench.BenchError):
+            self.emitted(4, lambda c: c.update(execution=1))  # Address echo remains UNKNOWN.
+    def test_actual_rejected_readbacks_retain_uncertainty_history(self):
+        with self.assertRaises(bench.BenchError):
+            self.emitted(1, lambda c: c.update(uncertain=True))  # Unchanged previous value is expected.
+        with self.assertRaises(bench.BenchError):
+            self.emitted(3, lambda c: c.update(uncertain=False))  # Requested, then previous, is contradictory.
+        def contradictory(c):
+            e = c["confirmation_evidence"][0]
+            prefix = bytes.fromhex(e["wire"]["raw_hex"])[:3] + bytes((0, 2))
+            e["wire"]["raw_hex"] = (prefix + bench.wire_crc(prefix).to_bytes(2, "little")).hex()
+            e["readback"] = c["readback"] = 2
+        with self.assertRaises(bench.BenchError):
+            self.emitted(1, contradictory)  # A third value cannot retain the unchanged-value disposition.
     def test_grammar_is_finite(self):
         for tokens in [("begin","address","0"),("begin","baud","57600"),("plan","format","8E2"),("save",),("host","all"),("confirm","random"),("begin","baud","9600","248")]:
             with self.subTest(tokens=tokens),self.assertRaises(ValueError):bench.communication_arguments(tokens)
@@ -130,7 +188,7 @@ class CommunicationTests(unittest.TestCase):
         c,p=self.console(lambda t:response(t,owned=True,context=context()))
         self.assertTrue(c.command("communication",host_args=("begin","baud","9600","1"),timeout_s=.1)["ok"])
     def test_selected_host_and_confirmation_match_requested_candidate(self):
-        confirmed=context(step=1,confirmations=1,outcome=3,readback_known=True,readback=3,
+        confirmed=context(step=1,confirmations=1,outcome=3,readback_known=True,readback=3,uncertain=False,
                           observed_active_known=True,confirmation_evidence=[observation(1)])
         for action,retained in (("host",context()),("confirm",confirmed)):
             def factory(tokens):
@@ -148,7 +206,7 @@ class CommunicationTests(unittest.TestCase):
     def test_pending_confirmation_retains_selected_candidate_through_inspection(self):
         pending=context(step=1,confirmations=1,state=1,outcome=0,confirmation_evidence=[
             dict(eligible_us=0,deadline_us=0,wire={})])
-        confirmed=context(step=1,confirmations=1,outcome=3,readback_known=True,readback=3,
+        confirmed=context(step=1,confirmations=1,outcome=3,readback_known=True,readback=3,uncertain=False,
                           observed_active_known=True,confirmation_evidence=[observation(1)])
         def factory(tokens):
             r=response(tokens,owned=True,pending=tokens[0]=="confirm",
@@ -187,7 +245,7 @@ class CommunicationTests(unittest.TestCase):
         self.assertTrue(c.command("communication",host_args=("begin","baud","9600","1"),timeout_s=.1)["ok"])
     def test_begin_cannot_reuse_old_session_or_confirmation(self):
         for replacement in (context(), context(operation_id=6,step=1,confirmations=1,outcome=3,
-                readback_known=True,readback=3,observed_active_known=True,confirmation_evidence=[observation(1)])):
+                readback_known=True,readback=3,uncertain=False,observed_active_known=True,confirmation_evidence=[observation(1)])):
             retained=context()
             c,p=self.console(lambda t:response(t,owned=t[0]=="begin",context=retained))
             c.command("communication",host_args=("plan","baud","9600","1"),timeout_s=.1)
@@ -224,7 +282,7 @@ class CommunicationTests(unittest.TestCase):
         with self.assertRaises(bench.BenchError):c.command("communication",host_args=("inspect",),timeout_s=.1)
         self.assertEqual(len(p.sent),2)
     def test_fabricated_confirmation_or_provenance_is_rejected(self):
-        valid=context(step=1,confirmations=1,outcome=3,readback_known=True,readback=3,
+        valid=context(step=1,confirmations=1,outcome=3,readback_known=True,readback=3,uncertain=False,
             observed_active_known=True,confirmation_evidence=[observation(1)])
         mutations=[lambda r:r.update(write_evidence={}),lambda r:r.update(confirmations=0),
             lambda r:r.update(outcome=1),lambda r:r["observed_active"].update(address=4),
@@ -240,7 +298,7 @@ class CommunicationTests(unittest.TestCase):
         c,p=self.console(lambda t:response(t,owned=True,context=valid))
         self.assertTrue(c.command("communication",host_args=("inspect",),timeout_s=.1)["ok"])
     def test_finish_requires_proven_matching_host_context(self):
-        confirmed=context(step=1,confirmations=1,outcome=3,readback_known=True,readback=3,
+        confirmed=context(step=1,confirmations=1,outcome=3,readback_known=True,readback=3,uncertain=False,
             observed_active_known=True,confirmation_evidence=[observation(1)])
         for retained,bad_host in ((context(),False),(confirmed,True)):
             def factory(tokens):

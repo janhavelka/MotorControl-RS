@@ -197,11 +197,19 @@ may accept a stop only for its known original target, after restoring the tuple.
 A restoration interlock ends that accepted stop without TX. A bus fault after
 a stop ACK ends observation promptly with the ACK and unobserved completion retained.
 
+Action and velocity records include optional `stop_recovery` when their stop used
+recovery. It contains `operation_id`, `pending`, copied `result` and nullable
+`before_attempt`. The result has the recovery ID, outcome, reason and fixed times;
+the attempt retains request/target identity, deadline, raw RX and zero-TX evidence.
+These copies survive a later recovery. An action that ends while recovery is still
+pending remains an application `result=pending`; it cannot be released or reused
+until the complete result is delivered. These are additive protocol-3 fields.
+
 `stop fast` can escalate a running `stop normal`: the old stop's unsent write and later
 polls end, and both results stay retained. `recover` releases a delivered terminal
 recovery result; an undelivered one still returns `results_full`.
 
-Cancellation ends unsent work/local waiting. An in-flight frame settles naturally, so
+Cancellation ends unsent work and local waiting. An in-flight frame settles naturally.
 An advanced `move` that holds an established coordinate reference needs an idle axis,
 so run `monitor off` first; it is rejected before TX otherwise.
 

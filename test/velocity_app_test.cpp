@@ -3,6 +3,7 @@
 // Qualification below belongs solely to this fake fixture, never the real bench.
 #include "../examples/probe_cli/ProbeApp.cpp"
 #include "fakes/esp32_uart/UsbConsoleFixture.h"
+#include "ActionEvidenceChecks.h"
 #if MOTORCONTROLRS_TEST_IDF
 #include "fakes/esp32_uart/FakeUsb.h"
 #include "../examples/probe_idf/main/IdfPlatform.cpp"
@@ -230,6 +231,60 @@ void delayedEvidenceAndRecovery() {
     assert(view(recovering).velocityContext->needsStop && axisReserved(*app,1));
     assert(view(recovery).recovery && hardware.writes == 2);
 }
+void expiredPollRetainsTransportEvidence() {
+    for (bool transmitted : {false, true}) {
+        fresh(); qualify(); const auto id = admitVelocity();
+        velocityStep(id); velocityStep(id); velocityStep(id, registers(1,{0,4}));
+        const auto due = view(id).velocityContext->stopDueUs;
+        const auto deadline = view(id).velocityContext->deadlineUs;
+        // Stop before the next owner service dispatches the admitted poll.
+        for (unsigned i = 0; i < 25000 && !findRecord(*app,id)->requestId.owner; ++i) step();
+        const auto token = findRecord(*app,id)->requestId;
+        assert(token.owner && !app->owner.txAccepted(token) && hardware.writes == 3);
+        if (transmitted) {
+            hardware.txCharacterUs = 0; // UART accepts the poll but cannot drain it.
+            waitTx(id);
+        }
+        advanceHardware(transmitted ? deadline : due); // ISR capture survives this task gap.
+        app->owner.service(uart.sample());
+        const auto* settled = app->owner.result(token);
+        assert(settled && settled->expected.function == 3 && settled->expected.first == 6);
+        const auto reason = settled->transport.reason;
+        if (transmitted) {
+            assert(reason == Rtu::Reason::REQUEST_DEADLINE && settled->transport.txAccepted == 8 &&
+                !settled->transport.txComplete);
+        } else {
+            assert(settled->outcome == Rtu::Outcome::DISPATCH_EXPIRED && !settled->transport.txAccepted &&
+                !settled->transport.rxLength && !settled->executionUnknown);
+        }
+        serviceApplication();
+        assert(!app->owner.result(token));
+        if (transmitted) {
+            const auto& c = *view(id).velocityContext;
+            assert(!view(id).pending && c.state == ActionState::FAILED && c.outcome == ActionOutcome::DEADLINE);
+            assert(c.status.detail == static_cast<int32_t>(VelocityError::DEADLINE_EXPIRED));
+            assert(c.serviceMissed && c.needsStop && c.uncertain && c.runningObserved);
+            assert(c.failureEvidence.step == 3 && c.failureEvidence.event == ReadEventKind::DEADLINE &&
+                c.failureEvidence.txAccepted == 8 && !c.failureEvidence.txComplete &&
+                c.failureEvidence.transportDetail == static_cast<int32_t>(reason) &&
+                c.failureEvidence.deliveredUs == c.servicedUs);
+            assert(c.execution == ActionExecution::ACKNOWLEDGED && c.stop.execution == ActionExecution::NOT_TRANSMITTED);
+            assert(c.stopDueUs == due && c.deadlineUs == deadline && hardware.writes == 4 && axisReserved(*app,1));
+            const auto failure = c.failureEvidence;
+            pump(2000);
+            assert(hardware.writes == 4 && !app->recovery.operationId);
+            checkSameActionEvidence(failure, view(id).velocityContext->failureEvidence);
+        } else {
+            const auto& waiting = *view(id).velocityContext;
+            assert(view(id).pending && waiting.phase == ESS::VelocityPhase::STOPPING &&
+                waiting.outcome == ActionOutcome::NONE && !waiting.failureEvidence.deliveredUs);
+            velocityStep(id); velocityStep(id, registers(1,{0,0}));
+            const auto& c = *view(id).velocityContext;
+            assert(!view(id).pending && c.outcome == ActionOutcome::OBSERVED && !c.needsStop && !c.serviceMissed);
+            assert(c.stopDueUs == due && c.deadlineUs == deadline && hardware.writes == 5);
+        }
+    }
+}
 void urgentPressureDefersWithinOriginalDeadline() {
     for (bool releaseReserved : {false,true}) {
         fresh(); qualify();
@@ -365,9 +420,17 @@ void lostOwnedStopNeverReplays() {
     assert(app->owner.needsRecovery() && !app->recovery.operationId && hardware.writes == writes);
     pump(2000); assert(hardware.writes == writes);
 }
-void ownedStopBeforeTxRetainsSettlement() {
+std::string recoveryJson(const std::string& output) {
+    const auto begin = output.find("\"stop_recovery\":");
+    const auto end = output.find(",\"host_serial\":", begin);
+    assert(begin != std::string::npos && end != std::string::npos);
+    return output.substr(begin, end - begin);
+}
+void ownedStopBeforeTxRetainsSettlement(bool emit = false) {
     for (bool loseStopReply : {false, true}) {
-        fresh(); qualify(); const auto id = admitVelocity();
+        fresh(); qualify(); command("@31 velocity 30 rpm native 200 configured normal\n");
+        const auto id = app->latestOperationId;
+        assert(view(id).pending && view(id).velocityContext);
         velocityStep(id); velocityStep(id); velocityStep(id, registers(1,{0,4}));
         const auto due = view(id).velocityContext->stopDueUs;
         const auto deadline = view(id).velocityContext->deadlineUs;
@@ -394,6 +457,29 @@ void ownedStopBeforeTxRetainsSettlement() {
         const auto settledWrites = hardware.writes;
         for (unsigned i = 0; i < 40000; ++i) step(100);
         assert(hardware.writes == settledWrites && app->recovery.operationId == recovery);
+        assert(Serial.output.find("\"type\":\"velocity\"") != std::string::npos);
+        const auto retained = recoveryJson(Serial.output);
+        const auto ownerRecovery = findRecord(*app,id)->stopRecoveryResult.id;
+        assert(retained.find("\"operation_id\":" + std::to_string(recovery)) != std::string::npos &&
+            retained.find("\"pending\":false,\"result\":{\"id\":" + std::to_string(ownerRecovery)) != std::string::npos &&
+            retained.find("\"outcome\":\"recovered\"") != std::string::npos &&
+            retained.find("\"before_attempt\":{") != std::string::npos &&
+            retained.find("\"transport\":\"BUS_TIMEOUT\",\"tx_accepted\":0") != std::string::npos);
+        command("@90 result " + std::to_string(id) + "\n"); pump(2000);
+        assert(recoveryJson(Serial.output) == retained);
+        command("@91 recover\n"); const auto later = app->recovery.operationId;
+        assert(later && later != recovery);
+        for (unsigned i = 0; i < 250000 && view(later).pending; ++i) step();
+        assert(!view(later).pending && view(later).recoveryResult.outcome == Rtu::RecoveryOutcome::RECOVERED);
+        pump(2000);
+        command("@92 result " + std::to_string(id) + "\n"); pump(2000);
+        assert(recoveryJson(Serial.output) == retained && hardware.writes == settledWrites);
+        assert(view(id).velocityContext->stop.execution ==
+            (loseStopReply ? ActionExecution::UNKNOWN : ActionExecution::ACKNOWLEDGED));
+        if (emit) {
+            std::fwrite(Serial.output.data(), 1, Serial.output.size(), stdout);
+            return;
+        }
     }
 }
 void ownedStopRecoveryFailureAndCancellation() {
@@ -581,7 +667,10 @@ void parameterReadHumanTerminal() {
     }
 }
 } // namespace
-int main() {
+int main(int argc, char** argv) {
+    if (argc == 2 && std::string(argv[1]) == "--emit-recovery-result") {
+        ownedStopBeforeTxRetainsSettlement(true); return 0;
+    }
     parameterReadApplicationPath();
     parameterReadQualificationAndHistoricalResults();
     parameterReadConsoleAndCapacity();
@@ -590,6 +679,7 @@ int main() {
     externalStopAndLocalCancel();
     pressureAndPhysicalCancellation();
     delayedEvidenceAndRecovery();
+    expiredPollRetainsTransportEvidence();
     urgentPressureDefersWithinOriginalDeadline();
     normalStopAllowsFullConfiguredRamp();
     healthyDurationSweepSendsOneStop();

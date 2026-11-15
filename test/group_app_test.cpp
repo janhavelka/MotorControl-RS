@@ -505,6 +505,46 @@ void testLostStartAndTimeoutUnderBothPolicies() {
         lostOrTimedOutMiddle(policy, false, Mode::SEQUENTIAL);
     }
 }
+void testCancelledGroupStopsRetainPendingRecovery() {
+    fresh({1, 2}); readyGroup({1, 2});
+    const auto from = frames.size();
+    hardware.rx.push_back(1); hardware.rx.push_back(3); uart.sample();
+    assert(uart.needsRecovery());
+    uint32_t normal = 0, fast = 0;
+    assert(submitGroupStop(StopBehavior::CONFIGURED_DECELERATION, normal));
+    runUntil([] { return app->owner.recovering(); });
+    const auto recovery = app->recovery.operationId;
+    const auto ownerRecovery = app->recovery.id;
+    assert(submitGroupStop(StopBehavior::DIRECT, fast));
+    step();
+    for (const uint8_t address : {uint8_t(1), uint8_t(2)}) {
+        const auto* child = findRecord(*app, memberResult(normal, address).operationId);
+        assert(child && child->action.state == ActionState::FAILED && child->action.outcome == ActionOutcome::CANCELLED);
+        assert(child->action.execution == ActionExecution::NOT_TRANSMITTED && !child->delivered);
+        assert(child->stopRecoveryOperationId == recovery && child->stopRecoveryId == ownerRecovery && !child->stopRecoveryResult.id);
+    }
+    Probe::GroupResult pending;
+    assert(copyGroupResult(normal, pending) && pending.pending && !groupOp(normal).delivered);
+    assert(!releaseOperation(normal));
+    uint32_t unchanged = 777;
+    assert(!submitGroupStop(StopBehavior::DIRECT, unchanged) && unchanged == 777);
+    assert(frames.size() == from && !app->stopEvidenceOverwritten);
+    runUntil([&] { return terminalGroup(normal) && terminalGroup(fast); });
+    assert(!groupOp(normal).result.ok && groupOp(fast).result.ok);
+    for (const uint8_t address : {uint8_t(1), uint8_t(2)}) {
+        const auto* child = findRecord(*app, memberResult(normal, address).operationId);
+        assert(child && child->delivered && child->stopRecoveryOperationId == recovery);
+        assert(child->stopRecoveryResult.id == ownerRecovery && child->stopRecoveryResult.outcome == Rtu::RecoveryOutcome::RECOVERED);
+        assert(child->action.outcome == ActionOutcome::CANCELLED && child->action.execution == ActionExecution::NOT_TRANSMITTED);
+        assert(count([address](const std::vector<uint8_t>& frame) { return isStop(frame, address); }, from) == 1);
+    }
+    assert(count([](const std::vector<uint8_t>& frame) {
+        return frame.size() == 8 && frame[1] == 6 && word(frame, 2) == 0x0027 && word(frame, 4) == 0x0100;
+    }, from) == 0);
+    assert(releaseOperation(normal) && releaseOperation(fast));
+    const auto completedFrames = frames.size(); pump(2000);
+    assert(frames.size() == completedFrames && !app->stopEvidenceOverwritten);
+}
 void testUrgentStopDuringStagingAndStarts() {
     for (const auto mode : {Mode::STAGED, Mode::SEQUENTIAL}) {
         // A group stop while the middle member stages: nothing starts after it.
@@ -752,6 +792,7 @@ int main() {
     testStagedMoveStagesAllBeforeStarts();
     testStagingFailureSendsNoStart();
     testLostStartAndTimeoutUnderBothPolicies();
+    testCancelledGroupStopsRetainPendingRecovery();
     testUrgentStopDuringStagingAndStarts();
     testChangedWordBetweenPhasesBlocksStarts();
     testGenerationInvalidation();

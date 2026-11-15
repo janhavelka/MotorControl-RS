@@ -306,7 +306,7 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
     else if (event.latestUs > stepDeadline(c)) finish(c, ActionOutcome::DEADLINE, expired(c));
     else if (!evidence.status) finish(c, ActionOutcome::REPLY_ERROR, evidence.status);
     else if ((!supplied.responseConfirmed || (c.step < 2 && event.executionUnknown)) && c.step != 1) finish(c, ActionOutcome::UNCONFIRMED_RESPONSE,
-        failed(HomeError::UNCONFIRMED_RESPONSE, "frame source is not confirmed as the drive"));
+        failed(HomeError::UNCONFIRMED_RESPONSE, "home response source or write execution is unconfirmed"));
     else if (c.step < 2) {
         if (nowUs >= c.deadlineUs) finish(c, ActionOutcome::DEADLINE, failed(HomeError::DEADLINE_EXPIRED, "no budget for next home step"));
         else if (c.step == 0 && nowUs >= stepDeadline(c)) finish(c, ActionOutcome::DEADLINE, expired(c));

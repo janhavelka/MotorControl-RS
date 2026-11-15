@@ -25,6 +25,10 @@ pass on the latter commit. The [stage 16 report](2026-11-15_standalone_16_eviden
 retains the contracts, failed checks, corrections and final evidence. No new
 hardware qualification follows.
 
+The later [independent 15/16 audit](2026-11-15_standalone_15_16_audit.md)
+reproduced and corrected remaining poll-evidence, recovery-result and host-check
+gaps. Its verification applies to those follow-up changes.
+
 ## Evidence and limits
 
 - Read current core, owner/app, console and Python host paths, plus their

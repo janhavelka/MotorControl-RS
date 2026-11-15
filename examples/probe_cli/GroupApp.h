@@ -487,7 +487,7 @@ void serviceGroupMove(App& a, uint64_t now) {
         const auto* record = findRecord(a, r.members[i].operationId);
         const auto* stop = findRecord(a, r.members[i].stopOperationId);
         const auto* m = groupMember(a, r.members[i].address);
-        if ((record && !terminal(a, *record)) || (stop && !terminal(a, *stop)) || (m && m->stage.view.pending)) return;
+        if ((record && resultPending(a, *record)) || (stop && resultPending(a, *stop)) || (m && m->stage.view.pending)) return;
     }
     harvestGroupMove(a, op, now);
 }
@@ -497,7 +497,7 @@ void serviceGroupStop(App& a, App::GroupOperation& op, uint64_t now) {
     if (!r.pending) return;
     for (uint8_t i = 0; i < r.count; ++i) {
         const auto* record = findRecord(a, r.members[i].operationId);
-        if (record && !terminal(a, *record)) return;
+        if (record && resultPending(a, *record)) return;
     }
     bool ok = true;
     for (uint8_t i = 0; i < r.count; ++i) {
@@ -728,7 +728,7 @@ Probe::Action releaseGroup(App& a, App::GroupOperation& op) {
     for (uint8_t i = 0; i < r.count; ++i)
         for (uint32_t id : {r.members[i].operationId, r.members[i].stopOperationId}) {
             auto* record = findRecord(a, id);
-            if (record && record->groupChild && !terminal(a, *record)) return Probe::Action::BUSY;
+            if (record && record->groupChild && resultPending(a, *record)) return Probe::Action::BUSY;
         }
     for (uint8_t i = 0; i < r.count; ++i)
         for (uint32_t id : {r.members[i].operationId, r.members[i].stopOperationId}) {

@@ -52,7 +52,8 @@ struct ActionResult {
 };
 /** Copy a programmatic stop or qualified-release result. A terminal copy marks
  * delivery, allowing explicit releaseOperation or documented stop-slot reuse.
- * Pending copies do not release storage. Wrong IDs/kinds preserve output. */
+ * Pending includes attached recovery, even after the action ends. Pending copies
+ * do not acknowledge delivery or release storage. Wrong IDs/kinds preserve output. */
 bool copyActionResult(uint32_t operationId, ActionResult& output);
 struct ReleaseAfterStopPrerequisites {
     MotorControlRS::ReadTarget target;

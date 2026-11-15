@@ -794,7 +794,7 @@ def check_fixture_routes(record, *, live_command=None):
     # Real failed terminals must not slip through the permissive raw failure
     # validator after their only family selector disappears.
     stripped = dict(copy.deepcopy(terminal), type="reply", id=5, command="result")
-    for key in ("driver", "home", "velocity", "read_kind", "move_kind", "position_interrupt"):
+    for key in ("driver", "home", "velocity", "action_kind", "read_kind", "move_kind", "position_interrupt"):
         stripped.pop(key, None)
     query = bench.Command(console, 5, "result", 0, 1, None, None, 102)
     console.pending[5] = query
@@ -6224,6 +6224,46 @@ class HostSerialTests(unittest.TestCase):
                     self.assertEqual(self.device.active, self.device.original if stage != 2 else dict(baud=9600, format="8N1"))
 
 
+def check_stop_recovery_fixtures(executables):
+    """Validate real retained stop/velocity records from both frontends."""
+    assert len(executables) == 4 and len({Path(p).resolve() for p in executables}) == 4
+    records = []
+    for executable in executables:
+        output = subprocess.check_output([executable, "--emit-recovery-result"], text=True, timeout=10)
+        assert len(output.encode("utf-8")) <= bench.MAX_LINE
+        record = json.loads(output, object_pairs_hook=bench.unique_object)
+        assert record["type"] == "reply" and record["command"] == "result"
+        assert record["stop_recovery"]["result"]["outcome"] == "recovered"
+        assert record["stop_recovery"]["before_attempt"]["tx_accepted"] == 0
+        command = "velocity" if record.get("velocity") else "stop"
+        check_fixture_routes(dict(record, command=command, type="velocity" if command == "velocity" else "action"))
+        for mutate in (
+                lambda t: t["stop_recovery"].update(operation_id=t["operation_id"]),
+                lambda t: t["stop_recovery"].update(pending=True, result=None),
+                lambda t: t["stop_recovery"]["result"].update(finished_us=t["stop_recovery"]["result"]["deadline_us"]),
+                lambda t: t["stop_recovery"]["before_attempt"].update(tx_accepted=1),
+                lambda t: t["stop_recovery"]["before_attempt"].update(execution_unknown=True),
+                lambda t: t["stop_recovery"]["before_attempt"].update(value=256 if t["stop_policy"] == "fast" else 512),
+                lambda t: t["stop_recovery"]["before_attempt"].update(outcome=2, transport="FRAME", qualified=True),
+                lambda t: t["stop_recovery"]["result"].update(ok=False, outcome="expired", transport="REQUEST_DEADLINE"),
+                lambda t: t["stop_recovery"]["result"].update(ok=False, outcome="read_error", transport="bogus"),
+                lambda t: t["stop_recovery"]["before_attempt"].update(address=2),
+                lambda t: t["stop_recovery"]["before_attempt"].update(raw_hex="01")):
+            bad = copy.deepcopy(record)
+            mutate(bad)
+            try:
+                bench._evidence.check_stop_recovery(bad)
+            except bench.BenchError:
+                pass
+            else:
+                raise AssertionError("host accepted inconsistent attached recovery")
+        pending = dict(copy.deepcopy(record), result="pending")
+        pending["stop_recovery"].update(pending=True, result=None)
+        bench._evidence.check_stop_recovery(pending)
+        records.append(record)
+    assert records[0] == records[1] and records[2] == records[3]
+
+
 def check_position_interrupt_fixtures(executables):
     """Check production Arduino/IDF formatter output before the normal host suite."""
     assert len(executables) == 2 and Path(executables[0]).resolve() != Path(executables[1]).resolve()
@@ -6513,9 +6553,11 @@ class DriveGroupRouteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--position-interrupt-fixtures":
-        if len(sys.argv) != 4:
-            raise ValueError("--position-interrupt-fixtures requires Arduino and IDF fixture executables")
-        check_position_interrupt_fixtures(sys.argv[2:])
+        if len(sys.argv) not in (4, 9) or (len(sys.argv) == 9 and sys.argv[4] != "--stop-recovery-fixtures"):
+            raise ValueError("expected two position-interrupt and optionally four stop-recovery fixtures")
+        check_position_interrupt_fixtures(sys.argv[2:4])
+        if len(sys.argv) == 9:
+            check_stop_recovery_fixtures(sys.argv[5:])
         unittest.main(argv=[sys.argv[0]])
     else:
         unittest.main()

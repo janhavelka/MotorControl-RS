@@ -206,7 +206,7 @@ Status advanceCommunication(CommunicationContext& c, const ActionEvent& supplied
         failed(CommunicationError::DEADLINE_EXPIRED, "communication closure exceeds deadline"));
     else if (!wire.status) finish(c, CommunicationOutcome::REPLY_ERROR, wire.status);
     else if (!supplied.responseConfirmed || e.executionUnknown) finish(c, CommunicationOutcome::UNCONFIRMED_RESPONSE,
-        failed(CommunicationError::UNCONFIRMED_RESPONSE, "communication response source unconfirmed"));
+        failed(CommunicationError::UNCONFIRMED_RESPONSE, "communication response source or write execution is unconfirmed"));
     else if (c.step == 0) {
         if (c.request.field == CommunicationField::ADDRESS) finish(c, CommunicationOutcome::ADDRESS_ACK_UNRESOLVED,
             failed(CommunicationError::ADDRESS_ACK_UNRESOLVED, "address acknowledgement and activation rule unresolved"));
