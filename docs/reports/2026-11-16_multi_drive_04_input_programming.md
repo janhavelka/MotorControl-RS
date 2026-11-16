@@ -1,6 +1,6 @@
 # Multi-drive 04: terminal commissioning
 
-Scope: [multi-drive 04](../prompts/ess_multi_drive/04_input_programming.md),
+Scope: [multi-drive 04](../archive/prompts/ess_multi_drive/04_input_programming.md),
 findings M03 and M06. Implementation started after midnight in Prague on
 16 November, as requested. Starting commit:
 `bbacead2023d1e207b80b8439f27103184f642d2`.

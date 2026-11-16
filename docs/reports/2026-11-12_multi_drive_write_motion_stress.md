@@ -150,7 +150,7 @@ because the commanded target was not reached; that is expected.
 - Settings writes on drives 2 and 4: they need the owner to confirm the model
   and a firmware change that qualifies those addresses.
 - Simultaneous motion of several drives. The standalone application moves one
-  selected drive at a time; the drive group is [multi-drive 02](../prompts/ess_multi_drive/02_drive_group.md).
+  selected drive at a time; the drive group is [multi-drive 02](../archive/prompts/ess_multi_drive/02_drive_group.md).
 - Velocity, loaded mechanics, external I/O, independent shaft or electrical
   measurement, and runs longer than one hour.
 

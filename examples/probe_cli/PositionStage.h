@@ -8,10 +8,11 @@
 
 namespace MotorControlRSExample { namespace Probe {
 
-/** One staged finite move: its five 0x0021 words (acceleration, deceleration,
- * speed, target pair in the drive's word order) written with one FC10 and read
- * back with one FC03. No start word is ever sent; 0x0020 start speed is not
- * written. A following USE_STORED move sends only the start. Plain data. */
+/** Evidence for five 0x0021 words: acceleration, deceleration, speed and target
+ * pair in the drive's word order. Used by prepared-move staging and raw candidates.
+ * No start word is sent and 0x0020 start speed is not written.
+ * Successful stagePositionMove publishes the selected-axis witness for a
+ * matching USE_STORED move. Raw candidates never publish that witness. */
 struct PositionStageView {
     MotorControlRS::ReadTarget target;
     uint32_t operationId = 0, configurationGeneration = 0, serialGeneration = 0;

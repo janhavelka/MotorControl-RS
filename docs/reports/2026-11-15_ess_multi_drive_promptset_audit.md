@@ -117,7 +117,7 @@ ESS model detection.
 
 The original requirement that member targets may differ is unmet.
 `GroupMoveRequest` contains one `MoveRequest`; `startGroupMove` copies it and
-rejects absolute/wrapped requests. New [09](../prompts/ess_multi_drive/09_member_motion_requests.md)
+rejects absolute/wrapped requests. New [09](../archive/prompts/ess_multi_drive/09_member_motion_requests.md)
 requires bounded per-member intents and separate reference/configuration
 provenance, preserving the existing common-relative API.
 
@@ -131,7 +131,7 @@ about **858 ms early**. Clear/redeclare reproduced it. Keeping both members
 masked group admission through drive 2's remaining wait, but still lost drive
 1's fact. No hardware was involved.
 
-New [08](../prompts/ess_multi_drive/08_enable_wait_lifetime.md) requires target
+New [08](../archive/prompts/ess_multi_drive/08_enable_wait_lifetime.md) requires target
 waits to outlive host selection and membership changes, with selected-axis,
 group, expiry, rebinding and capacity tests. The fix touches shared application
 admission/state lifetime and needs firmware verification; it was not replaced
@@ -147,7 +147,7 @@ and bench results remain valid within their recorded scope.
 admission. [DriverSettings.cpp](../../src/profiles/ess_rs/DriverSettings.cpp)
 already supports typed function values 0-17 with prerequisites. These are
 different layers, not contradictory coverage claims. The broader application
-work stays in [04](../prompts/ess_multi_drive/04_input_programming.md).
+work stays in [04](../archive/prompts/ess_multi_drive/04_input_programming.md).
 
 The corrected prompt requires:
 

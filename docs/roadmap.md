@@ -3,7 +3,7 @@
 The first release is **1.0.0**, with the bounded ESS subset described in
 [release scope](releases/1.0.0.md). Implementation, native validation and physical
 qualification are separate milestones. The [backlog](backlog.md) owns remaining
-work, with executable tasks in the [standalone plan](prompts/standalone/README.md);
+work, with executable tasks in the [prompt index](prompts/README.md);
 [current reports](reports/README.md) and the [archive](archive/README.md)
 retain successful and failed experiments.
 
@@ -14,6 +14,7 @@ retain successful and failed experiments.
 | Portable core | Exact units/coordinates, typed targets, register ledger, checked ESS FC03/06/10 codecs | No framework, transport, clock, heap or retry ownership |
 | Bounded operations | Typed reads/settings, actions, relative/absolute/wrapped position, finite velocity, homing 1-14/17/19-30/33-35, discovery and explicit communication/persistence sequences | Unsupported and unresolved operations fail explicitly; four native-family gaps and 18 guarded paired setters remain |
 | Application reference | Cooperative owner, retained results, immutable deadlines, urgent stop, runner/capture, ordinary API/console and passive traffic observation | Software timing observations do not establish exact wire timing; no uncertain write replay |
+| Groups and terminal commissioning | Up to 15 independent member requests, checked staging, per-terminal I/O facts and shared finite-move rules | Three-drive unicast and unconnected-register evidence; wired effects, independent start timing and restart persistence remain open |
 | Consumers and tooling | Shared Arduino/native ESP-IDF S3 application, S2 compile-only fixtures, strict host tools, source/install packages and CI | S3 functional evidence belongs to the exact tested image, motor and fixture; S2 hardware is unqualified |
 | Documentation | Current contracts and operation coverage, source-backed FieldCore handoff, preserved manuals and bench reports | Old numbered prompts are historical delivery instructions, not current missing-feature lists |
 
@@ -57,13 +58,21 @@ have free-shaft evidence. Switch homing needs a real fixture. The 4 November
 image also includes the tested negative-position route and the one-second
 post-enable wait; their limits remain in the [backlog](backlog.md).
 
+The [16 November group/I/O audit](reports/2026-11-16_multi_drive_04_09_audit.md)
+adds fresh three-drive staged/sequential moves, urgent stop, unconnected I/O
+updates and exact profile restoration. It also confirms the existing refusal
+after candidate-write relation revocation. This bounded run does not replace
+the full standalone regression or qualify wired inputs and outputs.
+
 ## Next delivery blocks
 
 1. **Bench-check the delivered software.**
    [Standalone 02](reports/2026-11-15_standalone_02_profile_staging.md) delivers the ordinary
    candidate/archive route. [15 stop/recovery](reports/2026-11-15_standalone_15_stop_recovery.md)
    and [16 evidence/qualification](reports/2026-11-15_standalone_16_evidence_qualification.md)
-   are software complete; their new-image bench regression is still NOT RUN.
+   are software complete. Candidate restoration, ordinary stop and selected
+   group/I/O paths have since passed on the bench. The full standalone 14
+   regression and the fault-specific 15/16 hardware cases remain open.
    The [15 November review](reports/2026-11-15_standalone_audit_revalidation.md)
    gives each old finding a current verdict. Optional cleanup must preserve
    frames, deadlines, retained results and command syntax.
@@ -74,8 +83,6 @@ post-enable wait; their limits remain in the [backlog](backlog.md).
    Stored-profile retrigger remains ACK-only. Broader N05 replacement needs
    [staging and completion evidence](ess_position.md#remaining-replacement-work).
    Method 18, collision homing and nonzero offsets remain guarded.
-   Candidate staging is complete in software; its new physical checks remain
-   separate from the existing prepared-move and group evidence.
 3. **Qualify remaining hardware behavior.** Repeat overnight testing; measure
    independent shaft/electrical behavior; use actual fixtures for external I/O,
    restart/persistence, wire faults and loaded mechanics. The complete list and
@@ -85,20 +92,13 @@ post-enable wait; their limits remain in the [backlog](backlog.md).
    Its selected board/backend and physical product/load tests remain consumer
    work; see the [current handoff](fieldcore_handoff.md). FieldCore is read-only
    here, and its pinned release is distinct from standalone main.
-5. **Complete group and input-start support.** Broadcast testing is NO-GO;
-   the library stays unicast-only. Common-relative group moves and checked
-   staged starts already have three-drive evidence. The
-   [multi-drive revalidation](reports/2026-11-15_ess_multi_drive_promptset_audit.md)
-   assigned enable-wait lifetime to stage 08; its software correction is delivered,
-   with the short enable/reselection bench checks now passed. Independent member
-   requests, explicit member
-   references and inert console plans are implemented in 09; see its
-   [verification report](reports/2026-11-15_multi_drive_09_member_motion_requests.md).
-   Input programming is software complete in 04; unconnected register updates,
-   restoration and the finite-move regression pass. Input-start observation,
-   wired effects and restart persistence remain open.
-   Independent physical skew and electrical timing are unmeasured;
-   the existing fixture no longer needs a second drive.
+5. **Add input-start support and finish group qualification.** The
+   [multi-drive set](prompts/ess_multi_drive/README.md) owns input arming and
+   observation, wired qualification and the blocked broadcast investigation.
+   Group requests, enable-wait lifetime and I/O programming are delivered and
+   audited. Production broadcast remains disabled after the NO-GO result.
+   Independent start skew, electrical timing and restart persistence remain
+   unmeasured. The current fixture already has three drives.
 6. **Publish the scoped release.** Use the [verification workflow](verification.md)
    and exact source/artifact evidence. Publication does not imply full ESS native
    coverage or close the independent qualification gates.

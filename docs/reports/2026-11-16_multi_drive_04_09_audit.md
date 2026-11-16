@@ -2,8 +2,8 @@
 
 Status: PROCESSED. Confirmed in-scope defects are fixed and verified.
 Baseline: `92e5d2b` on `main`. Scope is the original
-[04](../prompts/ess_multi_drive/04_input_programming.md) and
-[09](../prompts/ess_multi_drive/09_member_motion_requests.md) prompts, read in full.
+[04](../archive/prompts/ess_multi_drive/04_input_programming.md) and
+[09](../archive/prompts/ess_multi_drive/09_member_motion_requests.md) prompts, read in full.
 
 [Evidence archive](2026-11-16_multi_drive_04_09_audit_evidence.zip): original
 prompts and source hashes, independent reviews/reproducers, final diff, local

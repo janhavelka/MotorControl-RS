@@ -11,6 +11,8 @@ remain separately indexed.
 
 | Record | Disposition |
 | --- | --- |
+| [Completed ESS multi-drive stages](prompts/ess_multi_drive/README.md) | 01, 02, 04, 08 and 09 are archived. Remaining input-trigger work, wired I/O, persistence and broadcast investigation stay in the active set. |
+| [Standalone 02 candidate/archive staging](prompts/standalone/02_profile_staging.md) | Completed software instructions. [Implementation](../reports/2026-11-15_standalone_02_profile_staging.md) and [later audit/bench evidence](../reports/2026-11-16_multi_drive_04_09_audit.md); the full standalone 14 regression remains separate. |
 | [Standalone 16 evidence/qualification](prompts/standalone/16_evidence_qualification.md) | Completed software instructions. [Implementation, retained failures and exact-commit verification](../reports/2026-11-15_standalone_16_evidence_qualification.md); physical/source limits remain separate. |
 | [Standalone 15 stop/recovery](prompts/standalone/15_stop_recovery.md) | Completed software instructions. [Implementation and exact-commit verification](../reports/2026-11-15_standalone_15_stop_recovery.md); new bench checks remain separate. |
 | [ESS delivery sequence](prompts/ess_release/README.md) | Historical implementation sequence and original acceptance requirements. Delivery of a prompt does not close its separately recorded native or hardware gaps. |
@@ -52,6 +54,9 @@ clones. Current source navigation lives in the [source map](../source_map.md).
 - Historical prompt directories moved from `docs/prompts/ess_release/` and
   `docs/prompts/maintenance/` to `docs/archive/prompts/` under the same names.
   The completed `maintainability/` sequence now follows the same rule.
+- Completed multi-drive 01/02/04/08/09 instructions moved on 16 November.
+  Stage 04's remaining physical checks now live in active multi-drive 06.
+  Conditional broadcast stage 03 and unfinished stages 05-07 remain active.
 - The finished ESS software prompts and duplicate planning files were removed
   on 4 November. The [final audit](../reports/2026-11-02_ess_final_audit.md), dated
   reports and maintained guides retain useful evidence and contracts. Git commit

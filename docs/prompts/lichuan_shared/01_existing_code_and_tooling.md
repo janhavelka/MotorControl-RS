@@ -58,8 +58,8 @@ Neither Lichuan family inherits ESS zero semantics or a fixed 64-poll budget.
 
 ## 3. Consume input qualification and application maintenance
 
-[Multi-drive 04](../ess_multi_drive/04_input_programming.md) owns the broader
-per-function input admission and C13 input-fact route. Before sharing that
+[ESS I/O qualification](../../ess_io.md) implements per-function input admission
+and the C13 input-fact route. Before sharing that
 application path, review the actual landed generation/invalidation rules.
 A wiring declaration does not silently disable inputs, qualify every motion
 or grant a generic bypass. Family stages must retain their own documented

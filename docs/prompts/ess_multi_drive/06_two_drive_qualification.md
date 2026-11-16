@@ -4,7 +4,8 @@ Read the [set README](README.md) and the
 [standalone execution contract](../standalone/execution_contract.md) together
 with this prompt.
 
-Finding: **M05**, plus the remaining physical gates of multi-drive 01-05.
+Findings: **M05** and the remaining physical gates of multi-drive 01-05.
+This prompt owns the wired-I/O and restart checks left after 04's software delivery.
 
 ## Current disposition
 
@@ -14,8 +15,10 @@ and [group report](../../reports/2026-11-13_multi_drive_02_drive_group.md).
 Map those exact-image results to the cases below before scheduling more tests.
 Do not erase that evidence or require another drive just to repeat it. Trigger
 wiring, independent physical timing and the unmatched cases remain open.
-The [15 November audit](../../reports/2026-11-15_ess_multi_drive_promptset_audit.md)
-also identifies the readiness correction in 08 and request extension in 09.
+The [15 November group report](../../reports/2026-11-15_multi_drive_09_member_motion_requests.md)
+and [16 November audit](../../reports/2026-11-16_multi_drive_04_09_audit.md) add
+member-specific moves, enable/reselection, unconnected I/O updates and exact
+restoration. They do not qualify wired effects, restart persistence or physical skew.
 
 ## Entry gate
 
@@ -30,6 +33,12 @@ also identifies the readiness correction in 08 and request extension in 09.
   turn a passing functional test into electrical installation qualification.
 - For trigger cases: one trigger wire to an input of each drive, through the
   user's 24 V interface.
+- For I/O effects: record each terminal's source/load, voltage, current and
+  polarity. Hardware pp5,8,9 specify opto-isolated inputs, standard 24 V,
+  at least 10 mA drive current and pulses longer than 10 ms. A 3.3 V GPIO
+  cannot drive an input directly. Connected-output claims need the actual load.
+- Saved-assignment/startup checks need actual motor restart control, backups
+  and a checked restoration route. A controller reset is not a motor restart.
 - Fixture facts recorded for every participating drive:
   - model and firmware words;
   - mounting and free shafts;
@@ -37,12 +46,13 @@ also identifies the readiness correction in 08 and request extension in 09.
   - supply.
 
   All shafts must be free and uncoupled, as for the current bench. New software
-  checks follow 08's readiness fix; reused old records retain their original
+  checks use the delivered 08/09 corrections; reused old records retain their original
   source and limitations.
 
 ## Inspect before editing
 
-The delivered multi-drive 01-05 stages, their reports and the host tools;
+The delivered stages and reports linked by the [set README](README.md),
+[I/O contract](../../ess_io.md), original function/hardware PDF pages and host tools;
 docs/hardware_bench.md, docs/bench_scenarios.md, scripts/bench_probe.py,
 scripts/bench_stress.py.
 
@@ -76,7 +86,24 @@ prepared unicast stops for each drive.
 5. **Post-enable wait.** Check 08's wait retention on each tested drive. Measuring
    drive-specific HW-15 settling remains separate: do not infer its bound from
    the application's one-second refusal or reuse one drive's result for another.
-6. **Short regression.** Run it on each drive alone.
+6. **Wired I/O left by 04.** Use the delivered qualification and ordinary API/CLI
+   routes; do not rebuild the completed implementation.
+   - Check the actual effects of assigned inputs and connected output loads,
+     including canonical custom outputs 9/10. Keep software simulation and
+     physical observations separate.
+   - Establish whether `0x0008` reports levels before or after `0x0040` polarity.
+     Until measured, keep that mapping unknown. Do not invert logical levels twice.
+   - Check every intermediate FC06 state when changing polarity, function or
+     custom output. Retain trigger inhibition and explicit protection-removal
+     facts; a safe final candidate does not justify an unsafe intermediate state.
+   - With actual restart control, test saved assignments, polarity and startup
+     activation. Hardware p9's unspecified startup state and function pp73-74's
+     stored defaults remain distinct evidence. Fresh reads are required afterward.
+   - Keep input-trigger arming/observation in [05](05_input_triggered_start.md).
+     Output 11, cross-mapped custom outputs and shared-start semantics remain
+     [standalone 06](../standalone/06_io_and_tuning.md). Do not infer these from
+     unconnected register round trips.
+7. **Short regression.** Run it on each drive alone.
 
 Polling bounds the observed spread. It does not measure physical start time.
 Physical skew needs an independent instrument, which the report records as

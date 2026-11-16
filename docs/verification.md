@@ -112,9 +112,11 @@ doxygen docs/Doxyfile
 ```
 
 Open `build/doxygen/html/index.html`. This includes the installed core headers
-and the standalone application/console interfaces. Documentation errors fail
-the command. Undocumented declarations are included; this is not a check that
-every declaration has a comment.
+and the standalone application/console interfaces, including group, staging and
+qualification types. The application headers remain example interfaces; they
+are not part of the installed core package. Documentation errors fail the
+command. Undocumented declarations are included; this is not a check that every
+declaration has a comment.
 
 Doxygen is a local check, separate from `verify.py` and CI. CI checks header
 compilation and consumers but does not render API documentation.

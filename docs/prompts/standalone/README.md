@@ -1,6 +1,6 @@
 # Standalone ESS completion and qualification
 
-Prepared 2026-10-23; status reviewed 2026-11-15. **Stages 01, 02, 15 and 16 are COMPLETE (software).
+Prepared 2026-10-23; status reviewed 2026-11-16. **Stages 01, 02, 15 and 16 are COMPLETE (software).
 Stages 03, 05, 07, 11 and 14 are PARTIAL. Stages 04, 06, 08-10, 12, 13
 and 17 are NOT STARTED.**
 Stage 01's parameter reads are complete. The corrections and owner decisions of
@@ -38,8 +38,12 @@ keeps those distinctions. Use the audit's Current owner column; Next stage is hi
 ## Next work
 
 1. Run the short [14 bench regression](14_bench_regression.md) on the new image,
-   including [02: candidate staging](../../reports/2026-11-15_standalone_02_profile_staging.md). Its ordinary archive
-   route is software complete; the drive did not answer the latest preflight.
+   selecting remaining cases from its actual evidence. Candidate staging and
+   restoration passed on all three drives in the
+   [15 November run](../../reports/2026-11-15_multi_drive_09_member_motion_requests.md)
+   and [16 November audit](../../reports/2026-11-16_multi_drive_04_09_audit.md).
+   Those results supersede the earlier failed preflight, but do not complete
+   the equal-archive no-write check or the full stage 14 matrix.
 2. Include the completed stop/evidence changes in that regression.
    [15 stop/recovery](../../reports/2026-11-15_standalone_15_stop_recovery.md) and
    [16 evidence/qualification](../../reports/2026-11-15_standalone_16_evidence_qualification.md)
@@ -54,7 +58,7 @@ keeps those distinctions. Use the audit's Current owner column; Next stage is hi
 | Stage | Deliverable | Dependencies / starting gate | Status |
 | --- | --- | --- | --- |
 | 01 | [Native velocity and homing parameter reads](../../ess_reads.md) | Public API and ordinary console routes delivered | COMPLETE |
-| 02 | [Position candidate/archive staging](../../reports/2026-11-15_standalone_02_profile_staging.md) | Candidate staging leaves `0x0020` unchanged; original instructions [archived](../../archive/prompts/standalone/02_profile_staging.md). | COMPLETE (software): 95 suites, package/Doxygen and exact-commit GCC/Clang/Arduino/IDF CI passed. Public API, console and host archives retain their results. New board regression NOT RUN after NO_RESPONSE. |
+| 02 | [Position candidate/archive staging](../../reports/2026-11-15_standalone_02_profile_staging.md) | Candidate staging leaves `0x0020` unchanged; original instructions [archived](../../archive/prompts/standalone/02_profile_staging.md). | COMPLETE (software): native/package/Doxygen and exact-commit CI pass. Later three-drive candidate restoration passes; remaining standalone 14 cases stay open. |
 | 03 | [Remaining position replacement evidence](03_position_interrupt.md) | Stored retrigger delivered; dispatch remaining work as "N05 evidence" | PARTIAL |
 | 04 | [Paired values and wire forms](04_paired_values.md) | Vendor clarification, or the one fixture-only `0x0060/2` experiment authorized by D4 | NOT STARTED |
 | 05 | [Unresolved homing semantics and physical qualification](05_homing.md) | Reads, auxiliary and 27 switch methods delivered; stage 04 for nonzero offsets; real fixture for switch methods | PARTIAL: 33/34/35 tested on the free shaft; unresolved methods, offsets and switch fixtures remain |

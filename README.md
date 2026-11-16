@@ -23,7 +23,7 @@ maintenance documented in the changelog.
 | Core | Exact units/coordinates, quantization, limits, profiles and caller-owned sequences |
 | ESS wire protocol | Checked FC03/FC06/FC10 builders and parsers; raw exceptions and explicit pair order |
 | Operations | Typed reads/settings, position, velocity, actions/stop, selected homing, commissioning and discovery |
-| Standalone firmware | One shared console/application on Arduino and native ESP-IDF ESP32-S3 |
+| Standalone firmware | Shared Arduino/native ESP-IDF S3 console, per-terminal qualification and unicast groups of up to 15 drives |
 | Packages | CMake source/install consumers and PlatformIO; C++11, plus C++17 with RTTI disabled |
 
 Typed native coverage is partial. The [API/CLI inventory](docs/ess_api_cli_coverage.md)
@@ -31,7 +31,7 @@ lists four named gaps and 18 guarded paired setters. Current settings do not
 provide torque/current motion; stored segments require external triggers.
 Other manufacturers and CANopen are not implemented.
 
-Recent work adds native velocity/homing reads, start-speed and homing-auxiliary
+The current branch adds native velocity/homing reads, start-speed and homing-auxiliary
 setters, stored-profile interruption and 27 switch homing methods. The console
 also stages validated position-profile archives without starting motion; see
 [candidate staging](docs/ess_position.md#candidate-profile-staging). The console
@@ -41,17 +41,23 @@ I/O commissioning covers inputs 0-17, outputs 0-5/9-10 and canonical custom
 outputs. It checks polarity, intermediate writes, declared loads and trigger
 inhibition. Wired effects and restart behavior need separate evidence; see
 [I/O policy](docs/ess_io.md).
-The [prompt index](docs/prompts/README.md) separates completed work from open work.
+The [prompt index](docs/prompts/README.md) lists open work. Finished instructions
+and their evidence are indexed in the [archive](docs/archive/README.md).
 
 Drive groups accept up to 15 independent relative or absolute requests through
 the ordinary application API and an inert console plan. Every member keeps its
 own units, reference and result; all staging checks finish before staged starts.
 See [member requests](docs/console.md#different-member-targets).
+Groups reject wrapped requests and revoked start-speed relations. A qualified
+selected-axis route remains available after relation revocation.
 
 The recorded bench has three ESS23-RS20 drives, raw model `0x4EEA`, firmware word
 `0x0029`, at addresses 1, 2 and 4 / 115200 8N1 with free shafts. These raw words are not a
 resolved universal model/version mapping. S3 has recorded hardware evidence;
 S2 has core/portable compile checks only, with no supported S2 UART adapter.
+The [latest group/I/O audit](docs/reports/2026-11-16_multi_drive_04_09_audit.md)
+records software checks, bounded three-drive tests and exact restoration.
+Wired I/O effects, restart persistence and independent start timing remain open.
 
 ## Build and use the core
 

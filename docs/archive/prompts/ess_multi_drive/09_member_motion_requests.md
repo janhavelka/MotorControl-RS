@@ -1,8 +1,11 @@
 # Multi-drive 09 - Give each group member its own motion request
 
-Read the [set README](README.md), the
-[execution contract](../standalone/execution_contract.md) and the
-[15 November revalidation](../../reports/2026-11-15_ess_multi_drive_promptset_audit.md).
+Archived 16 November 2026. Do not dispatch this completed prompt again.
+Use the [active set](../../../prompts/ess_multi_drive/README.md) for current work.
+
+Read the [set README](../../../prompts/ess_multi_drive/README.md), the
+[execution contract](../../../prompts/standalone/execution_contract.md) and the
+[15 November revalidation](../../../reports/2026-11-15_ess_multi_drive_promptset_audit.md).
 
 Finding: **M02**, the original different-target requirement. Multi-drive 08 must
 be resolved first. The common-relative STAGED/SEQUENTIAL routes remain delivered.

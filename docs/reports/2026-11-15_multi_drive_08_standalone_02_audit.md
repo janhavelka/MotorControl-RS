@@ -9,7 +9,7 @@ Correction commit: `be7a2ac92014303768326c24f5c58b601be14def`.
 ## Scope and method
 
 Fetched `main`, clean and synchronized at `cbd78a0`. Re-read the full original
-[multi-drive 08](../prompts/ess_multi_drive/08_enable_wait_lifetime.md) and
+[multi-drive 08](../archive/prompts/ess_multi_drive/08_enable_wait_lifetime.md) and
 [standalone 02](../archive/prompts/standalone/02_profile_staging.md) prompts.
 Reviewed implementation diffs `28e5352..a670c09` and `1c1a95e..0e3b559`, then the
 actual current code, callers and tests. Prior summaries were not audit evidence.

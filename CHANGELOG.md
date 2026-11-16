@@ -6,7 +6,8 @@
 
 - Group stop-on-failure moves require result capacity and reserve stop/recovery
   IDs before staging. Retained results and unrelated stops cannot consume that
-  operation's fallback resources.
+  operation's fallback resources. An explicit stop keeps the reservation until
+  it settles; recovery invalidates probe caches at admission.
 - Same-value polarity writes follow the connected-terminal reply rule.
   Assignment inspection uses the same exact-read checks as write admission.
 - I/O settings check each intermediate FC06 state. Connected terminals use
@@ -28,6 +29,57 @@
 - Release qualification expires at the exact age limit, including while queued.
 - Host communication and persistence checks derive write outcomes from raw evidence;
   contradictory communication readback cannot suppress uncertainty.
+- A stop during position-stage readback now keeps the settled write/read
+  evidence but cannot mark the cancelled stage ready or publish stored words.
+  Both frontend application tests cover this race.
+- The stress tool no longer resumes after a USB stall when its cleanup stop is
+  refused, missing, failed or uncertain. It requires the matching observed-stop
+  result, retains evidence and ends the run on failure even with `--recover`.
+  Offline regressions now run in CI.
+- Verification now rejects empty or incomplete CTest evidence, including
+  listing-only detailed logs, while preserving skipped/disabled-test rejection.
+  IDF fixture descriptions distinguish exported source from installed packages.
+- Completion-operation coverage now requires the actual producing API and
+  definitions; unrelated getters, raw codecs and declaration-only bodies cannot
+  claim implementation. Cross-operation regressions cover delayed reads,
+  setting/qualification invalidation, recovery, rebind and urgent stop with full
+  ordinary result storage on both frontends.
+- Reject homing host records that claim success after interruption by stop.
+  Actual emitted-result regressions cover all 30 supported methods on both
+  application frontends; core motion and stop behavior are unchanged.
+- Host homing-result validation requires an integer method ID, rejecting JSON
+  booleans and floating-point values that compare equal to supported methods.
+- Homing rejects unknown MOTION bits as unqualified readiness while retaining
+  raw evidence. Host validation also rejects contradictory logical inputs in
+  low/activity witnesses and preserves core failure precedence. Active-phase
+  qualification replacement, in-flight stop and the 64-poll bound have explicit
+  regressions; duplicate qualification checks and zero-evidence copying removed.
+- Setting sessions cancel unsent FC06 work when newer checked state/input/feedback
+  contradicts admission; contradictory priors revoke stale readiness even without
+  a write. Changed start speed requires an explicit, generation-bound application
+  relation witness; fresh reads cannot fabricate or renew qualification.
+- Start-speed coverage requires its exact producing route; setter-only profile
+  help shows only callable examples, and capabilities no longer list delivered
+  setters as unimplemented. Strict host restore validation now checks exactly
+  the five written words while preserving both start observations.
+- Velocity/home help and error usage now expose parameter reads and motion only
+  when their respective callbacks exist. Human read results name unresolved
+  interpretation states and distinguish numeric policy checks from drive limits;
+  raw zero offset remains separate from a calibrated origin.
+- Human parameter-read errors point to the callable `help home` or `help velocity`
+  family instead of the internal JSON command names.
+- Live host terminals now reject the conflicting kind flags already rejected by
+  retained inspection; malformed move kinds raise the ordinary protocol error.
+- Host settings groups reject non-string selectors with the normal protocol
+  error; pending velocity results reject terminal-only stop-policy claims.
+- Verification now requires the shared native-IDF simple-motion fixture to
+  remain registered with its actual executable; missing or misdirected fixtures
+  fail before a passing test run can hide the omission.
+- Reference-owner admission accepts a typed step deadline within its immutable
+  operation budget, including earlier readiness expiry. It still rejects work
+  outside that budget and never replays an uncertain write.
+- Shared application completion handling preserves captured timing, source
+  confirmation and uncertainty while keeping each operation's response policy.
 
 ### Added
 
@@ -54,7 +106,6 @@
 - Ambiguous valid home-trigger echoes permit bounded status/zero observation.
   Observed completion cannot change UNKNOWN execution or publish a reference.
   Console and host validation retain the same evidence and failure precedence.
-
 - Separate velocity poll dispatch/settlement deadlines and a guarded
   `rebindVelocityStop` continuation. Explicit and velocity-owned stops with
   zero accepted bytes can use one bounded recovery; original failures and
@@ -70,7 +121,6 @@
 - Host stop accounting follows exact firmware replacement IDs and preserves
   old logged evidence. Ordinary, recovery, primary-stop, escalation and group
   result quotas stay separate. Older images keep explicit stop-result release.
-
 - Typed console routes state commissioning facts on the ordinary image, with no bus
   traffic: `home qualification install|revoke`, `velocity qualification install|revoke`,
   `position-clear qualification install|revoke` and `motion-profile start-speed relation`.
@@ -80,44 +130,37 @@
 - `ActionOptions::runningPollIntervalUs` spaces move and home polls after RUNNING.
 - `bench_probe.py home` accepts methods 33 and 34, plus switch methods with explicit
   `--fact inputs` and `--wiring`. It takes the reads and installs only `--fact` values.
-
 - `MoveContext::positionMismatch` and JSON `position_mismatch`: RUNNING-path completion
   whose final feedback differs from the known endpoint. It stays OBSERVED.
 - `ActionContext::rawPositionWords` and JSON `raw_position_words`: position-clear
   words in wire order, which carry no assumed word significance.
-
 - Portable source/installed consumer checks for both native scalar setters and
   representative admitted homing families, preserving strict C++11/C++17,
   independent headers and codec-only isolation. Storage review records actual
   host/Xtensa ABI and stack deltas separately from runtime memory qualification.
-
-- Origin plus negative-limit homing methods11–14 and27–30 through the existing
-  qualified API/console path, completing the27 planned switch-method partition.
-  Both inputs are required for every spatial branch; only11–14 need internal Z.
-  Preserve method28's exchanged drawings and separate caption conflicts,
-  bounded observation/no replay and physical NOT RUN status. Method18,
+- Origin plus negative-limit homing methods 11–14 and 27–30 through the existing
+  qualified API/console path, completing the 27 planned switch-method partition.
+  Both inputs are required for every spatial branch; only 11–14 need internal Z.
+  Preserve method 28's exchanged drawings and separate caption conflicts,
+  bounded observation/no replay and physical NOT RUN status. Method 18,
   collision methods and nonzero offsets remain unresolved.
-
 - Origin plus positive-limit homing methods 7–10 and 23–26 through the existing
   bounded core, application and console. Both inputs are required for every
   starting location; only 7–10 require internal Z. Independent vectors cover
   all 24 spatial branches and conservative sampled completion. Physical
   reversal/index qualification remains NOT RUN.
-
 - Origin-reference homing methods 3–6 and 19–22 through the shared bounded
   core, application qualification and console paths. All require checked origin
   inputs; only 3–6 require internal Z. Independent method/branch fixtures retain
   sampled-evidence limits, status/zero completion and no replay. Physical
   qualification remains NOT RUN. Method 18 and negative methods remain unresolved.
-
 - Limit-reference homing methods 1, 2 and 17 through the existing core,
   qualification-install API and ordinary console route. Methods 1/2 require
   the matching negative/positive limit and qualified internal Z; 17 uses the
   negative limit without index. Checked logical-input observation is mandatory
   for switch methods. Sampled edges remain diagnostic; completion requires
-  fresh status transitions and checked zero. Method18 and collision guards
+  fresh status transitions and checked zero. Method 18 and collision guards
   remain; physical limit homing is NOT RUN.
-
 - Public application homing qualification install/inspect/revoke and retained
   submit/result APIs, with checked configuration, logical inputs and parameter
   readback. Independent fixture age, bounded combined status/input observations
@@ -125,7 +168,6 @@
   reference. `home qualification` inspects the retained facts; explicit
   `install` and `revoke` forms update them without bus traffic. Bench evidence
   covers 33/34/35; switch methods still need physical qualification.
-
 - Typed serial position interruption in the core: exact independently qualified
   native stored-profile retrigger, copied binding/age evidence and one checked
   bit-3 trigger. Default starts and stationary observed moves are unchanged.
@@ -135,25 +177,21 @@
   no active setup writes or completion attribution is claimed. N05 remains PARTIAL.
   The explicit intent is `PositionInterruption::INTERRUPT_CURRENT`, avoiding the
   Xtensa SDK's `INTERRUPT` macro without changing SDK state or wire values.
-
 - Explicit homing auxiliary setting for all twelve native choices, with retained
   prior read, checked FC06 echo and independent readback. Ordinary app API,
   `home auxiliary` and strict host results share the bounded settings session.
-  Possible effects expire qualification; readback7 does not qualify active home
+  Possible effects expire qualification; readback 7 does not qualify active home
   policy, zero offset or additional methods. No motion, I/O change or save.
-
 - Explicit native position start-speed setter (0..3000), retained prior read,
   checked FC06 echo, independent readback and possible-write invalidation. Ordinary
   app API and shared `motion-profile start-speed` use one bounded session; fixed
   origins/desired values survive, while fresh motion evidence is required. No
   motion, persistence, replay, rollback or profile-window expansion.
-
 - Typed seven-word homing-parameter read, ordinary application submit/copy/release
   and shared `home read` with strict host inspection. Preserves unknown codes and
   both raw offset words; known method membership is separate from existing
   execution support. Offset order/sign/scale and physical rates remain unresolved;
   no homing method or write window is enabled.
-
 - Typed non-changing JOG speed/ramp read with raw words, explicit unresolved
   interpretation, admitted configuration generation and copied evidence. Shared
   `velocity read` and ordinary application submit/copy/release use the same owner;
@@ -169,7 +207,6 @@
   write-policy check; real writers still invalidate evidence at TX acceptance.
   Homing refusal text now describes host policy without claiming undocumented
   drive reactions.
-
 - Unified author, copyright and contact metadata: THYMOS Solution s.r.o., Jan Havelka, info@thymos.cz.
 - The default position ceiling is 50,000 command increments/s, down from 200,000
   (`PositionLimits::maximumCommandRate`). Above about 60,000/s, firmware `0x0029` can
@@ -206,13 +243,15 @@
 - An explicit, never-transmitted stop can use one bounded recovery through the
   existing path and be sent once under its admission deadline. Failed recovery
   ends it `not_transmitted`. A transmitted stop whose reply is lost stays `unknown`
-  and is never resent automatically. Other stop-path gaps remain in the
-  [audit](docs/reports/2026-11-02_standalone_promptset_audit.md).
+  and is never resent automatically. The later
+  [stop/evidence audit](docs/reports/2026-11-15_standalone_15_16_audit.md)
+  records result-lifetime and evidence corrections.
 - `cancel` and `monitor off` leave an in-flight frame to settle, so they do not interlock
   the bus. Probe and capture transactions keep their existing cancellation.
 - `stop fast` can escalate a running `stop normal`, including past an undelivered report.
-  The firmware has two stop records, correlations and urgent slots; protocol 3 still
-  advertises `outstanding_capacity: 10`.
+  The firmware keeps two primary stop records and two protected fast-stop escalation
+  records. Group stops have their own pool; protocol 3 still advertises
+  `outstanding_capacity: 10`.
 - Stop admission no longer depends on ordinary result capacity. Delivered failed stop
   evidence is overwritten, oldest first, and counted in `drv.stop_evidence_overwritten`.
 - The first stop for the selected axis does not need a prior probe.
@@ -243,90 +282,27 @@
 - Method 18's reason describes its negative-limit captions as a likely caption error.
   Its support remains unresolved.
 
-### Fixed
-
-- A stop during position-stage readback now keeps the settled write/read
-  evidence but cannot mark the cancelled stage ready or publish stored words.
-  Both frontend application tests cover this race.
-
-- The stress tool no longer resumes after a USB stall when its cleanup stop is
-  refused, missing, failed or uncertain. It requires the matching observed-stop
-  result, retains evidence and ends the run on failure even with `--recover`.
-  Offline regressions now run in CI.
-
-- Verification now rejects empty or incomplete CTest evidence, including
-  listing-only detailed logs, while preserving skipped/disabled-test rejection.
-  IDF fixture descriptions distinguish exported source from installed packages.
-
-- Completion-operation coverage now requires the actual producing API and
-  definitions; unrelated getters, raw codecs and declaration-only bodies cannot
-  claim implementation. Cross-operation regressions cover delayed reads,
-  setting/qualification invalidation, recovery, rebind and urgent stop with full
-  ordinary result storage on both frontends.
-
-- Reject homing host records that claim success after interruption by stop.
-  Actual emitted-result regressions cover all30 supported methods on both
-  application frontends; core motion and stop behavior are unchanged.
-
-- Host homing-result validation requires an integer method ID, rejecting JSON
-  booleans and floating-point values that compare equal to supported methods.
-
-- Homing rejects unknown MOTION bits as unqualified readiness while retaining
-  raw evidence. Host validation also rejects contradictory logical inputs in
-  low/activity witnesses and preserves core failure precedence. Active-phase
-  qualification replacement, in-flight stop and the 64-poll bound have explicit
-  regressions; duplicate qualification checks and zero-evidence copying removed.
-
-- Setting sessions cancel unsent FC06 work when newer checked state/input/feedback
-  contradicts admission; contradictory priors revoke stale readiness even without
-  a write. Changed start speed requires an explicit, generation-bound application
-  relation witness; fresh reads cannot fabricate or renew qualification.
-- Start-speed coverage requires its exact producing route; setter-only profile
-  help shows only callable examples, and capabilities no longer list delivered
-  setters as unimplemented. Strict host restore validation now checks exactly
-  the five written words while preserving both start observations.
-
-- Velocity/home help and error usage now expose parameter reads and motion only
-  when their respective callbacks exist. Human read results name unresolved
-  interpretation states and distinguish numeric policy checks from drive limits;
-  raw zero offset remains separate from a calibrated origin.
-
-- Human parameter-read errors point to the callable `help home` or `help velocity`
-  family instead of the internal JSON command names.
-
-- Live host terminals now reject the conflicting kind flags already rejected by
-  retained inspection; malformed move kinds raise the ordinary protocol error.
-- Host settings groups reject non-string selectors with the normal protocol
-  error; pending velocity results reject terminal-only stop-policy claims.
-- Verification now requires the shared native-IDF simple-motion fixture to
-  remain registered with its actual executable; missing or misdirected fixtures
-  fail before a passing test run can hide the omission.
-- Reference-owner admission accepts a typed step deadline within its immutable
-  operation budget, including earlier readiness expiry. It still rejects work
-  outside that budget and never replays an uncertain write.
-- Shared application completion handling preserves captured timing, source
-  confirmation and uncertainty while keeping each operation's response policy.
-
 ### Maintenance
 
+- Archived completed multi-drive instructions. Active prompts retain input-start,
+  wired/restart qualification and the blocked broadcast investigation. Updated
+  current guides and indexes; dated release records and raw evidence stay intact.
 - Reviewed the ESS documents for broadcast and multi-drive start. None is
   documented, and address 0 is only "reserved for the system". Added the
-  six-stage [multi-drive promptset](docs/prompts/ess_multi_drive/README.md) and
+  [multi-drive promptset](docs/prompts/ess_multi_drive/README.md) and
   its backlog items: a broadcast bench test, drive group, free input programming
-  and input-triggered start. No code changed.
+  and input-triggered start.
 - Reconciled prompt status with the November bench results, corrected API comments
   and added a local Doxygen configuration. CI does not run Doxygen.
 - Removed both finished ESS software prompt folders and the completed read-stage
   redirect. Useful contracts live in the maintained guides; dated reports retain
   checks and CI evidence. Standalone 03 owns the remaining N05 evidence work.
   Removed duplicate delivery history from the backlog and roadmap.
-
 - Independently audited the delivered ESS software scope and corrected stale
   homing/gap counts, I/O qualification wording and prompt navigation. Broader
   N05 replacement/completion and
   separate source/physical gaps remain active and PARTIAL. No runtime behavior
   or coverage count changes follow from this documentation closeout.
-
 - Completed and independently audited all seven maintainability stages at their
   specified seams. Archived the finished promptset, complexity review and
   implementation handoffs; corrected stale pending-work claims and consolidated

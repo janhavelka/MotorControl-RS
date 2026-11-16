@@ -1,55 +1,30 @@
 # Implementation prompts
 
-The [standalone ESS set](standalone/README.md) owns archived-profile staging,
-remaining position-replacement evidence, unresolved vendor semantics and physical
-qualification. Delivered reads, scalar setters, stored retrigger and 27 switch
-homing methods are documented in the [operation guides](../README.md#public-operations).
-Their [final audit](../reports/2026-11-02_ess_final_audit.md) and dated reports retain
-verification. Finished ESS software prompts have been removed; do not repeat them.
-The [15 November revalidation](../reports/2026-11-15_standalone_audit_revalidation.md)
-checks the independent standalone audit against current code.
-[Standalone 15](../reports/2026-11-15_standalone_15_stop_recovery.md) and
-[16](../reports/2026-11-15_standalone_16_evidence_qualification.md) are software complete.
-The [02 candidate-import route](../reports/2026-11-15_standalone_02_profile_staging.md) is software complete too.
-The set remains PARTIAL; stage 14 owns the new-image bench regression.
+Status reviewed 16 November 2026. Each set README owns its stage status and
+entry gates. Run active instructions only; finished prompts belong in the
+[archive](../archive/README.md).
 
-The [ESS multi-drive set](ess_multi_drive/README.md) has nine stages following
-the [15 November revalidation](../reports/2026-11-15_ess_multi_drive_promptset_audit.md).
-Broadcast acceptance is complete with NO-GO; production broadcast stays disabled.
-Common-relative group moves and staged starts have three-drive evidence. Stage 08
-preserves enable waits across group changes. Stage 09 adds independent member
-requests, member references and inert console plans. Input programming in 04 is
-software complete, with unconnected register round trips and a finite-move
-regression. Input-start observation, wired effects and remaining physical
-qualification stay open. See the set's table for each stage's disposition.
-M02 and stages 02/08/09 are complete; the short three-drive and enable/reselection
-checks pass. Wider qualification remains in 06 and HW-15.
-The [04/09 audit](../reports/2026-11-16_multi_drive_04_09_audit.md) records
-follow-up corrections to I/O evidence and group fallback-stop admission.
+| Set | Current state | Remaining work |
+| --- | --- | --- |
+| [Standalone ESS](standalone/README.md) | PARTIAL; 02, 15 and 16 are archived after software completion | 03-14 and 17 retain source, implementation, cleanup and physical work. Stage 14 owns the full bench regression. |
+| [ESS multi-drive](ess_multi_drive/README.md) | 01, 02, 04, 08 and 09 are [archived](../archive/prompts/ess_multi_drive/README.md) | 05 input-start software, 06 qualification and gated 07 broadcast investigation. Stage 03 remains NOT APPLICABLE while broadcast is NO-GO. |
+| [Lichuan shared integration](lichuan_shared/README.md) | NOT STARTED | Shared 01/02 prerequisites before either family extends the application. |
+| [Lichuan LC57BK-R / RC](lichuan_lc57bk_rs485/README.md) | NOT STARTED | Profile, ordinary application routes and qualification. |
+| [Lichuan TLO57R / TLC57R](lichuan_tl57_rs485/README.md) | NOT STARTED | Separate profile, ordinary application routes and qualification. |
 
-The [Lichuan LC57BK-R / RC RS485 set](lichuan_lc57bk_rs485/README.md) contains
-implementation and qualification stages for a second manufacturer profile.
-Its original manuals, extracted register/frame/model ledgers and unresolved
-documentation differences are preserved. Prepared on 23 October 2026;
-implementation has not started and Lichuan hardware has not been tested.
-Its [2 November audit](lichuan_lc57bk_rs485/audit.md) has been checked against
-current code and original sources. The [application record](lichuan_lc57bk_rs485/audit_application.md)
-links corrected prompts and evidence, narrowed claims and remaining code work.
+Delivered ESS behavior belongs in the [operation guides](../README.md#public-operations).
+The [standalone revalidation](../reports/2026-11-15_standalone_audit_revalidation.md)
+and [multi-drive 04/09 audit](../reports/2026-11-16_multi_drive_04_09_audit.md)
+record the latest corrections. Candidate restoration and bounded group/I/O
+checks have bench evidence; full regression, wired effects, restart persistence
+and independent timing remain open. Finished ESS software prompts were removed;
+their [final audit](../reports/2026-11-02_ess_final_audit.md) retains the handoff.
 
-The separate [Lichuan TLO57R / TLC57R RS485 set](lichuan_tl57_rs485/README.md)
-contains a separate sequence for the L-type family. Its register map, signed pair order,
-control words and external path triggers differ from LC57BK. Three original
-manuals, 203 register words, 53 published frames and six model candidates are
-preserved. Prepared on 23 October 2026; implementation and hardware testing
-have not started. The [TL57 application record](lichuan_tl57_rs485/audit_application.md)
-records the independent disposition of its [audit](lichuan_tl57_rs485/audit.md).
-
-Both families keep independent device policy and share the
-[application integration prerequisites](lichuan_shared/README.md). Either can
-land first; the other extends that work. New 02b stages bring real probes and
-family console routes forward, so later features include their API/CLI parity
-as they are delivered. Larger code and verification changes remain explicit
-implementation prompts; applied audit corrections do not complete them.
+Both Lichuan families have source ledgers and reviewed audits, but no implemented
+profile or hardware evidence. See the [LC57BK audit application](lichuan_lc57bk_rs485/audit_application.md)
+and [TL57 audit application](lichuan_tl57_rs485/audit_application.md). Either family
+can follow the shared prerequisites first. Their device policies stay separate.
+Audit corrections and source preparation do not complete implementation stages.
 
 RodTester integration already exists in FieldCore-node. Its selected board/
 backend and product qualification remain consumer work; see the

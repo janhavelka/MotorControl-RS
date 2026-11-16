@@ -1,7 +1,17 @@
 # Run from the repository root: doxygen docs/Doxyfile
 PROJECT_NAME = MotorControl-RS
+PROJECT_BRIEF = "ESS-RS core and standalone application API"
 OUTPUT_DIRECTORY = build/doxygen
-INPUT = include examples/probe_cli/ProbeApp.h examples/probe_cli/ProbeConsole.h examples/probe_cli/QualificationConsole.h examples/probe_cli/IoQualification.h
+INPUT = include \
+        examples/probe_cli/ProbeApp.h \
+        examples/probe_cli/ProbeConsole.h \
+        examples/probe_cli/AxisConsole.h \
+        examples/probe_cli/DriveGroup.h \
+        examples/probe_cli/MoveRelation.h \
+        examples/probe_cli/PositionStage.h \
+        examples/probe_cli/ProfileCandidate.h \
+        examples/probe_cli/QualificationConsole.h \
+        examples/probe_cli/IoQualification.h
 RECURSIVE = YES
 FILE_PATTERNS = *.h
 EXTRACT_ALL = YES

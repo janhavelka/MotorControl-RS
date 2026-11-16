@@ -12,7 +12,7 @@
 namespace MotorControlRSExample { namespace Probe {
 enum class Action : uint8_t; // Values are defined in ProbeConsole.h; zero is OK.
 
-/** Drive group of the standalone application (multi-drive 02): up to the 15
+/** Drive group of the standalone application: up to the 15
  * drives the ESS hardware manual allows on one bus. Every dependent quota is
  * sized from this value: one move record per member beside the ordinary results,
  * a stop and an escalation per member, the owner's result and urgent quotas, and
@@ -26,7 +26,8 @@ constexpr std::size_t GROUP_STOP_OPERATIONS = 2;
  * always chooses. Later starts are never sent and a start is never resent. */
 enum class GroupFailurePolicy : uint8_t { NONE, STOP_NORMAL, STOP_FAST, LEAVE };
 enum class GroupOperationKind : uint8_t { SET, MOVE, STOP, READ_STATE };
-/** Start evidence of one member. REJECTED is a checked drive exception. */
+/** Start evidence of one member. STARTED means a checked acknowledgement, not
+ * observed motion. REJECTED is a checked drive exception. */
 enum class GroupStart : uint8_t { NOT_SENT, STARTED, UNKNOWN, REJECTED };
 /** Declaration evidence of one member. ABSENT: no checked reply. UNEXPECTED:
  * a reply arrived, but not a checked ESS identity of this exact node. */
@@ -89,7 +90,7 @@ struct GroupMemberView {
     bool settling = false; ///< Post-enable wait of this member.
     uint64_t settleUntilUs = 0;
     bool reserved = false; ///< An operation or an uncertain-motion interlock owns this address.
-    bool startSpeedRelationRequired = false;
+    bool startSpeedRelationRequired = false; ///< Group moves cannot supply this relation; use the selected-axis route.
     MotorControlRS::AxisConfig axis; ///< This member's scales, origin and host limits.
     MotorControlRS::AxisReference reference; ///< Supplied witness, never inferred from raw feedback.
     bool referenceCurrent = false;
@@ -136,7 +137,7 @@ struct GroupMemberResult {
     bool stageTxComplete = false;
     uint64_t stageTxEndUs = 0, stageReadLatestUs = 0;
     MotorControlRS::Status stageStatus;
-    uint32_t stopOperationId = 0; ///< Failure-policy stop; zero when none was sent.
+    uint32_t stopOperationId = 0; ///< Failure-policy stop; zero when none was admitted. TX evidence is separate.
     Action stopAdmission{};
     MotorControlRS::ActionState stopState = MotorControlRS::ActionState::EMPTY;
     MotorControlRS::ActionExecution stopExecution = MotorControlRS::ActionExecution::NOT_TRANSMITTED;

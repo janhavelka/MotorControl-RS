@@ -1,13 +1,18 @@
 # Multi-drive 08 - Preserve enable waits across host selection changes
 
-Software correction delivered; see the [stage table](README.md#stages) and
-[verification report](../../reports/2026-11-15_multi_drive_08_enable_wait_lifetime.md).
+Archived 16 November 2026. Do not dispatch this completed prompt again.
+Use the [active set](../../../prompts/ess_multi_drive/README.md) for current work.
+The later [09 bench regression](../../../reports/2026-11-15_multi_drive_09_member_motion_requests.md)
+completed the board check called pending in the original text below.
+
+Software correction delivered; see the [stage table](../../../prompts/ess_multi_drive/README.md#stages) and
+[verification report](../../../reports/2026-11-15_multi_drive_08_enable_wait_lifetime.md).
 Retain this prompt for its pending board regression. No early-start experiment
 is needed, and HW-15 remains separate.
 
-Read the [set README](README.md), the
-[execution contract](../standalone/execution_contract.md) and the
-[15 November revalidation](../../reports/2026-11-15_ess_multi_drive_promptset_audit.md).
+Read the [set README](../../../prompts/ess_multi_drive/README.md), the
+[execution contract](../../../prompts/standalone/execution_contract.md) and the
+[15 November revalidation](../../../reports/2026-11-15_ess_multi_drive_promptset_audit.md).
 
 Finding: **M02**, per-target readiness lifetime. Software work has no fixture gate.
 Complete this correction before extending group move requests in 09.

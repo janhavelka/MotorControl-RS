@@ -1,11 +1,16 @@
 # Multi-drive 04 - Program inputs and outputs as the application needs
 
-Read the [set README](README.md) and the
-[standalone execution contract](../standalone/execution_contract.md) together
+Archived 16 November 2026. Do not dispatch this completed prompt again.
+Use the [active set](../../../prompts/ess_multi_drive/README.md) for current work.
+Software is complete. Remaining wired-I/O and restart checks belong to
+[multi-drive 06](../../../prompts/ess_multi_drive/06_two_drive_qualification.md).
+
+Read the [set README](../../../prompts/ess_multi_drive/README.md) and the
+[standalone execution contract](../../../prompts/standalone/execution_contract.md) together
 with this prompt.
 
 Findings: **M03, M06**. Output function 11, cross-mapped custom outputs and the
-shared-start mismatch stay with [standalone 06](../standalone/06_io_and_tuning.md).
+shared-start mismatch stay with [standalone 06](../../../prompts/standalone/06_io_and_tuning.md).
 
 ## Entry gate
 
@@ -117,7 +122,7 @@ docs/ess_driver_settings.md; function manual p13, p17, p27-29, p68-69, p73-75.
    defaults to the unspecified state. At this time, the input signal is
    invalid." The register table gives defaults 1, 2, 3, 0 for `0x0041-0x0044`
    (p73-74), and the bench read those values
-   ([ess_release_05](../../archive/reports/ess_release_05_2026-10-04.md)). Record
+   ([ess_release_05](../../reports/ess_release_05_2026-10-04.md)). Record
    an ambiguity, not a proven register contradiction: the hardware wording may
    describe effective input handling while the table describes stored defaults.
    Neither establishes saved-assignment persistence or startup activation.

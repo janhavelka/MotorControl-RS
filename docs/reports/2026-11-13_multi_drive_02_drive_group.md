@@ -1,7 +1,7 @@
 # Multi-drive 02: drive group on three drives, 13 November 2026
 
 The owner asked for several drives moving at the same time. This report covers
-the drive group in the standalone application ([multi-drive 02](../prompts/ess_multi_drive/02_drive_group.md))
+the drive group in the standalone application ([multi-drive 02](../archive/prompts/ess_multi_drive/02_drive_group.md))
 and its bench runs on drives 1, 2 and 4.
 
 ## Result

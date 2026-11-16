@@ -25,7 +25,7 @@ the stronger responder and skew interpretations are superseded by this correctio
 
 The owner asked for the broadcast tests on the three-drive bench (addresses 1,
 2 and 4). This report covers the fixture route built for them and the D6
-trials. It follows [multi-drive 01](../prompts/ess_multi_drive/01_broadcast_acceptance.md).
+trials. It follows [multi-drive 01](../archive/prompts/ess_multi_drive/01_broadcast_acceptance.md).
 
 ## Result
 

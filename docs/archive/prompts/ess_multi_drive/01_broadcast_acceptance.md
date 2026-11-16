@@ -1,7 +1,10 @@
 # Multi-drive 01 - Test whether the drive accepts broadcast writes
 
-Read the [set README](README.md), the [standalone execution contract](../standalone/execution_contract.md)
-and the [broadcast review](../../reports/2026-11-12_broadcast_and_sync_review.md)
+Archived 16 November 2026. Do not dispatch this completed prompt again.
+Use the [active set](../../../prompts/ess_multi_drive/README.md) for current work.
+
+Read the [set README](../../../prompts/ess_multi_drive/README.md), the [standalone execution contract](../../../prompts/standalone/execution_contract.md)
+and the [broadcast review](../../../reports/2026-11-12_broadcast_and_sync_review.md)
 together with this prompt.
 
 Findings: **M01, M06**.
@@ -9,14 +12,14 @@ Findings: **M01, M06**.
 ## Delivered result, reviewed 15 November 2026
 
 This stage is COMPLETE with outcome **NO-GO**. The
-[13 November report](../../reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)
+[13 November report](../../../reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)
 records the campaign on drives 1, 2 and 4. Address-0 frames produced replies or
 UART errors; no transaction established a silent window. The production library
 stays unicast-only and multi-drive 03 stays not applicable.
 
 The requirements below retain the acceptance plan and its delivered fixture.
 Do not rerun this completed campaign or promote the fixture into a production
-API. [Multi-drive 07](07_broadcast_misses.md) owns the separate investigation of
+API. [Multi-drive 07](../../../prompts/ess_multi_drive/07_broadcast_misses.md) owns the separate investigation of
 missed effects. Original trial counts, deviations and failures stay in the
 dated report and raw evidence.
 
@@ -41,7 +44,7 @@ scripts/bench_session.py; docs/runner.md, docs/bus_owner.md, docs/traffic.md,
 docs/hardware_bench.md. The five-frame route now exists in ProbeApp.cpp under
 `MOTORCONTROLRS_LOAD_FIXTURE`, with runner, owner and application tests. The
 separate D4 paired-write route in
-[standalone 04](../standalone/04_paired_values.md) does not authorize broadcast.
+[standalone 04](../../../prompts/standalone/04_paired_values.md) does not authorize broadcast.
 
 ## Delivered requirements and acceptance plan
 
@@ -150,6 +153,6 @@ Also test that every non-listed frame is rejected before TX. Report:
 - per-trial results and the restored profile.
 
 Update the review report, the
-[implementation reference](../../reference/01_implementation_reference.md) entry
+[implementation reference](../../../reference/01_implementation_reference.md) entry
 for `0x0013`/address 0, the backlog and this set's status table. CI required:
 firmware and runner change.

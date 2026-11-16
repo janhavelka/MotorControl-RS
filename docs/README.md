@@ -12,6 +12,8 @@ operations and physical qualification are separate; see the
 - [Console guide](console.md): short commands, subdivision, origins, results and diagnostics.
 - [C++ moveBy / moveTo](move_example.md): example application submissions and service loop.
 - [Profile candidates and archives](ess_position.md#candidate-profile-staging): stage five words without starting motion.
+- [Drive groups](console.md#drive-group): declare members, stage independent targets and retain per-drive results.
+- [Terminal commissioning](console.md#terminal-commissioning): install explicit I/O facts before settings or finite moves.
 - [Arduino ESP32-S3 build](esp32_probe.md) and [native ESP-IDF build](esp_idf_probe.md): board configuration, flash and recovery.
 - [Verification and packaging](verification.md): quick/full checks, clean consumers and CI.
 - [API documentation](verification.md#api-documentation): generate Doxygen from public headers.
@@ -27,6 +29,7 @@ operations and physical qualification are separate; see the
 | Identity, configuration, state and freshness | [Typed reads](ess_reads.md) |
 | Enable, release, alarms and priority stop | [Actions](ess_actions.md) |
 | Relative, absolute and wrapped-angle moves | [Positioning and default operating limits](ess_position.md) |
+| Unicast groups and independent member targets | [Application and console group requests](console.md#different-member-targets) |
 | Finite velocity and unresolved ramp conversions | [Velocity](ess_velocity.md) |
 | Direction, subdivision, word order and limit settings | [Driver settings](ess_driver_settings.md) |
 | Terminal functions, polarity and documented disable | [Optional I/O](ess_io.md) |
@@ -64,6 +67,7 @@ avoids a [stop normal defect](reports/2026-11-04_stop_normal_rate_ceiling.md). I
 on one free-shaft ESS23-RS20, raw firmware `0x0029`; it is not a universal motor
 rating or a guarantee of absolute reliability.
 
+- [Group and I/O audit](reports/2026-11-16_multi_drive_04_09_audit.md): 97 software suites, exact-commit firmware CI, 64 unconnected I/O updates, different-member moves, urgent stop and restoration. Wired effects and physical start timing remain open.
 - [Default-limit boundary tests](reports/2026-10-07_position_limits.md): 408 motion/stop cases and rejection checks.
 - [November bench regression](reports/2026-11-02_standalone_14_bench_regression.md): reads, setters, homing 33/34/35 and ACK-only interruption; persistent RUNNING remains open.
 - [Evidence and qualification corrections](reports/2026-11-15_standalone_16_evidence_qualification.md): software verified on GCC, Clang, Arduino and ESP-IDF; new hardware checks remain open.
@@ -91,9 +95,9 @@ The subdirectories have distinct purposes:
 | [reference](reference/00_document_inventory.md) | Reviewed source facts, register/operation ledgers and download manifests |
 | [vendor](vendor/), [standards](standards/), [pdf-extracted-md](pdf-extracted-md/README.md) | Original reference files and searchable aids; retained unchanged |
 | [reports](reports/README.md) | Evidence supporting current limits and unresolved investigations |
-| [releases](releases/1.0.0.md) | Maintained release scope and qualification limits |
+| [releases](releases/1.0.0.md) | Dated release scope and qualification limits; later changes are in the changelog |
 | [archive](archive/README.md) | Finished instructions, dated implementation/audit handoffs and superseded plans |
-| [prompts](prompts/README.md) | Standalone ESS completion, ESS multi-drive and Lichuan RS485 profile prompts, with source evidence |
+| [prompts](prompts/README.md) | Active ESS and Lichuan work, dependencies and open qualification gates |
 
 - [Document inventory](reference/00_document_inventory.md), [implementation reference](reference/01_implementation_reference.md) and [source manifest](reference/sources.json).
 - [Register catalogue](reference/05_ess_register_catalog.md), [encoder/units](reference/06_encoder_units.md) and [timing audit](reference/09_timing_and_gap_audit.md).
@@ -102,11 +106,11 @@ The subdirectories have distinct purposes:
 - [Reference software](vendor/software/README.md): vendor files retain their own licensing.
 - [Lichuan LC57BK-R / RC evidence](reference/13_lichuan_lc57bk_rs485.md),
   [original manuals](vendor/lichuan_lc57bk_rs485/README.md) and
-  [12-stage implementation promptset](prompts/lichuan_lc57bk_rs485/README.md):
+  [implementation promptset](prompts/lichuan_lc57bk_rs485/README.md):
   RS485 research only; this profile is not implemented or hardware-qualified.
 - [Lichuan TLO57R / TLC57R evidence](reference/14_lichuan_tl57_rs485.md),
   [original manuals](vendor/lichuan_tl57_rs485/README.md) and
-  [separate 12-stage promptset](prompts/lichuan_tl57_rs485/README.md):
+  [separate promptset](prompts/lichuan_tl57_rs485/README.md):
   the L-type RS485 family has independent protocol policy; research preparation
   is complete, implementation and physical qualification remain unstarted.
 - [Development archive](archive/README.md): completed prompts, superseded drafts,

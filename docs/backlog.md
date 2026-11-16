@@ -94,7 +94,7 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   release only. Reuse current console admission and retain each operation's
   effects; exporting a core builder alone does not close these application gaps.
 - [x] Extend per-function readiness in
-  [multi-drive 04](prompts/ess_multi_drive/04_input_programming.md).
+  [multi-drive 04](archive/prompts/ess_multi_drive/04_input_programming.md).
   Selected axes and group members share the checked policy; verification is in its
   [report](reports/2026-11-16_multi_drive_04_input_programming.md).
   R-01's narrow active-origin refusal is corrected in standalone 16.
@@ -265,7 +265,7 @@ more drives (now addresses 1, 2 and 4, star wiring).
   Approved 12 November. D6 allows the bounded broadcast test. D7 sets the
   broadcast-start admission rule.
 - [x] Test whether firmware `0x0029` acts on address-0 writes and stays silent
-  ([multi-drive 01](prompts/ess_multi_drive/01_broadcast_acceptance.md),
+  ([multi-drive 01](archive/prompts/ess_multi_drive/01_broadcast_acceptance.md),
   [report](reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)). NO-GO:
   the setup produced address-0 replies and RX errors consistent with collisions.
   Shared-bus evidence does not identify every responder; production stays unicast.
@@ -275,7 +275,7 @@ more drives (now addresses 1, 2 and 4, star wiring).
   stays unused.
 - [x] Add a drive group to the standalone application: declaration, per-member
   facts and post-enable wait, sequential start with measured spread, explicit
-  failure policy, group stop and status ([multi-drive 02](prompts/ess_multi_drive/02_drive_group.md),
+  failure policy, group stop and status ([multi-drive 02](archive/prompts/ess_multi_drive/02_drive_group.md),
   [report](reports/2026-11-13_multi_drive_02_drive_group.md)). Three drives move
   together; start spread about 38 ms, including each member's staging.
 - [x] Shorten the group start spread with staging-only moves: every member is
@@ -283,7 +283,7 @@ more drives (now addresses 1, 2 and 4, star wiring).
   within about 16 ms instead of 38 ms; the group holds up to 15 drives
   ([report](reports/2026-11-13_multi_drive_02_drive_group.md)).
 - [x] Preserve every target's enable wait across group clear, subset/reordered
-  declaration and selected-axis access ([multi-drive 08](prompts/ess_multi_drive/08_enable_wait_lifetime.md)).
+  declaration and selected-axis access ([multi-drive 08](archive/prompts/ess_multi_drive/08_enable_wait_lifetime.md)).
   Fixed per-address storage and shared stage/move admission; original time and
   possible-write evidence survive recovery and rebinding. The
   [report](reports/2026-11-15_multi_drive_08_enable_wait_lifetime.md) retains the
@@ -294,7 +294,7 @@ more drives (now addresses 1, 2 and 4, star wiring).
   [M09 run](reports/2026-11-15_multi_drive_09_member_motion_requests.md) also passes
   the three-drive regression. HW-15's drive-timing investigation remains open.
 - [x] Implement the original different-member-target requirement
-  ([multi-drive 09](prompts/ess_multi_drive/09_member_motion_requests.md)), with
+  ([multi-drive 09](archive/prompts/ess_multi_drive/09_member_motion_requests.md)), with
   copied member intents, independent scales and explicit coordinate/reference
   provenance. Whole-group validation precedes writes; ordinary API, console and
   host routes share the execution path. The
@@ -311,7 +311,7 @@ more drives (now addresses 1, 2 and 4, star wiring).
 - [x] Program inputs and outputs as needed: functions 4-17 with stated
   commissioning facts, polarity on assigned terminals, connected outputs, routes
   for `0x0050`/`0x0051` and per-function move readiness
-  ([multi-drive 04](prompts/ess_multi_drive/04_input_programming.md)). Software
+  ([multi-drive 04](archive/prompts/ess_multi_drive/04_input_programming.md)). Software
   checks and 64 unconnected I/O updates with exact restoration pass; see the
   [report](reports/2026-11-16_multi_drive_04_input_programming.md).
   The [04/09 audit](reports/2026-11-16_multi_drive_04_09_audit.md) corrects
@@ -319,6 +319,8 @@ more drives (now addresses 1, 2 and 4, star wiring).
 - [ ] Qualify wired input effects, connected output loads, status/polarity
   mapping and restart persistence. The startup wording and stored assignment
   defaults remain an ambiguity. No wired fixture or drive restart was used in 04.
+  [Multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md) owns
+  these remaining physical checks after 04's software archive.
 - [ ] Start motion from a shared input edge: function 7 with a staged profile
   first (absolute mode preferred), then PT segments with PIN selection, the
   negative PV speed encoding, and observation and stop of input-started motion ([multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)).

@@ -1,7 +1,10 @@
 # Multi-drive 02 - Add a drive group to the standalone application
 
-Read the [set README](README.md) and the
-[standalone execution contract](../standalone/execution_contract.md) together
+Archived 16 November 2026. Do not dispatch this completed prompt again.
+Use the [active set](../../../prompts/ess_multi_drive/README.md) for current work.
+
+Read the [set README](../../../prompts/ess_multi_drive/README.md) and the
+[standalone execution contract](../../../prompts/standalone/execution_contract.md) together
 with this prompt.
 
 Finding: **M02**.
@@ -9,11 +12,11 @@ Finding: **M02**.
 ## Current disposition
 
 The common-relative group implementation and staged starts are delivered, with
-three-drive evidence in the [13 November report](../../reports/2026-11-13_multi_drive_02_drive_group.md).
+three-drive evidence in the [13 November report](../../../reports/2026-11-13_multi_drive_02_drive_group.md).
 The original different-member-target requirement is now delivered by
 [multi-drive 09](09_member_motion_requests.md), together with
 [multi-drive 08](08_enable_wait_lifetime.md)'s retained enable waits.
-Their [verification report](../../reports/2026-11-15_multi_drive_09_member_motion_requests.md)
+Their [verification report](../../../reports/2026-11-15_multi_drive_09_member_motion_requests.md)
 records exact-commit CI, three-drive moves and enable/reselection checks. M02 is
 resolved; wider physical qualification stays in multi-drive 06.
 Do not rebuild the delivered group or treat its finite bench results as missing.
@@ -27,7 +30,7 @@ qualification belongs to multi-drive 06.
 `stagePositionMove` and `PositionStageApp.h` already stage a prepared finite
 move without starting it. STAGED group moves use this capability for every
 member before issuing starts. SEQUENTIAL remains an explicit alternative.
-[Standalone 02](../../reports/2026-11-15_standalone_02_profile_staging.md) delivers
+[Standalone 02](../../../reports/2026-11-15_standalone_02_profile_staging.md) delivers
 the separate archive/candidate console route; it is not a prerequisite for the
 delivered group staging path.
 

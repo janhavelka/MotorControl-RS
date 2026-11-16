@@ -36,15 +36,17 @@ bool beginApplication(const Esp32S3Uart::Pins&, bool receiverDisabledDuringTrans
 /// One bounded cooperative console/owner service turn, including an idle yield.
 void serviceApplication();
 
-/** Copy a fresh terminal baseline with caller facts unset. Outputs and assignment
- * changes use the selected target's checked IO settings. Other purposes may use
- * a declared group member's checked configuration. Rejection preserves output. */
+/** Copy a fresh terminal baseline with caller facts unset and declared wiring
+ * copied. ASSIGN uses selected-axis IO settings; other purposes use CONFIG.
+ * Group members support FINITE_MOVE inputs only. Rejection preserves output. */
 MotorControlRS::Status inspectIoQualification(uint8_t address, uint8_t terminal, IoPurpose, IoQualification& output, bool member = false);
 /** Validate and copy one exact supplied record while idle. No motor traffic.
- * Non-assignment purposes require candidate == current assignment. */
+ * Replaces the previous purpose for that terminal. Non-assignment purposes
+ * require candidate == current assignment. */
 MotorControlRS::Status installIoQualification(const IoQualification&);
 /** Copy retained facts and their current validity. Assignment requires the same
- * settings/state read identities. Does not refresh the supplied fact age. */
+ * settings/state read identities. Does not refresh the supplied fact age.
+ * An absent record or different purpose returns false and preserves outputs. */
 bool copyIoQualification(uint8_t address, uint8_t terminal, IoPurpose, IoQualification& output, bool& valid, bool member = false);
 /** Revoke future use and cancel unsent dependent work. Local revocation is not a stop. */
 MotorControlRS::Status revokeIoQualification(uint8_t address, uint8_t terminal, IoPurpose, bool member = false);
@@ -266,7 +268,7 @@ bool copyHomeResult(uint32_t operationId, MotorControlRS::ESS_RS::HomeContext& o
 /// Release any terminal ordinary or group operation after service has retained its result; no motor stop.
 bool releaseOperation(uint32_t operationId);
 
-/** Drive group (multi-drive 02): the same application functions as the console
+/** Drive group: the same application functions as the console
  * `group` routes. Call from the serviceApplication task; rejection preserves
  * operationId. A group is a host selection of up to Probe::GROUP_CAPACITY
  * unicast drives, never a drive change, and leaves the selected axis unchanged.
@@ -296,11 +298,16 @@ bool inspectGroup(Probe::GroupView& output);
  * SEQUENTIAL: each member runs its ordinary move after the previous start resolved.
  * The failure policy is mandatory. After a failed or lost start no later start
  * is sent and nothing is resent; each member's outcome stays its own.
+ * Stop policies require one free/reusable stop result per member and reserve
+ * fallback stop/recovery IDs before writes. Existing undelivered results stay.
+ * An explicit stop takes over its member's stop obligation; the group keeps its
+ * recovery reserve until those stops settle. Results remain independently owned.
  * Any member's unexpired enable wait returns BUSY before staging or start. */
 MotorControlRS::Status submitGroupMove(const Probe::GroupMoveRequest& request, uint32_t& operationId);
 /** Copied per-member relative/absolute requests, using the same group executor.
  * Reject incomplete, duplicate, stale or unsupported intent before any write.
- * Wrapped angles remain unsupported. Rejection preserves operationId. */
+ * The setup, stop reservations and enable waits documented by submitGroupMove
+ * also apply. Wrapped angles remain unsupported. Rejection preserves operationId. */
 MotorControlRS::Status submitGroupMoves(const Probe::GroupMemberMoves& request, uint32_t& operationId);
 /** Apply ordinary host axis configuration/origin rules to one member. No I/O.
  * Requires current stationary observations; origins require an installed reference.
@@ -315,14 +322,17 @@ MotorControlRS::Status revokeGroupReference(uint8_t address);
  * if the supplied generation is zero. Only submit can send motor work. A rejected
  * submit preserves the plan; success consumes it. inspectGroup copies its state. */
 MotorControlRS::Status beginGroupPlan(Probe::GroupStartMode start, Probe::GroupFailurePolicy onFailure);
+/// Add one copied member intent to the inert plan; no motor traffic.
 MotorControlRS::Status addGroupPlanMember(uint8_t address, const MotorControlRS::MoveRequest& request);
+/// Forget only the inert plan. Does not cancel an admitted operation or stop a drive.
 MotorControlRS::Status clearGroupPlan();
+/// Submit a complete plan through submitGroupMoves admission; rejection preserves plan and output ID.
 MotorControlRS::Status submitGroupPlan(uint32_t& operationId);
 /// One urgent unicast stop per member, each with its own reservation and result.
 MotorControlRS::Status submitGroupStop(MotorControlRS::StopBehavior behavior, uint32_t& operationId);
 /// Refresh every member's cached state with one checked state read each.
 MotorControlRS::Status submitGroupStateRead(uint32_t& operationId);
-/// Copy pending or terminal group evidence. Missing IDs preserve output.
+/// Copy pending or terminal group evidence without releasing it. Missing IDs preserve output.
 bool copyGroupResult(uint32_t operationId, Probe::GroupResult& output);
 
 /** Stage one finite move on the selected axis without starting it: the same
@@ -343,6 +353,8 @@ bool copyPositionStage(uint32_t operationId, Probe::PositionStageView& output);
  * drive snapshot. Uses one three-second deadline and a fresh six-word prior
  * read. Wire-valid values may exceed motion policy; this operation never starts
  * motion. Output ID stays unchanged on refusal, including TARGET_RANGE.
+ * A possible write revokes the address's start-speed relation, including for
+ * groups. Matching readback does not publish a prepared-move witness.
  * Call from the service task; the retained slot requires explicit release. */
 MotorControlRS::Status submitProfileCandidate(const Probe::ProfileCandidate&, uint32_t& operationId);
 /// Copy pending or terminal candidate evidence. Missing IDs preserve output.

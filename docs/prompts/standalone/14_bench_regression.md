@@ -16,6 +16,11 @@ exercised the routes below. HW-01 persistent RUNNING remains unresolved; later
 passing runs do not close it. Use that report and the
 [November follow-up](../../reports/2026-11-02_standalone_promptset_audit.md)
 to select remaining checks rather than repeating the whole first-run plan.
+Later [three-drive tests](../../reports/2026-11-15_multi_drive_09_member_motion_requests.md)
+and the [04/09 audit](../../reports/2026-11-16_multi_drive_04_09_audit.md) passed
+changed-candidate staging/restoration and bounded motion/stop subsets. Reuse
+that exact-image evidence. Equal-archive no-write behavior and the full matrix
+below are not established by those subsets.
 
 ## Inspect before editing
 

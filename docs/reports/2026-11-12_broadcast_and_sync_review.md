@@ -95,7 +95,7 @@ ESS manual neither claims nor denies that conformance.
   whose stored custom node is 0 might treat address 0 as its own. A result
   therefore applies only to the recorded address configuration.
 
-[Multi-drive 01](../prompts/ess_multi_drive/01_broadcast_acceptance.md) defines
+[Multi-drive 01](../archive/prompts/ess_multi_drive/01_broadcast_acceptance.md) defines
 a bounded single-drive test of these points. Use broadcast only where
 simultaneity matters, that is start and stop. Settings stay unicast, where
 each write is confirmed.
