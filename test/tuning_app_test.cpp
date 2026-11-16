@@ -143,6 +143,38 @@ void failuresAndRecovery() {
     assert(view(id).driverContext->effects == 1 && !view(id).driverContext->progress[0].readbackKnown);
     assert(hardware.writes == acceptedWrites && !axisReserved(*app, 1));
 }
+ESS::DriverRequest threshold(uint16_t value) {
+    ESS::DriverRequest request;
+    assert(ESS::prepareTuningValue(request, ESS::TuningParameter::POSITION_ERROR_ALARM_THRESHOLD, value));
+    request.configurationGeneration = app->axis.generation; return request;
+}
+void alarmThresholdExperiment() {
+    // Only the threshold, only within 1..4000, only from a checked value in that range.
+    baseline(); const auto writes = hardware.writes; uint32_t id = 99;
+    auto request = threshold(4001);
+    assert(host(app).startDriver(app, 10, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK);
+    request = filter(3);
+    assert(ESS::prepareTuningValue(request, ESS::TuningParameter::POSITION_ERROR_ALARM_THRESHOLD, 1));
+    assert(host(app).startDriver(app, 11, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK);
+    ESS::DriverRequest zero; // Outside the native range: the core rejects the candidate itself.
+    assert(!ESS::prepareTuningValue(zero, ESS::TuningParameter::POSITION_ERROR_ALARM_THRESHOLD, 0) && !zero.fields);
+    assert(id == 99 && hardware.writes == writes);
+    request = threshold(1);
+    assert(host(app).startDriver(app, 12, 1, ESS::DriverKind::UPDATE, request, id) == Probe::Action::OK);
+    reply(id, {}); reply(id, words({1}));
+    assert(view(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS && hardware.writes == writes + 2);
+    // Restoring the default from the lowered value is the same experiment.
+    fresh(); read(ESS::DriverGroup::FILTERS, {2, 5, 1, 5, 10, 512}); identity(); ioBaseline(); stationary();
+    request = threshold(4000); id = 99;
+    assert(host(app).startDriver(app, 13, 1, ESS::DriverKind::UPDATE, request, id) == Probe::Action::OK);
+    reply(id, {}); reply(id, words({4000}));
+    assert(view(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS);
+    // A stored value above the default is outside it, even for a lower candidate.
+    fresh(); read(ESS::DriverGroup::FILTERS, {2, 5, 5000, 5, 10, 512}); identity(); ioBaseline(); stationary();
+    const auto before = hardware.writes; request = threshold(4000); id = 99;
+    assert(host(app).startDriver(app, 14, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK);
+    assert(id == 99 && hardware.writes == before);
+}
 void failedRefreshPreservesBaseline() {
     fresh(); const auto old = read(ESS::DriverGroup::FILTERS, {2, 5, 4000, 5, 10, 512});
     const auto cached = tuningCache(*app, ESS::DriverGroup::FILTERS);
@@ -165,6 +197,7 @@ void failedRefreshPreservesBaseline() {
 }
 } // namespace
 int main() {
-    readsAndChangedCompletion(); safeFilterAndGuards(); failuresAndRecovery(); failedRefreshPreservesBaseline();
+    readsAndChangedCompletion(); safeFilterAndGuards(); failuresAndRecovery(); alarmThresholdExperiment();
+    failedRefreshPreservesBaseline();
     if (app) { app->~App(); std::free(app); app = nullptr; }
 }

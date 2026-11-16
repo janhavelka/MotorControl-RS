@@ -26,4 +26,7 @@ struct FakeSerial {
     }
 };
 extern FakeSerial Serial;
+// Same form as the Arduino-ESP32 core: the sketch overrides the loop-task stack size.
+std::size_t getArduinoLoopTaskStackSize();
+#define SET_LOOP_TASK_STACK_SIZE(sz) std::size_t getArduinoLoopTaskStackSize() { return sz; }
 inline void delay(unsigned ms) { advanceHardware(hardware.time + static_cast<uint64_t>(ms) * 1000); }

@@ -190,10 +190,19 @@ qualify the read path, not these fields' physical meaning on firmware `0x0029`.
 They were not changed, aliased to earlier rows or converted to documented
 defaults.
 
-The standalone application permits only the explicit input-filter candidate
-`2` or `3`, from a previously checked `2`/`3` baseline, with fresh stopped state,
-exact bench identity, known unconnected inputs, passive assignments and no
-asserted inputs. The finite `2 → 3 → 2` experiment passes stored readback and
+The standalone application permits two finite experiments, each alone in its
+request, with fresh stopped state, exact bench identity, known unconnected
+inputs, passive assignments and no asserted inputs:
+
+- the input-filter candidate `2` or `3`, from a previously checked `2`/`3`
+  baseline;
+- the position-error alarm threshold (`deviation-threshold`, `0x010A`) within
+  `1..4000`, from a checked value in that range. 4000 is the documented default,
+  so the threshold can be lowered or restored but never widened. A lowered value
+  can latch alarm 5 in a later move; the owner asked for this on 16 November
+  2026 to test `alarm-clear` with a latched alarm.
+
+Neither experiment qualifies the field's physical effect. The finite `2 → 3 → 2` experiment passes stored readback and
 restoration. Both FC06-shaped observations remain source-unconfirmed:
 acknowledgement is false and execution unknown. Separate confirmed FC03
 readbacks establish the stored codes. No physical filter delay, active behavior

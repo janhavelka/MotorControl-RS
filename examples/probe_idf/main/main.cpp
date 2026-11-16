@@ -19,7 +19,9 @@
 namespace {
 using namespace MotorControlRSExample;
 // These driver-facing task objects stay internal even with external BSS enabled.
-DRAM_ATTR StackType_t ownerStack[8192 / sizeof(StackType_t)];
+// Bench, 16 November 2026: the Arduino group move path left 900 of 8192 bytes
+// free; both builds give the shared application 12 KiB. `memory` reports it.
+DRAM_ATTR StackType_t ownerStack[12288 / sizeof(StackType_t)];
 DRAM_ATTR StaticTask_t ownerState;
 
 void ownerTask(void*) {

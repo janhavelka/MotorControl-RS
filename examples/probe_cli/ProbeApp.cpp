@@ -2109,9 +2109,21 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
                     if (evidence.attemptedUs < earliest) earliest = evidence.attemptedUs;
                     if (evidence.latestUs > latest) latest = evidence.latestUs;
                 }
-                const bool experiment = request.group == ESS::DriverGroup::FILTERS && request.fields == 1 &&
+                const auto& cached = tuningCache(a, request.group);
+                const bool filterExperiment = request.group == ESS::DriverGroup::FILTERS && request.fields == 1 &&
                     (request.tuningValues[0] == 2 || request.tuningValues[0] == 3) &&
-                    (tuningCache(a, request.group).raw[0] == 2 || tuningCache(a, request.group).raw[0] == 3);
+                    (cached.raw[0] == 2 || cached.raw[0] == 3);
+                // Alarm-clear experiment, owner request of 16 November 2026: the
+                // position-error alarm threshold alone may move within 1..4000, the
+                // documented default, from a checked value in that range. A lower
+                // value can latch alarm 5 in a later move; it never widens the
+                // drive's tolerance. Stored readback only, as above.
+                ESS::TuningParameterInfo info;
+                const bool known = ESS::tuningParameterInfo(ESS::TuningParameter::POSITION_ERROR_ALARM_THRESHOLD, info);
+                const uint16_t requested = request.tuningValues[info.slot], stored = cached.raw[info.slot];
+                const bool thresholdExperiment = known && request.group == info.group && request.fields == (1u << info.slot) &&
+                    requested >= 1 && requested <= 4000 && stored >= 1 && stored <= 4000;
+                const bool experiment = filterExperiment || thresholdExperiment;
                 prerequisites.qualifiedTuning = request;
                 prerequisites.tuningEffectsQualifiedFields = passive && experiment ? request.fields : 0;
                 prerequisites.tuningEarliestUs = earliest;
