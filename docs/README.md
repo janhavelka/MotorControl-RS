@@ -76,6 +76,7 @@ rating or a guarantee of absolute reliability.
 - [Four-hour rate experiment](reports/2026-10-07_rate_boundary.md): tested envelope and retained failures outside it.
 - [High-subdivision source review](reference/12_ess_rs_motion_web_review.md): manuals, vendor information and unresolved drive behavior.
 - [Hardware bench](hardware_bench.md): actual wiring, image and fixture limits.
+- [Bench I/O fixture](bench_io.md): planned relay/MOSFET/input wiring to the drive terminals, checks and test plan.
 - [Roadmap](roadmap.md) and [backlog](backlog.md): implementation and qualification gaps.
 - [Current evidence and open investigations](reports/README.md): operating limits,
   unresolved failures and their retained artifacts.

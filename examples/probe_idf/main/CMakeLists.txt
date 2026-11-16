@@ -13,6 +13,7 @@ idf_component_register(
         "${EXAMPLES}/common/RtuBusOwner.cpp"
         "${EXAMPLES}/common/EssRtuValidator.cpp"
         "${EXAMPLES}/common/Esp32S3Uart.cpp"
+        "${EXAMPLES}/common/Esp32BenchIo.cpp"
     INCLUDE_DIRS "${EXAMPLES}/probe_cli" "${EXAMPLES}/common"
     REQUIRES MotorControlRS esp_driver_uart esp_driver_gpio esp_driver_gptimer
         esp_driver_usb_serial_jtag esp_timer esp_hw_support esp_psram spi_flash espcoredump)

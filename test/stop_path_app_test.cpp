@@ -545,6 +545,38 @@ void firstStopAfterBoot() {
     command("@2 stop fast 9\n"); assert(said("\"result\":\"unavailable\"") && !wire.size());
     command("@3 enable\n"); assert(said("\"result\":\"unavailable\"") && !wire.size());
 }
+// Bench fixture outputs may hold or retrigger a wired drive input. Every stop
+// request turns them OFF before admission, including a refused stop; the
+// bench command itself is local and never reaches the bus.
+struct RecordingBench final : BenchIo::Port {
+    unsigned applies = 0, quiesces = 0, services = 0;
+    BenchIo::Request request;
+    BenchIo::OffReason reason = BenchIo::OffReason::NONE;
+    BenchIo::Result apply(const BenchIo::Request& r, BenchIo::View& view) override {
+        ++applies; request = r; view = BenchIo::View(); view.ready = true; return BenchIo::Result::OK;
+    }
+    void quiesce(BenchIo::OffReason why) override { ++quiesces; reason = why; }
+    void service(uint64_t) override { ++services; }
+};
+void stopTurnsBenchOutputsOff() {
+    RecordingBench bench;
+    ApplicationOptions options; options.benchIo = &bench;
+    fresh(options);
+    pump(4); assert(bench.services >= 4);
+    command("@1 bench on relay2 1500\n");
+    assert(said("\"command\":\"bench\",\"ok\":true") && bench.applies == 1 && !bench.quiesces);
+    assert(bench.request.op == BenchIo::Op::ON && bench.request.output == 1 && bench.request.holdMs == 1500);
+    assert(!wire.size());
+    const auto stopping = accepted("@2 stop fast");
+    assert(bench.quiesces == 1 && bench.reason == BenchIo::OffReason::STOP);
+    waitTx(stopping);
+    assert(wire.size() == 1 && wire[0] == FAST_STOP);
+    command("@3 stop normal 9\n"); // Refused (unknown target), still releases the outputs.
+    assert(said("\"result\":\"unavailable\"") && bench.quiesces == 2);
+    command("@4 enable\n"); assert(bench.quiesces == 2); // Only stops quiesce.
+    fresh();
+    command("@5 bench\n"); assert(said("\"result\":\"unavailable\"") && !wire.size());
+}
 void failStop(uint32_t id) {
     reply(id, crc({1, 0x86, 2}));
     until(id); pump(200);
@@ -1063,6 +1095,7 @@ int main(int argc, char** argv) {
         {"heldStopEscalation", heldStopEscalation},
         {"cancelAndMonitorOffDoNotInterlock", cancelAndMonitorOffDoNotInterlock},
         {"firstStopAfterBoot", firstStopAfterBoot},
+        {"stopTurnsBenchOutputsOff", stopTurnsBenchOutputsOff},
         {"failedStopsDoNotDependOnOrdinaryCapacity", failedStopsDoNotDependOnOrdinaryCapacity},
         {"recoverReplacesDeliveredResult", recoverReplacesDeliveredResult},
         {"automaticRecoveryDisplacesUndeliveredResult", automaticRecoveryDisplacesUndeliveredResult},

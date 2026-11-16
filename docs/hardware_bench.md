@@ -49,6 +49,12 @@ regression remains NOT RUN; see the
 | Host console | COM13; ordinary MotorControl-RS firmware, not a transparent RTU bridge |
 | USB identity | Espressif `303A:1001`, serial `3C:0F:02:CD:6B:98`; never open or flash another device. COM15 (`303A:1002`) is a separate device. |
 
+Planned wired I/O, 16 November: the user intends to wire the board's two relays
+(GPIO45/18), two MOSFETs (GPIO3/46) and isolated input (GPIO17) to drive 1's
+terminals. The [bench I/O guide](bench_io.md) gives the wiring, the board-supply
+check that decides whether the MOSFETs may be used, and the test plan. Until the
+user reports that wiring, the terminals remain unconnected as recorded above.
+
 The user authorized communication and motion tests on 2 October and reconfirmed
 the fixture and bounded unattended free-shaft testing on 4 October. Routine
 tests within this setup do not require repeated permission. Use small finite

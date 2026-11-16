@@ -333,6 +333,11 @@ more drives (now addresses 1, 2 and 4, star wiring).
   defaults remain an ambiguity. No wired fixture or drive restart was used in 04.
   [Multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md) owns
   these remaining physical checks after 04's software archive.
+- [ ] Wire the [bench I/O fixture](bench_io.md) to drive 1: owner action. First
+  measure the board supply (VIN_PROT); the MOSFETs may drive 24 V inputs only
+  when the board runs from the drives' 24 V supply. The `bench` firmware command
+  (relays, MOSFETs, isolated input, bounded holds, outputs off on stop) is
+  implemented and natively tested; nothing is wired or hardware-tested.
 - [ ] Start motion from a shared input edge: function 7 with a staged profile
   first (absolute mode preferred), then PT segments with PIN selection, the
   negative PV speed encoding, and observation and stop of input-started motion ([multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)).

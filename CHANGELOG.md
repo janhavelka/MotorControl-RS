@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- Standalone `bench` command for the bench board's relays, MOSFETs and isolated
+  input, on Arduino and native ESP-IDF. Every on has a 1..60000 ms hold with a
+  timer and a service-loop backstop; every stop request turns all outputs off.
+  The input interrupt records edge times. Wiring guide in `docs/bench_io.md`;
+  nothing is wired or hardware-tested yet.
+
 ### Fixed
 
 - Group stop-on-failure moves require result capacity and reserve stop/recovery

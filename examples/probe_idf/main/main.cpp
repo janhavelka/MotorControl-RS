@@ -5,6 +5,9 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <sdkconfig.h>
+#if CONFIG_MOTORCONTROLRS_BENCH_IO
+#include "../../common/Esp32BenchIo.h"
+#endif
 
 #if !configSUPPORT_STATIC_ALLOCATION || configNUMBER_OF_CORES != 2
 #error The standalone owner requires static FreeRTOS allocation and both ESP32-S3 cores
@@ -23,6 +26,9 @@ using namespace MotorControlRSExample;
 // free; both builds give the shared application 12 KiB. `memory` reports it.
 DRAM_ATTR StackType_t ownerStack[12288 / sizeof(StackType_t)];
 DRAM_ATTR StaticTask_t ownerState;
+#if CONFIG_MOTORCONTROLRS_BENCH_IO
+DRAM_ATTR Esp32BenchIo benchIo; // Timer and interrupt state stay in internal RAM.
+#endif
 
 void ownerTask(void*) {
     const Esp32S3Uart::Pins pins = {CONFIG_MOTORCONTROLRS_RS485_TX_PIN,
@@ -38,7 +44,21 @@ void ownerTask(void*) {
 #else
     constexpr bool receiverDisabledDuringTransmit = false;
 #endif
-    beginApplication(pins, receiverDisabledDuringTransmit);
+    ApplicationOptions options;
+#if CONFIG_MOTORCONTROLRS_BENCH_IO
+    // Drive the bench outputs to their inactive levels before the application starts.
+    BenchIo::Pins bench;
+    bench.outputs[0].gpio = CONFIG_MOTORCONTROLRS_BENCH_RELAY1_PIN;
+    bench.outputs[1].gpio = CONFIG_MOTORCONTROLRS_BENCH_RELAY2_PIN;
+    bench.outputs[2].gpio = CONFIG_MOTORCONTROLRS_BENCH_MOSFET1_PIN;
+    bench.outputs[3].gpio = CONFIG_MOTORCONTROLRS_BENCH_MOSFET2_PIN;
+    bench.input.gpio = CONFIG_MOTORCONTROLRS_BENCH_AUX1_PIN;
+    const int reserved[] = {pins.tx, pins.rx, pins.de};
+    // A failed fixture stays visible as `bench` ready=false; motor control still starts.
+    benchIo.begin(bench, reserved, sizeof(reserved) / sizeof(reserved[0]));
+    options.benchIo = &benchIo;
+#endif
+    beginApplication(pins, receiverDisabledDuringTransmit, options);
     // Initialization failure is reported by the shared application. Its cached
     // console remains available when storage exists; a missing App only idles.
     for (;;) serviceApplication();

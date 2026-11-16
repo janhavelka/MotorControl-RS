@@ -45,7 +45,7 @@ using ConsoleReport::executionName;
 using ConsoleReport::motorOutcome;
 using ConsoleReport::hex;
 
-enum class Command : uint8_t { HELP, VERSION, CONFIG, STATUS, HEALTH, STATS, PROBE, CAPTURE_READ, RECOVER, MEMORY, LOAD, DRV, RESULT, CANCEL, RELEASE, READ, PROFILE, CAPS, READ_IDENTITY, READ_CONFIG, READ_STATE, MONITOR, AXIS, PREPARE, ENABLE, MOTOR_RELEASE, ALARM_CLEAR, STOP, MOVE, POSITION_CLEAR, VELOCITY, DRIVER, IO, HOME, SEGMENT, CONTROL, TUNING, HOST, COMMUNICATION, PERSISTENCE, MOTION_PROFILE, DEBUG, DISCOVER, USEADDR, WIRING, MOVE_BY, MOVE_TO, SPEED, ACCEL, DECEL, MOTION, STEPS_PER_TURN, SETTINGS, SUBDIVISION, POSITION, BROADCAST, GROUP };
+enum class Command : uint8_t { HELP, VERSION, CONFIG, STATUS, HEALTH, STATS, PROBE, CAPTURE_READ, RECOVER, MEMORY, LOAD, DRV, RESULT, CANCEL, RELEASE, READ, PROFILE, CAPS, READ_IDENTITY, READ_CONFIG, READ_STATE, MONITOR, AXIS, PREPARE, ENABLE, MOTOR_RELEASE, ALARM_CLEAR, STOP, MOVE, POSITION_CLEAR, VELOCITY, DRIVER, IO, HOME, SEGMENT, CONTROL, TUNING, HOST, COMMUNICATION, PERSISTENCE, MOTION_PROFILE, DEBUG, DISCOVER, USEADDR, WIRING, MOVE_BY, MOVE_TO, SPEED, ACCEL, DECEL, MOTION, STEPS_PER_TURN, SETTINGS, SUBDIVISION, POSITION, BROADCAST, GROUP, BENCH };
 struct Entry { const char* name; Command command; const char* syntax; const char* effect; bool bus; const char* description; };
 const Entry COMMANDS[] = {
     {"moveby", Command::MOVE_BY, "moveby VALUE [steps|deg|turn|mm]", "finite_relative_move_with_readonly_preparation", true, "Move by an amount; default unit is command steps. Round to nearest command step, ties to even."},
@@ -100,6 +100,7 @@ const Entry COMMANDS[] = {
     {"result", Command::RESULT, "result [operation_id]", "inspect_retained_result_without_consuming", false, "Inspect an operation without consuming its retained result."},
     {"cancel", Command::CANCEL, "cancel [operation_id]", "cancel_local_work_not_motor_stop", false, "Cancel local work; use stop to request a motor stop."},
     {"group", Command::GROUP, "group show|status|clear | group set ADDR [ADDR ...] (1..15) | group wiring ADDR x0|x1|x2|x3|y0|y1 unknown|unconnected|connected | group read state | group move relative value unit frame native_rpm configured [setup write|verify] [start staged|sequential] on-failure leave|stop normal|stop fast | group stop normal|fast | group plan begin [start staged|sequential] on-failure leave|stop normal|stop fast | group plan add ADDR relative|absolute value unit frame native_rpm configured [setup write|verify] | group plan show|clear|submit | group axis ADDR config|config set field value [maximum]|origin native|prepare request | group reference ADDR declaration binding config config_read state_read native max_age_us command-coordinate-qualified | group reference ADDR revoke", "unicast_drive_group_independent_member_operations", true, "Declare up to 15 drives. A member plan stays inert until complete and explicitly submitted. Each member keeps its own coordinates, request and result."},
+    {"bench", Command::BENCH, "bench | bench on relay1|relay2|mosfet1|mosfet2 HOLD_MS | bench off [relay1|relay2|mosfet1|mosfet2] | bench clear", "bench_fixture_outputs_and_input_no_bus_traffic", false, "Bench fixture only: switch board outputs wired to drive inputs and read the wired drive output. Each on lasts 1..60000 ms, then turns off; any stop turns all off."},
     {"broadcast", Command::BROADCAST, "broadcast accel 300|301 | broadcast start relative | broadcast stop normal|fast", "fixture_only_unconfirmed_address_0_frame_then_silent_window", true, "Bench fixture only: send one fixed address-0 frame to every drive, then listen 200 ms. No drive confirms it; read each drive back."},
     {"release", Command::RELEASE, "release operation_id", "release_retained_terminal_result", false, "Release an inspected terminal result to free its storage."}
 };
@@ -132,6 +133,32 @@ const char* tuningField(Ess::DriverGroup group, std::size_t slot) {
     const char* collision[]={"threshold","current"};
     if (slot>=Ess::tuningFieldCount(group)) return "";
     return group==Ess::DriverGroup::FILTERS?filters[slot]:group==Ess::DriverGroup::CURRENT_LOOP?current[slot]:group==Ess::DriverGroup::LA?la[slot]:collision[slot];
+}
+
+// Bench fixture state. Output times are the commanded GPIO changes; input
+// edges carry the level read in the interrupt. Neither is a motor observation.
+bool benchView(char* output, std::size_t capacity, std::size_t& used, const MotorControlRSExample::BenchIo::View& view) {
+    namespace Bench = MotorControlRSExample::BenchIo;
+    if (!append(output, capacity, used, ",\"ready\":%s,\"now_us\":%llu,\"outputs\":[", boolean(view.ready),
+            static_cast<unsigned long long>(view.nowUs))) return false;
+    for (uint8_t i = 0; i < Bench::OUTPUTS; ++i) {
+        const Bench::OutputView& item = view.outputs[i];
+        if (!append(output, capacity, used,
+                "%s{\"name\":\"%s\",\"gpio\":%d,\"active\":%s,\"hold_ms\":%lu,\"ons\":%lu,\"on_us\":%llu,\"off_us\":%llu,\"due_us\":%llu,\"off_reason\":\"%s\"}",
+                i ? "," : "", Bench::outputName(i), item.gpio, boolean(item.active),
+                static_cast<unsigned long>(item.holdMs), static_cast<unsigned long>(item.ons),
+                static_cast<unsigned long long>(item.onUs), static_cast<unsigned long long>(item.offUs),
+                static_cast<unsigned long long>(item.dueUs), Bench::offReasonName(item.offReason))) return false;
+    }
+    const Bench::InputView& input = view.input;
+    if (!append(output, capacity, used,
+            "],\"input\":{\"name\":\"%s\",\"gpio\":%d,\"known\":%s,\"active\":%s,\"edges\":%lu,\"overwritten\":%lu,\"recent\":[",
+            Bench::inputName(), input.gpio, boolean(input.known), boolean(input.known && input.active),
+            static_cast<unsigned long>(input.edges), static_cast<unsigned long>(input.overwritten))) return false;
+    for (std::size_t i = 0; i < input.recent && i < Bench::RECENT_EDGES; ++i)
+        if (!append(output, capacity, used, "%s[%llu,%s]", i ? "," : "",
+                static_cast<unsigned long long>(input.recentEdges[i].atUs), boolean(input.recentEdges[i].active))) return false;
+    return append(output, capacity, used, "]},\"bus_traffic\":false,\"motion_command\":false}");
 }
 
 const char* readName(Ess::ReadKind kind) {
@@ -541,6 +568,7 @@ const char* helpExample(Command command, const Host& host) {
             "motion-profile read\n  motion-profile inspect\n  motion-profile start-speed 30" :
             "motion-profile read\n  motion-profile inspect";
     case Command::MONITOR: return "monitor 500 10\n  monitor off";
+    case Command::BENCH: return "bench\n  bench on mosfet1 200\n  bench off\n  bench clear";
     case Command::PROFILE: return "profile list";
     case Command::AXIS: return "axis config";
     case Command::PREPARE: return "prepare relative 100 steps native actual";
@@ -2223,6 +2251,36 @@ void Console::dispatch() noexcept {
             static_cast<unsigned>(view.inputs[2]), static_cast<unsigned>(view.inputs[3]), static_cast<unsigned>(view.outputs[0]), static_cast<unsigned>(view.outputs[1]));
         emit(); return;
     }
+    if (entry->command == Command::BENCH) {
+        // Local GPIO only. Like stop, it stays usable while a move or home runs.
+        if (outputPending()) { ++inputDropped_; return; }
+        if (!host_.benchIo) { error(id, "bench", "unavailable"); return; }
+        const std::size_t args = count - first - 1;
+        const char* verb = args ? tokens[first + 1] : nullptr;
+        BenchIo::Request request;
+        bool valid = true;
+        if (!args) request.op = BenchIo::Op::SHOW;
+        else if (!std::strcmp(verb, "on") && args == 3) {
+            request.op = BenchIo::Op::ON;
+            valid = BenchIo::outputIndex(tokens[first + 2], request.output) &&
+                number(tokens[first + 3], request.holdMs) && BenchIo::validHold(request.holdMs);
+        } else if (!std::strcmp(verb, "off") && args == 1) request.op = BenchIo::Op::OFF_ALL;
+        else if (!std::strcmp(verb, "off") && args == 2) {
+            request.op = BenchIo::Op::OFF;
+            valid = BenchIo::outputIndex(tokens[first + 2], request.output);
+        } else if (!std::strcmp(verb, "clear") && args == 1) request.op = BenchIo::Op::CLEAR_EDGES;
+        else valid = false;
+        if (!valid) { error(id, "bench", "invalid_arguments"); return; }
+        BenchIo::View view;
+        const Action result = host_.benchIo(host_.context, args ? &request : nullptr, view);
+        std::size_t used = 0;
+        const bool fits = append(output_, sizeof(output_), used,
+            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"bench\",\"ok\":%s,\"result\":\"%s\"",
+            static_cast<unsigned long>(id), boolean(result == Action::OK), result == Action::OK ? "done" : actionName(result)) &&
+            benchView(output_, sizeof(output_), used, view);
+        if (!fits) { error(id, "bench", "output_full"); return; }
+        emit(); return;
+    }
     // Cancellation, monitor off and the validated stop path above remain responsive.
     const bool monitorOff = entry->command == Command::MONITOR && count == first + 2 && std::strcmp(tokens[first + 1], "off") == 0;
     if (outputPending() && entry->command != Command::CANCEL && !monitorOff) { ++inputDropped_; return; }
@@ -2313,6 +2371,7 @@ void Console::dispatch() noexcept {
         case Command::HOST: return host_.hostSerial != nullptr;
         case Command::USEADDR: return host_.selectTarget != nullptr;
         case Command::WIRING: return host_.wiring != nullptr;
+        case Command::BENCH: return host_.benchIo != nullptr;
         case Command::DEBUG: return host_.debug && host_.snapshot;
         case Command::MOTION_PROFILE: return host_.motionProfile || host_.stageProfile || (host_.startDriver && host_.snapshot);
         case Command::COMMUNICATION: return host_.communication != nullptr;

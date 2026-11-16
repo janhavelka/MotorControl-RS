@@ -2,6 +2,7 @@
 #pragma once
 #include "../common/Esp32S3Uart.h"
 #include "../common/RtuBusOwner.h"
+#include "../common/BenchIo.h"
 #include "MoveRelation.h"
 #include "DriveGroup.h"
 #include "ProfileCandidate.h"
@@ -25,6 +26,10 @@ struct ApplicationOptions {
         positionUnits.commandStepsPerMotorTurn = MotorControlRS::UnitScale(1000, 1, MotorControlRS::ScaleSource::ASSUMED);
     }
     MotorControlRS::UnitConfig positionUnits; ///< Host scales; default 1000 command steps/turn is ASSUMED. No device settings write.
+    /** Optional bench outputs/input wired to drive terminals; null hides the
+     * bench command. It must outlive the application. Every motor stop request
+     * turns its outputs OFF before admission; no other motor command uses it. */
+    BenchIo::Port* benchIo = nullptr;
 };
 /** Construct the shared standalone application in required PSRAM and initialize
  * its one UART/capture owner. Failure is explicit; there is no internal-RAM

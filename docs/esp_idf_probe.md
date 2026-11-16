@@ -63,6 +63,9 @@ transmit, and the local receiver is disabled during transmit. UART2 is owned
 exclusively by this application. Use distinct, usable board pins; a compile
 guard reserves GPIO19/20 for the USB Serial/JTAG console, and flash/PSRAM pins must also remain
 reserved. Declaring a topology does not measure it or establish motor settings.
+The same menu holds the [bench fixture](bench_io.md) outputs and input
+(defaults relay1 45, relay2 18, MOSFET1 3, MOSFET2 46, input 17; -1 leaves
+one absent; disable the option to drop the `bench` command).
 
 The default board recipe is ESP32-S3, 16 MiB QIO flash at 80 MHz, 8 MiB OPI
 PSRAM at 80 MHz and a 240 MHz CPU. It retains the existing

@@ -40,7 +40,7 @@ MAX_LINE = 49152
 MAX_INPUT = 98304
 MAX_TRAFFIC_INPUT = 1048576  # Independent finite diagnostic budget per command/drain.
 COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "health", "memory", "stats", "load",
-                      "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "communication", "persistence", "motion-profile", "motion-profile-stage", "motion-profile-start-speed", "motion-profile-start-speed-relation", "home-auxiliary", "debug",
+                      "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "bench", "communication", "persistence", "motion-profile", "motion-profile-stage", "motion-profile-start-speed", "motion-profile-start-speed-relation", "home-auxiliary", "debug",
                       "home-qualification-install", "home-qualification-revoke", "velocity-qualification-install", "velocity-qualification-revoke",
                       "position-clear-qualification", "position-clear-qualification-install", "position-clear-qualification-revoke",
                       "io-qualification-install", "io-qualification-inspect", "io-qualification-revoke",
@@ -381,6 +381,32 @@ def wiring_arguments(tokens: tuple[str, ...]) -> tuple[str, int] | None:
     if len(tokens) != 2 or tokens[0] not in terminals or tokens[1] not in dispositions:
         raise ValueError("wiring requires x0..x3|y0..y1 unknown|unconnected|connected")
     return tokens[0], dispositions.index(tokens[1])
+
+
+# Bench fixture outputs and input (docs/bench_io.md). Local GPIO only.
+BENCH_OUTPUTS = ("relay1", "relay2", "mosfet1", "mosfet2")
+BENCH_MAX_HOLD_MS = 60000
+BENCH_OFF_REASONS = ("none", "boot", "hold_elapsed", "hold_elapsed_late", "request", "motor_stop", "timer_fault")
+BENCH_RECENT_EDGES = 16
+
+
+def bench_arguments(tokens: tuple[str, ...]) -> dict:
+    """Bench outputs/input request; local GPIO only, never motor traffic."""
+    if not isinstance(tokens, tuple) or any(type(token) is not str for token in tokens):
+        raise ValueError("bench requires a tuple of exact tokens")
+    if not tokens:
+        return {"op": "show"}
+    hold = tokens[2] if len(tokens) == 3 else ""
+    if (tokens[0] == "on" and len(tokens) == 3 and tokens[1] in BENCH_OUTPUTS and hold.isascii() and
+            hold.isdigit() and hold == str(int(hold)) and 1 <= int(hold) <= BENCH_MAX_HOLD_MS):
+        return {"op": "on", "output": tokens[1], "hold_ms": int(hold)}
+    if tokens == ("off",):
+        return {"op": "off_all"}
+    if len(tokens) == 2 and tokens[0] == "off" and tokens[1] in BENCH_OUTPUTS:
+        return {"op": "off", "output": tokens[1]}
+    if tokens == ("clear",):
+        return {"op": "clear"}
+    raise ValueError("bench requires no arguments, on relay1|relay2|mosfet1|mosfet2 1..60000, off [OUTPUT] or clear")
 
 
 def communication_arguments(tokens: tuple[str, ...]) -> dict:
@@ -2311,6 +2337,59 @@ class Console:
                     not item["triggers_inhibited"] and not item["protection_removal"])
 
     @staticmethod
+    def _check_bench(handle: Command, item: dict) -> None:
+        """Bench fixture state is local GPIO evidence, never a motor observation."""
+        requested = bench_arguments(handle.host_args or ())
+        def require(condition, message):
+            if not condition:
+                raise BenchError("bench: " + message)
+        def integer(value, low, high):
+            return type(value) is int and low <= value <= high
+        require(item.get("result") == "done" if item["ok"] else
+                item.get("result") in ("unavailable", "invalid", "failed"), "invalid disposition")
+        if not item["ok"] and item["result"] == "unavailable" and "outputs" not in item:
+            return  # Image or application without a bench fixture.
+        require(item.get("bus_traffic") is False and item.get("motion_command") is False, "local command claims motor traffic")
+        require(type(item.get("ready")) is bool and integer(item.get("now_us"), 0, 2**64 - 1), "invalid readiness or time")
+        outputs = item.get("outputs")
+        require(isinstance(outputs, list) and [o.get("name") if isinstance(o, dict) else None for o in outputs] == list(BENCH_OUTPUTS),
+                "outputs must be relay1, relay2, mosfet1, mosfet2")
+        for output in outputs:
+            require(integer(output.get("gpio"), -1, 48) and type(output.get("active")) is bool and
+                    integer(output.get("hold_ms"), 0, BENCH_MAX_HOLD_MS) and integer(output.get("ons"), 0, 0xFFFFFFFF) and
+                    all(integer(output.get(key), 0, 2**64 - 1) for key in ("on_us", "off_us", "due_us")) and
+                    output.get("off_reason") in BENCH_OFF_REASONS, "invalid output " + str(output.get("name")))
+            require(output["active"] == (output["off_reason"] == "none"), "active state and off reason disagree")
+            require(output["gpio"] >= 0 or (not output["active"] and output["ons"] == 0), "absent output reports activity")
+            if output["active"]:
+                require(output["on_us"] < output["due_us"] <= item["now_us"] + output["hold_ms"] * 1000,
+                        "active output lacks a bounded due time")
+            else:
+                require(output["due_us"] == 0, "inactive output keeps a due time")
+        sensed = item.get("input")
+        require(isinstance(sensed, dict) and sensed.get("name") == "aux1" and integer(sensed.get("gpio"), -1, 48) and
+                type(sensed.get("known")) is bool and type(sensed.get("active")) is bool and
+                integer(sensed.get("edges"), 0, 0xFFFFFFFF) and integer(sensed.get("overwritten"), 0, 0xFFFFFFFF), "invalid input")
+        require(sensed["known"] or not sensed["active"], "unknown input reported active")
+        recent = sensed.get("recent")
+        require(isinstance(recent, list) and len(recent) <= min(BENCH_RECENT_EDGES, sensed["edges"]) and
+                all(isinstance(edge, list) and len(edge) == 2 and integer(edge[0], 0, 2**64 - 1) and type(edge[1]) is bool
+                    for edge in recent), "invalid recent edges")
+        require(all(a[0] <= b[0] for a, b in zip(recent, recent[1:])), "recent edges are not in time order")
+        if not item["ok"]:
+            return
+        require(item["ready"], "successful command on an unready fixture")
+        if requested["op"] == "on":
+            output = outputs[BENCH_OUTPUTS.index(requested["output"])]
+            require(output["active"] and output["hold_ms"] == requested["hold_ms"], "requested output is not on with its hold")
+        elif requested["op"] == "off":
+            require(not outputs[BENCH_OUTPUTS.index(requested["output"])]["active"], "requested output is still on")
+        elif requested["op"] == "off_all":
+            require(not any(output["active"] for output in outputs), "an output is still on")
+        elif requested["op"] == "clear":
+            require(sensed["edges"] == 0 and sensed["overwritten"] == 0 and not recent, "edges were not cleared")
+
+    @staticmethod
     def _check_wiring(handle: Command, item: dict) -> None:
         """A local declaration/query carries bounded context and never an operation."""
         requested = wiring_arguments(handle.host_args)
@@ -2833,6 +2912,8 @@ class Console:
             self._check_useaddr(handle, item)
         if handle.command == "wiring":
             self._check_wiring(handle, item)
+        if handle.command == "bench":
+            self._check_bench(handle, item)
         if handle.command in GROUP_LOCAL:
             self._check_group_view(handle, item)
             if item["ok"]:
@@ -3289,6 +3370,9 @@ class Console:
         elif command == "wiring":
             host_args = () if host_args is None else host_args
             wiring_arguments(host_args)
+        elif command == "bench":
+            host_args = () if host_args is None else host_args
+            bench_arguments(host_args)
         elif command.startswith("group-"):
             host_args = () if host_args is None else host_args
             group_arguments(command, host_args)
@@ -4342,6 +4426,8 @@ def arguments(argv: list[str] | None) -> argparse.Namespace:
     sub.add_parser("probe", help="one model-register read and cached observations")
     host = sub.add_parser("host", help="one host-only serial query or explicit tuple change; no motor writes")
     host.add_argument("host_tokens", nargs="*")
+    bench = sub.add_parser("bench", help="bench fixture outputs/input: show | on OUTPUT HOLD_MS | off [OUTPUT] | clear; no motor traffic")
+    bench.add_argument("bench_tokens", nargs="*")
     communication = sub.add_parser("communication", help="one explicit communication session action; no retries/save/restart")
     communication.add_argument("communication_tokens", nargs="*")
     persistence = sub.add_parser("persistence", help="one explicit save/restore session action; no retries or restart")
@@ -4520,6 +4606,10 @@ def arguments(argv: list[str] | None) -> argparse.Namespace:
         result.host_args = tuple(result.host_tokens)
         try: host_arguments(result.host_args)
         except ValueError as exc: parser.error(str(exc))
+    if result.mode == "bench":
+        result.host_args = tuple(result.bench_tokens)
+        try: bench_arguments(result.host_args)
+        except ValueError as exc: parser.error(str(exc))
     if result.mode == "position-interrupt":
         result.host_args = (result.original_operation_id,)
         try: position_interrupt_arguments(result.host_args)
@@ -4641,6 +4731,10 @@ def main(argv: list[str] | None = None) -> int:
                         result = console.command("host", host_args=args.host_args, timeout_s=args.timeout)
                         if not result["ok"]:
                             raise BenchError("host command failed: " + str(result.get("result")))
+                    elif args.mode == "bench":
+                        result = console.command("bench", host_args=args.host_args, timeout_s=args.timeout)
+                        if not result["ok"]:
+                            raise BenchError("bench command failed: " + str(result.get("result")))
                     elif args.mode == "host-check":
                         host_check_campaign(console, baud=args.host_baud, fmt=args.fmt,
                                             timeout_s=args.timeout, address=args.address)

@@ -440,6 +440,17 @@ Protocol consumers retain the original bytes. Use `drv`, `stats`, `memory` and
 `load` for owner, transport, memory and available software timing measurements.
 See the [debug workflow](traffic.md) for effects and measurement limits.
 
+## Bench fixture I/O
+
+`bench` switches the bench board's relays and MOSFETs, which can be wired to
+drive inputs, and reads one isolated input wired to a drive output. It is local
+GPIO only and works during motion. `bench on mosfet1 200` holds one output on
+for 200 ms (1..60000 ms), then it turns off by itself; `bench off` turns all
+off and `bench clear` clears recorded input edges. Every stop request turns all
+outputs off first. Wiring, checks and the test plan are in the
+[bench I/O guide](bench_io.md); declare wiring with `wiring` before assigning
+terminal functions.
+
 ## Automation
 
 Prefix a command with `@` and a nonzero decimal ID to receive the existing JSONL

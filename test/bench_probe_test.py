@@ -3724,6 +3724,68 @@ class Framing(unittest.TestCase):
         self.assertEqual(len(self.port.writes), 20)  # Version plus 19 local commands; no read/release.
         self.assertTrue(all(line.decode().split()[1] == "wiring" for line in self.port.writes[1:]))
 
+    @staticmethod
+    def bench_reply(i, command, state, *, ok=True, result="done", now=5000):
+        outputs = []
+        for index, name in enumerate(bench.BENCH_OUTPUTS):
+            hold = state.get(name, 0)
+            outputs.append(dict(name=name, gpio=(45, 18, 3, 46)[index], active=bool(hold), hold_ms=hold,
+                                ons=1 if hold else 0, on_us=now if hold else 0, off_us=0 if hold else 1000,
+                                due_us=now + hold * 1000 if hold else 0, off_reason="none" if hold else "boot"))
+        edges = state.get("edges", [])
+        sensed = dict(name="aux1", gpio=17, known=True, active=bool(edges and edges[-1][1]), edges=len(edges),
+                      overwritten=0, recent=edges)
+        return encoded(reply(i, command, ok=ok, result=result, ready=True, now_us=now, outputs=outputs,
+                             input=sensed, bus_traffic=False, motion_command=False))
+
+    def test_bench_outputs_and_input_are_local(self):
+        state = {}
+        def handler(i, command, args):
+            if command != "bench": return Serial.normal(i, command, args)
+            request = bench.bench_arguments(tuple(args))
+            if request["op"] == "on": state[request["output"]] = request["hold_ms"]
+            elif request["op"] == "off": state.pop(request["output"], None)
+            elif request["op"] == "off_all": state.clear()
+            elif request["op"] == "clear": state["edges"] = []
+            else: state.setdefault("edges", [[7000, True]])
+            return self.bench_reply(i, command, state)
+        console = self.session(handler)
+        self.assertEqual(console.command("bench", host_args=())["input"]["edges"], 1)
+        result = console.command("bench", host_args=("on", "mosfet1", "200"))
+        self.assertTrue(result["outputs"][2]["active"])
+        console.command("bench", host_args=("on", "relay2", "60000"))
+        self.assertFalse(console.command("bench", host_args=("off", "mosfet1"))["outputs"][2]["active"])
+        self.assertFalse(any(o["active"] for o in console.command("bench", host_args=("off",))["outputs"]))
+        self.assertEqual(console.command("bench", host_args=("clear",))["input"]["edges"], 0)
+        self.assertFalse(console.operations)
+        self.assertEqual([line.decode().split(maxsplit=1)[1].strip() for line in self.port.writes[1:]],
+                         ["bench", "bench on mosfet1 200", "bench on relay2 60000", "bench off mosfet1", "bench off", "bench clear"])
+
+    def test_bench_grammar_rejects_before_transmission(self):
+        console = self.session()
+        before = len(self.port.writes)
+        for tokens in (("on",), ("on", "relay1"), ("on", "relay1", "0"), ("on", "relay1", "60001"),
+                       ("on", "relay1", "010"), ("on", "relay1", "+5"), ("on", "pump", "10"), ("on", "Relay1", "10"),
+                       ("off", "relay1", "now"), ("off", "aux1"), ("toggle",), ("clear", "all"), ("on", "relay1", 10),
+                       ["off"], ("on", "relay1", "10\nprobe")):
+            with self.subTest(tokens=tokens), self.assertRaises(ValueError):
+                console.command("bench", host_args=tokens)
+        self.assertEqual(len(self.port.writes), before)
+        self.assertTrue(console.synchronized)
+
+    def test_bench_reply_must_match_request(self):
+        def handler(i, command, args):
+            if command != "bench": return Serial.normal(i, command, args)
+            return self.bench_reply(i, command, {})  # Firmware claims success but the output stays off.
+        console = self.session(handler)
+        with self.assertRaisesRegex(bench.BenchError, "requested output is not on"):
+            console.command("bench", host_args=("on", "relay1", "100"))
+        def unavailable(i, command, args):
+            if command != "bench": return Serial.normal(i, command, args)
+            return encoded(reply(i, command, ok=False, result="unavailable"))
+        console = self.session(unavailable)
+        self.assertEqual(console.command("bench", host_args=())["result"], "unavailable")
+
     def test_wiring_grammar_rejects_before_transmission(self):
         console = self.session()
         before = len(self.port.writes)

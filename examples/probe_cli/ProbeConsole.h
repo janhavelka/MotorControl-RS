@@ -5,6 +5,7 @@
 #include "MotorControlRS/Traffic.h"
 #include "MotorControlRS/profiles/ess_rs/Discovery.h"
 #include "../common/HostSerial.h"
+#include "../common/BenchIo.h"
 #include "StateCache.h"
 #include "AxisConsole.h"
 #include "SimpleMotion.h"
@@ -384,6 +385,9 @@ struct Host {
     /** Null queries declarations; a change requires idle ownership and advances
      * configuration context. The request is consumed synchronously. */
     Action (*wiring)(void*, const WiringRequest*, WiringSnapshot&) = nullptr;
+    /** Optional bench fixture outputs/input; null request shows. Local GPIO
+     * only, allowed during motion, never bus traffic. Request consumed in-call. */
+    Action (*benchIo)(void*, const BenchIo::Request*, BenchIo::View&) = nullptr;
     Action (*communication)(void*, const CommunicationCommand*, CommunicationView&) = nullptr;
     Action (*persistence)(void*, const PersistenceCommand*, PersistenceView&) = nullptr;
     /** Application-owned finite scan; null inspects retained evidence. Request

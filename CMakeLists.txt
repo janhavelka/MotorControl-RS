@@ -59,7 +59,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include(CTest)
     # Distributed source packages contain the core; repository tests stay here.
     if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test")
-        foreach(suite stop_path_app qualification_routes_app human_console console_text debug_session discovery discovery_app discovery_console persistence persistence_console persistence_app traffic motion_profile_app position_start_speed_app homing_auxiliary_app communication communication_console communication_app commissioning_owner units axis registers codec reads actions position position_command position_interrupt velocity homing driver_settings segments control_settings control_app tuning tuning_app host_app host_console io io_app io_qualification_app driver_app home_app runner bus_owner bus_scheduling probe_console esp32_uart probe_app probe_app_monitor_control move_app group_app position_interrupt_app simple_motion_app velocity_app capture_service)
+        foreach(suite bench_io stop_path_app qualification_routes_app human_console console_text debug_session discovery discovery_app discovery_console persistence persistence_console persistence_app traffic motion_profile_app position_start_speed_app homing_auxiliary_app communication communication_console communication_app commissioning_owner units axis registers codec reads actions position position_command position_interrupt velocity homing driver_settings segments control_settings control_app tuning tuning_app host_app host_console io io_app io_qualification_app driver_app home_app runner bus_owner bus_scheduling probe_console esp32_uart probe_app probe_app_monitor_control move_app group_app position_interrupt_app simple_motion_app velocity_app capture_service)
             add_executable(${suite}_test "test/${suite}_test.cpp")
             target_link_libraries(${suite}_test PRIVATE MotorControlRS)
             set_target_properties(${suite}_test PROPERTIES
@@ -86,12 +86,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         # Keep source membership explicit while grouping identical fixture
         # dependencies so console/owner edits stay consistent within each group.
         foreach(suite human_console probe_console host_console communication_console debug_session
-                      discovery_console persistence_console)
+                      discovery_console persistence_console bench_io)
             target_sources(${suite}_test PRIVATE examples/probe_cli/ProbeConsole.cpp
                 examples/probe_cli/HomeConsoleParser.cpp examples/probe_cli/HomeConsoleFormat.cpp
                 examples/probe_cli/ConsoleText.cpp examples/common/RtuRunner.cpp)
         endforeach()
         target_sources(debug_session_test PRIVATE examples/probe_cli/DebugSession.cpp)
+        # The ESP32 bench fixture adapter on its own minimal SDK fakes.
+        target_sources(bench_io_test PRIVATE examples/common/Esp32BenchIo.cpp)
+        target_include_directories(bench_io_test PRIVATE test/fakes/bench_io)
         target_sources(console_text_test PRIVATE examples/probe_cli/ConsoleText.cpp)
         foreach(suite traffic runner)
             target_sources(${suite}_test PRIVATE examples/common/RtuRunner.cpp)

@@ -1161,6 +1161,10 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
                             uint32_t failedStopId = 0, const ReleaseAfterStopPrerequisites* releaseFacts = nullptr,
                             uint32_t reservedId = 0) {
     using namespace MotorControlRS;
+    // A stop request first releases every bench output that could hold or
+    // retrigger a wired input, even if the stop itself is then refused.
+    if (request.kind == ActionKind::STOP && a.options.benchIo)
+        a.options.benchIo->quiesce(BenchIo::OffReason::STOP);
     const bool scanStop = a.discovery.owned && request.kind == ActionKind::STOP &&
         address == a.discovery.originalTarget.address;
     if (a.owner.commissioningOwned() || (a.discovery.owned && !scanStop)) return Probe::Action::BUSY;
@@ -3415,6 +3419,20 @@ Probe::Action load(void* context, const Probe::LoadSettings* requested, Probe::L
     return result;
 }
 #endif
+// Local fixture control without bus traffic. It is allowed during motion: a
+// wired input may be switched while a move or home runs. A null request shows.
+Probe::Action benchIoCommand(void* context, const BenchIo::Request* requested, BenchIo::View& view) {
+    App& a = *static_cast<App*>(context);
+    if (!a.options.benchIo) return Probe::Action::UNAVAILABLE;
+    const BenchIo::Request show;
+    switch (a.options.benchIo->apply(requested ? *requested : show, view)) {
+    case BenchIo::Result::OK: return Probe::Action::OK;
+    case BenchIo::Result::INVALID: return Probe::Action::INVALID;
+    case BenchIo::Result::FAILED: return Probe::Action::FAILED;
+    case BenchIo::Result::UNAVAILABLE: break;
+    }
+    return Probe::Action::UNAVAILABLE;
+}
 void invalidateTargetKnowledge(App& a, uint64_t now) {
     std::memset(a.knownTargets, 0, sizeof(a.knownTargets));
     a.identity.operationId = a.configuration.operationId = 0;
@@ -3612,6 +3630,7 @@ Probe::Host host(App* a) {
     h.axis = axisCommand; h.hostSerial = hostSerial; h.selectTarget = selectTarget;
     h.ioQualification = ioQualificationCommand;
     h.wiring = wiring;
+    if (a->options.benchIo) h.benchIo = benchIoCommand;
     h.communication = communication; h.persistence = persistence;
     h.discovery = discoveryCommand;
     h.group = groupCommand;
@@ -4365,6 +4384,7 @@ void serviceApplication() {
 #endif
     }
     RuntimeWitness::mark(RuntimeWitness::OPERATIONS);
+    if (a.options.benchIo) a.options.benchIo->service(nowUs());
     serviceMotionProfile(a, nowUs());
     serviceCommissioning(a, nowUs());
     servicePersistence(a, nowUs());
