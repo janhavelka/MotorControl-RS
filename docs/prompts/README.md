@@ -24,6 +24,8 @@ regression. Input-start observation, wired effects and remaining physical
 qualification stay open. See the set's table for each stage's disposition.
 M02 and stages 02/08/09 are complete; the short three-drive and enable/reselection
 checks pass. Wider qualification remains in 06 and HW-15.
+The [04/09 audit](../reports/2026-11-16_multi_drive_04_09_audit.md) records
+follow-up corrections to I/O evidence and group fallback-stop admission.
 
 The [Lichuan LC57BK-R / RC RS485 set](lichuan_lc57bk_rs485/README.md) contains
 implementation and qualification stages for a second manufacturer profile.

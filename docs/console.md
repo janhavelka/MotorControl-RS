@@ -295,6 +295,10 @@ group status
   `stop fast` sends one urgent unicast stop to each member whose start left the
   host (`started` or `unknown`), unless a newer explicit stop already owns that
   member. `leave` sends nothing.
+  Stop-policy moves require room for every member's stop result before any
+  staging. Undelivered old results are kept; insufficient room returns
+  `results_full`. Fallback stop and recovery IDs are allocated at admission,
+  so later commands cannot consume them. Unused reserved IDs are not reused.
 - While a group set, read, stage or start sequence runs, other ordinary bus
   commands answer `busy`; urgent stops still go out. Once every start has
   resolved, other commands run while the members move. Members' observation polls

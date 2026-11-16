@@ -125,8 +125,10 @@ bool sameIoBaseline(const IoQualification& a, const IoQualification& b, bool exa
 }
 bool ioQualificationCurrent(App& a, const IoQualification& q, uint64_t now, bool exactRead = false) {
     IoQualification current;
+    // Assignment uses the exact reads that admitted its candidate. Other purposes
+    // may refresh live levels without renewing the supplied facts.
     return ioSnapshot(a, q.target.address, q.terminal, q.purpose, q.member, now, current) &&
-        sameIoBaseline(q, current, exactRead) && ioFactsValid(q, now);
+        sameIoBaseline(q, current, exactRead || q.purpose == IoPurpose::ASSIGN) && ioFactsValid(q, now);
 }
 uint8_t moveIoMask(const IoQualification* facts) {
     uint8_t mask = 0;

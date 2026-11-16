@@ -8,6 +8,10 @@ copied `GroupMemberMoves` request with one addressed intent per member. It uses
 these same relative/absolute preparations and completion rules. Member scales,
 origins and references stay separate. Wrapped group requests remain unsupported.
 Checked staging and start acknowledgement never prove completion by themselves.
+Stop-on-failure admission checks room for each member's stop result and allocates
+fallback stop/recovery IDs before writes. It preserves undelivered older results.
+An explicit stop takes over that member's stop obligation. The move keeps its
+recovery reservation until those stops settle; their results remain separate.
 
 Selected axes and group members share the [input-function policy](ess_io.md).
 Inactive release/stop inputs permit finite moves. Position/home/PT triggers

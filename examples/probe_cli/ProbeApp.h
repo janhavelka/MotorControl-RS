@@ -43,7 +43,8 @@ MotorControlRS::Status inspectIoQualification(uint8_t address, uint8_t terminal,
 /** Validate and copy one exact supplied record while idle. No motor traffic.
  * Non-assignment purposes require candidate == current assignment. */
 MotorControlRS::Status installIoQualification(const IoQualification&);
-/** Copy retained facts and their current validity. Does not refresh their age. */
+/** Copy retained facts and their current validity. Assignment requires the same
+ * settings/state read identities. Does not refresh the supplied fact age. */
 bool copyIoQualification(uint8_t address, uint8_t terminal, IoPurpose, IoQualification& output, bool& valid, bool member = false);
 /** Revoke future use and cancel unsent dependent work. Local revocation is not a stop. */
 MotorControlRS::Status revokeIoQualification(uint8_t address, uint8_t terminal, IoPurpose, bool member = false);

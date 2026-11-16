@@ -305,11 +305,11 @@ void applyGroupFailurePolicy(App& a, App::GroupOperation& op) {
     for (uint8_t i = 0; i < r.count; ++i) {
         auto& member = r.members[i];
         const auto* record = findRecord(a, member.operationId);
-        if (!record || record->interruptedByStop) continue;
+        if (!record || record->interruptedByStop || (op.explicitStops & (1U << i))) continue;
         const auto start = classifyStart(record->move);
         if (start != Probe::GroupStart::STARTED && start != Probe::GroupStart::UNKNOWN) continue;
         uint32_t id = 0;
-        member.stopAdmission = startActionIn(a, 0, member.address, stop, id, true);
+        member.stopAdmission = startActionIn(a, 0, member.address, stop, id, true, 0, nullptr, op.fallbackStopId + i);
         if (member.stopAdmission == Probe::Action::OK) member.stopOperationId = id;
     }
 }
@@ -496,6 +496,14 @@ void serviceGroupMove(App& a, uint64_t now) {
         const auto* stop = findRecord(a, r.members[i].stopOperationId);
         const auto* m = groupMember(a, r.members[i].address);
         if ((record && resultPending(a, *record)) || (stop && resultPending(a, *stop)) || (m && m->stage.view.pending)) return;
+        // Explicit stops keep their own results. Keep this move's reserved
+        // recovery alive until every transferred stop obligation settles.
+        if (op.explicitStops & (1U << i))
+            for (std::size_t j = REQUEST_CAPACITY + 1; j < GROUP_MOVE_FIRST; ++j) {
+                const auto& explicitStop = a.records[j];
+                if (explicitStop.operationId && explicitStop.address == r.members[i].address &&
+                    resultPending(a, explicitStop)) return;
+            }
     }
     harvestGroupMove(a, op, now);
 }
@@ -656,7 +664,19 @@ Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveR
     auto& op = a.group.move;
     if (op.result.operationId) return Probe::Action::RESULTS_FULL; // Release the earlier group move first.
     const uint8_t count = a.group.count;
-    if (a.nextOperationId > UINT32_MAX - count) return Probe::Action::IDS_EXHAUSTED;
+    const bool stopOnFailure = policy != Probe::GroupFailurePolicy::LEAVE;
+    if (stopOnFailure) {
+        std::size_t available = 0;
+        for (std::size_t i = GROUP_STOP_FIRST; i < GROUP_MOVE_FIRST; ++i) {
+            const auto& record = a.records[i];
+            if (!record.operationId || (!resultPending(a, record) && record.delivered)) ++available;
+        }
+        if (available < count) return Probe::Action::RESULTS_FULL;
+    }
+    // Reserve every fallback stop and one shared recovery before other commands
+    // can exhaust the global IDs. Unused reserved IDs are never reused.
+    const uint32_t followingIds = count + (stopOnFailure ? count + 1u : 0u);
+    if (a.nextOperationId > UINT32_MAX - followingIds) return Probe::Action::IDS_EXHAUSTED;
     const uint64_t now = uart.sample();
     for (uint8_t i = 0; i < count; ++i) {
         const auto& m = a.group.members[i];
@@ -718,6 +738,11 @@ Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveR
         record.ioQualificationMask = moveIoMask(m.ioQualifications);
         op.result.members[i].address = m.address; op.result.members[i].operationId = record.operationId;
         op.result.members[i].request = *groupIntent(supplied, individual, m.address);
+    }
+    if (stopOnFailure) {
+        op.fallbackStopId = a.nextOperationId;
+        a.nextOperationId += count;
+        op.fallbackRecoveryId = a.nextOperationId++;
     }
     reply.operationId = op.result.operationId;
     return Probe::Action::OK;

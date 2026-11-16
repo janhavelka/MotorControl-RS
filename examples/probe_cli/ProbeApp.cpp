@@ -323,6 +323,8 @@ struct App {
         HostTuple serialTuple;
         uint32_t serialGeneration = 0;
         uint32_t childId = 0; ///< Current read of a set or read sequence.
+        uint32_t fallbackStopId = 0, fallbackRecoveryId = 0; ///< Reserved once at move admission.
+        uint16_t explicitStops = 0; ///< Members whose fallback obligation passed to an explicit stop.
         uint8_t next = 0, phase = 0; ///< Member in progress; set: declaration read, staged move: 0 stage, 1 start.
         bool startsDone = false; ///< Every start resolved; ordinary work may run while members move.
         bool startsEnded = false, policyApplied = false, delivered = false, programmatic = false, interactive = false;
@@ -1156,7 +1158,8 @@ bool positionClearReadiness(const App& a, uint8_t address, uint64_t now) {
 // A declared group member is a stop target even when its readiness facts are stale.
 Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
                             const MotorControlRS::ActionRequest& request, uint32_t& operationId, bool groupStop,
-                            uint32_t failedStopId = 0, const ReleaseAfterStopPrerequisites* releaseFacts = nullptr) {
+                            uint32_t failedStopId = 0, const ReleaseAfterStopPrerequisites* releaseFacts = nullptr,
+                            uint32_t reservedId = 0) {
     using namespace MotorControlRS;
     const bool scanStop = a.discovery.owned && request.kind == ActionKind::STOP &&
         address == a.discovery.originalTarget.address;
@@ -1164,7 +1167,9 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
     if (scanStop && a.discovery.phase == Probe::DiscoveryPhase::INTERLOCK) return Probe::Action::RECOVERY_REQUIRED;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
-    if (!a.nextOperationId) return Probe::Action::IDS_EXHAUSTED;
+    if (!reservedId && !a.nextOperationId) return Probe::Action::IDS_EXHAUSTED;
+    if (reservedId && (!groupStop || request.kind != ActionKind::STOP)) return Probe::Action::INVALID;
+    const uint32_t actionId = reservedId ? reservedId : a.nextOperationId;
     const uint64_t now = uart.sample();
     const bool stop = request.kind == ActionKind::STOP;
     if (releaseFacts && (request.kind != ActionKind::RELEASE || !failedTransmittedStop(a, failedStopId) ||
@@ -1196,7 +1201,7 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
     }
     ReadTarget target; target.id = address; target.address = address; target.generation = a.bindingGeneration;
     ESS::ActionContext preparedContext;
-    const Status prepared = ESS::prepareAction(preparedContext, target, a.nextOperationId, admittedRequest, now, deadline, actionOptions);
+    const Status prepared = ESS::prepareAction(preparedContext, target, actionId, admittedRequest, now, deadline, actionOptions);
     if (!prepared) return prepared.code == Err::UNSUPPORTED ? Probe::Action::UNSUPPORTED : Probe::Action::INVALID;
     // Ordinary stops may wait for one recovery. Discovery owns its tuple and
     // must first complete its explicit recovery/restoration contract.
@@ -1243,7 +1248,9 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
     record->groupChild = groupStop;
     record->serialTuple = scanStop ? a.discovery.originalTuple : a.serial.active;
     record->serialGeneration = scanStop ? a.discovery.originalSerialGeneration : a.serial.generation;
-    record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
+    record->operationId = actionId;
+    if (!reservedId) ++a.nextOperationId;
+    record->commandId = commandId; record->address = address;
     record->deadlineUs = preparedContext.deadlineUs; record->kind = App::OperationKind::ACTION; record->axisReserved = true;
     record->configurationGeneration = a.axis.generation;
     if (scanStop) {
@@ -1254,6 +1261,10 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
     }
     operationId = a.latestOperationId = record->operationId;
     if (stop) {
+        if (!reservedId && a.group.move.result.pending)
+            for (uint8_t i = 0; i < a.group.move.result.count; ++i)
+                if (a.group.move.result.members[i].address == address)
+                    a.group.move.explicitStops |= static_cast<uint16_t>(1U << i);
         // This includes an older stop: its unsent write and later polls end here.
         cancelSimplePreparation(a, address, now);
         cancelPositionStages(a, address, now);
@@ -2691,7 +2702,7 @@ bool invalidatesMotion(const App::Record& record) {
     }
     return false;
 }
-Probe::Action startRecovery(App&, uint32_t, bool, uint32_t&);
+Probe::Action startRecovery(App&, uint32_t, bool, uint32_t&, uint32_t reservedId = 0);
 ESS::ActionContext* stopContext(App::Record& record) {
     if (record.kind == App::OperationKind::ACTION && record.action.request.kind == MotorControlRS::ActionKind::STOP)
         return &record.action;
@@ -2745,7 +2756,11 @@ void serviceHeldStop(App& a, App::Record& record, uint64_t now) {
     }
     if (a.owner.needsRecovery() || uart.needsRecovery()) {
         uint32_t recovery = 0;
-        if (!record.stopRecoveryId && startRecovery(a, 0, true, recovery) == Probe::Action::OK) {
+        // One bus recovery serves all held stops, including an explicit stop
+        // that took over a group's fallback obligation.
+        const uint32_t reserved = a.group.move.result.pending ? a.group.move.fallbackRecoveryId : 0;
+        if (!record.stopRecoveryId && startRecovery(a, 0, true, recovery, reserved) == Probe::Action::OK) {
+            if (reserved) a.group.move.fallbackRecoveryId = 0;
             record.stopRecoveryId = a.recovery.id;
             record.stopRecoveryOperationId = recovery;
         } else endHeldStop(record, ReadEventKind::TRANSPORT_FAILURE, -2, now);
@@ -3049,10 +3064,10 @@ void advanceActions(App& a, uint64_t now) {
 // One path for explicit recovery and the recovery a held stop starts. A delivered
 // terminal result is released by the next attempt. An automatic attempt moves an
 // undelivered result aside so output pressure cannot delay a stop.
-Probe::Action startRecovery(App& a, uint32_t commandId, bool automatic, uint32_t& operationId) {
+Probe::Action startRecovery(App& a, uint32_t commandId, bool automatic, uint32_t& operationId, uint32_t reservedId) {
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
-    if (!a.nextOperationId) return Probe::Action::IDS_EXHAUSTED;
+    if (!reservedId && !a.nextOperationId) return Probe::Action::IDS_EXHAUSTED;
     if (a.bindingGeneration == UINT32_MAX) return Probe::Action::IDS_EXHAUSTED;
     if (!automatic && a.recoveryDisplaced.operationId && !a.recoveryDisplaced.delivered) return Probe::Action::RESULTS_FULL;
     if (a.recovery.operationId) {
@@ -3079,6 +3094,11 @@ Probe::Action startRecovery(App& a, uint32_t commandId, bool automatic, uint32_t
     a.persistenceConfirmedGeneration = 0;
     a.persistenceBaselineKnown = false;
     ++a.bindingGeneration;
+    // Recovery invalidates every earlier probe, including results delivered
+    // later. A reserved recovery ID need not be the newest allocated ID.
+    a.known = a.ok = a.modelKnown = false;
+    a.cacheOperationId = a.modelOperationId = a.nextOperationId ? a.nextOperationId - 1 : UINT32_MAX;
+    a.observedEarliestUs = a.observedLatestUs = a.deliveredUs = 0;
     invalidateAxis(a);
     invalidateGroupFacts(a, now);
     a.monitorState.settings.enabled = false; a.monitorState.remaining = 0;
@@ -3093,7 +3113,8 @@ Probe::Action startRecovery(App& a, uint32_t commandId, bool automatic, uint32_t
         }
     }
     a.recovery.serialTuple = a.serial.active; a.recovery.serialGeneration = a.serial.generation;
-    a.recovery.id = id; a.recovery.commandId = commandId; a.recovery.operationId = a.nextOperationId++;
+    a.recovery.id = id; a.recovery.commandId = commandId;
+    a.recovery.operationId = reservedId ? reservedId : a.nextOperationId++;
     a.recovery.deadlineUs = now + RECOVERY_BUDGET_US;
     a.recovery.automatic = a.recovery.delivered = automatic;
     a.recoveryGuardUntilUs = std::max(a.recoveryGuardUntilUs, now + RECOVER_US);
@@ -4325,13 +4346,6 @@ void serviceApplication() {
 #if MOTORCONTROLRS_LOAD_FIXTURE
         nextServiceUs = a.owner.active() ? sampled + loadFixture.ownerDelayUs() : 0;
 #endif
-    }
-    const auto* recovered = a.owner.recoveryResult(a.recovery.id);
-    if (recovered && recovered->outcome == Rtu::RecoveryOutcome::RECOVERED && a.recovery.operationId > a.cacheOperationId) {
-        a.known = a.ok = a.modelKnown = false; a.cacheOperationId = a.recovery.operationId;
-        // Both harvest watermarks exclude old results after recovery.
-        a.modelOperationId = a.recovery.operationId;
-        a.observedEarliestUs = a.observedLatestUs = a.deliveredUs = 0;
     }
     RuntimeWitness::mark(RuntimeWitness::OPERATIONS);
     serviceMotionProfile(a, nowUs());

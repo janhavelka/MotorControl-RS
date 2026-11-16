@@ -581,11 +581,16 @@ Status validateIoEffects(const ReadTarget& target, const DriverRequest& request,
         if ((affectedOutputs & (1u << i)) && (prerequisites.outputWiring[i] == InputWiring::UNKNOWN || prerequisites.outputWiring[i] > InputWiring::CONNECTED))
             return invalid(DriverError::WIRING_REQUIRED, "affected output wiring must be declared");
     if (prerequisites.allowEchoReadback) {
+        // A whole polarity word addresses every terminal, even when some or
+        // all bits equal the prior read. Unconfirmed replies are only allowed
+        // when the entire addressed word belongs to unconnected terminals.
+        const uint16_t replyInputs = affectedInputs | ((request.fields & bit(7)) ? 0xFu : 0u);
+        const uint16_t replyOutputs = affectedOutputs | ((request.fields & bit(12)) ? 3u : 0u);
         for (uint8_t i = 0; i < 4; ++i)
-            if ((affectedInputs & (1u << i)) && prerequisites.inputWiring[i] != InputWiring::UNCONNECTED)
+            if ((replyInputs & (1u << i)) && prerequisites.inputWiring[i] != InputWiring::UNCONNECTED)
                 return invalid(DriverError::WIRING_REQUIRED, "unconfirmed echo verification requires affected terminals unconnected");
         for (uint8_t i = 0; i < 2; ++i)
-            if ((affectedOutputs & (1u << i)) && prerequisites.outputWiring[i] != InputWiring::UNCONNECTED)
+            if ((replyOutputs & (1u << i)) && prerequisites.outputWiring[i] != InputWiring::UNCONNECTED)
                 return invalid(DriverError::WIRING_REQUIRED, "unconfirmed echo verification requires affected terminals unconnected");
     }
     if (request.fields & bit(15)) {

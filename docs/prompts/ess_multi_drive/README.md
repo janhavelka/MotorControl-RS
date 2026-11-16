@@ -84,6 +84,10 @@ BLOCKED(input), SOFTWARE COMPLETE, COMPLETE and NOT APPLICABLE. Software stages 
 their physical gates open. Missing physical evidence stays explicit. Preserve
 the delivered subset when later review finds unmet original requirements.
 
+The [04/09 audit](../../reports/2026-11-16_multi_drive_04_09_audit.md) records
+the independent follow-up, corrections and verification. It does not extend the
+recorded fixture or close wired, persistence or physical-timing gates.
+
 ## Rules for this set
 
 - Production broadcast stays disabled. If 03 is ever reopened with evidence,

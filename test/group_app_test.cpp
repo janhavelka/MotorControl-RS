@@ -1519,6 +1519,207 @@ void testMemberStartLossAfterExecutionNeverReplays() {
         }
 }
 
+uint32_t retainConsoleGroupStop(unsigned commandId) {
+    Serial.writeCapacity = 0;
+    while (app->outputCount < OUTPUT_LINES) assert(emit(app, "blocked", 7));
+    Probe::GroupCommand request; request.kind = Probe::GroupCommandKind::STOP;
+    request.stop = StopBehavior::DIRECT;
+    Probe::GroupReply reply;
+    assert(groupCommand(app, commandId, request, reply) == Probe::Action::OK);
+    runUntil([&] { return terminalGroup(reply.operationId); }, 4000000);
+    assert(groupOp(reply.operationId).result.ok && !groupOp(reply.operationId).delivered);
+    return reply.operationId;
+}
+void testStopPolicyCapacityBeforeAnyWrite() {
+    const auto all = addresses(Probe::GROUP_CAPACITY);
+    for (const auto mode : {Mode::STAGED, Mode::SEQUENTIAL})
+        for (const auto policy : {Policy::STOP_NORMAL, Policy::STOP_FAST})
+            for (const bool individual : {false, true}) {
+                fresh(all); readyGroup(all);
+                const uint32_t old[] = {retainConsoleGroupStop(901), retainConsoleGroupStop(902)};
+                readGroupState();
+                const auto from = frames.size(); const auto nextId = app->nextOperationId;
+                uint32_t id = 777;
+                const auto refused = individual ? submitGroupMoves(memberMoves(all, policy, mode), id) :
+                    submitGroupMove(groupMove(policy, mode), id);
+                assert(!refused && refused.detail == static_cast<int32_t>(Probe::Action::RESULTS_FULL));
+                assert(id == 777 && app->nextOperationId == nextId && frames.size() == from);
+                // LEAVE needs no fallback stop storage and preserves both old batches.
+                assert(individual ? submitGroupMoves(memberMoves(all, Policy::LEAVE, mode), id) :
+                    submitGroupMove(groupMove(Policy::LEAVE, mode), id));
+                runUntil([&] { return terminalGroup(id); }, 4000000);
+                assert(groupOp(id).result.ok);
+                for (const auto oldId : old) {
+                    assert(!groupOp(oldId).delivered);
+                    for (const auto address : all) {
+                        const auto* record = findRecord(*app, memberResult(oldId, address).operationId);
+                        assert(record && !record->delivered && confirmedStop(*record));
+                    }
+                }
+            }
+}
+void testStopPolicyUsesRemainingCapacity() {
+    const auto all = addresses(Probe::GROUP_CAPACITY);
+    for (const auto mode : {Mode::STAGED, Mode::SEQUENTIAL})
+        for (const auto policy : {Policy::STOP_NORMAL, Policy::STOP_FAST}) {
+            fresh(all); readyGroup(all);
+            const auto old = retainConsoleGroupStop(903); readGroupState();
+            const auto from = frames.size(); uint32_t id = 0;
+            loseAcknowledgement = [](const std::vector<uint8_t>& frame) { return isStart(frame, 15); };
+            assert(submitGroupMoves(memberMoves(all, policy, mode), id));
+            runUntil([&] { return terminalGroup(id); }, 4000000);
+            assert(groupOp(id).result.aborted && !groupOp(old).delivered);
+            for (const auto address : all) {
+                const auto& member = memberResult(id, address);
+                assert(member.stopAdmission == Probe::Action::OK && member.stopOperationId);
+                assert(member.stopExecution == ActionExecution::ACKNOWLEDGED && member.stopCompletion == ActionCompletion::OBSERVED);
+                assert(count([&](const std::vector<uint8_t>& f) { return isStop(f, address); }, from) == 1);
+                const auto* prior = findRecord(*app, memberResult(old, address).operationId);
+                assert(prior && !prior->delivered && confirmedStop(*prior));
+            }
+            assert(memberResult(id, 15).start == Probe::GroupStart::UNKNOWN);
+        }
+    // A whole-group stop consumes the remaining slots and removes every fallback
+    // obligation. An escalation with no slot cannot partially consume capacity.
+    fresh(all); readyGroup(all);
+    const auto old = retainConsoleGroupStop(904); readGroupState();
+    const auto from = frames.size(); uint32_t move = 0, stop = 0, rejected = 777;
+    assert(submitGroupMoves(memberMoves(all, Policy::STOP_FAST), move));
+    runUntil([] { return isStart(hardware.tx, 1); });
+    assert(submitGroupStop(StopBehavior::DIRECT, stop));
+    const auto nextId = app->nextOperationId;
+    assert(!submitGroupStop(StopBehavior::DIRECT, rejected) && rejected == 777 && app->nextOperationId == nextId);
+    runUntil([&] { return terminalGroup(move) && terminalGroup(stop); }, 4000000);
+    assert(!groupOp(old).delivered && groupOp(stop).result.ok);
+    for (const auto address : all) {
+        const auto& member = memberResult(move, address);
+        assert(member.interruptedByStop && !member.stopOperationId);
+        assert(memberResult(stop, address).admission == Probe::Action::OK);
+        assert(count([&](const std::vector<uint8_t>& f) { return isStop(f, address); }, from) == 1);
+    }
+    // An earlier sequential member can already be terminal when the explicit
+    // stop takes over. Its original outcome stays unchanged and consumes no
+    // second fallback slot from the fully occupied pool.
+    fresh(all); readyGroup(all);
+    retainConsoleGroupStop(905); readGroupState();
+    assert(submitGroupMoves(memberMoves(all, Policy::STOP_FAST, Mode::SEQUENTIAL), move));
+    drives[1].regs[6] = 1; // Real alarm reply ends member 1 before every start.
+    auto* early = findRecord(*app, memberResult(move, 1).operationId);
+    runUntil([&] { return terminal(*app, *early); }, 4000000);
+    assert(early->move.state == ActionState::FAILED && classifyStart(early->move) == Probe::GroupStart::STARTED);
+    assert(!app->group.move.startsDone);
+    unsigned char original[sizeof(early->move)];
+    std::memcpy(original, &early->move, sizeof(original));
+    assert(submitGroupStop(StopBehavior::DIRECT, stop));
+    runUntil([&] { return terminalGroup(move) && terminalGroup(stop); }, 4000000);
+    assert(std::memcmp(original, &early->move, sizeof(original)) == 0);
+    assert(!memberResult(move, 1).interruptedByStop);
+    for (const auto address : all) assert(!memberResult(move, address).stopOperationId);
+}
+void testStopPolicyOperationIdBudget() {
+    for (const bool individual : {false, true}) {
+        fresh(); readyGroup();
+        auto request = memberMoves({1, 2, 4}, Policy::STOP_FAST);
+        const uint32_t followingIds = 2 * app->group.count + 1;
+        app->nextOperationId = UINT32_MAX - followingIds + 1;
+        const auto nextId = app->nextOperationId; const auto from = frames.size(); uint32_t id = 777;
+        const auto refused = individual ? submitGroupMoves(request, id) : submitGroupMove(groupMove(Policy::STOP_FAST), id);
+        assert(!refused && refused.detail == static_cast<int32_t>(Probe::Action::IDS_EXHAUSTED));
+        assert(id == 777 && app->nextOperationId == nextId && frames.size() == from);
+        --app->nextOperationId; // Exact budget: move IDs, fallback stops and one recovery.
+        loseAcknowledgement = [](const std::vector<uint8_t>& frame) { return isStart(frame, 2); };
+        assert(individual ? submitGroupMoves(request, id) : submitGroupMove(groupMove(Policy::STOP_FAST), id));
+        assert(app->nextOperationId == 0);
+        runUntil([&] { return terminalGroup(id); }, 4000000);
+        assert(app->recovery.operationId == UINT32_MAX && !app->group.move.fallbackRecoveryId);
+        for (const uint8_t address : {1, 2}) {
+            const auto& member = memberResult(id, address);
+            assert(member.stopAdmission == Probe::Action::OK && member.stopCompletion == ActionCompletion::OBSERVED);
+            const auto* stop = findRecord(*app, member.stopOperationId);
+            assert(stop && stop->operationId == stop->action.operationId && stop->stopRecoveryOperationId == UINT32_MAX);
+            assert(count([&](const std::vector<uint8_t>& f) { return isStop(f, address); }, from) == 1);
+        }
+        assert(memberResult(id, 2).start == Probe::GroupStart::UNKNOWN);
+        assert(memberResult(id, 4).start == Probe::GroupStart::NOT_SENT && !memberResult(id, 4).stopOperationId);
+    }
+    // Stops for a selected non-member may spend all remaining global IDs. They
+    // cannot consume the admitted group's stop or shared recovery identities.
+    const std::vector<uint8_t> members = {2, 4, 5};
+    for (const auto mode : {Mode::STAGED, Mode::SEQUENTIAL})
+        for (const auto policy : {Policy::STOP_NORMAL, Policy::STOP_FAST})
+            for (const uint8_t lost : {4, 5}) {
+                fresh({1, 2, 4, 5}); readyGroup(members);
+                app->nextOperationId = UINT32_MAX - (2 * app->group.count + 1) - 2;
+                loseAcknowledgement = [=](const std::vector<uint8_t>& f) { return isStart(f, lost); };
+                uint32_t id = 0; assert(submitGroupMoves(memberMoves(members, policy, mode), id));
+                const auto recoveryId = app->group.move.fallbackRecoveryId;
+                StopPolicy stop; stop.behavior = StopBehavior::DIRECT;
+                uint32_t outside[2] = {};
+                assert(submitStop(1, stop, outside[0]) && submitStop(1, stop, outside[1]));
+                assert(app->nextOperationId == 0);
+                const auto from = frames.size();
+                runUntil([&] { return terminalGroup(id); }, 4000000);
+                assert(app->recovery.operationId == recoveryId && !app->group.move.fallbackRecoveryId);
+                for (const auto address : members) {
+                    const auto& member = memberResult(id, address);
+                    if (address > lost) { assert(member.start == Probe::GroupStart::NOT_SENT && !member.stopOperationId); continue; }
+                    assert(member.stopAdmission == Probe::Action::OK && member.stopCompletion == ActionCompletion::OBSERVED);
+                    assert(count([&](const std::vector<uint8_t>& f) { return isStop(f, address); }, from) == 1);
+                }
+                for (const auto stopId : outside) assert(findRecord(*app, stopId));
+                assert(memberResult(id, lost).start == Probe::GroupStart::UNKNOWN && app->nextOperationId == 0);
+            }
+    // A partly admitted explicit group stop transfers only its admitted member.
+    // Remaining members still use their reserved fallback IDs and stop records.
+    fresh({1, 2, 4, 5}); readyGroup(members);
+    app->nextOperationId = UINT32_MAX - (2 * app->group.count + 1) - 2;
+    loseAcknowledgement = [](const std::vector<uint8_t>& f) { return isStart(f, 5); };
+    uint32_t move = 0, explicitStop = 0;
+    assert(submitGroupMoves(memberMoves(members, Policy::STOP_FAST), move));
+    runUntil([] { return isStart(hardware.tx, 5); });
+    assert(submitGroupStop(StopBehavior::DIRECT, explicitStop));
+    assert(memberResult(explicitStop, 2).admission == Probe::Action::OK);
+    assert(memberResult(explicitStop, 4).admission == Probe::Action::IDS_EXHAUSTED && app->nextOperationId == 0);
+    runUntil([&] { return terminalGroup(move) && terminalGroup(explicitStop); }, 4000000);
+    assert(!memberResult(move, 2).stopOperationId);
+    for (const uint8_t address : {4, 5}) assert(memberResult(move, address).stopCompletion == ActionCompletion::OBSERVED);
+    for (const auto address : members) assert(count([&](const std::vector<uint8_t>& f) { return isStop(f, address); }) == 1);
+    // All explicit children may consume the last ordinary IDs too.
+    fresh({1, 2, 4, 5}); readyGroup(members);
+    app->nextOperationId = UINT32_MAX - (2 * app->group.count + 1) - 4;
+    loseAcknowledgement = [](const std::vector<uint8_t>& f) { return isStart(f, 5); };
+    assert(submitGroupMoves(memberMoves(members, Policy::STOP_FAST), move));
+    runUntil([] { return isStart(hardware.tx, 5); });
+    assert(submitGroupStop(StopBehavior::DIRECT, explicitStop) && app->nextOperationId == 0);
+    runUntil([&] { return terminalGroup(move) && terminalGroup(explicitStop); }, 4000000);
+    assert(groupOp(explicitStop).result.ok);
+    // After every start ACK, a lost explicit stop ACK still requires recovery
+    // for the other unsent stops. Releasing the move cannot discard that reserve.
+    // A later probe has a higher ID than the reserved recovery; recovery still
+    // invalidates its cached result and excludes later delivery of older reads.
+    fresh({1, 2, 4, 5}); readyGroup(members);
+    app->nextOperationId = UINT32_MAX - (2 * app->group.count + 1) - 5;
+    assert(submitGroupMoves(memberMoves(members, Policy::STOP_FAST), move));
+    const auto recoveryId = app->group.move.fallbackRecoveryId;
+    runUntil([] { return app->group.move.startsDone; });
+    command("@906 probe 1\n");
+    runUntil([&] { return app->modelKnown && app->modelOperationId > recoveryId; });
+    assert(app->known && app->ok);
+    loseAcknowledgement = [](const std::vector<uint8_t>& f) { return isStop(f, 2); };
+    assert(submitGroupStop(StopBehavior::DIRECT, explicitStop) && app->nextOperationId == 0);
+    runUntil([] { return app->owner.needsRecovery(); });
+    assert(!terminalGroup(move) && !releaseOperation(move));
+    runUntil([&] { return terminalGroup(move) && terminalGroup(explicitStop); }, 4000000);
+    assert(app->recovery.operationId == recoveryId && !app->group.move.fallbackRecoveryId);
+    assert(!app->known && !app->modelKnown && !app->ok && app->cacheOperationId == UINT32_MAX);
+    assert(memberResult(explicitStop, 2).execution == ActionExecution::UNKNOWN);
+    for (const uint8_t address : {4, 5}) assert(memberResult(explicitStop, address).completion == ActionCompletion::OBSERVED);
+    for (const auto address : members) {
+        assert(!memberResult(move, address).stopOperationId);
+        assert(count([&](const std::vector<uint8_t>& f) { return isStop(f, address); }) == 1);
+    }
+}
+
 void testFifteenIndependentRequestsAndStorage() {
     const auto all = addresses(Probe::GROUP_CAPACITY);
     fresh(all); readyGroup(all);
@@ -1705,6 +1906,9 @@ int main(int argc, char** argv) {
     testMemberReferenceExpiresAndContradictionsRevokeIt();
     testMemberPlanIsInertAndBoundToConfiguration();
     testMemberStartLossAfterExecutionNeverReplays();
+    testStopPolicyCapacityBeforeAnyWrite();
+    testStopPolicyUsesRemainingCapacity();
+    testStopPolicyOperationIdBudget();
     testFifteenIndependentRequestsAndStorage();
     testMemberStageExpiresBeforeLaterMemberWithoutOldEvidence();
     testMemberReferenceInvalidationThroughOrdinaryActionsAndReads();

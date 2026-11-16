@@ -167,7 +167,9 @@ struct DriverPrerequisites {
      * electrical level and does not establish enable/release precedence. */
     uint32_t ioEffectsQualifiedFields = 0;
     DriverRequest qualifiedIo;
-    /** IO verification policy for known UNCONNECTED affected terminals, or
+    /** IO verification policy for known UNCONNECTED affected terminals.
+     * A polarity-word write requires every terminal in that word UNCONNECTED,
+     * including unchanged bits. Also available for
      * segment configuration with independently qualified trigger inhibition,
      * or exact independently qualified control/tuning-setting effects.
      * A checked, on-time write echo with unconfirmed source or supplied execution

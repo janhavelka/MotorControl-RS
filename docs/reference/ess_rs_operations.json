@@ -1375,7 +1375,7 @@
         ],
         "reason": "Thirteen explicit passive/unloaded settings updates and exact restoration PASS as stored-register evidence. Full assignment/physical-function qualification NOT_RUN; checked FC06 source/ACK remains unconfirmed, matching FC03 readback settles only stored values."
       },
-      "reason": "Per-terminal exact commissioning facts admit inputs0?17, outputs0?5/9?10 and canonical custom outputs. Every FC06 intermediate is checked; connected terminals require confirmed replies. Source-qualified status/polarity mapping and declared load limits stay explicit; no replay or automatic rollback. Output11/cross-mapping, startup and physical effects remain unresolved or untested.",
+      "reason": "Per-terminal exact commissioning facts admit inputs 0-17, outputs 0-5/9-10 and canonical custom outputs. Every FC06 intermediate is checked; connected terminals require confirmed replies. Source-qualified status/polarity mapping and declared load limits stay explicit; no replay or automatic rollback. Output 11/cross-mapping, startup and physical effects remain unresolved or untested.",
       "choices": [
         "InputFunction.UNDEFINED",
         "InputFunction.ORIGIN",

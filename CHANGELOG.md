@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- Group stop-on-failure moves require result capacity and reserve stop/recovery
+  IDs before staging. Retained results and unrelated stops cannot consume that
+  operation's fallback resources.
+- Same-value polarity writes follow the connected-terminal reply rule.
+  Assignment inspection uses the same exact-read checks as write admission.
 - I/O settings check each intermediate FC06 state. Connected terminals use
   confirmed replies; explicit protection removal and output load limits apply.
 - Input qualification keeps its original lifetime across refreshed reads.

@@ -300,6 +300,8 @@ more drives (now addresses 1, 2 and 4, star wiring).
   host routes share the execution path. The
   [report](reports/2026-11-15_multi_drive_09_member_motion_requests.md) records
   verification and separate physical limits.
+  The [04/09 audit](reports/2026-11-16_multi_drive_04_09_audit.md) adds admission
+  checks for fallback-stop result capacity and reserves stop/recovery identities.
 - [ ] Broadcast start and stop ([multi-drive 03](prompts/ess_multi_drive/03_broadcast_operations.md))
   are not applicable while multi-drive 01 is NO-GO. Reopening requires new
   passing evidence for the exact configuration and command words, not a
@@ -310,6 +312,8 @@ more drives (now addresses 1, 2 and 4, star wiring).
   ([multi-drive 04](prompts/ess_multi_drive/04_input_programming.md)). Software
   checks and 64 unconnected I/O updates with exact restoration pass; see the
   [report](reports/2026-11-16_multi_drive_04_input_programming.md).
+  The [04/09 audit](reports/2026-11-16_multi_drive_04_09_audit.md) corrects
+  same-value polarity reply admission and stale ASSIGN inspection.
 - [ ] Qualify wired input effects, connected output loads, status/polarity
   mapping and restart persistence. The startup wording and stored assignment
   defaults remain an ambiguity. No wired fixture or drive restart was used in 04.

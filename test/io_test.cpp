@@ -361,6 +361,28 @@ void testCommissioningAge() {
     assert(E::driverWriteDeadline(c) == 240);
     p.ioTarget.generation++; rejected(drive, p);
 }
+void testPolarityReplySource() {
+    for (uint8_t index : {uint8_t(7), uint8_t(12)}) for (uint16_t value : {0, 1}) {
+        auto r = request(index);
+        if (index == 7) r.inputPolarity = value; else r.outputPolarity = value;
+        auto p = prerequisites(r, read(0, 0, 0, 0)); p.allowEchoReadback = true;
+        // Bit 1 is unchanged, but the whole word is sent. Same-value masks
+        // must obey the same confirmed-response rule as changed masks.
+        auto* wiring = index == 7 ? p.inputWiring : p.outputWiring;
+        for (auto state : {InputWiring::CONNECTED, InputWiring::UNKNOWN}) {
+            wiring[1] = state; rejected(r, p);
+        }
+        p.allowEchoReadback = false; wiring[1] = InputWiring::CONNECTED;
+        E::DriverContext c;
+        assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+        ack(c, false); assert(c.outcome == E::DriverOutcome::UNCONFIRMED_RESPONSE && c.uncertain);
+        wiring[1] = InputWiring::UNCONNECTED; p.allowEchoReadback = true;
+        assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+        ack(c, false); supply(c, reply({value}));
+        assert(c.state == ReadState::SUCCEEDED && !c.uncertain && !c.progress[index].acknowledged);
+        assert(c.progress[index].execution == ActionExecution::UNKNOWN);
+    }
+}
 } // namespace
 static void testOptionalAgePolicy() {
     const auto r = request(); auto p = prerequisites(r); p.maxAgeUs = 0;
@@ -395,6 +417,7 @@ static void testSuppliedUncertaintyNeedsReadbackPolicy() {
 }
 int main() {
     testInputCommissioningMatrix(); testInputPolarityOrder(); testOutputLoadsAndOrder(); testCommissioningAge();
+    testPolarityReplySource();
     testSuppliedUncertaintyNeedsReadbackPolicy();
     testOptionalAgePolicy();
     testAdmissionPrecedence();

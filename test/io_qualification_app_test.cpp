@@ -200,6 +200,34 @@ void exactFactsAndProtection() {
         until([&] { return !result(id).pending; }); assert(result(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS);
     }
 }
+void assignmentInspectionUsesExactReads() {
+    for (bool refreshSettings : {false,true}) {
+        fresh(); wiring(0,InputWiring::CONNECTED); ioBaseline();
+        auto q = facts(0); q.function = 7; assert(installIoQualification(q));
+        assert(valid(0));
+        if (refreshSettings) settingsRead(ESS::DriverGroup::IO);
+        else read(ESS::ReadKind::STATE);
+        IoQualification retained; bool current = true;
+        assert(copyIoQualification(1,0,IoPurpose::ASSIGN,retained,current));
+        assert(!current && retained.settingsOperationId == q.settingsOperationId &&
+            retained.stateOperationId == q.stateOperationId && retained.qualifiedUs == q.qualifiedUs);
+        const auto before = frames.size();
+        Serial.output.clear(); Serial.input = "@77 io qualification inspect 1 x0 assign\n";
+        until([] { return Serial.input.empty() && Serial.output.find("\"bus_traffic\":false}") != std::string::npos; });
+        assert(Serial.output.find("\"command\":\"io-qualification-inspect\"") != std::string::npos);
+        assert(Serial.output.find("\"present\":true,\"valid\":false") != std::string::npos);
+        assert(frames.size() == before);
+        refused(input(7));
+    }
+    for (auto purpose : {IoPurpose::CONFIGURE,IoPurpose::FINITE_MOVE,IoPurpose::SEGMENT}) {
+        fresh(); read(ESS::ReadKind::CONFIG); read(ESS::ReadKind::STATE);
+        auto q = facts(0,purpose); assert(installIoQualification(q));
+        read(ESS::ReadKind::STATE);
+        IoQualification retained; bool current = false;
+        assert(copyIoQualification(1,0,purpose,retained,current) && current);
+        assert(retained.stateOperationId == q.stateOperationId && retained.qualifiedUs == q.qualifiedUs);
+    }
+}
 void polarityAndInhibition() {
     // With an inactive old trigger, polarity-first would activate it before disable.
     fresh(); registers[1][0x41] = 7; ioBaseline();
@@ -232,14 +260,43 @@ void connectedOutputsAndReplySource() {
         assert(result(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS);
         assert(result(id).driverContext->progress[13].acknowledged);
     }
-    // The old custom output is activated by polarity before its later disable.
-    fresh(); wiring(4,InputWiring::CONNECTED); registers[1][0x47] = 9; ioBaseline();
-    auto q = facts(4); q.function = 0; q.polarity = 1; q.output.allowedLevels = 1;
+    // Final custom=1 with polarity=1 is inactive, but polarity is written first.
+    fresh(); wiring(4,InputWiring::CONNECTED); registers[1][0x4C] = 9; ioBaseline();
+    auto q = facts(4); q.polarity = 1; q.custom = 1; q.output.allowedLevels = 1;
     assert(installIoQualification(q));
-    ESS::DriverRequest request; assert(ESS::prepareOutputFunction(request,0,ESS::OutputFunction::UNDEFINED));
+    ESS::DriverRequest request; request.group = ESS::DriverGroup::IO;
     request.configurationGeneration = app->axis.generation;
-    request.fields |= static_cast<uint32_t>(ESS::DriverField::OUTPUT_POLARITY); request.outputPolarity = 1;
+    request.fields = static_cast<uint32_t>(ESS::DriverField::OUTPUT_POLARITY) |
+        static_cast<uint32_t>(ESS::DriverField::CUSTOM_OUTPUT);
+    request.outputPolarity = request.customOutput = 1;
     refused(request);
+    q.output.allowedLevels = 3; assert(installIoQualification(q));
+    uint32_t id = 0; assert(update(request,id));
+    until([&] { return !result(id).pending; });
+    const auto& context = *result(id).driverContext;
+    assert(context.outcome == ESS::DriverOutcome::SUCCESS && context.progress[12].acknowledged && context.progress[15].acknowledged);
+}
+void unchangedPolarityReplySource() {
+    for (bool inputPolarity : {false,true})
+        for (bool connected : {false,true})
+            for (bool confirmed : {false,true}) {
+                fresh(confirmed);
+                for (uint8_t terminal = 0; terminal < 6; ++terminal)
+                    wiring(terminal,InputWiring::UNCONNECTED);
+                if (connected) wiring(inputPolarity ? 3 : 5,InputWiring::CONNECTED);
+                ioBaseline();
+                ESS::DriverRequest request; request.group = ESS::DriverGroup::IO;
+                request.configurationGeneration = app->axis.generation;
+                request.fields = static_cast<uint32_t>(inputPolarity ? ESS::DriverField::INPUT_POLARITY : ESS::DriverField::OUTPUT_POLARITY);
+                if (connected && !confirmed) { refused(request); continue; }
+                uint32_t id = 0; assert(update(request,id));
+                until([&] { return !result(id).pending; });
+                const auto& context = *result(id).driverContext;
+                const auto& progress = context.progress[inputPolarity ? 7 : 12];
+                assert(context.outcome == ESS::DriverOutcome::SUCCESS && progress.readbackKnown && progress.readback == 0);
+                assert(progress.acknowledged == confirmed);
+                assert(progress.execution == (confirmed ? ActionExecution::ACKNOWLEDGED : ActionExecution::UNKNOWN));
+            }
 }
 void lifetimeAndUncertainty() {
     fresh(); wiring(0,InputWiring::CONNECTED); ioBaseline();
@@ -460,7 +517,8 @@ void finiteMoveMatrix() {
 } // namespace
 int main() {
     assignmentMatrix(); publicDriverRoutes(); exactFactsAndProtection(); polarityAndInhibition();
-    connectedOutputsAndReplySource(); lifetimeAndUncertainty(); revokeAfterFirstWrite();
+    assignmentInspectionUsesExactReads(); connectedOutputsAndReplySource(); unchangedPolarityReplySource();
+    lifetimeAndUncertainty(); revokeAfterFirstWrite();
     queuedStageExpiry(); settingsPurposePolicies(); independentQualificationAges();
     groupQualificationLifetime(); finiteMoveMatrix();
     if (app) { app->~App(); std::free(app); app = nullptr; }

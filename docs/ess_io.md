@@ -170,8 +170,11 @@ confirmed-response requirement applies.
 
 Connected terminals require a confirmed FC06 reply. A board with its receiver
 disabled during transmit uses that ordinary confirmed-response path. Echo-readback
-remains limited to unconnected affected terminals. Its stored-value evidence
-never establishes a wired effect. All independent motion qualifications remain.
+remains limited to unconnected affected terminals. Echo-readback of a whole
+input/output polarity word requires every terminal in that word unconnected,
+including unchanged bits and same-value writes. Actual effect checks still apply
+only to changed terminals. Stored-value evidence never establishes a wired effect.
+All independent motion qualifications remain.
 An observed register path is useful evidence even when oscilloscope and
 external switch/load tests are unavailable; it must not be reported as those
 physical qualifications.
@@ -205,9 +208,11 @@ reassignment, polarity workaround or precedence assumption resolves it.
 
 Upper firmware calls `submitDriverRead` for IO settings and the ordinary
 state-read API for live levels. It uses `inspectIoQualification` to copy the checked baseline,
-adds its terminal facts, then calls `installIoQualification`. Inspection never
-supplies wiring, inhibition or load facts. `copyIoQualification` reports retained
-facts and validity. `revokeIoQualification` cancels dependent unsent work; a
+adds its terminal facts, then calls `installIoQualification`. Inspection copies
+declared wiring; it does not infer inhibition or load facts.
+`copyIoQualification` reports retained facts and validity. A new settings or
+state read makes an old assignment record invalid, matching write admission.
+`revokeIoQualification` cancels dependent unsent work; a
 frame already on the bus settles with its evidence. Revocation is not a stop.
 `submitDriverSettings` submits the explicit candidate; `copySettingsResult`
 copies its read/write evidence, and `releaseOperation` releases a terminal
