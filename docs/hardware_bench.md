@@ -73,7 +73,16 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
-The [16 November 04/09 audit](reports/2026-11-16_multi_drive_04_09_audit.md)
+The [16 November HIL regression](reports/2026-11-16_hil_regression.md) is the latest session. It
+followed an owner power cycle of the drives and ended on `bench_s3_load_timer` from `baa91c9`,
+SHA-256 `19E89B5D3257D78A128D96DD7D9CEA59F67CE11724CBCC5BEF021A73B06E506E`. The first part ran on
+`e56d4c0` (`56FE9FDDBEEBC3B11C2039CCBAF64807C4E335C16F08AC58B208C11BD59B9D7F`).
+Drives 1/2/4 ended enabled, stopped and alarm-free, raw positions 2,975/1,450/4,916. I/O
+`[0,1,2,3,0,0,0,0,0]`, input filter 2, lock delay 200 and homing auxiliary 0 match the power-up
+reads. RAM still holds the last move profile, staged homing method/rates and JOG speed; nothing
+was saved. Drive 1 is selected, the group is empty, the owner is idle and COM13 is closed.
+
+Before that, the [16 November 04/09 audit](reports/2026-11-16_multi_drive_04_09_audit.md)
 used ordinary `bench_s3_load_timer` from `8982a98`, SHA-256
 `ea94e709234db9cce2c24615abd6e8d28a5f6a6250d3bcf05c432297f3abb5df`.
 Drives 1/2/4 ended enabled, stopped and alarm-free, raw positions 884/579/571 and

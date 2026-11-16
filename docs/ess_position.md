@@ -737,6 +737,17 @@ Direct C++ `moveBy`/`moveTo`/`submitMove` and advanced CLI moves leave this
 fallback disabled; they require the observed RUNNING transition. Direct users
 of the core may explicitly supply the qualified prerequisites described above.
 
+## Post-stop settling
+
+Bench, 12 November 2026, firmware `0x0029`: after a stop, mainly `stop fast`, the
+reported position can still change by one increment (four encoder counts, about
+0.36 degrees) for up to about 1.5 s, without RUNNING, speed or alarm. Another
+drive's motion does not cause it. A comparison that reads a position right after
+a stop must wait for an unchanged position (the stress tool waits 2 s) or allow
+for this change. The motion word's in-position bit stays clear after a mid-move
+stop because the target was not reached. See the
+[three-drive report](reports/2026-11-12_multi_drive_write_motion_stress.md#post-stop-settling).
+
 ## Target range
 
 Typed preparation, `PositionCommand` and `buildWritePositionProfile` reject a target

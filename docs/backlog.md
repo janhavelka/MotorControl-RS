@@ -52,10 +52,20 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   `0x0020` remains separate; no automatic rollback or move replay.
   The [independent follow-up audit](reports/2026-11-15_multi_drive_08_standalone_02_audit.md)
   corrects group readiness and pending-cancellation result handling.
-- [ ] Run the candidate/export/import short board regression on the new image.
-  The 15 November preflight found the recorded board, but address 1 did not
-  respond after explicit host recovery. See the
-  [report](reports/2026-11-15_standalone_02_profile_staging.md).
+- [x] Run the candidate/export/import short board regression on the new image.
+  16 November on `e56d4c0`: an equal archive staged unchanged with no write, a
+  changed candidate read back with `0x0020` unchanged, and the original restored
+  ([HIL regression](reports/2026-11-16_hil_regression.md)).
+- [x] Keep the start-speed move lock with the drive that may have changed
+  (`baa91c9`). One drive's revocation had blocked every move on another drive
+  after `useaddr`; root cause, fix and bench rerun are in the [HIL regression](reports/2026-11-16_hil_regression.md).
+- [ ] Widen the loop stack margin before more group work. The group move path
+  leaves 900 bytes free (ordinary moves 1,124) on `e56d4c0`/`baa91c9`; nothing
+  failed ([HIL regression](reports/2026-11-16_hil_regression.md#stack-margin)).
+- [ ] Explain the wider group start spread: staged 18.9 ms and sequential
+  49.5 ms medians on 16 November against 16 and 38.5 ms on `b7dd6fb`. Measure the
+  admission added since (member requests, fallback-stop reservation) before
+  optimizing it.
 - [ ] Resolve signed stored-target encoding, admissible limit/stored-target
   write forms, and home-offset order/sign/scale before exposing their setters.
 - [ ] Resolve method 18's conflicting signal captions and collision methods
@@ -77,8 +87,11 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   velocity poll deadlines, unsent-stop recovery, two-address escalation,
   public stop/copied results, qualified release and host accounting. All 94
   suites and exact-commit GCC/Clang/Arduino/IDF checks pass.
-- [ ] Run the stage 15/16 image through [standalone 14](prompts/standalone/14_bench_regression.md).
-  New physical checks were NOT RUN; native faults do not qualify real stop timing.
+- [x] Run the stage 15/16 image through [standalone 14](prompts/standalone/14_bench_regression.md).
+  16 November: the full route matrix passes on drive 1, including stop
+  escalation and a refused failed-stop release for a confirmed stop
+  ([HIL regression](reports/2026-11-16_hil_regression.md)). Native faults still do not qualify real stop timing;
+  release after a genuinely failed stop remains NOT RUN.
 - [x] Finish [standalone 16 software](reports/2026-11-15_standalone_16_evidence_qualification.md):
   uniform reply evidence, exact qualification lifetime, active-origin moves,
   home rate policy and bounded observation after an ambiguous trigger. Fresh
@@ -163,8 +176,9 @@ functional evidence; independent shaft calibration remains absent.
   Write/readback, restoration and the relation latch passed on 2 November.
 - [ ] Qualify the remaining homing auxiliary choices. Only 0 and 7 have bench
   write/readback evidence; setting a value does not qualify its homing behavior.
-- [ ] Record separate hardware evidence for velocity and position-clear
-  qualification routes. Home and start-speed relation routes have bench evidence.
+- [x] Record separate hardware evidence for velocity and position-clear
+  qualification routes: finite +60 rpm velocity with both stop endings and the
+  qualified zero clear on drives 1, 2 and 4 ([HIL regression](reports/2026-11-16_hil_regression.md)).
 - [ ] Qualify signed velocity and physical ramp/acceleration mappings before
   broadening their motion claims. Velocity has no rate ceiling; test its
   `stop normal` above 60,000 increments/s first (HW-14 was found in position mode). Same-endpoint in-motion speed changes remain
@@ -244,10 +258,8 @@ more drives (now addresses 1, 2 and 4, star wiring).
   drives ([report](reports/2026-11-13_multi_drive_settings_and_soak.md)).
 - [x] Run longer than one hour: 4 h extended stress over drives 1, 2 and 4,
   2,152 cases, 0 anomalies ([report](reports/2026-11-13_multi_drive_settings_and_soak.md)).
-- [ ] Document post-stop settling in the position guide: after a stop, mainly
-  `stop fast`, firmware `0x0029` can still change its reported position by one
-  increment for about 1.5 s. Completion and comparison logic that reads a
-  position right after a stop must allow for it or wait.
+- [x] Document post-stop settling in the position guide
+  ([position guide](ess_position.md#post-stop-settling)).
 
 - [ ] Find why a drive loses the first byte of other drives' replies. At
   address 3 it answered about 0.8% of them with an exception frame
