@@ -7,7 +7,7 @@ No report makes its recorded bench state a fresh observation.
 
 | Record | Current significance |
 | --- | --- |
-| [Multi-drive 04/09 independent audit](2026-11-16_multi_drive_04_09_audit.md) | Fresh source, ownership and interface review. Corrects polarity reply admission, ASSIGN inspection and group fallback-stop resources; verification is recorded in the report. |
+| [Multi-drive 04/09 independent audit](2026-11-16_multi_drive_04_09_audit.md) | PROCESSED: polarity reply admission, ASSIGN inspection and group fallback-stop resources fixed. All 97 suites, four exact-commit CI jobs and bounded bench checks pass. The existing post-candidate group relation guard remains. |
 | [Multi-drive 04: terminal commissioning](2026-11-16_multi_drive_04_input_programming.md) | Software complete: per-terminal facts, intermediate-write checks and shared finite-move rules. All 97 suites, four exact-commit CI jobs and unconnected register/motion checks pass; wired effects, mapping and restart persistence remain unqualified. |
 | [Multi-drive 09: independent member requests](2026-11-15_multi_drive_09_member_motion_requests.md) | COMPLETE: member intents/references, 95 suites and four exact-commit CI jobs pass. Three-drive staged/sequential moves, urgent stop, enable/reselection and profile restoration pass. M02 resolved; wider physical limits stay open. |
 | [Multi-drive 08 / standalone 02 independent audit](2026-11-15_multi_drive_08_standalone_02_audit.md) | PROCESSED: candidate/group relation and profile invalidation, pending-result cancellation parity and stale coverage wording corrected. All 95 suites and exact-commit GCC/Clang/Arduino/IDF CI pass; board checks remain NOT RUN. |

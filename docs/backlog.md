@@ -302,6 +302,8 @@ more drives (now addresses 1, 2 and 4, star wiring).
   verification and separate physical limits.
   The [04/09 audit](reports/2026-11-16_multi_drive_04_09_audit.md) adds admission
   checks for fallback-stop result capacity and reserves stop/recovery identities.
+  Fresh local checks, all four exact-commit CI jobs and the bounded three-drive
+  regression pass. The documented post-candidate relation guard remains.
 - [ ] Broadcast start and stop ([multi-drive 03](prompts/ess_multi_drive/03_broadcast_operations.md))
   are not applicable while multi-drive 01 is NO-GO. Reopening requires new
   passing evidence for the exact configuration and command words, not a

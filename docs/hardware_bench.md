@@ -6,6 +6,13 @@ start of each test session; old readback is not fresh admission evidence.
 
 ## Fixture and standing authorization
 
+Later on 16 November, the [04/09 audit](reports/2026-11-16_multi_drive_04_09_audit.md)
+flashed `8982a98` on the same board. Unconnected I/O updates, a finite move,
+different-member group moves, urgent group stop and exact restoration passed.
+A separate diagnostic confirmed zero-traffic refusal after candidate-write
+relation revocation. Group motion was then checked in a fresh controller session
+under the existing startup policy. The motors were not restarted.
+
 On 16 November, [M04 terminal checks](reports/2026-11-16_multi_drive_04_input_programming.md)
 flashed `e43c8d0` on the recorded COM13 board. Address 1 passed 64 unconnected
 I/O updates, exact restoration, one finite move and an explicit stop. Addresses
@@ -15,7 +22,7 @@ Later on 15 November, all three model probes answered. The
 [M09 regression](reports/2026-11-15_multi_drive_09_member_motion_requests.md)
 flashed `7a97050` and passed different-member staged/sequential moves, urgent
 group stop, profile restoration and enable/reselection checks. This supersedes
-the earlier failed preflights below; M04 is the later recorded session.
+the earlier failed preflights below; the audit above is the latest session.
 
 Read-only preflight on 15 November for multi-drive 08: the recorded COM13 USB
 device answered the protocol-3 console handshake, but one address-1 model probe
@@ -66,8 +73,21 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+The [16 November 04/09 audit](reports/2026-11-16_multi_drive_04_09_audit.md)
+used ordinary `bench_s3_load_timer` from `8982a98`, SHA-256
+`ea94e709234db9cce2c24615abd6e8d28a5f6a6250d3bcf05c432297f3abb5df`.
+Drives 1/2/4 ended enabled, stopped and alarm-free, raw positions 884/579/571 and
+speed 0. All six profile words were restored to `[30,100,100,60,0,5000]`;
+configuration was unchanged. Drive 1's nine I/O words were restored to
+`[0,1,2,3,0,0,0,0,0]`. No EEPROM write or motor restart occurred.
+Drive 1 is selected, group empty, debug/monitor/load off, DE off, owner idle with
+no pending/retained work and COM13 closed. Restoration revokes start-speed
+relations again: groups cannot install them; selected-axis moves need their
+normal fresh reads and explicit relation qualification. A successful startup
+test does not clear that guard within the session.
+
 The [16 November M04 checks](reports/2026-11-16_multi_drive_04_input_programming.md)
-are the latest session: ordinary `bench_s3_load_timer` from `e43c8d0`, SHA-256
+used ordinary `bench_s3_load_timer` from `e43c8d0`, SHA-256
 `43a259fa5ca09ca3fe860cc0b205bfddfa2ab83300fcb1732bf29ebdfe453931`.
 Drive 1 ended enabled, stopped and alarm-free, raw position 590 and speed 0.
 Its nine I/O words were restored to `[0,1,2,3,0,0,0,0,0]` and its six profile

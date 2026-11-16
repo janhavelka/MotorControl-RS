@@ -1,9 +1,16 @@
 # Multi-drive 04/09 independent audit
 
-Status: IN PROGRESS. Corrections and final verification are being completed.
+Status: PROCESSED. Confirmed in-scope defects are fixed and verified.
 Baseline: `92e5d2b` on `main`. Scope is the original
 [04](../prompts/ess_multi_drive/04_input_programming.md) and
 [09](../prompts/ess_multi_drive/09_member_motion_requests.md) prompts, read in full.
+
+[Evidence archive](2026-11-16_multi_drive_04_09_audit_evidence.zip): original
+prompts and source hashes, independent reviews/reproducers, final diff, local
+checks, CI metadata/artifacts, image, scripts, backups and raw bench records.
+Each file has a SHA-256 entry in the archive manifest.
+ZIP SHA-256:
+`f9e07db111bac87df69e981434f1346ab1f188dc52b3bf206e4f7f150a04d4b3`.
 
 ## Review boundary
 
@@ -56,14 +63,66 @@ once. A selected nonmember stop shared the same recovery, and later group starts
 remained unsent.
 
 All three reviewers report no further confirmed in-scope defect. The lead
-checked the final code, result ownership and capacity transitions. Final quick
-verification, exact implementation-commit CI and bounded bench regressions are
-pending. Failed intermediate approaches remain in the evidence archive.
+checked the final code, result ownership and capacity transitions. The final
+fresh quick verifier passes all 97 registered suites and 15 checks, including
+source/install consumers, inventory negatives and repository checks. Doxygen
+and the S3 firmware build pass. All four jobs in
+[CI run 43779363701](https://github.com/janhavelka/MotorControl-RS/actions/runs/43779363701)
+pass for exact implementation commit
+`8982a985a4567c036004cc3c4e536e5d627da851`: native GCC, native Clang, all four
+Arduino environments, and ESP-IDF app/core S3/core S2/portable S2 builds.
+All four downloaded artifacts passed digest, ZIP and verifier-summary checks.
 
 The first quick run passed 96 of 97 suites. A lead edit changed a diagnostic
 string checked by `io_test`; the original string was restored without changing
 the assertion or the new admission rule. Its focused rerun passes. The complete
 fresh rerun is recorded separately from that failure.
+The final handoff changes documentation and evidence only; it does not change
+the implementation checked by that run.
+
+## Bench verification
+
+Ordinary `bench_s3_load_timer` was flashed on COM13, USB `303A:1001`, serial
+`3C:0F:02:CD:6B:98`. The image is 718,400 bytes, SHA-256
+`ea94e709234db9cce2c24615abd6e8d28a5f6a6250d3bcf05c432297f3abb5df`,
+from the implementation commit above. SDK: pioarduino 55.03.311, Arduino 3.3.11,
+ESP-IDF 5.5.5. The recorded three ESS23-RS20 drives at 1/2/4 reported
+`0x4EEA`/`0x0029`; 115200 8N1, free shafts, power and RS485 only.
+
+The I/O run passed 64 unconnected register updates and restoration, one relative
+100-step move at 60 rpm, explicit fast stop and exact six-word profile restoration.
+It ran for 49.80 s with 950 successful owner transactions and no transport
+failures/timeouts.
+
+The following group run stopped at host preflight. Its profiles matched, but
+address 1 retained relation revocation from candidate restoration. No group
+motion was submitted. A separate diagnostic then submitted the finite group
+plan: firmware rejected address 1 as `unavailable`, with zero new transactions.
+This is the documented guard, covered by existing native regressions. The
+failed preflight remains FAIL in `group_run.json`.
+
+A separate controller session used the same image and the documented startup
+policy. Motors were not restarted. Fresh configuration/state/profile reads
+preceded three passing cases: staged +100/-150/+200 steps; sequential inverse
+values; and staged +300/+400/+500 with explicit group fast stop. Each member's
+intent and outcome were checked. All staged readbacks preceded all starts;
+the interrupted move and stop retained separate results. The run took 12.34 s
+with 239 successful owner transactions and no transport failures/timeouts. All six profile
+words were restored to `[30,100,100,60,0,5000]` on every drive; configuration was
+unchanged. No EEPROM write, automatic recovery or uncertain write replay occurred.
+Drives 1/2/4 ended enabled, stopped and alarm-free at raw positions 884/579/571,
+with speed 0. Drive 1 is selected, group empty, debug/monitor/load and DE off,
+owner idle without pending/retained work, and COM13 closed. Candidate restoration
+revokes relations again; normal fresh admission remains required.
+
+The optional passive debug stream dropped 2,495 records in the I/O run and 731
+in the group run. It is not a complete wire capture; retained operation evidence
+was checked separately. An independent reviewer checked 697/216 retained raw
+frames and the operation/result assertions, with no contradiction. No capture
+faults or RX errors were reported. Observed
+maximum capture poll gaps were 59/58 us. Minimum internal free memory was
+342,212 bytes, free PSRAM 7,140,908 bytes, and the task stack low-water values
+were 1,124/916 bytes. These measurements apply to this three-drive fixture.
 
 ## Storage and stack
 
@@ -83,6 +142,9 @@ archive records actual SDK compiler arguments, type sizes and `.su` files.
 
 Wired input effects, connected output loads, status/polarity mapping and drive
 restart persistence remain unqualified. No new source meaning is inferred.
+Groups still cannot install a start-speed relation after candidate-write
+revocation; use the qualified selected-axis route. The fresh-session bench run
+does not qualify a raw start-speed/RPM conversion or remove that guard.
 Output 11, cross-mapped custom actuation and shared-start questions remain
 standalone 06. Input-start observation remains multi-drive 05. Physical absolute
 coordinates, independent start skew, electrical timing and HW-15 remain separate
