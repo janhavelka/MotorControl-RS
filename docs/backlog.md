@@ -59,21 +59,30 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
 - [x] Keep the start-speed move lock with the drive that may have changed
   (`baa91c9`). One drive's revocation had blocked every move on another drive
   after `useaddr`; root cause, fix and bench rerun are in the [HIL regression](reports/2026-11-16_hil_regression.md).
-- [ ] Widen the loop stack margin before more group work. The group move path
-  leaves 900 bytes free (ordinary moves 1,124) on `e56d4c0`/`baa91c9`; nothing
-  failed ([HIL regression](reports/2026-11-16_hil_regression.md#stack-margin)).
-- [ ] Explain the wider group start spread: staged 18.9 ms and sequential
-  49.5 ms medians on 16 November against 16 and 38.5 ms on `b7dd6fb`. Measure the
-  admission added since (member requests, fallback-stop reservation) before
-  optimizing it.
+- [x] Widen the loop stack margin before more group work. `f7368a2` gives the
+  Arduino loop task and the IDF owner task 12 KiB. On the bench the group move
+  and stop path now leaves 4,996 bytes free, against 900 before
+  ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md)).
+- [x] Explain the wider group start spread of the 16 November regression
+  (18.9/49.5 ms medians): raw traffic copying was on. The same moves give
+  19.8/50.6 ms with `debug raw` and 16.8/41.0 ms without
+  ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md#group-start-spread-and-raw-traffic-copying)).
+  Against `b7dd6fb` (16/38.5 ms), 0.8/2.5 ms remain unattributed.
+- [ ] Decide how applications report the alarm 5 silence: while latching alarm 5,
+  firmware `0x0029` does not answer Modbus for 1.0 to 1.9 s. The move then ends as
+  a transport error with completion unknown, and only a later read shows the
+  alarm. The current handling is safe; a caller needs a read after at least 2 s
+  to tell an alarm from a lost drive ([alarm 5](ess_actions.md#alarm-5-on-firmware-0x0029)).
 - [ ] Resolve signed stored-target encoding, admissible limit/stored-target
   write forms, and home-offset order/sign/scale before exposing their setters.
 - [ ] Resolve method 18's conflicting signal captions and collision methods
   -4..-1's missing trajectory/encoding. The 30 implemented methods keep their
   qualification guards. See [method dispositions](ess_homing_methods.md).
-- [ ] Resolve shared-start 1: native 0-to-1 write read back 0 on the bench.
-  Preserve that FAIL/uncertain result; no retry or assumed FC06 semantics.
-  [Stored-record evidence](archive/reports/ess_release_16_2026-10-04.md).
+- [ ] Resolve shared-start 1: firmware `0x0029` acknowledges writes to `0x0130`
+  with a source-confirmed echo and keeps reading 0 (1, 10, 60 and 180 on
+  16 November). Records 2 and 16 store their values. Ask the vendor; keep the
+  FAIL and the setter's mismatch report. [Stored-record evidence](archive/reports/ess_release_16_2026-10-04.md),
+  [rerun](reports/2026-11-16_unattended_bench_tests.md#shared-start-speed-record-1-the-4-october-fail-reproduced).
 - [ ] Resolve output function 11 ('User defined 2'; p28 ties functions 9-11 to
   `0x004F`, but p74 defines only terminal bits 0-1) and crossmapped custom actuation. No external trigger/selector edges are synthesized by serial
   settings. [I/O contract](ess_io.md).
@@ -174,13 +183,16 @@ functional evidence; independent shaft calibration remains absent.
   or independent shaft motion. Unwired terminals are not disabled assignments.
 - [ ] Qualify position start-speed scaling, activation timing and persistence.
   Write/readback, restoration and the relation latch passed on 2 November.
-- [ ] Qualify the remaining homing auxiliary choices. Only 0 and 7 have bench
-  write/readback evidence; setting a value does not qualify its homing behavior.
+- [ ] Qualify the homing behavior of auxiliary choices other than 0 and 7. All
+  twelve choices are written and read back on drives 1, 2 and 4
+  ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md)); only 0 and 7 have run a home.
 - [x] Record separate hardware evidence for velocity and position-clear
   qualification routes: finite +60 rpm velocity with both stop endings and the
   qualified zero clear on drives 1, 2 and 4 ([HIL regression](reports/2026-11-16_hil_regression.md)).
-- [ ] Qualify signed velocity and physical ramp/acceleration mappings before
-  broadening their motion claims. Velocity has no rate ceiling; test its
+- [ ] Qualify physical ramp/acceleration mappings before broadening velocity
+  claims. The two's-complement negative speed is verified on drives 1, 2 and 4
+  ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md#negative-velocity-image-a)); the `negative` fact
+  stays a caller statement. Velocity has no rate ceiling; test its
   `stop normal` above 60,000 increments/s first (HW-14 was found in position mode). Same-endpoint in-motion speed changes remain
   unavailable; bare speed writes are not proven smooth updates.
   [Live-speed review](archive/reports/2026-10-06_rounding_and_live_speed.md).
@@ -193,7 +205,9 @@ functional evidence; independent shaft calibration remains absent.
 
 - [ ] Resolve HW-12 and repeat overnight qualification on the shared USB-driver
   image. The 2-3 November run reached 9,212 cases but found one USB output stall;
-  later clean segments do not close it. See the
+  later clean segments do not close it. On 16 November an 8-hour three-drive soak
+  on `f7368a2` passed 4,269 cases with no USB stall ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md#8-hour-soak-image-b));
+  the earlier stall stays unexplained. See the
   [current investigation](reports/2026-11-02_standalone_promptset_audit.md#overnight-stress-run-2-3-november-2026).
   The older captured lost-TX-wakeup stall has one matching HWCDC race and a
   replacement driver; its actual trigger was not traced. The earlier no-dump

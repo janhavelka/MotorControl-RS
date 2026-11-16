@@ -267,7 +267,11 @@ does not reserve the motor after checked stop/reconciliation.
 Human action/motion terminals are concise; JSON inspection retains diagnostic
 detail. `debug raw|decoded` copies owner traffic without consuming protocol
 bytes or blocking transactions under output pressure. Dropped observations
-are counted. Debug mode uses the same production operation path.
+are counted. Debug mode uses the same production operation path. Formatting
+the copied traffic shares the service loop: on 16 November 2026, `debug raw`
+widened the three-drive group start spread from 16.8 to 19.8 ms staged and from
+41.0 to 50.6 ms sequential ([report](reports/2026-11-16_unattended_bench_tests.md#group-start-spread-and-raw-traffic-copying)).
+Timing measurements must record whether copying was on.
 
 ## ESS completion routes and remaining plans
 

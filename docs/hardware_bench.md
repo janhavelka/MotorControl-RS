@@ -6,7 +6,17 @@ start of each test session; old readback is not fresh admission evidence.
 
 ## Fixture and standing authorization
 
-Later on 16 November, the [04/09 audit](reports/2026-11-16_multi_drive_04_09_audit.md)
+Last on 16 November, the owner asked for every test that does not need them at
+the bench and accepted the risks. The [unattended bench tests](reports/2026-11-16_unattended_bench_tests.md)
+flashed `f7368a2` and ran:
+- the remaining setting round trips and negative velocity;
+- an 8-hour soak and one hour of group motion;
+- a direction move;
+- a latched alarm 5 cleared by `alarm-clear`, on drives 4 and 2.
+
+Terminals stayed declared unconnected. The motors were not restarted.
+
+Earlier on 16 November, the [04/09 audit](reports/2026-11-16_multi_drive_04_09_audit.md)
 flashed `8982a98` on the same board. Unconnected I/O updates, a finite move,
 different-member group moves, urgent group stop and exact restoration passed.
 A separate diagnostic confirmed zero-traffic refusal after candidate-write
@@ -81,7 +91,23 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
-The [16 November HIL regression](reports/2026-11-16_hil_regression.md) is the latest session. It
+The [16 November unattended bench tests](reports/2026-11-16_unattended_bench_tests.md)
+are the latest session.
+
+- **Image:** `bench_s3_load_timer` from `f7368a2`, SHA-256
+  `C1E33A28318D6848C08888C174688F95D7EBABBD5527F93473770D913DF79866`.
+- **Drives 1/2/4:** enabled, stopped and alarm-free, raw positions
+  109,162/137,917/274,722.
+- **Settings matching that session's starting reads:** driver, I/O, control and
+  tuning settings, including alarm threshold 4000, and all 48 segment and
+  start-speed records.
+- **Homing auxiliary:** 0, written back after the soak.
+- **Still in RAM:** the last move profiles, homing method 33 or 34, and JOG
+  speed 60 on drives 2 and 4. Nothing was saved.
+- **Controller:** drive 1 is selected, the group is empty, the owner is idle and
+  COM13 is closed.
+
+Before that, the [16 November HIL regression](reports/2026-11-16_hil_regression.md). It
 followed an owner power cycle of the drives and ended on `bench_s3_load_timer` from `baa91c9`,
 SHA-256 `19E89B5D3257D78A128D96DD7D9CEA59F67CE11724CBCC5BEF021A73B06E506E`. The first part ran on
 `e56d4c0` (`56FE9FDDBEEBC3B11C2039CCBAF64807C4E335C16F08AC58B208C11BD59B9D7F`).

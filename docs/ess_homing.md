@@ -364,6 +364,10 @@ coordinate policy as motion. `prepareHome` still requires independently
 qualified active auxiliary7, qualified zero offset, exact native parameters and
 methods1–14/17/19–30/33–35. A stored/readback7 never grants any of those qualifications.
 
+Bench, 16 November 2026: every choice 0..11 was written and read back on drives
+1, 2 and 4, ending at 0 ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md)).
+Only choices 0 and 7 have run a home; the coordinate behavior of the others is untested.
+
 Use `prepareDriverRead`/`getDriver` for prior FC03 `0x0030/1`; the update uses
 `prepareDriverSettings`/`nextDriver`/`advanceDriver` for FC06 `0x0030` and separate
 FC03 readback. `raw[0]` preserves even an unknown prior word; local

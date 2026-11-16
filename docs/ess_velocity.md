@@ -157,10 +157,17 @@ serial start; pages18/19 distinguish external JOG functions8/9/10. Page25 descri
 normal stop using deceleration set before motion and direct stop without that
 ramp. Page 70 contradicts examples/defaults: speed 120 labelled 5 rpm, ramp 50
 labelled 100 ms. Therefore no default ratio becomes a conversion formula. Exact
-firmware `0x0029` with model `0x4EEA` remains unqualified for negative wire encoding, RPM
+firmware `0x0029` with model `0x4EEA` remains unqualified for RPM
 factor, ramp factor/initial speed, physical acceleration and stopping. CURRENT_SPEED
 raw readback is not decoded as actual RPM. No ESS communication-loss stop is
-established. The user-confirmed ESS23-RS20/nominal 1000 PPR identity is recorded;
+established.
+
+Bench, 16 November 2026, drives 1, 2 and 4 on firmware `0x0029`: the
+two's-complement speed word runs in reverse. With configured ramps and a read
+2 s after the stop, the position changed −487 at −60 rpm against +490 at
++60 rpm over 500 ms, and −47 at −6 rpm. The `negative` fact stays a caller
+statement; this evidence supports it for this model and firmware only
+([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md#negative-velocity-image-a)). The user-confirmed ESS23-RS20/nominal 1000 PPR identity is recorded;
 it does not resolve these firmware semantics.
 
 See [implementation/evidence](archive/reports/ess_release_11_2026-10-04.md) and the

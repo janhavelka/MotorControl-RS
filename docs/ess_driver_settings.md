@@ -151,6 +151,11 @@ records its tests, image sizes and read-only evidence. Later
 [position-boundary testing](reports/2026-10-07_position_limits.md) exercised
 subdivision changes and restoration on the recorded free-shaft motor. That
 evidence does not qualify every driver field or electrical behavior.
+On 16 November 2026 direction, subdivision, word order, over-limit stop, PV
+interruption and external position mode were each changed and restored on
+drive 1, and over-limit stop on drives 2 and 4. Every write was acknowledged and
+read back ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md#driver-settings-image-a)).
+Soft-limit enable was not attempted, and no field's external effect was measured.
 Software-limit movement still needs resolved pair encoding, homing/reference
 semantics and a suitable fixture; raw zero limits are no proof.
 

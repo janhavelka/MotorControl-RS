@@ -184,6 +184,20 @@ no speculative restore was sent. Independent response-source/device-acceptance
 evidence or exact firmware semantics is still required to identify the cause.
 The read path remains usable; the failed write is not hardware-qualified.
 
+On 16 November 2026 the case was rerun on purpose on drive 1, with raw traffic
+([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md)).
+Each of 1, 10, 60 and 180 written to `0x0130` received an exact,
+source-confirmed FC06 echo, and every readback was still 0. Record 2
+(`0x0131`, 1) and record 16 (`0x013F`, 100) read back their values and were
+restored. A full typed read sweep found no other register holding the written
+values. Firmware `0x0029` acknowledges writes to record 1's start speed and
+discards them; the setter keeps reporting `READBACK_MISMATCH` for it.
+
+The same session changed speed, acceleration and deceleration by one native
+step in all 16 PT and all 16 PV records of drive 1, and in records 1 and 16 on
+drives 2 and 4. Every change and every restoration was acknowledged and read
+back. Record execution still needs trigger inputs and remains NOT RUN.
+
 Consumers must size storage using their installed types and target ABI.
 Historical context sizes are retained in the [segment report](archive/reports/ess_release_16_2026-10-04.md)
 and [control-settings report](archive/reports/ess_release_17_2026-10-04.md#storage-verification-and-handoff);

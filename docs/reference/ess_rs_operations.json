@@ -659,9 +659,11 @@
         ]
       },
       "hardware": {
-        "state": "NOT_RUN",
-        "evidence": [],
-        "reason": "No retained physical clear-alarm scenario with a before-alarm and correlated cleared-state observation. The current production path permits bounded actions; independent electrical/shaft qualification is separate from admission."
+        "state": "PASS",
+        "evidence": [
+          "docs/reports/2026-11-16_unattended_bench_tests.md"
+        ],
+        "reason": "Alarm 5 (position tolerance) latched five times by a lowered position-error threshold on drives 4 and 2 (image f7368a2, 16 November 2026). After an explicit stop reconciled the uncertain move, alarm-clear was acknowledged and observed, and state 0.2 s later showed alarm 0 and the drive enabled each time, although hardware p12 lists alarm 5 as re-power reset. Alarms 1-3 were not provoked; independent electrical/shaft qualification is separate."
       },
       "reason": "Explicit one-shot command plus bounded checked state observation; acknowledgement is distinct from reported completion and physical effect."
     },
@@ -942,9 +944,10 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/2026-11-16_hil_regression.md"
+          "docs/reports/2026-11-16_hil_regression.md",
+          "docs/reports/2026-11-16_unattended_bench_tests.md"
         ],
-        "reason": "Finite +60 native rpm for 1,000 ms with configured 100 ms ramps and stated rpm/ramp/inputs facts; normal and fast stop endings observed on drive 1 (exact image e56d4c0, 16 November 2026). The application admits only +/-60 rpm. Negative speed (unverified encoding), longer durations and independent velocity/acceleration/stop-distance measurement are NOT RUN."
+        "reason": "Finite +60 native rpm for 1,000 ms with configured 100 ms ramps and stated rpm/ramp/inputs facts; normal and fast stop endings observed on drive 1 (exact image e56d4c0, 16 November 2026). Negative speed with the stated negative fact on image baa91c9: -6 and -60 rpm ran in reverse with the positive magnitude on drives 1, 2 and 4 (two's-complement word). The application admits only +/-60 rpm. Longer durations and independent velocity/acceleration/stop-distance measurement are NOT RUN."
       },
       "reason": "Finite duration includes setup; checked signed speed plus retained native ramps, one start, bounded observations and existing priority stop; no acceleration formula, external JOG, live target updates or watchdog inferred.",
       "id": "velocity_start",
@@ -1038,11 +1041,12 @@
         ]
       },
       "hardware": {
-        "state": "NOT_RUN",
+        "state": "PASS",
         "evidence": [
-          "docs/archive/reports/ess_release_13_2026-10-04.md"
+          "docs/archive/reports/ess_release_13_2026-10-04.md",
+          "docs/reports/2026-11-16_unattended_bench_tests.md"
         ],
-        "reason": "Physical settings writes/restore and soft-limit movement remain gated by source/timing/reference evidence."
+        "reason": "Direction, subdivision, word order, over-limit stop, PV interruption and external position mode changed and restored on drive 1, over-limit stop on drives 2 and 4; every write acknowledged and read back (16 November 2026). Soft-limit enable not attempted (pair encoding and homed reference unresolved); external effects of these fields are not measured."
       },
       "reason": "All seven single-word candidates validate before traffic. Per-terminal CONFIGURE facts replace the private input gate; the passive subdivision path remains. Independent live IO and caller-fact ages cap writes. Checked ACK/readback and possible-change effects remain separate; no rollback, retry or implicit save.",
       "choices": [
@@ -1629,12 +1633,13 @@
         "reason": "Real indexed core, application owner path and strict C++ console/Python parity; simulated transport is not physical trigger evidence."
       },
       "hardware": {
-        "state": "NOT_RUN",
+        "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_16_attempt1_2026-10-04.json",
-          "docs/archive/reports/ess_release_16_2026-10-04.json"
+          "docs/archive/reports/ess_release_16_2026-10-04.json",
+          "docs/reports/2026-11-16_unattended_bench_tests.md"
         ],
-        "reason": "All16/range/physical-engine qualification NOT_RUN. Narrow stored subset PTindex1 speed120-to121 and ramp100-to101, matching readbacks and exact original restoration PASS. ACK source stays unconfirmed/executionUNKNOWN; no motion or persistence claim."
+        "reason": "Speed, acceleration and deceleration changed by one native step and restored in all 16 PT records of drive 1 and records 1 and 16 of drives 2 and 4; every FC06 source-confirmed and every readback matching (16 November 2026). Range edges, record execution (needs trigger inputs) and persistence NOT_RUN."
       },
       "reason": "All16 speed/native ramp scalar fields; whole candidate validated before writes, one checked FC06/FC03 readback per field, exact progress and unknown execution retained. No atomicity, acceleration conversion or persistence claim."
     },
@@ -1842,12 +1847,13 @@
         "reason": "Real indexed core, application owner path and strict C++ console/Python parity; simulated transport is not physical trigger evidence."
       },
       "hardware": {
-        "state": "NOT_RUN",
+        "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_16_attempt1_2026-10-04.json",
-          "docs/archive/reports/ess_release_16_2026-10-04.json"
+          "docs/archive/reports/ess_release_16_2026-10-04.json",
+          "docs/reports/2026-11-16_unattended_bench_tests.md"
         ],
-        "reason": "All16/range/physical-engine qualification NOT_RUN. Narrow stored subset PVindex16 speed/ramp100-to101, matching readbacks and exact original restoration PASS. ACK source stays unconfirmed/executionUNKNOWN; no motion or persistence claim."
+        "reason": "Speed, acceleration and deceleration changed by one native step and restored in all 16 PV records of drive 1 and records 1 and 16 of drives 2 and 4; every FC06 source-confirmed and every readback matching (16 November 2026). Negative speeds, range edges, record execution (needs trigger inputs) and persistence NOT_RUN."
       },
       "reason": "All16 speed/native ramp scalar fields. Native nonnegative speed subset, negative encoding guarded; exact stopped and external-trigger-inhibited candidate required, no automatic replay."
     },
@@ -1948,9 +1954,10 @@
         "state": "FAIL",
         "evidence": [
           "docs/archive/reports/ess_release_16_attempt1_2026-10-04.json",
-          "docs/archive/reports/ess_release_16_2026-10-04.json"
+          "docs/archive/reports/ess_release_16_2026-10-04.json",
+          "docs/reports/2026-11-16_unattended_bench_tests.md"
         ],
-        "reason": "Only sharedstart index1 was attempted once: requested0-to1, checked source-unconfirmed FC06-shaped frame, confirmed FC03readback0; retained READBACK_MISMATCH/UNKNOWN. Delayed nonchanging reads minutes later still0. No replay/restore write. Cause unresolved pending independent response-source/device acceptance or exact firmware semantics; other15 indexes NOT_RUN."
+        "reason": "Record 1 (0x0130) reproduced on 16 November 2026: 1, 10, 60 and 180 each got an exact source-confirmed FC06 echo and read back 0 (READBACK_MISMATCH). Record 2 (0x0131, 1) and record 16 (0x013F, 100) read back and were restored. A full typed read sweep found no other register holding the values: firmware 0x0029 acknowledges and discards record 1's start speed. The 4 October single attempt matches. Records 3-15 NOT_RUN; negative values not attempted."
       },
       "reason": "All16 shared PT/PV starting-speed fields; native nonnegative subset with negative encoding guarded. Matching readback establishes only stored setting, not active or persistent interpretation."
     },
@@ -2168,8 +2175,10 @@
       },
       "hardware": {
         "state": "NOT_RUN",
-        "evidence": [],
-        "reason": "No gain/arrival/deviation/collision perturbation performed; physical effects unqualified."
+        "evidence": [
+          "docs/reports/2026-11-16_unattended_bench_tests.md"
+        ],
+        "reason": "Group NOT_RUN: four of six fields are unexercised and physical filter timing is unmeasured. Bench experiments only: input filter 2->3->2 (earlier runs) and position-error threshold 4000->1->4000 on drives 4 and 2, each acknowledged and read back (16 November 2026); threshold 1 latched alarm 5 on the next move every time."
       },
       "reason": "Whole candidate, native range, exact target/model context, fresh stopped state and independently qualified effects validate before traffic; shared sequence retains partial progress and uncertainty without replay or rollback."
     },
@@ -2843,12 +2852,13 @@
         ]
       },
       "hardware": {
-        "state": "NOT_RUN",
+        "state": "PASS",
         "evidence": [
           "docs/reports/2026-11-02_standalone_14_bench_regression.md",
-          "docs/reports/2026-11-16_hil_regression.md"
+          "docs/reports/2026-11-16_hil_regression.md",
+          "docs/reports/2026-11-16_unattended_bench_tests.md"
         ],
-        "reason": "Choices 0 and 7 were written and read back on hardware; the other ten choices are not exercised."
+        "reason": "All twelve choices 0..11 written and read back on drives 1, 2 and 4, ending at 0 (16 November 2026); 0 and 7 also in earlier runs. Only choices 0 and 7 have run a home; the coordinate behavior of the others is untested."
       },
       "reason": "All12 source-supported scalar choices through explicit reserved prior-read/FC06/readback session. Confirmed ACK required; no home trigger, staging, input reassignment, save, replay or rollback. Possible effects revoke dependent qualification; matching7 never qualifies activepolicy."
     }

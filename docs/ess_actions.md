@@ -288,6 +288,26 @@ enable, alarm clear or motion restart. Function-manual physical pages 26 and 71
 give these separate commands, not a combined recovery sequence. Loaded mechanics
 need their own release qualification; the free-shaft authorization is not general.
 
+## Alarm 5 on firmware `0x0029`
+
+Bench, 16 November 2026, drives 2 and 4 ([report](reports/2026-11-16_unattended_bench_tests.md#latched-alarm-and-alarm-clear-image-b-drives-4-and-2)):
+
+- **Latch.** A lowered position-error threshold latched alarm 5 (position
+  tolerance) on the next move.
+- **Silence.** While latching it, the drive did not answer Modbus for 1.0 to 1.9 s.
+  It did not restart, and other drives answered in that time.
+- **How the application ends the move.** The first poll times out, so the move ends
+  `transport_error`. The start stays acknowledged and completion unknown, and the
+  bus owner needs explicit recovery.
+- **What the next read shows:** alarm 5, motion word 24 (alarm and released), and
+  the address conflict still held.
+- **Clearing.** `stop fast` reconciled the conflict. `alarm-clear` then cleared alarm
+  5 and the drive re-enabled, although hardware manual p12 lists alarm 5 as
+  "re-power reset".
+
+After no reply right after a start, read state again after at least 2 s before
+treating the drive as lost.
+
 Application API inventory: independent stop and qualified release now have public
 submission and copied results. Ordinary velocity start, enable, unqualified
 release, alarm clear, position clear and host recovery still use internal console

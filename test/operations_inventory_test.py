@@ -436,7 +436,8 @@ class Coverage(unittest.TestCase):
         self.assertEqual({row["value"] for row in choices}, set(range(12)))
         for row in choices:
             self.assertEqual(row["coverage_kind"], "WRITE")
-            self.assertEqual(row["disposition"], dict(implementation="IMPLEMENTED", cli="REACHABLE", native="PASS", hardware="NOT_RUN"))
+            # 16 November 2026: every choice written and read back on the bench (stored setting only).
+            self.assertEqual(row["disposition"], dict(implementation="IMPLEMENTED", cli="REACHABLE", native="PASS", hardware="PASS"))
         for home in INVENTORY["operations"]:
             if "prepareHome" in home.get("api", {}).get("symbols", []):
                 self.assertTrue(all(not choice.startswith("HomingAuxiliary.") for choice in home.get("choices", [])))
