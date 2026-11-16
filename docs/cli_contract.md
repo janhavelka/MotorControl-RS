@@ -392,8 +392,10 @@ Both are admission refusals with unchanged output IDs and no traffic.
 `motion-profile start-speed relation RAW_WORD MIN_RPM` lifts the move lock that
 `motion-profile start-speed` sets. It requires a fresh `motion-profile read` showing
 that exact word, under the existing `installPositionStartSpeedRelation` rules. The
-lock lives in RAM: a controller restart forgets it and uses the stored word under the
-startup policy, without checking the relation again.
+lock belongs to the address whose start word may have changed; `useaddr` to another
+drive does not carry it over, and selecting that drive again restores it. It lives in
+RAM: a controller restart forgets it and uses the stored word under the startup
+policy, without checking the relation again.
 
 Home qualification keeps its [documented lifecycle](ess_homing.md#planned-auxiliary-setting-and-switch-method-integration-not-implemented).
 Extend `home methods` and retained result presentation only alongside actual method

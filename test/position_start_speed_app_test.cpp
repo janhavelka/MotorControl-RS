@@ -363,6 +363,24 @@ void testProfileReadsCannotResurrectARevokedRelation() {
     assert(!moveBy(Rational(10), PositionUnit::STEPS, move, 60) && move == 77 && hardware.writes == writes);
 }
 
+void testRevocationStaysWithItsAddressAcrossSelection() {
+    // Bench, 16 November 2026: a candidate write revoked drive 2's relation, then
+    // every move on drive 4 refused after useaddr although drive 4 was untouched.
+    fresh();
+    assert(selectTarget(app, 2) == Probe::Action::OK);
+    revokePositionStartSpeedRelation(*app, 2);
+    assert(app->positionStartSpeedRelationRequired);
+    assert(selectTarget(app, 4) == Probe::Action::OK);
+    assert(!app->positionStartSpeedRelationRequired && !app->positionStartSpeedRelation.target.id);
+    assert(selectTarget(app, 2) == Probe::Action::OK);
+    assert(app->positionStartSpeedRelationRequired); // The revoked drive keeps its guard.
+    assert(selectTarget(app, 1) == Probe::Action::OK);
+    assert(!app->positionStartSpeedRelationRequired);
+    baseline(); readPositionProfile(30);
+    uint32_t move = 0;
+    assert(moveBy(Rational(10), PositionUnit::STEPS, move, 60) && move);
+}
+
 void testPositionRelationKeepsItsOriginalAge() {
     fresh(1000); baseline(); const auto id = submit(30);
     const auto write30 = crc({1, 6, 0, 0x20, 0, 30});
@@ -578,6 +596,7 @@ int main(int argc, char** argv) {
     testAdmissionAndCapacity(); testSuccessEvidenceAndEffects();
     testFailuresAndChangedConfiguration(); testConsoleAndRefreshedMoveRelationship();
     testCompatibleMoveAndHumanTerminal(); testProfileReadsCannotResurrectARevokedRelation();
+    testRevocationStaysWithItsAddressAcrossSelection();
     testPositionRelationKeepsItsOriginalAge();
     testPriorCompletionCannotRenewOrRequalifySession();
     testLegacyRestoreSettlesOnlyItsFiveWrittenWords();

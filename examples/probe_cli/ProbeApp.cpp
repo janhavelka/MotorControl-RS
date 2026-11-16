@@ -262,7 +262,7 @@ struct App {
     uint16_t rememberedMoveWords[5] = {};
     uint32_t rememberedMoveGeneration = 0, rememberedMoveBinding = 0, rememberedMoveSerial = 0;
     ESS::MovePrerequisites movePrerequisites; // Supplied commissioning evidence; false until verified.
-    bool positionStartSpeedRelationRequired = false; // Preserve the pre-setting startup policy; never reset by reads/recovery.
+    bool positionStartSpeedRelationRequired = false; // Selected address's guard: set from startSpeedRelationRevoked on selection; never reset by reads/recovery.
     PositionStartSpeedRelation positionStartSpeedRelation;
     ESS::HomePrerequisites homePrerequisites; // Explicit method/active-auxiliary/native/reference qualification.
     ESS::VelocityPrerequisites velocityPrerequisites; // Independent commissioning evidence, initially unqualified.
@@ -3467,6 +3467,11 @@ Probe::Action selectTarget(void* context, uint8_t address) {
     a.movePrerequisites = ESS::MovePrerequisites();
     a.velocityPrerequisites = ESS::VelocityPrerequisites();
     a.homePrerequisites = ESS::HomePrerequisites();
+    // The start-speed guard belongs to its address: a possible start-speed write
+    // to one drive must not block another, and a relation never transfers.
+    a.positionStartSpeedRelationRequired =
+        (a.startSpeedRelationRevoked[address / 8] & (1U << (address % 8))) != 0;
+    a.positionStartSpeedRelation = PositionStartSpeedRelation();
     a.commissioningConfirmedGeneration = a.persistenceConfirmedGeneration = 0;
     a.persistenceBaselineKnown = false;
     for (auto& wiring : a.inputWiring) wiring = InputWiring::UNKNOWN;
