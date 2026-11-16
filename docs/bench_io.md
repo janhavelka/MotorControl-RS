@@ -7,6 +7,11 @@ to wire them to the ESS23-RS20 terminals, which checks to make first, and which
 untested features the wiring unlocks. Read the [hardware bench notes](hardware_bench.md)
 and [ESS I/O guide](ess_io.md) with it.
 
+Owner decisions, 16 November: the board runs from the same supply as the three
+drives (case A below), and the X inputs of drives 1, 2 and 4 will be wired in
+parallel, with only drive 1's Y0 wired back. The supply voltage is not yet
+recorded; this plan requires 24 V (see [supply voltage](#supply-voltage)).
+
 ## Sources
 
 | Item | Source |
@@ -99,34 +104,51 @@ and its 12 V relay coils would run at twice their rating. CO2Control field
 records show 24 V loads on these MOSFETs, which suggests that board ran on
 24 V, but only the actual board settles it.
 
+The owner reports that the bench board already runs from the drives' supply,
+so this bench is case A.
+
+### Supply voltage
+
+The drives accept 24-48 V, but their X inputs are rated for 24 V signals
+(hardware manual p5: logic input voltage 24 V maximum), and the board's
+`AUX_DI1_24V` input has a 36 V TVS diode. This plan therefore needs that shared
+supply to be 24 V. At 36 or 48 V, do not wire it: the inputs would need series
+resistors or a separate 24 V supply, and the AUX input would need a divider.
+
+At 24 V, a fitted 12 V relay coil sees twice its rated voltage. The
+distributor-listed TE table gives roughly 29 V as the coil's maximum, so this is
+inside the listed limit but runs the coil at about four times its rated power.
+Read the relay marking: IM06 is the 12 V coil; another code means another coil
+voltage in TE's table. With a 12 V coil, keep relay holds short (seconds) until
+the coil temperature is known.
+
 ## Recommended wiring
 
-All drive inputs use sinking (NPN) wiring: XCOM at +24 V, and a board switch
-pulls an input to 0 V. Use the drives' own 24 V supply, fuse the feed to the I/O
-(for example 0.5 A), and join its 0 V to board GND. Wire drive 1 (address 1)
-first; drives 2 and 4 stay as they are.
+Sinking (NPN) wiring on all three drives (addresses 1, 2 and 4): each drive's
+XCOM goes to +24 V, and each board switch pulls the same X pin of all three
+drives to 0 V. Fuse the +24 V feed to the I/O (for example 0.5 A). The 0 V side
+is already common because the board and drives share the supply.
 
 ```text
- drives' 24 V supply                     drive 1 I/O connector
-   +24 V ──fuse──┬──────────────────────── 5 XCOM
-                 └──────────────────────── 8 YCOM
-   0 V ──────────┬── board GND
-                 ├── relay1 common (bank 1) ; NO ─── 2 X1
-                 └── relay2 common (bank 1) ; NO ─── 3 X2
-   board MOSFET1 pin 2 (drain) ──────────── 1 X0     (case A only)
-   board MOSFET2 pin 2 (drain) ──────────── 4 X3     (case A only)
-   board AUX_DI1_24V pin 2 ──────────────── 6 Y0
-   board AUX_DI1_24V pin 1 = GND (already joined to 0 V)
-                                            7 Y1 : not connected
+ shared 24 V supply
+   +24 V ──fuse──┬── XCOM (pin 5) of drives 1, 2 and 4
+                 └── YCOM (pin 8) of drive 1
+   0 V ── board GND (already common)
+          ├── relay1 common (bank 1); relay1 NO ── X1 (pin 2) of drives 1, 2 and 4
+          └── relay2 common (bank 1); relay2 NO ── X2 (pin 3) of drives 1, 2 and 4
+   MOSFET1 pin 2 (drain) ───────────────────────── X0 (pin 1) of drives 1, 2 and 4
+   MOSFET2 pin 2 (drain) ───────────────────────── X3 (pin 4) of drives 1, 2 and 4
+   AUX_DI1_24V pin 2 ───────────────────────────── Y0 (pin 6) of drive 1
+   Not connected: MOSFET pin 1 (VIN_PROT), drive 1 Y1, and Y0, Y1, YCOM of drives 2 and 4
 ```
 
-| Drive pin | Board switch | Power-up function | Functions to test on it |
+| X pin, all three drives | Board switch | Power-up function | Functions to test on it |
 | --- | --- | --- | --- |
-| 1 X0 | `mosfet1` (case A) | 1 origin | 7 position start, 11 home start, 12 PT trigger, 13 PV trigger, 1 origin |
+| 1 X0 | `mosfet1` | 1 origin | 7 position start, 11 home start, 12 PT trigger, 13 PV trigger, 1 origin |
 | 2 X1 | `relay1` | 2 positive limit | 2 positive limit, 14 PIN0, 4 release, 9 JOG+ |
 | 3 X2 | `relay2` | 3 negative limit | 3 negative limit, 15 PIN1, 10 JOG- |
-| 4 X3 | `mosfet2` (case A) | 0 none | 5 stop, 6 emergency stop, 16 PIN2, 4 release |
-| 6 Y0 | `aux1` input | 0 none | 1 alarm, 2 running, 3 homed, 4 in position, 5 brake, 9 custom |
+| 4 X3 | `mosfet2` | 0 none | 5 stop, 6 emergency stop, 16 PIN2, 4 release |
+| Drive 1 Y0 | `aux1` input | 0 none | 1 alarm, 2 running, 3 homed, 4 in position, 5 brake, 9 custom |
 
 Why this layout:
 
@@ -134,39 +156,55 @@ Why this layout:
   and PIN selectors are levels, so relay delay and contact bounce do not matter.
 - The MOSFETs sit on X0/X3. Edge-started functions (7, 11, 12, rising-edge 13)
   and stop timing need clean, fast edges; a bouncing relay could start twice.
+- One MOSFET edge reaches all three drives at once: the manual's documented
+  way to start several drives together. X3 can be a shared stop input.
 - X0 trigger plus PIN0-PIN2 on X1-X3 selects 8 stored PT or PV segments.
-- Y0 to `aux1` gives the controller its own timestamp of a drive output edge.
-  Move that one wire to Y1 to test Y1.
+- Drive 1 Y0 to `aux1` gives the controller its own timestamp of a drive output
+  edge. Move that wire to test Y1 or another drive's outputs.
 
-In case B, wire the relays and Y0 exactly the same and leave X0/X3 unconnected.
-Edge tests then use a relay (absolute position mode limits the effect of a
-bounce double start), and PT/PV selection drops to two segments. An external
-optocoupler module driven from the MOSFET connector would restore fast inputs;
-that is outside this guide.
+Each switch now carries three inputs: about 30-150 mA at 10-50 mA per input.
+The relay contacts are rated 2 A. The MOSFET rating is not documented here; in
+CO2Control the same MOSFETs switched a valve and a fan, which draw more.
 
-Optional later step, case A: wire X0 of drives 2 and 4 in parallel with drive 1
-X0 (each with XCOM at +24 V) for the shared-edge group start. Three inputs draw
-about 30-150 mA, well below the valve and fan loads these MOSFETs switched in
-CO2Control; the MOSFET's own rating is not documented here. Their X0 is then connected
-for every drive-1 test too, so declare it and keep its function at origin or
-none unless that drive is part of the test.
+### Shared inputs
+
+- Every bench output reaches all three drives. What each drive does depends on
+  its own function for that terminal; at power-up all three have X0 origin,
+  X1 positive limit, X2 negative limit and X3 none.
+- To test one drive alone, first set that terminal to 0 (none) on the other two
+  with an explicit `io set` and readback on each, and restore it afterwards.
+  The firmware never does this for you.
+- Declare the wiring on every drive, for example `group wiring 2 x0 connected`
+  for all four X pins on addresses 1, 2 and 4, Y0 connected on drive 1, and the
+  other outputs unconnected.
+- An asserted X1 or X2 acts as the limit of every drive that keeps that
+  function; an asserted stop input stops every drive that has the stop
+  function. With a group move this is the shared-stop test, not a fault.
+- PIN selector levels pick the same segment number on every drive with PIN
+  functions; each drive runs its own stored table.
+- Each drive's input status register checks its own copy of the wiring.
+
+Case B (a board that does not run from the drives' supply): wire the relays and
+Y0 the same way and leave X0/X3 unconnected. Edge tests then use a relay, and
+PT/PV selection drops to two segments.
 
 ## Rules while wiring and testing
 
 1. Wire with the drives, the board and the 24 V I/O feed powered off.
-2. Measure VIN_PROT and the XCOM/YCOM isolation first (above).
+2. Confirm the shared supply is 24 V ([supply voltage](#supply-voltage)) and
+   check XCOM/YCOM isolation on each drive.
 3. Remove relay common selector jumpers before any external wire goes on a
-   common. In case A a GND jumper may replace the 0 V wire; never VIN_PROT.
-4. Before flashing or resetting the board, unassign trigger functions or remove
-   the I/O feed. Output levels during reset are not yet measured here.
+   common. Here a GND jumper may replace the 0 V wire; never VIN_PROT.
+4. Before flashing or resetting the board, unassign trigger functions on all
+   three drives or remove the I/O feed. Output levels during reset are not yet
+   measured here.
 5. Input functions 8, 9, 10 and 13 run the motor at a speed with no end
    position. The bench hold (at most 60 s) and the stop rule below bound them,
    but they are not a hardwired stop. Run them attended and only with an
    explicit instruction, as [multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)
    requires.
-6. Declare wiring before assigning functions: `wiring x0 connected` and so on.
-   `io set` keeps refusing connected terminals without the matching
-   `io qualification` facts.
+6. Declare wiring before assigning functions. `io set` keeps refusing connected
+   terminals without the matching `io qualification` facts.
 
 ## Firmware support
 
@@ -210,20 +248,21 @@ fixture unready; motor control still starts.
 
 ## Test plan once wired
 
-Run each step on drive 1 with a stopped, alarm-free drive, fresh reads and the
-usual prepared stop and restoration. Record the image, wiring, VIN_PROT reading
-and raw evidence. Steps 1-2 check the wiring itself; later steps are the
-features this fixture unlocks.
+Use stopped, alarm-free drives, fresh reads and the usual prepared stop and
+restoration. Single-drive steps run on drive 1 with the tested terminal set to
+0 (none) on drives 2 and 4 first. Record the image, wiring, supply voltage and
+raw evidence. Steps 1-2 check the wiring itself; later steps are the features
+this fixture unlocks.
 
 1. **Wiring map.** `bench` shows all off and `aux1` inactive. For each output:
-   `bench on NAME 2000`, `io read`, confirm exactly the expected X status bit,
-   `bench off`. Then the same with input polarity inverted on that terminal
-   (with its `io qualification` facts, including protection removal for a
-   limit), which settles whether the status bits are read before or after
-   inversion (`IoStatusMapping`). Restore the polarity.
-2. **Y0 to aux1.** Assign Y0 = 9 (custom 0) with the output facts, write the
-   custom bit on and off, and check the `aux1` edges and the output status bits.
-   Repeat with output polarity inverted. Restore Y0 = 0.
+   `bench on NAME 2000`, `io read` on drives 1, 2 and 4, and confirm the same
+   single X status bit on all three; `bench off`. Then repeat on drive 1 with
+   input polarity inverted on that terminal (with its `io qualification` facts,
+   including protection removal for a limit), which settles whether the status
+   bits are read before or after inversion (`IoStatusMapping`). Restore it.
+2. **Y0 to aux1.** On drive 1 assign Y0 = 9 (custom 0) with the output facts,
+   write the custom bit on and off, and check the `aux1` edges and the output
+   status bits. Repeat with output polarity inverted. Restore Y0 = 0.
 3. **Stop by input.** X3 = 5 (stop), then 6 (emergency stop), during a small
    finite move; `bench on mosfet2 200`. Y0 = 2 (running) gives the
    `mosfet2` on time to `aux1` edge interval. Repeat with X3 = 4 (release) on a
@@ -241,8 +280,13 @@ features this fixture unlocks.
    several segments.
 8. **Outputs.** Y0 = 2, 4, 3 and 1 in turn: running, in-position, homed and
    alarm edges against serial state and the move timeline.
-9. **Attended only:** JOG/speed inputs (8-10) and PV segments (13).
-10. **Optional:** drives 2 and 4 on X0 for the shared-edge group start.
+9. **Shared start.** Stage a profile on each of drives 1, 2 and 4, set X0 = 7 on
+   all three, pulse `mosfet1` once, and compare the three drives' recorded
+   motion with drive 1's `aux1` running edge. Then a shared stop: X3 = 5 on all
+   three during a group move.
+10. **Shared segments.** Steps 7 and 9 together: different stored tables per
+    drive, one shared selector and trigger.
+11. **Attended only:** JOG/speed inputs (8-10) and PV segments (13).
 
 This covers the open backlog items for wired input effects, output loads and
 status mapping ([multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md)),
@@ -251,5 +295,5 @@ switch homing, stop-input latency and stored-segment execution.
 
 Still not covered by this fixture: real switches and loads, shaft position
 measured independently of the drive, electrical timing measured with an
-instrument, drive restart and persistence, and anything on Y1 while Y0 holds
-the only input.
+instrument, drive restart and persistence, and outputs of drives 2 and 4 while
+`aux1` watches drive 1.

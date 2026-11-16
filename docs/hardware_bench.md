@@ -50,10 +50,12 @@ regression remains NOT RUN; see the
 | USB identity | Espressif `303A:1001`, serial `3C:0F:02:CD:6B:98`; never open or flash another device. COM15 (`303A:1002`) is a separate device. |
 
 Planned wired I/O, 16 November: the user intends to wire the board's two relays
-(GPIO45/18), two MOSFETs (GPIO3/46) and isolated input (GPIO17) to drive 1's
-terminals. The [bench I/O guide](bench_io.md) gives the wiring, the board-supply
-check that decides whether the MOSFETs may be used, and the test plan. Until the
-user reports that wiring, the terminals remain unconnected as recorded above.
+(GPIO45/18) and two MOSFETs (GPIO3/46) to the X inputs of drives 1, 2 and 4 in
+parallel, and drive 1's Y0 to the isolated input (GPIO17). The user reports
+that the board runs from the drives' supply; its voltage is not recorded, and
+the plan needs 24 V. The [bench I/O guide](bench_io.md) gives the wiring, checks
+and test plan. Until the user reports that wiring, the terminals remain
+unconnected as recorded above.
 
 The user authorized communication and motion tests on 2 October and reconfirmed
 the fixture and bounded unattended free-shaft testing on 4 October. Routine
