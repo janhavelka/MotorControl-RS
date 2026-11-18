@@ -7387,6 +7387,99 @@ def check_group_member_fixtures(executables):
     assert checked[0] == checked[1], "Arduino/IDF member intent or retained evidence differs"
 
 
+class ConnectedSettingsTests(unittest.TestCase):
+    """Wired bench 03: input facts for settings routes and named refusals."""
+
+    class FactsConsole:
+        """Records each command; answers reads and installs like the firmware's JSON."""
+        def __init__(self, functions=(1, 2, 3, 0), polarity=0, refuse=None):
+            self.calls, self.events = [], []
+            self.functions, self.polarity, self.refuse = functions, polarity, refuse
+
+        def emit(self, event, **fields):
+            self.events.append((event, fields))
+
+        def command(self, name, **kwargs):
+            self.calls.append((name, kwargs))
+            if name == "read-config":
+                inputs = [dict(function=f, known=True, wiring=2, declared_wiring="connected") for f in self.functions]
+                return dict(ok=True, config=dict(raw=dict(input_polarity=self.polarity), inputs=inputs))
+            if name == "read-state":
+                return dict(ok=True, state_blocks=[])
+            if name == "io-qualification-install":
+                if self.refuse == kwargs["host_args"][1]:
+                    return dict(ok=False, result="qualification_required")
+                return dict(ok=True, result="done")
+            raise AssertionError("unexpected command " + name)
+
+    def installs(self, console):
+        return [kwargs["host_args"] for name, kwargs in console.calls if name == "io-qualification-install"]
+
+    def test_records_copy_the_config_read_and_add_no_fact(self):
+        console = self.FactsConsole(functions=(1, 2, 3, 7), polarity=0b0010)
+        result = bench.install_input_facts(console, 1, "configure")
+        self.assertEqual([name for name, _ in console.calls[:2]], ["read-config", "read-state"])
+        self.assertEqual(self.installs(console), [
+            ("1", "x0", "1", "0", "configure", "unknown"), ("1", "x1", "2", "1", "configure", "unknown"),
+            ("1", "x2", "3", "0", "configure", "unknown"), ("1", "x3", "7", "0", "configure", "unknown")])
+        self.assertEqual(len(result["records"]), 4)
+        # The helper never adds triggers-inhibited or protection-removal on its own.
+        for tokens in self.installs(console):
+            self.assertNotIn("triggers-inhibited", tokens); self.assertNotIn("protection-removal", tokens)
+        console = self.FactsConsole()
+        bench.install_input_facts(console, 4, "segment", "before", {"x3": ("triggers-inhibited",)})
+        self.assertEqual(self.installs(console)[3], ("4", "x3", "0", "0", "segment", "before", "triggers-inhibited"))
+        self.assertTrue(all(len(tokens) == 6 for tokens in self.installs(console)[:3]))
+
+    def test_invalid_requests_send_nothing(self):
+        for arguments in ((1, "assign"), (1, "finite-move"), (0, "configure"), (1, "configure", "sideways"),
+                          (1, "configure", "unknown", {"x3": ("protection-removal",)}),
+                          (1, "configure", "unknown", {"x4": ("triggers-inhibited",)}),
+                          (1, "configure", "unknown", {"x0": ("triggers-inhibited", "triggers-inhibited")})):
+            console = self.FactsConsole()
+            with self.subTest(arguments=arguments), self.assertRaises(ValueError):
+                bench.install_input_facts(console, *arguments)
+            self.assertEqual(console.calls, [])
+
+    def test_refused_record_stops_without_retry(self):
+        console = self.FactsConsole(refuse="x2")
+        with self.assertRaisesRegex(bench.BenchError, "x2 configure facts refused: qualification_required"):
+            bench.install_input_facts(console, 1, "configure")
+        self.assertEqual([tokens[1] for tokens in self.installs(console)], ["x0", "x1", "x2"])
+
+    def test_named_refusals_are_checked(self):
+        good = dict(ok=False, result="qualification_required", address=1, operation_id=0,
+                    reason="input_facts_required", purpose="configure", read_first="read config", terminal="x0")
+        for command in bench.SETTINGS_REFUSAL_COMMANDS:
+            handle = bench.Command(None, 1, command, 0, 1, 1, None, None)
+            bench.Console._check_admission_refusal(handle, good)
+            bench.Console._check_admission_refusal(handle, dict(good, reason="input_active", read_first="read state", terminal="x1"))
+            for broken in (dict(good, reason="facts"), dict(good, purpose="assign"), dict(good, read_first="io read"),
+                           dict(good, terminal="x4"), dict(good, result="unavailable"),
+                           {k: v for k, v in good.items() if k != "reason"}):
+                with self.subTest(command=command, broken=broken), self.assertRaises(bench.BenchError):
+                    bench.Console._check_admission_refusal(handle, broken)
+        with self.assertRaises(bench.BenchError):
+            bench.Console._check_admission_refusal(bench.Command(None, 1, "move-relative", 0, 1, 1, None, None), good)
+
+    def test_revalidation_reason_only_on_update_not_admitted(self):
+        item = position_start_speed_terminal(2)
+        item.update(driver_kind="read", ok=False, state="failed", outcome="update_not_admitted",
+                    status="INVALID_CONFIG", fields=0, effects=0, progress=[])
+        raw = bytes.fromhex("010302001E"); raw += bench.wire_crc(raw).to_bytes(2, "little")
+        row = item["evidence"][0]
+        row[1], row[2], row[3], row[5], row[6] = 0x20, 1, False, raw.hex(), len(raw)
+        item.update(evidence=[row], completed_steps=1, serviced_us=row[14])
+        item["prior"] = {k: 0 for k in item["prior"]}; item["prior"]["raw_hex"] = ""
+        for reason in (None, *bench.UPDATE_NOT_ADMITTED_REASONS):
+            terminal = copy.deepcopy(item)
+            if reason: terminal["reason"] = reason
+            bench.Console._check_driver(terminal, 1, None, "position_start_speed")
+        for terminal in (dict(copy.deepcopy(item), reason="maybe"), dict(position_start_speed_terminal(2), reason="input_active")):
+            with self.assertRaisesRegex(bench.BenchError, "revalidation reason"):
+                bench.Console._check_driver(terminal, 1, None, "position_start_speed")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--position-interrupt-fixtures":
         if (len(sys.argv) not in (4,9,12,15) or (len(sys.argv)>=9 and sys.argv[4]!="--stop-recovery-fixtures") or

@@ -338,6 +338,59 @@ class SettingsScenarioTest(unittest.TestCase):
         self.assertEqual(len([args for _, args in console.calls if 'set' in args.get('driver_args', ())]), 2)
 
 
+class ConnectedConsole(ScenarioConsole):
+    """Board-declared connected X0-X3 (wired bench 03); installs answer like the firmware."""
+    def command(self, name, **kwargs):
+        if name == 'io-qualification-install':
+            self.calls.append((name, kwargs))
+            return dict(ok=True, command=name, result='done')
+        result = super().command(name, **kwargs)
+        if name == 'wiring':
+            result.update(board=dict(inputs=[2, 2, 2, 2], outputs=[1, 1]), fixture='applied')
+        if name == 'read-config':
+            result['config'] = dict(raw=dict(input_polarity=0), inputs=[
+                dict(function=f, known=True, wiring=2) for f in (1, 2, 3, 0)])
+        return result
+
+
+class ConnectedSettingsScenarioTest(unittest.TestCase):
+    def args(self, *extra):
+        return scenarios.arguments(['--plan-only', '--scenario', 'settings', '--setting', 'input-filter', '--value', '11', *extra])
+
+    def test_connected_board_needs_input_facts_before_any_write(self):
+        console = ConnectedConsole()
+        with self.assertRaisesRegex(probe.BenchError, 'needs --input-facts configure'):
+            scenarios._setting(console, self.args(), {})
+        self.assertFalse(any('set' in kw.get('driver_args', ()) for _, kw in console.calls))
+        self.assertFalse(any(name == 'io-qualification-install' for name, _ in console.calls))
+
+    def test_records_precede_each_write_and_carry_no_added_fact(self):
+        console = ConnectedConsole()
+        record = {}
+        scenarios._setting(console, self.args('--input-facts', 'configure'), record)
+        self.assertTrue(record['setting']['restored'])
+        names = [name for name, _ in console.calls]
+        writes = [i for i, (name, kw) in enumerate(console.calls) if name == 'tuning' and 'set' in kw['driver_args']]
+        self.assertEqual(len(writes), 2)
+        for start, end in ((0, writes[0]), (writes[0], writes[1])):
+            window = names[start:end]
+            self.assertEqual(window.count('io-qualification-install'), 4, window)
+            self.assertLess(window.index('read-config'), window.index('io-qualification-install'))
+        installs = [kw['host_args'] for name, kw in console.calls if name == 'io-qualification-install']
+        self.assertEqual(installs[:4], [('1', 'x0', '1', '0', 'configure', 'unknown'), ('1', 'x1', '2', '0', 'configure', 'unknown'),
+                                        ('1', 'x2', '3', '0', 'configure', 'unknown'), ('1', 'x3', '0', '0', 'configure', 'unknown')])
+        self.assertEqual(installs[:4], installs[4:])
+
+    def test_option_scope(self):
+        for argv in (['--scenario', 'settings', '--setting', 'lock-delay', '--value', '11', '--input-facts', 'configure'],
+                     ['--scenario', 'settings', '--setting', 'input-filter', '--value', '3', '--input-facts', 'configure',
+                      '--declare-unconnected'],
+                     ['--scenario', 'quick', '--input-facts', 'configure'],
+                     ['--scenario', 'settings', '--setting', 'input-filter', '--value', '3', '--input-facts', 'segment']):
+            with self.subTest(argv=argv), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                scenarios.arguments(['--plan-only'] + argv)
+
+
 class RecordedSessionTest(unittest.TestCase):
     def setUp(self):
         ScenarioConsole.instances.clear()

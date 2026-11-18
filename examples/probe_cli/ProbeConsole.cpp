@@ -1062,6 +1062,18 @@ void Console::action(uint32_t id, const char* command, Action result, uint8_t ad
         if (!append(output_, sizeof(output_), used, ",\"replaced_operation_id\":%lu,\"stop_escalation\":%s}",
             static_cast<unsigned long>(replacedOperationId), boolean(stopEscalation))) return;
     }
+    // Settings refusals decided by the selected axis's input facts name their cause.
+    const bool setting = std::strcmp(command, "driver") == 0 || std::strcmp(command, "segment") == 0 ||
+        std::strcmp(command, "tuning") == 0 || std::strcmp(command, "home-auxiliary") == 0 ||
+        std::strcmp(command, "motion-profile-start-speed") == 0 || std::strcmp(command, "motion-profile-stage") == 0;
+    SettingsRefusal refusal;
+    if (result != Action::OK && setting && host_.settingsRefusal && host_.settingsRefusal(host_.context, refusal) && refusal.reason) {
+        std::size_t used = std::strlen(output_) - 1;
+        if (!append(output_, sizeof(output_), used, ",\"reason\":\"%s\",\"purpose\":\"%s\",\"read_first\":\"%s\"",
+                refusal.reason, refusal.purpose ? refusal.purpose : "configure", refusal.readFirst ? refusal.readFirst : "read config") ||
+            (refusal.terminal >= 0 && refusal.terminal < 4 && !append(output_, sizeof(output_), used, ",\"terminal\":\"x%d\"", refusal.terminal)) ||
+            !append(output_, sizeof(output_), used, "}")) { error(id, command, "output_full"); return; }
+    }
     emit();
 }
 
@@ -3000,6 +3012,9 @@ bool Console::formatDriver(uint32_t id, uint32_t commandId, uint32_t operationId
             static_cast<unsigned long>(prior.operationId), prior.raw[0], prior.knownFields, raw,
             static_cast<unsigned long long>(e.attemptedUs), static_cast<unsigned long long>(e.earliestUs),
             static_cast<unsigned long long>(e.latestUs), static_cast<unsigned long long>(e.deliveredUs))) return false;
+        // Revalidation after the prior read names why no FC06 followed.
+        if (c.outcome == Ess::DriverOutcome::UPDATE_NOT_ADMITTED && c.status.msg && *c.status.msg &&
+            !append(output_, sizeof(output_), used, ",\"reason\":\"%s\"", c.status.msg)) return false;
     }
     if (!append(output_, sizeof(output_), used, ",\"driver_group\":\"%s\",\"echo_readback_policy\":%s,\"settlement\":\"%s\"}",
         auxiliary ? "homing_auxiliary" : position ? "position_start_speed" : tuning ? tuningName(c.group) : control ? "control_settings" : segment ? (c.group == Ess::DriverGroup::POSITION_SEGMENT ? "position_segment" : c.group == Ess::DriverGroup::SPEED_SEGMENT ? "speed_segment" : "segment_start_speed") : io ? "io" : "drive", boolean(c.prerequisites.allowEchoReadback), io || segment || control || tuning ? "stored_readback" : "checked_ack_readback")) return false;

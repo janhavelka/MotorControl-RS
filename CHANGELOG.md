@@ -20,6 +20,27 @@
   `declareWiring`/`copyWiring` expose the selected-axis route. The harness
   checks the new keys and refuses `--declare-unconnected` over board-connected
   terminals or an invalid table.
+- Settings routes with connected terminals (wired bench 03). Start speed,
+  homing auxiliary, the profile stage and the two tuning experiments take the
+  passive unconnected path or four current `configure` input records; DRIVE
+  fields use the same records and PT/PV/start records `segment` records, with
+  no assigned limit/stop/control input active. A refusal the records decide is
+  `qualification_required` with `reason` (`input_facts_required`,
+  `input_facts_stale`, `input_active`), `purpose`, `read_first` and `terminal`,
+  before any frame; the single settings' revalidation after their prior read
+  reports `reason` with `update_not_admitted`. API: `copySettingsRefusal`, the
+  reason as the submit status message. Harness:
+  `bench_probe.install_input_facts`, `bench_scenarios.py --input-facts
+  configure` and `motion-profile stage --input-facts configure`; the settings
+  scenario refuses `input-filter` on a board-connected drive without it.
+
+### Changed
+
+- Refusals of the start-speed, homing-auxiliary, DRIVE, tuning-experiment,
+  segment and profile-stage routes that were `unavailable` or `invalid` because
+  of connected or unknown terminal wiring are now `qualification_required` with
+  a named reason. Revoking `configure` records also cancels unsent single-setting
+  and tuning writes that copied them.
 
 ### Fixed
 

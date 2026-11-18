@@ -97,6 +97,12 @@ IO_QUALIFICATION_ROUTES = {"io-qualification-" + action: "io qualification " + a
                            for action in ("install", "inspect", "revoke")}
 IO_PURPOSES = ("assign", "configure", "finite-move", "segment")
 IO_MAPPINGS = ("unknown", "before", "after")
+INPUT_TERMINALS = ("x0", "x1", "x2", "x3")
+# Settings routes whose input policy uses stated selected-axis records (wired bench 03).
+SETTINGS_INPUT_PURPOSES = ("configure", "segment")
+SETTINGS_REFUSAL_REASONS = ("input_facts_required", "input_facts_stale", "input_active")
+SETTINGS_REFUSAL_COMMANDS = ("driver", "segment", "tuning", "home-auxiliary", "motion-profile-start-speed", "motion-profile-stage")
+UPDATE_NOT_ADMITTED_REASONS = (*SETTINGS_REFUSAL_REASONS, "binding_changed", "prerequisites_expired", "update_refused")
 QUALIFICATION_FACT_REFUSALS = frozenset({"missing_fact", "unknown_fact", "duplicate_fact", "fact_not_applicable"})
 QUALIFICATION_REFUSALS = QUALIFICATION_FACT_REFUSALS | frozenset({
     "reads_required", "stored_auxiliary_differs", "stored_offset_nonzero", "drive_not_ready",
@@ -169,6 +175,54 @@ def io_qualification_arguments(command: str, tokens: tuple[str, ...]) -> dict:
             ("mapping" in result and result["mapping"] not in IO_MAPPINGS)):
         raise ValueError("I/O qualification purpose or status mapping is unsupported")
     return result
+
+
+def install_input_facts(console, address: int, purpose: str, mapping: str = "unknown",
+                        facts: dict | None = None, *, timeout_s: float = 5.0) -> dict:
+    """State four selected-axis input records of one settings purpose.
+
+    Reads ``read config`` and ``read state`` fresh, takes each input's current
+    function and polarity from that config read, and adds only the facts the
+    caller names per terminal, for example ``{"x3": ("triggers-inhibited",)}``.
+    It never adds ``triggers-inhibited`` or ``protection-removal`` on its own,
+    installs no ASSIGN record and changes no drive setting; the firmware
+    decides each installation and every later admission. A refused install
+    raises after the earlier records stay installed; nothing is retried.
+    Returns the two reads and the four install replies.
+    """
+    if type(address) is not int or not 1 <= address <= 247:
+        raise ValueError("ESS address must be an integer within 1..247")
+    if purpose not in SETTINGS_INPUT_PURPOSES or mapping not in IO_MAPPINGS:
+        raise ValueError("input facts need purpose configure or segment and a known status mapping")
+    facts = dict(facts or {})
+    for terminal, names in facts.items():
+        if (terminal not in INPUT_TERMINALS or not isinstance(names, (tuple, list)) or
+                len(set(names)) != len(names) or any(name != "triggers-inhibited" for name in names)):
+            raise ValueError("per-terminal facts for configure/segment records are triggers-inhibited only")
+    positive(timeout_s, "input facts timeout")
+    config = console.command("read-config", address=address, timeout_s=timeout_s)
+    if not config["ok"]:
+        raise BenchError("read config refused/failed before input facts: " + str(config.get("result", config.get("outcome"))))
+    state = console.command("read-state", address=address, timeout_s=timeout_s)
+    if not state["ok"]:
+        raise BenchError("read state refused/failed before input facts: " + str(state.get("result", state.get("outcome"))))
+    observed = config["config"]
+    inputs, polarity = observed["inputs"], observed["raw"]["input_polarity"]
+    if len(inputs) != 4 or not all(entry.get("known") is True for entry in inputs):
+        raise BenchError("input facts need four known input functions from the config read")
+    records = []
+    for index, terminal in enumerate(INPUT_TERMINALS):
+        tokens = (str(address), terminal, str(inputs[index]["function"]), str((polarity >> index) & 1),
+                  purpose, mapping, *facts.get(terminal, ()))
+        io_qualification_arguments("io-qualification-install", tokens)
+        reply = console.command("io-qualification-install", host_args=tokens, timeout_s=timeout_s)
+        records.append(dict(tokens=list(tokens), reply=reply))
+        if not reply["ok"]:
+            raise BenchError(f"{terminal} {purpose} facts refused: {reply.get('result')}" +
+                             (f" (read first: {reply['read_first']})" if reply.get("read_first") else ""))
+    console.emit("input_facts", address=address, purpose=purpose, mapping=mapping,
+                 facts={k: list(v) for k, v in facts.items()}, records=records)
+    return dict(config=config, state=state, records=records)
 
 
 def discovery_arguments(tokens: tuple[str, ...]) -> dict:
@@ -1129,6 +1183,8 @@ class Console:
         outcomes = {"reply_error", "transport_error", "cancelled", "deadline", "timing_unqualified", "unconfirmed_response", "readback_mismatch"}
         if transition_refused:
             outcomes.add("update_not_admitted")
+        require("reason" not in item or (transition_refused and item["reason"] in UPDATE_NOT_ADMITTED_REASONS),
+                "revalidation reason differs")
         require(item.get("state") == ("succeeded" if item["ok"] else "failed") and
                 item.get("outcome") in ({"success"} if item["ok"] else outcomes) and
                 item.get("status") in {"OK", "INVALID_CONFIG", "ILLEGAL_VALUE", "UNSUPPORTED", "CRC_ERROR", "FRAME_ERROR", "EXCEPTION"} and
@@ -2747,6 +2803,13 @@ class Console:
     def _check_admission_refusal(handle: Command, item: dict) -> None:
         if type(item.get("result")) is not str or item["result"] not in ADMISSION_FAILURES:
             raise BenchError("admission refusal lacks a documented disposition")
+        if any(key in item for key in ("reason", "purpose", "read_first", "terminal")):
+            # Settings refusals the selected axis's input facts decided (wired bench 03).
+            if (handle.command not in SETTINGS_REFUSAL_COMMANDS or item["result"] != "qualification_required" or
+                    item.get("reason") not in SETTINGS_REFUSAL_REASONS or item.get("purpose") not in SETTINGS_INPUT_PURPOSES or
+                    item.get("read_first") not in ("read config", "read state") or
+                    ("terminal" in item and item["terminal"] not in INPUT_TERMINALS)):
+                raise BenchError("settings refusal names no documented input-facts cause")
         if "operation_id" in item and (type(item["operation_id"]) is not int or item["operation_id"] != 0):
             raise BenchError("admission refusal claims an admitted operation")
         qualified_release = (handle.command == "motor-release" and handle.host_args is not None and
@@ -4407,8 +4470,11 @@ def open_port(name: str, baud: int, timeout_s: float):
 
 def profile_archive_campaign(console: Console, *, action: str, path: Path, address: int,
                              timeout_s: float, wiring: tuple[tuple[str, str], ...] = (),
-                             candidate: dict | None = None) -> dict:
-    """Export checked raw data, or stage one file candidate after fresh live reads."""
+                             candidate: dict | None = None, input_facts: str | None = None) -> dict:
+    """Export checked raw data, or stage one file candidate after fresh live reads.
+
+    input_facts="configure" states four CONFIGURE records from fresh reads just
+    before the stage, as connected terminals require; never for export."""
     if action not in ("export", "stage") or type(address) is not int or not 1 <= address <= 247:
         raise ValueError("invalid position-profile archive action/address")
     positive(timeout_s, "profile archive timeout")
@@ -4416,8 +4482,10 @@ def profile_archive_campaign(console: Console, *, action: str, path: Path, addre
         candidate = load_profile_archive(path) if candidate is None else profile_archive(candidate, stage=True)
         if candidate["address"] != address:
             raise ValueError("position-profile archive address differs from --address")
-    elif wiring or Path(path).exists():
-        raise ValueError("profile export needs a new file and takes no wiring declarations")
+    elif wiring or input_facts or Path(path).exists():
+        raise ValueError("profile export needs a new file and takes no wiring declarations or input facts")
+    if input_facts not in (None, "configure"):
+        raise ValueError("profile stage input facts are CONFIGURE records")
     for pair in wiring:
         wiring_arguments(tuple(pair))
     deadline = console.clock() + timeout_s
@@ -4455,6 +4523,8 @@ def profile_archive_campaign(console: Console, *, action: str, path: Path, addre
         console.emit("profile_archive", action=action, path=str(path), archive=archive, start_word_advisory=True, ok=True)
         return archive
     command("read-state", address=address)
+    if input_facts:
+        install_input_facts(console, address, input_facts, timeout_s=remaining())
     handle = console.begin("motion-profile-stage", host_args=profile_archive_arguments(candidate), timeout_s=remaining())
     result = console.wait(handle)  # Caller consumes/releases the retained result explicitly.
     console.emit("profile_archive", action=action, path=str(path), archive=candidate, start_word_advisory=True,
@@ -4508,6 +4578,8 @@ def arguments(argv: list[str] | None) -> argparse.Namespace:
     motion_profile.add_argument("archive_file", nargs="?", type=Path, help="new export file or existing stage file; start word is advisory")
     motion_profile.add_argument("--wiring", action="append", default=[], nargs=2, metavar=("TERMINAL", "STATE"),
                                 help="explicit wiring declaration for stage; never imported from the archive")
+    motion_profile.add_argument("--input-facts", choices=SETTINGS_INPUT_PURPOSES[:1],
+                                help="stage: state four CONFIGURE records from fresh reads before the stage (connected terminals)")
     commissioning = sub.add_parser("communication-check", help="finite preview, optional one write and explicitly selected confirmation")
     commissioning.add_argument("field", choices=("address", "baud", "format"))
     commissioning.add_argument("value")
@@ -4629,6 +4701,8 @@ def arguments(argv: list[str] | None) -> argparse.Namespace:
             parser.error("motion-profile export/stage require a file; other actions take none")
         if result.wiring and action != "stage":
             parser.error("motion-profile --wiring applies only to stage")
+        if result.input_facts and action != "stage":
+            parser.error("motion-profile --input-facts applies only to stage")
         try:
             for pair in result.wiring:
                 wiring_arguments(tuple(pair))
@@ -4767,7 +4841,7 @@ def main(argv: list[str] | None = None) -> int:
                         if args.motion_profile_action in ("export", "stage"):
                             profile_archive_campaign(console, action=args.motion_profile_action, path=args.archive_file,
                                 address=args.address, timeout_s=args.timeout, wiring=tuple(map(tuple, args.wiring)),
-                                candidate=args.profile_candidate)
+                                candidate=args.profile_candidate, input_facts=args.input_facts)
                         else:
                             result = console.command("motion-profile", host_args=args.host_args, timeout_s=args.timeout)
                             if not result["ok"]:

@@ -228,4 +228,7 @@ committed.
 
 ## Commits and CI
 
-The lead owns Git and CI; none dispatched by this session.
+The lead owns Git and CI; none dispatched by this session. The lead committed
+the work as `c943b76`; CI run 44406076010 on that exact commit passed all four
+jobs (native gcc, native clang, Arduino, ESP-IDF). The flashed images were
+built from the same sources before the commit (see Images).

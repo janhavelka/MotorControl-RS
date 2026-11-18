@@ -517,6 +517,49 @@ The host uses these canonical command names with `host_args` containing exactly
 the tokens after install/inspect/revoke. It checks the same128-byte/22-token bounds
 and rejects unknown, duplicate, extra and inapplicable tokens before serial output.
 
+### Settings input facts
+
+Added by [wired bench 03](reports/2026-11-18_wired_bench_03_connected_setters.md).
+Settings routes take one of two input policies on the selected axis. The passive
+one: every input function 0, or at most 3 on an `UNCONNECTED` terminal, and no
+input active. Otherwise four current records of one purpose, installed with
+`io qualification install ADDRESS xN F P PURPOSE MAPPING` with `F`/`P` equal to
+the current assignment, and no assigned limit, stop or control input (functions
+2-13) active in the latest `read state`.
+
+| Route | Purpose |
+| --- | --- |
+| `motion-profile start-speed`, `home auxiliary`, `motion-profile stage` | `configure` |
+| `driver set` (every DRIVE field; subdivision alone also passive) | `configure` |
+| `tuning filters set input-filter` 2/3, `tuning filters set deviation-threshold` 1..4000 | `configure` |
+| `segment position\|speed\|start N set` | `segment` |
+| `control set lock-delay`, `io set` | no change: no input condition, or `assign` facts per terminal |
+
+A refusal that the input facts decide is an admission refusal with
+`result` `qualification_required`, `operation_id` 0 and no frame (not even the
+single settings' prior read). It adds:
+
+| Field | Values |
+| --- | --- |
+| `reason` | `input_facts_required`: a terminal has no record of the purpose (none installed, revoked, another purpose, or cleared by a write, a changed function in `read config`, a `wiring` change, `useaddr` or `recover`); `input_facts_stale`: a record no longer matches current reads, binding, configuration or its stated age; `input_active`: an assigned function 2-13 reads active |
+| `purpose` | `configure` or `segment`: the records this route needs |
+| `read_first` | `read config` (then install the records), or `read state` (the live level, or a state read the records need) |
+| `terminal` | `x0`..`x3`: the first terminal that decided it |
+
+Other refusals keep their result code and add none of these fields. On the
+passive path (no board table) a refusal names a reason only when some record of
+the purpose exists. The single settings check the same policy again after their
+admitted prior read: a failure ends the result with outcome `update_not_admitted`,
+the prior FC03 only, no FC06, and `reason` in the terminal line (the three above,
+`binding_changed`, `prerequisites_expired` or `update_refused` for a core
+refusal; `detail` keeps the core error). The programmatic API returns the same
+admission: detail `QUALIFICATION_REQUIRED`, `msg` the reason, and
+`copySettingsRefusal` for `read_first`, `purpose` and `terminal`. Every accepted
+write clears the records, so a restoration needs fresh reads and four new
+records. The harness helper `bench_probe.install_input_facts` reads `read config`
+and `read state`, copies each function and polarity and adds only the facts the
+caller names per terminal.
+
 ## Verification and qualification
 
 Native console/application tests cover help parity, strict parsing, direct API

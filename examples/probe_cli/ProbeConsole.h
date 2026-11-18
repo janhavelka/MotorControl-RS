@@ -100,6 +100,19 @@ struct WiringSnapshot {
 /** Preserve unresolved driver semantics separately from missing prerequisites. */
 Action driverAdmissionStatus(const MotorControlRS::Status&) noexcept;
 
+/** Named cause of the latest settings refusal that the selected axis's input
+ * facts decided (wired bench 03). reason is input_facts_required (a terminal
+ * has no record of the purpose), input_facts_stale (a record no longer matches
+ * current reads, binding, configuration or age) or input_active (an assigned
+ * limit/stop/control input reads active); null for every other refusal.
+ * readFirst names the command that supplies the missing evidence. Static text. */
+struct SettingsRefusal {
+    const char* reason = nullptr;
+    const char* readFirst = nullptr;
+    const char* purpose = nullptr; ///< configure or segment.
+    int8_t terminal = -1; ///< X0..X3 = 0..3 for the first terminal that decided it.
+};
+
 /** Host-only qualification workload. Changes never configure the motor. */
 struct LoadSettings {
     uint32_t workUs = 0;       ///< Competing work per 10 ms period, at most 5000 us.
@@ -366,6 +379,9 @@ struct Host {
     Action (*startDriver)(void*, uint32_t commandId, uint8_t address,
                          MotorControlRS::ESS_RS::DriverKind,
                          const MotorControlRS::ESS_RS::DriverRequest&, uint32_t& operationId) = nullptr;
+    /** Optional: the input-facts cause of the settings or profile-stage refusal
+     * just returned, read synchronously after that call. False names nothing. */
+    bool (*settingsRefusal)(void*, SettingsRefusal&) = nullptr;
     /** Finite homing through the public profile API; native words are copied. */
     Action (*startHome)(void*, uint32_t commandId, uint8_t address,
                        const MotorControlRS::ESS_RS::HomeRequest&, uint32_t& operationId) = nullptr;

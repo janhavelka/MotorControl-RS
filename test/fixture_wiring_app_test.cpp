@@ -364,7 +364,8 @@ void testInvalidTableRefusesDependentRoutesButKeepsDiagnosis() {
     command("@10 io set x3 16\n"); contains("\"command\":\"io\",\"ok\":false,\"result\":\"invalid\"");
     command("@11 io qualification install 1 x3 16 0 assign unknown triggers-inhibited\n");
     contains("\"ok\":false,\"result\":\"qualification_required\"");
-    command("@12 motion-profile start-speed 31\n"); contains("\"ok\":false,\"result\":\"unavailable\"");
+    command("@12 motion-profile start-speed 31\n");
+    contains("\"ok\":false,\"result\":\"qualification_required\""); contains("\"reason\":\"input_facts_required\"");
     // A switch method needs a declared connected origin; UNKNOWN counts no input.
     command("@13 home qualification install 19 60 30 100 mechanics rates ramp zero-offset auxiliary inputs\n");
     contains("\"ok\":false,\"result\":\"qualification_rejected\"");
@@ -410,10 +411,11 @@ void testConnectedTerminalNeedsAssignFacts() {
     command("@15 io qualification install 1 x3 0 0 assign unknown triggers-inhibited\n"); contains("\"ok\":true");
     command("@16 io set x3 none\n"); contains("\"ok\":true"); settle();
     assert(drives[1].regs[0x0044] == 0);
-    // Start speed stays refused with functions 1-3 on connected inputs (until prompt 03).
+    // Start speed needs CONFIGURE facts with functions 1-3 on connected inputs (wired bench 03).
     freshReads(1); consoleRead("@17 motion-profile read\n");
     before = hardware.writes;
-    command("@18 motion-profile start-speed 31\n"); contains("\"ok\":false,\"result\":\"unavailable\"");
+    command("@18 motion-profile start-speed 31\n"); contains("\"ok\":false,\"result\":\"qualification_required\"");
+    contains("\"reason\":\"input_facts_required\",\"purpose\":\"configure\",\"read_first\":\"read config\",\"terminal\":\"x0\"");
     assert(hardware.writes == before);
 }
 

@@ -454,9 +454,10 @@
         "evidence": [
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json",
-          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md",
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
         ],
-        "reason": "Reviewed five-word staging for positive finite relative commands and exact original-profile restoration PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. The new per-member group route has no physical credit from these older records."
+        "reason": "Reviewed five-word staging for positive finite relative commands and exact original-profile restoration PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. The new per-member group route has no physical credit from these older records. Wired bench 03 (prompt 01 B08 as specified): staged group move of 100 steps on drives 1, 2, 4 with connected X0-X3: each member's 0x0021-0x0025 written and read back (match), all started and completed (+100), then a 2000-step staged move stopped by group stop normal after 1.2 s, all stopped."
       },
       "id": "finite_position_staging",
       "kind": "WRITE",
@@ -1049,16 +1050,18 @@
           "test/driver_app_test.cpp",
           "test/driver_console_parity_test.py",
           "test/installed_consumer/main.cpp",
-          "test/io_qualification_app_test.cpp"
+          "test/io_qualification_app_test.cpp",
+          "test/connected_setters_app_test.cpp"
         ]
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_13_2026-10-04.md",
-          "docs/reports/2026-11-16_unattended_bench_tests.md"
+          "docs/reports/2026-11-16_unattended_bench_tests.md",
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
         ],
-        "reason": "Direction, subdivision, word order, over-limit stop, PV interruption and external position mode changed and restored on drive 1, over-limit stop on drives 2 and 4; every write acknowledged and read back (16 November 2026). Soft-limit enable not attempted (pair encoding and homed reference unresolved); external effects of these fields are not measured."
+        "reason": "Direction, subdivision, word order, over-limit stop, PV interruption and external position mode changed and restored on drive 1, over-limit stop on drives 2 and 4; every write acknowledged and read back (16 November 2026). Soft-limit enable not attempted (pair encoding and homed reference unresolved); external effects of these fields are not measured. Wired bench 03: with connected X0-X3 and CONFIGURE records, drive 1 subdivision 1000->1600->1000 and external position mode 0->1->0 acknowledged and read back; refused before TX without records. Stored-value evidence only."
       },
       "reason": "All seven single-word candidates validate before traffic. Per-terminal CONFIGURE facts replace the private input gate; the passive subdivision path remains. Independent live IO and caller-fact ages cap writes. Checked ACK/readback and possible-change effects remain separate; no rollback, retry or implicit save.",
       "choices": [
@@ -1645,7 +1648,8 @@
         "evidence": [
           "test/segments_test.cpp",
           "test/probe_app_test.cpp",
-          "test/segment_console_parity_test.py"
+          "test/segment_console_parity_test.py",
+          "test/connected_setters_app_test.cpp"
         ],
         "reason": "Real indexed core, application owner path and strict C++ console/Python parity; simulated transport is not physical trigger evidence."
       },
@@ -1654,9 +1658,10 @@
         "evidence": [
           "docs/archive/reports/ess_release_16_attempt1_2026-10-04.json",
           "docs/archive/reports/ess_release_16_2026-10-04.json",
-          "docs/reports/2026-11-16_unattended_bench_tests.md"
+          "docs/reports/2026-11-16_unattended_bench_tests.md",
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
         ],
-        "reason": "Speed, acceleration and deceleration changed by one native step and restored in all 16 PT records of drive 1 and records 1 and 16 of drives 2 and 4; every FC06 source-confirmed and every readback matching (16 November 2026). Range edges, record execution (needs trigger inputs) and persistence NOT_RUN."
+        "reason": "Speed, acceleration and deceleration changed by one native step and restored in all 16 PT records of drive 1 and records 1 and 16 of drives 2 and 4; every FC06 source-confirmed and every readback matching (16 November 2026). Range edges, record execution (needs trigger inputs) and persistence NOT_RUN. Wired bench 03: PT record 2 speed 120->121->120 on drive 1 with connected X0-X3 and SEGMENT records, acknowledged and read back; refused before TX without records. Stored-value evidence only."
       },
       "reason": "All16 speed/native ramp scalar fields; whole candidate validated before writes, one checked FC06/FC03 readback per field, exact progress and unknown execution retained. No atomicity, acceleration conversion or persistence claim."
     },
@@ -1860,7 +1865,8 @@
         "evidence": [
           "test/segments_test.cpp",
           "test/probe_app_test.cpp",
-          "test/segment_console_parity_test.py"
+          "test/segment_console_parity_test.py",
+          "test/connected_setters_app_test.cpp"
         ],
         "reason": "Real indexed core, application owner path and strict C++ console/Python parity; simulated transport is not physical trigger evidence."
       },
@@ -1869,9 +1875,10 @@
         "evidence": [
           "docs/archive/reports/ess_release_16_attempt1_2026-10-04.json",
           "docs/archive/reports/ess_release_16_2026-10-04.json",
-          "docs/reports/2026-11-16_unattended_bench_tests.md"
+          "docs/reports/2026-11-16_unattended_bench_tests.md",
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
         ],
-        "reason": "Speed, acceleration and deceleration changed by one native step and restored in all 16 PV records of drive 1 and records 1 and 16 of drives 2 and 4; every FC06 source-confirmed and every readback matching (16 November 2026). Negative speeds, range edges, record execution (needs trigger inputs) and persistence NOT_RUN."
+        "reason": "Speed, acceleration and deceleration changed by one native step and restored in all 16 PV records of drive 1 and records 1 and 16 of drives 2 and 4; every FC06 source-confirmed and every readback matching (16 November 2026). Negative speeds, range edges, record execution (needs trigger inputs) and persistence NOT_RUN. Wired bench 03: PV record 2 speed 100->101->100 on drive 1 with connected X0-X3 and SEGMENT records, acknowledged and read back; refused before TX without records. Stored-value evidence only."
       },
       "reason": "All16 speed/native ramp scalar fields. Native nonnegative speed subset, negative encoding guarded; exact stopped and external-trigger-inhibited candidate required, no automatic replay."
     },
@@ -1965,7 +1972,8 @@
         "evidence": [
           "test/segments_test.cpp",
           "test/probe_app_test.cpp",
-          "test/segment_console_parity_test.py"
+          "test/segment_console_parity_test.py",
+          "test/connected_setters_app_test.cpp"
         ],
         "reason": "Real indexed core, application owner path and strict C++ console/Python parity; simulated transport is not physical trigger evidence."
       },
@@ -1974,9 +1982,10 @@
         "evidence": [
           "docs/archive/reports/ess_release_16_attempt1_2026-10-04.json",
           "docs/archive/reports/ess_release_16_2026-10-04.json",
-          "docs/reports/2026-11-16_unattended_bench_tests.md"
+          "docs/reports/2026-11-16_unattended_bench_tests.md",
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
         ],
-        "reason": "Record 1 (0x0130) reproduced on 16 November 2026: 1, 10, 60 and 180 each got an exact source-confirmed FC06 echo and read back 0 (READBACK_MISMATCH). Record 2 (0x0131, 1) and record 16 (0x013F, 100) read back and were restored. A full typed read sweep found no other register holding the values: firmware 0x0029 acknowledges and discards record 1's start speed. The 4 October single attempt matches. Records 3-15 NOT_RUN; negative values not attempted."
+        "reason": "Record 1 (0x0130) reproduced on 16 November 2026: 1, 10, 60 and 180 each got an exact source-confirmed FC06 echo and read back 0 (READBACK_MISMATCH). Record 2 (0x0131, 1) and record 16 (0x013F, 100) read back and were restored. A full typed read sweep found no other register holding the values: firmware 0x0029 acknowledges and discards record 1's start speed. The 4 October single attempt matches. Records 3-15 NOT_RUN; negative values not attempted. Wired bench 03: start record 2 (0x0131) 0->1->0 on drive 1 with connected X0-X3 and SEGMENT records, acknowledged and read back; refused before TX without records. Record 1 not used (discards writes). Stored-value evidence only; the FAIL for record 1 stands."
       },
       "reason": "All16 shared PT/PV starting-speed fields; native nonnegative subset with negative encoding guarded. Matching readback establishes only stored setting, not active or persistent interpretation."
     },
@@ -2099,7 +2108,8 @@
           "test/control_app_test.cpp",
           "test/control_console_parity_test.py",
           "docs/archive/reports/ess_release_16_17_audit_2026-10-04.md",
-          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md",
+          "test/connected_setters_app_test.cpp"
         ],
         "reason": "Real core and SDK application tests, exact CLI grammar and23 actual core/formatter Python fixtures; full8field/16step capacity, cancel boundaries, current/model dependencies and immutable partial/uncertain results. Fresh audit adds closure-budget ACK/exception classification, full-result-pressure CLI recovery and strict Python evidence regressions. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
@@ -2108,9 +2118,10 @@
         "evidence": [
           "docs/archive/reports/ess_release_17_2026-10-04.json",
           "docs/archive/reports/ess_release_16_17_audit_2026-10-04.json",
-          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json",
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
         ],
-        "reason": "Only stopped-state stored-value path: native200ms-to201ms then explicit restoration200ms, confirmed separate FC03 readbacks. Every FC06 source/ACK remains unconfirmed/executionUNKNOWN; no active lock timing, torque or persistence effect qualification. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified."
+        "reason": "Only stopped-state stored-value path: native200ms-to201ms then explicit restoration200ms, confirmed separate FC03 readbacks. Every FC06 source/ACK remains unconfirmed/executionUNKNOWN; no active lock timing, torque or persistence effect qualification. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified. Wired bench 03: drive 1 lock delay 200->201->200 with connected X0-X3 and no input records (no input condition), acknowledged and read back. Stored-value evidence only."
       },
       "reason": "Explicit bounded millisecond setting uses the same whole-candidate validation and FC06/FC03 sequence. Model identity and stopped effects are independently qualified; current denominator is unrelated. Stored settlement is distinct from physical lock behavior."
     },
@@ -2190,16 +2201,18 @@
           "test/probe_console_test.cpp",
           "test/tuning_console_parity_test.py",
           "test/installed_consumer/main.cpp",
-          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md",
+          "test/connected_setters_app_test.cpp"
         ],
         "reason": "Current integrated verification passes: exact native ranges/group masks/selectors, complete bounded reads/updates, partial uncertainty/cancellation, actual application cross-group cache invalidation and failed-refresh preservation, all20 CLI fields and66 actual Console/Python terminal fixtures; installed header consumer compiles. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
       "hardware": {
         "state": "NOT_RUN",
         "evidence": [
-          "docs/reports/2026-11-16_unattended_bench_tests.md"
+          "docs/reports/2026-11-16_unattended_bench_tests.md",
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
         ],
-        "reason": "Group NOT_RUN: four of six fields are unexercised and physical filter timing is unmeasured. Bench experiments only: input filter 2->3->2 (earlier runs) and position-error threshold 4000->1->4000 on drives 4 and 2, each acknowledged and read back (16 November 2026); threshold 1 latched alarm 5 on the next move every time."
+        "reason": "Group NOT_RUN: four of six fields are unexercised and physical filter timing is unmeasured. Bench experiments only: input filter 2->3->2 (earlier runs) and position-error threshold 4000->1->4000 on drives 4 and 2, each acknowledged and read back (16 November 2026); threshold 1 latched alarm 5 on the next move every time. Wired bench 03: deviation threshold 4000->3999->4000 on drive 1 with connected X0-X3 and CONFIGURE records, acknowledged and read back; refused before TX without records. Stored-value evidence only; the group stays NOT_RUN."
       },
       "reason": "Whole candidate, native range, exact target/model context, fresh stopped state and independently qualified effects validate before traffic; shared sequence retains partial progress and uncertainty without replay or rollback."
     },
@@ -2485,7 +2498,8 @@
           "test/probe_console_test.cpp",
           "test/tuning_console_parity_test.py",
           "test/installed_consumer/main.cpp",
-          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md",
+          "test/connected_setters_app_test.cpp"
         ],
         "reason": "Current integrated verification passes: exact native ranges/group masks/selectors, complete bounded reads/updates, partial uncertainty/cancellation, actual application cross-group cache invalidation and failed-refresh preservation, all20 CLI fields and66 actual Console/Python terminal fixtures; installed header consumer compiles. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
@@ -2493,9 +2507,10 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_18_2026-10-04.json",
-          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json",
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
         ],
-        "reason": "Finite stopped/passive known-unconnected ESS23-RS20 experiment2?3?2 passes exact stored readback and restoration. Source-unconfirmed FC06 keeps acknowledgedfalse/executionunknown; separate confirmed FC03 settles stored codes. Physical filter delay, external-input operation and persistence remain NOT_RUN. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified."
+        "reason": "Finite stopped/passive known-unconnected ESS23-RS20 experiment2?3?2 passes exact stored readback and restoration. Source-unconfirmed FC06 keeps acknowledgedfalse/executionunknown; separate confirmed FC03 settles stored codes. Physical filter delay, external-input operation and persistence remain NOT_RUN. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified. Wired bench 03: with connected X0-X3 and CONFIGURE records, drive 1 input filter 2->3->2 acknowledged and read back, on the console and through bench_scenarios --input-facts configure; refused before TX without records. Stored-value evidence only; no filter timing."
       },
       "reason": "Same filters-group candidate and checked sequence; this separate evidence disposition cannot qualify other filter fields or physical filter timing."
     },
@@ -2781,16 +2796,18 @@
           "test/motion_profile_app_test.cpp",
           "test/group_app_test.cpp",
           "test/bench_probe_test.py",
-          "test/operations_inventory_test.py"
+          "test/operations_inventory_test.py",
+          "test/connected_setters_app_test.cpp"
         ],
         "reason": "Real app/owner candidate prior/write/readback, retained results, console and host archive validation on both frontends."
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/2026-11-16_hil_regression.md"
+          "docs/reports/2026-11-16_hil_regression.md",
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
         ],
-        "reason": "Drive 1, exact image e56d4c0: an equal archive staged unchanged with no write; a changed candidate (acceleration 2000 to 1999) was written, read back and left 0x0020 unchanged; the exported original restored all six words. M04 runs on drives 2 and 4 also restored their profiles through this route. No motion effect is claimed."
+        "reason": "Drive 1, exact image e56d4c0: an equal archive staged unchanged with no write; a changed candidate (acceleration 2000 to 1999) was written, read back and left 0x0020 unchanged; the exported original restored all six words. M04 runs on drives 2 and 4 also restored their profiles through this route. No motion effect is claimed. Wired bench 03 (prompt 01 follow-up): with connected X0-X3 and CONFIGURE records an equal archive staged unchanged with no write on drives 1, 2 and 4, and after the staged group moves each drive's exported baseline was staged back and read back [30,100,100,60,0,5000]; without records the stage refuses before TX (input_facts_required)."
       },
       "reason": "Standalone02 closes N03 (historical owner09/11). submitProfileCandidate/copyProfileCandidate/releaseProfileCandidate in examples/probe_cli/ProbeApp.h use a retained slot and the shared owner stage path. Fresh session reads establish provenance; imported bytes supply none. Exactly0021/5, no start, save, automatic rollback or0020 write."
     },
@@ -2820,15 +2837,18 @@
         "state": "PASS",
         "evidence": [
           "test/driver_settings_test.cpp",
-          "test/position_start_speed_app_test.cpp"
+          "test/position_start_speed_app_test.cpp",
+          "test/connected_setters_app_test.cpp"
         ]
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
           "docs/reports/2026-11-02_standalone_14_bench_regression.md",
-          "docs/reports/2026-11-16_hil_regression.md"
-        ]
+          "docs/reports/2026-11-16_hil_regression.md",
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
+        ],
+        "reason": "Wired bench 03 (18 November 2026): with board-declared connected X0-X3 and four stated CONFIGURE records, drive 1 30->31->30 acknowledged and read back; without records refused before TX (input_facts_required), with X1 held active refused (input_active). Stored-value evidence only."
       },
       "reason": "Explicit native0..3000 FC06 update through the ordinary reserved prior-read/update/readback session. Stored state, effects and uncertainty are retained separately; no motion, save, replay, rollback or widened0021/5 window."
     },
@@ -2874,7 +2894,8 @@
           "test/driver_settings_test.cpp",
           "test/homing_auxiliary_app_test.cpp",
           "test/bench_probe_test.py",
-          "test/driver_console_parity_test.py"
+          "test/driver_console_parity_test.py",
+          "test/connected_setters_app_test.cpp"
         ]
       },
       "hardware": {
@@ -2882,9 +2903,10 @@
         "evidence": [
           "docs/reports/2026-11-02_standalone_14_bench_regression.md",
           "docs/reports/2026-11-16_hil_regression.md",
-          "docs/reports/2026-11-16_unattended_bench_tests.md"
+          "docs/reports/2026-11-16_unattended_bench_tests.md",
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
         ],
-        "reason": "All twelve choices 0..11 written and read back on drives 1, 2 and 4, ending at 0 (16 November 2026); 0 and 7 also in earlier runs. Only choices 0 and 7 have run a home; the coordinate behavior of the others is untested."
+        "reason": "All twelve choices 0..11 written and read back on drives 1, 2 and 4, ending at 0 (16 November 2026); 0 and 7 also in earlier runs. Only choices 0 and 7 have run a home; the coordinate behavior of the others is untested. Wired bench 03: with connected X0-X3 and CONFIGURE records, drives 1 and 4 0->7->0 acknowledged and read back; refused before TX without records. Stored-value evidence only."
       },
       "reason": "All12 source-supported scalar choices through explicit reserved prior-read/FC06/readback session. Confirmed ACK required; no home trigger, staging, input reassignment, save, replay or rollback. Possible effects revoke dependent qualification; matching7 never qualifies activepolicy."
     }

@@ -93,8 +93,12 @@ functions 2 through 13 reject; functions 7 through 17 require continued source
 inhibition. The application then binds those facts to the exact segment candidate.
 `ASSIGN`, `CONFIGURE` and `FINITE_MOVE` records do not grant this permission.
 The existing unconnected, passive-input configuration path remains available.
-Accepted writes revoke future facts; reads do not renew them. Neither path
-qualifies external execution, trigger timing or selection of a segment.
+On the wired bench (board-declared connected X0-X3) only the `SEGMENT` records
+admit a record write; without them the write refuses before TX with
+`qualification_required` and a [named reason](cli_contract.md#settings-input-facts)
+(wired bench 03). Accepted writes revoke future facts; reads do not renew them,
+so a restoring write needs four new records. Neither path qualifies external
+execution, trigger timing or selection of a segment.
 
 An update consists of checked single-word writes followed by separate checked
 readbacks. There is no rollback, automatic retry, save or invented atomic

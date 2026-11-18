@@ -108,7 +108,10 @@ void safeFilterAndGuards() {
     uint32_t untouched = 99;
     assert(host(app).startDriver(app, 4, 1, ESS::DriverKind::UPDATE, request, untouched) != Probe::Action::OK);
     app->inputWiring[0] = InputWiring::UNKNOWN; request = filter();
-    assert(host(app).startDriver(app, 4, 1, ESS::DriverKind::UPDATE, request, untouched) == Probe::Action::INVALID);
+    // Unknown wiring leaves the passive path; the experiment then needs CONFIGURE facts.
+    assert(host(app).startDriver(app, 4, 1, ESS::DriverKind::UPDATE, request, untouched) == Probe::Action::QUALIFICATION_REQUIRED);
+    Probe::SettingsRefusal refusal;
+    assert(copySettingsRefusal(refusal) && !std::strcmp(refusal.reason, "input_facts_required") && !std::strcmp(refusal.purpose, "configure"));
     assert(untouched == 99 && hardware.writes == writes);
     app->inputWiring[0] = InputWiring::UNCONNECTED;
     app->axis.units.commandStepsPerMotorTurn = UnitScale(1000, 1, ScaleSource::QUALIFIED);

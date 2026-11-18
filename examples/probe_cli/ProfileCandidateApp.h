@@ -34,6 +34,7 @@ void candidateEffects(App& a, App::CandidateSession& s, uint64_t now) {
 Probe::Action startProfileCandidate(void* context, uint32_t commandId, const Probe::ProfileCandidate& candidate,
                                     uint32_t& operationId) {
     App& a = *static_cast<App*>(context);
+    a.settingsRefusal = Probe::SettingsRefusal();
     if (!ESS::isValidAddress(candidate.address) || candidate.words[0] > 2000 || candidate.words[1] > 2000 ||
         candidate.words[2] > 3000 || static_cast<uint16_t>(candidate.wordOrder) > 1) return Probe::Action::INVALID;
     if (!profileTargetInRange(candidate.words + 3, candidate.wordOrder)) return Probe::Action::TARGET_RANGE;
@@ -51,7 +52,11 @@ Probe::Action startProfileCandidate(void* context, uint32_t commandId, const Pro
     if (!a.nextOperationId) return Probe::Action::IDS_EXHAUSTED;
     const uint64_t now = uart.sample();
     if (enableSettling(a, candidate.address, now)) return Probe::Action::BUSY;
-    if (!singleSettingPolicy(a, now) || !motionProfileBound(a) || !a.motionProfile.view.ok ||
+    // Same input policy as the single settings, CONFIGURE facts included; a
+    // refusal they decide is named and sends nothing.
+    if (!singleSettingPolicy(a, now))
+        return a.settingsRefusal.reason ? Probe::Action::QUALIFICATION_REQUIRED : Probe::Action::UNAVAILABLE;
+    if (!motionProfileBound(a) || !a.motionProfile.view.ok ||
         !a.motionProfile.view.closureQualified ||
         !MotorControlRS::evidenceAgeValid(a.motionProfile.view.closureEarliestUs, now, a.observationAgeUs()))
         return Probe::Action::UNAVAILABLE;

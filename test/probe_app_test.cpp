@@ -1639,7 +1639,9 @@ void testSegmentIndexCancellationAndTriggerPolicy() {
     driverStep(baseline, registerReply({50})); assert(release(app, baseline) == Probe::Action::OK);
     const auto before = hardware.writes;
     app->inputWiring[0] = MotorControlRS::InputWiring::UNKNOWN;
-    command("@5 segment start 1 set value 60\n"); contains("invalid"); assert(hardware.writes == before);
+    // Unknown wiring needs stated SEGMENT facts: named, before TX (wired bench 03).
+    command("@5 segment start 1 set value 60\n"); contains("\"result\":\"qualification_required\"");
+    contains("\"reason\":\"input_facts_required\",\"purpose\":\"segment\""); assert(hardware.writes == before);
     app->inputWiring[0] = MotorControlRS::InputWiring::UNCONNECTED;
     app->ioSettings.raw[7] = 0x8000;
     command("@6 segment start 1 set value 60\n"); contains("invalid"); assert(hardware.writes == before);
@@ -1649,7 +1651,7 @@ void testSegmentIndexCancellationAndTriggerPolicy() {
     app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)].value.rawInputs = 0;
     command("@8 segment start 16 set value 60\n"); contains("invalid"); assert(hardware.writes == before);
     app->ioSettings.raw[8] = 17; // Not a passive assignment; no trigger policy can be inferred.
-    command("@9 segment start 1 set value 60\n"); contains("invalid"); assert(hardware.writes == before);
+    command("@9 segment start 1 set value 60\n"); contains("\"reason\":\"input_facts_required\""); assert(hardware.writes == before);
 }
 void testSegmentRecoveryCancelsReadbackContinuation() {
     segmentBaseline();

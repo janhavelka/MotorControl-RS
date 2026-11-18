@@ -17,7 +17,8 @@ SCENARIOS = {
     'load': 'finite read-only probes with explicitly selected host workload and measured execution',
     'configuration': 'typed configuration and optional-I/O reads only',
     'native-read': 'one selected typed native group/record; no writes or segment trigger',
-    'settings': 'one explicit input-filter or lock-delay increment/decrement; readback and restore once',
+    'settings': 'one explicit input-filter or lock-delay increment/decrement; readback and restore once; '
+                '--input-facts configure states CONFIGURE records for connected terminals',
     'position': 'one qualified finite 100-step position phase; same-session stop and profile restoration',
     'actions': 'explicit stopped-state enable/release cycle from enabled state; ends enabled',
     'angle': 'one explicit wrapped-angle request; existing preparation/gates; stop and profile restoration',
@@ -53,6 +54,10 @@ def arguments(argv=None):
     parser.add_argument('--native', choices=('driver', 'io', 'control', 'segment', 'tuning'))
     parser.add_argument('--native-args', nargs='+')
     parser.add_argument('--setting', choices=('input-filter', 'lock-delay'))
+    parser.add_argument('--input-facts', choices=('configure',),
+                        help='settings: before each write, state four CONFIGURE input records from fresh reads '
+                             '(function and polarity from read config, no added facts); required for input-filter '
+                             'when the board declares a terminal of the drive connected')
     parser.add_argument('--value', type=int)
     parser.add_argument('--discovery', nargs='*', default=None)
     parser.add_argument('--persistence-kind', choices=('save', 'factory-restore'))
@@ -80,7 +85,7 @@ def arguments(argv=None):
     elif args.scenario == 'load': parser.error('load requires all three explicit workload settings')
     for option, scopes in ((args.phase, ('position',)), (args.arguments, ('angle', 'velocity')),
                           (args.native, ('native-read',)), (args.native_args, ('native-read',)),
-                          (args.setting, ('settings',)), (args.value, ('settings',)),
+                          (args.setting, ('settings',)), (args.value, ('settings',)), (args.input_facts, ('settings',)),
                           (args.discovery, ('discovery',)),
                           (args.persistence_kind, ('persistence', 'persistence-plan'))):
         if option is not None and args.scenario not in scopes:
@@ -104,6 +109,10 @@ def arguments(argv=None):
         if candidate: parser.error('native-read never writes; select a bounded settings experiment explicitly')
     if args.scenario == 'settings' and (args.setting is None or args.value is None or not 0 <= args.value <= 65535):
         parser.error('settings requires a documented selected field and native uint16 candidate')
+    if args.input_facts and args.declare_unconnected:
+        parser.error('--input-facts states facts for connected terminals; --declare-unconnected says none are wired')
+    if args.input_facts and args.setting == 'lock-delay':
+        parser.error('lock delay has no input condition; --input-facts applies to input-filter')
     if args.scenario == 'discovery':
         request = probe.discovery_arguments(tuple(args.discovery or ()))
         if request['action'] != 'begin': parser.error('discovery scenario requires a finite scan, not a local control')
@@ -119,10 +128,24 @@ def _same_configuration(before, after):
         raise probe.BenchError('observed drive configuration changed; no implicit repair')
 
 
+def _input_facts(console, args, record, key):
+    """State the CONFIGURE records the input-filter experiment needs on connected terminals."""
+    if args.input_facts:
+        record['setting'][key] = probe.install_input_facts(console, args.address, args.input_facts, timeout_s=args.timeout)
+
+
 def _setting(console, args, record):
     group = 'tuning' if args.setting == 'input-filter' else 'control'
     # Settings writes apply to the selected drive only.
     record['selection'] = motion.select_drive(console, args.address, declare_unconnected=args.declare_unconnected)
+    if group == 'tuning' and not args.input_facts and not args.declare_unconnected:
+        # Refuse before any write: the board's connected terminals need stated facts.
+        wiring = console.command('wiring', timeout_s=args.timeout)
+        if not wiring['ok']:
+            raise probe.BenchError('wiring query refused before the settings scenario')
+        record['selection']['board_wiring'] = wiring
+        if probe.board_declares_connected(wiring) or wiring.get('fixture') == 'invalid':
+            raise probe.BenchError('the board declares connected terminals on this drive; input-filter needs --input-facts configure')
     prefix = ('filters',) if group == 'tuning' else ()
     fields = probe.TUNING_FIELDS['filters'] if group == 'tuning' else probe.CONTROL_FIELDS
     before = checked(console, group, driver_args=prefix + ('read',), address=args.address, timeout_s=args.timeout)
@@ -135,9 +158,12 @@ def _setting(console, args, record):
         raise probe.BenchError('this finite settings experiment permits one native-unit change only; no-op does not qualify work')
     requested = prefix + ('set', args.setting, str(args.value))
     restore = prefix + ('set', args.setting, str(original))
-    record['setting'] = dict(before=before, requested=requested, restoration=restore, restored=False)
+    record['setting'] = dict(before=before, requested=requested, restoration=restore, restored=False,
+                             input_facts=args.input_facts)
     console.emit('settings_plan', **record['setting'])
     probe.observe_stopped(console, address=args.address, timeout_s=args.timeout)
+    if group == 'tuning':
+        _input_facts(console, args, record, 'facts')
     applied = False
     try:
         result = checked(console, group, driver_args=requested, address=args.address, timeout_s=args.timeout)
@@ -155,6 +181,8 @@ def _setting(console, args, record):
             if group == 'tuning':
                 record['setting']['restore_io'] = checked(console, 'io', driver_args=('read',), address=args.address, timeout_s=args.timeout)
             probe.observe_stopped(console, address=args.address, timeout_s=args.timeout)
+            if group == 'tuning':
+                _input_facts(console, args, record, 'restore_facts')  # The write cleared the earlier records.
             record['setting']['restore_result'] = checked(console, group, driver_args=restore, address=args.address, timeout_s=args.timeout)
             after = checked(console, group, driver_args=prefix + ('read',), address=args.address, timeout_s=args.timeout)
             record['setting']['after'] = after

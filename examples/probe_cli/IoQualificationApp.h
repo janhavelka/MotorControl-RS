@@ -154,14 +154,47 @@ void liveIoPrerequisites(const App& a, ESS::DriverPrerequisites& p, uint64_t now
     p.actualInputs = io.value.rawInputs; p.actualOutputs = io.value.rawOutputs;
     p.ioEarliestUs = io.observedEarliestUs; p.ioLatestUs = io.observedLatestUs;
 }
-bool commissionedSettingsInputs(App& a, IoPurpose purpose, ESS::DriverPrerequisites& p, uint64_t now) {
+// Whether the selected axis's four input records of one purpose admit a settings
+// write, and if not, the first cause in this order: a terminal has no record of
+// the purpose, a record no longer matches current reads/binding/age, an assigned
+// limit/stop/control input reads active. Facts are never inferred from a read;
+// only the live level is taken from the latest state read. p changes only on
+// PERMITTED.
+enum class SettingsInputs : uint8_t { PERMITTED, FACTS_REQUIRED, FACTS_STALE, INPUT_ACTIVE };
+struct SettingsInputCheck {
+    SettingsInputs result = SettingsInputs::FACTS_REQUIRED;
+    uint8_t terminal = 0;
+    const char* readFirst = "read config";
+};
+SettingsInputCheck settingsInputFacts(App& a, IoPurpose purpose, ESS::DriverPrerequisites& p, uint64_t now) {
+    SettingsInputCheck check;
     for (uint8_t i = 0; i < 4; ++i) {
         const auto& q = a.ioQualifications[i];
-        if (q.purpose != purpose || !ioQualificationCurrent(a, q, now)) return false;
+        if (!q.target.id || q.purpose != purpose) { check.terminal = i; return check; }
+    }
+    const auto& io = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
+    for (uint8_t i = 0; i < 4; ++i) {
+        if (ioQualificationCurrent(a, a.ioQualifications[i], now)) continue;
+        const auto& config = a.configuration;
+        bool configured = config.operationId && Probe::sameTarget(config.target, a.axis.target);
+        for (const auto& e : config.provenance)
+            configured = configured && e.qualified && e.status && e.latestUs <= now &&
+                MotorControlRS::evidenceAgeValid(e.attemptedUs, now, a.observationAgeUs());
+        check.result = SettingsInputs::FACTS_STALE; check.terminal = i;
+        check.readFirst = configured && !Probe::fresh(io, a.axis.target, now, a.observationAgeUs()) ? "read state" : "read config";
+        return check;
+    }
+    for (uint8_t i = 0; i < 4; ++i) {
+        const auto& q = a.ioQualifications[i];
         bool active = false;
-        const auto& io = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
-        if (!effectiveInput(io.value.rawInputs, i, q.polarity, q.polarity, q.input.statusMapping, active) ||
-            (q.function >= 2 && q.function <= 13 && active)) return false;
+        // Without a status mapping only unchanged default polarity has a known level.
+        if (!effectiveInput(io.value.rawInputs, i, q.polarity, q.polarity, q.input.statusMapping, active)) {
+            check.terminal = i; return check;
+        }
+        if (q.function >= 2 && q.function <= 13 && active) {
+            check.result = SettingsInputs::INPUT_ACTIVE; check.terminal = i; check.readFirst = "read state";
+            return check;
+        }
     }
     liveIoPrerequisites(a, p, now);
     p.ioQualificationUs = now;
@@ -169,7 +202,25 @@ bool commissionedSettingsInputs(App& a, IoPurpose purpose, ESS::DriverPrerequisi
         p.inputFacts[i] = a.ioQualifications[i].input;
         p.inputWiring[i] = a.inputWiring[i]; copyIoTimes(p, a.ioQualifications[i]);
     }
-    return p.ioLevelsQualified;
+    if (p.ioLevelsQualified) check.result = SettingsInputs::PERMITTED;
+    else { check.result = SettingsInputs::FACTS_STALE; check.readFirst = "read state"; }
+    return check;
+}
+bool anySettingsRecord(const App& a, IoPurpose purpose) {
+    for (uint8_t i = 0; i < 4; ++i)
+        if (a.ioQualifications[i].target.id && a.ioQualifications[i].purpose == purpose) return true;
+    return false;
+}
+// Record the cause for the console and the API. The passive unconnected path
+// keeps its unnamed refusal unless the terminals need facts or some exist.
+void noteSettingsRefusal(App& a, const SettingsInputCheck& check, IoPurpose purpose) {
+    a.settingsRefusal = Probe::SettingsRefusal();
+    if (check.result == SettingsInputs::PERMITTED) return;
+    a.settingsRefusal.reason = check.result == SettingsInputs::FACTS_REQUIRED ? "input_facts_required" :
+        check.result == SettingsInputs::FACTS_STALE ? "input_facts_stale" : "input_active";
+    a.settingsRefusal.readFirst = check.readFirst;
+    a.settingsRefusal.purpose = purpose == IoPurpose::SEGMENT ? "segment" : "configure";
+    a.settingsRefusal.terminal = static_cast<int8_t>(check.terminal);
 }
 Probe::QualificationReply ioQualificationCommand(void*, const Probe::IoQualificationCommand& command,
                                                  IoQualification& output, bool& valid) {

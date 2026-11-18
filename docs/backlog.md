@@ -153,14 +153,17 @@ functional evidence; independent shaft calibration remains absent.
   ([report](reports/2026-11-18_wired_bench_01_baseline.md)); prompt 20 owns the
   full regression and the NOT RUN stage 14 items (position interrupt, homing
   auxiliary 7 and homes 33-35, changed-candidate staging, start-speed relation).
-- [ ] Admit the setters and `motion-profile stage` on connected terminals
+- [x] Admit the setters and `motion-profile stage` on connected terminals
   through explicit facts ([wired bench 03](prompts/ess_wired_bench/03_connected_terminal_setters.md)).
-  18 November ([wired bench 01](reports/2026-11-18_wired_bench_01_baseline.md)):
-  with X0-X3 declared connected, start speed, homing auxiliary, the input-filter
-  experiment, subdivision, segment writes and the profile stage all refuse
-  before TX (0 frames). The stage refusal blocks the equal-archive no-write
-  check and leaves staged group writes without a restoration route for
-  non-selected drives; their cases are NOT RUN until 03.
+  Implementation: done. Start speed, homing auxiliary, the profile stage and
+  the two tuning experiments take the passive path or four CONFIGURE records,
+  DRIVE fields CONFIGURE records, segment records SEGMENT records; refusals the
+  records decide name `input_facts_required`, `input_facts_stale` or
+  `input_active` before TX. Harness `install_input_facts` and
+  `--input-facts configure`. Hardware: 18 November
+  ([report](reports/2026-11-18_wired_bench_03_connected_setters.md)), S01-S13
+  PASS on drives 1 and 4 (stored-value evidence only), and 01's B11 and the
+  specified B08 staged group moves PASS with restoration through the stage.
 - [x] Declare the fixture wiring at boot ([wired bench 02](prompts/ess_wired_bench/02_fixture_wiring_declarations.md)).
   Implementation: done. A validated board table (`BoardPins.h`, menuconfig)
   applies at boot, after `useaddr` and to new group members, with visible
@@ -169,7 +172,7 @@ functional evidence; independent shaft calibration remains absent.
   ([report](reports/2026-11-18_wired_bench_02_fixture_wiring.md)), W01-W09 PASS
   on the Arduino image and the table parity check on the native IDF image, both
   built from the uncommitted prompt 02 tree on `5dbcaa1`. Named refusal reasons
-  for connected-terminal setters stay with wired bench 03.
+  for connected-terminal setters followed in wired bench 03.
 - [ ] Distinguish supply transients from internal firmware failure in the
   reproduced reset-like loss of volatile settings. Failure occurred both above
   and below 200,000 command increments/s; ramp comparisons narrow the case but

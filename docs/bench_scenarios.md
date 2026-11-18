@@ -58,9 +58,17 @@ firmware `0x0029`, the owner-confirmed ESS23-RS20 identity of drives 1, 2 and
 4 (`ProbeApp.cpp` `exactModelQualified`, [13 November](reports/2026-11-13_multi_drive_settings_and_soak.md)).
 Another identity is refused before TX. Corrected 18 November 2026: this
 paragraph used to say the setters were qualified for node 1 only. The tuning
-input-filter experiment and the subdivision-only route also need fresh passive,
-unconnected inputs; on the wired bench (X0-X3 connected since 18 November) they
-refuse before TX until [wired bench 03](prompts/ess_wired_bench/03_connected_terminal_setters.md).
+input-filter experiment also needs an input policy: fresh passive, unconnected
+inputs, or four `configure` records. On the wired bench (X0-X3 connected since
+18 November) pass `--input-facts configure`: before each write (the change and
+the restoration, because the change clears the records) it calls
+`bench_probe.install_input_facts`, which reads `read config` and `read state`,
+installs one `configure` record per input with that read's function and
+polarity and adds no fact. Without it, `--setting input-filter` refuses to start
+on a drive whose terminals the board declares connected (or with an invalid
+table), before any write. `lock-delay` has no input condition and takes no
+`--input-facts`; the option cannot be combined with `--declare-unconnected`
+([wired bench 03](reports/2026-11-18_wired_bench_03_connected_setters.md)).
 Never pass `--declare-unconnected` on that bench. That option declares all six
 terminals of the selected drive unconnected, after `useaddr` when the drive
 changes. It is refused,

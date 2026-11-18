@@ -100,6 +100,17 @@ the table is invalid or when the reply lacks the board keys. It is admitted
 with an absent table or an unlisted address. See the
 [CLI contract](../docs/cli_contract.md#terminal-wiring-declarations).
 
+`bench_probe.install_input_facts(console, address, purpose, mapping="unknown",
+facts={})` states the four selected-axis input records a settings write needs
+with connected terminals (`configure` or `segment`): it reads `read config` and
+`read state`, copies each function and polarity and adds only the per-terminal
+facts the caller names (`triggers-inhibited`); it never adds a fact on its own.
+`bench_scenarios.py --scenario settings --setting input-filter --input-facts
+configure` calls it before the change and again before the restoration, and
+`bench_probe.py motion-profile stage FILE --input-facts configure` before the
+stage. Refusals the records decide carry `reason`, `purpose`, `read_first` and
+`terminal` ([CLI contract](../docs/cli_contract.md#settings-input-facts)).
+
 Use a new evidence prefix for each run. A selected settings/motion campaign can
 write to or move the drive; a passing probe is not preparation for every feature.
 See [scenario bounds and cleanup](../docs/bench_scenarios.md),

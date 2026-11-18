@@ -251,11 +251,23 @@ Group members retain their own finite-move facts.
 
 `CONFIGURE` facts for the four inputs admit the input-policy part of DRIVE
 updates: direction, subdivision, word order, soft limits, over-limit stop,
-external position mode and PV trigger mode. Existing geometry, source and pair
-write guards still apply. The narrow passive unconnected subdivision route
-remains available. `SEGMENT` facts are separate from finite-move readiness.
-Possible settings writes invalidate future dependent facts; the admitted
-sequence keeps its immutable copied qualification and deadline.
+external position mode and PV trigger mode. Since wired bench 03 they also
+admit the single settings (position start speed `0x0020`, homing auxiliary
+`0x0030`), the profile stage (`motion-profile stage`, `0x0021-0x0025`) and the
+two tuning experiments (input filter 2/3, position-error threshold 1..4000).
+`SEGMENT` facts admit PT, PV and start-record scalar writes. Existing
+geometry, source, pair and value-range guards still apply. The passive path
+(every input function 0, or at most 3 on an `UNCONNECTED` terminal, no input
+active) stays as before for drives without a board table, and the narrow
+passive subdivision route remains. With facts, an assigned limit, stop or
+control input (functions 2-13) must read inactive in the latest `read state`;
+functions 7-17 need `triggers-inhibited` at installation. A refusal the facts
+decide sends no frame and names its reason (`input_facts_required`,
+`input_facts_stale`, `input_active`; [CLI contract](cli_contract.md#settings-input-facts)).
+`SEGMENT` facts are separate from finite-move readiness. Possible settings
+writes clear the selected axis's records, so a restoration write needs fresh
+reads and four new records; the admitted sequence keeps its immutable copied
+qualification and deadline.
 
 ```text
 io read [address]

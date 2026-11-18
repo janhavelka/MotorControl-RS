@@ -607,6 +607,26 @@ Inspect a selected-axis input without traffic:
 io qualification inspect 1 x0 assign
 ```
 
+With connected terminals (the wired bench boots that way) settings writes need
+four records first: `configure` for `motion-profile start-speed`, `home
+auxiliary`, `motion-profile stage`, `driver set` and the two tuning experiments,
+`segment` for `segment ... set`. After `read config` and `read state`, state each
+input's current function and polarity:
+
+```text
+io qualification install 1 x0 1 0 configure unknown
+io qualification install 1 x1 2 0 configure unknown
+io qualification install 1 x2 3 0 configure unknown
+io qualification install 1 x3 0 0 configure unknown
+motion-profile start-speed 31
+```
+
+Every accepted write clears them, so the restoring write needs fresh reads and
+four new records. Without them the setter replies `qualification_required` with
+`reason` `input_facts_required` (or `input_facts_stale`, `input_active` when an
+assigned limit input reads active), `purpose`, `read_first` and `terminal`, and
+sends nothing ([CLI contract](cli_contract.md#settings-input-facts)).
+
 Use `member` before the address to inspect, install or revoke a declared member's
 `finite-move` input facts. Selected-axis and member facts never transfer between
 contexts. `revoke` removes the specified future fact; it does not stop a motor.

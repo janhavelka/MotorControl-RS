@@ -75,8 +75,21 @@ MotorControlRS::Status revokeIoQualification(uint8_t address, uint8_t terminal, 
 MotorControlRS::Status submitDriverRead(uint8_t address, MotorControlRS::ESS_RS::DriverGroup,
                                       uint32_t& operationId, uint8_t segmentIndex = 0);
 /** Submit an exact selected-axis settings candidate using retained checked reads
- * and supplied qualification. Same API as console settings writes; no replay. */
+ * and supplied qualification. Same API as console settings writes; no replay.
+ * DRIVE fields need four current CONFIGURE input records (io qualification,
+ * installIoQualification), except subdivision alone on the passive unconnected
+ * path. The tuning experiments (input filter 2/3, position-error threshold
+ * 1..4000) take the passive path or the same CONFIGURE records; PT, PV and
+ * start records take the passive path or four SEGMENT records. A refusal the
+ * input facts decide returns detail QUALIFICATION_REQUIRED, msg the reason
+ * (input_facts_required, input_facts_stale or input_active; copySettingsRefusal)
+ * and sends no frame. */
 MotorControlRS::Status submitDriverSettings(uint8_t address, const MotorControlRS::ESS_RS::DriverRequest&, uint32_t& operationId);
+/** Copy the input-facts cause of the settings or profile-stage refusal just
+ * returned by a submit call or console command: reason, read_first, purpose and
+ * terminal. Valid until the next serviceApplication turn or admission attempt.
+ * False when the latest refusal had another cause. No traffic. */
+bool copySettingsRefusal(Probe::SettingsRefusal& output);
 
 /** Explicit stop on a selected or previously checked address, through the same
  * admission and owner path as the console. Rejection preserves operationId.
@@ -194,8 +207,13 @@ MotorControlRS::Status submitHomingParameterRead(uint32_t& operationId);
  * released or wrong-kind IDs preserve output. No traffic or result consumption. */
 bool copyReadResult(uint32_t operationId, MotorControlRS::ESS_RS::ReadContext& output);
 /** Explicit selected-axis native start-speed setting (0..3000). Requires checked
- * configuration, stopped state, feedback and passive input/trigger policy before
- * any traffic. One reserved result owns prior FC03, FC06 and separate readback
+ * configuration, stopped state, feedback and an input policy before any traffic:
+ * the passive one (every input function 0, or <= 3 on an UNCONNECTED terminal,
+ * none active) or four current CONFIGURE input records with no assigned
+ * limit/stop/control input active. A refusal the input facts decide returns
+ * QUALIFICATION_REQUIRED with the reason as msg (copySettingsRefusal) and sends
+ * not even the prior read; the same check before the FC06 ends the result with
+ * UPDATE_NOT_ADMITTED and the reason. One reserved result owns prior FC03, FC06 and separate readback
  * under one immutable deadline. No motion, save, retry or rollback. Call from
  * the service task; rejection preserves ID. Possible writes expire readiness,
  * not the fixed host origin. Readback proves stored state, not physical RPM or
@@ -227,7 +245,8 @@ struct PositionStartSpeedRelation {
  */
 MotorControlRS::Status installPositionStartSpeedRelation(const PositionStartSpeedRelation&);
 /** Explicit selected-axis homing auxiliary choice (0..11 enumeration). Uses the
- * same stopped/input/trigger admission, immutable prior/update/readback session
+ * same stopped/input/trigger admission (passive or CONFIGURE records, named
+ * refusals), immutable prior/update/readback session
  * and retained result contract as the start-speed setter. A possible write
  * expires dependent home qualification/prepared work and current references;
  * fixed host origins/scales and desired values remain. Reading back 7 does not
@@ -382,7 +401,9 @@ MotorControlRS::Status stagePositionMove(const MotorControlRS::PositionRequest& 
 /// Copy the selected axis's pending or finished stage evidence; another ID preserves output.
 bool copyPositionStage(uint32_t operationId, Probe::PositionStageView& output);
 /** Stage untrusted raw profile values after fresh checked readiness and a saved
- * drive snapshot. Uses one three-second deadline and a fresh six-word prior
+ * drive snapshot. Inputs follow submitPositionStartSpeed: the passive path or
+ * four CONFIGURE records, with named refusals before any traffic.
+ * Uses one three-second deadline and a fresh six-word prior
  * read. Wire-valid values may exceed motion policy; this operation never starts
  * motion. Output ID stays unchanged on refusal, including TARGET_RANGE.
  * A possible write revokes the address's start-speed relation, including for

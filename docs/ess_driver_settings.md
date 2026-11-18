@@ -64,6 +64,12 @@ soft-limit, over-limit and external PT/PV setting changes. They do not supply
 missing limit-pair encoding, a homed reference or permission for motion.
 Subdivision-only updates retain their existing passive-input path; they need
 checked stopped feedback and known unconnected inputs with functions 0 through 3.
+With board-declared connected terminals every DRIVE field, subdivision
+included, needs the four `CONFIGURE` records; a refusal they decide is
+`qualification_required` with a [named reason](cli_contract.md#settings-input-facts),
+before TX (wired bench 03). The same records admit the single settings
+(`motion-profile start-speed`, `home auxiliary`), the profile stage and the two
+tuning experiments.
 Possible writes revoke future qualification and dependent group-member facts.
 An admitted operation keeps its copied facts, original deadline and write
 evidence through completion or cancellation. No write is replayed.

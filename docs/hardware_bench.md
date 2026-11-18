@@ -104,6 +104,29 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+On 18 November [wired bench 03](reports/2026-11-18_wired_bench_03_connected_setters.md)
+flashed `bench_s3_load_timer` built from base commit `c943b76` plus the
+uncommitted prompt 03 working tree (firmware source diff SHA-256
+`1A8DC186C0F8512F1490173E345B1F5F5994FC2746DE84CA19D50D2DA823CA4B`), image
+SHA-256 `FC96A71288A828607114EEBB539453C175C14C0D7368E79503FC3B40BE51CD43`,
+hash verified (second upload; the first hung in the PlatformIO output thread
+and was repeated). The same tree's native ESP-IDF 5.5.5 image
+(`B047B71FB7A2047F81216F9125BF5B704D988A2235EB34257FA11491AC02A8B9`) was
+built, not flashed. Settings routes now take CONFIGURE/SEGMENT input records
+with connected terminals. The run also closed prompt 01's B11 and B08 (staged
+group moves on 1, 2, 4). Ending state:
+
+- **Board:** Arduino prompt 03 image above, all bench outputs off, `aux1`
+  active, drive 1 selected with board declarations, group empty, debug off,
+  no start-speed guard (controller reset at the end), COM13 closed.
+- **Drives 1/2/4:** enabled, stopped, alarm-free, raw positions
+  7,750/7,524/7,513 (after the B08 moves).
+- **Settings:** every settings read (59 groups per drive) equals the
+  restoration baseline. Nothing was saved; the drives were not restarted.
+
+Previous image: [wired bench 02](reports/2026-11-18_wired_bench_02_fixture_wiring.md),
+described below.
+
 On 18 November [wired bench 02](reports/2026-11-18_wired_bench_02_fixture_wiring.md)
 flashed `bench_s3_load_timer` built from base commit `5dbcaa1` plus the
 uncommitted prompt 02 working tree (firmware source diff SHA-256

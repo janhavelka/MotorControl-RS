@@ -229,6 +229,7 @@ struct App {
     uint8_t boardWiringCount = 0;
     ESS::DriverObservation driverObserved; // Scratch for whole-read publication/effects comparison.
     ESS::DriverPrerequisites driverPrerequisites; // PSRAM scratch; no large stack copies.
+    Probe::SettingsRefusal settingsRefusal; // Input-facts cause of the latest settings refusal; static text.
     IoQualification ioQualifications[6]; // One purpose and candidate per terminal.
     MotorControlRS::AxisConfig axis;
     bool commandPolarityKnown = true; // Host declaration; invalidated by possible device-direction changes.
@@ -1914,10 +1915,14 @@ bool singleSettingGroup(ESS::DriverGroup group) {
     return group == ESS::DriverGroup::POSITION_START_SPEED || group == ESS::DriverGroup::HOMING_AUXILIARY;
 }
 // Reuse checked configuration and logical state; an unconnected terminal is
-// never silently reassigned. This policy permits only passive assignments.
+// never silently reassigned. Two input paths: the passive one (every function 0
+// or an UNCONNECTED terminal with function <= 3, no input active) or four
+// current CONFIGURE records stated by the caller (wired bench 03), with no
+// assigned limit/stop/control input active in the latest state read.
 bool singleSettingPolicy(App& a, uint64_t now) {
     auto& p = a.driverPrerequisites;
     p.~DriverPrerequisites(); new (&p) ESS::DriverPrerequisites();
+    a.settingsRefusal = Probe::SettingsRefusal();
     const auto& target = a.axis.target;
     p.configurationGeneration = a.axis.generation;
     p.stationaryTarget = p.triggerTarget = target;
@@ -1930,24 +1935,36 @@ bool singleSettingPolicy(App& a, uint64_t now) {
     p.rawAlarm = motion.value.rawAlarm; p.rawMotion = motion.value.rawMotion;
     p.stationaryQualified = Probe::fresh(motion, target, now, p.maxAgeUs) &&
         !p.rawAlarm && !(p.rawMotion & 0xFFEC);
-    bool passive = a.configuration.operationId && Probe::sameTarget(a.configuration.target, target) &&
+    // Checked reads both paths need; the input policy is decided below.
+    bool evidence = a.configuration.operationId && Probe::sameTarget(a.configuration.target, target) &&
         !a.configuration.unknownPolarityBits &&
-        Probe::fresh(io, target, now, p.maxAgeUs) && !io.value.unknownInputBits && !io.value.rawInputs &&
+        Probe::fresh(io, target, now, p.maxAgeUs) && !io.value.unknownInputBits &&
         Probe::fresh(feedback, target, now, p.maxAgeUs) && !feedback.value.rawSpeed;
     p.triggerEarliestUs = std::min(io.observedEarliestUs, feedback.observedEarliestUs);
     p.triggerLatestUs = std::max(io.observedLatestUs, feedback.observedLatestUs);
     for (const auto& e : a.configuration.provenance) {
-        passive = passive && e.qualified && e.status && e.attemptedUs <= e.earliestUs &&
+        evidence = evidence && e.qualified && e.status && e.attemptedUs <= e.earliestUs &&
             e.earliestUs <= e.latestUs && e.latestUs <= now &&
             MotorControlRS::evidenceAgeValid(e.attemptedUs, now, p.maxAgeUs);
         p.triggerEarliestUs = std::min(p.triggerEarliestUs, e.attemptedUs);
         p.triggerLatestUs = std::max(p.triggerLatestUs, e.latestUs);
     }
+    bool passiveInputs = true;
     for (uint8_t i = 0; i < 4; ++i)
-        passive = passive && a.configuration.raw.inputFunctions[i] <= 3 &&
+        passiveInputs = passiveInputs && a.configuration.raw.inputFunctions[i] <= 3 &&
             (a.configuration.raw.inputFunctions[i] == 0 || a.inputWiring[i] == MotorControlRS::InputWiring::UNCONNECTED);
-    p.inputsPermit = p.externalTriggerInhibitedQualified = passive;
-    return a.axis.generation && p.stationaryQualified && passive;
+    bool permitted = evidence && passiveInputs && !io.value.rawInputs;
+    if (!permitted && evidence) {
+        // The facts path adds the live I/O evidence and fact age to p; the
+        // trigger bracket above already covers that state sample.
+        const auto check = settingsInputFacts(a, IoPurpose::CONFIGURE, p, now);
+        permitted = check.result == SettingsInputs::PERMITTED;
+        if (!permitted && a.axis.generation && p.stationaryQualified &&
+            (!passiveInputs || anySettingsRecord(a, IoPurpose::CONFIGURE)))
+            noteSettingsRefusal(a, check, IoPurpose::CONFIGURE);
+    }
+    p.inputsPermit = p.externalTriggerInhibitedQualified = permitted;
+    return a.axis.generation && p.stationaryQualified && permitted;
 }
 Probe::Action startSingleSetting(App& a, uint32_t commandId, uint8_t address, ESS::DriverKind kind,
                                      const ESS::DriverRequest& candidate, uint32_t& operationId) {
@@ -1971,7 +1988,9 @@ Probe::Action startSingleSetting(App& a, uint32_t commandId, uint8_t address, ES
         if (!a.records[i].operationId) { record = &a.records[i]; break; }
     if (!record) return Probe::Action::RESULTS_FULL;
     const uint64_t now = uart.sample();
-    if (!singleSettingPolicy(a, now)) return Probe::Action::UNAVAILABLE;
+    // A refusal the input facts decided is named; it sends nothing, not even the prior read.
+    if (!singleSettingPolicy(a, now))
+        return a.settingsRefusal.reason ? Probe::Action::QUALIFICATION_REQUIRED : Probe::Action::UNAVAILABLE;
     const auto checked = ESS::prepareDriverRead(record->driver, a.axis.target, a.nextOperationId,
         a.axis.generation, now, now + 3000000, candidate.group);
     if (!checked) return Probe::driverAdmissionStatus(checked);
@@ -2014,11 +2033,13 @@ void continueSingleSetting(App& a, App::Record& record, uint64_t now) {
     if (!record.singleSettingSession || c.kind != ESS::DriverKind::READ || c.state != ReadState::SUCCEEDED) return;
     reconcileSingleSettingPrior(a, record);
     MotorControlRS::Status status;
+    // Status text is a reason token; the terminal report shows it as reason.
     if (record.cancelContinuation || record.configurationGeneration != a.axis.generation ||
         c.target.generation != a.bindingGeneration || record.serialGeneration != a.serial.generation)
-        status = MotorControlRS::Status(MotorControlRS::Err::INVALID_CONFIG, 0, "setting binding changed during prior read");
+        status = MotorControlRS::Status(MotorControlRS::Err::INVALID_CONFIG, 0, "binding_changed");
     else if (!singleSettingPolicy(a, now))
-        status = MotorControlRS::Status(MotorControlRS::Err::INVALID_CONFIG, 0, "single-setting prerequisites expired");
+        status = MotorControlRS::Status(MotorControlRS::Err::INVALID_CONFIG, 0,
+            a.settingsRefusal.reason ? a.settingsRefusal.reason : "prerequisites_expired");
     else {
         status = ESS::getDriver(c, a.driverPrerequisites.previous);
         ESS::DriverRequest request;
@@ -2028,6 +2049,8 @@ void continueSingleSetting(App& a, App::Record& record, uint64_t now) {
             ESS::prepareHomingAuxiliary(request, static_cast<ESS::HomingAuxiliary>(record.requestedSetting));
         if (status) status = ESS::prepareDriverSettings(c, c.target, record.operationId, request,
             a.driverPrerequisites, now, record.deadlineUs);
+        // Code and detail keep the core's cause; the token says which check refused.
+        if (!status) status = MotorControlRS::Status(status.code, status.detail, "update_refused");
     }
     if (!status) {
         c.state = ReadState::FAILED;
@@ -2039,6 +2062,7 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
                          const ESS::DriverRequest& supplied, uint32_t& operationId) {
     using namespace MotorControlRS;
     App& a = *static_cast<App*>(context);
+    a.settingsRefusal = Probe::SettingsRefusal();
     if (groupSequencing(a)) return Probe::Action::BUSY;
     if (singleSettingGroup(supplied.group))
         return startSingleSetting(a, commandId, address, kind, supplied, operationId);
@@ -2082,8 +2106,14 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
         prerequisites.rawAlarm = motion.value.rawAlarm; prerequisites.rawMotion = motion.value.rawMotion;
         prerequisites.stationaryEarliestUs = motion.observedEarliestUs;
         prerequisites.stationaryLatestUs = motion.observedLatestUs;
-        prerequisites.inputsPermit = supplied.group == ESS::DriverGroup::DRIVE &&
-            commissionedSettingsInputs(a, IoPurpose::CONFIGURE, prerequisites, now);
+        // Name an input-facts cause only when the drive is otherwise stopped and alarm-free.
+        const bool stopped = prerequisites.stationaryQualified && !motion.value.rawAlarm && !(motion.value.rawMotion & 0xFFEC);
+        SettingsInputCheck driveInputs;
+        if (supplied.group == ESS::DriverGroup::DRIVE) {
+            driveInputs = settingsInputFacts(a, IoPurpose::CONFIGURE, prerequisites, now);
+            prerequisites.inputsPermit = driveInputs.result == SettingsInputs::PERMITTED;
+        }
+        bool drivePassiveInputs = false; // Only the subdivision-only route has a passive input path.
         ESS::DriverRequest request = supplied;
         if (!request.configurationGeneration) request.configurationGeneration = generation;
         if (request.group == ESS::DriverGroup::DRIVE &&
@@ -2100,12 +2130,19 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
             for (const auto& evidence : a.configuration.provenance)
                 passive = passive && evidence.qualified && evidence.status &&
                     evidenceAgeValid(evidence.earliestUs, now, prerequisites.maxAgeUs);
-            for (uint8_t i = 0; i < 4; ++i)
-                passive = passive && a.inputWiring[i] == InputWiring::UNCONNECTED &&
-                    a.configuration.raw.inputFunctions[i] <= 3 &&
-                    (!a.configuration.raw.inputFunctions[i] || !io.value.inputs[i]);
+            drivePassiveInputs = true;
+            for (uint8_t i = 0; i < 4; ++i) {
+                drivePassiveInputs = drivePassiveInputs && a.inputWiring[i] == InputWiring::UNCONNECTED &&
+                    a.configuration.raw.inputFunctions[i] <= 3;
+                passive = passive && (!a.configuration.raw.inputFunctions[i] || !io.value.inputs[i]);
+            }
+            passive = passive && drivePassiveInputs;
             prerequisites.inputsPermit = prerequisites.inputsPermit || passive;
         }
+        // Every DRIVE field needs the CONFIGURE facts unless the passive subdivision path held.
+        if (request.group == ESS::DriverGroup::DRIVE && !prerequisites.inputsPermit && stopped &&
+            (!drivePassiveInputs || anySettingsRecord(a, IoPurpose::CONFIGURE)))
+            noteSettingsRefusal(a, driveInputs, IoPurpose::CONFIGURE);
         if (request.group == ESS::DriverGroup::IO) {
             const auto& io = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
             prerequisites.inputsPermit = true; // Changed-terminal policy below, not global mandatory I/O.
@@ -2136,15 +2173,18 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
                 prerequisites.controlEffectsQualifiedFields = request.fields & static_cast<uint32_t>(ESS::DriverField::LOCK_DELAY);
             } else {
                 // The finite standalone experiment permits only input-filter
-                // coefficients 2/3 on fresh passive, unconnected inputs. It
-                // qualifies stored readback, not filter delay or active effects.
+                // coefficients 2/3 on fresh passive, unconnected inputs, or with
+                // four current CONFIGURE records (wired bench 03). It qualifies
+                // stored readback, not filter delay or active effects.
                 const auto& io = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
                 bool passive = Probe::fresh(io, target, now, prerequisites.maxAgeUs) && !io.value.rawInputs &&
                     a.ioSettings.operationId && a.ioSettings.group == ESS::DriverGroup::IO && Probe::sameTarget(a.ioSettings.target, target) &&
                     a.ioSettings.configurationGeneration == generation && !(a.ioSettings.raw[7] & ~0xFu);
                 uint64_t earliest = io.observedEarliestUs, latest = io.observedLatestUs;
+                bool passiveInputs = true;
                 for (uint8_t i = 0; i < 4; ++i)
-                    passive = passive && a.inputWiring[i] == InputWiring::UNCONNECTED && a.ioSettings.raw[8 + i] <= 3;
+                    passiveInputs = passiveInputs && a.inputWiring[i] == InputWiring::UNCONNECTED && a.ioSettings.raw[8 + i] <= 3;
+                passive = passive && passiveInputs;
                 for (const auto& evidence : a.ioSettings.provenance) {
                     if (!evidence.count) continue;
                     passive = passive && evidence.qualified && evidence.responseConfirmed && evidence.status &&
@@ -2167,8 +2207,16 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
                 const bool thresholdExperiment = known && request.group == info.group && request.fields == (1u << info.slot) &&
                     requested >= 1 && requested <= 4000 && stored >= 1 && stored <= 4000;
                 const bool experiment = filterExperiment || thresholdExperiment;
+                bool permitted = passive;
+                if (!passive && experiment) {
+                    const auto check = settingsInputFacts(a, IoPurpose::CONFIGURE, prerequisites, now);
+                    permitted = check.result == SettingsInputs::PERMITTED;
+                    if (permitted) { earliest = prerequisites.ioEarliestUs; latest = prerequisites.ioLatestUs; }
+                    else if (stopped && (!passiveInputs || anySettingsRecord(a, IoPurpose::CONFIGURE)))
+                        noteSettingsRefusal(a, check, IoPurpose::CONFIGURE);
+                }
                 prerequisites.qualifiedTuning = request;
-                prerequisites.tuningEffectsQualifiedFields = passive && experiment ? request.fields : 0;
+                prerequisites.tuningEffectsQualifiedFields = permitted && experiment ? request.fields : 0;
                 prerequisites.tuningEarliestUs = earliest;
                 prerequisites.tuningLatestUs = latest;
             }
@@ -2192,14 +2240,17 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
                 if (e.attemptedUs < earliest) earliest = e.attemptedUs;
                 if (e.latestUs > latest) latest = e.latestUs;
             }
+            bool passiveInputs = true;
             for (uint8_t i = 0; i < 4; ++i)
-                inhibited = inhibited && a.inputWiring[i] == InputWiring::UNCONNECTED &&
+                passiveInputs = passiveInputs && a.inputWiring[i] == InputWiring::UNCONNECTED &&
                     a.ioSettings.raw[8 + i] <= 3;
-            const bool commissioned = commissionedSettingsInputs(a, IoPurpose::SEGMENT, prerequisites, now);
-            if (commissioned) {
+            inhibited = inhibited && passiveInputs;
+            const auto check = settingsInputFacts(a, IoPurpose::SEGMENT, prerequisites, now);
+            if (check.result == SettingsInputs::PERMITTED) {
                 inhibited = true;
                 earliest = prerequisites.ioEarliestUs; latest = prerequisites.ioLatestUs;
-            }
+            } else if (!inhibited && stopped && (!passiveInputs || anySettingsRecord(a, IoPurpose::SEGMENT)))
+                noteSettingsRefusal(a, check, IoPurpose::SEGMENT);
             prerequisites.externalTriggerInhibitedQualified = inhibited;
             prerequisites.triggerTarget = target; prerequisites.triggerConfigurationGeneration = generation;
             prerequisites.triggerEarliestUs = earliest; prerequisites.triggerLatestUs = latest;
@@ -2216,8 +2267,16 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
     } else return Probe::Action::INVALID;
     if (!checked) {
         if (a.simple.admitting) a.simple.view.status = checked;
-        clearRecord(*record); return Probe::driverAdmissionStatus(checked);
+        // The input facts decided only when the core refused on the policy they feed.
+        const auto error = static_cast<ESS::DriverError>(checked.detail);
+        const bool inputs = a.settingsRefusal.reason && kind == ESS::DriverKind::UPDATE &&
+            ((supplied.group == ESS::DriverGroup::DRIVE && error == ESS::DriverError::STATIONARY_REQUIRED) ||
+             (ESS::isTuningGroup(supplied.group) && error == ESS::DriverError::TUNING_EFFECTS_REQUIRED) ||
+             (segmentGroup(supplied.group) && error == ESS::DriverError::TRIGGER_POLICY_REQUIRED));
+        if (!inputs) a.settingsRefusal = Probe::SettingsRefusal();
+        clearRecord(*record); return inputs ? Probe::Action::QUALIFICATION_REQUIRED : Probe::driverAdmissionStatus(checked);
     }
+    a.settingsRefusal = Probe::SettingsRefusal();
     ESS::PreparedDriver work;
     if (!ESS::nextDriver(record->driver, now, work)) { clearRecord(*record); return Probe::Action::FAILED; }
     const auto admitted = admitDriverStep(a, *record, work, now);
@@ -2227,6 +2286,11 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
     record->deadlineUs = record->driver.deadlineUs; record->configurationGeneration = generation;
     record->kind = App::OperationKind::DRIVER; record->axisReserved = kind == ESS::DriverKind::UPDATE;
     operationId = a.latestOperationId = record->operationId; return Probe::Action::OK;
+}
+bool settingsRefusalCommand(void* context, Probe::SettingsRefusal& output) {
+    const App& a = *static_cast<const App*>(context);
+    if (!a.settingsRefusal.reason) return false;
+    output = a.settingsRefusal; return true;
 }
 Probe::Action driverCommand(void* context, uint32_t commandId, uint8_t address, ESS::DriverKind kind,
                             const ESS::DriverRequest& request, uint32_t& operationId) {
@@ -3663,6 +3727,7 @@ Probe::Host host(App* a) {
     h.beginInteractiveWork = recycleInteractiveResults;
     h.startAction = startAction; h.startReleaseAfterStop = startReleaseAfterStop;
     h.startMove = startMove; h.startVelocity = startVelocity; h.startDriver = driverCommand; h.startHome = startHome;
+    h.settingsRefusal = settingsRefusalCommand;
     h.inspectHomeQualification = [](void* context, ESS::HomePrerequisites& output, bool& valid) {
         const auto& a = *static_cast<App*>(context);
         if (!a.homePrerequisites.target.id) return false;
@@ -4023,7 +4088,8 @@ MotorControlRS::Status submitDriverSettings(uint8_t address, const ESS::DriverRe
     using namespace MotorControlRS;
     if (!app) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(Probe::Action::UNAVAILABLE), "application is not started");
     const auto admitted = startDriver(app, 0, address, ESS::DriverKind::UPDATE, request, operationId);
-    if (admitted != Probe::Action::OK) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted), "settings update not admitted");
+    if (admitted != Probe::Action::OK) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted),
+        app->settingsRefusal.reason ? app->settingsRefusal.reason : "settings update not admitted");
     findRecord(*app, operationId)->programmaticSettings = true; return Ok();
 }
 MotorControlRS::Status submitPositionStartSpeed(uint32_t native, uint32_t& operationId) {
@@ -4034,7 +4100,8 @@ MotorControlRS::Status submitPositionStartSpeed(uint32_t native, uint32_t& opera
     if (!checked) return checked;
     const auto admitted = startDriver(app, 0, app->axis.target.address, ESS::DriverKind::UPDATE, request, operationId);
     if (admitted != Probe::Action::OK)
-        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted), "position start-speed setting not admitted");
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted),
+            app->settingsRefusal.reason ? app->settingsRefusal.reason : "position start-speed setting not admitted");
     findRecord(*app, operationId)->programmaticSettings = true; return Ok();
 }
 MotorControlRS::Status submitHomingAuxiliary(MotorControlRS::ESS_RS::HomingAuxiliary choice, uint32_t& operationId) {
@@ -4045,7 +4112,8 @@ MotorControlRS::Status submitHomingAuxiliary(MotorControlRS::ESS_RS::HomingAuxil
     if (!checked) return checked;
     const auto admitted = startDriver(app, 0, app->axis.target.address, ESS::DriverKind::UPDATE, request, operationId);
     if (admitted != Probe::Action::OK)
-        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted), "homing auxiliary setting not admitted");
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted),
+            app->settingsRefusal.reason ? app->settingsRefusal.reason : "homing auxiliary setting not admitted");
     findRecord(*app, operationId)->programmaticSettings = true; return Ok();
 }
 MotorControlRS::Status installPositionStartSpeedRelation(const PositionStartSpeedRelation& relation) {
@@ -4164,7 +4232,8 @@ MotorControlRS::Status revokeIoQualification(uint8_t address, uint8_t terminalIn
         if (record.kind == App::OperationKind::DRIVER && record.driver.kind == ESS::DriverKind::UPDATE) {
             const auto group = record.driver.group;
             const bool matching = (purpose == IoPurpose::ASSIGN && group == ESS::DriverGroup::IO) ||
-                (purpose == IoPurpose::CONFIGURE && group == ESS::DriverGroup::DRIVE) ||
+                (purpose == IoPurpose::CONFIGURE && (group == ESS::DriverGroup::DRIVE || singleSettingGroup(group) ||
+                    ESS::isTuningGroup(group))) ||
                 (purpose == IoPurpose::SEGMENT && segmentGroup(group));
             dependent = matching && (terminalIndex < 4 ? record.driver.prerequisites.inputFacts[terminalIndex].supplied :
                 record.driver.prerequisites.outputFacts[terminalIndex - 4].supplied);
@@ -4398,8 +4467,13 @@ MotorControlRS::Status submitProfileCandidate(const Probe::ProfileCandidate& can
     const auto admitted = startProfileCandidate(app, 0, candidate, operationId);
     if (admitted != Probe::Action::OK)
         return Status(admitted == Probe::Action::TARGET_RANGE ? Err::ILLEGAL_VALUE : Err::INVALID_CONFIG,
-            static_cast<int32_t>(admitted), admitted == Probe::Action::TARGET_RANGE ? "target_range" : "candidate not admitted");
+            static_cast<int32_t>(admitted), admitted == Probe::Action::TARGET_RANGE ? "target_range" :
+            app->settingsRefusal.reason ? app->settingsRefusal.reason : "candidate not admitted");
     app->profileCandidate.programmatic = true; return Ok();
+}
+bool copySettingsRefusal(Probe::SettingsRefusal& output) {
+    if (!app || !app->settingsRefusal.reason) return false;
+    output = app->settingsRefusal; return true;
 }
 bool copyProfileCandidate(uint32_t operationId, Probe::ProfileCandidateResult& output) {
     if (!app || !operationId || app->profileCandidate.view.operationId != operationId) return false;

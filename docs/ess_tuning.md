@@ -191,8 +191,13 @@ They were not changed, aliased to earlier rows or converted to documented
 defaults.
 
 The standalone application permits two finite experiments, each alone in its
-request, with fresh stopped state, exact bench identity, known unconnected
-inputs, passive assignments and no asserted inputs:
+request, with fresh stopped state and exact bench identity, and one of two input
+policies: known unconnected inputs with passive assignments and no asserted
+input, or (since [wired bench 03](reports/2026-11-18_wired_bench_03_connected_setters.md))
+four current `configure` records stated with `io qualification install` and no
+assigned limit, stop or control input active. Without either, a connected
+bench refuses before TX with `qualification_required` and a
+[named reason](cli_contract.md#settings-input-facts). The experiments are:
 
 - the input-filter candidate `2` or `3`, from a previously checked `2`/`3`
   baseline;
