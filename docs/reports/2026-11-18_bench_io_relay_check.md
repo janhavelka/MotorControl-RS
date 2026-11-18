@@ -25,9 +25,9 @@ by its hold timer (`off_reason` `hold_elapsed`), 400.025 to 400.047 ms after
 the recorded on time. `ons` counted 1 to 5 on each relay, and a final
 `bench off` left all outputs off.
 
-This shows the commanded GPIO levels and the firmware timing only. Whether
-the relays clicked, and whether their contacts closed, is the owner's
-observation; no contact feedback was wired.
+This shows the commanded GPIO levels and the firmware timing only. The owner
+reported hearing both relays click. Contact closure itself was not measured;
+no contact feedback was wired.
 
 ## Evidence
 
