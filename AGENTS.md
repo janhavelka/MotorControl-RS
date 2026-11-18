@@ -132,7 +132,20 @@ stale-evidence and no-replay checks; an echo is still not a confirmed write.
 Defer the several-hour run. Actual motor restart control remains necessary for
 restart-dependent communication/persistence experiments; no remote power control
 is implied. Do not replace finite position tests with unbounded velocity or
-moving link-loss experiments.
+moving link-loss experiments. (The 2026-11-18 authorization below supersedes
+these limits.)
+
+Broadened owner authorization, 2026-11-18, at the owner's responsibility: all
+three drives are clamped to the bench with free shafts, and agents may run any
+test the work needs without asking again. This includes velocity, JOG and
+input-started motion, wired I/O functions, homing, limits, segments, long or
+unattended runs, link-loss experiments, communication-setting changes and
+persistence writes (save, factory restore), on any of the three drives. It
+does not change engineering rules: prepare stop and restoration first, retain
+evidence, never automatically replay an uncertain write, and restore settings
+that later tests depend on. Remote power control still does not exist; ask the
+owner to power-cycle when a test needs a restart. The wired I/O fixture is in
+[bench I/O](docs/bench_io.md).
 
 Latest user direction: supported motor behavior belongs in the regular library
 API and ordinary firmware. A coherent runtime debug mode observes and exercises

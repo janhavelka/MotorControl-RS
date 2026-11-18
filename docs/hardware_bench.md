@@ -70,6 +70,16 @@ the drives' supply, which the owner measured at 24 V (Y0/YCOM readings
 test needs them. Earlier "unconnected terminal" entries describe the older
 setup. Wiring, checks and the test plan are in the [bench I/O guide](bench_io.md).
 
+**Current authorization, 18 November, at the owner's responsibility:** all three
+drives are clamped to the bench with free shafts, and agents may run any test
+the work needs without asking again: velocity, JOG and input-started motion,
+wired I/O functions, homing, limits, segments, long or unattended runs,
+link-loss experiments, communication-setting changes and persistence writes,
+on any drive. Prepare stop and restoration first, keep evidence, never replay
+an uncertain write automatically, and restore settings later tests rely on.
+There is still no remote power control; ask the owner for a power cycle. The
+narrower limits in the next three paragraphs are history.
+
 The user authorized communication and motion tests on 2 October and reconfirmed
 the fixture and bounded unattended free-shaft testing on 4 October. Routine
 tests within this setup do not require repeated permission. Use small finite
