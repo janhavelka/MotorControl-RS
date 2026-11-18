@@ -347,12 +347,13 @@ more drives (now addresses 1, 2 and 4, star wiring).
   defaults remain an ambiguity. No wired fixture or drive restart was used in 04.
   [Multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md) owns
   these remaining physical checks after 04's software archive.
-- [ ] Wire the [bench I/O fixture](bench_io.md): owner action. X inputs of
-  drives 1, 2 and 4 in parallel, drive 1 Y0 to the board input. The board runs
-  from the drives' supply (owner, 16 November); confirm it is 24 V first. The
-  `bench` firmware command (relays, MOSFETs, isolated input, bounded holds,
-  outputs off on stop) is implemented and natively tested; nothing is wired or
-  hardware-tested.
+- [x] Wire the [bench I/O fixture](bench_io.md): X inputs of drives 1, 2 and 4 in
+  parallel, drive 4 Y0 sinking to the board input. Input map and Y0 switching
+  checked on 18 November ([record](reports/2026-11-18_bench_io_relay_check.md)).
+- [ ] Run the wired function tests in the [bench I/O test plan](bench_io.md#test-plan-once-wired)
+  (status mapping, stop inputs, function 7, homing switches, limits, PT
+  segments, outputs, shared start). The shared supply voltage is still
+  unrecorded.
 - [ ] Start motion from a shared input edge: function 7 with a staged profile
   first (absolute mode preferred), then PT segments with PIN selection, the
   negative PV speed encoding, and observation and stop of input-started motion ([multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)).

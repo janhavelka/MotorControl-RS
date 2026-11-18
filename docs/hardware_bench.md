@@ -59,13 +59,15 @@ regression remains NOT RUN; see the
 | Host console | COM13; ordinary MotorControl-RS firmware, not a transparent RTU bridge |
 | USB identity | Espressif `303A:1001`, serial `3C:0F:02:CD:6B:98`; never open or flash another device. COM15 (`303A:1002`) is a separate device. |
 
-Planned wired I/O, 16 November: the user intends to wire the board's two relays
-(GPIO45/18) and two MOSFETs (GPIO3/46) to the X inputs of drives 1, 2 and 4 in
-parallel, and drive 1's Y0 to the isolated input (GPIO17). The user reports
-that the board runs from the drives' supply; its voltage is not recorded, and
-the plan needs 24 V. The [bench I/O guide](bench_io.md) gives the wiring, checks
-and test plan. Until the user reports that wiring, the terminals remain
-unconnected as recorded above.
+Wired I/O since 18 November: the board's relays (GPIO45/18) and MOSFETs
+(GPIO3/46) drive the X inputs of drives 1, 2 and 4 in parallel (`mosfet1` X0,
+`relay2` X1, `relay1` X2, `mosfet2` X3), and drive 4's Y0 is wired sinking to
+the isolated input (GPIO17), read inverted. Both mappings were checked on the
+bench ([record](reports/2026-11-18_bench_io_relay_check.md)). The board runs from
+the drives' supply; its voltage is not recorded. The terminals are therefore
+**connected**: declare them so, and keep trigger functions unassigned unless a
+test needs them. Earlier "unconnected terminal" entries describe the older
+setup. Wiring, checks and the test plan are in the [bench I/O guide](bench_io.md).
 
 The user authorized communication and motion tests on 2 October and reconfirmed
 the fixture and bounded unattended free-shaft testing on 4 October. Routine
@@ -94,11 +96,13 @@ new unattended soak during maintenance.
 On 18 November the [bench I/O relay check](reports/2026-11-18_bench_io_relay_check.md)
 flashed `bench_s3_load_timer` from `afe3588`, SHA-256
 `3F3A691D80937EC04E0F1469CA8A702BF9AD41854D1DB57AE07DD81B4125C59D`, and pulsed
-both relays with no motor traffic. After the owner wired the I/O, all three
-drives were silent on RS485 with this image and with the previous `f7368a2`
-image, so the cause is physical and still open. The board ends on `afe3588`
-with all bench outputs off and COM13 closed. The drive state below is from the
-earlier session and was not read.
+both relays with no motor traffic, then checked the wired I/O after the owner
+reconnected the bus, the XCOM +24 V link and the last I/O cable (the earlier
+silent bus and empty input map were those missing connections). Drives 1/2/4
+ended enabled, stopped, alarm-free, at position 0 after a power cycle, with
+I/O words `[0,1,2,3,0,0,0,0,0]`; nothing was saved and nothing moved. The
+board ends on `afe3588` with all bench outputs off and COM13 closed. The
+drive state below is from the earlier session.
 
 The [16 November unattended bench tests](reports/2026-11-16_unattended_bench_tests.md)
 were the latest motor session.

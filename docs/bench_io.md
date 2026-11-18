@@ -1,6 +1,9 @@
 # Bench I/O fixture: wiring the drive terminals
 
-Status on 16 November 2026: **planned, not wired, not tested on hardware.**
+Status on 18 November 2026: **wired and checked.** All four board outputs reach
+the expected X input on drives 1, 2 and 4, and drive 4's Y0 switches the board
+input ([record](reports/2026-11-18_bench_io_relay_check.md)). No drive function
+has yet been tested through the wiring.
 The standalone firmware now drives the bench board's two relays and two MOSFETs
 and reads its isolated 24 V input (`bench` command, below). This guide says how
 to wire them to the ESS23-RS20 terminals, which checks to make first, and which
@@ -37,11 +40,10 @@ The 8-pin I/O connector: 1 X0, 2 X1, 3 X2, 4 X3, 5 XCOM, 6 Y0, 7 Y1, 8 YCOM.
   last more than 10 ms. The internal resistor value is not documented.
 - **Outputs.** Each of Y0-Y1 is drawn as an opto-driven MOSFET switch between
   Yn and YCOM, and the text claims NPN and PNP wiring. No voltage, current or
-  leakage rating is documented. **On the bench (18 November), with YCOM at
-  +24 V, an off Y0 still conducted:** under a load of about 4 mA it read
-  23.4 V against 24.7 V on, a diode-like drop rather than an open switch. Wire
-  the outputs sinking instead: YCOM to 0 V and a pull-up on the load side (see
-  the `AUX_DI1_24V` wiring below).
+  leakage rating is documented. On the bench the output is used sinking (YCOM
+  to 0 V, pull-up on the load side), which works: about 2 mV on and an open
+  switch off. Readings taken earlier with YCOM at +24 V were confounded by
+  wiring faults and do not show whether that orientation works.
 - **XCOM and YCOM.** The circuits and the port table show them as separate pins
   on separate isolated circuits; nothing connects them to each other or to the
   drive's power GND or RS485 RGND. This is documentation, not a measurement:
@@ -146,8 +148,7 @@ ohmmeter before power-on instead (rule 3 below). Do not add series resistors in 
 paths: they lower the input current below the manual's 10 mA minimum, more so
 with three inputs per switch.
 
-The drive output is wired **sinking**, because with YCOM at +24 V an off Y0
-still conducted (18 November, see Drive terminals):
+The drive output is wired **sinking** (checked on 18 November):
 
 - YCOM (pin 8) to **0 V**, not +24 V.
 - Y0 (pin 6) straight to `AUX_DI1_24V` pin 2, with no series resistor: a series
@@ -156,9 +157,11 @@ still conducted (18 November, see Drive terminals):
 - A **4.7 kΩ pull-up from +24 V to `AUX_DI1_24V` pin 2** (0.25 W or more; use
   10 kΩ for a smaller part). It also limits the Y0 current to about 5 mA.
 
-The logic is inverted: Y0 off leaves about 23 V at the terminal, so `aux1`
-reads active (LED green); Y0 on pulls it to about 0 V, so `aux1` reads
-inactive (LED red). Test scripts must read it that way.
+The logic is inverted: Y0 off leaves about 21 V at the terminal, so `aux1`
+reads active (LED green); Y0 on pulls it to about 0.7 V, so `aux1` reads
+inactive (LED red). Test scripts must read it that way. The edge follows a
+serial output write by 0.6-2.6 ms after the drive's reply, including the
+board input's filter.
 
 ```text
  shared 24 V supply

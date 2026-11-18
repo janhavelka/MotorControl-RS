@@ -161,3 +161,37 @@ or the drive's output conducts. Not yet measured; an unpowered resistance check
 across the drive's Y0 and YCOM pins, and on the harness, separates the two.
 
 Evidence: `2026-11-18_io_map_6.jsonl` and `2026-11-18_y0_toggle_sink_d4.jsonl`.
+
+## Drive 4 Y0 works when wired sinking
+
+Two wiring faults explained the last two runs: the 4.7 kΩ was first fitted to
+GND instead of as a pull-up, and later the Y0 wire did not reach the terminal.
+During a 3 s toggle with the wire disconnected, the owner measured drive 4's
+Y0 against board GND at about 2 mV on and 0.55 V off, so with YCOM at 0 V the
+output switches. The earlier YCOM-at-+24 V readings were taken with those
+wiring faults and are not reliable evidence of conduction while off; the
+"Correction" and "Sinking wiring" sections above reflect the faults, not the
+drive.
+
+With the wire reconnected (Y0 straight to `AUX_DI1_24V` pin 2, 4.7 kΩ from
++24 V to pin 2, YCOM to 0 V), the terminal read 21.09 V with Y0 off. Five
+3 s on/off cycles of drive 4's Y0 (custom output, from 20:04:01 local) gave:
+
+| Y0 | Board input | Terminal (owner's DMM) |
+| --- | --- | --- |
+| on | inactive | 0.68 V |
+| off | active | 21 V |
+
+Every one of the ten custom-bit writes produced exactly one edge in the
+expected direction. Using the interrupt edge times on the controller clock,
+each edge came 9.9 to 12.1 ms after the write frame started and 0.6 to 2.6 ms
+after the drive's reply ended. That interval includes the board input's
+26.7 kΩ/100 nF filter and is software-timestamped, not instrument-measured.
+Drive 4 ended with I/O words `[0,1,2,3,0,0,0,0,0]`.
+
+The input map on the same wiring passed again on all three drives
+(`mosfet1` X0, `relay2` X1, `relay1` X2, `mosfet2` X3).
+
+Evidence: `2026-11-18_restore_d4.jsonl`, `2026-11-18_io_map_7.jsonl`,
+`2026-11-18_y0_toggle_unloaded_d4.jsonl` and
+`2026-11-18_y0_toggle_final_d4.jsonl`.
