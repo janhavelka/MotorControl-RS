@@ -128,10 +128,13 @@ reports of 14 and 16, [bus check](../../reports/2026-11-12_multi_drive_bus_check
 3. **Persistence qualification.** Kind, stationary, effects, route-back, backup
    token; `complete-backup` only when item 5's field table shows a route for
    every field, with the table's SHA-256 as token.
-4. **Restart fact.** `persistence restart observed TOKEN` after an owner power
-   cycle of the exact drive, accepted only after the write's delivery, recorded
-   with its time; the harness requires a RAM marker (another field written after
-   the write and not saved) to read back at its stored value before stating it.
+4. **Restart fact and marker.** `persistence restart observed TOKEN` after an
+   owner power cycle of the exact drive, accepted only after the write's
+   delivery, recorded with its time. Before stating it, the harness checks one
+   exact non-motion marker transition: JOG speed `0x001D` of the target,
+   written through 14's setter to a value distinct from its stored word, read
+   back and not saved; after the restart it must read the stored word. If the
+   restart does not happen, the stored word is written back and read.
 5. **Snapshots and field table.** Per drive: a live snapshot (full typed read
    of every readable ledger field, plus D8 read-only probes of `0x003B`/`0x003C`)
    and a stored snapshot (the same read after an owner power cycle with no write
@@ -147,14 +150,30 @@ reports of 14 and 16, [bus check](../../reports/2026-11-12_multi_drive_bus_check
    restoration writes, one save, verification captures, the restart fact and
    finish; refusing motion, enable/release, communication changes, other
    addresses and discovery. The factory command plus the save use exactly the
-   two invocations per boot. A lost factory or save reply stays UNKNOWN;
+   two invocations per boot. After the recommissioning save the only write
+   allowed is item 4's marker; a native test covers that transition under the
+   lease, and without it F1 is BLOCKED before the factory command. A lost
+   factory or save reply stays UNKNOWN;
    restoration proceeds from reads, never by resending. After a controller
    reset the session is gone: the harness run log is the witness, recovery
    continues with a new session and ordinary setters, it is labelled host-only
    evidence, and the log guard refuses a second factory command in that run.
    Native tests cover each transition, every refused operation, both lost
    replies, invocation exhaustion and the reset path.
-7. Native tests for every other new transition, including refusals with no TX.
+7. **Communication-to-persistence handoff (V2-Q1).** Before any tuple or
+   address change on hardware, a native test of the exact D1/C2 order: `begin`,
+   `confirm before`, persistence snapshot and save under the same token while
+   the communication session is open, verify, persistence finish keeping the
+   parent lease, restart, `host requested`, `confirm requested`, communication
+   finish; plus a lost save reply, the two-confirmation budget and the return
+   to the before tuple.
+8. **Custom node route back.** Address 0 stays forbidden as a destination and as
+   an ordinary requested address. D2 restores `0x0013` to the exact word of
+   drive 2's S1 snapshot through a D7 restoration bound to that snapshot
+   (address, word, source read), only at active address 2 with the DIP
+   switches verified back at 2 (`0x0002` reads 2); readback before the save,
+   verification after the restart. Native tests; D1 runs only when this exists.
+9. Native tests for every other new transition, including refusals with no TX.
 
 ## Bench procedure
 
@@ -165,16 +184,20 @@ reports of 14 and 16, [bus check](../../reports/2026-11-12_multi_drive_bus_check
 2. Every power cycle is one drive's power connector, pulled at least 5 s, by
    the owner (G3), with the drive stopped. Batch the owner list in one request.
    Before any bench output turns on, apply COMMON "Shared outputs".
-3. Run S0-S2 on each drive before any save or factory restore there; a drive
-   whose S2 fails gets no destructive case.
+3. Order: S0 on each drive before its first power interruption; P0 serves as
+   drive 2's S1 restart when its checks pass; S1 on drives 1 and 4; a complete
+   per-field restore plan per drive; then S2's two budgeted proof saves. A
+   passing S2 gates every later save or factory restore on that drive. Before
+   each save, compare the full saveable RAM image with the intended stored
+   image plus only that case's named changes; any other difference stops it.
 
 | Case | Setup | Action | Expected | Evidence level | Verdict rule |
 | --- | --- | --- | --- | --- | --- |
-| P0 | Drive 2, `drv` uptime and reset reason read | Owner power-cycles drive 2 | Controller stays up; drives 1/4 answer during; drive 2 silent then back | Drive-reported, controller | If the controller resets, stop: in-app verification needs a surviving controller |
-| S0 | Each drive | Live snapshot | Full field read | Read back | Complete table or the missing fields named |
-| S1 | After an owner power cycle, no write | Stored snapshot; diff live − stored; diff against 01's baseline | RAM-only differences listed | Read back after restart | Field table complete |
-| S2 | Drive 4 first | Route-back proof: write one RW/S field to another value, save, power cycle; write the stored value back, save, power cycle | Full stored image equals S1 | Read back after restart | PASS on full match; then reapply the needed RAM-only differences without saving |
-| P2 | Drive 4: JOG speed `0x001D`, input filter `0x0108`, X3 `0x0044` = 5 | Write without save, power cycle | Values revert | Read back after restart | PASS if all revert; otherwise record which survive |
+| S0 | Each drive, before its first power interruption | Live snapshot | Full field read | Read back | Complete table or the missing fields named |
+| P0 | Drive 2 after its S0; `drv` uptime and reset reason read | Owner power-cycles drive 2 | Controller stays up; drives 1/4 answer during; drive 2 silent then back | Drive-reported, controller | If the controller resets, stop: in-app verification needs a surviving controller. Otherwise it is drive 2's S1 restart |
+| S1 | Drives 1 and 4 after an owner power cycle with no write; drive 2 from P0 | Stored snapshot; diff live − stored; diff against 01's baseline | RAM-only differences listed | Read back after restart | Field table and per-field plan complete |
+| S2 | Drive 4, S0, S1 and plan complete | Two budgeted proof saves: one RW/S field to another value, save, power cycle; the stored value back, save, power cycle | Full stored image equals S1 | Read back after restart | PASS on full match; then reapply the needed RAM-only differences without saving |
+| P2 | Drive 4: lock delay `0x0107`, input filter `0x0108`, X3 `0x0044` = 5 (JOG speed stays the marker) | Write without save, power cycle | Values revert | Read back after restart | PASS if all revert; otherwise record which survive |
 | P3 | Same writes | Save, power cycle with outputs off, `persistence verify` with restart fact | Fields survive; VERIFIED_FIELDS | Read back after restart | PASS when the fields match after restart |
 | P4a | P3 state, outputs off at power-up | Words and `0x0008` before any write; finite move; `bench on mosfet2 200` mid-move | Saved stop acts, or not, right after power-up | Read back, drive-reported, controller-timestamped | Stored words, input level, host decision and drive reaction recorded separately |
 | P4b | P3 state, `mosfet2` held across power-up | Same reads; move request | Input level at first answer; host refusal or drive reaction | Read back, sent | Host refusal with zero TX leaves the drive reaction unresolved, never passed |
@@ -184,8 +207,8 @@ reports of 14 and 16, [bus check](../../reports/2026-11-12_multi_drive_bus_check
 | F2 | After F1 | Restricted recommissioning: restoration writes, save, power cycle, verify, finish | Full stored image equals S1 | Read back after restart | PASS only on full match |
 | C1 | Drive 2, baud 38400 qualified | `begin`, `confirm before`, finish, no save; power cycle | Drive answers at 115200 or 38400 | Drive-reported | Settles the save question |
 | C2 | Chain, one field per step, save (unless C1 shows it is not needed) then power cycle each: 38400/8N1 → 38400/8E1 → 19200/8E1 → 19200/8O1 → 9600/8O1 → 9600/8N2 → 115200/8N2 → 115200/8N1 | `host set`, `confirm requested`, identity at each tuple | Each tuple answers; drives 1/4 unchanged at the end | Drive-reported | Per tuple; FM p6 "same settings on one network" deviation recorded |
-| D1 | Drive 2 at DIP 2 | `0x0013` = 20, save, owner sets SW2-SW5 OFF, power cycle, `confirm requested`, finish | Answers at 20; nothing at 2 | Drive-reported, owner-observed | PASS on identity at 20 |
-| D2 | After D1 | Owner sets DIP 2, power cycle; `0x0013` = 0, save, power cycle | Answers at 2, custom node 0 | Read back | Exact |
+| D1 | Drive 2 at DIP 2; items 7 and 8 tested | `0x0013` = 20, save, owner sets SW2-SW5 OFF, power cycle, `confirm requested`, finish | Answers at 20; nothing at 2 | Drive-reported, owner-observed | PASS on identity at 20 |
+| D2 | After D1 | Owner sets DIP 2, power cycle; `0x0002` reads 2; `0x0013` restored to S1's word by item 8, readback, save, power cycle | Answers at 2, custom node as in S1 | Read back after restart | Exact |
 | S3 | End state | Discovery per address (1, 2, 4, 20) and at the C2 tuples for drive 2 | 1, 2, 4 answer at 115200 8N1 only | Drive-reported | Matches baseline |
 
 4. If C2 must stop early, the minimum set is 38400/8N1 and 115200/8E1 with
@@ -202,7 +225,9 @@ reports of 14 and 16, [bus check](../../reports/2026-11-12_multi_drive_bus_check
   pending baud/format change, while enable waits, moves, discovery or
   monitoring are active: refused before TX, context unchanged.
 - Address scenarios refuse 0, 3, 6, 16, 131, 134, 144 and addresses in use
-  before sending (harness policy for this bus; the core keeps 1..247).
+  before sending (harness policy for this bus; the core keeps 1..247). The
+  item 8 route refuses any word other than the snapshot's, any active address
+  other than 2 and any state without the DIP readback.
 - Save or restore while running: refused before TX (p26 ignore rule kept).
 - Save or factory restore on a drive without a complete field table: refused
   by the harness before TX.
@@ -225,7 +250,9 @@ native ESP-IDF builds; four CI jobs green on the final commit.
 
 1. Begin reaches the wire only through the new explicit routes; native tests
    cover each fact, expiry, the recommissioning sequence and every refusal.
-2. Each drive used for a destructive case has S0-S2 with a complete field table.
+2. Each drive used for a destructive case has S0 before its first power
+   interruption, S1, a complete per-field plan and a passing S2; items 6-8
+   have native tests before F1, C1-C2 and D1 run.
 3. P0, P2-P5, F1-F2, C1-C2, D1-D2 and S3 each have a verdict with the evidence
    level; the save-before-restart question is answered from C1.
 4. A measured table of factory defaults against the manual defaults exists.

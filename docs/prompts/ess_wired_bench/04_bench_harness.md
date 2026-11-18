@@ -13,7 +13,9 @@ Deliver it once, in the existing harness, with unit tests.
 Deliver:
 
 1. A shared-output interlock used by every harness path that turns a bench
-   output on (COMMON Shared outputs).
+   output on (COMMON Shared outputs), decided by one line-isolation truth
+   table that prompt 08's firmware trigger also uses, with a case-specific
+   exception for a named, expected running member.
 2. Named scenarios `input-map` and `y0-map` in `scripts/bench_scenarios.py`,
    replacing the 18 November scratch scripts (`io_map.py`, `y0_toggle.py`).
 3. A fixture description and two separate verdicts: declaration agreement
@@ -98,26 +100,29 @@ or replay. The harness is example tooling, not library API.
   - `check_declarations(console)`: per input drive, 02's `board` masks and
     sources against `FIXTURE` (X0-X3 connected on 1, 2, 4; Y0 connected on 4
     only). Verdict `declaration_agreement`; an invalid or absent table fails it.
-  - `interlock(console, output, members=())`: fresh `io read`, `read config`
-    and `read state` on every drive in `input_drives`; refuses (returns the
-    reason, sends no `bench on`) when any drive is silent or unreadable,
-    running, alarmed, has function 7-13 on the switched terminal, or has a
-    selector 14-17 on it while any of its terminals holds 12 or 13; drives in
-    `members` are exempt only for the functions the scenario record names.
-    `bench_on(console, output, hold_ms, record)` is the only harness function
-    that sends `bench on`, and it calls `interlock` immediately before.
+  - `interlock(console, output, scenario)`: fresh `io read`, `read config` and
+    `read state` of every drive the board table declares connected on the
+    switched terminal, all within `max_age_ms` (default 300, recorded) before
+    the ON; decision by the truth table below. `bench_on(console, output,
+    hold_ms, record)` is the only harness function that sends `bench on` and
+    calls it immediately before. The prepared serial stop never waits for it.
+  - `before_flash_check(console)`: COMMON's rule before every flash or
+    controller reset (all three drives stopped, no function 7-17 on any
+    input), for later prompts.
   - `RunFolder(date, prompt, slug)`: exclusive folder with `scenario.json`,
     `session.jsonl` and `summary.json` (from `run_recorded`), `console.log`,
     `baseline_before.json`, `ending_reads.json`, `result.json`.
   - `write_scenario(...)`: COMMON's scenario record, written before the port
     opens: image path and SHA-256, commit, drives, terminals, exact commands,
-    write list (drive, field key, candidate), bounds, prepared stop, the
+    cases with `required`, `assertion` and `required_levels`, named running
+    members (L3), write list (drive, field key, candidate), bounds, prepared
+    stop, the
     restoration plan (below), planned left-changed fields with storage class
     and reason, expected evidence per level, abort conditions, cleanup.
   - `write_result(...)`: `{"schema": "motorcontrol-rs/wired-bench-result/1",
     "prompt", "slug", "date", "commit", "image": {"path", "sha256"}, "cases":
-    [{"id", "setup", "action", "expected", "evidence_level", "verdict",
-    "reason", "evidence": [paths]}], "restoration": {"outputs_off",
+    [{"id", "required", "assertion", "required_levels", "verdicts": {LEVEL:
+    VERDICT}, "reason", "evidence": [paths]}], "restoration": {"outputs_off",
     "fields": [{"drive", "key", "baseline", "ending", "restored", "uncertain",
     "storage", "reason"}], "drives": [{"address", "stopped", "alarm",
     "enabled", "required_enabled"}], "port_closed"}, "deviations": [...]}`.
@@ -127,7 +132,9 @@ or replay. The harness is example tooling, not library API.
     the image file (recomputed when it exists), at least one case, verdicts in
     PASS/FAIL/NOT RUN/BLOCKED/indeterminate, reasons on NOT RUN, BLOCKED and
     indeterminate, evidence paths present. **Session success**: every
-    required case of the scenario record has a verdict; every scenario drive
+    required case of the scenario record is PASS at each of its
+    `required_levels` (an expected refusal such as H08 passes its no-ON
+    assertion; FAIL, NOT RUN, BLOCKED and indeterminate do not); every scenario drive
     appears in the ending reads, stopped, alarm-free and enabled as required;
     no uncertain write outstanding; every written field restored and read
     back, or planned as left changed before the first write; outputs off; port
@@ -140,10 +147,50 @@ or replay. The harness is example tooling, not library API.
     giving, per field, the route, facts, readback and ordering, and listing
     fields with no admissible route (null `restore`, or `requires` later than
     the flashed image); `restore(console, plan)` writing only differing fields,
-    each read back.
+    each read back. Null routes stay fail-closed.
+  - Experimental restoration disposition, for prompt 10's pair fields before a
+    typed setter exists: `restoration_plan(..., experiments=[record])` admits a
+    field with a null route only through a record bound to the experimental
+    image SHA-256, the prompt and case ID, the drive, the exact FC10 window
+    (start, count) covering the field's registers, the experiment's write and
+    readback commands, and the exact checked source read taken in this run
+    before the first write (operation ID present in the session evidence, raw
+    words equal to the restore candidate; D7). Any mismatch, another field or
+    a later image refuses. Typed promotion in 10 replaces the record through
+    re-baselining (Implement 9).
   - `capture_baseline(console, addresses)` producing 01's schema;
     `rebaseline(old, new, reason, prompt)` (re-baselining below).
   - `correlate(traffic, bench_views)`: COMMON Timing intervals (Implement 7).
+**Line-isolation truth table.** One table for this harness and for prompt
+08's `arm trigger`; there, "named member" means an armed member matching its
+armed facts. Each drive on the switched line is a participant; the first
+matching row decides it; any refusal sends no ON and records the reason and
+the reads. Polarity relaxes no row.
+
+| Row | Participant | Decision |
+| --- | --- | --- |
+| L1 | Missing, silent, unreadable, a read older than `max_age_ms`, or unknown input/output/motion bits | Refuse |
+| L2 | Alarm code or alarm flag | Refuse |
+| L3 | Named running member: the scenario names its address, the running operation ID, the line, the switched terminal's function and polarity, and the intended effect (2/3 limit, 4 release, 5/6 stop, 7 fixed-length during velocity, 14-17 selection); the fresh reads and the pending operation match all of them | Admit |
+| L4 | Running in any other case (a non-member, another or no operation, a mismatching assignment or polarity) | Refuse |
+| L5 | Switched terminal holds 7-13 | Refuse (a stopped member is admitted only by 08's firmware trigger, under its armed facts) |
+| L6 | Switched terminal holds 14-17 and any terminal of that drive holds 12 or 13 | Refuse |
+| L7 | Switched terminal holds 14-17 otherwise, or 0-6 | Admit |
+
+Shared configurations, committed as data in `test/line_isolation_cases.json`
+(assignment words, polarity, state, named member) for the `mosfet2` line:
+LI01 power-up words on 1, 2, 4, all stopped (admit); LI02 drive 2 X3 = 16, no
+12/13 on drive 2 (admit); LI03 drive 2 X3 = 16 and X0 = 12 (refuse, L6); LI04
+drive 2 X3 = 13 (refuse, L5); LI05 drive 2 X3 = 7 (refuse, L5); LI06 drive 4
+silent (refuse, L1); LI07 drive 2 reads older than `max_age_ms` (refuse, L1);
+LI08 drive 1 alarm 5 (refuse, L2); LI09 drive 2 running, not named (refuse,
+L4); LI10 drive 4 named, running its named move, X3 = 5 polarity 0, effect
+stop (admit, L3); LI11 as LI10 with X3 read as 6 (refuse, L4); LI12 as LI10
+under another operation ID (refuse, L4); LI13 as LI10 with drive 2 also
+running (refuse, L4). Prompt 08 runs LI01-LI09 through its firmware trigger
+with the same words and must reach the same decisions; LI10-LI13 are
+harness-only because an armed trigger requires stopped drives.
+
 - `scripts/bench_scenarios.py`: scenarios `input-map`, `y0-map`,
   `baseline-compare`, `baseline-capture`, `restore`; `--run-dir` (new layout)
   alongside `--out`.
@@ -152,17 +199,18 @@ or replay. The harness is example tooling, not library API.
 
 ## Implement
 
-1. `FIXTURE`, `check_declarations` and `interlock`, with unit tests: matching
-   declarations; an invalid table; an older image without `board`; an unarmed
-   drive 2 with X0 = 7 on the `mosfet1` line, a silent drive 4, a running drive
-   and a selector-plus-trigger drive: each refuses and the fake console records
-   no `bench on`.
+1. `FIXTURE`, `check_declarations`, `interlock` and `before_flash_check`, with
+   unit tests: matching declarations; an invalid table; an older image without
+   `board`; LI01-LI13 from `test/line_isolation_cases.json`, each refusal with
+   no `bench on` in the fake console; a permitted stop pulse during the named
+   move (LI10) and a refusal with an unexpected running drive (LI09, LI13).
 2. Run folder, scenario record and `result.json` writers; exclusive creation;
    a second run with the same name fails before the port opens.
 3. `check_run` with one unit test per integrity rule and failing-session
    fixtures that are otherwise complete: a failed restoration, a scenario drive
    missing from the ending reads, a drive still running, an outstanding
-   uncertain write, an unplanned left-changed field. Each returns integrity
+   uncertain write, an unplanned left-changed field, and one required case each
+   at FAIL, NOT RUN, BLOCKED and indeterminate. Each returns integrity
    PASS and session FAIL, and the folder stays unchanged.
 4. `input-map`: preflight (outputs off, declarations read); per output,
    `bench_on(NAME, 2000)`, `read state` on every input drive, `bench off NAME`,
@@ -179,7 +227,12 @@ or replay. The harness is example tooling, not library API.
 6. Baseline helpers: the restoration plan orders I/O fields so every
    intermediate FC06 state passes the core checks (one field per request when
    needed), restores a start-speed word before reinstalling its relation, and
-   names the facts each step needs. A write list with a field lacking an
+   names the facts each step needs. Tests: a planning test with a fake console
+   that records zero commands, for a valid experimental record, for each
+   mismatch (image, case, drive, window, source operation ID, source words)
+   and for a null route without a record; a fake write/readback test where the
+   experimental route restores and reads back, and a readback mismatch leaves
+   the field uncertain and the session failed. A write list with a field lacking an
    admissible route makes the case NOT RUN before any write. `restore` never
    writes a field equal to the captured value or one whose current value is
    `unknown`.
@@ -257,14 +310,17 @@ behavior changes: the four CI jobs green on the exact final commit.
 
 **Acceptance.**
 
-1. No harness path turns a bench output on without the interlock; the unit
-   tests and H08 show refusals with no `bench on`.
+1. No harness path turns a bench output on without the interlock; the truth
+   table, LI01-LI13 and H08 show the decisions, with no `bench on` on refusal.
+   Bench evidence of L3 comes from prompt 07 (motion), not from this G1 prompt.
 2. `input-map`, `y0-map`, `baseline-compare`, `baseline-capture` and `restore`
    run end to end and their folders pass both checks.
-3. The checker separates integrity from session success; the failing-session
+3. The checker separates integrity from session success; success requires
+   PASS of every required assertion at its required levels; the failing-session
    fixtures and H07 behave as specified.
 4. Restoration works from per-field differences against captured values, uses
-   only ordinary setters with stated facts, and refuses fields without a route.
+   only ordinary setters with stated facts or a bound experimental record, and
+   refuses fields without either.
 5. Measured mapping and declaration agreement are separate verdicts; a swap
    is detected from status bits.
 6. The esp_timer clock sharing is confirmed in code; correlation reports

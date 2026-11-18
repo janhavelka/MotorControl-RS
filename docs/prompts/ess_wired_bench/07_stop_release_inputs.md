@@ -105,14 +105,24 @@ deceleration), 68, 73-74. Hardware manual page 9.
 3. **Classification of stopped motion.** Each result separates witnesses:
    source commanded (`on_us`/`off_us`), input observed active in a sample,
    motion first observed stopped within a bracket, stopped short of the target,
-   and any further start. "Input-stopped" needs the input observed in a sample
-   or a stop bracket inside the commanded interval with no other stop sent;
-   otherwise the result is **indeterminate** with the missing witness named. A
-   move or velocity run stopped short is never reported complete. If S1-S4
+   and any further start. "Input-stopped" needs all of: motion witnessed after
+   the start and before the stimulus; the stimulus witnessed (`on_us`, and the
+   input bit or a Y0 edge where available); a discriminating stop, meaning a
+   stop bracket that ends before the competing end condition (the move's
+   endpoint or ramp, the velocity route's own timed stop write) or a
+   stopped-short endpoint of a finite move; and no serial stop, fault, alarm or
+   natural completion consistent with the samples. Seeing the input active is
+   not enough. A stop first seen after the prepared safety stop was sent is
+   causally **indeterminate**; so is any case missing a witness, which is named.
+   A move or velocity run stopped short is never reported complete. If S1-S4
    show the observer reporting completion or polling to its deadline, fix the
    owning code (candidate: copy the 4-6 terminals and mapping into
    `MovePrerequisites`; an active one in a sample ends the move with a distinct
-   reason) with a native regression from the recorded words.
+   reason) with a native regression from the recorded words. Negative trace
+   (native): a velocity run whose sample shows the input active, but whose first
+   stopped sample comes after the route's own timed stop at 1000 ms, must report
+   indeterminate, not input-stopped; likewise a stop first seen after a safety
+   stop.
 4. **Enable while released by input.** From R3: if the drive stays released
    while function 4 is active, refuse `enable` before TX with
    `release_input_active`; if a serial enable overrides it, admit and document.
@@ -152,9 +162,11 @@ deceleration), 68, 73-74. Hardware manual page 9.
 5. Phase A on drive 4: X3 = 5, then 6, then 4; Y0 = 2 (stop cases) or 5
    (release cases). Phase B: X3 = 5, then 6, on drives 1, 2 and 4.
 
-L1 = `aux1` running-off edge − `mosfet2` `on_us`; L2 = bracket of the stop
-transition from samples (running polls are 500 ms apart). Both per COMMON
-Timing. No "stays stopped" or "no restart" claim before the hold, the release
+L1 (functions 5, 6, and 4 in R2b) = `aux1` running-off edge (Y0 = 2) −
+`mosfet2` `on_us`. LR (function 4) = `aux1` brake-off edge (Y0 = 5: brake
+output invalid when released) − `on_us`; it shows the drive's release output,
+not motion. L2 = bracket of the stop or release transition from samples
+(running polls are 500 ms apart). All per COMMON Timing. No "stays stopped" or "no restart" claim before the hold, the release
 and the 2 s post-release window are all observed.
 
 | Case | Setup | Action | Expected | Evidence level | Verdict rule |
@@ -168,8 +180,9 @@ and the 2 s post-release window are all observed.
 | S7 serial interplay | X3 = 6; deceleration 1000 ms | (a) `stop normal`, then `mosfet2` after its ACK; (b) `mosfet2`, then `stop fast`; (c) `stop fast` while `mosfet2` held | (c) output off, `motor_stop` | controller-timestamped | Ramp shortened or not recorded; (c) PASS if `off_reason` is `motor_stop` |
 | S8 deceleration | deceleration 100 and 1000 ms | same move stopped at the same delay by 5, 6, `stop normal`, `stop fast`; 5 runs each | 5 vs 6 differ or not | controller-timestamped, position | Table of L1, L2 and final position |
 | S9 stop pulse width | X3 = 5, then 6 | 3000-step moves; W ∈ {5, 10, 12, 15, 20, 30, 50} ms at ~1 s; 3 per W | Short pulses may be missed | same | Stopped/not per W; shortest W stopping 3/3 |
-| R1 release, stationary | X3 = 4, Y0 = 5 | `mosfet2` 2000 ms | Released, Y0 off | controller-timestamped, drive-reported | Re-enable by itself or not |
-| R2 release, moving | X3 = 4 | 1000-step move; `mosfet2` 200 ms | Torque off, `DRIVE_FAULT` | drive-reported | PASS if released reported and move failed; explicit `enable` after the settle |
+| R1 release, stationary | X3 = 4, Y0 = 5 | `mosfet2` 2000 ms; 10 runs | Released, Y0 off | controller-timestamped, drive-reported | LR per run; re-enable by itself or not |
+| R2a release, moving, brake | X3 = 4, Y0 = 5 | 1000-step move; `mosfet2` 200 ms at ~0.5 s; 5 runs | Torque off, `DRIVE_FAULT` | controller-timestamped, drive-reported | PASS if released is sampled and the move fails; LR per run; explicit `enable` after the settle |
+| R2b release, moving, running | X3 = 4, Y0 = 2 | as R2a; 10 runs | Running output off | controller-timestamped, drive-reported | L1 for function 4 per run; classification per Implement 3 |
 | R3 enable vs release | X3 = 4 | `mosfet2` 3000 ms; `enable` (if admitted) | Unknown | drive-reported | Decides Implement 4 |
 | G1 shared stop | Phase B, X3 = 5 | staged group move 3000 steps; `mosfet2` 200 ms; 5 runs; X3 = 6, 3 runs | All stop | controller-timestamped (4), samples (1, 2) | PASS if every member stops short with its own outcome and no restart in the window |
 | G2 sequential | Phase B, X3 = 5 | sequential group move; `mosfet2` during member 1 | No later start | sent, drive-reported | PASS if no later start sent |
@@ -209,10 +222,11 @@ commit.
 **Acceptance.**
 
 1. Implement 1-2 in code with native tests that fail at HEAD.
-2. S1-S9 and R1-R3 have verdicts on drive 4, G1-G2 on three drives; the
+2. S1-S9 and R1-R3 (R2a, R2b) have verdicts on drive 4, G1-G2 on three drives; the
    shortest stopping pulse is recorded per function.
-3. L1 per function (min/median/max over at least 10 runs), L2 brackets, input
-   filter and debug-copy state reported.
+3. L1 for functions 5, 6 and 4 (R2b) and LR for function 4 (R1, R2a), as
+   min/median/max over the stated runs, L2 brackets, input filter and
+   debug-copy state reported.
 4. Input-stopped motion is never reported complete; each classification lists
    its witnesses or is indeterminate.
 5. Enable precedence measured; code and caps state it.

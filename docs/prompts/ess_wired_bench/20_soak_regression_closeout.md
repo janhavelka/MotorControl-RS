@@ -75,9 +75,9 @@ separate instruction; FieldCore edits (read-only); deleting bench evidence.
 - HW-12 stays open; the 16 November 8 h soak (4,269 cases) had no stall.
 - The 2-3 November overnight run (9,212 cases) and the four accumulated active
   hours are separate dated evidence, not an overnight pass of this image.
-- [Bench I/O](../../bench_io.md) rule 5 (no trigger functions assigned before a
-  controller reset or flash) is unconditional; prompt 18's G1/G2 are detection
-  trials and do not relax it.
+- [Bench I/O](../../bench_io.md) rule 5 and COMMON "Before every flash or
+  controller reset" (no input function 7-17 on any drive, drives stopped) are
+  unconditional; prompt 18's G1/G2 are detection trials and do not relax them.
 - Relay life, Fujitsu FTR-B4 series datasheet, standard type: mechanical at
   least 50 × 10^6 operations; electrical at least 100 × 10^3 operations at
   1 A, 30 V DC resistive, tested at 0.5 Hz; minimum load 0.01 mA, 10 mV DC. The
@@ -108,23 +108,29 @@ separate instruction; FieldCore edits (read-only); deleting bench evidence.
 
 1. **Soak cases.** Positive input starts use the 08 route only: `arm`, `arm
    trigger ID`, `arm inspect ID`, `disarm ID`, with ID correlation and per-member
-   results for group arms; PT segments use 13's trigger route. Raw `bench on`
-   edges appear only in named negative cases (for example a pulse with no start
-   function assigned: no motion expected). Stop inputs follow 07's procedure.
+   results for group arms; PT segments use 13's trigger route. A raw `bench on`
+   edge never serves as the start of an attributed operation. Checked selector
+   (PIN), switch (limit, home) and stop stimuli use `bench on` inside their
+   named cases, as 07 and 11-13 do; named negative cases may pulse with no
+   start function assigned. Stop inputs follow 07's procedure.
    Y0 timing uses drive 4 Y0 = 2 and `aux1` brackets. Group moves cover relative
    and absolute plans, staged and sequential, and group stops; velocity runs
    stay inside 14's envelope. Each case applies COMMON "Shared outputs" and
    restores its fields from a per-field diff before the next case.
 2. **Soak safety.** Cross-reads accept only drives moving by design; trigger
-   functions are assigned only inside their case; every `mcu_reset` case first
-   reads back the input functions of all three drives and runs only when none
-   holds a start function (7-13); any anomaly writes its incident file live;
+   functions are assigned only inside their case; every `mcu_reset` case runs
+   only after the COMMON "Before every flash or controller reset" check, read
+   back immediately before (all three drives stopped, no input function 7-17);
+   resets during motion stay prompt 18's evidence; any anomaly writes its
+   incident file live;
    continued unexpected motion gets the prepared `stop fast` at once (COMMON);
    the USB-stall stop covers every moving drive.
-3. **Plan check.** Before a soak starts, the harness rejects a plan that counts
-   a raw `bench on` edge as the trigger of an attributed input-start PASS, a
-   `mcu_reset` case without the assignment read-back, or a relay budget overrun.
-   Unit tests for each rejection.
+3. **Plan check.** Before a soak starts, the harness validates each edge's
+   role (attributed start through `arm trigger`, selector, switch, stop,
+   negative) against the planned assignments of all three drives at that step.
+   It rejects a raw edge used as the start of an attributed operation, an edge
+   whose role does not match those assignments, a reset without the interlock,
+   and a relay budget overrun. Unit tests for each rejection.
 4. **Relay budget.** At most 10,000 operations per relay for the whole set
    (10 % of the rated electrical minimum), no faster than one operation per 2 s
    per relay in the soak (the rated test rate). Count from each run's `bench`
@@ -159,8 +165,13 @@ separate instruction; FieldCore edits (read-only); deleting bench evidence.
 
 ## Bench procedure
 
-1. Flash the final image from a recorded commit; record SHA-256. Run 01's
-   baseline read and compare with `docs/reports/wired_bench_baseline.json`.
+1. First live step, on the image already running: the COMMON "Before every
+   flash or controller reset" check (all three drives stopped, no input
+   function 7-17, or the owner removes the I/O feed). If it cannot be
+   established, do not flash. Then flash the final image from a recorded
+   commit, record SHA-256, run 01's baseline read and compare with
+   `docs/reports/wired_bench_baseline.json`. The same check precedes every
+   reflash (item 8) and every reset.
 2. Scenario record for the soak and the regression: case list, counts,
    duration, relay budget, stop criteria, restoration. Exposure (D11): finite
    moves end themselves; velocity runs end by the controller's own stop; if the

@@ -177,12 +177,16 @@ bench output → terminal map beside 02's table (`FixtureWiring.h`,
    has not triggered, a MOSFET output mapped to the armed terminal, and a width
    from a named minimum (20 ms; prompt 09 raises it from its width sweep) to
    5000 ms (fixed maximum, enough for 09's held-level case). Before the ON it
-   reads fresh assignments, polarity and state of every drive the fixture
-   table declares connected on that terminal, members and non-members alike.
-   A non-member must answer and hold a function that starts no motion (0-6, or
-   14-17) on that terminal; a member must still match its armed facts. An
-   unknown, silent or changed participant refuses the trigger before any port
-   call; the isolation facts are retained in the view. Then one `BenchIo` ON
+   reads fresh I/O settings, configuration and state of every drive the
+   fixture table declares connected on that terminal and applies prompt 04's
+   isolation truth table (`interlock` in `scripts/bench_records.py`), the same
+   table the harness uses. A non-member refuses the trigger when it is silent
+   or unreadable, running, alarmed, holds function 7-13 on that terminal, or
+   holds a selector 14-17 on it while any of its terminals holds 12 or 13. A
+   member must still match its armed facts (function 7 on the terminal,
+   stopped, the staged words). A participant that changed since arming also
+   refuses. Every refusal comes before any port call; the evaluated rows are
+   retained in the view. Then one `BenchIo` ON
    with that hold; `onUs`/`offUs` become source edges; a second trigger is
    refused. Cancel, deadline, disarm before the pulse ends, recovery and any
    stop quiesce the owned output; the hold timer is the backstop. No retrigger.
@@ -239,10 +243,14 @@ test also in the IDF suite list, and add the IDF name to `scripts/verify.py`.
   position mismatch reported, not judged.
 - `INDETERMINATE`: missing pre-edge sample, a lost sample, spacing above twice
   `poll-ms`, ring overwrite, repeated absolute target with no RUNNING sample.
-- Line isolation: an unarmed non-member on the same line assigned a start
-  function (7-13) → `arm trigger` refused with no `apply` ON call; a silent
-  non-member and one whose assignment changed after arming → refused likewise;
-  non-members with functions 0-6 or 14-17 → admitted.
+- Line isolation, the same configurations as 04's `interlock` tests in
+  `test/bench_records_test.py`, run through the firmware trigger: a non-member
+  with a start function (7-13) on the line; a non-member selector 14-17 on the
+  line with 12 or 13 on another of its terminals; a silent or unreadable
+  non-member; a running or alarmed non-member; an assignment changed after
+  arming → each refused with no `apply` ON call. A non-member with 0-6, or a
+  selector without any 12/13 on that drive → admitted. A shared fixture table
+  of these cases feeds both test files so the two paths cannot drift.
 - Absolute arm after an assignment write without fresh reads → refused; a stale
   member reference → refused; with the documented read sequence → admitted.
 - A stop during input-started motion; a held trigger after the stop (the stop

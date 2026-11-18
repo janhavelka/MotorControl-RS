@@ -280,9 +280,10 @@ native coverage, all motion modes or electrical timing qualification.
   Probe reads model register 0x0000/one word. Experimental exception
   (2026-11-18, under the owner's authorization): wired-bench prompt 10 may
   send FC10 writes and FC03 reads to the paired soft-limit, PT-target and
-  home-offset windows it lists, on its recorded experimental image only, with
-  the exact restoration writes it names; production admission and the four
-  windows above change only by its D10 promotion. Generate compact codec access
+  home-offset windows it lists, and prompt 13 to the PT-target windows for
+  its W0 witness, on their recorded experimental images only, with the exact
+  restoration writes they name; production admission and the four windows
+  above change only by a D10 promotion. Generate compact codec access
   policy from the same register ledger; basic codec use must not require
   linking the descriptive catalogue strings.
   Raw codecs validate wire shape/access, not value meaning, motion readiness

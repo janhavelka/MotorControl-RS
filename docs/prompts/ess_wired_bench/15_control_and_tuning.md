@@ -112,7 +112,15 @@ it. Audit entries A2-F12 and A2-F13 apply.
   | --- | --- | --- | --- |
   | `0x0103` closed-loop maximum | 3 (baseline) | 50, 25, 10 % of the baseline word | Only what T9 measures |
   | `0x0106` lock current | 3 | 50 % of the baseline word | Stored word only |
-  | `0x0105` open-loop maximum | 1, after T11 set it | 50 % of the baseline word | Only what T10 measures |
+
+- **No forward algorithm writes.** The algorithm counts as a current field and
+  no current tuple is qualified for algorithm 1 or 2 on this drive: the
+  percent base and the effective-current ceiling are unresolved, and open loop
+  drives its set current continuously. D7 authorizes writing back the read 3,
+  not writing 1 or 2, and a numerical decrease is no authority either. So
+  algorithm writes stay refused, and T11 and the dependent T10 are NOT RUN
+  until a later prompt qualifies the target-mode current tuple and its inverse
+  restoration.
 
 - **Exact restore (D7)**: write back one raw word read earlier from the same
   drive (algorithm 3, collision 0/0, a lowered current word, any out-of-range
@@ -141,7 +149,8 @@ it. Audit entries A2-F12 and A2-F13 apply.
 1. The admitted-candidate table with named facts; values outside it refuse.
 2. The exact-candidate current qualification; native tests for each listed
    row, for the same value under another algorithm word, for two fields in
-   one request, for a value not listed, and for a stale read identity.
+   one request, for a value not listed, for a stale read identity, and for
+   every algorithm write (refused).
 3. The D7 exact restore with its pre-change proof (inspection without TX).
 4. The deviation threshold table and its D6 call, with refusal above 4000
    without the call and after the session resets.
@@ -176,8 +185,8 @@ it. Audit entries A2-F12 and A2-F13 apply.
 | T7 | Lock time 1000, 3000 | M, Y0 = 5 | Brake edge after stop tracks the lock time, or not | controller-timestamped | Edge delay against the word |
 | T8 | Listed row `0x0106`, restore proven | M, Y0 = 5 | Nothing observable expected | drive-reported | Recorded; NOT RUN without the proof |
 | T9 | Listed rows `0x0103`, restore proven before each | M at 600 rpm, ramp 100 | Lag or alarm 5 as the word falls | drive-reported | Lowest passing word recorded; no current claim |
-| T10 | Listed row `0x0105` under algorithm 1 (inside T11) | M | Effect in open loop only | drive-reported | Recorded |
-| T11 | Algorithm 3 → 1, M; then → 2, M; D7 restore of 3 | M; threshold 1 in open loop | Position equals command in open loop; alarm 5 only in closed loop | drive-reported | D7 restore proven first; else NOT RUN |
+| T10 | Open-loop maximum under algorithm 1 | — | — | — | NOT RUN: needs T11 |
+| T11 | Algorithm 3 → 1 → 2 | — | — | — | NOT RUN: no qualified forward transition (see the algorithm bullet); refusal of `control set algorithm 1` checked with zero TX |
 | T12 | Encoder 4000 → 2000, closed loop | One +200 move at 30 rpm | Feedback scale or alarm | drive-reported | Abort on alarm or runaway: `stop fast`, `motor-release`; restore |
 | T13 | Collision 200/50 | Write, read back, D7 restore of 0/0 | Stored only; effect NOT RUN | read back | D7 restore proven first |
 | T14 | D8 experiment record | FC03 `0x003B/2` on drives 1, 2, 4 | Values or exception | read back | Recorded; ledger first for codec admission |

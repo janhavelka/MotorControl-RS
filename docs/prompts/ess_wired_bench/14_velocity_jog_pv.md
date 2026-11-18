@@ -92,11 +92,19 @@ A2-F11 apply.
 - `ProbeApp.cpp` `startVelocity`: a velocity limits record in place of the
   literals: maximum |rpm|, rate `|rpm| × subdivision / 60`, maximum duration
   (poll interval scaled so 64 polls cover it) and a stop budget covering the
-  longest admitted deceleration. Defaults equal today's legacy values. The D6
-  call (API and console, for example `velocity limits raise ...` /
-  `velocity limits reset`) raises them up to the opt-in maxima this prompt
-  measures, for the session; restart, `useaddr`, recovery and reset return the
-  defaults. `caps`, `settings` and the harness report the active values.
+  longest admitted deceleration. Defaults equal today's legacy values. Two
+  separate D6 decisions, both explicit API and console calls:
+  - *Qualification cell* (for example `velocity limits qualify ...`): names
+    one exact cell (rpm and sign, ramp words, subdivision, duration, stop
+    policy, prepared stop) and admits exactly one run that matches it; the
+    cell is consumed when that run ends, and restart, `useaddr`, recovery or
+    `velocity limits reset` drop it. Any other request stays at legacy limits.
+    R2 and every phase C run use it.
+  - *Promotion*: cells that passed go into a promoted table (firmware data,
+    changed in its own commit with the evidence). The ordinary raise call
+    (`velocity limits raise ...`, session-scoped, reset as above) admits only
+    combinations in that table or allowed by item 5's interpolation rule.
+  `caps`, `settings` and the harness report the active values and table.
 - JOG setter: one FC10 `0x001D/3` write (reviewed window) with prior read,
   echo and readback, no start bit; the stored speed must lie inside the active
   velocity limits, because inputs 8-10 run at it; input-effect facts when 8-10
@@ -122,27 +130,38 @@ A2-F11 apply.
    controller's own stop at the run's end, which needs the controller and the
    bus but not the harness or USB link. Level-driven runs (8, 9, 10, PV level):
    the trigger width lapses in the controller. Edge-started PV: nothing but a
-   stop. Where X3 is free (V cells, J2, J4, PV3 and the negative-PV
-   experiment), a **dead-man stop** (X3 function 5, inverted polarity, held
+   stop. Where X3 is free (V cells, J1, J3, PV3, PV4 and the negative-PV
+   experiments), a **dead-man stop** (X3 function 5, inverted polarity, held
    inactive by `mosfet2` on a renewed hold) ends motion when the harness or
    link stops renewing it or the controller resets; it needs prompt 05's
-   mapping and prompt 07's stop evidence and is verified once (R4). Remaining
-   exposure (controller hang with outputs on; three-selector PV runs without
-   X3): rotation until the controller, link or owner recovers (D11). Each
-   scenario record names the case's end and exposure; standstill is read
-   afterwards on every drive. No hold or deadline is called a motor bound.
+   mapping and prompt 07's stop evidence. A dead-man is credited for a layout
+   only after a check in that exact layout shows the drive stopped by it
+   before the run's own normal end: R4 (serial velocity), R5 (JOG+ on X0), R6
+   (`pv2-deadman`). J2 and J4 use X3 as JOG−, so they have no dead-man: their
+   level ends when the controller's trigger width lapses, and the rest is
+   D11 exposure. Each case has exactly one checked assignment and one failure
+   plan; the harness plan checker rejects a plan that gives one terminal two
+   purposes (for example X3 as JOG− and as dead-man). Remaining exposure
+   (controller hang with outputs on; three-selector PV runs; J2, J4): rotation
+   until the controller, link or owner recovers (D11). Each scenario record
+   names the case's end and exposure; standstill is read afterwards on every
+   drive. No hold or deadline is called a motor bound.
 2. **Phase A.** Limits record and D6 call; JOG setter; input and PV kinds;
-   native tests: legacy refusals without the call (61 rpm, 1001 ms), raised
-   values admitted only after the call, reset paths, rate at several
+   native tests: legacy refusals without a call (61 rpm, 1001 ms); a
+   qualification cell admits exactly its own run once and refuses every other
+   combination, before and after that run; the raise call admits only promoted
+   cells and the interpolation rule (untested points outside it refuse);
+   reset paths; the plan checker's two-purpose rejection; rate at several
    subdivisions, poll scaling, stop budget, JOG setter outside the active
    limits, arm refusals (wrong function, active trigger, stale `0x0051`,
    selector mismatch, wrong layout, speed outside limits, unknown soft-limit
    state), unchanged outputs.
 3. **Phase B** cases below, within legacy limits.
-4. **Phase C** cells below, each run preceded by the D6 call naming that
-   cell's values; the call's caller owns HW-14 as with position limits above
-   50,000.
-5. **Opt-in maxima.** The passing region of phase C. Interpolation rule: an
+4. **Phase C** cells below, each run admitted by its own qualification cell;
+   the caller owns HW-14 as with position limits above 50,000.
+5. **Promotion.** Passing phase C cells enter the promoted table in a
+   separate change with their evidence. Interpolation rule, enforced by the
+   table: an
    untested speed is admitted only between two passing cells of the same ramp,
    direction and subdivision that are at most a factor of two apart; nothing is
    inferred above the highest passing cell, for shorter ramps, for other
@@ -150,14 +169,17 @@ A2-F11 apply.
    velocity rate ceiling stays the legacy envelope; the position ceiling stays
    50,000 unless the stop-normal report's late-stop position matrix is rerun on
    this firmware and passes above it.
-6. **Negative PV, experiment then promotion.** One exact-target experiment
-   record: drive 1, PV record 2 speed word (`0x00C3`), candidate `0xFFE2`
-   (−30 as two's complement, the `0x001D` hypothesis), readback, one level run
-   of 500 ms in the `pv2-deadman` layout, restoration of the exact baseline
-   word (D7). Promotion (setter accepts
-   negative PV with a stated fact, like velocity `negative`) needs the ledger
-   note, PV4 on drives 1, 2 and 4, and native tests, in a separate change;
-   otherwise negative PV stays UNSUPPORTED with the evidence.
+6. **Negative PV, experiments then promotion.** One exact-target experiment
+   record per drive, each with its own baseline word, D7 restore proof, R6
+   dead-man check and stop: PV record 2 speed word (`0x00C3`), candidate
+   `0xFFE2` (−30 as two's complement, the `0x001D` hypothesis), readback, one
+   500 ms level run in the `pv2-deadman` layout, exact restore. Drive 1 runs
+   first; the records for drives 2 and 4 are used only if drive 1 reversed at
+   the same magnitude and restored exactly. Promotion (the setter accepts
+   negative PV with a stated fact, like velocity `negative`) needs all three
+   drives passing, the ledger note and native tests, in a separate change. If
+   drives 2 or 4 cannot run, the decision covers drive 1 only and wider
+   admission stays UNSUPPORTED.
 
 ## Bench procedure
 
@@ -173,24 +195,26 @@ A2-F11 apply.
 | Case | Setup | Action | Expected | Evidence level | Verdict rule |
 | --- | --- | --- | --- | --- | --- |
 | R1 | Legacy limits | `velocity 61 rpm`, 1001 ms | Refused | sent (none) | Zero TX |
-| R2 | D6 call 120 rpm, 2000 ms | One 2000 ms run at 120 rpm; `velocity limits reset`; repeat | First runs; second refused | drive-reported | Route works both ways |
+| R2 | Qualification cell 120 rpm, configured ramps, 2000 ms, normal stop | That run; the same request again; 121 rpm | First runs; second and third refused | drive-reported, sent (none) | Cell admits once; zero TX after |
 | R3 | Stopped | JOG setter 60, read back; 120 without the call | Stored; 120 refused | read back | Exact words; zero TX |
-| R4 | X3 = 5 inverted, `mosfet2` held | Velocity 30 rpm 1000 ms; let the hold lapse | Drive stops | drive-reported | Enables the dead-man |
+| R4 | X3 = 5 inverted, `mosfet2` held | Velocity 30 rpm 1000 ms; hold lapses at ~300 ms | Stops before the run's own stop | drive-reported | Credits the dead-man for V cells |
+| R5 | X0 = 9, X3 dead-man | JOG+ width 3000; hold lapses at ~1000 ms | Stops before the width ends | drive-reported | Credits it for J1, J3 |
+| R6 | `pv2-deadman`, `0x0051` = 1 | PV edge; hold lapses at ~500 ms; prepared stop at 2 s | Stops before the prepared stop | drive-reported | Credits it for PV3, PV4 |
 | V1 | ±60 rpm; ramps 100, 300, 500; `0x0020` 0, 30 | 1000 ms runs, sampled | Ramp time against word and speed | drive-reported | Mapping fits, or misfit recorded |
-| J1 | X0 = 9, `0x001D` +60 then −60 | `arm trigger ID mosfet1 1000` | Positive both times; ends with the level | drive-reported | Direction and end match |
-| J2 | X3 = 10 | Mirror on `mosfet2` | Negative both times | drive-reported | As J1 |
-| J3 | X0 = 8 | Width 1000, `0x001D` ±60 | Direction follows the sign | drive-reported | As J1 |
-| J4 | X0 = 9, X3 = 10 | JOG+ run; `bench on mosfet2 500` in it; then JOG+ with `bench on relay2` (X1 limit) | Precedence; limit stop per prompt 11 | drive-reported | Extra edge unattributed by design |
+| J1 | X0 = 9, X3 dead-man, `0x001D` +60 then −60 | `arm trigger ID mosfet1 1000` | Positive both times; ends with the level | drive-reported | Direction and end match |
+| J2 | X3 = 10, no dead-man (D11) | Mirror on `mosfet2` | Negative both times | drive-reported | As J1 |
+| J3 | X0 = 8, X3 dead-man | Width 1000, `0x001D` ±60 | Direction follows the sign | drive-reported | As J1 |
+| J4 | X0 = 9, X3 = 10, no dead-man (D11) | JOG+ run; `bench on mosfet2 500` in it; then JOG+ with `bench on relay2` (X1 limit) | Precedence; limit stop per prompt 11 | drive-reported | Extra edge unattributed by design |
 | PV1 | X0 = 13, X1-X3 PIN0-2, `0x0051` = 0 | Records 1-8 at ≤ 60 rpm, width 1000 each | Each record's speed and direction | drive-reported | 8 slopes within 5 % |
 | PV2 | PV1 | Change PIN during a held run | Speed switches or not | drive-reported | Recorded |
 | PV3 | `pv2-deadman`, `0x0051` = 1 | Width 50, stop after 1 s; width 3000; second edge by `bench on mosfet1 50` after `disarm` | What starts and ends a run | drive-reported | Prepared stop ends every run |
-| PV4 | After item 6, `pv2-deadman` | Record 2 with the candidate word, width 500 | Reverse, same magnitude | drive-reported | Decides promotion |
+| PV4 | Item 6, drive 1, then drives 2 and 4 if gated | Record 2 with the candidate word, width 500 | Reverse, same magnitude | drive-reported | Decides promotion |
 | PV5 | `pv-pt-mix`, `0x0051` = 1, records 1-4 | Check PT endpoint and soft-limit state; PV edge; then `bench on mosfet2 50` (p29 method 2) | Switch to fixed length | drive-reported | Displacement matches the PT record |
 | PV6 | Drives 1, 2, 4, own PV tables | One shared level run | Each its own speed | drive-reported | 3 slopes match |
 
 4. Phase C cells, each after its D6 call; abort rules apply per row:
 
-| Cell set | Values | Trials | Abort |
+| Cell set | Qualification cells | Trials | Abort |
 | --- | --- | --- | --- |
 | C1 speed | 120, 300, 600, 1200, 2000, 3000 rpm × ramps 100, 500 × ± at subdivision 1000, 2 s | 3 | First alarm, stall, slope error > 10 % or unresolved stop ends that row |
 | C2 duration | 300 rpm, 10 s | 2 | As C1 |
@@ -218,7 +242,9 @@ A2-F11 apply.
   once; both results are kept.
 - Alarm 5 in a fast run makes the drive silent 1.0-1.9 s: transport error with
   start acknowledged; read again after 2 s; no resend.
-- A negative PV word outside the experiment record refuses before TX.
+- A negative PV word outside its drive's experiment record refuses before TX.
+- A case plan giving one terminal two purposes refuses before any output turns
+  on; a qualification cell refuses any run that differs from it.
 
 ## Verify and exit
 
@@ -228,22 +254,25 @@ A2-F11 apply.
 ESP-IDF builds; four CI jobs on the exact final commit.
 
 **Acceptance.**
-1. Legacy defaults unchanged; the D6 call, its reset paths and the limits
-   record are in API, console and harness with native tests; R1-R4 pass (R2 is
-   the route's own check) before any other run longer than 1 s.
+1. Legacy defaults unchanged; the qualification-cell and raise calls, their
+   reset paths, the limits record and the plan checker are in API, console and
+   harness with native tests; R1-R6 pass (R2 is the cell route's own check)
+   before any other run longer than 1 s.
 2. Ramp mapping stated with evidence, or unresolved with the misfit.
-3. Phase C cells have verdicts within the stated budget; the opt-in maxima and
-   interpolation rule are documented; the C3 creep table gives the velocity
-   rate decision and the position-ceiling decision.
+3. Phase C cells have verdicts within the stated budget; passing cells are
+   promoted in a separate change and the table enforces the interpolation
+   rule; the C3 creep table gives the velocity rate decision and the
+   position-ceiling decision.
 4. JOG setter, input velocity and PV kinds work through the ordinary route;
    J1-J4 and PV1-PV6 have verdicts.
-5. Negative PV is promoted with evidence or stays UNSUPPORTED with it.
+5. Negative PV is promoted with all three drives' evidence, limited to drive
+   1, or stays UNSUPPORTED with the evidence.
 6. Each case names what ends motion and its exposure; restoration matches the
    baseline on all three drives.
 
 **Blockers.** Prompt 08's route missing blocks J and PV cases (Partial).
-Without R4 (no mapping from 05 or stop evidence from 07) the dead-man is
-unavailable and the stated exposure applies. Prompt 13's helper missing blocks
+A layout whose R4-R6 check fails or cannot run has no dead-man, and the
+stated exposure applies. Prompt 13's helper missing blocks
 PV1-PV2 and PV6. A G3 stop in phase C leaves the remaining cells NOT RUN.
 
 ## Documentation

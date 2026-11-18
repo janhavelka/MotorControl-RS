@@ -122,8 +122,12 @@ reports of 05 (minimum input pulse), 07 (stop inputs) and 14 (D6 route).
    drive 4 with 07's facts and a per-field plan (`0x0041`-`0x0044`, `0x0040`
    unchanged). A bench-output pulse that reaches an input and outlasts prompt
    05's measured minimum pulse width at the current filter stops the motion;
-   shorter pulses are below the detection limit and stay unobserved. Restore
-   each field to its baseline word and read back.
+   shorter pulses are below the detection limit and stay unobserved. Record
+   motion or standstill as observed. Credit a pulse only when natural completion
+   (velocity has none), a drive fault (alarm word 0, RAM marker intact) and
+   loss-of-communication behavior (W1 at the same window kept running) are
+   excluded; otherwise the cause is indeterminate. Restore each field to its
+   baseline word and read back.
 5. **USB modes.** Slow reader: pause host reads 0.5-5 s while output flows and
    record `output_blocked`, `short_writes`, `usb_stall`. Saturation: send
    numbered no-motor commands at maximum rate; uncounted loss = sent − replied −
@@ -131,6 +135,11 @@ reports of 05 (minimum input pulse), 07 (stop inputs) and 14 (D6 route).
 6. **HW-12 capture.** On a stall keep the handle open 20 s (the firmware nudge
    acts at 1 s), then reopen; retain `drv.usb_stall` registers, host OS, driver
    and pyserial versions, and the 6,000-line ring.
+7. **Same-context delayed reply.** Native test: a reply delayed past its
+   request's closure that matches a reused request context byte for byte. The
+   old result stays uncertain; the interlock or an explicitly qualified
+   recovery boundary must precede reuse of a matchable context. Draining an
+   idle link does not prove a matching reply's age.
 
 ## Bench procedure
 
@@ -138,9 +147,11 @@ reports of 05 (minimum input pulse), 07 (stop inputs) and 14 (D6 route).
    read before and after. Velocity at the envelope prompt 14 qualified, through
    its D6 route for runs longer than 1 s, at most 60 rpm for silent-bus waits.
    Prepared stop: `stop fast 4`.
-2. Before every controller reset or reflash (W1-W3, G1, G2), read back the
-   input functions of all three drives: no trigger function (7-13) may be
-   assigned anywhere (rule 5). Stop functions on drive 4 are allowed.
+2. Before every controller reset or reflash, apply COMMON "Before every flash
+   or controller reset": no function 7-17 on any input of any drive (stop 5 on
+   drive 4 is allowed), or the owner removes the I/O feed. W1, W2, G1 and G2
+   reset during motion by design: the stopped check covers the drives not
+   under test, and the scenario record names this deviation (D11).
 3. Run:
 
 | Case | Setup | Action | Expected | Evidence level | Verdict rule |
@@ -149,9 +160,9 @@ reports of 05 (minimum input pulse), 07 (stop inputs) and 14 (D6 route).
 | H2 | Velocity run | Harness process killed mid-run | Firmware sends its own stop at the end | Drive-reported after reconnect | PASS on observed standstill and one stop TX |
 | W1 | Velocity, drive 4 inputs at baseline | RTS controller reset 300 ms after start; no traffic for 10, 30, 60 s (separate runs); then `read state`, `stop fast` | Drive keeps or stops running: the watchdog answer per window | Drive-reported | "No watchdog within T s" only for each tested T |
 | W2 | Long position move | RTS reset mid-move | Drive reaches target alone | Drive-reported | Matches earlier records |
-| W3 | After W1 or W2 | New move attempted before fresh reads | Refused by readiness; `stop` admitted without probe | Sent | No traffic before readiness |
-| G1 | Velocity, drive 4 inputs = 5 | RTS reset | Motion continues (no detected pulse) or stops (pulse detected) | Drive-reported | Detection trial only; compared with W1 |
-| G2 | Velocity or 60 s move, drive 4 inputs = 5 | Reflash the same image with esptool | Same question over the download-mode window | Drive-reported, owner may listen to relays | Detection trial only; electrical levels stay NOT RUN |
+| W3 | Drive 4 verified stopped, triggers cleared, interlock passed | Its own RTS reset; first post-boot request is a move before fresh reads; then `stop fast 4`; then fresh reads | Move refused with zero TX; stop admitted without probe; standstill | Sent, drive-reported | PASS when the refusal sends no bytes and the stop is admitted; never deferred from a moving W1 |
+| G1 | Velocity, drive 4 inputs = 5 | RTS reset | Motion or standstill as observed | Drive-reported | Pulse credited only per item 4, else indeterminate |
+| G2 | Velocity (14's D6 route), drive 4 inputs = 5 | Reflash the same image with esptool | Motion or standstill as observed over the download-mode window | Drive-reported, owner may listen to relays | As G1; electrical levels stay NOT RUN |
 | L1 | G3, velocity | Owner pulls drive 4's RS485 plug for 10 s | Poll fails; held stop; one recovery; stop once or not sent | Sent, drive-reported, owner-observed | Matches the documented path; no resend |
 | L2 | G3, velocity | Owner pulls the trunk at the controller for 10 s | Same; drives 1 and 2 also silent | Sent, drive-reported | As L1 |
 | L3 | G3, long position move | Drive 4 plug pulled 5 s | Drive completes alone; move result transport error, completion unknown | Drive-reported | Final position equals target |
@@ -188,7 +199,9 @@ reports of 05 (minimum input pulse), 07 (stop inputs) and 14 (D6 route).
 - After reset, retained uncertainty from before is gone; readiness still
   refuses motion without fresh reads, and the report corrects any guide that
   says the conflict bit survives a controller reset.
-- A late reply after reconnect is rejected by correlation; stale work does not
+- After reconnect, distinguishably foreign or mismatched frames (address,
+  function, length, CRC, register, value) are rejected. An identical delayed
+  reply to a reused context cannot be told apart (item 7). Stale work does not
   resume; a new stop never overwrites the original outcome.
 - A reset or reflash case refuses to start while any drive has a trigger
   function assigned.
@@ -211,9 +224,10 @@ commit when firmware or harness behavior changes.
    drive, worded as such.
 3. The velocity stop budget and recover-during-velocity behavior are either
    confirmed correct by native tests or fixed with a failing-first test.
-4. G1/G2 are recorded as stop-effective detection trials with their detection
-   limit; rule 5 stays as written.
-5. HW-12 and Q13 have new dated evidence; HW-12 stays open unless a capture
+4. G1/G2 are recorded as observed, with their detection limit; a pulse is
+   credited only per item 4, otherwise indeterminate; rule 5 stays as written.
+5. Item 7's native test exists and the reuse boundary is documented.
+6. HW-12 and Q13 have new dated evidence; HW-12 stays open unless a capture
    explains it.
 
 **Blockers.** Owner unavailable: L1-L4 and U1 Partial. S1 finding no stall

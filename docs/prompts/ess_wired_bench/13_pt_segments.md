@@ -17,12 +17,15 @@ harness support this needs. Deliverables:
 - **Timing.** PIN levels valid 5 ms before and after the PT trigger (p23
   notice), every level > 10 ms (hardware p9), relays about 3 ms with bounce.
 - **Modes.** `EXTERNAL_POSITION_MODE` (`0x0050`) relative (0) and absolute (1).
+- **PT target promotion (D10).** This prompt, not prompt 10, promotes the PT
+  target windows, by the measured witness W0 (word order, then sign) on drives
+  1, 2 and 4, before any D10-path case. Until then target writes refuse before
+  TX outside W0's experiment builder entries (AGENTS exception for 13 W0).
 - **Records.** All 8 selectable records with distinct targets written through
-  prompt 10's PT target setter, which exists only once D10 has added the
-  stored-target windows; until then target writes refuse before TX and the
-  target-dependent cases are Partial. Speeds and ramps go through the existing
-  segment setter, so distinct speeds identify the selected record even with
-  unchanged targets; start speed per record (`0x0130`-`0x0137`).
+  the typed PT target setter once promoted. Speeds and ramps go through the
+  existing segment setter; distinct speeds identify the selected record with
+  unchanged targets only when the decoded baseline targets pass the fallback
+  gate in the bench procedure. Start speed per record (`0x0130`-`0x0137`).
 - **Shared execution** on drives 1, 2 and 4 with different tables, one selector
   state and one trigger edge, using the arm route of prompts 08 and 09.
 
@@ -40,7 +43,8 @@ that a serial assignment is not a physical edge or a record-trigger API;
 D4 (only `0x0060/2`) is replaced by README D4 and D10. Audit entries A2-F5,
 A2-F6, A2-F7 and A2-F11 apply.
 
-Case-level dependencies: PT target writes need prompt 10 with D10; endpoint
+Case-level dependencies: PT target writes need this prompt's W0 promotion and
+prompt 10's experiment builder and setter shape; endpoint
 admission and the soft-limit state need prompt 11; the treatment of stopped
 drives on a shared limit line needs prompt 11's L10; group cases need prompt
 08's group arm, bench-checked in 09; P7 needs prompt 06's Y0 route.
@@ -89,6 +93,9 @@ drives on a shared limit line needs prompt 11's L10; group cases need prompt
 7. INPUT_STATUS bits 1-3 show the PIN levels per prompt 05's mapping.
 8. Unknown: whether an absent PIN3 reads as 0, whether a held trigger repeats,
    what a second edge during a running record does.
+9. Prompt 10 leaves its PT experiment builder entries in place for W0 and
+   promotes no PT window; its Implement 3 gives the promotion procedure and
+   names p75 as documented, not measured. Confirm both at HEAD.
 
 ## Files and interfaces
 
@@ -114,8 +121,14 @@ drives on a shared limit line needs prompt 11's L10; group cases need prompt
   adds its own two-selector layout). Any stop request turns every bench output
   off first, so selectors drop on a stop. Unit tests.
 - Console/CLI contract: the arm grammar and reply fields for the PT kind.
-- No codec window is added here: the PT target pair uses the window prompt 10
-  adds under D10, or refuses before TX.
+- Codec and ledger: after W0, the promoted PT windows (`0x0060` + 6·(n−1), two
+  words, n = 1-16) move into `write_multiple_windows`, the tables are
+  regenerated with `scripts/generate_ess_registers.py`, codec, register and
+  generator tests are extended and the AGENTS window list is updated, in one
+  change; the PT experiment entries, and the builder if none remain, are
+  removed. The typed setter (prompt 10's Implement 4 shape) admits only the
+  promoted claim: non-negative at order 0, or signed at order 0; order 1
+  never.
 
 ## Implement
 
@@ -130,37 +143,88 @@ drives on a shared limit line needs prompt 11's L10; group cases need prompt
 4. Group: each member arms its own record; one shared edge; per-member results.
 5. Harness helper with settle time ≥ 50 ms after the last PIN change (relay
    operate plus bounce plus the 10 ms level rule plus the input delay from
-   prompt 05), trigger width 50 ms, PINs held until every armed drive stops.
+   prompt 05), trigger width 50 ms, PINs held until every armed drive stops,
+   and the selection-consequence check of the bench procedure, with unit tests
+   for a reachable record outside the bound and for the fallback gate.
 6. Native tests: all 8 PIN maps, PIN3 absent, unknown `0x0050`, stale record
    read, record changed after arm, wrong PIN level, trigger active at arm,
    speed over the ceiling, endpoint outside limits, second edge, completion
    between polls without an invented RUNNING time, stop during PT, a lost
    record-write ACK that refuses the next arm, soft-limit state unknown, a
    non-member drive whose assignment the trigger could start, a target write
-   with no D10 window (zero TX), unchanged outputs on refusal.
+   outside the promoted claim (zero TX), unchanged outputs on refusal.
+7. W0 witness and promotion (bench step 2), run before any D10-path case.
+   Native tests: only the promoted claim is admitted (a negative target refused
+   when only non-negative is promoted; order 1 refused); the experiment
+   entries are gone after promotion.
 
 ## Bench procedure
 
 1. Scenario record per COMMON. Write list: records 1-16 targets, speeds, ramps,
    start speeds 2-8, `0x0050`, X0-X3 functions on the armed drives. Bounds:
-   subdivision 1000, record speeds ≤ 300 rpm except P12, relative targets
-   ≤ 4000, absolute targets within ±8000, prepared `stop fast` and `group stop`.
-2. Tables. Drive 1: record N = +500·N, 60 rpm, ramps 100. Drive 2: −400·N,
-   90 rpm. Drive 4: +300·N, 120 rpm. Records 9-16 on every drive: +7000, so any
-   execution of them is obvious. Read every record back before arming.
-3. Assignment on each armed drive is an explicit sequence with read-back:
+   subdivision 1000, record speeds ≤ 300 rpm except P12, relative endpoints
+   within ±4000 of the start, absolute targets within ±8000, prepared
+   `stop fast` and `group stop`.
+2. **W0 witness**, drive 1 first; drives 2 and 4 only after drive 1 passes.
+   Setup per drive: `0x0019` = 0 and `0x0018` read back; `0x0050` = 0
+   (relative); subdivision 1000; X0-X3 as step 4 with all selectors off, which
+   selects record 1; records 2-16 written through the experiment builder to
+   +100 (`[0x0000,0x0064]`) at 15 rpm so a mis-selection shows; record 1 at
+   300 rpm, ramps 100 (5000 increments/s); snapshot of every record touched;
+   prepared `stop fast`; the arm route of prompts 08/09 with the order-0
+   expectation. Path guard: the harness sends the prepared stop when position
+   leaves ±400 increments of the expected path (it also catches a 15 rpm
+   mis-selection, or a swapped +100 that would run 6,553,600). If the harness,
+   link or controller fails, motion continues until one recovers: D11
+   exposure, not a bound.
+   - **W0a order:** record 1 = `[0x0001,0x0000]`. Order 0 gives Δ = +65536
+     (65.5 revolutions, about 13.2 s at 300 rpm); swapped gives Δ = +1. Any
+     other Δ: stop, keep evidence, no promotion.
+   - **W0b sign**, only after W0a gave order 0 on that drive: record 1 = −200
+     as `[0xFFFF,0xFF38]`. Two's complement gives Δ = −200; an unsigned or
+     sign-magnitude reading would run very long and is ended by the path guard.
+   - **Promotion** per prompt 10's Implement 3 procedure: non-negative at order
+     0 after W0a passes on all three drives; signed after W0b passes on all
+     three; order 1 never. If W0 fails or is incomplete, PT stays unpromoted,
+     the D10-path cases are NOT RUN and the fallback rules apply.
+   - Restoration of every touched record from its snapshot words (D7) through
+     the experiment builder before promotion, or the promoted setter after.
+3. Tables on the D10 path (relative targets, all inside the 4000 bound). Drive 1:
+   record N = +400·N, 60 rpm; drive 2: −400·N, 90 rpm; drive 4: +300·N,
+   120 rpm; ramps 100. Records 9-16 hold a sentinel of the opposite sign,
+   −1500 on drives 1 and 4 and +1500 on drive 2, at 15 rpm, so any execution of
+   them is distinguishable and still inside the bound. These tables (drive 2,
+   the sentinels, P11) need the signed promotion. With only non-negative
+   promoted, run the non-negative tables (drives 1 and 4, records 9-16 kept at
+   W0's +100 and 15 rpm as the discriminator) and record the rest NOT RUN.
+   Read every record back before arming.
+   **Fallback without D10:** read the baseline targets of records 1-16 and
+   decode them with prompt 10's read decoder. P1 and P3 run only if every
+   record's endpoint lies inside the travel bound and records 1-8 each move at
+   least 200 increments, so their distinct speeds (set with the scalar setter;
+   records 9-16 at a unique 15 rpm) give distinguishable slopes. Otherwise P1
+   and P3 are NOT RUN. The ledger default for record 1 is 5000, beyond the
+   bound, so expect NOT RUN unless the baseline differs.
+   **Selection consequences:** before every trigger the harness computes the
+   endpoint of each record 1-16 the drive could start (relative: current
+   position + pulses; absolute: target) and refuses the trigger if any lies
+   outside the travel bound (in W0, W0's path bound for record 1 and +100 for
+   records 2-16). Relative runs return to the start by a serial
+   absolute move before the next trigger.
+4. Assignment on each armed drive is an explicit sequence with read-back:
    X1/X2 limits to 14/15 with the protection-removal fact, X0 1 → 12, X3 0 → 16.
    On drives not armed, set X1/X2 to 0 first if prompt 11's L10 found any
    effect of an asserted limit on a stopped drive, and check every non-member
-   before each output turns on (COMMON, Shared outputs). Without D10, targets
-   stay at their baseline words and the records differ by speed instead.
-4. Cases:
+   before each output turns on (COMMON, Shared outputs).
+5. Cases:
 
 | Case | Setup | Action | Expected | Evidence level | Verdict rule |
 | --- | --- | --- | --- | --- | --- |
-| P1 | Drive 1, relative | Records 1-8 once each | Δposition = +500·N; without D10, each record's own speed | drive-reported | All 8 match within ±2 increments, or 8 distinct slopes |
+| W0a | Step 2, each drive | Trigger record 1 | Δ = +65536 (order 0) or +1 (swapped) | drive-reported | Exactly one; other Δ: no promotion |
+| W0b | Step 2, order 0 on that drive | Trigger record 1 = −200 | Δ = −200 | drive-reported | Exact; guard stop is FAIL for signed |
+| P1 | Drive 1, relative | Records 1-8 once each | Δposition = +400·N; in the fallback, each record's own speed | drive-reported | All 8 match within ±2 increments, or 8 distinct slopes; fallback gate unmet: NOT RUN |
 | P2 | Drive 1, absolute targets | Records 1-8; one record twice | Reaches target; second trigger moves 0 | drive-reported | As P1; repeat gives no motion |
-| P3 | P1/P2 runs | Check every run | No +7000 move | drive-reported | No record 9-16 ever executes |
+| P3 | P1/P2 runs | Check every run | No sentinel move or 15 rpm slope | drive-reported | No record 9-16 ever executes; fallback gate unmet: NOT RUN |
 | P4 | Drive 1, PIN2 on `mosfet2` | PIN change 50 ms before the trigger; as late before it as the console allows; 5-20 ms after it; during motion | First selects; others recorded with bracketed offsets | controller-timestamped | 50 ms case matches; brackets overlapping the 5 ms rule are indeterminate |
 | P5 | Drive 1 | Trigger width 2000 ms | One run, or recorded repeats | drive-reported | Result recorded; relative repeat counted |
 | P6 | Drive 1 | After `disarm`, `bench on mosfet1 50` during a running record | Recorded behavior | drive-reported | Flagged as unattributed motion |
@@ -171,9 +235,10 @@ drives on a shared limit line needs prompt 11's L10; group cases need prompt
 | P11 | Drive 1 | Negative targets, both modes | Moves negative as encoded | drive-reported | Matches prompt 10's sign |
 | P12 | Drive 1, record speed 2500 | Arm | Refused before trigger | sent (none) | No frame, no bench pulse |
 
-5. Restoration: generated per field from the baseline diff with
-   `restore_baseline`; routes shown before the first write (prompt 10's target
-   setter under D10, the segment scalar and start-speed setters, `driver set`
+6. Restoration: generated per field from the baseline diff with
+   `restore_baseline`; routes shown before the first write (W0's snapshot
+   restores, the promoted target setter, the segment scalar and start-speed
+   setters, `driver set`
    for `0x0050`, `io set` for X0-X3); bench outputs off; drives stopped,
    enabled, alarm-free; COM13 closed.
 
@@ -185,7 +250,11 @@ drives on a shared limit line needs prompt 11's L10; group cases need prompt
 - A PIN state that reads back wrong after settling: no trigger pulse; record
   the input bits and the relay state.
 - Trigger seen while not armed: unattributed motion, stop, evidence kept.
+- Any record 1-16 whose endpoint would leave the travel bound: the harness
+  refuses the trigger, with no bench pulse.
 - Record 1 start-speed writes keep reporting `READBACK_MISMATCH`; no retry.
+- W0: a Δ other than the two hypotheses, a guard stop or a readback mismatch
+  ends W0 on that drive without promotion; evidence kept, nothing resent.
 - A PT `stop normal` that ends with RUNNING still set and creeping position is
   treated as HW-14: `stop fast` prepared, failure evidence kept.
 
@@ -200,7 +269,9 @@ ESP-IDF builds; four CI jobs on the exact final commit.
 1. PT arm admission, rate policy, attribution and group arm exist in the
    ordinary application API and console, with native tests for every refusal.
 2. All eight selectable records execute on drive 1 with matching positions in
-   both modes (or, without D10, distinct speeds); records 9-16 never execute.
+   both modes (or, in a gated fallback, distinct speeds); records 9-16 never
+   execute; no trigger fires while any reachable record's endpoint is outside
+   the bound.
 3. PIN timing, held trigger, second edge and stop cases have recorded results;
    a stop drops the selectors and starts nothing else.
 4. Arms refuse while prompt 11's soft-limit state is unknown.
@@ -209,9 +280,14 @@ ESP-IDF builds; four CI jobs on the exact final commit.
 6. Shared execution on three drives reaches each drive's own table, and a
    group stop stops all of them.
 7. Restoration matches the baseline on all three drives.
+8. W0a and W0b have verdicts per drive; the promoted claim (none,
+   non-negative or signed, order 0 only) is in the ledger, generated tables,
+   tests and AGENTS window list in one change, or PT stays unpromoted.
 
-**Blockers.** No D10 window for stored targets: P2, P9 target checks and P11
-are Partial with refusal before TX; P1 and P3 still prove selection by speed.
+**Blockers.** W0 failed or incomplete: PT stays unpromoted, the D10-path cases
+are NOT RUN, and P1 and P3 run only if the fallback gate holds. Only the
+non-negative claim promoted: drive 2's table, the negative sentinels and P11
+are NOT RUN.
 A missing group arm (prompt 08, bench-checked in 09) blocks P9-P10. Drive 4's
 Y0 route missing leaves P7 at polled evidence only.
 
@@ -220,7 +296,8 @@ Y0 route missing leaves P7 at polled evidence only.
 Update the [segments guide](../../ess_segments.md) (execution, selection,
 timing, ceiling, start speed), [I/O](../../ess_io.md) rows 12 and 14-16,
 [console](../../console.md), [CLI contract](../../cli_contract.md),
-[bench I/O](../../bench_io.md#test-plan-once-wired) steps 7 and 10, and the
+[bench I/O](../../bench_io.md#test-plan-once-wired) steps 7 and 10,
+[pair writes](../../ess_pair_writes.md) (PT promotion), the ledger, and the
 inventory rows `stored_position_scalars_write`, `stored_position_pair_write`,
 `stored_start_speed_write` and `io_settings_write`. Report:
 `docs/reports/<date>_wired_bench_13_pt_segments.md`; evidence

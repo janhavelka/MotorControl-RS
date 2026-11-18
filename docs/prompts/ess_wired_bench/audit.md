@@ -115,3 +115,11 @@ experimental-window exception for prompt 10 (V1-F9).
 | V2-F13 | 20 | First flash before the trigger-assignment check | COMMON pre-flash interlock (lead); 20 follows it |
 | V2-F14 | 20 | Raw-edge ban blocks selector and stop stimuli | Ban only raw edges used as attributed starts |
 | V2-Q1 | 17 | Communication-to-persistence handoff during a pending confirmation | Native transition test before any tuple or address change |
+
+Lead decision while applying V1-F10: PT target windows are not promoted by
+the documented p75 example. Prompt 10 cannot execute a PT record (that needs
+the input trigger of prompts 08 and 09), so prompt 13 promotes them through a
+first witness case W0: words `[0x0001, 0x0000]` move +65536 increments at
+order 0 and +1 if swapped, both bounded; a −200 sign witness follows only
+after the order is confirmed. README D10 and the AGENTS exception name
+prompt 13 for these writes.

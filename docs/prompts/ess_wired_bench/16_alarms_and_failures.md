@@ -185,25 +185,30 @@ Reports: [unattended tests](../../reports/2026-11-16_unattended_bench_tests.md#l
 | A3 | A1 latched | `stop fast`, `alarm-clear`, then a start at 0.2, 0.5 and 1.0 s after the clear's ACK | Y0 off edge; earliest start that moves | Drive-reported, controller-timestamped | Times recorded; not a family bound |
 | A4 | Drive 4, `0x004B` bit 0 = 1 | Repeat A1 | Inverted edge | Controller-timestamped | Edge polarity matches 06's mapping |
 | A5 | Drive 4, same threshold | Velocity run | Poll fails, end stop held, one recovery, stop once; sequence retained | Sent, drive-reported | Matches the documented path; no resend |
-| F1 | Drive 4, subdivision 4000, limits install 2000 rpm / 133,334 / 100, case `hw14` | Reproduction attempt: the HW-14 report's subdivision 4000 row, `stop normal` swept through its band, at most 30 tries | Echo, then creep; stop ends `observation_limit` | Acknowledged, drive-reported | Reproduced, or NOT REPRODUCED and F2 NOT RUN |
-| F2 | F1 reproduced | `motor-release after-stop ID mechanics-permit-release triggers-inhibited`; enable and `alarm-clear` attempts; `stop fast`; enable; 200-step move | RELEASED; creep ends; enable refused until the stop reports standstill; move exact | Drive-reported | Each step as documented |
+| F1 | Drive 4, subdivision 4000, limits install 2000 rpm / 133,334 / 100, case `hw14` | Reproduction attempt: the HW-14 report's subdivision 4000 row, `stop normal` swept through its band, at most 30 tries | Echo, then creep; stop ends `observation_limit` | Acknowledged, drive-reported | Reproduced when step 5 finds it eligible and moving; else NOT REPRODUCED and F2 NOT RUN |
+| F2 | Step 5: eligible and moving | `motor-release after-stop ID mechanics-permit-release triggers-inhibited`; enable and `alarm-clear` attempts; `stop fast`; enable; 200-step move | RELEASED; creep ends; enable refused until the stop reports standstill; move exact | Drive-reported | Each step as documented |
 | F3 | F1 reproduced again, drive 4 X3 = 6 with 07's facts | `bench on mosfet2 200` after the failed stop; X3 back to its baseline word | Input stop ends creep, or not | Controller-timestamped, drive-reported | Recorded either way; X3 readback equals the baseline |
-| F4 | G3, owner present: velocity run of 10 s or more (14's D6 route), else a 20 s finite move | Owner pulls drive 4's RS485 plug; explicit `stop fast 4`; owner reconnects; inspect the stop record; fresh `read state`; then the branch below | See branches | Sent, drive-reported, owner-observed | See branches |
+| F4 | G3, owner present: velocity run of 10 s or more (14's D6 route), else a 20 s finite move | Owner pulls drive 4's RS485 plug; explicit `stop fast 4`; owner reconnects; inspect the stop record; fresh `read state`; then step 5 | Per step 5 | Sent, drive-reported, owner-observed | Per step 5 |
 | R1 | Drive 4, subdivision 1000, Y0 = 2 running | HW-01 sequence ×20; stop at the first reproduction | Status and Y0 level during any stuck RUNNING | Drive-reported, controller-timestamped | Reproduced or NOT REPRODUCED (never PASS) |
 | R2 | Subdivision 51200, limits install 2000 / 1,706,667 / 100, case `q05`, Y0 = 2 then 4 | 51200/100/900/12800 ×3 per Y0 function; control row ×3 | Persistent RUNNING; whether Y0 follows status | Drive-reported, controller-timestamped | Per attempt; indeterminate where samples cannot separate causes |
 | R3 | Subdivision 4000, limits install 2700 / 180,000 / 100, case `q04`, Y0 = 9 with `0x004F` bit 0 on | Q04 move at most 3 times; 500/500 control | Missing reply; `aux1` active edge brackets the Y0 drop; settings at stored values afterwards | Drive-reported, controller-timestamped, owner instrument if any | Reproduced or not; cause unresolved without supply data |
 | N1 | None | Err1, Err2, Err3 | Not provoked | None | NOT RUN: Err1 needs a phase fault; Err2 exceeds the 24 V input and 36 V TVS ratings; Err3 needs lowering the shared supply that also feeds the board and inputs |
 
-5. F4 branches, decided from the retained stop record (ID, kind, full TX,
-   execution, completion, conflict, recovery) and the fresh motion read. The
-   original stop record is never changed.
-   - (a) Eligible explicit stop (ACTION, TX accepted, FAILED, UNKNOWN,
-     NOT_OBSERVED, conflict set) and motion present: run F2's sequence.
-   - (b) Stop held and ended `not_transmitted`, or the velocity end stop failed:
-     not eligible; after reconnection send one new explicit `stop fast` (a first
-     transmission) and confirm standstill.
-   - (c) Stop confirmed: the pull missed the window; NOT REPRODUCED.
-   If neither F1 nor F4 yields branch (a), the release row stays NOT
+5. Failed-stop decision, the same for F1, F2, F4, R2 and acceptance item 4.
+   **Eligible** means `failedTransmittedStop` holds: an explicit, non-group
+   ACTION stop on the selected target and tuple, full TX accepted, FAILED,
+   execution UNKNOWN or ACKNOWLEDGED, completion NOT_OBSERVED, conflict bit set.
+   The retained stop record is never changed. Branch on a fresh state read:
+   - **Moving** (RUNNING with position changing): eligible → F2's sequence;
+     not eligible (`not_transmitted`, velocity end stop, group child) → one new
+     explicit `stop fast` at once (a first transmission), then confirm standstill.
+   - **Stopped**: no release. Keep the original execution uncertainty and
+     reconcile the conflict with one new explicit stop whose checked stopped
+     report reconciles it (documented path); then enable and a short move.
+   - **Unavailable** (reads fail): end live work, keep the evidence, tell the owner.
+   F1's acknowledged creep that is eligible and moving is a reproduction. A
+   confirmed stop in F4 means the pull missed the window: NOT REPRODUCED. If no
+   stop in F1 or F4 is eligible and moving, the release row stays NOT
    REPRODUCED and acceptance item 4 is Partial.
 6. G3 asks, once each: the F4 cable pull; a drive 4 power cycle after a
    reproduced HW-01 or Q04 (power-cycle before trusting further motion); a
@@ -245,8 +250,9 @@ final commit (API, console and harness change).
 2. A1-A5 have verdicts (A2 on drives 1 and 2) with bracketed silences and, on
    drive 4, Y0 edges; the reporting rule is implemented, tested and documented.
 3. Every alarm code has a verdict or a NOT RUN reason.
-4. Release after a genuinely failed stop ran through branch (a) with its
-   reconciliation, or is NOT REPRODUCED with F1 and F4 records; F3 recorded.
+4. Every failed stop in F1, F4 and R2 is classified by step 5's predicate and
+   fresh state; the release ran on an eligible, moving stop with its
+   reconciliation, or is NOT REPRODUCED; F3 recorded.
 5. R1-R3 have per-attempt tables with diagnostics; any cause claim names its
    distinguishing measurement, otherwise the cause stays unresolved.
 6. A3's result is applied (wait extended with a test, or documented).

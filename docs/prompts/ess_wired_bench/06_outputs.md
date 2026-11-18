@@ -192,7 +192,11 @@ output is switched in this prompt.
    [bench I/O rule 3](../../bench_io.md#rules-while-wiring-and-testing); after
    power-up the host installs a temporary fixture declaration (02's host
    override and a run-local copy of 04's `FIXTURE`), takes fresh reads and facts,
-   then runs O1, O2, O10/O11 (Y1) or O1, O4 (drive 1/2). The reverse checklist
+   then runs only ordinary admitted routes: on Y1 the canonical custom case
+   (Y1 = 10, `0x004F` bit 1) and its polarity case (`0x004B` bit 1), each with
+   `io set` restoration; on drive 1 or 2, O1 and O4. O10 and O11 stay NOT RUN on
+   Y1 and on other drives: D9 and Implement 2 cover drive 4 Y0 only, and the
+   experiment is not widened for this branch. The reverse checklist
    repeats the power-off, returns the wire, removes the added YCOM link,
    restores the declarations and repeats step 3 and 04's `y0-map`.
 7. Restoration per the step 2 table, read back; drives stopped, alarm-free,
