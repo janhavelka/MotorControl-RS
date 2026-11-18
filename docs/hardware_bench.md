@@ -91,8 +91,14 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+On 18 November the [bench I/O relay check](reports/2026-11-18_bench_io_relay_check.md)
+flashed `bench_s3_load_timer` from `afe3588`, SHA-256
+`3F3A691D80937EC04E0F1469CA8A702BF9AD41854D1DB57AE07DD81B4125C59D`, and pulsed
+both relays with no motor traffic. All bench outputs ended off and COM13 was
+closed. The drive state below is from the earlier session and was not read.
+
 The [16 November unattended bench tests](reports/2026-11-16_unattended_bench_tests.md)
-are the latest session.
+were the latest motor session.
 
 - **Image:** `bench_s3_load_timer` from `f7368a2`, SHA-256
   `C1E33A28318D6848C08888C174688F95D7EBABBD5527F93473770D913DF79866`.
