@@ -114,6 +114,13 @@ of every drive on that line and refuse a combination that can command motion
 on a drive outside the case. Software that switches an output for an armed
 operation checks the non-members the same way.
 
+**Before every flash or controller reset.** Read back on all three drives that
+they are stopped and that no input has a start, trigger, speed, JOG, PV, PT,
+home or selector function (7-17) assigned, or have the owner remove the I/O
+feed. The board's strapping-pin outputs are not measured during reset, so this
+holds for the first flash of a prompt, every reflash and every planned reset.
+If the check cannot be established, do not flash.
+
 **Experiments and production.** D4, D8 and D9 authorize bounded experiments;
 they do not change production admission. Production support follows the ledger
 correction and the evidence, and a new FC10 window needs D10. An experiment

@@ -69,3 +69,49 @@ own them: absolute reference after wiring changes (08/09), poll capacity with
 three armed drives (08), output polarity scope (06), relay switching budget
 (20, from the Fujitsu FTR-B4 datasheet), controller survival of a single-drive
 power cycle (17 P0).
+
+## Verification audit, 18 November 2026
+
+Two further independent audits (`gpt-6.2-astra`, depth complex) of `9ac8623`
+checked the A1/A2 resolutions and looked for new blocking issues:
+
+- **V1** `aud-20261118-203406-9da52e` (prompts 01-10): resolved A1-F1, F3,
+  F6-F10, F12, F14, F15, F17, F18; partially resolved A1-F2, F4, F5, F11, F13,
+  F16; 11 remaining or new findings.
+- **V2** `aud-20261118-203407-8c8db9` (prompts 11-20): resolved A2-F5-F8,
+  F10-F13, F15, F17-F20; partially resolved A2-F1-F4, F9, F14, F16; 14
+  remaining or new findings.
+
+The lead agrees with all 25 and assigned them to the prompt authors. The
+contract-level ones were fixed by the lead: COMMON now has a pre-flash and
+pre-reset interlock on every prompt (V2-F13), and AGENTS records the bounded
+experimental-window exception for prompt 10 (V1-F9).
+
+| ID | Prompts | Finding | Response |
+| --- | --- | --- | --- |
+| V1-F1 | 04, 07, 09 | The harness interlock refuses a stop stimulus during the expected move | Case-specific interlock for a named running member; non-members keep every check |
+| V1-F2 | 04, 08 | Harness and firmware trigger disagree on a non-member selector | One isolation truth table for both paths, tested on both |
+| V1-F3 | 04, 10 | Planner cannot admit the pre-promotion pair experiments | Experimental restoration disposition bound to image, case, drive, window and source read |
+| V1-F4 | 04 | Session success accepts a required FAIL | Success requires PASS of each required assertion; fixtures for FAIL, NOT RUN, BLOCKED, indeterminate |
+| V1-F5 | 06 | Optional Y1 checklist runs the drive-4-Y0-only experiment | O10/O11 removed from the Y1 checklist |
+| V1-F6 | 07 | An observed input pulse can be misattributed as the stop cause | Discriminating stop evidence required; otherwise indeterminate |
+| V1-F7 | 07 | L1 cannot be measured for the release function with Y0 = brake | Separate release-to-brake metric |
+| V1-F8 | 09 | A6 stops an armed but untriggered drive | Explicit trigger and moving witness first |
+| V1-F9 | 10 | Experimental FC10 windows sent before the window rule allows it | AGENTS exception added (lead) |
+| V1-F10 | 10 | Readback does not prove word order and sign for promotion | Promotion evidence per window, order, target and claim |
+| V1-F11 | 10 | E3 negative leg runs with limits disabled | Each direction an independent trial |
+| V2-F1 | 13 | PT fallback without decodable in-bound targets | Gate on decoded in-bound targets; sentinel targets within the travel bound |
+| V2-F2 | 14 | X3 used as both JOG- and dead-man stop | One assignment and one failure plan per case |
+| V2-F3 | 14 | Raised-velocity trial needs results not yet measured | Separate cell-qualification admission and promotion |
+| V2-F4 | 14 | Negative PV promotion needs trials its experiment refuses | One experiment record per drive |
+| V2-F5 | 15 | Algorithm transitions missing from the candidate table | Qualified forward transitions or T10/T11 NOT RUN |
+| V2-F6 | 16 | Failed-stop table excludes acknowledged creep and stopped-after-uncertain | One eligibility predicate; branch on fresh state |
+| V2-F7 | 17 | Drive 2 power-cycled before its live snapshot; S2 saves before its own gate | S0 before any power interruption; budgeted proof saves |
+| V2-F8 | 17 | No legal restart marker under the recommissioning lease | Exact marker transition specified and tested, else F1 BLOCKED |
+| V2-F9 | 17 | Restoring custom node 0 conflicts with the address policy | Snapshot-bound D7 restoration of the exact word |
+| V2-F10 | 18 | Reconnect correlation cannot reject identical late replies | Same-context interlock and native test |
+| V2-F11 | 18 | W3 cannot follow W1/W2 | Own reset from verified standstill |
+| V2-F12 | 18 | Standstill after reset taken as a detected pulse | Cause indeterminate unless discriminated |
+| V2-F13 | 20 | First flash before the trigger-assignment check | COMMON pre-flash interlock (lead); 20 follows it |
+| V2-F14 | 20 | Raw-edge ban blocks selector and stop stimuli | Ban only raw edges used as attributed starts |
+| V2-Q1 | 17 | Communication-to-persistence handoff during a pending confirmation | Native transition test before any tuple or address change |
