@@ -20,7 +20,7 @@ recorded; this plan requires 24 V (see [supply voltage](#supply-voltage)).
 | Input functions and power-up defaults | [Function manual](vendor/Modbus-Series-Bus-Product-Function-Manual-V1.0_1_.pdf) ESS appendix: `0x0041`-`0x0044` default X0 = 1 origin, X1 = 2 positive limit, X2 = 3 negative limit, X3 = 0 none; this matches the bench power-up readback `[0,1,2,3,0,0,0,0,0]` |
 | Board GPIOs | User statement (16 November); FieldCore `Co2ControlS3Hw200Board.h` (read-only): relay1 GPIO45, relay2 GPIO18, MOSFET1 GPIO3, MOSFET2 GPIO46, AUX1 input GPIO17, all outputs active high |
 | Board circuits | FieldCore `docs/hardware/tunnelmonitor_wifi_hw210/README.md` sheet 6 (the same relay, MOSFET and AUX circuits) and the CO2Control AUX crop in FieldCore `docs/guidelines/co2control.md`. No full CO2Control HW2.0.0 schematic is in either repository |
-| Relay | Schematic part TE 2-1462037-3, which TE's IM series table lists as IM06GR: DPDT, 12 V coil (1029 Ω), about 9 V must-operate, contacts rated 2 A. Taken from distributor listings of the TE datasheet; confirm against the datasheet if a limit matters |
+| Relay | Owner-identified fitted part, 18 November: Fujitsu FTR-B4GA4.5Z-B05 (LCSC C353046), DPDT changeover, 4.5 V coil (145 Ω, 140 mW), gold-plated contacts, 1 A at 30 V DC per the LCSC listing, 3 ms operate/release. The HW2.1.0 schematic's TE 12 V-coil part is not what this board carries |
 
 The board facts come from a sibling revision's schematic plus the CO2Control
 pin contract. Check jumpers and parts on the actual board before connecting.
@@ -49,7 +49,7 @@ The 8-pin I/O connector: 1 X0, 2 X1, 3 X2, 4 X3, 5 XCOM, 6 Y0, 7 Y1, 8 YCOM.
 
 | Firmware name | GPIO | Circuit | Use for |
 | --- | --- | --- | --- |
-| `relay1` | 45 | DPDT dry contacts, two banks; coil from the board supply (VIN_PROT) | Slow, isolated level signals |
+| `relay1` | 45 | DPDT contacts, two changeover sets; 4.5 V coil, feed rail not confirmed | Slow, isolated level signals |
 | `relay2` | 18 | Same | Same |
 | `mosfet1` | 3 | Low-side N-MOSFET, source on board GND; 2-pin connector: pin 1 VIN_PROT, pin 2 drain; flyback diode drain → VIN_PROT | Fast, clean edges (sinking only) |
 | `mosfet2` | 46 | Same | Same |
@@ -63,8 +63,16 @@ Board notes that matter here:
   the board supply. **With an external 24 V on a contact, a jumper on VIN_PROT
   or on the wrong side shorts that supply.** Remove the selector jumpers unless
   the common is deliberately at board GND (case A below).
-- The relays have 12 V coils. They pull in at about 9 V or more. On USB power
-  alone VIN_PROT is about 4.6 V and the relays do not operate.
+- Without a selector jumper the contacts are dry: switching only joins the
+  common to NO (or NC) and drives nothing until an external circuit is wired
+  through them. A jumper gives the common a level, so NO becomes a switched
+  GND (sinking) or a switched board supply (sourcing). This guide uses the GND
+  position: NO then pulls a drive input to 0 V, like the MOSFETs.
+- The fitted relays have 4.5 V coils. The HW2.1.0 schematic feeds its 12 V
+  coils from VIN_PROT; on this board the feed is presumably a lower rail,
+  because 24 V on a 145 Ω coil would dissipate about 4 W. Both relays clicked
+  on 18 November. Measure the coil voltage during a held pulse before long
+  holds.
 - MOSFET connector pin 1 is the board supply. Leave it unconnected for drive
   inputs. Never feed an external voltage into VIN_PROT, the direct `AUX_IO1`
   3 V node, or expansion header U18 pin 1 (shared with relay2's GPIO18).
@@ -96,11 +104,10 @@ on the bench, then pick the case:
 | --- | --- | --- |
 | About 24 V, from the drives' own 24 V supply (case A) | Work | Work, sinking, one per input |
 | About 12 V, or a separate supply (case B) | Work | Do not connect |
-| About 4.6 V, USB only | Do not pull in | Do not connect |
+| About 4.6 V, USB only | Not checked | Do not connect |
 
 Do not raise the board supply to 24 V just for this. The sibling HW2.1.0
-schematic annotates an 8-16 V main input with about 15.7 V over-voltage cut-off,
-and its 12 V relay coils would run at twice their rating. CO2Control field
+schematic annotates an 8-16 V main input with about 15.7 V over-voltage cut-off. CO2Control field
 records show 24 V loads on these MOSFETs, which suggests that board ran on
 24 V, but only the actual board settles it.
 
@@ -115,12 +122,8 @@ The drives accept 24-48 V, but their X inputs are rated for 24 V signals
 supply to be 24 V. At 36 or 48 V, do not wire it: the inputs would need series
 resistors or a separate 24 V supply, and the AUX input would need a divider.
 
-At 24 V, a fitted 12 V relay coil sees twice its rated voltage. The
-distributor-listed TE table gives roughly 29 V as the coil's maximum, so this is
-inside the listed limit but runs the coil at about four times its rated power.
-Read the relay marking: IM06 is the 12 V coil; another code means another coil
-voltage in TE's table. With a 12 V coil, keep relay holds short (seconds) until
-the coil temperature is known.
+The relay coil supply is a separate question (see board notes): keep relay
+holds to seconds until the coil voltage has been measured during a hold.
 
 ## Recommended wiring
 
@@ -146,8 +149,8 @@ unrated output switch if that wire is shorted.
    +24 V ──fuse──┬── XCOM (pin 5) of drives 1, 2 and 4
                  └── YCOM (pin 8) of drive 1
    0 V ── board GND (already common)
-          ├── relay1 common (bank 1); relay1 NO ── X1 (pin 2) of drives 1, 2 and 4
-          └── relay2 common (bank 1); relay2 NO ── X2 (pin 3) of drives 1, 2 and 4
+          ├── relay1 common, set 1 (selector jumper on GND); relay1 NO ── X1 (pin 2) of drives 1, 2 and 4
+          └── relay2 common, set 1 (selector jumper on GND); relay2 NO ── X2 (pin 3) of drives 1, 2 and 4
    MOSFET1 pin 2 (drain) ───────────────────────── X0 (pin 1) of drives 1, 2 and 4
    MOSFET2 pin 2 (drain) ───────────────────────── X3 (pin 4) of drives 1, 2 and 4
    AUX_DI1_24V pin 2 ───────────────────────────── Y0 (pin 6) of drive 1
@@ -209,8 +212,9 @@ PT/PV selection drops to two segments.
    with an ohmmeter. A reading near 0 Ω is a short. Open, high or diode-like
    readings are normal: the meter's low test voltage does not light the input
    LEDs, and the MOSFET body diode and flyback diode conduct one way.
-4. Remove relay common selector jumpers before any external wire goes on a
-   common. Here a GND jumper may replace the 0 V wire; never VIN_PROT.
+4. Put the selector jumper of each used relay common on GND, and leave the
+   unused contact set without a jumper. Never use the VIN_PROT position here:
+   with XCOM at +24 V a switched supply on NO cannot turn an input on.
 5. Before flashing or resetting the board, unassign trigger functions on all
    three drives or remove the I/O feed. Output levels during reset are not yet
    measured here.
