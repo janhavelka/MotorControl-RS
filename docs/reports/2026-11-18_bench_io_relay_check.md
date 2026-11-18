@@ -33,3 +33,28 @@ no contact feedback was wired.
 
 Retained under `build/bench/`: `2026-11-18_preflash_identify.jsonl`,
 `2026-11-18_flash_afe3588.log` and `2026-11-18_relay_check.jsonl`.
+
+## Wired I/O preflight: all drives silent
+
+Later the same day the owner reported the I/O wiring done and the board
+powered. The input-map run stopped at its first read: a state read of drive 1
+sent 8 bytes and received none. Deliberate single checks followed, each after
+one explicit host `recover` (a silent reply latches the owner fault):
+
+| Image | Address 1 | Address 2 | Address 4 |
+| --- | --- | --- | --- |
+| `afe3588` (bench I/O) | NO_RESPONSE, 8 TX / 0 RX (twice) | NO_RESPONSE, 8 / 0 | NO_RESPONSE, 8 / 0 |
+| `f7368a2` (retained `build/multidrive3/image_extra`, flashed for this check) | NO_RESPONSE, 8 / 0 | not sent | not sent |
+
+The previous image, which answered on all three drives on 16 November, is
+equally silent, so the new firmware is not the cause. The likely causes are
+physical: drive power, the drives' RS485/power connectors, or the board's
+RS485 terminal after the rewiring. Drive power and LEDs were not observed. No
+bench output was switched and no write was sent. The `afe3588` image was
+flashed back (application region, hash verified); the fixture reports ready
+with all outputs off.
+
+Evidence: `2026-11-18_io_map.jsonl`, `2026-11-18_bus_probe*.jsonl`,
+`2026-11-18_bus_recover_probe.jsonl`, `2026-11-18_flash_f7368a2_ab.log`,
+`2026-11-18_ab_f7368a2_probe.jsonl`, `2026-11-18_reflash_afe3588.log` and
+`2026-11-18_reflash_check.jsonl` under `build/bench/`.
