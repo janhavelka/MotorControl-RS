@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 import time
 
-from bench_probe import (BenchError, debug_session,
+from bench_probe import (BenchError, board_declares_connected, debug_session,
                          drive_reported_stopped, observe_stopped)
 from bench_session import run_recorded
 
@@ -111,19 +111,40 @@ def run_phase(console, phase, record, address=None, declare_unconnected=False):
 TERMINALS = ('x0', 'x1', 'x2', 'x3', 'y0', 'y1')
 
 
+def unconnected_refusal(wiring):
+    """Why declare_unconnected must not run for this selected-drive wiring reply, or None.
+
+    The check reads the immutable board declaration, so an earlier host
+    override cannot unlock a false bulk "unconnected" declaration.
+    """
+    if any(key not in wiring for key in ('board', 'fixture')):
+        return 'wiring reply lacks the board declaration; cannot check declare_unconnected'
+    if wiring['fixture'] == 'invalid':
+        return 'board fixture table is invalid (%s); declare terminals individually' % wiring.get('fixture_error')
+    if board_declares_connected(wiring):
+        return 'board declares connected terminals on drive %s; declare_unconnected refused' % wiring.get('address')
+    return None
+
+
 def _select(console, address, command, declare_unconnected=False):
     """Select another drive locally. Never forget a snapshot that still needs restoring.
 
-    useaddr clears the host's terminal declarations and makes earlier reads of
-    the new drive stale, so its identity and configuration are read again.
-    declare_unconnected states, for every terminal of the new drive, that
-    nothing is wired: an owner fact, never a drive change or bus traffic.
+    useaddr resets the host's terminal declarations to the board table (or
+    the application default) and makes earlier reads of the new drive stale,
+    so its identity and configuration are read again. declare_unconnected
+    states, for every terminal of the new drive, that nothing is wired: an
+    owner fact, never a drive change or bus traffic. It is refused, before any
+    declaration or read, when the board declares a terminal of that drive
+    connected or the board table is invalid.
     """
     selected = command('wiring')
     record = dict(before=dict(target=selected['target'], address=selected['address']))
     if selected['address'] == address:
         record['changed'] = False
         if declare_unconnected:
+            refusal = unconnected_refusal(selected)
+            if refusal:
+                raise BenchError(refusal)
             record['wiring'] = [command('wiring', host_args=(terminal, 'unconnected')) for terminal in TERMINALS]
         return record
     profile = command('motion-profile', host_args=('inspect',))
@@ -137,6 +158,11 @@ def _select(console, address, command, declare_unconnected=False):
     record['useaddr'] = command('useaddr', address=address)
     record['changed'] = True
     if declare_unconnected:
+        current = command('wiring')
+        record['board'] = current.get('board')
+        refusal = unconnected_refusal(current)
+        if refusal:
+            raise BenchError(refusal)
         record['wiring'] = [command('wiring', host_args=(terminal, 'unconnected')) for terminal in TERMINALS]
     record['identity'] = command('read-identity', address=address)
     record['configuration'] = command('read-config', address=address)
@@ -350,7 +376,8 @@ def main():
     parser.add_argument('--phase', required=True, choices=PHASES)
     parser.add_argument('--address', type=int, default=1, help='ESS drive 1..247; another drive is selected with useaddr')
     parser.add_argument('--declare-unconnected', action='store_true',
-                        help='state that no terminal of the selected drive is wired; declared after useaddr')
+                        help='state that no terminal of the selected drive is wired; declared after useaddr; '
+                             'refused when the board table declares a terminal of that drive connected or is invalid')
     parser.add_argument('--out', required=True, type=Path, help='new evidence filename prefix; existing files are never overwritten')
     parser.add_argument('--plan-only', action='store_true')
     args = parser.parse_args()

@@ -104,23 +104,33 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
-On 18 November [wired bench 01](reports/2026-11-18_wired_bench_01_baseline.md)
-flashed `bench_s3_load_timer` built from `9ac8623`, SHA-256
-`7D5316EF18E5566A9A0B3C98667CEEDB148B8AD95E783D1D8962B271FFE3D365`, recorded
-the restoration baseline and ran the short regression with connected
-declarations. For its parity subset it flashed native ESP-IDF 5.5.5
-`examples/probe_idf` (SHA-256
-`4E5D721C64A3DED182964E60ED5E04C550F96201DBDAD555ACAF7A516E953154`, same
-firmware sources, embedded version `v1.0.0-186-g996dc7c`), then the Arduino
-image again (hash verified). Ending state:
+On 18 November [wired bench 02](reports/2026-11-18_wired_bench_02_fixture_wiring.md)
+flashed `bench_s3_load_timer` built from base commit `5dbcaa1` plus the
+uncommitted prompt 02 working tree (firmware source diff SHA-256
+`A1DEFE3276FAD8034C709613205CDC1D6C5BCCA34CFAE7F80E92743F284F7C1C`, new
+`examples/common/FixtureWiring.h` SHA-256
+`8C5BA1C51896715A4C83404BD55C814FA7274A9468D1025EBA3D0C9D431AAB0E`), image
+SHA-256 `4F1A44B84DD022E24D334BF9A82FB98B38F53868DFDE0930F8F7FAD28FE341AD`,
+hash verified. It boots with the board wiring table: X0-X3 connected on
+drives 1, 2 and 4, Y0 connected on drive 4. Before it, the same tree's native
+ESP-IDF 5.5.5 image (SHA-256
+`D7ED0E090EB59DBA910FBBD215D656FC8E5211BF8C6780B508B2629D91E0A05F`) ran the
+table parity check. The image hashes belong to that working tree, not to a
+commit; the commit that records it carries the same sources. Ending state:
 
-- **Board:** Arduino `9ac8623` image above, all bench outputs off, `aux1`
-  active (drive 4's Y0 off, inverted wiring), drive 1 selected with X0-X3
-  declared connected, group empty, debug off, COM13 closed.
+- **Board:** Arduino prompt 02 image above, all bench outputs off, `aux1`
+  active (drive 4's Y0 off, inverted wiring), drive 1 selected with board
+  declarations (X0-X3 connected, source `board`), group empty, debug off,
+  COM13 closed.
 - **Drives 1/2/4:** enabled, stopped, alarm-free, raw positions 6,692/6,472/6,460.
 - **Settings:** every settings read (59 groups per drive) equals the
   restoration baseline, including I/O `[0,1,2,3,0,0,0,0,0]` and profile
   `[30,100,100,60,0,5000]`. Nothing was saved; the drives were not restarted.
+
+Previous image: [wired bench 01](reports/2026-11-18_wired_bench_01_baseline.md),
+`bench_s3_load_timer` from `9ac8623`, SHA-256
+`7D5316EF18E5566A9A0B3C98667CEEDB148B8AD95E783D1D8962B271FFE3D365` (boots with
+every terminal unconnected).
 
 ## Restoration baseline
 

@@ -180,8 +180,9 @@ health
 `probe` and the explicit `read` commands communicate with the selected motor.
 `status` and `health` inspect cached observations; they do not refresh the drive.
 Use `useaddr N` to select another address locally while idle. It does not change
-the motor's address. Addresses, raw values and unknown interpretations remain
-visible rather than being guessed.
+the motor's address. It resets the terminal wiring declarations to the board
+table for a listed address, otherwise to unknown. Addresses, raw values and
+unknown interpretations remain visible rather than being guessed.
 
 ## Operations and results
 
@@ -310,10 +311,16 @@ group status
   unsent one, as with `stop`. The selected-address `stop` keeps its own records.
 - `group show` (member facts) and `group status` (cached state) cause no bus
   traffic. `group clear` forgets the members and needs an idle host.
+  New members start from the board wiring table for a listed address, otherwise
+  unknown; members that stay in a new `group set` keep their session
+  declaration and source.
   `group wiring ADDR x0|x1|x2|x3|y0|y1 unknown|unconnected|connected` is the
-  `wiring` declaration for one member: it changes no drive assignment and expires
-  that member's cached state. Move admission does not read wiring; the next
-  `group set` records it in the member's configuration read.
+  `wiring` declaration for one member: it overrides the session value only, with
+  source `host`, changes no drive assignment and expires that member's cached
+  state. An unchanged value keeps its source. Move admission does not read
+  wiring; the next `group set` records it in the member's configuration read.
+  Member views (not `group status`) carry `input_sources`, `output_sources` and
+  `board`, as in the [CLI contract](cli_contract.md#terminal-wiring-declarations).
 
 Each `group set`, `group move`, `group stop` and `group read state` ends with one
 `group` line. Every member keeps its own result: `start` (`not_sent`, `started`,
@@ -448,8 +455,14 @@ GPIO only and works during motion. `bench on mosfet1 200` holds one output on
 for 200 ms (1..60000 ms), then it turns off by itself; `bench off` turns all
 off and `bench clear` clears recorded input edges. Every stop request turns all
 outputs off first. Wiring, checks and the test plan are in the
-[bench I/O guide](bench_io.md); declare wiring with `wiring` before assigning
-terminal functions.
+[bench I/O guide](bench_io.md). The bench images declare the wired terminals
+from the board table at boot, after `useaddr` and for new group members:
+`wiring` shows them with source `board`. Check `wiring` before assigning
+terminal functions; a `wiring` change overrides the declaration for the
+session only (source `host`). Images built before
+[wired bench 02](prompts/ess_wired_bench/02_fixture_wiring_declarations.md)
+boot with every terminal unconnected, reset it to unknown on `useaddr` and need
+manual `wiring` declarations.
 
 ## Automation
 

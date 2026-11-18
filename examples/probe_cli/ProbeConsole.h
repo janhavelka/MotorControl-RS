@@ -6,6 +6,7 @@
 #include "MotorControlRS/profiles/ess_rs/Discovery.h"
 #include "../common/HostSerial.h"
 #include "../common/BenchIo.h"
+#include "../common/FixtureWiring.h"
 #include "StateCache.h"
 #include "AxisConsole.h"
 #include "SimpleMotion.h"
@@ -83,10 +84,18 @@ struct WiringRequest {
     uint8_t terminal = 0;
     MotorControlRS::InputWiring state = MotorControlRS::InputWiring::UNKNOWN;
 };
+/** Effective session declaration of the selected axis, where each terminal's
+ * value came from, the immutable board declaration of this address and the
+ * board table state. fixtureError names the first validation error when the
+ * table is INVALID, otherwise it is null. */
 struct WiringSnapshot {
     MotorControlRS::ReadTarget target;
     uint32_t configurationGeneration = 0;
     MotorControlRS::InputWiring inputs[4] = {}, outputs[2] = {};
+    WiringSource inputSources[4] = {}, outputSources[2] = {};
+    BoardWiring board;
+    FixtureState fixture = FixtureState::ABSENT;
+    const char* fixtureError = nullptr;
 };
 /** Preserve unresolved driver semantics separately from missing prerequisites. */
 Action driverAdmissionStatus(const MotorControlRS::Status&) noexcept;

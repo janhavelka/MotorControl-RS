@@ -383,6 +383,50 @@ def wiring_arguments(tokens: tuple[str, ...]) -> tuple[str, int] | None:
     return tokens[0], dispositions.index(tokens[1])
 
 
+# Board fixture declaration (examples/common/FixtureWiring.h). Values are the
+# console's wiring codes: 0 unknown, 1 unconnected, 2 connected.
+WIRING_SOURCES = ("default", "board", "host", "invalid_table")
+FIXTURE_STATES = ("absent", "applied", "invalid")
+WIRING_CONNECTED = 2
+
+
+def check_wiring_sources(values: list, sources, board, *, fixture: str | None = None) -> str | None:
+    """Return the first inconsistency between declarations, their sources and
+    the board declaration, or None. values lists X0..X3 then Y0..Y1."""
+    if not isinstance(sources, list) or len(sources) != len(values) or any(s not in WIRING_SOURCES for s in sources):
+        return "missing or unknown declaration source"
+    if board is not None:
+        if (not isinstance(board, dict) or set(board) != {"inputs", "outputs"} or
+                not all(isinstance(board[k], list) and len(board[k]) == n and
+                        all(type(v) is int and v in (1, 2) for v in board[k]) for k, n in (("inputs", 4), ("outputs", 2)))):
+            return "invalid board declaration"
+    expected = None if board is None else board["inputs"] + board["outputs"]
+    for index, (value, source) in enumerate(zip(values, sources)):
+        if source == "board" and (expected is None or value != expected[index]):
+            return "board source without the board value"
+        if source == "invalid_table" and value != 0:
+            return "invalid table source with a declared value"
+        if source == "default" and value not in (0, 1):
+            return "default source with a connected value"
+    if fixture is not None:
+        if fixture == "invalid" and (board is not None or any(s not in ("invalid_table", "host") for s in sources)):
+            return "invalid table with board or default declarations"
+        if fixture == "absent" and (board is not None or any(s in ("board", "invalid_table") for s in sources)):
+            return "absent table with board or invalid-table declarations"
+        if fixture == "applied" and "invalid_table" in sources:
+            return "applied table with invalid-table declarations"
+        if fixture == "applied" and board is not None and "default" in sources:
+            return "listed address with default declarations"
+    return None
+
+
+def board_declares_connected(reply: dict) -> bool:
+    """True when the board declaration of the replying address marks any terminal
+    CONNECTED, whatever the current session declaration or its source."""
+    board = reply.get("board")
+    return isinstance(board, dict) and WIRING_CONNECTED in (board.get("inputs", []) + board.get("outputs", []))
+
+
 # Bench fixture outputs and input (docs/bench_io.md). Local GPIO only.
 BENCH_OUTPUTS = ("relay1", "relay2", "mosfet1", "mosfet2")
 BENCH_MAX_HOLD_MS = 60000
@@ -2410,6 +2454,18 @@ class Console:
                     all(integer(value, 0, 2) for value in values), "invalid " + key + " declarations")
         require(not any(key in item for key in ("operation_id", "command_id", "tx_bytes", "rx_bytes",
                     "tx_hex", "rx_hex", "read_kind", "tx_accepted")), "local command claims wire/admission evidence")
+        # Images before wired bench 02 lack the fixture keys; never accept them silently.
+        require(all(key in item for key in ("sources", "board", "fixture")),
+                "reply lacks sources/board/fixture (image older than the board fixture table)")
+        require(item["fixture"] in FIXTURE_STATES, "unknown fixture state")
+        if item["fixture"] == "invalid":
+            require(type(item.get("fixture_error")) is str and re.fullmatch(r"[a-z_]{1,40}", item["fixture_error"]),
+                    "invalid table without its validation error")
+        else:
+            require("fixture_error" not in item, "validation error without an invalid table")
+        problem = check_wiring_sources(item["inputs"] + item["outputs"], item["sources"], item["board"],
+                                       fixture=item["fixture"])
+        require(problem is None, problem or "")
         if item["ok"] and requested:
             terminal, disposition = requested
             values = item["inputs" if terminal[0] == "x" else "outputs"]
@@ -2491,6 +2547,14 @@ class Console:
                     values = member.get(key)
                     require(isinstance(values, list) and len(values) == capacity and all(integer(v, 0, 2) for v in values),
                             "invalid member wiring")
+                require(all(key in member for key in ("input_sources", "output_sources", "board")),
+                        "member lacks wiring sources/board (image older than the board fixture table)")
+                require(isinstance(member["input_sources"], list) and len(member["input_sources"]) == 4 and
+                        isinstance(member["output_sources"], list) and len(member["output_sources"]) == 2,
+                        "invalid member wiring sources")
+                problem = check_wiring_sources(member["inputs"] + member["outputs"],
+                                               member["input_sources"] + member["output_sources"], member["board"])
+                require(problem is None, "member " + (problem or ""))
                 if "axis" in member:
                     self._check_axis(member["axis"], False)
                     require(member["axis"]["address"] == member["address"] and

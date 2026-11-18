@@ -568,13 +568,21 @@ Probe::Action startGroupSet(App& a, uint32_t commandId, const Probe::GroupComman
     auto& op = a.group.set;
     if (op.result.operationId && !op.delivered) return Probe::Action::RESULTS_FULL;
     if (!freeRecord(a)) return Probe::Action::RESULTS_FULL;
-    // Wiring declarations of addresses that stay members are kept (App storage).
+    // Addresses that stay members keep their session declarations and sources
+    // (App storage). New members start from the board table, or UNKNOWN.
     auto& inputs = a.group.keptInputs;
     auto& outputs = a.group.keptOutputs;
+    auto& inputSources = a.group.keptInputSources;
+    auto& outputSources = a.group.keptOutputSources;
     for (std::size_t i = 0; i < command.count; ++i) {
         const auto* old = groupMember(a, command.addresses[i]);
-        for (uint8_t t = 0; t < 4; ++t) inputs[i][t] = old ? old->inputWiring[t] : InputWiring::UNKNOWN;
-        for (uint8_t t = 0; t < 2; ++t) outputs[i][t] = old ? old->outputWiring[t] : InputWiring::UNKNOWN;
+        if (!old) {
+            a.initialWiring(command.addresses[i], InputWiring::UNKNOWN, inputs[i], outputs[i], inputSources[i], outputSources[i]);
+            continue;
+        }
+        std::memcpy(inputs[i], old->inputWiring, sizeof(inputs[i])); std::memcpy(outputs[i], old->outputWiring, sizeof(outputs[i]));
+        std::memcpy(inputSources[i], old->inputSources, sizeof(inputSources[i]));
+        std::memcpy(outputSources[i], old->outputSources, sizeof(outputSources[i]));
     }
     for (auto& member : a.group.members) { member.~GroupMember(); new (&member) App::GroupMember(); }
     a.group.count = static_cast<uint8_t>(command.count); a.group.declared = false; ++a.group.declaration;
@@ -587,6 +595,8 @@ Probe::Action startGroupSet(App& a, uint32_t commandId, const Probe::GroupComman
         m.startSpeedRelationRequired = (a.startSpeedRelationRevoked[m.address / 8] & (1U << (m.address % 8))) != 0;
         std::memcpy(m.inputWiring, inputs[i], sizeof(m.inputWiring));
         std::memcpy(m.outputWiring, outputs[i], sizeof(m.outputWiring));
+        std::memcpy(m.inputSources, inputSources[i], sizeof(m.inputSources));
+        std::memcpy(m.outputSources, outputSources[i], sizeof(m.outputSources));
     }
     beginGroupOperation(a, op, Probe::GroupOperationKind::SET, commandId, uart.sample());
     op.result.count = static_cast<uint8_t>(command.count);
@@ -848,10 +858,12 @@ Probe::Action groupWiring(App& a, const Probe::GroupCommand& command, uint8_t& b
     if (!member) return Probe::Action::UNAVAILABLE;
     if (command.terminal >= 6 || command.wiring > InputWiring::CONNECTED) return Probe::Action::INVALID;
     auto& declaration = command.terminal < 4 ? member->inputWiring[command.terminal] : member->outputWiring[command.terminal - 4];
+    auto& source = command.terminal < 4 ? member->inputSources[command.terminal] : member->outputSources[command.terminal - 4];
     blocking = 0;
-    if (declaration == command.wiring) return Probe::Action::OK;
+    if (declaration == command.wiring) return Probe::Action::OK; // Unchanged: the source stays.
     if (groupBusy(a)) return Probe::Action::BUSY;
     declaration = command.wiring;
+    source = WiringSource::HOST; // The board declaration is a separate, immutable copy.
     clearIoQualifications(a, command.address);
     for (auto& block : member->state.blocks) block.invalidatedUs = nowUs();
     return Probe::Action::OK;
@@ -913,6 +925,9 @@ const Probe::GroupView& buildGroupView(App& a) {
         std::memcpy(out.profile, m.profile.view.current, sizeof(out.profile));
         std::memcpy(out.inputs, m.inputWiring, sizeof(out.inputs));
         std::memcpy(out.outputs, m.outputWiring, sizeof(out.outputs));
+        std::memcpy(out.inputSources, m.inputSources, sizeof(out.inputSources));
+        std::memcpy(out.outputSources, m.outputSources, sizeof(out.outputSources));
+        out.board = a.boardDeclaration(m.address);
         const auto& motion = m.state.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
         const auto& io = m.state.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
         const auto& feedback = m.state.blocks[static_cast<uint8_t>(ESS::StateBlock::FEEDBACK)];

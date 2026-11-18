@@ -34,6 +34,14 @@ void setup() {
     benchIo.begin(pins, reserved, sizeof(reserved) / sizeof(reserved[0]));
     options.benchIo = &benchIo;
 #endif
+#if MOTORCONTROLRS_FIXTURE_WIRING
+    // Board-declared terminal wiring (BoardPins.h). An invalid table stays
+    // visible as `wiring` fixture invalid; motor control still starts.
+    static_assert(kFixtureWiringCount <= FIXTURE_WIRING_CAPACITY, "board fixture table exceeds the application capacity");
+    options.fixtureWiringSupplied = true;
+    options.fixtureWiringCount = static_cast<uint8_t>(kFixtureWiringCount);
+    for (std::size_t i = 0; i < kFixtureWiringCount; ++i) options.fixtureWiring[i] = kFixtureWiring[i];
+#endif
     beginApplication({Board::kRs485TxPin, Board::kRs485RxPin, Board::kRs485DeRePin,
                       Board::kRs485DeReActiveHigh}, Board::kRs485ReceiverDisabledDuringTransmit, options);
 }

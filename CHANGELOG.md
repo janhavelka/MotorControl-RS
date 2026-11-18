@@ -9,6 +9,17 @@
   timer and a service-loop backstop; every stop request turns all outputs off.
   The input interrupt records edge times. Wiring guide in `docs/bench_io.md`;
   nothing is wired or hardware-tested yet.
+- Board-declared terminal wiring for the standalone application
+  (`examples/common/FixtureWiring.h`, `ApplicationOptions::fixtureWiring`). A
+  validated, immutable table applies at boot, after `useaddr` and to new group
+  members; `wiring`/`group wiring` override it for the session (source `host`).
+  An absent table keeps the old defaults; an invalid one makes every
+  declaration unknown. `wiring` adds `sources`, `board` and `fixture`; group
+  member views add `input_sources`, `output_sources` and `board`. Arduino bench
+  images take the table from `BoardPins.h`, native ESP-IDF from `menuconfig`.
+  `declareWiring`/`copyWiring` expose the selected-axis route. The harness
+  checks the new keys and refuses `--declare-unconnected` over board-connected
+  terminals or an invalid table.
 
 ### Fixed
 

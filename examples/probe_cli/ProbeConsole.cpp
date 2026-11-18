@@ -45,6 +45,23 @@ using ConsoleReport::executionName;
 using ConsoleReport::motorOutcome;
 using ConsoleReport::hex;
 
+// ,"KEY":["default",...] over the first then the second array of sources.
+bool wiringSources(char* output, std::size_t capacity, std::size_t& used, const char* key,
+                   const WiringSource* first, std::size_t firstCount, const WiringSource* second, std::size_t secondCount) {
+    if (!append(output, capacity, used, ",\"%s\":[", key)) return false;
+    for (std::size_t i = 0; i < firstCount + secondCount; ++i)
+        if (!append(output, capacity, used, "%s\"%s\"", i ? "," : "",
+                    wiringSourceName(i < firstCount ? first[i] : second[i - firstCount]))) return false;
+    return append(output, capacity, used, "]");
+}
+// ,"board":null when unlisted, otherwise the immutable board declaration.
+bool boardWiring(char* output, std::size_t capacity, std::size_t& used, const BoardWiring& board) {
+    if (!board.listed) return append(output, capacity, used, ",\"board\":null");
+    return append(output, capacity, used, ",\"board\":{\"inputs\":[%u,%u,%u,%u],\"outputs\":[%u,%u]}",
+        static_cast<unsigned>(board.inputs[0]), static_cast<unsigned>(board.inputs[1]), static_cast<unsigned>(board.inputs[2]),
+        static_cast<unsigned>(board.inputs[3]), static_cast<unsigned>(board.outputs[0]), static_cast<unsigned>(board.outputs[1]));
+}
+
 enum class Command : uint8_t { HELP, VERSION, CONFIG, STATUS, HEALTH, STATS, PROBE, CAPTURE_READ, RECOVER, MEMORY, LOAD, DRV, RESULT, CANCEL, RELEASE, READ, PROFILE, CAPS, READ_IDENTITY, READ_CONFIG, READ_STATE, MONITOR, AXIS, PREPARE, ENABLE, MOTOR_RELEASE, ALARM_CLEAR, STOP, MOVE, POSITION_CLEAR, VELOCITY, DRIVER, IO, HOME, SEGMENT, CONTROL, TUNING, HOST, COMMUNICATION, PERSISTENCE, MOTION_PROFILE, DEBUG, DISCOVER, USEADDR, WIRING, MOVE_BY, MOVE_TO, SPEED, ACCEL, DECEL, MOTION, STEPS_PER_TURN, SETTINGS, SUBDIVISION, POSITION, BROADCAST, GROUP, BENCH };
 struct Entry { const char* name; Command command; const char* syntax; const char* effect; bool bus; const char* description; };
 const Entry COMMANDS[] = {
@@ -65,7 +82,7 @@ const Entry COMMANDS[] = {
     {"config", Command::CONFIG, "config", "show_host_settings", false, "Show the selected address and host communication settings."},
     {"settings", Command::SETTINGS, "settings", "read_actual_motor_settings_and_next_move_choices", true, "Read actual motor settings and show the next move choices together."},
     {"useaddr", Command::USEADDR, "useaddr 1..247", "idle_host_selection_invalidates_dependent_confidence_no_motor_io", false, "Select a host target while idle; this does not change the drive address."},
-    {"wiring", Command::WIRING, "wiring [x0|x1|x2|x3|y0|y1 unknown|unconnected|connected]", "declare_external_wiring_only_no_device_assignment_or_io", false, "Declare connected or unconnected terminals without changing their functions."},
+    {"wiring", Command::WIRING, "wiring [x0|x1|x2|x3|y0|y1 unknown|unconnected|connected]", "declare_external_wiring_only_no_device_assignment_or_io", false, "Declare connected or unconnected terminals without changing their functions. Boot, useaddr and new group members start from the board table; sources show default, board, host or invalid_table."},
     {"host", Command::HOST, "host [baud RATE | fmt 8N1|8N2|8E1|8O1 | set RATE FORMAT | restore | caps]", "settled_host_serial_only_no_motor_settings", false, "Show or change host UART settings; drive settings stay separate."},
     {"communication", Command::COMMUNICATION, "communication [inspect | plan|begin address|baud|format VALUE [address] | host before|requested | confirm before|requested | finish]", "explicit_communication_session_no_save_restart_or_replay", true, "Plan and apply a drive communication change, then check its responding endpoint."},
     {"persistence", Command::PERSISTENCE, "persistence [inspect | snapshot | plan|begin save|factory-restore | verify | host before | finish]", "one_explicit_save_or_factory_restore_no_retry_or_inferred_durability", true, "Inspect, plan or attempt an explicit save or factory restoration."},
@@ -2243,12 +2260,20 @@ void Console::dispatch() noexcept {
         }
         WiringSnapshot view;
         const Action result = host_.wiring(host_.context, change ? &request : nullptr, view);
-        std::snprintf(output_, sizeof(output_),
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"wiring\",\"ok\":%s,\"result\":\"%s\",\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"inputs\":[%u,%u,%u,%u],\"outputs\":[%u,%u],\"bus_traffic\":false}",
+        std::size_t used = 0;
+        const bool written = append(output_, sizeof(output_), used,
+            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"wiring\",\"ok\":%s,\"result\":\"%s\",\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"inputs\":[%u,%u,%u,%u],\"outputs\":[%u,%u]",
             static_cast<unsigned long>(id), boolean(result == Action::OK), result == Action::OK ? "done" : actionName(result),
             static_cast<unsigned long>(view.target.id), view.target.address, static_cast<unsigned long>(view.target.generation),
             static_cast<unsigned long>(view.configurationGeneration), static_cast<unsigned>(view.inputs[0]), static_cast<unsigned>(view.inputs[1]),
-            static_cast<unsigned>(view.inputs[2]), static_cast<unsigned>(view.inputs[3]), static_cast<unsigned>(view.outputs[0]), static_cast<unsigned>(view.outputs[1]));
+            static_cast<unsigned>(view.inputs[2]), static_cast<unsigned>(view.inputs[3]), static_cast<unsigned>(view.outputs[0]), static_cast<unsigned>(view.outputs[1])) &&
+            wiringSources(output_, sizeof(output_), used, "sources", view.inputSources, 4, view.outputSources, 2) &&
+            boardWiring(output_, sizeof(output_), used, view.board) &&
+            append(output_, sizeof(output_), used, ",\"fixture\":\"%s\"", fixtureStateName(view.fixture)) &&
+            (view.fixture != FixtureState::INVALID ||
+             append(output_, sizeof(output_), used, ",\"fixture_error\":\"%s\"", view.fixtureError ? view.fixtureError : "unknown")) &&
+            append(output_, sizeof(output_), used, ",\"bus_traffic\":false}");
+        if (!written) { error(id, "wiring", "output_full"); return; }
         emit(); return;
     }
     if (entry->command == Command::BENCH) {
@@ -3755,6 +3780,9 @@ bool Console::formatGroupView(uint32_t id, const char* command, Action result, c
             if (!status) {
                 --used; // Extend this member without copying its full configuration to the stack.
                 const auto& reference = m.reference;
+                if (!wiringSources(output_, sizeof(output_), used, "input_sources", m.inputSources, 4, nullptr, 0) ||
+                    !wiringSources(output_, sizeof(output_), used, "output_sources", m.outputSources, 2, nullptr, 0) ||
+                    !boardWiring(output_, sizeof(output_), used, m.board)) return false;
                 if (!append(output_, sizeof(output_), used,
                     ",\"configuration_operation_id\":%lu,\"motion_operation_id\":%lu,\"feedback_operation_id\":%lu,\"reference_current\":%s,\"reference\":{\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"native_known\":%s,\"native_position\":%lld,\"basis\":%u,\"source\":%u,\"observed_us\":%llu,\"maximum_age_us\":%llu},\"axis\":{\"ok\":true,\"code\":\"OK\",\"detail\":0",
                     static_cast<unsigned long>(m.configurationOperationId), static_cast<unsigned long>(m.motionOperationId), static_cast<unsigned long>(m.feedbackOperationId), boolean(m.referenceCurrent),

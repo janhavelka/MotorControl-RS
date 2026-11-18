@@ -58,6 +58,18 @@ void ownerTask(void*) {
     benchIo.begin(bench, reserved, sizeof(reserved) / sizeof(reserved[0]));
     options.benchIo = &benchIo;
 #endif
+#if CONFIG_MOTORCONTROLRS_FIXTURE_WIRING
+    // Board-declared terminal wiring from menuconfig; address 0 leaves a slot
+    // unused. An invalid table stays visible as `wiring` fixture invalid.
+    const FixtureWiringEntry slots[FIXTURE_WIRING_CAPACITY] = {
+        {CONFIG_MOTORCONTROLRS_FIXTURE_SLOT1_ADDRESS, CONFIG_MOTORCONTROLRS_FIXTURE_SLOT1_INPUTS, CONFIG_MOTORCONTROLRS_FIXTURE_SLOT1_OUTPUTS},
+        {CONFIG_MOTORCONTROLRS_FIXTURE_SLOT2_ADDRESS, CONFIG_MOTORCONTROLRS_FIXTURE_SLOT2_INPUTS, CONFIG_MOTORCONTROLRS_FIXTURE_SLOT2_OUTPUTS},
+        {CONFIG_MOTORCONTROLRS_FIXTURE_SLOT3_ADDRESS, CONFIG_MOTORCONTROLRS_FIXTURE_SLOT3_INPUTS, CONFIG_MOTORCONTROLRS_FIXTURE_SLOT3_OUTPUTS},
+        {CONFIG_MOTORCONTROLRS_FIXTURE_SLOT4_ADDRESS, CONFIG_MOTORCONTROLRS_FIXTURE_SLOT4_INPUTS, CONFIG_MOTORCONTROLRS_FIXTURE_SLOT4_OUTPUTS}};
+    options.fixtureWiringSupplied = true;
+    for (const auto& slot : slots)
+        if (slot.address) options.fixtureWiring[options.fixtureWiringCount++] = slot;
+#endif
     beginApplication(pins, receiverDisabledDuringTransmit, options);
     // Initialization failure is reported by the shared application. Its cached
     // console remains available when storage exists; a missing App only idles.

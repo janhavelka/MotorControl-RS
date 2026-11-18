@@ -177,6 +177,7 @@ class ScriptedConsole:
         self.states = states or {}
         self.saved = saved
         self.next_id = 1
+        self.selected, self.boards, self.fixture, self.legacy = 1, {}, "absent", False
 
     def pump(self, seconds):
         pass
@@ -193,6 +194,13 @@ class ScriptedConsole:
         if command == "motion-profile forget":
             self.saved = False
             return dict(ok=True, _id=ident)
+        if command == "wiring" and self.legacy:
+            return dict(ok=True, result="done", _id=ident)
+        if command == "wiring":
+            return dict(ok=True, result="done", _id=ident, board=self.boards.get(self.selected), fixture=self.fixture,
+                        **({"fixture_error": "duplicate_address"} if self.fixture == "invalid" else {}))
+        if command.startswith("useaddr "):
+            self.selected = int(command.split()[1])
         if command.startswith("useaddr ") or command.startswith("wiring ") or command == "probe":
             return dict(ok=True, result="done", _id=ident)
         if command.startswith("read state "):
@@ -233,12 +241,34 @@ class MultiDriveTests(unittest.TestCase):
         run.args.declare_unconnected = True
         run.select(2)
         useaddr = console.sent.index("useaddr 2")
-        self.assertEqual(console.sent[useaddr + 1:useaddr + 7],
+        self.assertEqual(console.sent[useaddr + 1], "wiring")  # Board declaration checked first.
+        self.assertEqual(console.sent[useaddr + 2:useaddr + 8],
                          [f"wiring {t} unconnected" for t in ("x0", "x1", "x2", "x3", "y0", "y1")])
         console.sent.clear()
         run.args.declare_unconnected = False
         run.select(4)
         self.assertFalse([c for c in console.sent if c.startswith("wiring")])
+
+    def test_declared_wiring_is_refused_over_the_board_table(self):
+        bench_boards = {1: dict(inputs=[2] * 4, outputs=[1, 1]), 4: dict(inputs=[2] * 4, outputs=[2, 1])}
+        for boards, fixture, message in ((bench_boards, "applied", "board declares connected terminals on drive 4"),
+                                         ({}, "invalid", "invalid"), (None, None, "lacks the board declaration")):
+            console = ScriptedConsole()
+            if boards is None:
+                console.legacy = True
+            else:
+                console.boards, console.fixture = boards, fixture
+            run = self.run_fixture(console)
+            run.args.declare_unconnected = True
+            with self.subTest(fixture=fixture), self.assertRaisesRegex(bench.Anomaly, message):
+                run.select(4)
+            self.assertFalse([c for c in console.sent if c.startswith("wiring ")])
+        console = ScriptedConsole()
+        console.boards, console.fixture = bench_boards, "applied"
+        run = self.run_fixture(console)
+        run.args.declare_unconnected = True
+        run.select(2)  # Unlisted in this table: the stated fact is admitted.
+        self.assertEqual(len([c for c in console.sent if c.startswith("wiring ")]), 6)
 
     def test_stop_targets_the_selected_drive(self):
         console = ScriptedConsole()

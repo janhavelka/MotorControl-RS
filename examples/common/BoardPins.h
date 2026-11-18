@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "FixtureWiring.h"
+
 namespace MotorControlRSExample {
 
 /** @brief Selected ESP32-S3 bench wiring; replace for another application. */
@@ -48,5 +50,20 @@ struct Esp32S3BenchBoard {
 
 /// @brief Explicit example bench selection; not part of the reusable library.
 using Board = Esp32S3BenchBoard;
+
+/**
+ * @brief Board-declared terminal wiring of the wired bench drives.
+ *
+ * Owner's wiring of 18 November 2026 (docs/bench_io.md, record
+ * docs/reports/2026-11-18_bench_io_relay_check.md): relays and MOSFETs feed
+ * X0..X3 of drives 1, 2 and 4 in parallel; only drive 4's Y0 is wired, sinking
+ * to aux1. Y1 is unconnected on all three, Y0 on drives 1 and 2. Any other
+ * address keeps the application default. Applied only when the Arduino build
+ * defines MOTORCONTROLRS_FIXTURE_WIRING (bench environments do); the native
+ * ESP-IDF build takes the same table from menuconfig. Replace with the board.
+ */
+constexpr FixtureWiringEntry kFixtureWiring[] = {{1, 0xF, 0x0}, {2, 0xF, 0x0}, {4, 0xF, 0x1}};
+/// @brief Entries in kFixtureWiring.
+constexpr std::size_t kFixtureWiringCount = sizeof(kFixtureWiring) / sizeof(kFixtureWiring[0]);
 
 }  // namespace MotorControlRSExample

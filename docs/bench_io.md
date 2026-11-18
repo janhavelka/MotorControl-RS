@@ -221,12 +221,18 @@ CO2Control the same MOSFETs switched a valve and a fan, which draw more.
   alarmed or silent. Software that switches an output for an armed operation
   checks the drives outside the case the same way
   ([wired bench COMMON](prompts/ess_wired_bench/COMMON.md#bench-rules)).
-- Declare the wiring on every drive, for example `group wiring 2 x0 connected`
-  for all four X pins on addresses 1, 2 and 4, Y0 connected on drive 4, and the
-  other outputs unconnected. The boot declaration is still "unconnected" on
-  every terminal and `useaddr` resets it to unknown, so declare after boot and
-  after every `useaddr` until [wired bench 02](prompts/ess_wired_bench/02_fixture_wiring_declarations.md)
-  delivers board declarations.
+- From [wired bench 02](prompts/ess_wired_bench/02_fixture_wiring_declarations.md)
+  on, the bench images declare the wiring from a board table: X0-X3 connected
+  on drives 1, 2 and 4, Y0 connected on drive 4, Y1 everywhere and Y0 of drives
+  1 and 2 unconnected. The application applies it at boot, after `useaddr` and
+  to new group members, so no manual `wiring` or `group wiring` declaration is
+  needed. `wiring` and `group show` show each terminal's source (`board`); a
+  host `wiring` or `group wiring` change overrides it for the session only
+  (source `host`), and `useaddr` away and back restores the board value.
+  Images built before that change, and builds without the table, boot with
+  every terminal "unconnected" and reset to unknown on `useaddr`; on those,
+  declare every terminal after boot and after every `useaddr`, for example
+  `group wiring 2 x0 connected`.
 - An asserted X1 or X2 acts as the limit of every drive that keeps that
   function; an asserted stop input stops every drive that has the stop
   function. With a group move this is the shared-stop test, not a fault.
@@ -259,8 +265,10 @@ PT/PV selection drops to two segments.
    prepared serial stop. Under the owner's 18 November authorization (wired
    bench D1) they may run unattended; the older rule required attendance and an
    explicit instruction ([multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)).
-7. Declare wiring before assigning functions. `io set` keeps refusing connected
-   terminals without the matching `io qualification` facts.
+7. Check the wiring declarations (`wiring`, source `board` on the bench
+   images) before assigning functions; on images before wired bench 02,
+   declare them first. `io set` keeps refusing connected terminals without the
+   matching `io qualification` facts.
 
 ## Firmware support
 
@@ -301,6 +309,22 @@ Pins: Arduino uses [BoardPins.h](../examples/common/BoardPins.h); native ESP-IDF
 uses `menuconfig` → MotorControl-RS standalone board → bench options (default
 the same pins; -1 leaves one absent). Invalid, duplicate or RS485 pins leave the
 fixture unready; motor control still starts.
+
+Terminal wiring table: each entry is an ESS address, a mask of connected X0-X3
+inputs (bit n = Xn, at most 0xF) and a mask of connected Y0-Y1 outputs (at
+most 0x3); at most four entries. Arduino passes `kFixtureWiring` from
+[BoardPins.h](../examples/common/BoardPins.h) when the build defines
+`MOTORCONTROLRS_FIXTURE_WIRING`; `bench_s3_probe` and the environments that
+extend it do. Native ESP-IDF takes it from the same `menuconfig` menu
+(`MOTORCONTROLRS_FIXTURE_WIRING`, default on, four address/inputs/outputs
+slots; address 0 leaves a slot unused). Both defaults are `{1, 0xF, 0x0}`,
+`{2, 0xF, 0x0}`, `{4, 0xF, 0x1}`, the wiring above. A table with a duplicate
+address, an address outside 1..247, a mask out of range or more than four
+entries is invalid: every declaration is unknown, `wiring` reports `fixture`
+`invalid` with the error, and routes that need a declaration refuse; motor
+control still starts. The table sends no traffic and changes no drive
+assignment. Replies and rules are in the
+[CLI contract](cli_contract.md#terminal-wiring-declarations).
 
 ## Test plan once wired
 

@@ -321,8 +321,19 @@ class Run:
             raise Anomaly("SELECT", (f"useaddr {address}", reply.get("result")))
         self.address = self.selected = address
         if getattr(self.args, "declare_unconnected", False):
-            # useaddr resets the host's wiring declarations. This is the stated
-            # fixture fact for these drives, never a drive change.
+            # useaddr resets the host's wiring declarations to the board table or
+            # the default. "Nothing wired" is a stated fixture fact, never a drive
+            # change; it is refused when the immutable board declaration says a
+            # terminal is connected, when the table is invalid, or when the image
+            # does not report the board declaration.
+            current = self.console.send("wiring")
+            board = current.get("board")
+            if "board" not in current or "fixture" not in current:
+                raise Anomaly("SELECT", ("wiring", "reply lacks the board declaration"))
+            if current.get("fixture") == "invalid":
+                raise Anomaly("SELECT", ("wiring", "board fixture table invalid: " + str(current.get("fixture_error"))))
+            if isinstance(board, dict) and 2 in board.get("inputs", []) + board.get("outputs", []):
+                raise Anomaly("SELECT", ("wiring", f"board declares connected terminals on drive {address}"))
             for terminal in ("x0", "x1", "x2", "x3", "y0", "y1"):
                 declared = self.console.send(f"wiring {terminal} unconnected")
                 if not declared.get("ok"):
@@ -1005,7 +1016,8 @@ def main():
     parser.add_argument("--addresses", default="1", help="comma-separated ESS drives; each case picks one")
     parser.add_argument("--cross-reads", action="store_true", help="read the other drives while one moves")
     parser.add_argument("--declare-unconnected", action="store_true",
-                        help="state that no drive terminal is wired; declared again after each useaddr")
+                        help="state that no drive terminal is wired; declared again after each useaddr; "
+                             "refused when the board table declares a terminal of that drive connected or is invalid")
     args = parser.parse_args()
     try:
         args.addresses = [int(a) for a in args.addresses.split(",")]

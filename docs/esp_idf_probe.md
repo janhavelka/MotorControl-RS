@@ -67,6 +67,21 @@ The same menu holds the [bench fixture](bench_io.md) outputs and input
 (defaults relay1 45, relay2 18, MOSFET1 3, MOSFET2 46, input 17; -1 leaves
 one absent; disable the option to drop the `bench` command).
 
+The menu also holds the board terminal wiring table,
+`MOTORCONTROLRS_FIXTURE_WIRING` (default on). It has four slots,
+`MOTORCONTROLRS_FIXTURE_SLOTn_ADDRESS` (0..247; 0 leaves the slot unused),
+`..._SLOTn_INPUTS` (0x0..0xF, bit n = Xn connected) and `..._SLOTn_OUTPUTS`
+(0x0..0x3, bit n = Yn connected). Defaults equal the Arduino table in
+[BoardPins.h](../examples/common/BoardPins.h): slots 1-3 are drives 1, 2 and 4
+with X0-X3 connected, drive 4 also with Y0; slot 4 is unused.
+`test/idf_config_test.py` checks that the Kconfig defaults, `BoardPins.h` and
+the IDF test defines agree. Menu ranges bound the values; two slots with the
+same nonzero address leave the table invalid, so every declaration is unknown
+and `wiring` reports `fixture` `invalid`; motor control still starts.
+Disabling the option keeps the legacy declarations (unconnected at boot,
+unknown after `useaddr`). See the
+[CLI contract](cli_contract.md#terminal-wiring-declarations).
+
 The default board recipe is ESP32-S3, 16 MiB QIO flash at 80 MHz, 8 MiB OPI
 PSRAM at 80 MHz and a 240 MHz CPU. It retains the existing
 [16 MiB partition layout](../examples/common/partitions_16mb.csv), including

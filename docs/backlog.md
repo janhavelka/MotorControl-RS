@@ -161,10 +161,15 @@ functional evidence; independent shaft calibration remains absent.
   before TX (0 frames). The stage refusal blocks the equal-archive no-write
   check and leaves staged group writes without a restoration route for
   non-selected drives; their cases are NOT RUN until 03.
-- [ ] Declare the fixture wiring at boot ([wired bench 02](prompts/ess_wired_bench/02_fixture_wiring_declarations.md)).
-  Both images still boot with every terminal declared unconnected (seen on
-  18 November), so connected terminals must be declared by hand after boot and
-  after each `useaddr`.
+- [x] Declare the fixture wiring at boot ([wired bench 02](prompts/ess_wired_bench/02_fixture_wiring_declarations.md)).
+  Implementation: done. A validated board table (`BoardPins.h`, menuconfig)
+  applies at boot, after `useaddr` and to new group members, with visible
+  sources and a separate immutable board declaration; an invalid table makes
+  every declaration unknown. Hardware: 18 November
+  ([report](reports/2026-11-18_wired_bench_02_fixture_wiring.md)), W01-W09 PASS
+  on the Arduino image and the table parity check on the native IDF image, both
+  built from the uncommitted prompt 02 tree on `5dbcaa1`. Named refusal reasons
+  for connected-terminal setters stay with wired bench 03.
 - [ ] Distinguish supply transients from internal firmware failure in the
   reproduced reset-like loss of volatile settings. Failure occurred both above
   and below 200,000 command increments/s; ramp comparisons narrow the case but

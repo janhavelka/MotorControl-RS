@@ -55,4 +55,75 @@ menu "MotorControl-RS standalone board"
         depends on MOTORCONTROLRS_BENCH_IO
         range -1 48
         default 17
+    config MOTORCONTROLRS_FIXTURE_WIRING
+        bool "Board-declared drive terminal wiring (fixture table)"
+        default y
+        help
+            Declares which drive terminals carry fixture wiring, per ESS
+            address. The application applies it at boot, after useaddr and to
+            new group members; host wiring commands override it for the
+            session only. It changes no drive assignment. Defaults equal the
+            Arduino table in examples/common/BoardPins.h (drives 1, 2 and 4
+            with X0-X3 connected, drive 4 with Y0 connected). An invalid table
+            makes every declaration unknown. See docs/bench_io.md.
+    config MOTORCONTROLRS_FIXTURE_SLOT1_ADDRESS
+        int "Slot 1 ESS address (0 leaves the slot unused)"
+        depends on MOTORCONTROLRS_FIXTURE_WIRING
+        range 0 247
+        default 1
+    config MOTORCONTROLRS_FIXTURE_SLOT1_INPUTS
+        hex "Slot 1 connected inputs, bit n = Xn"
+        depends on MOTORCONTROLRS_FIXTURE_WIRING
+        range 0x0 0xF
+        default 0xF
+    config MOTORCONTROLRS_FIXTURE_SLOT1_OUTPUTS
+        hex "Slot 1 connected outputs, bit n = Yn"
+        depends on MOTORCONTROLRS_FIXTURE_WIRING
+        range 0x0 0x3
+        default 0x0
+    config MOTORCONTROLRS_FIXTURE_SLOT2_ADDRESS
+        int "Slot 2 ESS address (0 leaves the slot unused)"
+        depends on MOTORCONTROLRS_FIXTURE_WIRING
+        range 0 247
+        default 2
+    config MOTORCONTROLRS_FIXTURE_SLOT2_INPUTS
+        hex "Slot 2 connected inputs, bit n = Xn"
+        depends on MOTORCONTROLRS_FIXTURE_WIRING
+        range 0x0 0xF
+        default 0xF
+    config MOTORCONTROLRS_FIXTURE_SLOT2_OUTPUTS
+        hex "Slot 2 connected outputs, bit n = Yn"
+        depends on MOTORCONTROLRS_FIXTURE_WIRING
+        range 0x0 0x3
+        default 0x0
+    config MOTORCONTROLRS_FIXTURE_SLOT3_ADDRESS
+        int "Slot 3 ESS address (0 leaves the slot unused)"
+        depends on MOTORCONTROLRS_FIXTURE_WIRING
+        range 0 247
+        default 4
+    config MOTORCONTROLRS_FIXTURE_SLOT3_INPUTS
+        hex "Slot 3 connected inputs, bit n = Xn"
+        depends on MOTORCONTROLRS_FIXTURE_WIRING
+        range 0x0 0xF
+        default 0xF
+    config MOTORCONTROLRS_FIXTURE_SLOT3_OUTPUTS
+        hex "Slot 3 connected outputs, bit n = Yn"
+        depends on MOTORCONTROLRS_FIXTURE_WIRING
+        range 0x0 0x3
+        default 0x1
+    config MOTORCONTROLRS_FIXTURE_SLOT4_ADDRESS
+        int "Slot 4 ESS address (0 leaves the slot unused)"
+        depends on MOTORCONTROLRS_FIXTURE_WIRING
+        range 0 247
+        default 0
+    config MOTORCONTROLRS_FIXTURE_SLOT4_INPUTS
+        hex "Slot 4 connected inputs, bit n = Xn"
+        depends on MOTORCONTROLRS_FIXTURE_WIRING
+        range 0x0 0xF
+        default 0x0
+    config MOTORCONTROLRS_FIXTURE_SLOT4_OUTPUTS
+        hex "Slot 4 connected outputs, bit n = Yn"
+        depends on MOTORCONTROLRS_FIXTURE_WIRING
+        range 0x0 0x3
+        default 0x0
 endmenu

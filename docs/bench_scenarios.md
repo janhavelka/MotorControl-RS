@@ -50,8 +50,9 @@ mode sweeps setters, persistence or motion. `--address` is 1..247. The
 `settings`, `position`, `actions` and `stop` scenarios first select that drive
 with `useaddr`, as writes and moves apply only to the selected drive. They refuse
 to change drives while another drive's profile snapshot still needs restoring.
-`useaddr` resets the host's wiring declarations; declare the terminals again
-before moving another drive. The tuning and control setters require a fresh
+`useaddr` resets the host's wiring declarations to the board table for a
+listed drive, otherwise to unknown; declare the terminals of an unlisted drive
+again before moving it. The tuning and control setters require a fresh
 checked identity read of the selected drive reporting model `0x4EEA` and
 firmware `0x0029`, the owner-confirmed ESS23-RS20 identity of drives 1, 2 and
 4 (`ProbeApp.cpp` `exactModelQualified`, [13 November](reports/2026-11-13_multi_drive_settings_and_soak.md)).
@@ -60,7 +61,18 @@ paragraph used to say the setters were qualified for node 1 only. The tuning
 input-filter experiment and the subdivision-only route also need fresh passive,
 unconnected inputs; on the wired bench (X0-X3 connected since 18 November) they
 refuse before TX until [wired bench 03](prompts/ess_wired_bench/03_connected_terminal_setters.md).
-Never pass `--declare-unconnected` on that bench. `angle` still runs on node 1 only. `--timeout` is a
+Never pass `--declare-unconnected` on that bench. That option declares all six
+terminals of the selected drive unconnected, after `useaddr` when the drive
+changes. It is refused,
+before any declaration or drive read (for another drive, after the local
+`useaddr` and a `wiring` query), when the board table marks a terminal of that
+drive connected, whatever its current source, so an earlier host override
+cannot unlock it. It is also refused when the table is invalid or the `wiring`
+reply lacks the board keys (an image older than
+[wired bench 02](prompts/ess_wired_bench/02_fixture_wiring_declarations.md)).
+It is admitted with an absent table or an unlisted address. On the wired bench
+images drives 1, 2 and 4 are listed with connected inputs, so it is refused
+there. `angle` still runs on node 1 only. `--timeout` is a
 finite command bound up to 60 seconds; existing operation/request deadlines are
 unchanged. The reusable motion phases use their fixed five-second command bounds.
 
@@ -159,7 +171,10 @@ on another drive, the tool releases the profile snapshot (stress runs never
 restore it), selects the drive with `useaddr` and probes it. It reselects after
 an MCU reset. `--declare-unconnected` states that no terminal of any drive is
 wired and declares this again after each `useaddr`; use it only when that is
-the fixture. `--cross-reads` reads another drive's state at each poll while one
+the fixture. As with the scenario option, it first reads `wiring` and refuses
+(`SELECT` anomaly, nothing declared) when the board table declares a terminal
+of that drive connected, the table is invalid or the image does not report the
+board declaration. `--cross-reads` reads another drive's state at each poll while one
 moves. The run fails with `OTHER_DRIVE` if that drive runs, alarms or changes
 position. After each case the reference position is taken only once the drive
 has held still for 2 s: after a stop, firmware `0x0029` can still change its

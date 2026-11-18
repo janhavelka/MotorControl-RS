@@ -3,6 +3,8 @@
 #include "../common/Esp32S3Uart.h"
 #include "../common/RtuBusOwner.h"
 #include "../common/BenchIo.h"
+#include "../common/FixtureWiring.h"
+#include "ProbeConsole.h"
 #include "MoveRelation.h"
 #include "DriveGroup.h"
 #include "ProfileCandidate.h"
@@ -30,6 +32,18 @@ struct ApplicationOptions {
      * bench command. It must outlive the application. Every motor stop request
      * turns its outputs OFF before admission; no other motor command uses it. */
     BenchIo::Port* benchIo = nullptr;
+    /** Optional board declaration of wired terminals (FixtureWiring.h). Ignored
+     * unless fixtureWiringSupplied: an absent table keeps the legacy defaults
+     * (UNCONNECTED at boot, UNKNOWN after `useaddr` and for new group members).
+     * A supplied table is validated once at construction and kept, unchanged,
+     * as the board declaration; listed addresses take it at boot, after
+     * `useaddr` and as new group members, other addresses keep the defaults.
+     * An empty supplied table is valid. A table that fails validation makes
+     * every declaration of every address UNKNOWN; motor control still starts.
+     * Host `wiring` and `group wiring` override only the session declaration. */
+    FixtureWiringEntry fixtureWiring[FIXTURE_WIRING_CAPACITY] = {};
+    uint8_t fixtureWiringCount = 0; ///< Entries used; more than FIXTURE_WIRING_CAPACITY is invalid.
+    bool fixtureWiringSupplied = false; ///< Distinguishes an absent table from an empty one.
 };
 /** Construct the shared standalone application in required PSRAM and initialize
  * its one UART/capture owner. Failure is explicit; there is no internal-RAM
@@ -288,9 +302,22 @@ MotorControlRS::Status declareGroup(const uint8_t* addresses, std::size_t count,
 /// Idle-only; forgets members, but preserves enable waits and retained results.
 MotorControlRS::Status clearGroup();
 /** Same declaration as the selected axis's `wiring`, for one member (X0..X3 =
- * 0..3, Y0..Y1 = 4..5). No drive assignment changes; cached state expires. */
+ * 0..3, Y0..Y1 = 4..5). No drive assignment changes; cached state expires.
+ * A change sets the member terminal's source to HOST; the board declaration
+ * is never changed. An unchanged value keeps its source. */
 MotorControlRS::Status declareGroupWiring(uint8_t address, uint8_t terminal, MotorControlRS::InputWiring state);
+/** Selected-axis declaration, the console `wiring` route (X0..X3 = 0..3,
+ * Y0..Y1 = 4..5). Idle-only; no bus traffic and no drive assignment change.
+ * A change sets the source to HOST, expires I/O facts, prepared work, cached
+ * state and the boot origin, and bumps the configuration generation. An
+ * unchanged value keeps its source and expires nothing. The board declaration
+ * is never changed. Rejection detail is the Probe::Action. Service task only. */
+MotorControlRS::Status declareWiring(uint8_t terminal, MotorControlRS::InputWiring state);
+/** Copy the selected axis's effective declaration, the source of each
+ * terminal, its board declaration and the board table state. No bus traffic. */
+bool copyWiring(Probe::WiringSnapshot& output);
 /** Copy cached member facts, state and group operation IDs; no bus traffic.
+ * Each member view carries its declaration sources and board declaration.
  * The view holds up to 15 members: keep output in static or PSRAM storage, not on
  * a small task stack. The same applies to copyGroupResult. */
 bool inspectGroup(Probe::GroupView& output);

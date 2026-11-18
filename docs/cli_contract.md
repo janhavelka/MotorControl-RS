@@ -52,7 +52,7 @@ guides define complete arguments and prerequisites.
 | Commands | Meaning and traffic |
 | --- | --- |
 | `help`, `version`, `profile list`, `caps` | Local syntax, identity and coverage |
-| `config`, `host`, `useaddr`, `wiring` | Host selection/configuration; no drive-setting writes |
+| `config`, `host`, `useaddr`, `wiring` | Host selection/configuration; no drive-setting writes. `wiring` shows and overrides the session [terminal declarations](#terminal-wiring-declarations) and their sources |
 | `status`, `health`, `stats`, `drv`, `memory`, `result` | Passive cached diagnostics and retained results |
 | `stats reset` | Clear local counters; preserve faults, observations and uncertainty |
 | `probe [address]` | Minimal checked model read; no hidden identity/state sweep |
@@ -78,7 +78,7 @@ guides define complete arguments and prerequisites.
 | `monitor [off\|INTERVAL_MS COUNT]` | Inspect or enable finite state polling; `off` cancels its local continuation |
 | `cancel [ID]`, `release ID`, `recover` | Local cancellation, terminal-result release and explicit host transport recovery |
 | `debug [off\|raw\|decoded]`, `capture-read`, `load` | Copied traffic, fixed read-only timing fixture and optional host workload |
-| `group show\|status\|clear`, `group set ADDR...`, `group wiring ADDR TERMINAL STATE`, `group read state`, `group move relative VALUE UNIT FRAME RPM configured [setup write\|verify] [start staged\|sequential] on-failure leave\|stop normal\|stop fast`, `group stop normal\|fast` | [Drive group](console.md#drive-group) of up to 15 unicast members. Every member is prepared before any write. Staged mode checks every profile before any start; sequential mode stages and starts each member in order. Failure policy is explicit, with independent results and no replay. One group line is at most 49,152 bytes. |
+| `group show\|status\|clear`, `group set ADDR...`, `group wiring ADDR TERMINAL STATE`, `group read state`, `group move relative VALUE UNIT FRAME RPM configured [setup write\|verify] [start staged\|sequential] on-failure leave\|stop normal\|stop fast`, `group stop normal\|fast` | [Drive group](console.md#drive-group) of up to 15 unicast members. Every member is prepared before any write. Staged mode checks every profile before any start; sequential mode stages and starts each member in order. Failure policy is explicit, with independent results and no replay. New members start from the board wiring table; `group wiring` overrides one member's session declaration. One group line is at most 49,152 bytes. |
 | `group plan begin [start staged\|sequential] on-failure leave\|stop normal\|stop fast`, `group plan add ADDR relative\|absolute VALUE UNIT FRAME RPM configured [setup write\|verify]`, `group plan show\|clear\|submit` | [Member requests](console.md#different-member-targets). Assembly is inert. Submit requires exactly one current intent per declared member, then uses the same public move API. It consumes the plan only on accepted submission. |
 | `group axis ADDR ...`, `group reference ADDR DECL BIND CFG CFG_READ STATE_READ NATIVE MAX_AGE_US command-coordinate-qualified`, `group reference ADDR revoke` | Host-only member scale, origin and reference operations. Reference installation requires exact current read IDs and stationary observations; it never infers command coordinates from raw feedback. Commands retain the 128-byte/22-token limits. |
 | `bench`, `bench on relay1\|relay2\|mosfet1\|mosfet2 HOLD_MS`, `bench off [OUTPUT]`, `bench clear` | Standalone [bench fixture](bench_io.md) only: board outputs wired to drive inputs and one sensed drive output. Local GPIO, no motor traffic, usable during motion. Every on lasts 1..60000 ms; every stop request turns all outputs off first. |
@@ -144,8 +144,10 @@ no automatic movement or nonvolatile save follows.
 
 `useaddr 1..247` is idle-only host binding, not a device-address write. Rebinding
 invalidates selected-target knowledge and resets terminal wiring declarations
-to unknown. `wiring` is local and changes no assignment or signal level.
-Queries remain passive during faults.
+to the board table for a listed address, otherwise to unknown
+([terminal wiring declarations](#terminal-wiring-declarations)). `wiring` is
+local and changes no assignment or signal level. Queries remain passive during
+faults.
 
 [Host serial changes](host_serial.md) require settled queues, continuations,
 capture and DE with monitoring off. Failure retains exclusive configuration
@@ -178,6 +180,59 @@ Planning/inspection are passive; writes are explicit. Save ACK, live readback
 and restart survival are different evidence. Discovery retains findings and
 restores host selection before ordinary work resumes; a fault requires explicit
 recovery/restoration and does not restart the scan.
+
+### Terminal wiring declarations
+
+The standalone application keeps one declaration per terminal (X0-X3, Y0-Y1)
+of the selected axis and of each group member: unknown, unconnected or
+connected. An optional board table (`ApplicationOptions::fixtureWiring`, example header
+`examples/common/FixtureWiring.h`) lists up to four addresses with their
+connected inputs and outputs; other terminals of a listed address are
+unconnected. It is validated once at startup, stored apart from the session
+declarations and never written afterwards. Its state is one of:
+
+| `fixture` | Boot, `useaddr` and new group members | Source |
+| --- | --- | --- |
+| `absent` | No table supplied: selected axis unconnected at boot, unknown after `useaddr` and for new members | `default` |
+| `applied` | Listed addresses take the board declaration; unlisted addresses keep the `absent` defaults. An empty table is valid | `board` or `default` |
+| `invalid` | Every terminal of every address is unknown | `invalid_table` |
+
+With an invalid table, routes that read a declaration refuse: I/O writes, I/O
+facts, home methods that need inputs and the passive settings paths. Probe,
+reads, `status`, `bench`, stop and `wiring` stay available, and motor control
+still starts. Move admission reads no declaration in any table state.
+
+`wiring TERMINAL STATE` and `group wiring ADDR TERMINAL STATE` change only the
+session declaration and set source `host` on every accepted change, also a
+change back to the board value. A request equal to the current value is a
+no-op: the source and dependent evidence stay. A selected-axis change bumps the
+configuration generation, clears I/O facts and expires prepared work, cached
+state and the boot origin. A member change clears that member's I/O facts and
+expires its cached state. The table applied at startup is part of the initial
+state and does not cost the `moveto` boot zero. `useaddr` to another address
+and back reapplies the board table; host overrides do not carry over. Members
+that stay in a new `group set` keep their session declaration and source. A
+host override to unconnected over a board-connected terminal is accepted and
+recorded as `host`. A declaration sends no bus traffic and changes no drive
+assignment; unconnected never disables a function and connected observes no
+level.
+
+The `wiring` reply keeps `inputs` and `outputs` (0 unknown, 1 unconnected,
+2 connected) and adds:
+
+| Key | Content |
+| --- | --- |
+| `sources` | Six names, X0-X3 then Y0-Y1: `default`, `board`, `host` or `invalid_table` |
+| `board` | `{"inputs":[4 codes],"outputs":[2 codes]}` with 1 or 2, or `null` when the table is absent, invalid or has no entry for this address |
+| `fixture` | `absent`, `applied` or `invalid` |
+| `fixture_error` | Only when invalid: `count_over_capacity`, `entries_missing`, `address_out_of_range`, `input_mask_out_of_range`, `output_mask_out_of_range` or `duplicate_address` |
+
+Group member views (`group show`, `group clear`, `group wiring` and plan
+replies, not `group status`) add `input_sources`, `output_sources` and `board`
+with the same values. Programmatic callers use `declareWiring` and
+`copyWiring` for the selected axis, `declareGroupWiring` and `inspectGroup`
+for members. Both copies return the same sources and board declaration;
+`copyWiring` also returns the table state and validation error.
 
 ## Admission, stop and retained outcomes
 

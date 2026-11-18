@@ -6,6 +6,7 @@
 #include <MotorControlRS/Status.h>
 #include "PositionStage.h"
 #include "AxisConsole.h"
+#include "../common/FixtureWiring.h"
 #include <cstddef>
 #include <cstdint>
 
@@ -82,6 +83,8 @@ struct GroupMemberView {
     uint16_t rawModel = 0, rawVersion = 0, rawActiveNode = 0;
     uint16_t profile[6] = {}; ///< Last checked 0x0020/6 words.
     MotorControlRS::InputWiring inputs[4] = {}, outputs[2] = {};
+    WiringSource inputSources[4] = {}, outputSources[2] = {}; ///< Origin of each effective declaration.
+    BoardWiring board; ///< Immutable board declaration of this address; unlisted when absent or invalid.
     bool motionFresh = false, ioFresh = false, feedbackFresh = false;
     uint16_t rawAlarm = 0, rawMotion = 0, rawInputs = 0;
     bool positionKnown = false;

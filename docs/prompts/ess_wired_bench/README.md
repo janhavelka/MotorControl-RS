@@ -56,7 +56,7 @@ the owner stays Partial and the next ready prompt starts.
 | Prompt | State | Inherited gates | Report |
 | --- | --- | --- | --- |
 | 01 | Partial | 03: B11 equal-archive stage and the specified B08 staged group writes (stage refused before TX with connected terminals) | [2026-11-18](../../reports/2026-11-18_wired_bench_01_baseline.md) |
-| 02 | Pending | — | — |
+| 02 | Complete | 03: named refusal reasons (W05 reply carries only the result code) | [2026-11-18](../../reports/2026-11-18_wired_bench_02_fixture_wiring.md) |
 | 03 | Pending | — | — |
 | 04 | Pending | — | — |
 | 05 | Pending | — | — |

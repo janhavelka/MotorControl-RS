@@ -185,15 +185,35 @@ The application records connected, unconnected and unknown wiring separately
 from the drive's function assignments and logical I/O observations. Since
 18 November 2026 the bench has wired I/O: X0-X3 of drives 1, 2 and 4 are driven
 in parallel by the bench board's MOSFETs and relays, and drive 4's Y0 is wired
-sinking to the board input `aux1`, read inverted. Those terminals are connected
-and are declared so; Y1 everywhere and Y0 of drives 1 and 2 are not connected.
-Wiring, mapping checks and rules are in the [bench I/O guide](bench_io.md).
+sinking to the board input `aux1`, read inverted. Y1 everywhere and Y0 of
+drives 1 and 2 are not connected. Wiring, mapping checks and rules are in the
+[bench I/O guide](bench_io.md).
 A connection does not imply an assignment, and an unconnected terminal does not
 imply assignment zero. The hardware manual physical PDF page 9
 describes four optoisolated 24 V inputs, at least 10 mA drive current and pulses
 longer than 10 ms. Pages 5 and 8 confirm the electrical/terminal limits. A 3.3 V
 MCU pin is not a direct input source. The board switches stand in for external
 switches; no real switches or loads are attached.
+
+The standalone application takes these facts from an optional board table
+(`ApplicationOptions::fixtureWiring`, example-only
+`examples/common/FixtureWiring.h`): per ESS address, a mask of connected X
+inputs and one of connected Y outputs; other terminals of a listed address are
+unconnected. The bench images carry the bench wiring above as their table
+(`BoardPins.h` on Arduino, `menuconfig` on native ESP-IDF). It is validated
+once at startup and never changed. Listed addresses take it at boot, after
+`useaddr` and as new group members, with source `board`. Unlisted addresses, and every address when no
+table is supplied, keep the default: unconnected at boot, unknown after
+`useaddr` and for new members. A table that fails validation makes every
+declaration unknown (source `invalid_table`): I/O writes, I/O facts, home
+methods that need inputs and the passive settings paths then refuse, while
+probe, reads, status, `bench`, stop and `wiring` stay available. Host `wiring`
+and `group wiring` override the session declaration only (source `host`); the
+board declaration stays as built. Move admission reads no declaration in any
+table state. A declaration is a caller fact: it changes no assignment, is not
+inferred from observed levels, unconnected never disables a function and
+connected observes no level. The JSON keys are in the
+[CLI contract](cli_contract.md#terminal-wiring-declarations).
 
 Hardware page 9 says startup inputs are unspecified/invalid. Function pages
 73-74 give stored defaults 1/2/3/0, also read on the

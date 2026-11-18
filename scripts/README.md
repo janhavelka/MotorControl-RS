@@ -80,6 +80,25 @@ The extended mix includes MCU resets. `--addresses`, `--cross-reads` and
 `--declare-unconnected` run it across several drives. Use `python scripts/bench_stress.py --help`
 for options; that command opens no port. See the
 [stress tool limits](../docs/bench_scenarios.md#stress-tool) before a live run.
+Its `--declare-unconnected` refuses, before declaring, when the board wiring
+table declares a terminal of the selected drive connected or is invalid.
+
+Wiring replies: the strict parser requires the `wiring` reply's `sources`,
+`board` and `fixture` keys, and `fixture_error` exactly when `fixture` is
+`invalid`. It checks the source names and board shape and their consistency
+with the declared values and table state: a `board` source must equal the
+board value, `invalid_table` must be unknown and `default` is never connected.
+Group member views must carry `input_sources`, `output_sources` and `board`
+under the same checks. An image older than the board table lacks these keys
+and is rejected with a named error. `bench_probe.board_declares_connected(reply)`
+is true when the board declaration of the replying drive marks any terminal
+connected. `bench_motion.select_drive(..., declare_unconnected=True)`, used by
+`--declare-unconnected` in `bench_motion.py` and `bench_scenarios.py`, refuses
+before any declaration or drive read when that board declaration marks a
+terminal of the selected drive connected (whatever its current source), when
+the table is invalid or when the reply lacks the board keys. It is admitted
+with an absent table or an unlisted address. See the
+[CLI contract](../docs/cli_contract.md#terminal-wiring-declarations).
 
 Use a new evidence prefix for each run. A selected settings/motion campaign can
 write to or move the drive; a passing probe is not preparation for every feature.

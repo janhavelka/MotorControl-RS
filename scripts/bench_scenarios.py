@@ -39,7 +39,8 @@ def arguments(argv=None):
     parser.add_argument('--plan-only', action='store_true')
     parser.add_argument('--address', type=int, default=1)
     parser.add_argument('--declare-unconnected', action='store_true',
-                        help='settings/position/actions/stop: state that no terminal of the selected drive is wired')
+                        help='settings/position/actions/stop: state that no terminal of the selected drive is wired; '
+                             'refused when the board table declares a terminal of that drive connected or is invalid')
     parser.add_argument('--count', type=int, help='quick/load/observations only; default ten')
     parser.add_argument('--interval', type=float, help='quick/load/observations only; default 0.05s')
     parser.add_argument('--timeout', type=float, default=5)

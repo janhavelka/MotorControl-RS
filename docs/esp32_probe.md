@@ -152,6 +152,21 @@ the previously running CO2control firmware are recorded in
 [the board review](reference/04_esp32_bench.md) and
 [bench notes](hardware_bench.md).
 
+`bench_s3_probe`, and the load environments that extend it, also define
+`MOTORCONTROLRS_BENCH_IO=1` and `MOTORCONTROLRS_FIXTURE_WIRING=1`. The second
+makes `main.cpp` pass the `kFixtureWiring` table from
+[BoardPins.h](../examples/common/BoardPins.h) to the application. Each entry
+is `{address, connected inputs, connected outputs}`, with bit n of the masks
+for Xn (at most 0xF) and Yn (at most 0x3); at most four entries. The bench
+table is `{1, 0xF, 0x0}, {2, 0xF, 0x0}, {4, 0xF, 0x1}`: the owner's wiring of
+18 November 2026, X0-X3 connected on drives 1, 2 and 4 and Y0 on drive 4.
+Replace it for another board. Without the define the application keeps the
+legacy declarations (unconnected at boot, unknown after `useaddr`). An invalid
+table makes every declaration unknown and `wiring` reports `fixture` `invalid`;
+motor control still starts. See the
+[CLI contract](cli_contract.md#terminal-wiring-declarations) and
+[bench I/O](bench_io.md#firmware-support).
+
 After inspecting the current port and retaining the existing firmware/build
 information needed to restore it, the example can be uploaded explicitly:
 

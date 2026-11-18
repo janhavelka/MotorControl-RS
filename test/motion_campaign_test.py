@@ -559,9 +559,11 @@ class RepeatCampaignTest(unittest.TestCase):
 
 class SelectingConsole(FakeConsole):
     """Selected target and profile snapshot for the explicit drive selection."""
-    def __init__(self, *, selected=1, saved=True, restored=True, changed=False, **kwargs):
+    def __init__(self, *, selected=1, saved=True, restored=True, changed=False, boards=None, fixture="absent", **kwargs):
         super().__init__(**kwargs)
         self.selected = selected
+        self.boards = boards or {}  # Board declaration per address; absent addresses are unlisted.
+        self.fixture = fixture
         self.profile = dict(ok=True, pending=False, restore_unsettled=False, saved=saved, restored=restored,
                             session_ok=True, error="none", original=[30, 100, 100, 60, 0, 0],
                             current=[30, 300, 100, 60, 0, 0] if changed else [30, 100, 100, 60, 0, 0])
@@ -569,7 +571,11 @@ class SelectingConsole(FakeConsole):
     def command(self, name, **kwargs):
         if name == "wiring":
             self.calls.append((name, kwargs))
-            return dict(ok=True, target=self.selected, address=self.selected)
+            item = dict(ok=True, target=self.selected, address=self.selected,
+                        board=self.boards.get(self.selected), fixture=self.fixture)
+            if self.fixture == "invalid":
+                item["fixture_error"] = "duplicate_address"
+            return item
         if name == "useaddr":
             self.calls.append((name, kwargs))
             self.selected = kwargs["address"]
@@ -623,6 +629,66 @@ class DriveSelectionTest(unittest.TestCase):
         self.assertFalse(record["changed"])
         self.assertEqual(len([kw for kw in same.commands("wiring") if kw.get("host_args")]), 6)
         self.assertEqual(same.commands("useaddr"), [])
+
+    BENCH_BOARDS = {1: dict(inputs=[2, 2, 2, 2], outputs=[1, 1]), 2: dict(inputs=[2, 2, 2, 2], outputs=[1, 1]),
+                    4: dict(inputs=[2, 2, 2, 2], outputs=[2, 1])}
+
+    def test_declare_unconnected_refused_over_board_connected_terminals(self):
+        # Same drive: refused before any declaration.
+        same = SelectingConsole(selected=1, boards=self.BENCH_BOARDS, fixture="applied")
+        with self.assertRaisesRegex(campaign.BenchError, "board declares connected terminals on drive 1"):
+            campaign.select_drive(same, 1, declare_unconnected=True)
+        self.assertEqual([kw for kw in same.commands("wiring") if kw.get("host_args")], [])
+        self.assertEqual(same.commands("read-identity"), [])
+        # Another drive: refused after the local selection, before any declaration or read.
+        other = SelectingConsole(selected=1, boards=self.BENCH_BOARDS, fixture="applied")
+        with self.assertRaisesRegex(campaign.BenchError, "drive 4"):
+            campaign.select_drive(other, 4, declare_unconnected=True)
+        self.assertEqual([kw for kw in other.commands("wiring") if kw.get("host_args")], [])
+        self.assertEqual(other.commands("read-identity"), [])
+        self.assertEqual(other.commands("read-config"), [])
+        # Without declare_unconnected the same selection proceeds and declares nothing.
+        plain = SelectingConsole(selected=1, boards=self.BENCH_BOARDS, fixture="applied")
+        self.assertTrue(campaign.select_drive(plain, 4)["changed"])
+        self.assertEqual([kw for kw in plain.commands("wiring") if kw.get("host_args")], [])
+
+    def test_declare_unconnected_checks_the_board_not_the_current_source(self):
+        # A host override already made X3 unknown; the board still says connected.
+        console = SelectingConsole(selected=2, boards=self.BENCH_BOARDS, fixture="applied")
+        original = console.command
+        def overridden(name, **kwargs):
+            item = original(name, **kwargs)
+            if name == "wiring" and not kwargs.get("host_args"):
+                item.update(inputs=[2, 2, 2, 0], sources=["board", "board", "board", "host", "board", "board"])
+            return item
+        console.command = overridden
+        with self.assertRaisesRegex(campaign.BenchError, "board declares connected"):
+            campaign.select_drive(console, 2, declare_unconnected=True)
+        self.assertEqual([kw for kw in console.commands("wiring") if kw.get("host_args")], [])
+
+    def test_declare_unconnected_refused_with_invalid_table_and_old_images(self):
+        invalid = SelectingConsole(selected=1, fixture="invalid")
+        with self.assertRaisesRegex(campaign.BenchError, "invalid .duplicate_address."):
+            campaign.select_drive(invalid, 1, declare_unconnected=True)
+        self.assertEqual([kw for kw in invalid.commands("wiring") if kw.get("host_args")], [])
+        old = SelectingConsole(selected=1)
+        original = old.command
+        def legacy(name, **kwargs):
+            item = original(name, **kwargs)
+            if name == "wiring":
+                item.pop("board"); item.pop("fixture")
+            return item
+        old.command = legacy
+        with self.assertRaisesRegex(campaign.BenchError, "lacks the board declaration"):
+            campaign.select_drive(old, 1, declare_unconnected=True)
+
+    def test_declare_unconnected_admitted_without_a_board_entry(self):
+        for fixture, boards in (("absent", {}), ("applied", {1: dict(inputs=[2] * 4, outputs=[1, 1])})):
+            console = SelectingConsole(selected=1, boards=boards, fixture=fixture)
+            record = campaign.select_drive(console, 3, declare_unconnected=True)
+            self.assertIsNone(record["board"])
+            calls = [kw.get("host_args") for kw in console.commands("wiring") if kw.get("host_args")]
+            self.assertEqual(calls, [(t, "unconnected") for t in ("x0", "x1", "x2", "x3", "y0", "y1")])
 
     def test_same_drive_needs_no_selection_change(self):
         console = SelectingConsole(selected=2)

@@ -219,8 +219,14 @@ struct App {
     ESS::DriverObservation controlSettings;
     ESS::DriverObservation tuningSettings[4]; // One baseline per actual group; old results retain their own context.
     ESS::DriverObservation segmentSettings; // One bounded record baseline; selecting another replaces this cache only.
-    MotorControlRS::InputWiring inputWiring[4];
+    MotorControlRS::InputWiring inputWiring[4]; // Effective session declaration of the selected axis.
     MotorControlRS::InputWiring outputWiring[2];
+    WiringSource inputSources[4] = {}, outputSources[2] = {}; // Where each effective value came from.
+    // Board declaration: validated once in the constructor, never written afterwards.
+    FixtureState fixtureState = FixtureState::ABSENT;
+    const char* fixtureError = nullptr;
+    FixtureWiringEntry boardWiring[FIXTURE_WIRING_CAPACITY] = {};
+    uint8_t boardWiringCount = 0;
     ESS::DriverObservation driverObserved; // Scratch for whole-read publication/effects comparison.
     ESS::DriverPrerequisites driverPrerequisites; // PSRAM scratch; no large stack copies.
     IoQualification ioQualifications[6]; // One purpose and candidate per terminal.
@@ -309,6 +315,7 @@ struct App {
         Probe::StateCache state;
         Probe::GroupReference coordinate; ///< Explicit caller witness bound to this member's checked reads.
         MotorControlRS::InputWiring inputWiring[4] = {}, outputWiring[2] = {};
+        WiringSource inputSources[4] = {}, outputSources[2] = {};
         IoQualification ioQualifications[4]; // Member inputs never borrow selected-axis facts.
         bool startSpeedRelationRequired = false; ///< This drive needs a relation that group moves cannot supply.
         StageSession stage;
@@ -342,6 +349,7 @@ struct App {
         // Task-context scratch: nothing sized by the capacity lives on the loop stack.
         Probe::GroupCommand command; ///< Public API requests.
         MotorControlRS::InputWiring keptInputs[Probe::GROUP_CAPACITY][4], keptOutputs[Probe::GROUP_CAPACITY][2];
+        WiringSource keptInputSources[Probe::GROUP_CAPACITY][4], keptOutputSources[Probe::GROUP_CAPACITY][2];
         uint32_t stopIds[Probe::GROUP_CAPACITY];
         Probe::Action stopAdmissions[Probe::GROUP_CAPACITY];
     } group;
@@ -369,9 +377,40 @@ struct App {
         simple.desired.stepsPerTurn = MotorControlRS::Rational(commandScale.numerator, commandScale.denominator);
         persistencePrerequisites.maxAgeUs = observationAgeUs();
         axis.supportedRelativeBases = 1;
-        // Application bench declaration: only power/RS485, no terminal wiring.
-        for (auto& wiring : inputWiring) wiring = MotorControlRS::InputWiring::UNCONNECTED;
-        for (auto& wiring : outputWiring) wiring = MotorControlRS::InputWiring::UNCONNECTED;
+        if (options.fixtureWiringSupplied) {
+            fixtureError = fixtureWiringError(options.fixtureWiring, options.fixtureWiringCount);
+            fixtureState = fixtureError ? FixtureState::INVALID : FixtureState::APPLIED;
+            if (!fixtureError) {
+                boardWiringCount = options.fixtureWiringCount;
+                for (uint8_t i = 0; i < boardWiringCount; ++i) boardWiring[i] = options.fixtureWiring[i];
+            }
+        }
+        // Part of the initial state: no invalidation, so the boot origin stays.
+        // Without a table the legacy declaration is every terminal UNCONNECTED.
+        initialWiring(axis.target.address, MotorControlRS::InputWiring::UNCONNECTED,
+                      inputWiring, outputWiring, inputSources, outputSources);
+    }
+    /** Board declaration of one address; unlisted when the table is absent,
+     * invalid or has no entry for it. */
+    BoardWiring boardDeclaration(uint8_t address) const {
+        BoardWiring board;
+        if (fixtureState == FixtureState::APPLIED)
+            board.listed = fixtureWiringFor(boardWiring, boardWiringCount, address, board.inputs, board.outputs);
+        return board;
+    }
+    /** Declaration an address starts with at boot, after `useaddr` or as a new
+     * group member: the board table for a listed address, fallback (the legacy
+     * default) otherwise, and UNKNOWN everywhere when the table is invalid. */
+    void initialWiring(uint8_t address, MotorControlRS::InputWiring fallback,
+                       MotorControlRS::InputWiring* inputs, MotorControlRS::InputWiring* outputs,
+                       WiringSource* inputOrigin, WiringSource* outputOrigin) const {
+        const BoardWiring board = boardDeclaration(address);
+        WiringSource source = board.listed ? WiringSource::BOARD : WiringSource::APPLICATION_DEFAULT;
+        if (fixtureState == FixtureState::INVALID) {
+            fallback = MotorControlRS::InputWiring::UNKNOWN; source = WiringSource::INVALID_TABLE;
+        }
+        for (uint8_t i = 0; i < 4; ++i) { inputs[i] = board.listed ? board.inputs[i] : fallback; inputOrigin[i] = source; }
+        for (uint8_t i = 0; i < 2; ++i) { outputs[i] = board.listed ? board.outputs[i] : fallback; outputOrigin[i] = source; }
     }
 };
 App* app = nullptr;
@@ -3504,23 +3543,34 @@ Probe::Action selectTarget(void* context, uint8_t address) {
     a.positionStartSpeedRelation = PositionStartSpeedRelation();
     a.commissioningConfirmedGeneration = a.persistenceConfirmedGeneration = 0;
     a.persistenceBaselineKnown = false;
-    for (auto& wiring : a.inputWiring) wiring = InputWiring::UNKNOWN;
-    for (auto& wiring : a.outputWiring) wiring = InputWiring::UNKNOWN;
+    // The new address starts from the board table, or UNKNOWN without an entry.
+    // A host override of the previous address does not carry over.
+    a.initialWiring(address, InputWiring::UNKNOWN, a.inputWiring, a.outputWiring, a.inputSources, a.outputSources);
     invalidateSerialConfidence(a, nowUs());
     // Historical contexts and physical uncertainty belong to their original
     // endpoint. Rebinding creates no traffic and does not release either.
     return Probe::Action::OK;
 }
-Probe::Action wiring(void* context, const Probe::WiringRequest* requested, Probe::WiringSnapshot& out) {
-    using MotorControlRS::InputWiring;
-    App& a = *static_cast<App*>(context);
+void copyWiringState(const App& a, Probe::WiringSnapshot& out) {
     out.target = a.axis.target; out.configurationGeneration = a.axis.generation;
     std::memcpy(out.inputs, a.inputWiring, sizeof(out.inputs));
     std::memcpy(out.outputs, a.outputWiring, sizeof(out.outputs));
+    std::memcpy(out.inputSources, a.inputSources, sizeof(out.inputSources));
+    std::memcpy(out.outputSources, a.outputSources, sizeof(out.outputSources));
+    out.board = a.boardDeclaration(a.axis.target.address);
+    out.fixture = a.fixtureState; out.fixtureError = a.fixtureError;
+}
+Probe::Action wiring(void* context, const Probe::WiringRequest* requested, Probe::WiringSnapshot& out) {
+    using MotorControlRS::InputWiring;
+    App& a = *static_cast<App*>(context);
+    copyWiringState(a, out);
     if (!requested) return Probe::Action::OK;
     if (requested->terminal >= 6 || requested->state > InputWiring::CONNECTED) return Probe::Action::INVALID;
     auto& declaration = requested->terminal < 4 ? a.inputWiring[requested->terminal] :
         a.outputWiring[requested->terminal - 4];
+    auto& source = requested->terminal < 4 ? a.inputSources[requested->terminal] :
+        a.outputSources[requested->terminal - 4];
+    // An unchanged value keeps its source and its dependent evidence.
     if (declaration == requested->state) return Probe::Action::OK;
     if (a.serial.configuring || a.owner.configurationOwned() || a.owner.commissioningOwned() ||
         a.discovery.owned || a.owner.active() || a.owner.pending() || a.owner.recovering() ||
@@ -3530,6 +3580,7 @@ Probe::Action wiring(void* context, const Probe::WiringRequest* requested, Probe
         a.motionProfile.request.owner || groupSequencing(a)) return Probe::Action::BUSY;
     if (!a.axis.generation || a.axis.generation == UINT32_MAX) return Probe::Action::IDS_EXHAUSTED;
     declaration = requested->state;
+    source = WiringSource::HOST; // Also when the value returns to the board's: the board copy is separate.
     invalidateAxis(a);
     clearIoQualifications(a, a.axis.target.address); a.positionClearQualification = PositionClearQualification();
     a.movePrerequisites = ESS::MovePrerequisites(); a.velocityPrerequisites = ESS::VelocityPrerequisites();
@@ -3537,9 +3588,7 @@ Probe::Action wiring(void* context, const Probe::WiringRequest* requested, Probe
     for (auto& block : a.stateCache.blocks) block.invalidatedUs = nowUs();
     // This changes an application declaration only. Drive assignments, binding,
     // stored settings and historical results keep their original evidence.
-    out.configurationGeneration = a.axis.generation;
-    std::memcpy(out.inputs, a.inputWiring, sizeof(out.inputs));
-    std::memcpy(out.outputs, a.outputWiring, sizeof(out.outputs));
+    copyWiringState(a, out);
     return Probe::Action::OK;
 }
 bool discoveryStopPending(const App& a) {
@@ -4261,6 +4310,20 @@ MotorControlRS::Status declareGroupWiring(uint8_t address, uint8_t terminal, Mot
     auto* command = groupRequest(Probe::GroupCommandKind::WIRING);
     if (command) { command->address = address; command->terminal = terminal; command->wiring = state; }
     return submitGroup(command, nullptr, "group wiring declaration not admitted");
+}
+MotorControlRS::Status declareWiring(uint8_t terminal, MotorControlRS::InputWiring state) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    Probe::WiringRequest request; request.terminal = terminal; request.state = state;
+    Probe::WiringSnapshot ignored;
+    const auto result = wiring(app, &request, ignored);
+    if (result != Probe::Action::OK)
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(result), "wiring declaration not admitted");
+    return Ok();
+}
+bool copyWiring(Probe::WiringSnapshot& output) {
+    if (!app) return false;
+    copyWiringState(*app, output); return true;
 }
 bool inspectGroup(Probe::GroupView& output) {
     if (!app) return false;

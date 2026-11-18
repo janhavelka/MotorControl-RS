@@ -19,6 +19,10 @@ SPEC = importlib.util.spec_from_file_location("bench_probe", ROOT / "scripts/ben
 bench = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(bench)
 
+# Fixture keys of a wiring reply from an image with the board table. "host" is
+# consistent with any declared value when no board table is present.
+WIRING_KEYS = dict(sources=["host"] * 6, board=None, fixture="absent")
+
 
 class EvidenceImports(unittest.TestCase):
     def test_error_and_helpers_have_one_identity_across_supported_imports(self):
@@ -62,6 +66,7 @@ class ForbiddenSession(importlib.abc.MetaPathFinder):
         if fullname.split(".")[0] in {"bench_probe", "serial"}:
             raise AssertionError("pure evidence imported session/serial")
 sys.meta_path.insert(0, ForbiddenSession())
+
 def forbidden(*args, **kwargs):
     raise AssertionError("pure evidence performed file/clock I/O")
 builtins.open = forbidden
@@ -1362,7 +1367,7 @@ class Framing(unittest.TestCase):
         def handler(i, command, args):
             if command == "wiring":
                 return encoded(reply(i, command, result="done", target=17, address=1, generation=9,
-                                     configuration_generation=3, inputs=[2, 0, 0, 0], outputs=[0] * 2, bus_traffic=False))
+                                     configuration_generation=3, inputs=[2, 0, 0, 0], outputs=[0] * 2, bus_traffic=False, **WIRING_KEYS))
             if command == "home" and args[:1] == ["qualification"]:
                 return encoded(install(i) if install else reply(i, "home-qualification-install", result="done"))
             if not homed and (command == "read" or (command == "home" and args[:1] == ["read"])):
@@ -3712,7 +3717,7 @@ class Framing(unittest.TestCase):
                 terminal, disposition = bench.wiring_arguments(tuple(args))
                 (inputs if terminal[0] == "x" else outputs)[int(terminal[1])] = disposition
             return encoded(reply(i, command, result="done", target=17, address=1, generation=9,
-                configuration_generation=3, inputs=inputs, outputs=outputs, bus_traffic=False))
+                configuration_generation=3, inputs=inputs, outputs=outputs, bus_traffic=False, **WIRING_KEYS))
         console = self.session(handler)
         self.assertEqual(console.command("wiring", host_args=())["inputs"], [0] * 4)
         for terminal in ("x0", "x1", "x2", "x3", "y0", "y1"):
@@ -3803,7 +3808,7 @@ class Framing(unittest.TestCase):
                 if command != "wiring": return Serial.normal(i, command, args)
                 return encoded(reply(i, command, result="done", target=number, address=address,
                     generation=number, configuration_generation=number, inputs=[0, 1, 2, 0],
-                    outputs=[1, 2], bus_traffic=False))
+                    outputs=[1, 2], bus_traffic=False, **WIRING_KEYS))
             console = self.session(handler)
             result = console.command("wiring", host_args=())
             self.assertEqual(result["target"], number)
@@ -3816,7 +3821,7 @@ class Framing(unittest.TestCase):
         def handler(i, command, args):
             if command != "wiring": return Serial.normal(i, command, args)
             return encoded(reply(i, command, result="done", target=1, address=1, generation=9,
-                configuration_generation=0, inputs=[0] * 4, outputs=[0] * 2, bus_traffic=False))
+                configuration_generation=0, inputs=[0] * 4, outputs=[0] * 2, bus_traffic=False, **WIRING_KEYS))
         console = self.session(handler)
         self.assertEqual(console.command("wiring", host_args=())["configuration_generation"], 0)
         self.assertFalse(console.operations)
@@ -3836,7 +3841,7 @@ class Framing(unittest.TestCase):
             def handler(i, command, args):
                 if command != "wiring": return Serial.normal(i, command, args)
                 item = reply(i, command, result="done", target=1, address=1, generation=9,
-                    configuration_generation=3, inputs=[0] * 4, outputs=[0] * 2, bus_traffic=False)
+                    configuration_generation=3, inputs=[0] * 4, outputs=[0] * 2, bus_traffic=False, **WIRING_KEYS)
                 item.update(fields)
                 return encoded(item)
             console = self.session(handler)
@@ -3847,13 +3852,52 @@ class Framing(unittest.TestCase):
             with self.assertRaises(bench.BenchError): console.command("wiring", host_args=())
             self.assertEqual(len(self.port.writes), 2)
 
+    def test_wiring_board_fixture_keys_are_checked(self):
+        board = dict(inputs=[2, 2, 2, 2], outputs=[2, 1])
+        applied = dict(inputs=[2, 2, 2, 0], outputs=[2, 1], sources=["board", "board", "board", "host", "board", "board"],
+                       board=board, fixture="applied")
+        invalid = dict(inputs=[0, 0, 0, 2], outputs=[0, 0], sources=["invalid_table"] * 3 + ["host"] + ["invalid_table"] * 2,
+                       board=None, fixture="invalid", fixture_error="duplicate_address")
+        unlisted = dict(inputs=[0] * 4, outputs=[0] * 2, sources=["default"] * 6, board=None, fixture="applied")
+        def session(fields):
+            def handler(i, command, args):
+                if command != "wiring": return Serial.normal(i, command, args)
+                return encoded(reply(i, command, result="done", target=4, address=4, generation=9,
+                    configuration_generation=3, bus_traffic=False, **fields))
+            return self.session(handler)
+        for fields in (applied, invalid, unlisted, dict(WIRING_KEYS, inputs=[1] * 4, outputs=[1] * 2)):
+            result = session(fields).command("wiring", host_args=())
+            self.assertEqual(result["sources"], fields["sources"])
+            self.assertEqual(result["board"], fields["board"])
+            self.assertTrue(bench.board_declares_connected(result) == (fields["board"] is not None))
+        older = dict(inputs=[1] * 4, outputs=[1] * 2)
+        bad = [(older, "older than the board fixture table"),
+               (dict(applied, sources=applied["sources"][:5]), "declaration source"),
+               (dict(applied, sources=["board"] * 5 + ["somewhere"]), "declaration source"),
+               (dict(applied, sources=["board"] * 6), "board source without the board value"),
+               (dict(applied, board=dict(inputs=[2, 2, 2, 0], outputs=[2, 1])), "invalid board declaration"),
+               (dict(applied, board=dict(inputs=[2, 2, 2, 2])), "invalid board declaration"),
+               (dict(applied, fixture="installed"), "unknown fixture state"),
+               (dict(applied, fixture_error="duplicate_address"), "validation error without an invalid table"),
+               (dict(invalid, fixture_error=None), "invalid table without its validation error"),
+               (dict(invalid, board=board), "invalid table with board"),
+               (dict(invalid, sources=["default"] * 6, inputs=[0] * 4), "invalid table with board or default"),
+               (dict(invalid, inputs=[1, 0, 0, 2]), "invalid table source with a declared value"),
+               (dict(unlisted, inputs=[2, 0, 0, 0]), "default source with a connected value"),
+               (dict(unlisted, sources=["board"] * 6), "board source without the board value"),
+               (dict(applied, sources=["default"] + applied["sources"][1:], inputs=[0, 2, 2, 0]), "listed address with default"),
+               (dict(WIRING_KEYS, inputs=[0] * 4, outputs=[0] * 2, sources=["invalid_table"] * 6), "absent table")]
+        for fields, message in bad:
+            with self.subTest(fields=fields), self.assertRaisesRegex(bench.BenchError, message):
+                session(fields).command("wiring", host_args=())
+
     def test_wiring_refusal_preserves_returned_declarations(self):
         for refusal in ("busy", "invalid", "ids_exhausted"):
             def handler(i, command, args):
                 if command != "wiring": return Serial.normal(i, command, args)
                 return encoded(reply(i, command, ok=False, result=refusal, target=1, address=1,
                     generation=9, configuration_generation=0 if refusal == "ids_exhausted" else 3, inputs=[0] * 4, outputs=[0] * 2,
-                    bus_traffic=False))
+                    bus_traffic=False, **WIRING_KEYS))
             console = self.session(handler)
             result = console.command("wiring", host_args=("x0", "connected"))
             self.assertFalse(result["ok"])
@@ -6455,7 +6499,7 @@ GROUP_MOVE_TERMINAL = json.loads('{"type":"group","profile":"ess_rs","id":3,"com
 GROUP_MOVE_SEQUENTIAL = json.loads('{"type":"group","profile":"ess_rs","id":9,"command":"group-move","command_id":9,"operation_id":20,"group_kind":"move","ok":true,"state":"succeeded","declaration":1,"binding_generation":1,"aborted":false,"failed_address":0,"started_us":398058,"finished_us":504673,"count":3,"request":{"relative":true,"value":[50,1],"unit":"steps","frame":0,"speed_rpm":60,"setup":"write","start":"sequential"},"on_failure":"leave","start_tx_spread_us":35158,"running_bound_spread_us":33667,"members":[{"address":1,"operation_id":21,"admission":"admitted","status":"OK","detail":0,"start":"started","state":"succeeded","outcome":"observed","execution":"acknowledged","setup_execution":"acknowledged","completion":"observed","uncertain":false,"interrupted_by_stop":false,"effective_native":50,"start_tx_complete":true,"start_tx_end_us":410636,"start_tx_uncertainty_us":22,"running_observed":true,"running_earliest_us":443210,"running_latest_us":443234,"stop_operation_id":0,"stop_admission":"not_attempted","stop_state":"empty","stop_execution":"not_transmitted","stop_completion":"not_observed","stage":"not_attempted","stage_execution":"not_transmitted","stage_readback":"not_read","stage_tx_complete":false,"stage_tx_end_us":0,"stage_read_latest_us":0,"stage_status":"OK","stage_detail":0},{"address":2,"operation_id":22,"admission":"admitted","status":"OK","detail":0,"start":"started","state":"succeeded","outcome":"observed","execution":"acknowledged","setup_execution":"acknowledged","completion":"observed","uncertain":false,"interrupted_by_stop":false,"effective_native":50,"start_tx_complete":true,"start_tx_end_us":425686,"start_tx_uncertainty_us":22,"running_observed":true,"running_earliest_us":455326,"running_latest_us":455350,"stop_operation_id":0,"stop_admission":"not_attempted","stop_state":"empty","stop_execution":"not_transmitted","stop_completion":"not_observed","stage":"not_attempted","stage_execution":"not_transmitted","stage_readback":"not_read","stage_tx_complete":false,"stage_tx_end_us":0,"stage_read_latest_us":0,"stage_status":"OK","stage_detail":0},{"address":4,"operation_id":23,"admission":"admitted","status":"OK","detail":0,"start":"started","state":"succeeded","outcome":"observed","execution":"acknowledged","setup_execution":"acknowledged","completion":"observed","uncertain":false,"interrupted_by_stop":false,"effective_native":50,"start_tx_complete":true,"start_tx_end_us":445794,"start_tx_uncertainty_us":22,"running_observed":true,"running_earliest_us":476853,"running_latest_us":476877,"stop_operation_id":0,"stop_admission":"not_attempted","stop_state":"empty","stop_execution":"not_transmitted","stop_completion":"not_observed","stage":"not_attempted","stage_execution":"not_transmitted","stage_readback":"not_read","stage_tx_complete":false,"stage_tx_end_us":0,"stage_read_latest_us":0,"stage_status":"OK","stage_detail":0}],"host_serial":{"known":true,"baud":115200,"format":"8N1","generation":1}}')
 GROUP_STOP_TERMINAL = json.loads('{"type":"group","profile":"ess_rs","id":10,"command":"group-stop","command_id":10,"operation_id":24,"group_kind":"stop","ok":true,"state":"succeeded","declaration":1,"binding_generation":1,"aborted":false,"failed_address":0,"started_us":2559056,"finished_us":2596423,"count":3,"stop_policy":"fast","members":[{"address":1,"operation_id":25,"admission":"admitted","status":"OK","detail":0,"state":"succeeded","outcome":"observed","execution":"acknowledged","completion":"observed","uncertain":false,"raw_alarm":0,"raw_motion":1},{"address":2,"operation_id":26,"admission":"admitted","status":"OK","detail":0,"state":"succeeded","outcome":"observed","execution":"acknowledged","completion":"observed","uncertain":false,"raw_alarm":0,"raw_motion":1},{"address":4,"operation_id":27,"admission":"admitted","status":"OK","detail":0,"state":"succeeded","outcome":"observed","execution":"acknowledged","completion":"observed","uncertain":false,"raw_alarm":0,"raw_motion":1}],"host_serial":{"known":true,"baud":115200,"format":"8N1","generation":1}}')
 GROUP_READ_TERMINAL = json.loads('{"type":"group","profile":"ess_rs","id":11,"command":"group-read-state","command_id":11,"operation_id":28,"group_kind":"read_state","ok":true,"state":"succeeded","declaration":1,"binding_generation":1,"aborted":false,"failed_address":0,"started_us":5677458,"finished_us":5743261,"count":3,"members":[{"address":1,"operation_id":29,"admission":"admitted","status":"OK","detail":0,"read_state":"succeeded","state_known":true,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0},{"address":2,"operation_id":30,"admission":"admitted","status":"OK","detail":0,"read_state":"succeeded","state_known":true,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0},{"address":4,"operation_id":31,"admission":"admitted","status":"OK","detail":0,"read_state":"succeeded","state_known":true,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0}],"host_serial":{"known":true,"baud":115200,"format":"8N1","generation":1}}')
-GROUP_SHOW = json.loads('{"type":"reply","profile":"ess_rs","id":12,"command":"group-show","ok":true,"result":"done","bus_traffic":false,"capacity":15,"count":3,"declaration":1,"binding_generation":1,"sequencing":false,"operations":{"set":1,"read_state":28,"move":20,"stops":[24,0]},"members":[{"address":1,"target":1,"generation":1,"configuration_generation":1,"current":true,"identity_known":true,"raw_model":20202,"raw_version":41,"raw_active_node":1,"config_known":true,"profile_known":true,"profile":[10,100,100,60,0,0],"inputs":[0,0,0,0],"outputs":[0,0],"start_speed_relation_required":false},{"address":2,"target":2,"generation":1,"configuration_generation":1,"current":true,"identity_known":true,"raw_model":20202,"raw_version":41,"raw_active_node":2,"config_known":true,"profile_known":true,"profile":[10,100,100,60,0,0],"inputs":[0,0,0,0],"outputs":[0,0],"start_speed_relation_required":false},{"address":4,"target":4,"generation":1,"configuration_generation":1,"current":true,"identity_known":true,"raw_model":20202,"raw_version":41,"raw_active_node":4,"config_known":true,"profile_known":true,"profile":[10,100,100,60,0,0],"inputs":[1,0,0,0],"outputs":[0,0],"start_speed_relation_required":false}]}')
+GROUP_SHOW = json.loads('{"type":"reply","profile":"ess_rs","id":12,"command":"group-show","ok":true,"result":"done","bus_traffic":false,"capacity":15,"count":3,"declaration":1,"binding_generation":1,"sequencing":false,"operations":{"set":1,"read_state":28,"move":20,"stops":[24,0]},"members":[{"address":1,"target":1,"generation":1,"configuration_generation":1,"current":true,"identity_known":true,"raw_model":20202,"raw_version":41,"raw_active_node":1,"config_known":true,"profile_known":true,"profile":[10,100,100,60,0,0],"inputs":[0,0,0,0],"outputs":[0,0],"start_speed_relation_required":false,"input_sources":["default","default","default","default"],"output_sources":["default","default"],"board":null},{"address":2,"target":2,"generation":1,"configuration_generation":1,"current":true,"identity_known":true,"raw_model":20202,"raw_version":41,"raw_active_node":2,"config_known":true,"profile_known":true,"profile":[10,100,100,60,0,0],"inputs":[0,0,0,0],"outputs":[0,0],"start_speed_relation_required":false,"input_sources":["default","default","default","default"],"output_sources":["default","default"],"board":null},{"address":4,"target":4,"generation":1,"configuration_generation":1,"current":true,"identity_known":true,"raw_model":20202,"raw_version":41,"raw_active_node":4,"config_known":true,"profile_known":true,"profile":[10,100,100,60,0,0],"inputs":[1,0,0,0],"outputs":[0,0],"start_speed_relation_required":false,"input_sources":["default","default","default","default"],"output_sources":["default","default"],"board":null}]}')
 GROUP_STATUS = json.loads('{"type":"reply","profile":"ess_rs","id":13,"command":"group-status","ok":true,"result":"done","bus_traffic":false,"capacity":15,"count":3,"declaration":1,"binding_generation":1,"sequencing":false,"operations":{"set":1,"read_state":28,"move":20,"stops":[24,0]},"members":[{"address":1,"current":true,"motion_fresh":true,"io_fresh":true,"feedback_fresh":true,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0,"age_ms":3211,"settling":false,"settle_until_us":0,"reserved":false},{"address":2,"current":true,"motion_fresh":true,"io_fresh":true,"feedback_fresh":true,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0,"age_ms":3189,"settling":false,"settle_until_us":0,"reserved":false},{"address":4,"current":true,"motion_fresh":false,"io_fresh":false,"feedback_fresh":false,"raw_alarm":0,"raw_motion":1,"raw_inputs":0,"position_known":true,"raw_position":0,"age_ms":null,"settling":false,"settle_until_us":0,"reserved":false}]}')
 GROUP_MOVE_ARGS = ("relative", "200", "steps", "native", "60", "configured", "on-failure", "leave")
 GROUP_SEQUENTIAL_ARGS = ("relative", "50") + GROUP_MOVE_ARGS[2:6] + ("start", "sequential") + GROUP_MOVE_ARGS[6:]
@@ -6538,6 +6582,31 @@ class DriveGroupRouteTests(unittest.TestCase):
             def mutate(item, fields=fields): item.update(fields)
             console = self.session(self.routed(self.TERMINALS, mutate))
             with self.subTest(fields=fields), self.assertRaises(bench.BenchError):
+                console.command("group-show")
+
+    def test_member_wiring_sources_and_board_are_checked(self):
+        def member(index, **fields):
+            def mutate(item):
+                item["members"][index].update(fields)
+            return mutate
+        def drop(index, key):
+            def mutate(item):
+                del item["members"][index][key]
+            return mutate
+        board = dict(inputs=[2, 2, 2, 2], outputs=[2, 1])
+        accepted = member(2, inputs=[2, 2, 2, 0], outputs=[2, 1], input_sources=["board", "board", "board", "host"],
+                          output_sources=["board", "board"], board=board)
+        show = self.session(self.routed(self.TERMINALS, accepted)).command("group-show")
+        self.assertEqual(show["members"][2]["board"], board)
+        self.assertEqual(show["members"][2]["input_sources"][3], "host")
+        for mutate, message in ((drop(0, "input_sources"), "older than the board fixture table"),
+                                (drop(1, "board"), "older than the board fixture table"),
+                                (member(0, input_sources=["default"] * 3), "invalid member wiring sources"),
+                                (member(0, output_sources=["default", "nowhere"]), "declaration source"),
+                                (member(2, input_sources=["board"] * 4), "board source without the board value"),
+                                (member(1, inputs=[2, 0, 0, 0]), "default source with a connected value")):
+            console = self.session(self.routed(self.TERMINALS, mutate))
+            with self.subTest(message=message), self.assertRaisesRegex(bench.BenchError, message):
                 console.command("group-show")
 
     def test_wiring_and_clear_replies_match_request(self):
@@ -7129,7 +7198,7 @@ class ProfileArchiveTests(unittest.TestCase):
         def handler(i,command,args):
             if command=="useaddr":return encoded(reply(i,command,result="done",operation_id=0,address=int(args[0])))
             if command=="wiring":return encoded(reply(i,command,result="done",target=1,address=1,generation=9,
-                configuration_generation=3,inputs=[1,0,0,0],outputs=[0,0],bus_traffic=False))
+                configuration_generation=3,inputs=[1,0,0,0],outputs=[0,0],bus_traffic=False, **WIRING_KEYS))
             if command=="read":
                 kind=args[0];item=typed_terminal(i,kind)
                 if kind=="config":
