@@ -160,10 +160,15 @@ unrated output switch if that wire is shorted.
 | X pin, all three drives | Board switch | Power-up function | Functions to test on it |
 | --- | --- | --- | --- |
 | 1 X0 | `mosfet1` | 1 origin | 7 position start, 11 home start, 12 PT trigger, 13 PV trigger, 1 origin |
-| 2 X1 | `relay1` | 2 positive limit | 2 positive limit, 14 PIN0, 4 release, 9 JOG+ |
-| 3 X2 | `relay2` | 3 negative limit | 3 negative limit, 15 PIN1, 10 JOG- |
+| 2 X1 | `relay2` (as wired) | 2 positive limit | 2 positive limit, 14 PIN0, 4 release, 9 JOG+ |
+| 3 X2 | `relay1` (as wired) | 3 negative limit | 3 negative limit, 15 PIN1, 10 JOG- |
 | 4 X3 | `mosfet2` | 0 none | 5 stop, 6 emergency stop, 16 PIN2, 4 release |
 | Drive 1 Y0 | `aux1` input | 0 none | 1 alarm, 2 running, 3 homed, 4 in position, 5 brake, 9 custom |
+
+The relays ended up swapped against the diagram: the 18 November input map
+found `relay2` on X1 and `relay1` on X2 on all three drives
+([record](reports/2026-11-18_bench_io_relay_check.md#wired-input-map)). Both are
+level signals, so the wiring stays as it is.
 
 Why this layout:
 

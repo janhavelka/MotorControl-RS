@@ -58,3 +58,46 @@ Evidence: `2026-11-18_io_map.jsonl`, `2026-11-18_bus_probe*.jsonl`,
 `2026-11-18_bus_recover_probe.jsonl`, `2026-11-18_flash_f7368a2_ab.log`,
 `2026-11-18_ab_f7368a2_probe.jsonl`, `2026-11-18_reflash_afe3588.log` and
 `2026-11-18_reflash_check.jsonl` under `build/bench/`.
+
+## Wired input map
+
+After the owner connected the RS485 bus, the +24 V feed to XCOM and the last
+I/O cable, each board output was switched on alone for about 0.3 s while the
+input status (`0x0008`) of drives 1, 2 and 4 was read; nothing else was
+written. All three drives were enabled, stopped and alarm-free at position 0
+(power-cycled), with power-up I/O words `[0,1,2,3,0,0,0,0,0]`.
+
+| Board output | Status bit on drives 1, 2 and 4 | Planned |
+| --- | --- | --- |
+| `mosfet1` | X0 (raw 1) | X0 |
+| `relay2` | X1 (raw 2) | X2 |
+| `relay1` | X2 (raw 4) | X1 |
+| `mosfet2` | X3 (raw 8) | X3 |
+
+Every bit cleared after its output turned off. The relays are swapped against
+the plan; the mapping is kept as wired. Earlier attempts in the same session
+read nothing: before the XCOM +24 V link was fitted no input registered, and
+drive 4 registered nothing until its I/O cable was connected.
+
+## Y0 search: the board input is held active
+
+The board input became active, with two bursts of edges (connector bounce), at
+the moment the last I/O cable was plugged in, and stayed active with no
+further edges.
+
+Each drive in turn (4, 1, 2) got wiring declarations, fresh reads, exact I/O
+qualification, `0x004C` (Y0) = 9 (custom 0), `0x004F` = 1, then `0x004F` = 0
+and `0x004C` = 0, each acknowledged and read back. With the custom bit set,
+the drive's output status read Y0 valid (raw 1) on every drive, but the board
+input stayed active with no edge on any of them. All three drives ended with
+I/O words `[0,1,2,3,0,0,0,0,0]`, stopped and alarm-free.
+
+So no drive's Y0 controls the board input in this wiring. The input is held
+active by a constant source, most likely its wire landing on a +24 V point
+(XCOM pin 5 or YCOM pin 8) in the last connected cable, which belongs to
+drive 4. Not yet measured. A first script attempt was refused before its
+second write (`reads_required`): it read state before settings after a
+setting change; the run above reads settings first.
+
+Evidence: `2026-11-18_io_map_2.jsonl` to `_4.jsonl`, `2026-11-18_io_all_on.jsonl`,
+`2026-11-18_y0_find.jsonl` and `2026-11-18_y0_find_2.jsonl` under `build/bench/`.
