@@ -37,8 +37,11 @@ The 8-pin I/O connector: 1 X0, 2 X1, 3 X2, 4 X3, 5 XCOM, 6 Y0, 7 Y1, 8 YCOM.
   last more than 10 ms. The internal resistor value is not documented.
 - **Outputs.** Each of Y0-Y1 is an opto-driven pair of back-to-back MOSFETs
   (a solid-state switch) between Yn and YCOM, so either polarity works. No
-  voltage or current rating is documented. Keep the load small; the board's
-  AUX input draws well under 1 mA.
+  voltage, current or off-state leakage rating is documented. On the bench
+  (18 November) an off Y0 still read about 23.7 V on a DMM against 24.9 V on,
+  so the off state leaks enough to look like a high-resistance path to YCOM
+  (about 0.5 MΩ if the DMM is 10 MΩ). A sensitive input needs a load resistor
+  to tell off from on; see the `AUX_DI1_24V` pull-down below.
 - **XCOM and YCOM.** The circuits and the port table show them as separate pins
   on separate isolated circuits; nothing connects them to each other or to the
   drive's power GND or RS485 RGND. This is documentation, not a measurement:
@@ -144,6 +147,15 @@ with three inputs per switch. A 1 kΩ resistor in the Y0 → `AUX_DI1_24V` wire 
 fine (that input draws about 0.3 mA) and limits current through the drive's
 unrated output switch if that wire is shorted.
 
+The board input also needs a **4.7 kΩ (0.25 W) pull-down from `AUX_DI1_24V`
+pin 2 to pin 1 (GND)**. That input switches at only about 1.6 V and 13 µA
+(29.4 kΩ plus the transistor's 47 kΩ/47 kΩ network), so the drive output's
+off-state leakage alone holds it active: measured on 18 November, it read
+active continuously and ignored Y0. With the pull-down, off leaves well under
+1 V at the terminal while on gives about 20 V and draws about 4.4 mA from Y0.
+After fitting it, an off output must read below 1 V at pin 2; if it does not,
+lower the pull-down to 2.2 kΩ.
+
 ```text
  shared 24 V supply
    +24 V ──fuse──┬── XCOM (pin 5) of drives 1, 2 and 4
@@ -153,7 +165,8 @@ unrated output switch if that wire is shorted.
           └── relay2 common, set 1 (selector jumper on GND); relay2 NO ── X2 (pin 3) of drives 1, 2 and 4
    MOSFET1 pin 2 (drain) ───────────────────────── X0 (pin 1) of drives 1, 2 and 4
    MOSFET2 pin 2 (drain) ───────────────────────── X3 (pin 4) of drives 1, 2 and 4
-   AUX_DI1_24V pin 2 ───────────────────────────── Y0 (pin 6) of drive 1
+   AUX_DI1_24V pin 2 ──1 kΩ─────────────────────── Y0 (pin 6) of drive 4 (as wired; plan was drive 1)
+   AUX_DI1_24V pin 2 ──4.7 kΩ── AUX_DI1_24V pin 1 (GND)
    Not connected: MOSFET pin 1 (VIN_PROT), drive 1 Y1, and Y0, Y1, YCOM of drives 2 and 4
 ```
 

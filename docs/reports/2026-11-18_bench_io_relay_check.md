@@ -101,3 +101,21 @@ setting change; the run above reads settings first.
 
 Evidence: `2026-11-18_io_map_2.jsonl` to `_4.jsonl`, `2026-11-18_io_all_on.jsonl`,
 `2026-11-18_y0_find.jsonl` and `2026-11-18_y0_find_2.jsonl` under `build/bench/`.
+
+## Y0 leakage
+
+The owner measured YCOM at 24 V and the Y0 wire through 1 kΩ to the board
+input. With that wire unplugged from the board, a DMM on it read about 24 V
+even with no output active. While drive 4's Y0 was switched as a custom output
+(8 s on, 8 s off, three cycles from 17:51:28 UTC) the DMM moved between about
+23.7 V and 24.9 V, so drive 4 is the drive whose Y0 is wired, and its output
+switches.
+
+The off state is therefore not an open circuit for a high-impedance load:
+23.7 V on a 10 MΩ meter means roughly 0.5 MΩ to YCOM (about 50 kΩ if the meter
+is 1 MΩ; its input impedance was not recorded). The board input switches at
+about 1.6 V and 13 µA, so that leakage alone holds it active, which matches
+the constant active reading above. The manual's output drawing (hardware
+manual p8) shows an opto-driven back-to-back MOSFET switch with no leakage or
+rating figures. Remedy: a 4.7 kΩ pull-down at the board input, keeping the
+1 kΩ series resistor; not yet fitted or retested.
