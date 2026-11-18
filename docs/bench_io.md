@@ -126,8 +126,20 @@ the coil temperature is known.
 
 Sinking (NPN) wiring on all three drives (addresses 1, 2 and 4): each drive's
 XCOM goes to +24 V, and each board switch pulls the same X pin of all three
-drives to 0 V. Fuse the +24 V feed to the I/O (for example 0.5 A). The 0 V side
-is already common because the board and drives share the supply.
+drives to 0 V. The 0 V side is already common because the board and drives
+share the supply. XCOM at +24 V is the manual's own NPN drawing (p8: VCC on
+XCOM, NPN transistors pulling X0-Xn low); at 24 V no external resistor is
+needed because the drive has its own.
+
+Protection: the inputs limit their own current (10-50 mA each), so a fuse only
+matters after a wiring mistake that bypasses an input, such as a signal wire
+touching +24 V. A 0.2-0.5 A fuse or PTC in the +24 V feed to the I/O is good
+practice. Without one, the circuit works the same; check every net with an
+ohmmeter before power-on instead (rule 3 below). Do not add series resistors in the X
+paths: they lower the input current below the manual's 10 mA minimum, more so
+with three inputs per switch. A 1 kΩ resistor in the Y0 → `AUX_DI1_24V` wire is
+fine (that input draws about 0.3 mA) and limits current through the drive's
+unrated output switch if that wire is shorted.
 
 ```text
  shared 24 V supply
@@ -193,17 +205,21 @@ PT/PV selection drops to two segments.
 1. Wire with the drives, the board and the 24 V I/O feed powered off.
 2. Confirm the shared supply is 24 V ([supply voltage](#supply-voltage)) and
    check XCOM/YCOM isolation on each drive.
-3. Remove relay common selector jumpers before any external wire goes on a
+3. Before power-on, measure each X net and the Y0 net against +24 V and 0 V
+   with an ohmmeter. A reading near 0 Ω is a short. Open, high or diode-like
+   readings are normal: the meter's low test voltage does not light the input
+   LEDs, and the MOSFET body diode and flyback diode conduct one way.
+4. Remove relay common selector jumpers before any external wire goes on a
    common. Here a GND jumper may replace the 0 V wire; never VIN_PROT.
-4. Before flashing or resetting the board, unassign trigger functions on all
+5. Before flashing or resetting the board, unassign trigger functions on all
    three drives or remove the I/O feed. Output levels during reset are not yet
    measured here.
-5. Input functions 8, 9, 10 and 13 run the motor at a speed with no end
+6. Input functions 8, 9, 10 and 13 run the motor at a speed with no end
    position. The bench hold (at most 60 s) and the stop rule below bound them,
    but they are not a hardwired stop. Run them attended and only with an
    explicit instruction, as [multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)
    requires.
-6. Declare wiring before assigning functions. `io set` keeps refusing connected
+7. Declare wiring before assigning functions. `io set` keeps refusing connected
    terminals without the matching `io qualification` facts.
 
 ## Firmware support
