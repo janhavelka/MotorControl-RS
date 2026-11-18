@@ -64,7 +64,8 @@ Wired I/O since 18 November: the board's relays (GPIO45/18) and MOSFETs
 `relay2` X1, `relay1` X2, `mosfet2` X3), and drive 4's Y0 is wired sinking to
 the isolated input (GPIO17), read inverted. Both mappings were checked on the
 bench ([record](reports/2026-11-18_bench_io_relay_check.md)). The board runs from
-the drives' supply; its voltage is not recorded. The terminals are therefore
+the drives' supply, which the owner measured at 24 V (Y0/YCOM readings
+24.7-24.9 V). The terminals are therefore
 **connected**: declare them so, and keep trigger functions unassigned unless a
 test needs them. Earlier "unconnected terminal" entries describe the older
 setup. Wiring, checks and the test plan are in the [bench I/O guide](bench_io.md).

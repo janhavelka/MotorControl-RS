@@ -352,8 +352,7 @@ more drives (now addresses 1, 2 and 4, star wiring).
   checked on 18 November ([record](reports/2026-11-18_bench_io_relay_check.md)).
 - [ ] Run the wired function tests in the [bench I/O test plan](bench_io.md#test-plan-once-wired)
   (status mapping, stop inputs, function 7, homing switches, limits, PT
-  segments, outputs, shared start). The shared supply voltage is still
-  unrecorded.
+  segments, outputs, shared start).
 - [ ] Start motion from a shared input edge: function 7 with a staged profile
   first (absolute mode preferred), then PT segments with PIN selection, the
   negative PV speed encoding, and observation and stop of input-started motion ([multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)).

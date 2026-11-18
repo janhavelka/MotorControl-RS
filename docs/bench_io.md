@@ -12,8 +12,8 @@ and [ESS I/O guide](ess_io.md) with it.
 
 Owner decisions, 16 November: the board runs from the same supply as the three
 drives (case A below), and the X inputs of drives 1, 2 and 4 will be wired in
-parallel, with only drive 1's Y0 wired back. The supply voltage is not yet
-recorded; this plan requires 24 V (see [supply voltage](#supply-voltage)).
+parallel, with one drive's Y0 wired back (drive 4, as wired). The owner
+measured the shared supply at 24 V (see [supply voltage](#supply-voltage)).
 
 ## Sources
 
