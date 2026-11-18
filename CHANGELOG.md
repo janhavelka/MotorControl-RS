@@ -33,8 +33,24 @@
   `bench_probe.install_input_facts`, `bench_scenarios.py --input-facts
   configure` and `motion-profile stage --input-facts configure`; the settings
   scenario refuses `input-filter` on a board-connected drive without it.
+- Wired-bench harness (wired bench 04, example tooling): `scripts/bench_records.py`
+  with the fixture description, declaration agreement, the shared-output
+  interlock (`bench_on`, truth table L1-L7, cases in
+  `test/line_isolation_cases.json`), `before_flash_check`, exclusive run
+  folders, scenario records, `result.json`, the offline checker
+  (`bench_records.py check FOLDER`: integrity and session success, exit 0/1/2),
+  per-field baseline comparison, restoration planning and restoration through
+  ordinary setters, capture and re-baselining, and interval correlation.
+  `bench_scenarios.py` scenarios `input-map`, `y0-map`, `baseline-compare`,
+  `baseline-capture` and `restore` with `--run-dir`; `run_recorded` takes the
+  folder layout and writes a console transcript.
 
 ### Changed
+
+- `bench_probe.py bench on` runs the shared-output interlock before the ON
+  (`io read` then `read state` per drive as the last bus traffic, no other
+  pending operation, a 1000 ms read-age backstop per decision D14;
+  `--max-age-ms` records another bound).
 
 - Refusals of the start-speed, homing-auxiliary, DRIVE, tuning-experiment,
   segment and profile-stage routes that were `unavailable` or `invalid` because

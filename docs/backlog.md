@@ -164,6 +164,20 @@ functional evidence; independent shaft calibration remains absent.
   ([report](reports/2026-11-18_wired_bench_03_connected_setters.md)), S01-S13
   PASS on drives 1 and 4 (stored-value evidence only), and 01's B11 and the
   specified B08 staged group moves PASS with restoration through the stage.
+- [x] Wired-bench harness: interlock, run folders, results and restoration
+  from the baseline ([wired bench 04](prompts/ess_wired_bench/04_bench_harness.md)).
+  Implementation: done. `scripts/bench_records.py` (interlock with the
+  line-isolation truth table, declaration agreement, `before_flash_check`, run
+  folders, `result.json`, the two-result checker, baseline comparison,
+  restoration planning and restoration through ordinary setters, capture and
+  re-baselining, correlation) and the `input-map`, `y0-map`,
+  `baseline-compare`, `baseline-capture` and `restore` scenarios. Hardware:
+  19 November ([report](reports/2026-11-19_wired_bench_04_harness.md)), H01-H09
+  PASS on the prompt 03 Arduino image, H01 and H08 at the default after
+  decision D14 (ordering as the primary guard, 1000 ms read-age backstop; the
+  earlier 300 ms default was measured unreachable at 419-424 ms). Prompt 08's
+  trigger applies the same rule and bound. Bench evidence of L3 (named running
+  member) belongs to prompt 07.
 - [x] Declare the fixture wiring at boot ([wired bench 02](prompts/ess_wired_bench/02_fixture_wiring_declarations.md)).
   Implementation: done. A validated board table (`BoardPins.h`, menuconfig)
   applies at boot, after `useaddr` and to new group members, with visible
@@ -380,7 +394,9 @@ more drives (now addresses 1, 2 and 4, star wiring).
   (status mapping, stop inputs, function 7, homing switches, limits, PT
   segments, outputs, shared start). They are prompts 05-16 of the
   [wired bench set](prompts/ess_wired_bench/README.md). The wiring map and
-  drive 4's Y0 map passed again in [wired bench 01](reports/2026-11-18_wired_bench_01_baseline.md);
+  drive 4's Y0 map passed again in [wired bench 01](reports/2026-11-18_wired_bench_01_baseline.md)
+  and as the `input-map`/`y0-map` harness scenarios in
+  [wired bench 04](reports/2026-11-19_wired_bench_04_harness.md);
   no drive input or output function has been tested through the wiring yet.
 - [ ] Start motion from a shared input edge: function 7 with a staged profile
   first (absolute mode preferred), then PT segments with PIN selection, the

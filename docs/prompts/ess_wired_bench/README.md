@@ -58,7 +58,7 @@ the owner stays Partial and the next ready prompt starts.
 | 01 | Complete | — (B11 and the specified B08 passed in 03's follow-up) | [2026-11-18](../../reports/2026-11-18_wired_bench_01_baseline.md), [follow-up](../../reports/2026-11-18_wired_bench_03_connected_setters.md#prompt-01-follow-up) |
 | 02 | Complete | 03: named refusal reasons (W05 reply carries only the result code) | [2026-11-18](../../reports/2026-11-18_wired_bench_02_fixture_wiring.md) |
 | 03 | Complete | — | [2026-11-18](../../reports/2026-11-18_wired_bench_03_connected_setters.md) |
-| 04 | Pending | — | — |
+| 04 | Complete | — (D14 interlock freshness applies to 08's trigger) | [2026-11-19](../../reports/2026-11-19_wired_bench_04_harness.md) |
 | 05 | Pending | — | — |
 | 06 | Pending | — | — |
 | 07 | Pending | — | — |
@@ -96,6 +96,7 @@ changes a row.
 | D11 | On the clamped free-shaft bench, rotation continuing until the controller, link or owner recovers is accepted exposure for deliberate fault cases; each case states it and verifies standstill afterwards | Lead, under D1 |
 | D12 | Raised limits are opt-in only (D6); legacy defaults stay the defaults. One production candidate table per setting is defined where the setting is widened (for example the deviation threshold in 15) and referenced, not redefined, by later prompts | Lead, under D3 |
 | D13 | Drive behavior that the application deliberately refuses to command (for example a start with a limit input held) is characterized only through a path the drive itself decides, such as a staged function-7 start triggered by a bench pulse; host admission is never bypassed and no experiment flag enters the production route | Lead, under D1 |
+| D14 | Shared-output interlock freshness (19 November, from 04's measurement). Within one controller, a drive's assignments or motion change between the interlock reads and the ON only through this controller's own traffic, a bench output or a drive restart. Ordering is the primary guard: the interlock's reads are the last bus traffic before the ON, an output already on refuses, and any accepted operation still pending other than the named running member's refuses. The read age is a 1000 ms backstop (measured worst case 424 ms through the console; the earlier 300 ms default had no hazard basis and is not met by the console path). Prompt 08's firmware trigger applies the same rule and bound to its own read times | Lead, under D1 |
 
 ## Superseded hardware work
 

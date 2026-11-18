@@ -4560,8 +4560,11 @@ def arguments(argv: list[str] | None) -> argparse.Namespace:
     sub.add_parser("probe", help="one model-register read and cached observations")
     host = sub.add_parser("host", help="one host-only serial query or explicit tuple change; no motor writes")
     host.add_argument("host_tokens", nargs="*")
-    bench = sub.add_parser("bench", help="bench fixture outputs/input: show | on OUTPUT HOLD_MS | off [OUTPUT] | clear; no motor traffic")
+    bench = sub.add_parser("bench", help="bench fixture outputs/input: show | on OUTPUT HOLD_MS | off [OUTPUT] | clear; "
+                                         "on runs the shared-output interlock first (fresh reads of drives 1, 2, 4)")
     bench.add_argument("bench_tokens", nargs="*")
+    bench.add_argument("--max-age-ms", type=int, default=1000,
+                       help="on: interlock read-age backstop in ms (default 1000, decision D14)")
     communication = sub.add_parser("communication", help="one explicit communication session action; no retries/save/restart")
     communication.add_argument("communication_tokens", nargs="*")
     persistence = sub.add_parser("persistence", help="one explicit save/restore session action; no retries or restart")
@@ -4870,7 +4873,17 @@ def main(argv: list[str] | None = None) -> int:
                         if not result["ok"]:
                             raise BenchError("host command failed: " + str(result.get("result")))
                     elif args.mode == "bench":
-                        result = console.command("bench", host_args=args.host_args, timeout_s=args.timeout)
+                        if args.host_args[:1] == ("on",):
+                            # Every harness ON goes through the shared-output interlock (wired bench 04).
+                            import bench_records
+                            interlock_record = {"max_age_ms": args.max_age_ms, "running_members": []}
+                            try:
+                                result = bench_records.bench_on(console, args.host_args[1], int(args.host_args[2]),
+                                                                interlock_record, timeout_s=args.timeout)
+                            finally:
+                                console.emit("interlock", entries=interlock_record.get("interlock", []))
+                        else:
+                            result = console.command("bench", host_args=args.host_args, timeout_s=args.timeout)
                         if not result["ok"]:
                             raise BenchError("bench command failed: " + str(result.get("result")))
                     elif args.mode == "host-check":

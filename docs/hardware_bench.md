@@ -104,6 +104,23 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+On 19 November [wired bench 04](reports/2026-11-19_wired_bench_04_harness.md)
+flashed nothing and reset nothing: the board still runs the prompt 03 Arduino
+image below (`FC96A712...BE51CD43`), whose firmware sources equal commit
+`7f95e46`. It ran the harness scenarios (H01-H09) from base `7f95e46` plus the
+uncommitted prompt 04 harness. Ending state:
+
+- **Board:** prompt 03 Arduino image, all bench outputs off (each turned on
+  twice, in the two H01 runs that switched), `aux1` active with 10 recorded
+  edges from H02, drive 1
+  selected with board declarations, group empty, debug off, COM13 closed.
+- **Drives 1/2/4:** enabled, stopped, alarm-free, raw positions
+  7,750/7,524/7,513 (unchanged), I/O `[0,1,2,3,0,0,0,0,0]`.
+- **Settings:** a fresh capture (H09) has the committed baseline's values and
+  dispositions for all 573 fields; every written field (drive 1 input filter,
+  drive 2 X3, drive 4 Y0 and custom) was restored and read back. Nothing was
+  saved; the drives were not restarted.
+
 On 18 November [wired bench 03](reports/2026-11-18_wired_bench_03_connected_setters.md)
 flashed `bench_s3_load_timer` built from base commit `c943b76` plus the
 uncommitted prompt 03 working tree (firmware source diff SHA-256
@@ -164,8 +181,13 @@ live identity and state (evidence, never restored), every settings read of
 18 November with its exact console line, operation ID and raw value, and one
 entry per settings field with its restoration route (setter, facts, readback,
 order, first admitting prompt) or the reason it has none. Comparison uses the
-captured value, never a printed default. Prompt 04 owns capture, comparison and
-re-baselining.
+captured value, never a printed default. Since
+[wired bench 04](reports/2026-11-19_wired_bench_04_harness.md) the harness
+compares (`baseline-compare`), captures (`baseline-capture`) and restores
+(`restore`) against it field by field, through ordinary setters only. The file
+changes only through `baseline-capture --reason TEXT --prompt NN`, committed
+with the report of the prompt that intended the change
+([rules](bench_scenarios.md#wired-bench-scenarios-and-run-folders)).
 
 Earlier sessions follow, newest first; before 18 November the terminals were unwired.
 
@@ -321,13 +343,23 @@ an acknowledgement is not completed motion. The [backlog](backlog.md) and
 3. Select a bounded [named scenario](bench_scenarios.md) or
    [finite motion check](functional_bench.md), with new evidence paths and explicit
    stop/restoration commands. Preserve firmware, settings, raw traffic, timing,
-   task/service gaps, errors and resource measurements.
+   task/service gaps, errors and resource measurements. Wired bench runs use one
+   run folder each, `build/bench/YYYY-MM-DD_wbNN_slug/`, whose scenario record
+   is written before the port opens; switch a bench output only through the
+   harness interlock (`bench_records.bench_on`).
 4. If a test fails, retain the failure and deliberately reproduce the scenario
    with bounded diagnostics sufficient to distinguish causes. Never automatically
    replay an uncertain motor write. A later pass or relaxed timeout is not a fix.
 5. Record confirmed stop, actual restored settings, owner/DE state, load/monitor/
    debug settings and port release. Preserve uncertainty when cleanup cannot be
    established. Independent physical observations remain separate from readback.
+   Check each run folder with `python scripts/bench_records.py check FOLDER`:
+   artifact integrity and session success are separate results; a run whose
+   test passed but whose restoration failed is not a successful session.
+6. Compare with the committed [restoration baseline](#restoration-baseline)
+   (`baseline-compare`) and restore differences (`restore`); re-baseline only
+   for an intended persistent change, a newly delivered route or an owner
+   change to the fixture or drives. An unexplained difference is a deviation.
 
 The [board reference](reference/04_esp32_bench.md),
 [Arduino guide](esp32_probe.md) and [native-IDF guide](esp_idf_probe.md) describe

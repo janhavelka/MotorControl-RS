@@ -1405,9 +1405,10 @@
           "docs/archive/reports/ess_release_15_2026-10-04.json",
           "docs/reports/2026-11-16_hil_regression.md",
           "docs/reports/2026-11-18_wired_bench_01_baseline.md",
-          "docs/reports/2026-11-18_wired_bench_02_fixture_wiring.md"
+          "docs/reports/2026-11-18_wired_bench_02_fixture_wiring.md",
+          "docs/reports/2026-11-19_wired_bench_04_harness.md"
         ],
-        "reason": "Thirteen explicit passive/unloaded settings updates and exact restoration PASS as stored-register evidence. Full assignment/physical-function qualification NOT_RUN; checked FC06 source/ACK remains unconfirmed, matching FC03 readback settles only stored values. On 16 November 2026 the M04 round trips (64 updates each, confirmed FC06 replies and full readback, exact restoration) also passed on drives 2 and 4; physical function effects stay NOT_RUN. On 18 November 2026 (wired bench 02) drive 1's board-declared connected X3 refused function 16 without ASSIGN facts before TX, then took 0 -> 16 -> 0 with facts (confirmed replies, readback); drive 4's board-declared Y0 took function 9 and custom 1/0 with one inverted aux1 edge per custom write. Stored-value and controller-timestamped evidence only; function 16 had no observable effect to test."
+        "reason": "Thirteen explicit passive/unloaded settings updates and exact restoration PASS as stored-register evidence. Full assignment/physical-function qualification NOT_RUN; checked FC06 source/ACK remains unconfirmed, matching FC03 readback settles only stored values. On 16 November 2026 the M04 round trips (64 updates each, confirmed FC06 replies and full readback, exact restoration) also passed on drives 2 and 4; physical function effects stay NOT_RUN. On 18 November 2026 (wired bench 02) drive 1's board-declared connected X3 refused function 16 without ASSIGN facts before TX, then took 0 -> 16 -> 0 with facts (confirmed replies, readback); drive 4's board-declared Y0 took function 9 and custom 1/0 with one inverted aux1 edge per custom write. Stored-value and controller-timestamped evidence only; function 16 had no observable effect to test. On 19 November 2026 (wired bench 04) the harness restore route wrote drive 4 Y0 0 -> 9 -> 0 and drive 2 X3 0 -> 7 -> 0 with stated ASSIGN facts, each read back; with X3 = 7 the shared-output interlock refused mosfet2 before any ON. Stored-value evidence only."
       },
       "reason": "Per-terminal exact commissioning facts admit inputs 0-17, outputs 0-5/9-10 and canonical custom outputs. Every FC06 intermediate is checked; connected terminals require confirmed replies. Source-qualified status/polarity mapping and declared load limits stay explicit; no replay or automatic rollback. Output 11/cross-mapping, startup and physical effects remain unresolved or untested.",
       "choices": [
@@ -2508,9 +2509,10 @@
         "evidence": [
           "docs/archive/reports/ess_release_18_2026-10-04.json",
           "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json",
-          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md",
+          "docs/reports/2026-11-19_wired_bench_04_harness.md"
         ],
-        "reason": "Finite stopped/passive known-unconnected ESS23-RS20 experiment2?3?2 passes exact stored readback and restoration. Source-unconfirmed FC06 keeps acknowledgedfalse/executionunknown; separate confirmed FC03 settles stored codes. Physical filter delay, external-input operation and persistence remain NOT_RUN. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified. Wired bench 03: with connected X0-X3 and CONFIGURE records, drive 1 input filter 2->3->2 acknowledged and read back, on the console and through bench_scenarios --input-facts configure; refused before TX without records. Stored-value evidence only; no filter timing."
+        "reason": "Finite stopped/passive known-unconnected ESS23-RS20 experiment2?3?2 passes exact stored readback and restoration. Source-unconfirmed FC06 keeps acknowledgedfalse/executionunknown; separate confirmed FC03 settles stored codes. Physical filter delay, external-input operation and persistence remain NOT_RUN. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified. Wired bench 03: with connected X0-X3 and CONFIGURE records, drive 1 input filter 2->3->2 acknowledged and read back, on the console and through bench_scenarios --input-facts configure; refused before TX without records. Stored-value evidence only; no filter timing. Wired bench 04 (19 November): drive 1 input filter 2 -> 3 -> 2 through the harness restore scenario with CONFIGURE records, read back. Stored-value evidence only."
       },
       "reason": "Same filters-group candidate and checked sequence; this separate evidence disposition cannot qualify other filter fields or physical filter timing."
     },

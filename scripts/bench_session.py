@@ -5,6 +5,7 @@ Framing/evidence failure forbids further I/O. No recovery or replay is implicit.
 """
 import hashlib
 import json
+import os
 from pathlib import Path
 import time
 
@@ -70,9 +71,25 @@ def _firmware(path):
                 provenance='caller supplied image; console does not attest flash hash')
 
 
-def run_recorded(*, port, out, scenario, inputs, run, address=1, timeout_s=5,
+class _Transcript:
+    """Port proxy that copies every written console line to a text transcript."""
+
+    def __init__(self, port, stream):
+        self.port, self.stream = port, stream
+
+    def read(self, size):
+        return self.port.read(size)
+
+    def write(self, data):
+        written = self.port.write(data)
+        self.stream.write('> ' + bytes(data).decode('utf-8', 'backslashreplace').rstrip('\r\n') + '\n')
+        self.stream.flush()
+        return written
+
+
+def run_recorded(*, port, out=None, scenario, inputs, run, address=1, timeout_s=5,
                  debug=None, firmware=None, refresh=True, max_records=20000,
-                 max_bytes=16 * 1024 * 1024, port_opener=open_port):
+                 max_bytes=16 * 1024 * 1024, port_opener=open_port, paths=None):
     """Reserve exclusive artifacts before opening one port; write summary on error.
 
     ``run(console, record)`` performs a finite named scenario and its preplanned
@@ -80,20 +97,32 @@ def run_recorded(*, port, out, scenario, inputs, run, address=1, timeout_s=5,
     Before/after snapshots have fixed command counts. Exact lines stream to JSONL.
     Returns the summary; any scenario/cleanup/framing failure raises after it is
     written. A failed debug-mode restoration also remains a failure.
+
+    ``paths`` (run-folder layout) names the exclusive ``summary``, ``jsonl``
+    and ``console`` files instead of the ``out`` prefix; the console file is a
+    plain transcript (``>`` sent, ``<`` received lines).
     """
-    prefix = Path(out)
-    prefix.parent.mkdir(parents=True, exist_ok=True)
+    if paths is None:
+        prefix = Path(out)
+        prefix.parent.mkdir(parents=True, exist_ok=True)
+        paths = dict(summary=prefix.with_suffix('.json'), jsonl=prefix.with_suffix('.jsonl'), console=None)
     record = dict(scenario=scenario, inputs=inputs, port=port, ok=False,
                   automatic_recovery=False, automatic_write_replay=False,
                   independent_shaft_observation='unmeasured', electrical_timing='unmeasured',
                   firmware_artifact=_firmware(firmware), campaigns=[], campaigns_seen=0,
                   campaigns_failed=0)
-    # Both exclusive reservations precede port ownership and device commands.
-    with prefix.with_suffix('.json').open('x', encoding='utf-8', newline='\n') as summary, \
-            prefix.with_suffix('.jsonl').open('x', encoding='utf-8', newline='\n') as log:
+    # Every exclusive reservation precedes port ownership and device commands.
+    with Path(paths['summary']).open('x', encoding='utf-8', newline='\n') as summary, \
+            Path(paths['jsonl']).open('x', encoding='utf-8', newline='\n') as log, \
+            (Path(paths['console']).open('x', encoding='utf-8', newline='\n')
+             if paths.get('console') else open(os.devnull, 'w', encoding='utf-8')) as transcript:
         evidence = Evidence(log, max_records=max_records, max_bytes=max_bytes)
+        keep_transcript = bool(paths.get('console'))
 
         def emit(event, **fields):
+            if keep_transcript and event == 'line':
+                transcript.write('< ' + fields.get('text', '') + '\n')
+                transcript.flush()
             evidence(event, **fields)
             if event in ('summary', 'discovery_summary'):
                 record['campaigns_seen'] += 1
@@ -107,6 +136,8 @@ def run_recorded(*, port, out, scenario, inputs, run, address=1, timeout_s=5,
         try:
             with port_opener(port, 115200, timeout_s) as connection:
                 console = None
+                if keep_transcript:
+                    connection = _Transcript(connection, transcript)
                 try:
                     console = Console(connection, on_event=emit)
                     console.drain_startup(.5)

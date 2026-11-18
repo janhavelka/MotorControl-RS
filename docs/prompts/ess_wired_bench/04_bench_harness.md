@@ -100,10 +100,13 @@ or replay. The harness is example tooling, not library API.
   - `check_declarations(console)`: per input drive, 02's `board` masks and
     sources against `FIXTURE` (X0-X3 connected on 1, 2, 4; Y0 connected on 4
     only). Verdict `declaration_agreement`; an invalid or absent table fails it.
-  - `interlock(console, output, scenario)`: fresh `io read`, `read config` and
-    `read state` of every drive the board table declares connected on the
-    switched terminal, all within `max_age_ms` (default 300, recorded) before
-    the ON; decision by the truth table below. `bench_on(console, output,
+  - `interlock(console, output, scenario)`: fresh `io read`, then `read state`,
+    of every drive the board table declares connected on the switched
+    terminal, as the last bus traffic before the ON, all within `max_age_ms`
+    (D14: 1000 ms backstop, recorded; 300 ms was measured unreachable through
+    the console on 19 November); any pending operation other than the named
+    running member's refuses; `read config` agreement is a session check;
+    decision by the truth table below. `bench_on(console, output,
     hold_ms, record)` is the only harness function that sends `bench on` and
     calls it immediately before. The prepared serial stop never waits for it.
   - `before_flash_check(console)`: COMMON's rule before every flash or

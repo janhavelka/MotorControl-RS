@@ -681,5 +681,201 @@ class RecordedSessionTest(unittest.TestCase):
         self.assertEqual(len(result['firmware_artifact']['sha256']), 64)
 
 
+RECORDS_SPEC = importlib.util.spec_from_file_location('records_fakes', ROOT / 'test/bench_records_test.py')
+fakes = importlib.util.module_from_spec(RECORDS_SPEC)
+RECORDS_SPEC.loader.exec_module(fakes)
+records = scenarios.records
+
+
+class FakePort:
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+class FolderScenarioTest(unittest.TestCase):
+    """The five wired-bench scenarios end to end against the bench fake."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.image = Path(self.tmp.name) / 'firmware.bin'
+        self.image.write_bytes(b'image')
+        self.benches = []
+        self.opened = 0
+        self.number = 0
+
+    def run_scenario(self, argv, bench_factory=None):
+        self.number += 1
+        folder = Path(self.tmp.name) / ('2026-11-19_wb04_run%d' % self.number)
+        args = scenarios.arguments(['--run-dir', str(folder), '--firmware', str(self.image), '--commit', 'abc'] + argv)
+        factory = bench_factory or fakes.FakeBench
+
+        def console(connection, on_event):
+            bench = factory(on_event)
+            self.benches.append(bench)
+            return bench
+
+        def opener(*_):
+            self.opened += 1
+            return FakePort()
+        with patch.object(session, 'Console', console), patch.object(scenarios.time, 'sleep'), \
+                redirect_stdout(io.StringIO()):
+            code = scenarios.run_folder(args, port_opener=opener, check_board=lambda port: None)
+        result = json.loads((folder / 'result.json').read_text(encoding='utf-8'))
+        return code, folder, result, self.benches[-1]
+
+    @staticmethod
+    def verdicts(result):
+        return {case['id']: case['verdicts'] for case in result['cases']}
+
+    @staticmethod
+    def sets(bench):
+        return [(name, kw) for name, kw in bench.calls if kw.get('driver_args') and 'set' in kw['driver_args']]
+
+    def test_input_map_passes_both_checks(self):
+        code, folder, result, bench = self.run_scenario(['--scenario', 'input-map', '--case', 'H01'])
+        self.assertEqual(code, 0, result)
+        self.assertEqual(self.verdicts(result), {'H01.declarations': {'local': 'PASS'},
+                                                 'H01.map': {'drive-reported': 'PASS', 'controller-timestamped': 'PASS'}})
+        detail = json.loads((folder / 'input_map.json').read_text())
+        self.assertEqual([row['output'] for row in detail['outputs']], ['mosfet1', 'relay2', 'relay1', 'mosfet2'])
+        self.assertEqual(self.sets(bench), [])
+        self.assertTrue((folder / 'console.log').read_text())
+        for name in records.RUN_FILES:
+            self.assertTrue((folder / name).is_file(), name)
+
+    def test_swapped_relays_fail_the_map_but_not_the_declarations(self):
+        swapped = dict(fakes.MAPPING, relay1=1, relay2=2)
+        code, folder, result, _ = self.run_scenario(['--scenario', 'input-map', '--case', 'H01'],
+                                                    lambda on_event: fakes.FakeBench(on_event, mapping=swapped))
+        self.assertEqual(code, 2)
+        verdicts = self.verdicts(result)
+        self.assertEqual(verdicts['H01.declarations'], {'local': 'PASS'})
+        self.assertEqual(verdicts['H01.map']['drive-reported'], 'FAIL')
+
+    def test_alarm_during_the_map_aborts_without_writes(self):
+        class AlarmBench(fakes.FakeBench):
+            def _bench(self, tokens):
+                if tokens[:1] == ('on',):
+                    self.state[2]['raw_alarm'] = 9
+                return super()._bench(tokens)
+        code, folder, result, bench = self.run_scenario(['--scenario', 'input-map'], AlarmBench)
+        self.assertNotEqual(code, 0)
+        self.assertEqual(self.sets(bench), [])
+        ons = [kw['host_args'] for name, kw in bench.calls if name == 'bench' and (kw['host_args'] or ())[:1] == ('on',)]
+        self.assertEqual(len(ons), 1)
+        self.assertFalse(any(o['active'] for o in bench.outputs.values()))
+        self.assertTrue(any('alarm or RUNNING' in d for d in result['deviations']))
+
+    def test_expected_refusal_after_a_trigger_assignment_sends_no_on_and_restores(self):
+        code, folder, result, bench = self.run_scenario(
+            ['--scenario', 'input-map', '--case', 'H08', '--outputs', 'mosfet2', '--expect-refusal', 'mosfet2',
+             '--change', '2', 'io.x3', '7', '--assign-facts', 'x3', 'triggers-inhibited', '--image-level', '03'])
+        self.assertEqual(code, 0, result)
+        self.assertEqual(self.verdicts(result), {'H08.declarations': {'local': 'PASS'}, 'H08.refusal': {'local': 'PASS'},
+                                                 'H08.change': {'acknowledged': 'PASS', 'read back': 'PASS'}})
+        self.assertFalse(any(name == 'bench' and (kw['host_args'] or ())[:1] == ('on',) for name, kw in bench.calls))
+        self.assertEqual([kw['driver_args'] for _, kw in self.sets(bench)], [('set', 'x3', '7'), ('set', 'x3', '0')])
+        installs = [kw['host_args'] for name, kw in bench.calls if name == 'io-qualification-install']
+        self.assertEqual(installs, [('2', 'x3', '7', '0', 'assign', 'unknown', 'triggers-inhibited'),
+                                    ('2', 'x3', '0', '0', 'assign', 'unknown', 'triggers-inhibited')])
+        detail = json.loads((folder / 'input_map.json').read_text())
+        self.assertEqual(detail['outputs'][0]['row'], 'L5')
+        self.assertEqual(bench.io(2), fakes.POWER_UP)
+
+    def test_change_without_stated_facts_is_not_run_before_any_write(self):
+        code, folder, result, bench = self.run_scenario(
+            ['--scenario', 'restore', '--address', '1', '--case', 'H04', '--change', '1', 'io.input-polarity', '1',
+             '--assign-facts', 'x0', 'triggers-inhibited', '--image-level', '03'])
+        self.assertEqual(self.verdicts(result)['H04'], {'acknowledged': 'NOT RUN', 'read back': 'NOT RUN'})
+        self.assertEqual(self.sets(bench), [])
+        self.assertEqual(code, 2)
+
+    def test_restore_after_a_case_write(self):
+        code, folder, result, bench = self.run_scenario(
+            ['--scenario', 'restore', '--address', '1', '--case', 'H04', '--change', '1', 'filters.input-filter', '3',
+             '--input-facts', 'configure', '--image-level', '03'])
+        self.assertEqual(code, 0, result)
+        detail = json.loads((folder / 'restore.json').read_text())
+        self.assertEqual([(d['key'], d['current']) for d in detail['differing']], [('filters.input-filter', 3)])
+        self.assertEqual([kw['driver_args'] for _, kw in self.sets(bench)],
+                         [('filters', 'set', 'input-filter', '3'), ('filters', 'set', 'input-filter', '2')])
+        self.assertEqual(result['restoration']['fields'][0]['ending'], 2)
+
+    def test_y0_map_writes_its_plan_first_and_counts_inverted_edges(self):
+        seen = {}
+
+        class Bench(fakes.FakeBench):
+            def _group_write(self, address, read, index, value, register):
+                if 'plan' not in seen:
+                    folder = Path(self_test.tmp.name) / ('2026-11-19_wb04_run%d' % self_test.number)
+                    seen['plan'] = json.loads((folder / 'scenario.json').read_text())['restoration_plan']
+                return super()._group_write(address, read, index, value, register)
+        self_test = self
+        code, folder, result, bench = self.run_scenario(['--scenario', 'y0-map', '--address', '4', '--case', 'H02',
+                                                         '--cycles', '2', '--phase-s', '0.5', '--image-level', '03'], Bench)
+        self.assertEqual(code, 0, result)
+        self.assertEqual([s['key'] for s in seen['plan']['steps']], ['io.custom', 'io.y0'])
+        detail = json.loads((folder / 'y0_map.json').read_text())
+        self.assertEqual([r['write'] for r in detail['rows']], ['io.y0 9', 'io.custom 1', 'io.custom 0', 'io.custom 1', 'io.custom 0'])
+        edges = detail['correlation']['aux1']['edges']
+        self.assertEqual([e['active'] for e in edges], [False, True, False, True])
+        self.assertEqual({e['status'] for e in edges}, {'measured'})
+        self.assertEqual(bench.io(4), fakes.POWER_UP)
+        self.assertEqual(bench.debug_mode, 'off')
+
+    def test_baseline_compare_and_capture(self):
+        code, folder, result, _ = self.run_scenario(['--scenario', 'baseline-compare', '--case', 'H06'])
+        self.assertEqual(code, 0, result)
+        diff = json.loads((folder / 'baseline_diff.json').read_text())
+        self.assertEqual((diff['compared'], diff['differs'], diff['unknown']), (573, [], []))
+        code, folder, result, _ = self.run_scenario(['--scenario', 'baseline-capture', '--case', 'H09',
+                                                     '--reason', 'check', '--prompt', '04'])
+        self.assertEqual(code, 0, result)
+        rebased = json.loads((folder / 'rebaselined.json').read_text())
+        self.assertEqual(rebased['history'][-1]['reason'], 'check')
+        self.assertEqual(records.compare_baselines(fakes.BASELINE, json.loads((folder / 'baseline_capture.json').read_text())), [])
+
+    def test_capture_refuses_a_running_drive(self):
+        class Running(fakes.FakeBench):
+            def __init__(self, on_event):
+                super().__init__(on_event)
+                self.state[2]['running'] = True
+        code, folder, result, _ = self.run_scenario(['--scenario', 'baseline-capture', '--reason', 'r', '--prompt', '04'],
+                                                    Running)
+        self.assertEqual(code, 2)
+        self.assertTrue(any('baseline-capture refused' in d for d in result['deviations']))
+        self.assertFalse((folder / 'baseline_capture.json').exists())
+
+    def test_existing_run_folder_fails_before_the_port_opens(self):
+        folder = Path(self.tmp.name) / '2026-11-19_wb04_taken'
+        folder.mkdir()
+        args = scenarios.arguments(['--scenario', 'input-map', '--run-dir', str(folder), '--firmware', str(self.image),
+                                    '--commit', 'abc'])
+        with redirect_stdout(io.StringIO()), self.assertRaises(FileExistsError):
+            scenarios.run_folder(args, port_opener=lambda *_: self.fail('port opened'), check_board=lambda port: None)
+        self.assertEqual(list(folder.iterdir()), [])
+
+    def test_folder_scenario_arguments(self):
+        bad = [['--scenario', 'input-map', '--out', 'x'],
+               ['--scenario', 'input-map', '--run-dir', 'build/bench/2026-11-19_wb04_a'],
+               ['--scenario', 'quick', '--run-dir', 'build/bench/2026-11-19_wb04_a', '--out', 'x'],
+               ['--scenario', 'input-map', '--run-dir', 'build/bench/bad_name', '--firmware', 'f'],
+               ['--scenario', 'restore', '--run-dir', 'build/bench/2026-11-19_wb04_a', '--firmware', 'f'],
+               ['--scenario', 'y0-map', '--address', '1', '--run-dir', 'build/bench/2026-11-19_wb04_a', '--firmware', 'f',
+                '--image-level', '03'],
+               ['--scenario', 'input-map', '--expect-refusal', 'relay1', '--outputs', 'mosfet2',
+                '--run-dir', 'build/bench/2026-11-19_wb04_a', '--firmware', 'f'],
+               ['--scenario', 'baseline-capture', '--run-dir', 'build/bench/2026-11-19_wb04_a', '--firmware', 'f'],
+               ['--scenario', 'restore', '--input-facts', 'configure', '--image-level', '03',
+                '--run-dir', 'build/bench/2026-11-19_wb04_a', '--firmware', 'f']]
+        for argv in bad:
+            with self.subTest(argv=argv), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                scenarios.arguments(argv)
+
+
 if __name__ == '__main__':
     unittest.main()

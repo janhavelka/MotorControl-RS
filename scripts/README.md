@@ -72,6 +72,7 @@ there. See the [dependency and delivery handoff](../docs/archive/reports/2026-10
 | `bench_motion.py` | Explicit finite position/action/stop phases with retained evidence and cleanup |
 | `bench_repeat.py` | Bounded comparison of full, verified and stored position setup policies |
 | `bench_session.py` | Shared session/evidence implementation imported by the campaign tools |
+| `bench_records.py` | Wired-bench records: fixture, shared-output interlock, run folders, `result.json`, run checker, baseline comparison/restoration, edge correlation; `check FOLDER` is offline |
 
 `bench_stress.py` is a separate, bench-specific campaign tool. It has its own
 console parser and is not covered by the strict parser claim above. It checks
@@ -110,6 +111,52 @@ configure` calls it before the change and again before the restoration, and
 `bench_probe.py motion-profile stage FILE --input-facts configure` before the
 stage. Refusals the records decide carry `reason`, `purpose`, `read_first` and
 `terminal` ([CLI contract](../docs/cli_contract.md#settings-input-facts)).
+
+### Wired-bench run folders
+
+`bench_scenarios.py` has five wired-bench scenarios (prompt 04): `input-map`,
+`y0-map`, `baseline-compare`, `baseline-capture` and `restore`. Each needs
+`--run-dir build/bench/YYYY-MM-DD_wbNN_slug` (created exclusively; an existing
+folder fails before the port opens) and `--firmware IMAGE`; scenarios that
+write also need `--image-level NN`, the prompt whose routes the flashed image
+has. The scenario record (`scenario.json`) is written before COM13 opens; the
+folder then gets `session.jsonl`, `summary.json`, `console.log` (sent `>` and
+received `<` lines), `baseline_before.json`, `ending_reads.json`,
+`result.json` and scenario files. Each run ends with
+`bench_records.check_run` on its own folder and exits 0 only when both results
+pass (1 integrity failure, 2 session failure).
+
+```powershell
+python scripts/bench_scenarios.py --scenario input-map --case H01 --firmware build/pio_wb03/bench_s3_load_timer/firmware.bin --run-dir build/bench/2026-11-19_wb04_input_map
+python scripts/bench_scenarios.py --scenario restore --address 1 --change 1 filters.input-filter 3 --input-facts configure --image-level 03 --firmware IMAGE --run-dir build/bench/2026-11-19_wb04_restore_filter
+python scripts/bench_records.py check build/bench/2026-11-19_wb04_input_map
+```
+
+- `bench_records.bench_on(console, output, hold_ms, record)` is the only
+  harness function that sends `bench on`. It first runs
+  `bench_records.interlock`: fresh `io read` then `read state` of every drive
+  the board declares connected on the switched terminal, one `bench` view,
+  then the line-isolation truth table (rows L1-L7, cases in
+  `test/line_isolation_cases.json`). `check_input_agreement` (`io read`
+  against `read config`) runs once per session, outside the age window. A
+  refusal sends no ON. `bench_probe.py bench on OUTPUT HOLD` goes through it
+  too. Ordering is the primary guard (D14): the reads must be the last bus
+  traffic before the ON (consecutive operation IDs, `drv` reports the last of
+  them), and any other pending operation refuses. The read age is a 1000 ms
+  backstop (`--max-age-ms` records another value); on 19 November the oldest
+  read was 447-470 ms old at the ON
+  ([wired bench 04](../docs/reports/2026-11-19_wired_bench_04_harness.md)).
+- `--change ADDRESS KEY[INDEX] VALUE` is one case write through the field's
+  ordinary setter; its restoration plan (from the committed baseline) is in the
+  scenario record and runs at the end. Facts are stated, never inferred:
+  `--input-facts configure|segment` and `--assign-facts TERMINAL FACT...`
+  (`x3 triggers-inhibited`, `y0 indicator either`). A field without an
+  admissible route makes the case NOT RUN before any write.
+- `bench_records.before_flash_check(console)` is COMMON's check before a flash
+  or controller reset.
+- `baseline-capture --reason TEXT --prompt NN` writes a fresh capture and the
+  re-baselined candidate into the run folder only; the committed baseline
+  changes only when the prompt that intended it commits that file.
 
 Use a new evidence prefix for each run. A selected settings/motion campaign can
 write to or move the drive; a passing probe is not preparation for every feature.

@@ -22,7 +22,8 @@ python scripts/bench_scenarios.py --scenario position --phase forward --debug de
 
 `--list` and `--plan-only` open no port. Remove `--plan-only` to execute the
 selected scenario. Every run reserves new `.json` and `.jsonl` files before
-opening COM13; existing files are never overwritten. Use a different prefix for
+opening COM13; existing files are never overwritten. The wired-bench scenarios
+use a run folder instead ([below](#wired-bench-scenarios-and-run-folders)). Use a different prefix for
 a deliberate rerun and retain failures. Optional `--firmware FILE` records the
 supplied image's hash; console version does not attest the flashed image.
 
@@ -163,6 +164,126 @@ python scripts/bench_probe.py --port COM13 --log build/bench/home-read-new.jsonl
 
 This reads seven words and inspects/releases their checked result. It does not
 qualify or start homing; both offset words remain uninterpreted raw evidence.
+
+## Wired-bench scenarios and run folders
+
+Prompt 04 of the [wired bench set](prompts/ess_wired_bench/04_bench_harness.md)
+added five scenarios that each own one run folder. They replace the
+18 November scratch scripts `io_map.py` and `y0_toggle.py`.
+
+| Scenario | Work | Verdicts |
+| --- | --- | --- |
+| `input-map` | Outputs off and declaration check, then per output (`--outputs`, default all four): interlocked `bench on NAME --hold-ms` (default 2000), `read state` of drives 1, 2, 4, `bench off NAME`, `read state` again. No drive write unless `--change`. Aborts on an alarm or RUNNING flag | `declaration_agreement` (board table against `FIXTURE`, local) and `measured_map` (status bits against `FIXTURE`, drive-reported and controller-timestamped) are separate cases. `--expect-refusal OUTPUT` asserts an interlock refusal instead |
+| `y0-map` | Drive 4: `io read`, `read state`, Y0 = 9 with the stated ASSIGN facts (`indicator either`), `--cycles` (default 5) custom on/off with `--phase-s` (default 3 s), Y0 back to 0 by the restoration plan; `debug raw` on | One `aux1` edge per custom write in the inverted sense, none for the Y0 writes (controller-timestamped); output status follows (drive-reported); edge timing reported, not judged |
+| `baseline-compare` | Every baseline read of each `--drives` drive (61 per drive, drive selected first) | Each field equal, differs or unknown; differences listed per field |
+| `baseline-capture` | Refuses with an output on, a drive running, alarmed or unreadable, or recovery required; then a fresh capture in the baseline schema | Values and dispositions against the committed file; `rebaselined.json` stays in the folder |
+| `restore` | Optional case write `--change`; every baseline read; the restoration plan writes each differing planned field through its ordinary setter with stated facts, each read back; every read again | Acknowledged and read back |
+
+**Interlock.** `bench_records.bench_on` is the only harness function that
+sends `bench on` (also behind `bench_probe.py bench on`). Before the ON it
+reads `io read` then `read state` of every drive the board table declares
+connected on the switched terminal (the state last, so the motion and alarm
+sample is the newest) and takes one `bench` view (the controller time `now_us`
+and the outputs). The decision uses the nine I/O words (polarity in word 0,
+X0-X3 functions in words 1-4) and the state. Declaration agreement and the
+session's input agreement (`check_input_agreement`: `io read` against
+`read config` on each drive, once per session, outside the age window) must
+pass, and no output may be on. Each drive is decided by the first matching row:
+
+| Row | Participant | Decision |
+| --- | --- | --- |
+| L1 | Missing, silent, unreadable, a read older than `max_age_ms`, unknown input/output/motion bits, or the interlock reads not the last bus traffic before the ON | Refuse |
+| L2 | Alarm code or alarm flag | Refuse |
+| L3 | Named running member whose fresh reads and pending operation match its address, operation ID, line, terminal function and polarity and intended effect | Admit |
+| L4 | Running in any other case; on the whole line, any accepted operation still pending on the console other than the named running member's | Refuse |
+| L5 | Switched terminal holds 7-13 | Refuse |
+| L6 | Switched terminal holds 14-17 and the drive holds 12 or 13 | Refuse |
+| L7 | Switched terminal holds 14-17 otherwise, or 0-6 | Admit |
+
+Polarity relaxes no row. Freshness follows
+[decision D14](prompts/ess_wired_bench/README.md#decisions): ordering is the
+primary guard. Between the first interlock read and the ON the console may send
+only the interlock's reads (with their releases), one local `drv` and one
+`bench` view; the reads must have consecutive controller operation IDs, `drv`
+must report the last of them as the latest admitted operation, and with no
+named member the owner has no request pending. Otherwise row L1 refuses. An
+output already on, or any other pending operation (row L4), refuses too. The
+read age is a 1000 ms backstop: it runs from each read's request start
+(`started_us`) to the bench view plus the host time after it, and after the ON
+the reply's `on_us` gives the actual age; an age above the bound switches all
+outputs off and fails. Prompt 08's firmware trigger applies the same rule and
+bound to its own read times. Measured on 19 November: each `io read` takes
+26-27 ms and each `read state` 24 ms on the controller, the console adds
+38-52 ms between reads and about 51 ms to the view, so the oldest read is
+about 420-470 ms old at the ON on three drives; the earlier 300 ms default was
+not reachable. The cases LI01-LI15 in `test/line_isolation_cases.json` are the
+shared truth table data for prompt 08.
+
+**Run folder.** `--run-dir build/bench/YYYY-MM-DD_wbNN_slug` is created
+exclusively before the port opens. It holds `scenario.json` (schema
+`motorcontrol-rs/wired-bench-scenario/1`: image path and SHA-256, commit,
+drives, terminals, commands, cases with `required`, `assertion` and
+`required_levels`, named running members, write list, bounds, prepared stop,
+restoration plan, planned left-changed fields, expected evidence, abort
+conditions, cleanup, `max_age_ms`, stated facts), `session.jsonl` and
+`summary.json` (from `run_recorded`), `console.log`, `baseline_before.json`,
+`ending_reads.json`, `result.json` and scenario files (`input_map.json`,
+`y0_map.json`, `traffic.json`, `restore.json`, `baseline_diff.json`,
+`baseline_capture.json`, `rebaselined.json`). `--firmware IMAGE` is required;
+the console still does not attest the flashed image.
+
+**Result.** `result.json` (schema `motorcontrol-rs/wired-bench-result/1`)
+names the prompt, slug, date, commit and image, each case with its verdict per
+evidence level (PASS, FAIL, NOT RUN, BLOCKED, indeterminate; the last three
+need a reason) and evidence paths, the restoration (`outputs_off`, written
+fields with baseline, ending, `restored`, `uncertain`, storage and reason,
+drives stopped/alarm/enabled, `port_closed`) and deviations.
+
+**Checker.** `python scripts/bench_records.py check FOLDER` returns two
+results and never edits the folder. Integrity: the folder is complete, both
+schemas are valid, the image SHA-256 and commit agree in `scenario.json`,
+`result.json` and the image file (recomputed when it exists), at least one
+case, known verdicts with reasons, evidence paths exist. Session success:
+every required case is PASS at each required level (an expected refusal passes
+its no-ON assertion), every scenario drive is in the ending reads, stopped,
+alarm-free and enabled as required, no uncertain write, every written field is
+restored and read back or was planned as left changed before the first write,
+outputs off, port closed. Exit 0 both pass, 1 integrity failure, 2 session
+failure. Each scenario runs the checker on its own folder and passes only when
+both results pass.
+
+**Restoration.** `bench_records.restoration_plan` turns a write list into
+ordered steps from the committed baseline: the field's ordinary route (its
+`requires` not later than `--image-level`) with facts the scenario states,
+I/O ordered so every FC06 intermediate passes the core custom-output
+dependency, trigger functions (7-13) first, a start-speed word before its
+relation. A null route is admitted only by an experimental record bound to the
+image SHA-256, prompt, case, drive, FC10 window and a checked source read of
+the run (prompt 10). `restore` writes only fields that differ from the captured
+value and whose current value is known, reads each back, and stops at an
+uncertain write without replay.
+
+**Re-baselining.** The committed
+[baseline](reports/wired_bench_baseline.json) changes only through
+`baseline-capture --reason TEXT --prompt NN`. It reads every field fresh,
+keeps each field's disposition (a null route is replaced only when the image
+now admits one; a route's command takes the new value) and moves the old
+header with every per-field change into `history`. Admissible reasons are an
+intended persistent change (a save or factory restore in 17), a newly
+delivered route, or an owner change to the fixture or drives; an unexplained
+difference is a deviation, never a re-baseline. The new file is committed with
+the report of the prompt that intended it. `compare` and `restore` always use
+the committed file and refuse one whose latest history entry has no reason.
+
+**Correlation.** `bench_records.correlate` reports COMMON Timing intervals on
+the controller clock. For an output edge at GPIO time g, a drive's input
+transition lies after the request start of the last `read state` sample with
+the old bit and before the reply closure of the first with the new bit:
+`[earliest - g, latest - g]`. Each `aux1` edge is reported against the request
+start (TX record) and reply end (RX `end_us` with its uncertainty) of the
+nearest FC06 to `0x004B`-`0x004F` on drive 4. A debug-record sequence gap or
+an `aux1` overwrite inside a pairing window makes it indeterminate; an edge
+before the reply end is a measured relationship, not a fault.
 
 ## Stress tool
 

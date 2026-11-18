@@ -215,12 +215,16 @@ CO2Control the same MOSFETs switched a valve and a fan, which draw more.
 - To test one drive alone, first set that terminal to 0 (none) on the other two
   with an explicit `io set` and readback on each, and restore it afterwards.
   The firmware never does this for you.
-- Before any bench output turns on, take fresh `io read`, `read config` and
-  `read state` of all three drives and refuse the switch when any drive has a
-  function on that terminal that can command motion (7-13), or is running,
-  alarmed or silent. Software that switches an output for an armed operation
+- Before any bench output turns on, take fresh `io read` and `read state` of
+  all three drives (with `io read` and `read config` checked against each
+  other once per session) and refuse the switch when any drive has a function
+  on that terminal that can command motion (7-13), or is running, alarmed or
+  silent. Software that switches an output for an armed operation
   checks the drives outside the case the same way
-  ([wired bench COMMON](prompts/ess_wired_bench/COMMON.md#bench-rules)).
+  ([wired bench COMMON](prompts/ess_wired_bench/COMMON.md#bench-rules)). The
+  harness does this in `bench_records.bench_on`, the only harness function that
+  sends `bench on`; its truth table is in the
+  [bench scenarios guide](bench_scenarios.md#wired-bench-scenarios-and-run-folders).
 - From [wired bench 02](prompts/ess_wired_bench/02_fixture_wiring_declarations.md)
   on, the bench images declare the wiring from a board table: X0-X3 connected
   on drives 1, 2 and 4, Y0 connected on drive 4, Y1 everywhere and Y0 of drives
@@ -303,7 +307,11 @@ the drive's input delay are not included. Input edge times are taken in the
 interrupt; interrupt latency is not measured.
 
 From the host: `python scripts/bench_probe.py --port COM13 --log build/bench/bench.jsonl bench on mosfet1 200`.
-The harness validates the reply against the request.
+The harness runs the shared-output interlock first (fresh reads of drives 1,
+2 and 4 as the last bus traffic before the ON, within a 1000 ms backstop;
+[wired bench 04](reports/2026-11-19_wired_bench_04_harness.md)) and
+validates the reply against the request. The firmware `bench` command itself
+has no interlock.
 
 Pins: Arduino uses [BoardPins.h](../examples/common/BoardPins.h); native ESP-IDF
 uses `menuconfig` → MotorControl-RS standalone board → bench options (default
@@ -338,14 +346,17 @@ this fixture unlocks.
    (function 0, custom 0, output polarity 0) `aux1` reads **active**, because
    the sinking wiring is inverted ([wired bench 01](reports/2026-11-18_wired_bench_01_baseline.md)
    measured this before and after B10). For each output:
-   `bench on NAME 2000`, `io read` on drives 1, 2 and 4, and confirm the same
-   single X status bit on all three; `bench off`. Then repeat on drive 1 with
+   `bench on NAME 2000`, `read state` on drives 1, 2 and 4, and confirm the same
+   single X status bit on all three; `bench off`. Run it as
+   `bench_scenarios.py --scenario input-map` ([guide](bench_scenarios.md#wired-bench-scenarios-and-run-folders)):
+   it adds the interlock, the declaration check and a run folder. Then repeat on drive 1 with
    input polarity inverted on that terminal (with its `io qualification` facts,
    including protection removal for a limit), which settles whether the status
    bits are read before or after inversion (`IoStatusMapping`). Restore it.
 2. **Y0 to aux1.** On drive 4 assign Y0 = 9 (custom 0) with the output facts,
    write the custom bit on and off, and check the `aux1` edges and the output
-   status bits. Repeat with output polarity inverted. Restore Y0 = 0.
+   status bits (`bench_scenarios.py --scenario y0-map --address 4`). Repeat with
+   output polarity inverted. Restore Y0 = 0.
 3. **Stop by input.** X3 = 5 (stop), then 6 (emergency stop), during a small
    finite move; `bench on mosfet2 200`. Y0 = 2 (running) gives the
    `mosfet2` on time to `aux1` edge interval. Repeat with X3 = 4 (release) on a
