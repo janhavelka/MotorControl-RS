@@ -2,8 +2,10 @@
 
 Status on 18 November 2026: **wired and checked.** All four board outputs reach
 the expected X input on drives 1, 2 and 4, and drive 4's Y0 switches the board
-input ([record](reports/2026-11-18_bench_io_relay_check.md)). No drive function
-has yet been tested through the wiring.
+input ([record](reports/2026-11-18_bench_io_relay_check.md)). The same evening
+[wired bench 01](reports/2026-11-18_wired_bench_01_baseline.md) reran both maps
+through `bench` on the `9ac8623` Arduino image (and `mosfet2` on native IDF).
+No drive function has yet been tested through the wiring.
 The standalone firmware now drives the bench board's two relays and two MOSFETs
 and reads its isolated 24 V input (`bench` command, below). This guide says how
 to wire them to the ESS23-RS20 terminals, which checks to make first, and which
@@ -213,9 +215,18 @@ CO2Control the same MOSFETs switched a valve and a fan, which draw more.
 - To test one drive alone, first set that terminal to 0 (none) on the other two
   with an explicit `io set` and readback on each, and restore it afterwards.
   The firmware never does this for you.
+- Before any bench output turns on, take fresh `io read`, `read config` and
+  `read state` of all three drives and refuse the switch when any drive has a
+  function on that terminal that can command motion (7-13), or is running,
+  alarmed or silent. Software that switches an output for an armed operation
+  checks the drives outside the case the same way
+  ([wired bench COMMON](prompts/ess_wired_bench/COMMON.md#bench-rules)).
 - Declare the wiring on every drive, for example `group wiring 2 x0 connected`
-  for all four X pins on addresses 1, 2 and 4, Y0 connected on drive 1, and the
-  other outputs unconnected.
+  for all four X pins on addresses 1, 2 and 4, Y0 connected on drive 4, and the
+  other outputs unconnected. The boot declaration is still "unconnected" on
+  every terminal and `useaddr` resets it to unknown, so declare after boot and
+  after every `useaddr` until [wired bench 02](prompts/ess_wired_bench/02_fixture_wiring_declarations.md)
+  delivers board declarations.
 - An asserted X1 or X2 acts as the limit of every drive that keeps that
   function; an asserted stop input stops every drive that has the stop
   function. With a group move this is the shared-stop test, not a fault.
@@ -243,10 +254,11 @@ PT/PV selection drops to two segments.
    three drives or remove the I/O feed. Output levels during reset are not yet
    measured here.
 6. Input functions 8, 9, 10 and 13 run the motor at a speed with no end
-   position. The bench hold (at most 60 s) and the stop rule below bound them,
-   but they are not a hardwired stop. Run them attended and only with an
-   explicit instruction, as [multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)
-   requires.
+   position. The bench hold (at most 60 s) and the stop rule below limit them,
+   but they are not a hardwired stop. Run them only in an explicit case with a
+   prepared serial stop. Under the owner's 18 November authorization (wired
+   bench D1) they may run unattended; the older rule required attendance and an
+   explicit instruction ([multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)).
 7. Declare wiring before assigning functions. `io set` keeps refusing connected
    terminals without the matching `io qualification` facts.
 
@@ -298,13 +310,16 @@ restoration. Single-drive steps run on drive 1 with the tested terminal set to
 raw evidence. Steps 1-2 check the wiring itself; later steps are the features
 this fixture unlocks.
 
-1. **Wiring map.** `bench` shows all off and `aux1` inactive. For each output:
+1. **Wiring map.** `bench` shows all outputs off. With drive 4's Y0 off
+   (function 0, custom 0, output polarity 0) `aux1` reads **active**, because
+   the sinking wiring is inverted ([wired bench 01](reports/2026-11-18_wired_bench_01_baseline.md)
+   measured this before and after B10). For each output:
    `bench on NAME 2000`, `io read` on drives 1, 2 and 4, and confirm the same
    single X status bit on all three; `bench off`. Then repeat on drive 1 with
    input polarity inverted on that terminal (with its `io qualification` facts,
    including protection removal for a limit), which settles whether the status
    bits are read before or after inversion (`IoStatusMapping`). Restore it.
-2. **Y0 to aux1.** On drive 1 assign Y0 = 9 (custom 0) with the output facts,
+2. **Y0 to aux1.** On drive 4 assign Y0 = 9 (custom 0) with the output facts,
    write the custom bit on and off, and check the `aux1` edges and the output
    status bits. Repeat with output polarity inverted. Restore Y0 = 0.
 3. **Stop by input.** X3 = 5 (stop), then 6 (emergency stop), during a small
@@ -326,11 +341,13 @@ this fixture unlocks.
    alarm edges against serial state and the move timeline.
 9. **Shared start.** Stage a profile on each of drives 1, 2 and 4, set X0 = 7 on
    all three, pulse `mosfet1` once, and compare the three drives' recorded
-   motion with drive 1's `aux1` running edge. Then a shared stop: X3 = 5 on all
+   motion with drive 4's `aux1` running edge. Then a shared stop: X3 = 5 on all
    three during a group move.
 10. **Shared segments.** Steps 7 and 9 together: different stored tables per
     drive, one shared selector and trigger.
-11. **Attended only:** JOG/speed inputs (8-10) and PV segments (13).
+11. JOG/speed inputs (8-10) and PV segments (13), each in an explicit case
+    with a prepared serial stop and the 60 s bench hold. Under D1 they may run
+    unattended; "attended only" was the older rule.
 
 This covers the open backlog items for wired input effects, output loads and
 status mapping ([multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md)),
@@ -339,5 +356,5 @@ switch homing, stop-input latency and stored-segment execution.
 
 Still not covered by this fixture: real switches and loads, shaft position
 measured independently of the drive, electrical timing measured with an
-instrument, drive restart and persistence, and outputs of drives 2 and 4 while
-`aux1` watches drive 1.
+instrument, drive restart and persistence, and outputs of drives 1 and 2 while
+`aux1` watches drive 4.

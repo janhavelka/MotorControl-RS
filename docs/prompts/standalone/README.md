@@ -31,19 +31,26 @@ RodTester already integrates the library in FieldCore-node; its selected board,
 backend qualification and loaded product tests belong there. See the
 [current consumer handoff](../../fieldcore_handoff.md).
 
+Since 18 November 2026 the bench work of stages 03, 04, 05, 06, 07, 10, 11 and
+14 belongs to the [wired bench set](../ess_wired_bench/README.md#superseded-hardware-work):
+03 to its 09, 04 to 10, 05 to 11 and 12, 06 to 05, 06, 13 and 15, 07 to 16, 10
+to 17 and 18, 11 to 18 and 20, and 14 to 01 and 20. Their software history stays
+here; do not dispatch those hardware parts from this set.
+
 A missing native operation is different from an intentional unresolved guard.
 A recorded drive failure is different from a proven library defect. The audit
 keeps those distinctions. Use the audit's Current owner column; Next stage is historical.
 
 ## Next work
 
-1. Run the short [14 bench regression](14_bench_regression.md) on the new image,
-   selecting remaining cases from its actual evidence. Candidate staging and
-   restoration passed on all three drives in the
+1. The bench regression moved to the wired bench set. Its
+   [01](../../reports/2026-11-18_wired_bench_01_baseline.md) ran the short
+   regression on the wired fixture on 18 November and recorded the restoration
+   baseline; the equal-archive no-write check is blocked there until wired
+   bench 03, and the full stage 14 matrix is wired bench 20. Candidate staging
+   and restoration passed on all three drives in the
    [15 November run](../../reports/2026-11-15_multi_drive_09_member_motion_requests.md)
    and [16 November audit](../../reports/2026-11-16_multi_drive_04_09_audit.md).
-   Those results supersede the earlier failed preflight, but do not complete
-   the equal-archive no-write check or the full stage 14 matrix.
 2. Include the completed stop/evidence changes in that regression.
    [15 stop/recovery](../../reports/2026-11-15_standalone_15_stop_recovery.md) and
    [16 evidence/qualification](../../reports/2026-11-15_standalone_16_evidence_qualification.md)
@@ -70,7 +77,7 @@ keeps those distinctions. Use the audit's Current owner column; Next stage is hi
 | 11 | [USB saturation and renewed overnight qualification](11_usb_and_overnight.md) | Q13: board and current image. Further overnight runs need explicit instruction | PARTIAL: 2-3 November run found HW-12 USB output stall; its cause and USB saturation limits remain open |
 | 12 | [S2/SDK and flash-read qualification](12_platforms.md) | Actual S2 hardware for UART claims; bench S3 in bootloader mode with esptool 5.3.0 | NOT STARTED |
 | 13 | [Coverage and release-scope reconciliation](13_closeout.md) | Every other stage has an explicit disposition, with rows for the N05 remainder and stage 14 | NOT STARTED |
-| 14 | [Delivered-software bench regression](14_bench_regression.md) | Recorded bench USB device present; no analyzer | PARTIAL: routes pass ([2 November](../../reports/2026-11-02_standalone_14_bench_regression.md), [16 November](../../reports/2026-11-16_hil_regression.md)); one persistent RUNNING failure unresolved |
+| 14 | [Delivered-software bench regression](14_bench_regression.md) | Recorded bench USB device present; no analyzer | PARTIAL: routes pass ([2 November](../../reports/2026-11-02_standalone_14_bench_regression.md), [16 November](../../reports/2026-11-16_hil_regression.md)); one persistent RUNNING failure unresolved. Bench work moved to wired bench [01](../ess_wired_bench/01_baseline_and_fixture.md) (run 18 November) and [20](../ess_wired_bench/20_soak_regression_closeout.md) |
 | 15 | [Stop, recovery and result handling](../../reports/2026-11-15_standalone_15_stop_recovery.md) | Owner decision D1; original instructions [archived](../../archive/prompts/standalone/15_stop_recovery.md) | COMPLETE (software): 15a/15b/15c, 94 suites, package/Doxygen checks and exact-commit GCC/Clang/Arduino/IDF CI passed. New hardware checks NOT RUN. |
 | 16 | [Evidence and qualification corrections](../../reports/2026-11-15_standalone_16_evidence_qualification.md) | Independent audit verdicts; original instructions [archived](../../archive/prompts/standalone/16_evidence_qualification.md) | COMPLETE (software): 16a/16b/16c, fresh 94-suite verification and exact-commit GCC/Clang/Arduino/IDF CI pass. Hardware NOT RUN. |
 | 17 | [Measured application cleanup](17_application_cleanup.md) | Affected behavior characterized; 15/16 corrections complete | NOT STARTED |

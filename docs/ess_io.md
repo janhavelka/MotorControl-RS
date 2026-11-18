@@ -182,13 +182,18 @@ physical qualifications.
 ## Wiring, assignment and observation
 
 The application records connected, unconnected and unknown wiring separately
-from the drive's function assignments and logical I/O observations. The bench
-has power and RS485 only; all X/Y terminals are declared unconnected. That
-does not imply assignments are zero. The hardware manual physical PDF page 9
+from the drive's function assignments and logical I/O observations. Since
+18 November 2026 the bench has wired I/O: X0-X3 of drives 1, 2 and 4 are driven
+in parallel by the bench board's MOSFETs and relays, and drive 4's Y0 is wired
+sinking to the board input `aux1`, read inverted. Those terminals are connected
+and are declared so; Y1 everywhere and Y0 of drives 1 and 2 are not connected.
+Wiring, mapping checks and rules are in the [bench I/O guide](bench_io.md).
+A connection does not imply an assignment, and an unconnected terminal does not
+imply assignment zero. The hardware manual physical PDF page 9
 describes four optoisolated 24 V inputs, at least 10 mA drive current and pulses
 longer than 10 ms. Pages 5 and 8 confirm the electrical/terminal limits. A 3.3 V
-MCU pin is not a direct input source. Two isolated outputs are available; no
-switches or loads are attached on the recorded bench.
+MCU pin is not a direct input source. The board switches stand in for external
+switches; no real switches or loads are attached.
 
 Hardware page 9 says startup inputs are unspecified/invalid. Function pages
 73-74 give stored defaults 1/2/3/0, also read on the

@@ -250,7 +250,8 @@
         "evidence": [
           "docs/archive/reports/ess_release_04_audit_2026-10-04.md",
           "docs/archive/reports/ess_release_22_2026-10-05.md",
-          "docs/archive/reports/ess_release_22_audit_2026-10-05.md"
+          "docs/archive/reports/ess_release_22_audit_2026-10-05.md",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ]
       },
       "reason": "Common minimal checked probe; explicit unresolved model/manufacturer confidence, bounded application discovery and independent no-collision claims."
@@ -293,7 +294,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_05_2026-10-04.md",
-          "docs/archive/reports/ess_release_05_2026-10-04.json"
+          "docs/archive/reports/ess_release_05_2026-10-04.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ]
       },
       "reason": "Keep raw model/version and DIP mapping conflict; no exact-model inference."
@@ -347,7 +349,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_05_2026-10-04.md",
-          "docs/archive/reports/ess_release_05_2026-10-04.json"
+          "docs/archive/reports/ess_release_05_2026-10-04.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ]
       },
       "reason": "Reads only. Stored serial settings, raw unresolved units, input assignments, application wiring and observed levels remain distinct. Observed algorithm raw3 is unknown under the documented1/2 enum; read response evidence does not qualify its meaning or motion."
@@ -395,7 +398,8 @@
         "evidence": [
           "docs/archive/reports/ess_release_06_2026-10-04.md",
           "docs/archive/reports/ess_release_06_audit_2026-10-04.md",
-          "docs/archive/reports/ess_release_06_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_06_audit_2026-10-04.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ]
       },
       "reason": "Three independent non-consuming blocks; configured algorithm raw3 cannot establish actual/commanded position. Unsigned paired bits are decoded only with matching known word order; speed/position signed encoding and physical units remain unresolved. Communication, alarm, readiness and operation outcomes are separate.",
@@ -449,7 +453,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
-          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json"
+          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "Reviewed five-word staging for positive finite relative commands and exact original-profile restoration PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. The new per-member group route has no physical credit from these older records."
       },
@@ -491,7 +496,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
-          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json"
+          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "Positive finite relative commands of 100 native increments at 60 RPM, configured native ramps and fresh running/completion reports PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. The new per-member group route has no physical credit from these older records."
       },
@@ -580,7 +586,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_23_2026-10-05.md",
-          "docs/archive/reports/ess_release_23_2026-10-05.json"
+          "docs/archive/reports/ess_release_23_2026-10-05.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "Explicit enable command and fresh drive-state observation PASS in the recorded prompt23 preceding-image (994d20...) finite action campaign; final image 041232... repeated read-only checks only, with the same production motor path. Archived software outcomes report acknowledged execution and observed completion under the declared receiver topology; independent electrical response-source, winding-current, shaft and external-input precedence measurements remain absent."
       },
@@ -621,7 +628,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_23_2026-10-05.md",
-          "docs/archive/reports/ess_release_23_2026-10-05.json"
+          "docs/archive/reports/ess_release_23_2026-10-05.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "Explicit release command and fresh drive-state observation PASS in the recorded prompt23 preceding-image (994d20...) finite action campaign; final image 041232... repeated read-only checks only, with the same production motor path. Archived software outcomes report acknowledged execution and observed completion under the declared receiver topology; independent electrical response-source, winding-current, shaft and external-input precedence measurements remain absent."
       },
@@ -702,7 +710,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
-          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json"
+          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "Normal stop during a finite 250-increment move PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified."
       },
@@ -743,7 +752,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
-          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json"
+          "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "Direct stop during a finite 250-increment move PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified."
       },
@@ -870,7 +880,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/2026-11-02_standalone_14_bench_regression.md"
+          "docs/reports/2026-11-02_standalone_14_bench_regression.md",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ]
       },
       "reason": "One checked non-changing FC03 0x001D/3 read preserves raw words, independent native ramp range flags, unresolved speed/ramp scaling, admitted configuration generation and copied evidence. Shared ordinary application and console result paths do not stage or qualify motion."
@@ -999,7 +1010,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/archive/reports/ess_release_13_2026-10-04.md"
+          "docs/archive/reports/ess_release_13_2026-10-04.md",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "Read-only four-window COM13 evidence."
       },
@@ -1251,7 +1263,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/2026-11-02_standalone_14_bench_regression.md"
+          "docs/reports/2026-11-02_standalone_14_bench_regression.md",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ]
       },
       "reason": "One checked non-changing FC03 0x0030/7 read preserves six records/seven raw words, positive method membership separately from existing execution support, native range flags, unresolved physical/offset interpretation, admitted configuration generation and owned19-byte provenance. Shared ordinary application and console reads do not stage or qualify homing."
@@ -1338,7 +1351,8 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/archive/reports/ess_release_15_2026-10-04.json"
+          "docs/archive/reports/ess_release_15_2026-10-04.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "All nine stored fields read via three checked current-image FC03 windows; no physical electrical-state claim."
       },
@@ -1386,7 +1400,8 @@
         "state": "NOT_RUN",
         "evidence": [
           "docs/archive/reports/ess_release_15_2026-10-04.json",
-          "docs/reports/2026-11-16_hil_regression.md"
+          "docs/reports/2026-11-16_hil_regression.md",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "Thirteen explicit passive/unloaded settings updates and exact restoration PASS as stored-register evidence. Full assignment/physical-function qualification NOT_RUN; checked FC06 source/ACK remains unconfirmed, matching FC03 readback settles only stored values. On 16 November 2026 the M04 round trips (64 updates each, confirmed FC06 replies and full readback, exact restoration) also passed on drives 2 and 4; physical function effects stay NOT_RUN."
       },
@@ -1553,7 +1568,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_16_2026-10-04.json",
-          "docs/archive/reports/ess_release_16_17_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_16_17_audit_2026-10-04.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "Fresh corrected497776-byte timer image on COM13 reads all16 indexes in this layout through checked typed core/CLI paths; rawmodel4EEA/version0029. Record storage access is qualified separately from external execution, signed physical meaning, activation or persistence."
       },
@@ -1767,7 +1783,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_16_2026-10-04.json",
-          "docs/archive/reports/ess_release_16_17_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_16_17_audit_2026-10-04.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "Fresh corrected497776-byte timer image on COM13 reads all16 indexes in this layout through checked typed core/CLI paths; rawmodel4EEA/version0029. Record storage access is qualified separately from external execution, signed physical meaning, activation or persistence."
       },
@@ -1903,7 +1920,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_16_2026-10-04.json",
-          "docs/archive/reports/ess_release_16_17_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_16_17_audit_2026-10-04.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "Fresh corrected497776-byte timer image on COM13 reads all16 indexes in this layout through checked typed core/CLI paths; rawmodel4EEA/version0029. Record storage access is qualified separately from external execution, signed physical meaning, activation or persistence."
       },
@@ -2002,7 +2020,8 @@
         "evidence": [
           "docs/archive/reports/ess_release_17_2026-10-04.json",
           "docs/archive/reports/ess_release_16_17_audit_2026-10-04.json",
-          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "Fresh497776-byte audit timer image on COM13 reads all8 native fields and repeats exact raw baseline after explicit lock-delay restoration; original497760-byte prompt17 evidence remains historical. Algorithm3 remains unknown; counts4000 and effective-current code5600 are retained. Readback is not active mode/current/encoder accuracy qualification. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified."
       },
@@ -2133,7 +2152,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_18_2026-10-04.json",
-          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "COM13 current-image typed reads before and after finite stored-filter restoration retain all20 raw fields. Read-path evidence only; unknown physical scaling, active behavior and model applicability are not qualified. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified."
       },
@@ -2219,7 +2239,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_18_2026-10-04.json",
-          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "COM13 current-image typed reads before and after finite stored-filter restoration retain all20 raw fields. Read-path evidence only; unknown physical scaling, active behavior and model applicability are not qualified. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified."
       },
@@ -2306,7 +2327,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_18_2026-10-04.json",
-          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "COM13 current-image typed reads before and after finite stored-filter restoration retain all20 raw fields. Read-path evidence only; unknown physical scaling, active behavior and model applicability are not qualified. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified."
       },
@@ -2391,7 +2413,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_18_2026-10-04.json",
-          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "COM13 current-image typed reads before and after finite stored-filter restoration retain all20 raw fields. Read-path evidence only; unknown physical scaling, active behavior and model applicability are not qualified. Later collision words repeatedly return0/0, outside documented ranges, with known_fields0; raw evidence stays explicit and does not qualify collision operation. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified."
       },
@@ -2684,7 +2707,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/debug_refactor_2026-10-04.md",
-          "docs/archive/reports/regular_api_sniff_2026-10-04.md"
+          "docs/archive/reports/regular_api_sniff_2026-10-04.md",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "Historical ordinary-firmware checked snapshot and exact restoration; no new-image or independent electrical/motion credit."
       },
@@ -2722,7 +2746,8 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/debug_refactor_2026-10-04.md",
-          "docs/archive/reports/regular_api_sniff_2026-10-04.md"
+          "docs/archive/reports/regular_api_sniff_2026-10-04.md",
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
         ],
         "reason": "Historical ordinary-firmware checked snapshot and exact restoration; no new-image or independent electrical/motion credit."
       },

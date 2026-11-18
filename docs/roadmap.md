@@ -71,8 +71,12 @@ the full standalone regression or qualify wired inputs and outputs.
    candidate/archive route. [15 stop/recovery](reports/2026-11-15_standalone_15_stop_recovery.md)
    and [16 evidence/qualification](reports/2026-11-15_standalone_16_evidence_qualification.md)
    are software complete. Candidate restoration, ordinary stop and selected
-   group/I/O paths have since passed on the bench. The full standalone 14
-   regression and the fault-specific 15/16 hardware cases remain open.
+   group/I/O paths have since passed on the bench. The bench regression moved
+   to the [wired bench set](prompts/ess_wired_bench/README.md):
+   [01](reports/2026-11-18_wired_bench_01_baseline.md) ran the short regression
+   on the wired fixture and recorded the restoration baseline; prompt 20 owns
+   the full regression. The fault-specific 15/16 hardware cases remain open;
+   HW-01 reproduction is wired bench prompt 16.
    The [15 November review](reports/2026-11-15_standalone_audit_revalidation.md)
    gives each old finding a current verdict. Optional cleanup must preserve
    frames, deadlines, retained results and command syntax.

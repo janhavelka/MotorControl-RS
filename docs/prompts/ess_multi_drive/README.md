@@ -26,6 +26,11 @@ verification, report and delivery rules apply here. Name reports
 library, the standalone owner and application, the Arduino and native-IDF
 examples and their host tools. FieldCore-node stays read-only.
 
+Since 18 November 2026 the bench is wired and the remaining hardware work moved
+to the [wired bench set](../ess_wired_bench/README.md#superseded-hardware-work):
+05 to its 08 and 09, 06 to 09 and 19, 07 to 19. Do not dispatch those parts
+from this set; the items below keep their software history.
+
 ## Next work
 
 1. Implement [05 input-triggered start](05_input_triggered_start.md). Function 7
@@ -72,9 +77,9 @@ drives ([report](../../reports/2026-11-12_multi_drive_write_motion_stress.md)).
 | 02 | [Drive group in the standalone application](../../archive/prompts/ess_multi_drive/02_drive_group.md) | Original subset extended by 08/09 | COMPLETE: member-specific requests and retained waits verified; wider qualification remains in 06 |
 | 03 | [Broadcast start and stop](03_broadcast_operations.md) | Reopened 01 with GO, D7, checked staging and qualified command words | NOT APPLICABLE: 01 is NO-GO |
 | 04 | [Input and output programming (archived)](../../archive/prompts/ess_multi_drive/04_input_programming.md) | Remaining physical checks belong to 06 | SOFTWARE COMPLETE: independent audit fixes, 97 suites, firmware CI and unconnected register/motion checks pass; wired effects and restart persistence NOT RUN ([audit](../../reports/2026-11-16_multi_drive_04_09_audit.md)) |
-| 05 | [Input-triggered start](05_input_triggered_start.md) | 04 delivered; existing checked staging for function 7; standalone 04/06 for PT segments; wired trigger for physical claims | NOT STARTED |
-| 06 | [Multi-drive qualification and closeout](06_two_drive_qualification.md) | Recorded three-drive fixture; wired I/O and restart control for their cases | PARTIAL: on 16 November ([report](../../reports/2026-11-16_hil_regression.md)) addressing, 50 group moves, group stops, enable waits, per-drive regressions and unconnected I/O on all three drives pass; wired effects, persistence, trigger starts and physical timing remain open |
-| 07 | [Why some broadcast starts and stops were ignored](07_broadcast_misses.md) | Owner powers the drives one at a time; bias fitted for the last row | BLOCKED(input) |
+| 05 | [Input-triggered start](05_input_triggered_start.md) | 04 delivered; existing checked staging for function 7; standalone 04/06 for PT segments; wired trigger for physical claims | NOT STARTED; superseded by wired bench 08 and 09 |
+| 06 | [Multi-drive qualification and closeout](06_two_drive_qualification.md) | Recorded three-drive fixture; wired I/O and restart control for their cases | PARTIAL: on 16 November ([report](../../reports/2026-11-16_hil_regression.md)) addressing, 50 group moves, group stops, enable waits, per-drive regressions and unconnected I/O on all three drives pass; wired effects, persistence, trigger starts and physical timing remain open; superseded by wired bench 09 and 19 |
+| 07 | [Why some broadcast starts and stops were ignored](07_broadcast_misses.md) | Owner powers the drives one at a time; bias fitted for the last row | BLOCKED(input); superseded by wired bench 19 |
 | 08 | [Enable-wait lifetime](../../archive/prompts/ess_multi_drive/08_enable_wait_lifetime.md) | No software fixture gate | COMPLETE: software checks and later enable/reselection bench regression pass; HW-15 remains open ([report](../../reports/2026-11-15_multi_drive_08_enable_wait_lifetime.md)) |
 | 09 | [Independent member motion requests](../../archive/prompts/ess_multi_drive/09_member_motion_requests.md) | 08 corrected; existing group/stage API | COMPLETE: independent audit fixes, 97 suites, all four exact-commit CI jobs and short three-drive regression pass; post-candidate relation guard remains ([audit](../../reports/2026-11-16_multi_drive_04_09_audit.md)) |
 

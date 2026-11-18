@@ -100,7 +100,8 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   16 November: the full route matrix passes on drive 1, including stop
   escalation and a refused failed-stop release for a confirmed stop
   ([HIL regression](reports/2026-11-16_hil_regression.md)). Native faults still do not qualify real stop timing;
-  release after a genuinely failed stop remains NOT RUN.
+  release after a genuinely failed stop remains NOT RUN (wired bench 16).
+  Later bench regressions belong to the wired bench set (01, 20).
 - [x] Finish [standalone 16 software](reports/2026-11-15_standalone_16_evidence_qualification.md):
   uniform reply evidence, exact qualification lifetime, active-origin moves,
   home rate policy and bounded observation after an ambiguous trigger. Fresh
@@ -146,7 +147,24 @@ functional evidence; independent shaft calibration remains absent.
   The recorded USB device returned on 2 November. The latest image and ending
   state are in the [bench guide](hardware_bench.md#latest-recorded-image-and-settings).
   Stage 14 remains PARTIAL because the low-rate persistent RUNNING failure is
-  unresolved.
+  unresolved. Its bench work moved to the
+  [wired bench set](prompts/ess_wired_bench/README.md): 01 ran the short
+  regression on the wired fixture on 18 November
+  ([report](reports/2026-11-18_wired_bench_01_baseline.md)); prompt 20 owns the
+  full regression and the NOT RUN stage 14 items (position interrupt, homing
+  auxiliary 7 and homes 33-35, changed-candidate staging, start-speed relation).
+- [ ] Admit the setters and `motion-profile stage` on connected terminals
+  through explicit facts ([wired bench 03](prompts/ess_wired_bench/03_connected_terminal_setters.md)).
+  18 November ([wired bench 01](reports/2026-11-18_wired_bench_01_baseline.md)):
+  with X0-X3 declared connected, start speed, homing auxiliary, the input-filter
+  experiment, subdivision, segment writes and the profile stage all refuse
+  before TX (0 frames). The stage refusal blocks the equal-archive no-write
+  check and leaves staged group writes without a restoration route for
+  non-selected drives; their cases are NOT RUN until 03.
+- [ ] Declare the fixture wiring at boot ([wired bench 02](prompts/ess_wired_bench/02_fixture_wiring_declarations.md)).
+  Both images still boot with every terminal declared unconnected (seen on
+  18 November), so connected terminals must be declared by hand after boot and
+  after each `useaddr`.
 - [ ] Distinguish supply transients from internal firmware failure in the
   reproduced reset-like loss of volatile settings. Failure occurred both above
   and below 200,000 command increments/s; ramp comparisons narrow the case but
@@ -345,14 +363,17 @@ more drives (now addresses 1, 2 and 4, star wiring).
 - [ ] Qualify wired input effects, connected output loads, status/polarity
   mapping and restart persistence. The startup wording and stored assignment
   defaults remain an ambiguity. No wired fixture or drive restart was used in 04.
-  [Multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md) owns
-  these remaining physical checks after 04's software archive.
+  These physical checks moved from [multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md)
+  to the [wired bench set](prompts/ess_wired_bench/README.md) (05, 06, 17).
 - [x] Wire the [bench I/O fixture](bench_io.md): X inputs of drives 1, 2 and 4 in
   parallel, drive 4 Y0 sinking to the board input. Input map and Y0 switching
   checked on 18 November ([record](reports/2026-11-18_bench_io_relay_check.md)).
 - [ ] Run the wired function tests in the [bench I/O test plan](bench_io.md#test-plan-once-wired)
   (status mapping, stop inputs, function 7, homing switches, limits, PT
-  segments, outputs, shared start).
+  segments, outputs, shared start). They are prompts 05-16 of the
+  [wired bench set](prompts/ess_wired_bench/README.md). The wiring map and
+  drive 4's Y0 map passed again in [wired bench 01](reports/2026-11-18_wired_bench_01_baseline.md);
+  no drive input or output function has been tested through the wiring yet.
 - [ ] Start motion from a shared input edge: function 7 with a staged profile
   first (absolute mode preferred), then PT segments with PIN selection, the
   negative PV speed encoding, and observation and stop of input-started motion ([multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)).

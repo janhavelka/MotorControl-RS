@@ -51,9 +51,16 @@ mode sweeps setters, persistence or motion. `--address` is 1..247. The
 with `useaddr`, as writes and moves apply only to the selected drive. They refuse
 to change drives while another drive's profile snapshot still needs restoring.
 `useaddr` resets the host's wiring declarations; declare the terminals again
-before moving another drive. The firmware qualifies the tuning and control
-setters only for node 1, the confirmed ESS23-RS20, so `settings` on another
-address is refused before TX. `angle` still runs on node 1 only. `--timeout` is a
+before moving another drive. The tuning and control setters require a fresh
+checked identity read of the selected drive reporting model `0x4EEA` and
+firmware `0x0029`, the owner-confirmed ESS23-RS20 identity of drives 1, 2 and
+4 (`ProbeApp.cpp` `exactModelQualified`, [13 November](reports/2026-11-13_multi_drive_settings_and_soak.md)).
+Another identity is refused before TX. Corrected 18 November 2026: this
+paragraph used to say the setters were qualified for node 1 only. The tuning
+input-filter experiment and the subdivision-only route also need fresh passive,
+unconnected inputs; on the wired bench (X0-X3 connected since 18 November) they
+refuse before TX until [wired bench 03](prompts/ess_wired_bench/03_connected_terminal_setters.md).
+Never pass `--declare-unconnected` on that bench. `angle` still runs on node 1 only. `--timeout` is a
 finite command bound up to 60 seconds; existing operation/request deadlines are
 unchanged. The reusable motion phases use their fixed five-second command bounds.
 

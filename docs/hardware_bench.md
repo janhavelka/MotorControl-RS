@@ -50,9 +50,9 @@ regression remains NOT RUN; see the
 | Item | Recorded setup |
 | --- | --- |
 | Motor | User-confirmed ESS23-RS20; raw model `0x4EEA`, firmware word `0x0029` |
-| Drives since 12 November | Three drives at DIP addresses 1, 2 and 4, all `0x4EEA` / `0x0029` and owner-confirmed ESS23-RS20 (drives 2 and 4 on 13 November). Custom node `0x0013` is 0 on all three. The owner describes them as powered, on RS485 and with free shafts; their terminals are declared unconnected on that basis; short star wiring, one 120 Ω terminator on the controller board, SW1 off on the drives, no fail-safe bias. Keep addresses 3, 6 and 16 free; see the [bus check](reports/2026-11-12_multi_drive_bus_check.md). Address-0 trials produced replies and RX errors consistent with collisions; individual responders were not isolated. Production broadcast remains NO-GO on this setup ([multi-drive 01](reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)) |
+| Drives since 12 November | Three drives at DIP addresses 1, 2 and 4, all `0x4EEA` / `0x0029` and owner-confirmed ESS23-RS20 (drives 2 and 4 on 13 November). Custom node `0x0013` is 0 on all three. The owner describes them as powered, on RS485 and with free shafts. Until 18 November their terminals were declared unconnected; since then X0-X3 of all three and drive 4's Y0 are wired and declared connected (below). Short star wiring, one 120 Ω terminator on the controller board, SW1 off on the drives, no fail-safe bias. Keep addresses 3, 6 and 16 free; see the [bus check](reports/2026-11-12_multi_drive_bus_check.md). Address-0 trials produced replies and RX errors consistent with collisions; individual responders were not isolated. Production broadcast remains NO-GO on this setup ([multi-drive 01](reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)) |
 | Mounting | Bolted securely to the table; free, uncoupled shaft |
-| Connections | Power and RS485 only; no external switches, output loads or driven mechanics |
+| Connections | Power, RS485 and, since 18 November, the bench board's wired I/O: X0-X3 of drives 1, 2 and 4 in parallel, drive 4's Y0 to `aux1` ([bench I/O](bench_io.md)); no real switches, output loads or driven mechanics |
 | Board | ESP32-S3, 16 MB flash / 8 MB PSRAM; historical board identity E2 revision 2.0.0 |
 | UART / pins | UART2; TX GPIO47, RX GPIO48, combined DE/RE GPIO21, high for transmit |
 | Motor serial link | Address 1, 115200 baud, 8N1 in the recorded campaigns |
@@ -103,6 +103,38 @@ authorization; they do not change the default short-test scope or authorize a
 new unattended soak during maintenance.
 
 ## Latest recorded image and settings
+
+On 18 November [wired bench 01](reports/2026-11-18_wired_bench_01_baseline.md)
+flashed `bench_s3_load_timer` built from `9ac8623`, SHA-256
+`7D5316EF18E5566A9A0B3C98667CEEDB148B8AD95E783D1D8962B271FFE3D365`, recorded
+the restoration baseline and ran the short regression with connected
+declarations. For its parity subset it flashed native ESP-IDF 5.5.5
+`examples/probe_idf` (SHA-256
+`4E5D721C64A3DED182964E60ED5E04C550F96201DBDAD555ACAF7A516E953154`, same
+firmware sources, embedded version `v1.0.0-186-g996dc7c`), then the Arduino
+image again (hash verified). Ending state:
+
+- **Board:** Arduino `9ac8623` image above, all bench outputs off, `aux1`
+  active (drive 4's Y0 off, inverted wiring), drive 1 selected with X0-X3
+  declared connected, group empty, debug off, COM13 closed.
+- **Drives 1/2/4:** enabled, stopped, alarm-free, raw positions 6,692/6,472/6,460.
+- **Settings:** every settings read (59 groups per drive) equals the
+  restoration baseline, including I/O `[0,1,2,3,0,0,0,0,0]` and profile
+  `[30,100,100,60,0,5000]`. Nothing was saved; the drives were not restarted.
+
+## Restoration baseline
+
+[`reports/wired_bench_baseline.json`](reports/wired_bench_baseline.json), schema
+`motorcontrol-rs/wired-bench-baseline/1`, is the reference state that wired
+bench prompts restore to (COMMON restoration rule). It holds, per drive, the
+live identity and state (evidence, never restored), every settings read of
+18 November with its exact console line, operation ID and raw value, and one
+entry per settings field with its restoration route (setter, facts, readback,
+order, first admitting prompt) or the reason it has none. Comparison uses the
+captured value, never a printed default. Prompt 04 owns capture, comparison and
+re-baselining.
+
+Earlier sessions follow, newest first; before 18 November the terminals were unwired.
 
 On 18 November the [bench I/O relay check](reports/2026-11-18_bench_io_relay_check.md)
 flashed `bench_s3_load_timer` from `afe3588`, SHA-256
