@@ -143,3 +143,21 @@ FTR-B4GA4.5Z-B05 on the 5 V rail through 10 Ω, MOSFETs XRS130N10LF, input
 26.7 kΩ into a DDTC144EE with 100 nF and a 5.1 V zener, and an RGB LED that is
 green when the input is energized. The board input and the firmware's
 polarity are correct.
+
+## Sinking wiring: the input now stays inactive
+
+After the owner rewired drive 4's output sinking (YCOM to 0 V, Y0 to the
+terminal, 4.7 kΩ pull-up from +24 V), the input map again passed on all three
+drives. The board input read inactive with Y0 off, and stayed inactive with no
+edge through five 2 s on/off cycles of drive 4's Y0; the drive's output status
+followed every step and the I/O words were restored.
+
+Both wirings fit one explanation: roughly 300 Ω between Y0 and YCOM that
+conducts in both directions while the output is off. With YCOM at +24 V that
+gives about 23.4 V into the earlier 5.5 kΩ load (measured), and with the
+pull-up about 1.4 V at the terminal, just under the input's 1.5 V threshold.
+A working output is open when off, so either the wiring bridges Y0 and YCOM
+or the drive's output conducts. Not yet measured; an unpowered resistance check
+across the drive's Y0 and YCOM pins, and on the harness, separates the two.
+
+Evidence: `2026-11-18_io_map_6.jsonl` and `2026-11-18_y0_toggle_sink_d4.jsonl`.
