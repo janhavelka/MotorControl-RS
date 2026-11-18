@@ -195,3 +195,11 @@ The input map on the same wiring passed again on all three drives
 Evidence: `2026-11-18_restore_d4.jsonl`, `2026-11-18_io_map_7.jsonl`,
 `2026-11-18_y0_toggle_unloaded_d4.jsonl` and
 `2026-11-18_y0_toggle_final_d4.jsonl`.
+
+## Recheck after moving the setup
+
+The owner moved the bench on the desk. The input map passed again on drives 1,
+2 and 4 with the same mapping, and three 2 s on/off cycles of drive 4's Y0 gave
+one board-input edge per switch, inverted as before. All drives ended stopped,
+alarm-free, with I/O words `[0,1,2,3,0,0,0,0,0]`. Evidence:
+`2026-11-18_io_map_8.jsonl` and `2026-11-18_y0_toggle_moved_d4.jsonl`.
