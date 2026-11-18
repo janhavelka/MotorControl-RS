@@ -119,3 +119,27 @@ the constant active reading above. The manual's output drawing (hardware
 manual p8) shows an opto-driven back-to-back MOSFET switch with no leakage or
 rating figures. Remedy: a 4.7 kΩ pull-down at the board input, keeping the
 1 kΩ series resistor; not yet fitted or retested.
+
+## Correction: the output conducts, it does not leak
+
+With the 4.7 kΩ pull-down fitted, the board input still read active, and the
+terminal sat near 18.4 V whatever any drive's Y0 did. Toggling Y0 on drives 4,
+1 and 2 again (8 s and then 2 s phases) changed nothing at the board. The
+owner then measured drive 4's Y0 pin against board GND with the board load
+connected: it moved between about 23.4 V (off) and 24.7 V (on) in step with
+drive 4. Without the drive connected the terminal read 0 V and the board LED
+was red; with it, about 24 V and green.
+
+An open switch cannot hold 23.4 V while supplying the roughly 4 mA the 1 kΩ,
+4.7 kΩ and input draw. With YCOM at +24 V the off output conducts through a
+diode-like path, and turning it on only removes that drop. The earlier
+leakage explanation and the pull-down remedy were wrong. The guide now wires
+the output sinking: YCOM to 0 V, Y0 straight to the terminal, 4.7 kΩ pull-up
+from +24 V, read inverted. Not yet rewired or retested.
+
+The board's EasyEDA schematic (CO2Station, board CO2_WIFI, Switching page;
+read-only netlist, version not checked) gives the actual parts: relays
+FTR-B4GA4.5Z-B05 on the 5 V rail through 10 Ω, MOSFETs XRS130N10LF, input
+26.7 kΩ into a DDTC144EE with 100 nF and a 5.1 V zener, and an RGB LED that is
+green when the input is energized. The board input and the firmware's
+polarity are correct.

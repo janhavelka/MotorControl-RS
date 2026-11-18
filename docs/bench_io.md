@@ -19,7 +19,7 @@ recorded; this plan requires 24 V (see [supply voltage](#supply-voltage)).
 | Drive terminals | [Hardware manual](vendor/ESS23-RS1020_Series_Bus_Integrated_Motor_Hardware_Manual.pdf) physical pages 8-10 (port table, input and output circuits, 10 ms input rule) and p5 (logic input 24 V, 10-50 mA) |
 | Input functions and power-up defaults | [Function manual](vendor/Modbus-Series-Bus-Product-Function-Manual-V1.0_1_.pdf) ESS appendix: `0x0041`-`0x0044` default X0 = 1 origin, X1 = 2 positive limit, X2 = 3 negative limit, X3 = 0 none; this matches the bench power-up readback `[0,1,2,3,0,0,0,0,0]` |
 | Board GPIOs | User statement (16 November); FieldCore `Co2ControlS3Hw200Board.h` (read-only): relay1 GPIO45, relay2 GPIO18, MOSFET1 GPIO3, MOSFET2 GPIO46, AUX1 input GPIO17, all outputs active high |
-| Board circuits | FieldCore `docs/hardware/tunnelmonitor_wifi_hw210/README.md` sheet 6 (the same relay, MOSFET and AUX circuits) and the CO2Control AUX crop in FieldCore `docs/guidelines/co2control.md`. No full CO2Control HW2.0.0 schematic is in either repository |
+| Board circuits | The board's own EasyEDA schematic (project CO2Station, board CO2_WIFI, page Switching), read-only compiled netlist on 18 November. Earlier sections of this guide relied on the sibling FieldCore HW2.1.0 notes; where they differ, the netlist wins |
 | Relay | Owner-identified fitted part, 18 November: Fujitsu FTR-B4GA4.5Z-B05 (LCSC C353046), DPDT changeover, 4.5 V coil (145 Ω, 140 mW), gold-plated contacts, 1 A at 30 V DC per the LCSC listing, 3 ms operate/release. The HW2.1.0 schematic's TE 12 V-coil part is not what this board carries |
 
 The board facts come from a sibling revision's schematic plus the CO2Control
@@ -35,13 +35,13 @@ The 8-pin I/O connector: 1 X0, 2 X1, 3 X2, 4 X3, 5 XCOM, 6 Y0, 7 Y1, 8 YCOM.
   at 0 V) wiring both work, but all four inputs share the one XCOM and therefore
   one orientation. Rated signal 24 V, at least 10 mA (10-50 mA). A level must
   last more than 10 ms. The internal resistor value is not documented.
-- **Outputs.** Each of Y0-Y1 is an opto-driven pair of back-to-back MOSFETs
-  (a solid-state switch) between Yn and YCOM, so either polarity works. No
-  voltage, current or off-state leakage rating is documented. On the bench
-  (18 November) an off Y0 still read about 23.7 V on a DMM against 24.9 V on,
-  so the off state leaks enough to look like a high-resistance path to YCOM
-  (about 0.5 MΩ if the DMM is 10 MΩ). A sensitive input needs a load resistor
-  to tell off from on; see the `AUX_DI1_24V` pull-down below.
+- **Outputs.** Each of Y0-Y1 is drawn as an opto-driven MOSFET switch between
+  Yn and YCOM, and the text claims NPN and PNP wiring. No voltage, current or
+  leakage rating is documented. **On the bench (18 November), with YCOM at
+  +24 V, an off Y0 still conducted:** under a load of about 4 mA it read
+  23.4 V against 24.7 V on, a diode-like drop rather than an open switch. Wire
+  the outputs sinking instead: YCOM to 0 V and a pull-up on the load side (see
+  the `AUX_DI1_24V` wiring below).
 - **XCOM and YCOM.** The circuits and the port table show them as separate pins
   on separate isolated circuits; nothing connects them to each other or to the
   drive's power GND or RS485 RGND. This is documentation, not a measurement:
@@ -52,11 +52,11 @@ The 8-pin I/O connector: 1 X0, 2 X1, 3 X2, 4 X3, 5 XCOM, 6 Y0, 7 Y1, 8 YCOM.
 
 | Firmware name | GPIO | Circuit | Use for |
 | --- | --- | --- | --- |
-| `relay1` | 45 | DPDT contacts, two changeover sets; 4.5 V coil, feed rail not confirmed | Slow, isolated level signals |
+| `relay1` | 45 | Fujitsu FTR-B4GA4.5Z-B05, DPDT changeover; 4.5 V coil from the 5 V rail through 10 Ω, DDTC143XE driver | Slow, isolated level signals |
 | `relay2` | 18 | Same | Same |
-| `mosfet1` | 3 | Low-side N-MOSFET, source on board GND; 2-pin connector: pin 1 VIN_PROT, pin 2 drain; flyback diode drain → VIN_PROT | Fast, clean edges (sinking only) |
+| `mosfet1` | 3 | XRS130N10LF low-side N-MOSFET, source on board GND; 2-pin connector: pin 1 main supply (`MOSTEF_VIN`, through a 25 mΩ shunt), pin 2 drain; DSK310 flyback diode drain → pin 1 | Fast, clean edges (sinking only) |
 | `mosfet2` | 46 | Same | Same |
-| `aux1` | 17 | `AUX_DI1_24V` terminal → 29.4 kΩ → transistor; TVS; an energized input pulls GPIO17 low | Sensing one drive output |
+| `aux1` | 17 | `AUX_DI1_24V` → 26.7 kΩ → DDTC144EE (47 kΩ/47 kΩ), 100 nF and 5.1 V zener on its input, SMAJ36CA at the terminal; collector 5.1 kΩ to 3 V, 220 Ω to GPIO17. Energized input pulls GPIO17 low; RGB LED green when energized, red otherwise | Sensing one drive output |
 
 Board notes that matter here:
 
@@ -71,11 +71,12 @@ Board notes that matter here:
   through them. A jumper gives the common a level, so NO becomes a switched
   GND (sinking) or a switched board supply (sourcing). This guide uses the GND
   position: NO then pulls a drive input to 0 V, like the MOSFETs.
-- The fitted relays have 4.5 V coils. The HW2.1.0 schematic feeds its 12 V
-  coils from VIN_PROT; on this board the feed is presumably a lower rail,
-  because 24 V on a 145 Ω coil would dissipate about 4 W. Both relays clicked
-  on 18 November. Measure the coil voltage during a held pulse before long
-  holds.
+- The fitted relays have 4.5 V coils fed from the board's 5 V buck rail
+  through 10 Ω (a solder jumper bypasses it), so about 4.7 V reaches each coil
+  whatever the main supply is. Long holds are fine.
+- The board input switches at about 1.5 V and 13 µA, and its 26.7 kΩ / 100 nF
+  input filter delays edges by a few milliseconds; recorded edge times include
+  that delay.
 - MOSFET connector pin 1 is the board supply. Leave it unconnected for drive
   inputs. Never feed an external voltage into VIN_PROT, the direct `AUX_IO1`
   3 V node, or expansion header U18 pin 1 (shared with relay2's GPIO18).
@@ -125,8 +126,8 @@ The drives accept 24-48 V, but their X inputs are rated for 24 V signals
 supply to be 24 V. At 36 or 48 V, do not wire it: the inputs would need series
 resistors or a separate 24 V supply, and the AUX input would need a divider.
 
-The relay coil supply is a separate question (see board notes): keep relay
-holds to seconds until the coil voltage has been measured during a hold.
+The relay coils run from the board's own 5 V rail (see board notes), so the
+main supply voltage does not reach them.
 
 ## Recommended wiring
 
@@ -143,31 +144,33 @@ touching +24 V. A 0.2-0.5 A fuse or PTC in the +24 V feed to the I/O is good
 practice. Without one, the circuit works the same; check every net with an
 ohmmeter before power-on instead (rule 3 below). Do not add series resistors in the X
 paths: they lower the input current below the manual's 10 mA minimum, more so
-with three inputs per switch. A 1 kΩ resistor in the Y0 → `AUX_DI1_24V` wire is
-fine (that input draws about 0.3 mA) and limits current through the drive's
-unrated output switch if that wire is shorted.
+with three inputs per switch.
 
-The board input also needs a **4.7 kΩ (0.25 W) pull-down from `AUX_DI1_24V`
-pin 2 to pin 1 (GND)**. That input switches at only about 1.6 V and 13 µA
-(29.4 kΩ plus the transistor's 47 kΩ/47 kΩ network), so the drive output's
-off-state leakage alone holds it active: measured on 18 November, it read
-active continuously and ignored Y0. With the pull-down, off leaves well under
-1 V at the terminal while on gives about 20 V and draws about 4.4 mA from Y0.
-After fitting it, an off output must read below 1 V at pin 2; if it does not,
-lower the pull-down to 2.2 kΩ.
+The drive output is wired **sinking**, because with YCOM at +24 V an off Y0
+still conducted (18 November, see Drive terminals):
+
+- YCOM (pin 8) to **0 V**, not +24 V.
+- Y0 (pin 6) straight to `AUX_DI1_24V` pin 2, with no series resistor: a series
+  resistor would leave several volts at the terminal when Y0 pulls low, above
+  the input's 1.5 V threshold.
+- A **4.7 kΩ pull-up from +24 V to `AUX_DI1_24V` pin 2** (0.25 W or more; use
+  10 kΩ for a smaller part). It also limits the Y0 current to about 5 mA.
+
+The logic is inverted: Y0 off leaves about 23 V at the terminal, so `aux1`
+reads active (LED green); Y0 on pulls it to about 0 V, so `aux1` reads
+inactive (LED red). Test scripts must read it that way.
 
 ```text
  shared 24 V supply
    +24 V ──fuse──┬── XCOM (pin 5) of drives 1, 2 and 4
-                 └── YCOM (pin 8) of drive 1
-   0 V ── board GND (already common)
+                 └── 4.7 kΩ ── AUX_DI1_24V pin 2 (pull-up)
+   0 V ── board GND (already common) ── YCOM (pin 8) of drive 4
           ├── relay1 common, set 1 (selector jumper on GND); relay1 NO ── X1 (pin 2) of drives 1, 2 and 4
           └── relay2 common, set 1 (selector jumper on GND); relay2 NO ── X2 (pin 3) of drives 1, 2 and 4
    MOSFET1 pin 2 (drain) ───────────────────────── X0 (pin 1) of drives 1, 2 and 4
    MOSFET2 pin 2 (drain) ───────────────────────── X3 (pin 4) of drives 1, 2 and 4
-   AUX_DI1_24V pin 2 ──1 kΩ─────────────────────── Y0 (pin 6) of drive 4 (as wired; plan was drive 1)
-   AUX_DI1_24V pin 2 ──4.7 kΩ── AUX_DI1_24V pin 1 (GND)
-   Not connected: MOSFET pin 1 (VIN_PROT), drive 1 Y1, and Y0, Y1, YCOM of drives 2 and 4
+   AUX_DI1_24V pin 2 ───────────────────────────── Y0 (pin 6) of drive 4 (as wired; plan was drive 1)
+   Not connected: MOSFET pin 1, drive 4 Y1, and Y0, Y1, YCOM of drives 1 and 2
 ```
 
 | X pin, all three drives | Board switch | Power-up function | Functions to test on it |
@@ -176,7 +179,7 @@ lower the pull-down to 2.2 kΩ.
 | 2 X1 | `relay2` (as wired) | 2 positive limit | 2 positive limit, 14 PIN0, 4 release, 9 JOG+ |
 | 3 X2 | `relay1` (as wired) | 3 negative limit | 3 negative limit, 15 PIN1, 10 JOG- |
 | 4 X3 | `mosfet2` | 0 none | 5 stop, 6 emergency stop, 16 PIN2, 4 release |
-| Drive 1 Y0 | `aux1` input | 0 none | 1 alarm, 2 running, 3 homed, 4 in position, 5 brake, 9 custom |
+| Drive 4 Y0 (as wired) | `aux1` input, inverted | 0 none | 1 alarm, 2 running, 3 homed, 4 in position, 5 brake, 9 custom |
 
 The relays ended up swapped against the diagram: the 18 November input map
 found `relay2` on X1 and `relay1` on X2 on all three drives
@@ -192,8 +195,8 @@ Why this layout:
 - One MOSFET edge reaches all three drives at once: the manual's documented
   way to start several drives together. X3 can be a shared stop input.
 - X0 trigger plus PIN0-PIN2 on X1-X3 selects 8 stored PT or PV segments.
-- Drive 1 Y0 to `aux1` gives the controller its own timestamp of a drive output
-  edge. Move that wire to test Y1 or another drive's outputs.
+- Drive 4 Y0 to `aux1` (as wired) gives the controller its own timestamp of a
+  drive output edge, inverted. Move that wire to test Y1 or another drive.
 
 Each switch now carries three inputs: about 30-150 mA at 10-50 mA per input.
 The relay contacts are rated 2 A. The MOSFET rating is not documented here; in
