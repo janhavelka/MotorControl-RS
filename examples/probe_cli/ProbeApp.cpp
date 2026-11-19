@@ -182,6 +182,7 @@ struct App {
         uint16_t requestedSetting = 0; ///< Frozen across prior read and update.
         ESS::HomeContext home;
         bool programmaticHome = false;
+        bool homeSoftLimits = false; ///< Admitted under a home qualification with `soft-limits` (wired bench 11).
         bool groupChild = false; ///< Owned by a group operation; its group line reports it.
         bool groupWaiting = false; ///< Prepared group member move, before its turn in the start order.
         bool triggerTxComplete = false; ///< Start write physical TX evidence, copied from the owner.
@@ -252,6 +253,21 @@ struct App {
     int64_t simpleEndpoint = 0;
     uint32_t simpleEndpointGeneration = 0;
     PositionClearQualification positionClearQualification;
+    // Wired bench 11 (SoftLimitApp.h): the last home that published a reference
+    // under the `soft-limits` fact, the enable write being admitted, and the
+    // binding its confirmed readback installed.
+    struct SoftLimitHome {
+        MotorControlRS::ReadTarget target;
+        uint32_t operationId = 0, axisGeneration = 0, bindingGeneration = 0;
+        bool stated = false;
+    } softLimitHome;
+    struct SoftLimitBinding {
+        MotorControlRS::ReadTarget target;
+        uint32_t operationId = 0, axisGeneration = 0, bindingGeneration = 0, homeOperationId = 0;
+        int64_t minimum = 0, maximum = 0;
+        uint16_t positiveWords[2] = {}, negativeWords[2] = {};
+    } softLimitBinding, softLimitPending;
+    bool homeSoftLimitsStated = false; ///< The latest home qualification stated `soft-limits`.
     Probe::DebugSession debug;
     struct MotionProfileState {
         Probe::MotionProfileView view;
@@ -1213,6 +1229,7 @@ bool signedFeedback(uint32_t raw, int64_t& native) {
     return native >= -0x0FFFFFFF && native <= 0x0FFFFFFF;
 }
 #include "IoQualificationApp.h"
+#include "SoftLimitApp.h"
 #include "MotionReadinessApp.h"
 #include "MotionProfileApp.h"
 void cancelSimplePreparation(App&, uint8_t, uint64_t);
@@ -1582,8 +1599,28 @@ Probe::Action prepareSelectedMove(App& a, const MotorControlRS::MoveRequest& sup
     ESS::MovePrerequisites prerequisites = a.movePrerequisites;
     const StopInputCheck stops = stopInputs(selectedFacts(a), now);
     if (stops.result != StopInputs::CLEAR) { noteStopInputRefusal(a, stops); return Probe::Action::UNAVAILABLE; }
+    // Stale I/O is refused by moveRequirements on the ordinary path.
+    const LimitInputCheck limits = limitInputs(selectedFacts(a), now);
+    if (limits.result == LimitInputs::ACTIVE || limits.result == LimitInputs::MAPPING_UNKNOWN) {
+        noteLimitInputRefusal(a, limits); return Probe::Action::UNAVAILABLE;
+    }
+    // Wired bench 11: unknown soft-limit state refuses every start; a bound
+    // state names an endpoint outside the host soft limits (the core enforces them).
+    const SoftLimitState soft = softLimitState(a, now);
+    if (soft == SoftLimitState::UNKNOWN) { noteSoftLimitRefusal(a, "soft_limit_state_unknown"); return Probe::Action::UNAVAILABLE; }
+    if (soft == SoftLimitState::BOUND) {
+        MotorControlRS::PositionRequest endpoint = supplied.position;
+        endpoint.configurationGeneration = a.axis.generation;
+        const AxisReference current = axisReference(a);
+        MotorControlRS::PreparedTarget target;
+        const Status bounded = MotorControlRS::preparePosition(endpoint, a.axis, current.nativeKnown ? &current : nullptr, target);
+        if (!bounded && bounded.detail == static_cast<int32_t>(MotorControlRS::AxisError::LIMIT)) {
+            noteSoftLimitRefusal(a, "soft_limit_endpoint"); return Probe::Action::UNAVAILABLE;
+        }
+    }
     if (!prerequisites.commandUnitsVerified && !moveRequirements(a, supplied, now, prerequisites)) return Probe::Action::UNAVAILABLE;
     prerequisites.stopInputMask = stops.mask; prerequisites.stopInputActiveLow = stops.activeLow;
+    prerequisites.limitInputMask = limits.witness; prerequisites.limitInputActiveLow = limits.activeLow;
     const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
     if (!Probe::fresh(motion, a.axis.target, now, prerequisites.maximumAgeUs)) prerequisites.readinessQualified = false;
     else {
@@ -1688,6 +1725,17 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
         stops = stopInputs(selectedFacts(a), now);
     if (stops.result != StopInputs::CLEAR) { noteStopInputRefusal(a, stops); return Probe::Action::UNAVAILABLE; }
     prerequisites.stopInputMask = stops.mask; prerequisites.stopInputActiveLow = stops.activeLow;
+    // Wired bench 11: an active limit input refuses in both directions (away
+    // stays refused for velocity); unknown soft-limit state refuses; a bound
+    // state admits, and the drive's own limits end the run (SOFT_LIMIT).
+    LimitInputCheck limits;
+    if (Probe::fresh(io, a.axis.target, now, a.observationAgeUs()) && !io.value.unknownInputBits)
+        limits = limitInputs(selectedFacts(a), now);
+    if (limits.result != LimitInputs::CLEAR) { noteLimitInputRefusal(a, limits); return Probe::Action::UNAVAILABLE; }
+    prerequisites.limitInputMask = limits.witness; prerequisites.limitInputActiveLow = limits.activeLow;
+    if (softLimitState(a, now) == SoftLimitState::UNKNOWN) {
+        noteSoftLimitRefusal(a, "soft_limit_state_unknown"); return Probe::Action::UNAVAILABLE;
+    }
     prerequisites.minimumRpm = std::max<int16_t>(prerequisites.minimumRpm,-60);
     prerequisites.maximumRpm = std::min<int16_t>(prerequisites.maximumRpm,60);
     const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
@@ -1873,6 +1921,12 @@ Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
     if (stops.result == StopInputs::STOP_ACTIVE || stops.result == StopInputs::RELEASE_ACTIVE) {
         noteStopInputRefusal(a, stops); return Probe::Action::UNAVAILABLE;
     }
+    // Wired bench 11: a home needs the soft limits known disabled.
+    const SoftLimitState soft = softLimitState(a, now);
+    if (soft != SoftLimitState::KNOWN_DISABLED) {
+        noteSoftLimitRefusal(a, soft == SoftLimitState::BOUND ? "soft_limits_enabled" : "soft_limit_state_unknown");
+        return Probe::Action::UNAVAILABLE;
+    }
     if (!homeReadiness(a, prerequisites, now)) return Probe::Action::UNAVAILABLE;
     // Nonzero offset (wired bench 10): only the measured subset, decided by
     // homeOffsetAdmission; the core checks the qualified encoding and auxiliary.
@@ -1898,6 +1952,8 @@ Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
     record->deadlineUs = deadline; record->kind = App::OperationKind::HOME; record->axisReserved = true;
     record->configurationGeneration = a.axis.generation;
+    record->homeSoftLimits = a.homeSoftLimitsStated && prerequisites.referenceSemanticsQualified;
+    a.softLimitHome = App::SoftLimitHome(); // A new home replaces the last one, whatever its result.
     operationId = a.latestOperationId = record->operationId; return Probe::Action::OK;
 }
 // Register-only commissioning policy scoped to the affected terminals. Active
@@ -2287,6 +2343,12 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
         bool drivePassiveInputs = false; // Only the subdivision-only route has a passive input path.
         ESS::DriverRequest request = supplied;
         if (!request.configurationGeneration) request.configurationGeneration = generation;
+        // Wired bench 11: the soft-limit enable route (SoftLimitApp.h).
+        a.softLimitPending = App::SoftLimitBinding();
+        if (request.group == ESS::DriverGroup::DRIVE &&
+            (request.fields & static_cast<uint32_t>(ESS::DriverField::SOFT_LIMIT_ENABLE)) &&
+            request.softLimitEnable == ESS::SoftLimitEnable::AFTER_HOMING)
+            softLimitEnablePrerequisites(a, prerequisites, target, generation);
         if (request.group == ESS::DriverGroup::DRIVE &&
             request.fields == static_cast<uint32_t>(ESS::DriverField::SUBDIVISION)) {
             // Changing only subdivision is a stopped settings operation. The
@@ -2456,6 +2518,7 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
     record->deadlineUs = record->driver.deadlineUs; record->configurationGeneration = generation;
     record->kind = App::OperationKind::DRIVER; record->axisReserved = kind == ESS::DriverKind::UPDATE;
+    if (kind == ESS::DriverKind::UPDATE && a.softLimitPending.target.id) a.softLimitPending.operationId = record->operationId;
     operationId = a.latestOperationId = record->operationId; return Probe::Action::OK;
 }
 bool settingsRefusalCommand(void* context, Probe::SettingsRefusal& output) {
@@ -2478,6 +2541,14 @@ Probe::Action driverCommand(void* context, uint32_t commandId, uint8_t address, 
 // historical contexts or silently promotes stored codes into active settings.
 void invalidateDriverAssumptions(App& a, uint8_t address, uint32_t changed, uint64_t now, const App::Record* changing = nullptr,
                                 ESS::DriverGroup group = ESS::DriverGroup::DRIVE) {
+    // Wired bench 11 (image C, run soft_b): after our own confirmed enable the
+    // first checked reads compare against caches from before the write and
+    // report 0x0018 as changed. That read is not a new drive change: it keeps
+    // the binding (rebased to the new generation, host limits reinstalled).
+    // softLimitState still needs the configuration read to show 1.
+    const bool softLimitRebase = changing && changed == static_cast<uint32_t>(ESS::DriverField::SOFT_LIMIT_ENABLE) &&
+        !(changing->kind == App::OperationKind::DRIVER && changing->driver.kind == ESS::DriverKind::UPDATE) &&
+        address == a.axis.target.address && softLimitBindingCurrent(a);
     clearIoQualifications(a, address);
     if (group == ESS::DriverGroup::POSITION_START_SPEED)
         revokePositionStartSpeedRelation(a, address);
@@ -2524,6 +2595,7 @@ void invalidateDriverAssumptions(App& a, uint8_t address, uint32_t changed, uint
     for (auto& cache : a.tuningSettings)
         if (cache.target.address == address) cache.operationId = 0;
     invalidateObservations(a, address, now);
+    if (softLimitRebase) rebaseSoftLimitBinding(a);
 }
 void driverEffects(App& a, App::Record& record, uint32_t effects, uint64_t now) {
     const uint32_t changed = effects & ~record.driverEffects;
@@ -2889,6 +2961,7 @@ void updateActionReservation(App& a, App::Record& record) {
                 // Only the derived cache is reconciled. Historical operation/evidence remain immutable.
                 reference.configurationGeneration = a.axis.generation;
                 a.coordinateReference = reference;
+                noteSoftLimitHome(a, record);
             }
         }
         return;
@@ -2896,6 +2969,7 @@ void updateActionReservation(App& a, App::Record& record) {
     case App::OperationKind::DRIVER: {
         driverEffects(a, record, record.driver.effects, nowUs());
         record.axisReserved = false;
+        noteSoftLimitWrite(a, record);
         if (record.singleSettingSession) return; // Single-field history is not a DRIVE cache or motion profile.
 #if MOTORCONTROLRS_WB10_EXPERIMENT
         notePairRead(a, record);
@@ -4100,7 +4174,12 @@ void deliver(App& a) {
                         if (same && old.direction != updated.direction) effects |= static_cast<uint16_t>(ESS::DriverField::DIRECTION);
                         if (same && old.subdivision != updated.subdivision) effects |= static_cast<uint16_t>(ESS::DriverField::SUBDIVISION);
                         if (!record.effectsInvalidated && (effects || configChanged)) {
+                            // Wired bench 11 (image D, run soft_d): the first configuration
+                            // read after our own confirmed enable differs from the pre-write
+                            // cache in 0x0018 only; it keeps the soft-limit binding.
+                            const bool rebase = softLimitReadRebase(a, old, updated, effects);
                             invalidateDriverAssumptions(a, record.address, effects, nowUs());
+                            if (rebase) rebaseSoftLimitBinding(a);
                             // These are the newly checked stored codes, not an older cache.
                             a.configuration.operationId = record.operationId;
                         }

@@ -85,7 +85,8 @@ ADMISSION_FAILURES = frozenset({"busy", "recovery_required", "unavailable", "fai
 
 
 # The operator states each commissioning fact by name; this harness never supplies one.
-HOME_FACTS = ("mechanics", "rates", "ramp", "zero-offset", "auxiliary", "inputs", "index", "reference", "offset")
+HOME_FACTS = ("mechanics", "rates", "ramp", "zero-offset", "auxiliary", "inputs", "index", "reference", "offset",
+              "soft-limits")  # Wired bench 11: method 35 with reference may bind 0x0018 = 1.
 VELOCITY_FACTS = ("rpm", "ramp", "inputs", "negative")
 POSITION_CLEAR_FACTS = ("clear-semantics",)
 QUALIFICATION_ROUTES = {"home-qualification-install": "home qualification install",
@@ -108,7 +109,9 @@ SETTINGS_INPUT_PURPOSES = ("configure", "segment")
 SETTINGS_REFUSAL_REASONS = ("input_facts_required", "input_facts_stale", "input_active")
 SETTINGS_REFUSAL_COMMANDS = ("driver", "segment", "tuning", "home-auxiliary", "motion-profile-start-speed", "motion-profile-stage")
 # Wired bench 07: motion refusals the shared stop/release rule decided (purpose motion).
-MOTION_REFUSAL_REASONS = ("stop_input_active", "release_input_active", "input_state_stale", "input_mapping_unknown")
+# Wired bench 11 adds the limit-input and soft-limit-state reasons.
+MOTION_REFUSAL_REASONS = ("stop_input_active", "release_input_active", "input_state_stale", "input_mapping_unknown",
+                          "limit_input_active", "soft_limit_state_unknown", "soft_limit_endpoint", "soft_limits_enabled")
 MOTION_REFUSAL_COMMANDS = ("move-relative", "move-absolute", "move-angle", "velocity", "home", "group-move", "enable")
 UPDATE_NOT_ADMITTED_REASONS = (*SETTINGS_REFUSAL_REASONS, "binding_changed", "prerequisites_expired", "update_refused")
 QUALIFICATION_FACT_REFUSALS = frozenset({"missing_fact", "unknown_fact", "duplicate_fact", "fact_not_applicable"})
@@ -3184,7 +3187,7 @@ class Console:
             # Motion refusals the shared stop/release rule decided (wired bench 07).
             if (handle.command not in MOTION_REFUSAL_COMMANDS or item["result"] != "unavailable" or
                     item.get("reason") not in MOTION_REFUSAL_REASONS or
-                    item.get("read_first") not in ("read state", "io qualification install") or
+                    item.get("read_first") not in ("read state", "io qualification install", "read config") or
                     ("terminal" in item and item["terminal"] not in INPUT_TERMINALS)):
                 raise BenchError("motion refusal names no documented stop/release cause")
         elif any(key in item for key in ("reason", "purpose", "read_first", "terminal")):

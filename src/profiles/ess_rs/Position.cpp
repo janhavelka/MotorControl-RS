@@ -19,8 +19,11 @@ bool sameTarget(const ReadTarget& a, const ReadTarget& b) {
 constexpr uint16_t RUNNING = static_cast<uint16_t>(MotionStatusBit::RUNNING);
 constexpr uint16_t ARRIVED = static_cast<uint16_t>(MotionStatusBit::IN_POSITION);
 constexpr uint16_t FAULTS = static_cast<uint16_t>(MotionStatusBit::ALARM) |
-    static_cast<uint16_t>(MotionStatusBit::RELEASED) |
-    static_cast<uint16_t>(MotionStatusBit::POSITIVE_SOFT_LIMIT) |
+    static_cast<uint16_t>(MotionStatusBit::RELEASED);
+// Wired bench 11 (0x4EEA/0x0029): bits 5/6 are soft-limit overtravel flags, a
+// normal drive reaction. A set flag still refuses a start; during a move it
+// ends the move SOFT_LIMIT, not DRIVE_FAULT.
+constexpr uint16_t SOFT_LIMITS = static_cast<uint16_t>(MotionStatusBit::POSITIVE_SOFT_LIMIT) |
     static_cast<uint16_t>(MotionStatusBit::NEGATIVE_SOFT_LIMIT);
 bool verifying(const MoveContext& c) {
     return c.request.setup == MoveSetup::VERIFY_AND_UPDATE && c.step == 0;
@@ -87,8 +90,9 @@ void beginMove(MoveContext& c, const ReadTarget& target, uint32_t id,
     if (c.request.setup == MoveSetup::USE_STORED) { c.step = c.triggerStep; c.setupCount = 0; }
 }
 uint16_t observationCount(const MoveContext& c) {
-    // 0x0006/7 alarm and motion; 0x0008 inputs when stop/release terminals are assigned.
-    return c.prerequisites.positionFeedbackMatchesCommand ? 7 : c.prerequisites.stopInputMask ? 3 : 2;
+    // 0x0006/7 alarm and motion; 0x0008 inputs when stop/release or limit terminals are assigned.
+    return c.prerequisites.positionFeedbackMatchesCommand ? 7 :
+        (c.prerequisites.stopInputMask | c.prerequisites.limitInputMask) ? 3 : 2;
 }
 uint16_t startValue(bool relative, PositionInterruption interruption) {
     return static_cast<uint16_t>(MotionCommandBit::START_POSITION) |
@@ -254,7 +258,7 @@ static Status prepareMove(MoveContext& output, const AxisConfig& axis, const Axi
     if (!prerequisites.readinessQualified || !prerequisites.serialInputsPermit ||
         !evidenceAgeValid(prerequisites.observedUs, nowUs, prerequisites.maximumAgeUs) ||
         nowUs >= prerequisites.inputEvidenceDeadlineUs ||
-        prerequisites.rawAlarm || (prerequisites.rawMotion & (FAULTS | RUNNING)))
+        prerequisites.rawAlarm || (prerequisites.rawMotion & (FAULTS | SOFT_LIMITS | RUNNING)))
         return invalid(MoveError::READINESS, "fresh enabled stationary alarm-free serial readiness is required");
     MoveContext prepared;
     // Position preparation consumes only an established native reference. Its
@@ -448,18 +452,23 @@ Status advanceMove(MoveContext& c, const ActionEvent& supplied, uint64_t nowUs) 
             const uint8_t active = static_cast<uint8_t>((words[2] ^ c.prerequisites.stopInputActiveLow) &
                 c.prerequisites.stopInputMask & 15u);
             if (active && !c.stopInputObserved) { c.stopInputObserved = true; c.stopInputEvidence = evidence; }
+            const uint8_t limit = static_cast<uint8_t>((words[2] ^ c.prerequisites.limitInputActiveLow) &
+                c.prerequisites.limitInputMask & 15u);
+            if (limit && !c.limitInputObserved) { c.limitInputObserved = true; c.limitInputEvidence = evidence; }
         }
         bool endpointMatch = false;
         if (c.prerequisites.positionFeedbackMatchesCommand) {
             decodeInt32(words + 4, 2, c.prerequisites.wordOrder, c.observedPosition);
             c.observedSpeed = words[6];
             endpointMatch = c.execution == ActionExecution::ACKNOWLEDGED &&
-                !words[0] && !(words[1] & (RUNNING | FAULTS)) && (words[1] & ARRIVED) &&
+                !words[0] && !(words[1] & (RUNNING | FAULTS | SOFT_LIMITS)) && (words[1] & ARRIVED) &&
                 !words[6] && c.observedPosition == c.prepared.endpointNative;
         }
         if (!endpointMatch) c.positionMatchEvidence = ActionEvidence();
         if (words[0] || (words[1] & FAULTS)) finish(c, ActionOutcome::REPLY_ERROR,
-            failed(MoveError::DRIVE_FAULT, "drive alarm, release or limit interrupted the move"));
+            failed(MoveError::DRIVE_FAULT, "drive alarm or release interrupted the move"));
+        else if (words[1] & SOFT_LIMITS) finish(c, ActionOutcome::REPLY_ERROR,
+            failed(MoveError::SOFT_LIMIT, "drive reported a soft-limit overtravel flag; the move is not complete"));
         else if (words[1] & RUNNING) {
             if (!c.runningObserved) c.activityEvidence = evidence;
             c.runningObserved = true; c.stoppedPolls = 0;
@@ -476,6 +485,11 @@ Status advanceMove(MoveContext& c, const ActionEvent& supplied, uint64_t nowUs) 
             // the drive never reports arrival, so polling to the deadline adds nothing.
             finish(c, ActionOutcome::REPLY_ERROR,
                 failed(MoveError::STOP_INPUT, "a stop or release input was reported active; motion stopped before arrival"));
+        } else if (c.limitInputObserved) {
+            // Wired bench 11: a limit input stops motion toward it without any
+            // motion-status flag or alarm; only the input word shows the cause.
+            finish(c, ActionOutcome::REPLY_ERROR,
+                failed(MoveError::LIMIT_INPUT, "a limit input was reported active; motion stopped before arrival"));
         } else if (c.runningObserved && !(words[1] & ARRIVED) && ++c.stoppedPolls >= STOPPED_SHORT_POLLS) {
             finish(c, ActionOutcome::REPLY_ERROR,
                 failed(MoveError::STOPPED_SHORT, "motion stopped before arrival; no stop input was reported"));

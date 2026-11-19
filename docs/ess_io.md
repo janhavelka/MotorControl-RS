@@ -33,8 +33,8 @@ does not prove physical installation or continued trigger inhibition.
 | --- | --- | --- |
 | 0 none | No assigned function | No documented electrical or startup state; removing a connected protection needs an explicit removal fact. |
 | 1 origin | Origin sensor level | Home uses its method's sensor policy. A finite move keeps the existing origin policy. An active sensor may be assigned. |
-| 2 positive limit | Positive limit level | Home/move retain their limit policy. An active sensor may be assigned; removing a connected limit needs an explicit fact. |
-| 3 negative limit | Negative limit level | Same policy as 2, for the negative limit. |
+| 2 positive limit | Positive limit level; measured (wired bench 11, `0x4EEA`/`0x0029`): stops motion toward positive, lets motion away run, no flag or alarm, no recovery after release | Moves, velocity, group members and arms refuse while it reads active (`limit_input_active`), in both directions until a drive-decided away start is measured. An active sensor may be assigned; removing a connected limit needs an explicit fact. |
+| 3 negative limit | Negative limit level; measured: the mirror of 2 | Same policy as 2, for the negative limit. |
 | 4 release | Valid level releases the motor; measured: released while active, re-enabled by itself when inactive, a serial enable does not override it | Conflicts with motor torque and motion. Require inactive level and external trigger inhibition before assignment. Motion and enable refuse while it reads active. |
 | 5 stop | Valid level forces a stop; measured: with the configured deceleration, like `stop normal` | Conflicts with motion. Require inactive level and inhibition. Motion refuses while it reads active. |
 | 6 emergency stop | Valid level requests urgent stop; measured: direct, like `stop fast`, no alarm | Conflicts with motion. Require inactive level and inhibition. Motion refuses while it reads active. |

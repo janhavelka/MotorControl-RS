@@ -109,10 +109,14 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   bench 10 P2-P4); the drive's interpretation of the words needs prompt 13's W0
   witness. Implementation: experiment windows, builder and route kept;
   production write refused. Hardware: storage only.
-- [ ] Admit soft-limit enable (`0x0018` = 1) in production (prompt 11).
-  Implementation: refused (no `limitSemanticsQualified` route). Hardware: E3
-  measured the stop, the flags and the motor-release exit on drive 4; recovery
-  away from a limit is unmeasured.
+- [x] Admit soft-limit enable (`0x0018` = 1) in production (prompt 11).
+  Implementation: done in [wired bench 11](reports/2026-11-19_wired_bench_11_limits.md): enable route from
+  the application's own home 35 (`soft-limits`, `reference` facts), a checked
+  order-0 pair read and the `0x4EEA`/`0x0029` ledger record; soft-limit state
+  known disabled / bound / unknown for moves, velocity, homes, arms and group
+  members; host endpoint check while bound. Hardware: S1-S4, S6, S7 PASS on
+  drive 4. Open: a drive-decided start away from a set flag (S5) and from a
+  held hardware limit (L5b), not run; away starts stay refused.
 - [ ] Establish whether `0x0019` = 1 takes effect after a save and restart
   (prompt 17). Within one power cycle it changed no position, target or offset
   interpretation (wired bench 10 P3, P3D, E1). Order 1 stays refused for every
@@ -316,7 +320,14 @@ functional evidence; independent shaft calibration remains absent.
   on drive 4 (and drives 1, 2, 4 for group moves): function 5 stops with the
   configured deceleration, 6 directly, 4 releases and outranks a serial enable.
   Open from it: a home whose own polls miss a short stop input polls to its
-  deadline (not exercised; prompt 12), and the switch methods stay with 11/12.
+  deadline (not exercised; prompt 12), and the switch methods stay with 12.
+  Limit inputs 2/3 were measured in [wired bench 11](reports/2026-11-19_wired_bench_11_limits.md) on drive 4
+  (V-01 answered: the power-up X1/X2 functions act with no I/O write since a
+  power cycle) and group members 1, 2: a limit stops motion toward it, motion
+  away runs on, `0x0017` 0 decelerates and 1 stops directly, no flag, alarm or
+  recovery. Starts are refused while a limit reads active (both directions).
+  Open: a limit asserted during a home search (L8) and limit-based homing (12),
+  drive-decided away starts (L5b).
 - [ ] Qualify position start-speed scaling, activation timing and persistence.
   Write/readback, restoration and the relation latch passed on 2 November.
 - [ ] Qualify the homing behavior of auxiliary choices other than 0, 6 and 7
@@ -487,7 +498,8 @@ more drives (now addresses 1, 2 and 4, star wiring).
   Input status mapping: measured in wired bench 05 (after inversion, recorded
   for model `0x4EEA`, firmware `0x0029`). Output mapping: measured on drive 4
   Y0 in wired bench 06 (after inversion, recorded); Y1, input function effects
-  and persistence remain.
+  and persistence remain. Input functions 2-6 effects are measured on drive 4
+  (wired bench 07 and 11); other functions and persistence remain.
   These physical checks moved from [multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md)
   to the [wired bench set](prompts/ess_wired_bench/README.md) (05, 06, 17).
 - [x] Wire the [bench I/O fixture](bench_io.md): X inputs of drives 1, 2 and 4 in

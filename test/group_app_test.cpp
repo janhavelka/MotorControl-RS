@@ -1956,6 +1956,28 @@ void testFullCapacityPlanLineFits() {
 }
 } // namespace
 
+// Wired bench 11: a member with an active limit input, or with 0x0018 not
+// known 0 (members never bind soft limits), refuses the group before any write.
+void testLimitAndSoftLimitMembers() {
+    const std::vector<uint8_t> list = {1, 2, 4};
+    fresh(list);
+    for (const auto address : list) { drives[address].regs[0x0042] = 2; drives[address].regs[0x0043] = 3; }
+    readyGroup(list);
+    drives[2].regs[0x0008] = 2; readGroupState();
+    auto from = frames.size();
+    uint32_t refused = 77;
+    assert(!submitGroupMove(groupMove(Policy::LEAVE, Mode::SEQUENTIAL), refused) && refused == 77);
+    assert(count(isWrite, from) == 0);
+    Probe::SettingsRefusal refusal;
+    assert(copySettingsRefusal(refusal) && !std::strcmp(refusal.reason, "limit_input_active") && refusal.terminal == 1);
+    fresh(list);
+    drives[4].regs[0x0018] = 1;
+    readyGroup(list);
+    from = frames.size();
+    assert(!submitGroupMove(groupMove(Policy::LEAVE, Mode::SEQUENTIAL), refused) && refused == 77);
+    assert(count(isWrite, from) == 0);
+    assert(copySettingsRefusal(refusal) && !std::strcmp(refusal.reason, "soft_limit_state_unknown"));
+}
 int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--emit-member-fixtures") {
         testMemberConsolePlan(true); return 0;
@@ -2000,6 +2022,7 @@ int main(int argc, char** argv) {
     testSequentialMoveStartsEachMemberInOrder();
     testStagedMoveStagesAllBeforeStarts();
     testSharedStopInputGroupOutcomes();
+    testLimitAndSoftLimitMembers();
     testStagingFailureSendsNoStart();
     testLostStartAndTimeoutUnderBothPolicies();
     testCancelledGroupStopsRetainPendingRecovery();

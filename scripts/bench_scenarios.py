@@ -20,6 +20,7 @@ import bench_outputs as bench_out
 import bench_probe as probe
 import bench_records as records
 import bench_stop_inputs as bench_stop
+import bench_limits as bench_lim
 import bench_input_starts as bench_starts
 from bench_session import checked, run_recorded
 
@@ -58,6 +59,10 @@ FOLDER_SCENARIOS = {
                    '(--function 4, 5 or 6): X3 assigned on drive 4 (phase A) or 1, 2, 4 (phase B) with ASSIGN facts, '
                    'Y0 2 or 5, interlocked mosfet2 pulses (named running member, pre-start io read), read-state '
                    'samples through the hold, the release and 2 s after; Implement 3 classification; restoration',
+    'limits': 'wired bench 11: limit cases (--cases L1..L10) on drive 4 (group/stationary on 1, 2, 4): X1 = 2 '
+              '(relay2) and X2 = 3 (relay1) as found, 0x0017 per case through driver set over-limit, Y0 = 2 unless '
+              '--polls-only, interlocked relay ONs (named running member, effect limit), read-state samples through '
+              'the hold, the release and 2 s after, bits 4-6, alarm and recovery per trial; restoration',
 }
 
 SCENARIOS = {
@@ -130,7 +135,11 @@ def arguments(argv=None):
     parser.add_argument('--stimulus', choices=('input', 'stop normal', 'stop fast'),
                         help='stop-inputs S8: what stops the move (default the input)')
     parser.add_argument('--sub', choices=('a', 'b', 'c', 'abc'), help='stop-inputs S7: sub-cases (default abc)')
-    parser.add_argument('--cases', nargs='+', help='wired bench 09: case IDs of the scenario family, run in order')
+    parser.add_argument('--cases', nargs='+', help='wired bench 09/11: case IDs of the scenario family, run in order')
+    parser.add_argument('--over-limit', type=int, choices=(0, 1), help='limits: 0x0017 for every case of the run '
+                        '(default per case: L4 1, others 0)')
+    parser.add_argument('--polls-only', action='store_true',
+                        help='limits: no Y0 write (drive-reported polls only; the V-01 run before any I/O write)')
     parser.add_argument('--leave-profile', action='store_true',
                         help='stop-inputs G1/G2: leave the 0x0021-0x0025 words of the members changed (RAM) for a later group '
                              'run of this controller session; a profile stage would revoke the start-speed relation of the members '
@@ -224,12 +233,13 @@ def arguments(argv=None):
                           (args.filter_value, ('input-timing',)), (args.widths, ('input-timing', 'stop-inputs')),
                           (args.function, ('stop-inputs',)), (args.deceleration, ('stop-inputs',)),
                           (args.stimulus, ('stop-inputs',)), (args.sub, ('stop-inputs',)),
-                          (args.leave_profile or None, ('stop-inputs', *bench_starts.FAMILIES)),
-                          (args.cases, tuple(bench_starts.FAMILIES)),
+                          (args.leave_profile or None, ('stop-inputs', 'limits', *bench_starts.FAMILIES)),
+                          (args.cases, (*bench_starts.FAMILIES, 'limits')),
+                          (args.over_limit, ('limits',)), (args.polls_only or None, ('limits',)),
                           (args.compare_relay or None, ('input-timing',)),
                           (None if args.traffic == 'raw' else args.traffic, ('input-timing',)),
                           (args.reason, ('baseline-capture',)), (args.prompt, ('baseline-capture',)),
-                          (args.repetitions, ('outputs', 'stop-inputs', *bench_starts.FAMILIES))):
+                          (args.repetitions, ('outputs', 'stop-inputs', 'limits', *bench_starts.FAMILIES))):
         if option is not None and args.scenario not in scopes:
             parser.error('scenario-specific arguments cannot enter another scenario')
     if args.scenario == 'settings' and args.input_facts == 'segment':
@@ -537,6 +547,17 @@ def _folder_arguments(parser, args):
             parser.error('--leave-profile belongs to the group cases')
         if args.widths is not None and (args.case != 'S9' or any(not 1 <= w <= 200 for w in args.widths)):
             parser.error('--widths belongs to S9 (1..200 ms)')
+    if args.scenario == 'limits':
+        if not args.cases or any(c not in bench_lim.CASES for c in args.cases) or len(set(args.cases)) != len(args.cases):
+            parser.error('limits needs --cases from %s' % ', '.join(bench_lim.CASES))
+        if args.image_level is None or int(args.image_level) < 10:
+            parser.error('limits needs --image-level 10 or later (prompt 07 rule, prompt 10 limit pairs)')
+        if args.case is not None:
+            parser.error('limits names its cases with --cases')
+        if args.address != records.FIXTURE['y0_owner']:
+            parser.error('limits runs from drive %d (--address)' % records.FIXTURE['y0_owner'])
+        if args.repetitions is not None and not 1 <= args.repetitions <= 10:
+            parser.error('limits --repetitions overrides the case runs within 1..10')
     if args.scenario in bench_starts.FAMILIES:
         family = bench_starts.FAMILIES[args.scenario]
         allowed = [c for c, case in bench_starts.CASES.items() if case['family'] == family]
@@ -598,6 +619,10 @@ def _facts(args):
         return {str(records.FIXTURE['y0_owner']): {'assign': {'y0': ['indicator', 'either']}, 'configure': {}}}
     if args.scenario in bench_starts.FAMILIES:
         return bench_starts.facts()
+    if args.scenario == 'limits':
+        out = {str(a): {'configure': {}} for a in records.FIXTURE['input_drives']}
+        out[str(records.FIXTURE['y0_owner'])]['assign'] = {'y0': list(bench_lim.Y0_FACTS)}
+        return out
     if args.scenario == 'stop-inputs':
         out = {}
         for address in bench_stop.phase_drives(bench_stop.CASES[args.case]):
@@ -659,6 +684,19 @@ def folder_plan(args, baseline):
                 refusal = None  # Written by the case stimulus (move, velocity or home staging), not by a setter.
             forward.append({'entry': entry, 'steps': steps, 'refusal': refusal})
         write_list_done = True
+    elif name == 'limits':
+        write_list, plan, cases, commands, bounds, expected = _limits_plan(args, baseline, facts)
+        if args.leave_profile:
+            left = [{'drive': e['drive'], 'key': e['key'], 'index': None, 'storage': 'RAM',
+                     'reason': 'limits series: a profile stage would revoke the start-speed relation of group members '
+                               'for this controller session; the last run of the session restores these words'}
+                    for e in write_list if e['key'].startswith('profile.')]
+        for entry in write_list:
+            steps, refusal = records.plan_entry(baseline, entry, args.image_level, facts, restore=False)
+            if refusal and (entry['key'].startswith('profile.') or records.snapshot_route(entry['key'])):
+                refusal = None  # Written by the case's moves or velocity run, not by a setter.
+            forward.append({'entry': entry, 'steps': steps, 'refusal': refusal})
+        write_list_done = True
     elif name in bench_starts.FAMILIES:
         write_list, plan, cases, commands, bounds, expected = _starts_plan(args, baseline, facts)
         if args.leave_profile:
@@ -689,7 +727,7 @@ def folder_plan(args, baseline):
             forward.append({'entry': entry, 'steps': steps, 'refusal': refusal})
     if not write_list_done:
         cases, commands, bounds, expected = [], [], {}, {}
-    if name in ('outputs', 'stop-inputs') or name in bench_starts.FAMILIES:
+    if name in ('outputs', 'stop-inputs', 'limits') or name in bench_starts.FAMILIES:
         pass
     elif name == 'input-start':
         cases.append(_case(case, 'one owned MOSFET pulse on the armed terminal after the firmware isolation reads; the '
@@ -770,11 +808,12 @@ def folder_plan(args, baseline):
                     'every baseline read of drive A', 'restoration plan steps', 'every baseline read of drive A']
         expected = {'acknowledged': 'write terminals of the case write and the restoration',
                     'read back': 'group reads before, after the case write and after the restoration'}
-    if name == 'stop-inputs' or name in bench_starts.FAMILIES:
+    if name in ('stop-inputs', 'limits') or name in bench_starts.FAMILIES:
         drives = list(records.FIXTURE['input_drives'])
     record = {'drives': [{'address': a, 'required_enabled': True} for a in drives],
             'terminals': (['x0', 'x1', 'x2', 'x3'] if name == 'input-map' else ['y0'] if name in ('y0-map', 'outputs') else
                           ['x3', 'y0'] if name == 'stop-inputs' else
+                          ['x1', 'x2', 'y0'] if name == 'limits' else
                           ['x0', 'x3', 'y0'] if name in bench_starts.FAMILIES else
                           [args.start_terminal] if name == 'input-start' else
                           (args.terminals or list(records.TERMINALS)) if name == 'status-mapping' else
@@ -2553,6 +2592,121 @@ def _stop_inputs(console, args, record, run, baseline):
 
 
 # --------------------------------------------------------------------------
+# Wired bench 11: limit inputs (bench_limits.py)
+
+def _limits_write_list(args):
+    owner = records.FIXTURE['y0_owner']
+    out = []
+    kinds = {bench_lim.CASES[c]['kind'] for c in args.cases}
+    if not args.polls_only:
+        out.append({'drive': owner, 'key': 'io.y0', 'index': None, 'candidate': 2})
+    overs = {args.over_limit if args.over_limit is not None else bench_lim.CASES[c]['over_limit'] for c in args.cases
+             if bench_lim.CASES[c]['kind'] not in ('group', 'stationary')}
+    if any(overs):
+        out.append({'drive': owner, 'key': 'drive.over-limit', 'index': None, 'candidate': 1})
+    moving = list(records.FIXTURE['input_drives']) if 'group' in kinds else \
+        [owner] if kinds & {'move', 'recovery', 'held'} else []
+    for address in moving:
+        out += [{'drive': address, 'key': key, 'index': None, 'candidate': None} for key in bench_lim.PROFILE_KEYS]
+    if 'velocity' in kinds or 'soft-velocity' in kinds:
+        out += [{'drive': owner, 'key': key, 'index': None, 'candidate': None}
+                for key in records.SNAPSHOT_ROUTES['velocity']['keys']]
+    if kinds & {'soft', 'soft-velocity'}:
+        out += [{'drive': owner, 'key': 'drive.positive-limit', 'index': None, 'candidate': [0, bench_lim.SOFT_LIMIT]},
+                {'drive': owner, 'key': 'drive.negative-limit', 'index': None,
+                 'candidate': [0xFFFF, (0x10000 - bench_lim.SOFT_LIMIT) & 0xFFFF]},
+                {'drive': owner, 'key': 'drive.soft-limit', 'index': None, 'candidate': 1},
+                {'drive': owner, 'key': 'homing.auxiliary', 'index': None, 'candidate': 7}]
+        out += [{'drive': owner, 'key': key, 'index': None, 'candidate': None}
+                for key in records.SNAPSHOT_ROUTES['home']['keys']]
+        if 'soft' in kinds and not any(e['key'].startswith('profile.') for e in out):
+            out += [{'drive': owner, 'key': key, 'index': None, 'candidate': None} for key in bench_lim.PROFILE_KEYS]
+    return out
+
+
+def _limits_plan(args, baseline, facts):
+    write_list = _limits_write_list(args)
+    kinds = {bench_lim.CASES[c]['kind'] for c in args.cases}
+    planned = [e for e in write_list if not (args.leave_profile and e['key'].startswith('profile.'))]
+    snapshots = {}
+    if kinds & {'velocity', 'soft-velocity'}:
+        snapshots['velocity'] = {}
+    if kinds & {'soft', 'soft-velocity'}:
+        snapshots['home'] = {}
+    plan = records.restoration_plan(baseline, planned, args.image_level, facts,
+                                    context={'snapshots': snapshots} if snapshots else None)
+    cases = [_case(c, bench_lim.CASES[c]['assertion'] + (' (polls only)' if args.polls_only else ''),
+                   [lvl for lvl in bench_lim.CASES[c]['levels'] if not (args.polls_only and lvl == 'controller-timestamped')])
+             for c in args.cases]
+    commands = ['wiring of 1, 2, 4; io read, read config, read state of 1, 2, 4 (baseline I/O words required)', 'bench clear',
+                'no I/O write (polls only)' if args.polls_only else 'io set y0 2 4 (ASSIGN y0 indicator either)',
+                'per case: driver set over-limit V 4 with CONFIGURE records when 0x0017 differs; read config',
+                'per trial: read config, read state, motion-profile read, start-speed relation, io read, read config, '
+                'read state, the operation, read state until the delay, interlock (named member, effect limit, pre-start '
+                'io read), bench on relay2|relay1 HOLD, read state through the hold + 2 s, terminal, read state, stop fast '
+                '(reconcile), recovery reads (alarm-clear, enable, release and enable only while needed)',
+                'restoration: stop fast, enable/alarm-clear if needed, plan steps (Y0 0, 0x0017 0, profile stage, velocity '
+                'restore of the pre-run read)']
+    bounds = {'subdivision': 1000, 'move_steps_max': bench_lim.MOVE_STEPS, 'speed_rpm': 60, 'velocity_rpm': 60,
+              'velocity_ms': 1000, 'relay_hold_ms_max': 5000, 'cases': list(args.cases), 'over_limit': args.over_limit}
+    expected = {'drive-reported': 'motion, alarm, input and position words of each sample; terminals; recovery reads '
+                                  '(limits.json)',
+                'controller-timestamped': 'relay on/off times, aux1 edges of Y0 = 2, the stop bracket from samples'}
+    return write_list, plan, cases, commands, bounds, expected
+
+
+def _limits(console, args, record, run, baseline):
+    timeout = args.timeout
+    scenario = run.scenario
+    _preflight(console, run, timeout)
+    declarations = records.check_declarations(console, timeout_s=timeout)
+    before = {a: records.read_drive(console, a, ('io', 'state', 'config'), select=False, timeout_s=timeout)
+              for a in records.FIXTURE['input_drives']}
+    diff = records.diff_fields(baseline, {a: records.raws_from(r) for a, r in before.items()}, ('io',))
+    run.folder.write_json('baseline_before.json', {'declarations': declarations,
+                                                   'drives': {str(a): {k: {x: e.get(x) for x in ('command', 'operation_id', 'raw', 'error')}
+                                                                       for k, e in r.items()} for a, r in before.items()},
+                                                   'diff': diff})
+    plan = scenario['restoration_plan']
+    if not plan['admissible'] or any(w['refusal'] for w in scenario['case_writes']):
+        reasons = [r['reason'] for r in plan['refused']] + [w['refusal']['reason'] for w in scenario['case_writes'] if w['refusal']]
+        for case in scenario['cases']:
+            for level in case['required_levels']:
+                run.verdict(case['id'], level, 'NOT RUN', 'no admissible route before any write: ' + '; '.join(reasons))
+        return
+    if declarations['verdict'] != 'PASS' or any(d['status'] != 'equal' for d in diff):
+        raise probe.BenchError('I/O words differ from the baseline or declarations disagree; no write')
+    live = bench_lim.Live(console, run, baseline, args, scenario['facts'], timeout, args.cases[0])
+    live.record['declarations'] = declarations
+    detail = {'cases_requested': list(args.cases), 'declarations': declarations['verdict']}
+    error = None
+    try:
+        checked(console, 'bench', host_args=('clear',), timeout_s=timeout)
+        live.view()
+        detail.update(bench_lim.run_cases(live, args, args.cases))
+    except (Exception, KeyboardInterrupt) as caught:
+        error = caught
+        run.deviations.append('limits run stopped: %s' % caught)
+        detail.setdefault('error', str(caught))
+        detail.setdefault('cases', getattr(live, 'partial', {}))
+    finally:
+        if console.synchronized:
+            try:
+                detail['restoration'] = _stop_restore(console, live, run, plan, timeout)
+            except (Exception, KeyboardInterrupt) as caught:
+                run.deviations.append('restoration stopped: %s' % caught)
+        detail.update(events=live.events, snapshots=live.snapshots, views=len(live.views),
+                      interlock=live.record.get('interlock', []))
+        found, lost = records._merge_edges([records._bench_view(v) for v in live.views if v.get('ok')])
+        detail.update(edges=found, lost_edge_windows=lost)
+        run.folder.write_json('limits.json', detail)
+    for entry in scenario['left_changed']:
+        run.field(entry, ending=None, restored=False, storage=entry['storage'], reason=entry['reason'])
+    for cid in args.cases:
+        bench_lim.case_verdicts(run, cid, detail, error)
+
+
+# --------------------------------------------------------------------------
 # Wired bench 08: input-start route (arm, one owned pulse, observe, disarm)
 
 def _inspect_until(console, session, done, limit_s, timeout):
@@ -2794,7 +2948,7 @@ def _input_starts(console, args, record, run, baseline):
 FOLDER_RUNNERS = {'input-start': _input_start, 'input-start-single': _input_starts, 'input-start-shared': _input_starts,
                   'position-interrupt': _input_starts, 'input-map': _input_map, 'y0-map': _y0_map, 'baseline-compare': _baseline_compare,
                   'baseline-capture': _baseline_capture, 'restore': _restore, 'status-mapping': _status_mapping,
-                  'input-timing': _input_timing, 'outputs': _outputs, 'stop-inputs': _stop_inputs}
+                  'input-timing': _input_timing, 'outputs': _outputs, 'stop-inputs': _stop_inputs, 'limits': _limits}
 
 
 def run_folder(args, *, port_opener=None, check_board=None):

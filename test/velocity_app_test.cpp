@@ -919,6 +919,43 @@ void emitStopInputResults() {
         std::printf("{\"case\":\"%s\",\"record\":%s}\n", t.name, Serial.output.substr(start, end - start).c_str());
     }
 }
+// Wired bench 11: an active limit input refuses velocity in both directions;
+// an unknown soft-limit state refuses; a bound state admits (the drive ends the
+// run at its soft limit). X1 = 2 and X2 = 3 come from qualify().
+void limitVelocityRule() {
+    for (const uint16_t raw : {uint16_t(2), uint16_t(4)}) {
+        fresh(); qualify(); inputs(0, raw);
+        uint32_t untouched = 77; const auto next = app->nextOperationId;
+        assert(startVelocity(app, 2, 1, request(), untouched) == Probe::Action::UNAVAILABLE);
+        assert(untouched == 77 && app->nextOperationId == next && !hardware.writes);
+        Probe::SettingsRefusal refusal;
+        assert(copySettingsRefusal(refusal) && !std::strcmp(refusal.reason, "limit_input_active") &&
+               refusal.terminal == (raw == 2 ? 1 : 2));
+    }
+    fresh(); qualify(); inputs(0, 0);
+    app->configuration.raw.softLimitEnable = 1; app->configuration.softLimitEnableKnown = true;
+    uint32_t untouched = 77;
+    assert(startVelocity(app, 2, 1, request(), untouched) == Probe::Action::UNAVAILABLE && !hardware.writes);
+    Probe::SettingsRefusal unknown;
+    assert(copySettingsRefusal(unknown) && !std::strcmp(unknown.reason, "soft_limit_state_unknown"));
+    command("@6 velocity 30 rpm native 200 configured normal\n");
+    assert(!hardware.writes && Serial.output.find("\"reason\":\"soft_limit_state_unknown\"") != std::string::npos);
+    // Bound: admitted; connected limit terminals add the 0x0008 witness.
+    fresh(); qualify(); inputs(0, 0);
+    app->configuration.wiring[1] = app->configuration.wiring[2] = InputWiring::CONNECTED;
+    app->configuration.raw.softLimitEnable = 1; app->configuration.softLimitEnableKnown = true;
+    auto& b = app->softLimitBinding; b = App::SoftLimitBinding();
+    b.target = app->axis.target; b.operationId = 1; b.axisGeneration = app->axis.generation;
+    b.bindingGeneration = app->bindingGeneration; b.minimum = -500; b.maximum = 500;
+    app->axis.softLimitsKnown = true; app->axis.softMinimum = -500; app->axis.softMaximum = 500;
+    if (app->configuration.operationId <= b.operationId) app->configuration.operationId = b.operationId + 1;
+    auto& motion = app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+    motion.value.homingComplete = true; motion.observedEarliestUs = motion.observedLatestUs = hardware.time;
+    assert(softLimitState(*app, nowUs()) == SoftLimitState::BOUND);
+    const auto id = admitVelocity();
+    assert(view(id).velocityContext->prerequisites.limitInputMask == 6);
+    assert(cancel(app, id) == Probe::Action::OK);
+}
 int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--emit-stop-input-results") { emitStopInputResults(); return 0; }
     if (argc == 2 && std::string(argv[1]) == "--emit-recovery-result") {
@@ -943,5 +980,6 @@ int main(int argc, char** argv) {
     ownedStopRecoveryFailureAndCancellation();
     velocityRestoreRoutes();
     stopReleaseRule();
+    limitVelocityRule();
     stopInputWitnesses();
 }

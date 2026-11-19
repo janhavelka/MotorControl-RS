@@ -437,7 +437,8 @@ void testFreshCompletionLimitsAndDelayedService() {
     assert(unqualified.outcome == ActionOutcome::TIMING_UNQUALIFIED && unqualified.uncertain);
 }
 void testDriveFaultAndPreviousObservationRetention() {
-    for (uint16_t flags : {uint16_t(8), uint16_t(16), uint16_t(32), uint16_t(64)}) {
+    // Alarm and released are faults; bits 5/6 are soft-limit flags (testSoftLimitFlags).
+    for (uint16_t flags : {uint16_t(8), uint16_t(16)}) {
         auto c = move(); trigger(c); consume(c, flags);
         assert(c.state == ActionState::FAILED && c.status.detail == static_cast<int32_t>(MoveError::DRIVE_FAULT));
         assert(c.observationKnown && c.rawMotion == flags && c.uncertain);
@@ -773,8 +774,9 @@ static void testOptionalAgePolicy() {
     assert(Ess::nextMove(c, deadline, work) && work.kind == Ess::ActionWork::DONE && !work.length);
 }
 static Ess::MoveContext prepareEndpointMove(Ess::WordOrder order = Ess::WordOrder::HIGH_WORD_FIRST,
-                                            int32_t baseline = 100) {
+                                            int32_t baseline = 100, uint8_t limitMask = 0) {
     auto p = prerequisites(); p.positionFeedbackMatchesCommand = true; p.wordOrder = order;
+    p.limitInputMask = limitMask;
     AxisReference ref; ref.target = axis().target; ref.configurationGeneration = axis().generation;
     ref.nativeKnown = ref.stationary = ref.idle = true; ref.nativePosition = baseline;
     ref.basis = RelativeBasis::ACTUAL; ref.source = ScaleSource::READBACK;
@@ -784,11 +786,11 @@ static Ess::MoveContext prepareEndpointMove(Ess::WordOrder order = Ess::WordOrde
     trigger(c); return c;
 }
 static void observeEndpointMove(Ess::MoveContext& c, int32_t position, uint16_t flags = 1,
-                                uint16_t speed = 0, bool corrupt = false) {
+                                uint16_t speed = 0, bool corrupt = false, uint16_t inputs = 0) {
     Ess::PreparedMove work; assert(Ess::nextMove(c, c.eligibleUs, work));
     assert(work.reg == 6 && work.count == 7 && !work.write);
     uint16_t pair[2]; assert(Ess::encodeInt32(position, c.prerequisites.wordOrder, pair, 2));
-    std::vector<uint8_t> b = {1, 3, 14, 0, 0, uint8_t(flags >> 8), uint8_t(flags), 0, 0, 0, 0,
+    std::vector<uint8_t> b = {1, 3, 14, 0, 0, uint8_t(flags >> 8), uint8_t(flags), uint8_t(inputs >> 8), uint8_t(inputs), 0, 0,
         uint8_t(pair[0] >> 8), uint8_t(pair[0]), uint8_t(pair[1] >> 8), uint8_t(pair[1]), uint8_t(speed >> 8), uint8_t(speed)};
     crc(b); if (corrupt) b.back() ^= 1;
     const auto at = c.eligibleUs + 20;
@@ -934,6 +936,100 @@ static void testWriteClosureBoundaries() {
         if (offset > 0) assert(c.outcome == ActionOutcome::DEADLINE);
     }
 }
+// Wired bench 11 (0x4EEA/0x0029): bits 5/6 are soft-limit overtravel flags, a
+// normal drive reaction. A move ends SOFT_LIMIT at the report; it is neither a
+// completion nor DRIVE_FAULT, and a set flag still refuses a start.
+static void testSoftLimitFlags() {
+    for (uint16_t flag : {uint16_t(0x20), uint16_t(0x40)}) {
+        for (bool running : {false, true}) {
+            auto c = move(); trigger(c); consume(c, 4);
+            const auto activity = c.activityEvidence;
+            const uint16_t reported = running ? uint16_t(flag | 4) : flag;
+            consume(c, reported);
+            assert(c.state == ActionState::FAILED && c.outcome == ActionOutcome::REPLY_ERROR);
+            assert(c.status.code == Err::ILLEGAL_VALUE && c.status.detail == static_cast<int32_t>(MoveError::SOFT_LIMIT));
+            assert(c.completion == ActionCompletion::NOT_OBSERVED && c.rawMotion == reported && c.uncertain);
+            assert(c.failureEvidence.step == c.lastObservation.step && c.activityEvidence.step == activity.step);
+            noMoreWork(c);
+        }
+        // A flag with an arrival bit before any running report is not a completion either.
+        auto first = move(); trigger(first); consume(first, uint16_t(flag | 1));
+        assert(first.state == ActionState::FAILED && !first.runningObserved &&
+            first.status.detail == static_cast<int32_t>(MoveError::SOFT_LIMIT));
+        // Under qualified feedback a flagged exact endpoint is not a confirmation.
+        auto endpoint = prepareEndpointMove(); observeEndpointMove(endpoint, 125); observeEndpointMove(endpoint, 125, uint16_t(flag | 1));
+        assert(endpoint.state == ActionState::FAILED && !endpoint.positionConfirmed &&
+            endpoint.status.detail == static_cast<int32_t>(MoveError::SOFT_LIMIT));
+        // Alarm word, alarm bit and released keep precedence over the flag.
+        for (uint16_t fault : {uint16_t(8), uint16_t(16)}) {
+            auto c = move(); trigger(c); consume(c, uint16_t(flag | fault));
+            assert(c.status.detail == static_cast<int32_t>(MoveError::DRIVE_FAULT));
+        }
+        auto alarmed = move(); trigger(alarmed); consume(alarmed, flag, 3);
+        assert(alarmed.status.detail == static_cast<int32_t>(MoveError::DRIVE_FAULT) && alarmed.rawAlarm == 3);
+        // A set flag refuses before any work is published.
+        auto p = prerequisites(); p.rawMotion = uint16_t(flag | 1);
+        Ess::MoveContext untouched; untouched.operationId = 77; const Saved<Ess::MoveContext> saved(untouched);
+        const auto refused = Ess::prepareMoveRelative(untouched, axis(), nullptr, 12, request(), p, 100, 10000);
+        assert(!refused && refused.detail == static_cast<int32_t>(MoveError::READINESS)); saved.check(untouched);
+    }
+}
+static Ess::MoveContext limitMove(uint8_t mask, uint8_t activeLow = 0, uint8_t stopMask = 0) {
+    auto p = prerequisites(); p.limitInputMask = mask; p.limitInputActiveLow = activeLow; p.stopInputMask = stopMask;
+    Ess::MoveContext c; auto o = options(); o.maxPolls = 10;
+    assert(Ess::prepareMoveRelative(c, axis(), nullptr, 12, request(), p, 100, 10000, o));
+    assert(c.prerequisites.limitInputMask == mask && c.prerequisites.limitInputActiveLow == activeLow);
+    trigger(c); return c;
+}
+// One three-word observation 0x0006-0x0008.
+static void observeInputs(Ess::MoveContext& c, uint16_t flags, uint16_t inputs) {
+    Ess::PreparedMove work; assert(Ess::nextMove(c, c.eligibleUs, work));
+    assert(work.reg == 6 && work.count == 3 && !work.write);
+    std::vector<uint8_t> b = {1, 3, 6, 0, 0, uint8_t(flags >> 8), uint8_t(flags), uint8_t(inputs >> 8), uint8_t(inputs)};
+    crc(b); const auto at = c.eligibleUs + 20;
+    assert(Ess::advanceMove(c, frame(c, b, at), at + 20));
+}
+static void checkLimitStop(const Ess::MoveContext& c) {
+    assert(c.state == ActionState::FAILED && c.outcome == ActionOutcome::REPLY_ERROR && c.status.code == Err::ILLEGAL_VALUE);
+    assert(c.status.detail == static_cast<int32_t>(MoveError::LIMIT_INPUT) && c.limitInputObserved);
+    assert(c.completion == ActionCompletion::NOT_OBSERVED && c.uncertain && !c.stopInputObserved);
+    assert(c.limitInputEvidence.length == 11 && c.failureEvidence.step == c.lastObservation.step);
+    noMoreWork(c);
+}
+// Wired bench 11: a hardware limit stops motion toward it with motion word 0,
+// no alarm and no flag. Only the assigned limit input in 0x0008 names it.
+static void testLimitInputWitness() {
+    auto plain = move(); trigger(plain); Ess::PreparedMove work;
+    assert(Ess::nextMove(plain, plain.eligibleUs, work) && work.count == 2); // No mask, no input word.
+    auto c = limitMove(2); // X1 positive limit, active high.
+    observeInputs(c, 4, 0); assert(c.runningObserved && !c.limitInputObserved && c.rawInputs == 0);
+    observeInputs(c, 4, 2); assert(c.state == ActionState::ACTIVE && c.limitInputObserved && c.rawInputs == 2);
+    const auto seen = c.lastObservation;
+    observeInputs(c, 0, 2); checkLimitStop(c);
+    assert(c.limitInputEvidence.step == seen.step && c.stoppedPolls == 0);
+    // The first active report stays the witness after the input clears.
+    c = limitMove(2); observeInputs(c, 4, 2); observeInputs(c, 4, 0); observeInputs(c, 0, 0);
+    checkLimitStop(c); assert(c.rawInputs == 0 && c.limitInputEvidence.step + 2 == c.lastObservation.step);
+    // Active-low mapping: the bit reads 0 while the input is active.
+    c = limitMove(4, 4); observeInputs(c, 4, 4); assert(!c.limitInputObserved);
+    observeInputs(c, 4, 0); assert(c.limitInputObserved); observeInputs(c, 0, 0); checkLimitStop(c);
+    // Inputs outside the mask are no witness; the move ends STOPPED_SHORT.
+    c = limitMove(2); observeInputs(c, 4, 13); observeInputs(c, 0, 13); assert(c.state == ActionState::ACTIVE);
+    observeInputs(c, 0, 13);
+    assert(c.status.detail == static_cast<int32_t>(MoveError::STOPPED_SHORT) && !c.limitInputObserved);
+    // A move away from an asserted limit that arrives is complete; the witness stays.
+    c = limitMove(2); observeInputs(c, 4, 0); observeInputs(c, 4, 2); observeInputs(c, 1, 2);
+    assert(c.state == ActionState::SUCCEEDED && c.outcome == ActionOutcome::OBSERVED && c.status);
+    assert(c.completion == ActionCompletion::OBSERVED && c.limitInputObserved && !c.uncertain); noMoreWork(c);
+    // A stop input reported with the limit keeps precedence.
+    c = limitMove(2, 0, 8); observeInputs(c, 4, 0); observeInputs(c, 0, 10);
+    assert(c.status.detail == static_cast<int32_t>(MoveError::STOP_INPUT) && c.stopInputObserved && c.limitInputObserved);
+    // Qualified feedback keeps its seven-word read and still records the limit.
+    c = prepareEndpointMove(Ess::WordOrder::HIGH_WORD_FIRST, 100, 2);
+    observeEndpointMove(c, 110, 4, 1, false, 2); assert(c.limitInputObserved && c.rawInputs == 2);
+    observeEndpointMove(c, 110, 0, 0, false, 2);
+    assert(c.status.detail == static_cast<int32_t>(MoveError::LIMIT_INPUT) && c.limitInputEvidence.length == 19);
+}
 int main() {
     testWriteClosureBoundaries();
     testRunningPollInterval();
@@ -948,6 +1044,7 @@ int main() {
     testBadRepliesAndNoAutomaticReplay(); testEnvelopeCorrelationAndCopiedEvidence();
     testBorrowedEvidenceInput();
     testFreshCompletionLimitsAndDelayedService(); testDriveFaultAndPreviousObservationRetention();
+    testSoftLimitFlags(); testLimitInputWitness();
     testWriteDeadlinesRetainReadinessAndOperationBudgets();
     testIndependentInputEvidenceDeadline();
     testConsumedReferenceUsesOperationTimeAndCoversWrites();

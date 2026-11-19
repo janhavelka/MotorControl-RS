@@ -18,9 +18,16 @@ bool sameTarget(const ReadTarget& a, const ReadTarget& b) {
 }
 constexpr uint16_t RUNNING = static_cast<uint16_t>(MotionStatusBit::RUNNING);
 constexpr uint16_t FAULTS = static_cast<uint16_t>(MotionStatusBit::ALARM) |
-    static_cast<uint16_t>(MotionStatusBit::RELEASED) |
-    static_cast<uint16_t>(MotionStatusBit::POSITIVE_SOFT_LIMIT) |
+    static_cast<uint16_t>(MotionStatusBit::RELEASED);
+// Wired bench 11 (0x4EEA/0x0029): bits 5/6 are soft-limit overtravel flags, a
+// normal drive reaction. A set flag still refuses a start; during a run it is
+// a SOFT_LIMIT witness and the timed stop keeps its schedule.
+constexpr uint16_t SOFT_LIMITS = static_cast<uint16_t>(MotionStatusBit::POSITIVE_SOFT_LIMIT) |
     static_cast<uint16_t>(MotionStatusBit::NEGATIVE_SOFT_LIMIT);
+uint16_t observationCount(const VelocityPrerequisites& p) {
+    // 0x0006/7 alarm and motion; 0x0008 inputs when stop/release or limit terminals are assigned.
+    return (p.stopInputMask | p.limitInputMask) ? 3 : 2;
+}
 uint64_t sum(uint64_t a, uint64_t b) {
     return b > std::numeric_limits<uint64_t>::max() - a ? std::numeric_limits<uint64_t>::max() : a + b;
 }
@@ -113,7 +120,7 @@ Status prepareVelocity(VelocityContext& output, const AxisConfig& axis, uint32_t
     if (p.minimumRpm < -3000 || p.maximumRpm > 3000 || p.minimumRpm > p.maximumRpm)
         return invalid(VelocityError::INVALID_REQUEST, "invalid qualified velocity range");
     if (!p.readinessQualified || !p.serialInputsPermit || !evidenceAgeValid(p.observedUs, now, p.maximumAgeUs) ||
-        p.rawAlarm || (p.rawMotion & (FAULTS | RUNNING)))
+        p.rawAlarm || (p.rawMotion & (FAULTS | SOFT_LIMITS | RUNNING)))
         return invalid(VelocityError::READINESS, "fresh enabled stationary alarm-free serial readiness is required");
     VelocityContext c;
     const Status target = prepareVelocityTarget(request, axis, c.prepared);
@@ -228,8 +235,7 @@ Status nextVelocity(const VelocityContext& c, uint64_t now, PreparedVelocity& ou
             next.value = static_cast<uint16_t>(MotionCommandBit::START_SPEED);
             next.length = buildWriteSingleRegister(c.target.address, next.reg, next.value, next.bytes, sizeof(next.bytes));
         } else {
-            // 0x0006/7 alarm and motion; 0x0008 inputs when stop/release terminals are assigned.
-            next.function = 3; next.reg = Registers::ERROR_CODE; next.count = c.prerequisites.stopInputMask ? 3 : 2;
+            next.function = 3; next.reg = Registers::ERROR_CODE; next.count = observationCount(c.prerequisites);
             next.length = buildReadRegisters(c.target.address, next.reg, next.count, next.bytes, sizeof(next.bytes));
         }
         if (!next.length) return invalid(VelocityError::INVALID_STATE, "invalid prepared velocity frame");
@@ -277,7 +283,7 @@ Status advanceVelocity(VelocityContext& c, const ActionEvent& supplied, uint64_t
     ActionEvidence evidence;
     Detail::copyActionEvidence(evidence, supplied, c.step, now);
     uint16_t words[3] = {}; std::size_t count = 0;
-    const std::size_t observed = c.prerequisites.stopInputMask ? 3 : 2;
+    const std::size_t observed = observationCount(c.prerequisites);
     if (event.kind == ReadEventKind::FRAME) {
         if (c.phase == VelocityPhase::STAGING) evidence.status = parseWriteMultipleRegisters(event.frame, event.length,
             c.target.address, Registers::JOG_SPEED, 3, &evidence.frameError);
@@ -328,23 +334,31 @@ Status advanceVelocity(VelocityContext& c, const ActionEvent& supplied, uint64_t
         ++c.polls; c.lastObservation = evidence; c.observationKnown = true;
         c.rawAlarm = words[0]; c.rawMotion = words[1];
         if (words[0] || (words[1] & FAULTS)) failStep(c, ActionOutcome::REPLY_ERROR,
-            failed(VelocityError::DRIVE_FAULT, "drive alarm, release or limit interrupted velocity"), evidence, now);
+            failed(VelocityError::DRIVE_FAULT, "drive alarm or release interrupted velocity"), evidence, now);
         else {
             if (observed == 3) {
                 c.rawInputs = words[2];
                 const uint8_t active = static_cast<uint8_t>((words[2] ^ c.prerequisites.stopInputActiveLow) &
                     c.prerequisites.stopInputMask & 15u);
                 if (active && !c.stopInputObserved) { c.stopInputObserved = true; c.stopInputEvidence = evidence; }
+                const uint8_t limit = static_cast<uint8_t>((words[2] ^ c.prerequisites.limitInputActiveLow) &
+                    c.prerequisites.limitInputMask & 15u);
+                if (limit && !c.limitInputObserved) { c.limitInputObserved = true; c.limitInputEvidence = evidence; }
             }
+            if ((words[1] & SOFT_LIMITS) && !c.softLimitObserved) { c.softLimitObserved = true; c.softLimitEvidence = evidence; }
             if (words[1] & RUNNING) {
                 if (!c.runningObserved) c.activityEvidence = evidence;
                 c.runningObserved = true;
             } else if (c.runningObserved && !c.stoppedEarly) { c.stoppedEarly = true; c.stoppedEvidence = evidence; }
-            // Wired bench 07: a run that a stop input or another cause ended
-            // before its timed stop is never reported complete. The timed stop
-            // keeps its schedule; this sends nothing.
+            // Wired bench 07 and 11: a run that a stop input, a limit input, a
+            // soft limit or another cause ended before its timed stop is never
+            // reported complete. The timed stop keeps its schedule; this sends nothing.
             if (c.stopInputObserved) retainFailure(c, ActionOutcome::REPLY_ERROR, failed(VelocityError::STOP_INPUT,
                 "a stop or release input was reported active before the timed stop"), &c.stopInputEvidence);
+            else if (c.limitInputObserved) retainFailure(c, ActionOutcome::REPLY_ERROR, failed(VelocityError::LIMIT_INPUT,
+                "a limit input was reported active before the timed stop"), &c.limitInputEvidence);
+            else if (c.softLimitObserved) retainFailure(c, ActionOutcome::REPLY_ERROR, failed(VelocityError::SOFT_LIMIT,
+                "drive reported a soft-limit overtravel flag before the timed stop"), &c.softLimitEvidence);
             else if (c.stoppedEarly) retainFailure(c, ActionOutcome::REPLY_ERROR, failed(VelocityError::STOPPED_EARLY,
                 "velocity stopped before its timed stop; no stop input was reported"), &c.stoppedEvidence);
             // Preparation made maxPolls * pollIntervalUs cover the duration, and polls are

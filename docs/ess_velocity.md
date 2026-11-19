@@ -201,3 +201,17 @@ See [implementation/evidence](archive/reports/ess_release_11_2026-10-04.md) and 
 [fresh independent audit](archive/reports/ess_release_11_audit_2026-10-04.md). The native
 console emits ten actual public-operation velocity outcomes and five parameter-read outcomes for a registered Python
 parity check; synthetic terminal records do not substitute for that path.
+
+## Limit inputs and soft limits (wired bench 11)
+
+Velocity refuses while an assigned limit input reads active, in both directions
+(`limit_input_active`), and while the soft-limit state is unknown
+(`soft_limit_state_unknown`); a bound state admits it. A run the drive ends at
+a limit input reports `LIMIT_INPUT` (28) when a report showed the input; one
+that reports `0x0007` bit 5 or 6 ends `SOFT_LIMIT` (29). Neither is success or an
+alarm: the timed stop keeps its schedule and is sent once, `needsStop` clears
+only on its checked stopped observation, nothing is resent. Measured on drive 4
+(`0x4EEA`/`0x0029`): ±60 rpm for 1000 ms stopped by X1/X2 after about 560
+increments (L7, result `LIMIT_INPUT` on image E, `STOPPED_EARLY` on image B), and
+by soft limits ±500 at +562/-565 (`0x0017` = 0) and +512/-512 (`0x0017` = 1)
+with bits 5/6 (S4).

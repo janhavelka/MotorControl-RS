@@ -140,7 +140,8 @@ def classify(trial: dict) -> dict:
     start_us = trial.get("start_us") or 0
     before = [s for s in samples if start_us <= s["windows"]["motion"][0] and s["windows"]["motion"][1] <= on_us]
     w["motion_before"] = any(moving(s) for s in before)
-    seen = [s for s in samples if s["inputs"] & X3_BIT and s["windows"]["motion"][1] >= on_us]
+    bit = trial.get("input_bit", X3_BIT)  # Wired bench 11: the limit input's own status bit.
+    seen = [s for s in samples if s["inputs"] & bit and s["windows"]["motion"][1] >= on_us]
     w["input_seen"] = bool(seen)
     edge = None
     if trial.get("y0") == 2:

@@ -687,7 +687,7 @@ driver experiment pair FIRST W0 W1 | pair FIRST restore SNAPSHOT_ID | inspect
   `unsupported`, order 1 is unmeasured) and `0x0018` known 0. Each limit is one
   FC10 of two words and one two-word FC03 readback
   ([soft-limit pairs](ess_driver_settings.md#soft-limit-pairs)). Enabling the
-  limits (`soft-limit 1`) stays refused (prompt 11).
+  limits (`soft-limit 1`) is the wired bench 11 enable route below.
 - The driver result adds `pair_words`, rows
   `[field, previous0, previous1, requested0, requested1, readback0, readback1]`.
   A DRIVE read observation adds `limits_decoded`, `positive_limit` and
@@ -709,6 +709,40 @@ driver experiment pair FIRST W0 W1 | pair FIRST restore SNAPSHOT_ID | inspect
   ([experiment windows](ess_pair_writes.md#experiment-windows)). A production
   image refuses a write `unsupported` before TX. It shares the parameter-write
   session (`kind` `pair_experiment`) and is kept for prompt 13.
+
+### Limit inputs and soft limits (wired bench 11)
+
+Added by [wired bench 11](reports/2026-11-19_wired_bench_11_limits.md) (19 November 2026, model `0x4EEA`,
+firmware `0x0029`).
+
+```text
+home qualification install 35 SEARCH RETURN RAMP mechanics rates ramp zero-offset auxiliary inputs reference soft-limits
+driver set soft-limit 1|0 [address]
+```
+
+- `soft-limits` is an optional home fact for method 35 only (else
+  `fact_not_applicable`) and needs `reference` (else `missing_fact` naming
+  `reference`). The home admitted under it may bind the drive's soft limits.
+- `driver set soft-limit 1` (the enable route) derives its prerequisites from
+  that home's published reference (same binding and generation), a checked
+  `driver read` of both pairs after the home decoded at order 0, and the
+  identity `0x4EEA`/`0x0029`; otherwise the core refuses it. After the readback of
+  1 the host axis soft limits are installed (`axis config` reports
+  `soft_limits_known` true and `soft_limits` [negative, positive]); never before.
+  `driver set soft-limit 0` stays admitted in every state
+  ([enable route and state](ess_driver_settings.md#soft-limit-enable-route-and-state-wired-bench-11)).
+- New motion refusal reasons (`purpose` `motion`, result `unavailable`):
+  `limit_input_active` (an assigned limit input reads active; both directions;
+  `terminal` named), `soft_limit_state_unknown`, `soft_limit_endpoint` (an
+  endpoint outside the bound host limits) and `soft_limits_enabled` (a home while
+  bound); `read_first` `read state` or `read config`.
+- Move results add `limit_inputs` `{mask, active_low, observed}` and
+  `limit_input_evidence`; details `LIMIT_INPUT` (26) and `SOFT_LIMIT` (27).
+  Velocity results add the same object; details `LIMIT_INPUT` (28) and
+  `SOFT_LIMIT` (29), with the timed stop still sent once. The witness mask holds
+  only limit terminals declared connected.
+- `caps` adds `soft_limit_enable` `home_35_soft_limits_fact` and
+  `limit_input_starts` `refused`.
 
 ## Verification and qualification
 

@@ -407,6 +407,13 @@ this fixture unlocks.
    the host at a chosen time or position.
 6. **Limits.** With the power-up X1/X2 limits, move towards a limit and assert
    it; check the over-limit stop setting's effect. Then a limit-based homing method.
+   Run it as `bench_scenarios.py --scenario limits --cases L1 ... --image-level 11
+   --address 4` (`--polls-only` without the Y0 write, `--over-limit 0|1`,
+   `--leave-profile` for a series; soft-limit cases `--cases S1 S2 S3 S6 S7` and
+   `S4`). Measured on 19 November ([wired bench 11](reports/2026-11-19_wired_bench_11_limits.md)): relay2 (X1)
+   stops moves and velocity toward positive, relay1 (X2) toward negative, motion
+   away runs on, no flag, alarm or recovery; `0x0017` = 0 decelerates, 1 stops
+   directly. Limit-based homing is prompt 12.
 7. **PT segments.** X0 = 12, X1-X3 = 14-16. Set PIN levels with relays and
    MOSFET2, wait more than 10 ms, pulse X0; read the reached position for
    several segments.

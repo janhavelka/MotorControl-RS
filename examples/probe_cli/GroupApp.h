@@ -736,7 +736,13 @@ Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveR
             for (uint8_t j = 0; j <= i; ++j) clearRecord(a.records[GROUP_MOVE_FIRST + j]);
             reply.address = m.address;
             // A member's active stop/release input (wired bench 07) is named; no member is written.
-            if (!readiness) noteStopInputRefusal(a, stopInputs(facts, now));
+            if (!readiness) {
+                noteStopInputRefusal(a, stopInputs(facts, now));
+                // Wired bench 11: an active limit input, or a member whose 0x0018 is not known 0.
+                if (!a.settingsRefusal.reason) noteLimitInputRefusal(a, limitInputs(facts, now));
+                if (!a.settingsRefusal.reason && facts.configuration.raw.softLimitEnable != 0)
+                    noteSoftLimitRefusal(a, "soft_limit_state_unknown");
+            }
             return !readiness ? Probe::Action::UNAVAILABLE :
                 checked.code == Err::UNSUPPORTED ? Probe::Action::UNSUPPORTED : Probe::Action::INVALID;
         }

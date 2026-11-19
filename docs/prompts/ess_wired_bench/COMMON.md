@@ -196,6 +196,66 @@ wait for the owner; the prompt continues with its other cases meanwhile and
 stays Partial until they run. A conditional step that becomes necessary makes
 the prompt Partial the same way.
 
+## Owner absence, 20 November to about 4 December 2026
+
+Decision D15. The owner is away and nobody can touch the bench. A drive that
+becomes unreachable or needs a restart stays lost for the rest of the
+absence and blocks later prompts. Until the owner's return is recorded here,
+these rules override the G3 text above:
+
+1. **No waiting.** Do not ask the owner for anything and do not wait for an
+   answer. A G3 step (power cycle, cable pull, rewiring, DIP switch, observation,
+   instrument, owner question) goes into the README table
+   [Deferred to owner return](README.md#deferred-to-owner-return) with the exact
+   action and the cases it unlocks; those cases are NOT RUN with the reason
+   "deferred: owner away". Continue with the rest; the prompt stays Partial.
+2. **Nothing persistent, no communication changes.** No save, no factory
+   restore, no write to `0x0013` (address), `0x0014`/`0x0015` (serial
+   settings) or any other setting that changes how a drive answers. All other
+   writes are RAM only, so the owner's power cycle on return reloads the stored
+   values.
+3. **No states that only a restart clears.** Do not provoke a fault on a drive
+   that has not yet cleared that fault with `alarm-clear`: alarm 5 only on
+   drives 2 and 4, no Err1-Err3, no HW-01 reproduction (16 R1), no Q04 (16 R3).
+   If a drive still ends in such a state, stop motion on it, record it, leave it
+   out of later cases and continue on the other drives.
+4. **Snapshot discipline.** Before changing a homing, velocity, JOG or profile
+   word, take a fresh snapshot through that field's own restore route and
+   restore it on the same drive before selecting another drive or flashing.
+5. **Before-flash check without the owner.** "Have the owner remove the I/O
+   feed" is not available. If one drive does not answer, a flash may proceed
+   only when that drive's last checked read in the same session showed it
+   stopped, alarm-free and with no input function 7-17, and no write reached it
+   since; record that. Otherwise do not flash.
+6. **Relay wear.** Each report states how many relay operations it added (the
+   budget in 20 is 10,000 per relay). A stuck relay is worked around by setting
+   that input's function to 0 on every drive over RS485.
+
+Prompt-specific safeguards:
+
+- **12:** collision methods stay unresolved; X3 = 11 is never left assigned
+  between H10 runs.
+- **13:** W0b runs only if a drive-side stop besides the harness path guard is
+  available on a free terminal; otherwise W0b is NOT RUN and PT stays
+  non-negative only.
+- **14:** phase C runs on drive 2, not drive 1.
+- **15:** T3 and T9 repeats on drives 2 and 4 only; T5/T6 on one drive,
+  decreases first, and tuning stops at any alarm that `alarm-clear` does not
+  clear; T12 (encoder resolution change) is deferred.
+- **16:** F4, R1, R3, the step 6 owner asks and the drive 1 leg of A2 are
+  deferred; R2 relies on `stop fast`.
+- **17:** S0 and the software items (native tests) run; every hardware case is
+  deferred.
+- **18:** L1-L4 and U1 are deferred. G2 (reflash during motion) uses a finite
+  move that outlasts the flash, with the known-good image and its esptool
+  command prepared.
+- **19:** B1-B4 are deferred; B5 and K1 are NOT RUN.
+- **20:** the soak and closeout run; the set stays Partial until the deferred
+  cases have run.
+
+On return, the owner power-cycles all three drives and the lead runs
+`baseline-compare`, then the deferred cases in the README table.
+
 ## Verify, finish and report
 
 Run the prompt's focused checks and the affected existing gates: the native

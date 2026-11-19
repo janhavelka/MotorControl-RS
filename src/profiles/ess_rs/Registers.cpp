@@ -39,7 +39,7 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 68,
      "MOTION_STATUS", "bitfield",
      "unspecified", "unspecified", "RO",
-     "Bit 4 set means released, clear means enabled. Bits 7-15 undocumented; retain raw values. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029), drive 4: soft-limit bits 5/6 set at the E3 stop; stop fast and alarm-clear leave them set; motor-release clears them and bit 1 (HOMED); position clear does not clear HOMED."},
+     "Bit 4 set means released, clear means enabled. Bits 7-15 undocumented; retain raw values. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029), drive 4: soft-limit bits 5/6 set at the E3 stop; stop fast and alarm-clear leave them set; motor-release clears them and bit 1 (HOMED); position clear does not clear HOMED. Measured 2026-11-19 (wired bench 11; 0x4EEA/0x0029), drive 4 and group members 1, 2: hardware limit inputs (functions 2, 3) never set bits 4-6 or 3; a limit stop reads 0 (RUNNING and IN_POSITION clear). Bits 5/6 are the soft-limit overtravel flags: bit 5 at the positive, bit 6 at the negative limit with 0x0018 = 1 (S4: +562/-565 at 0x0017 = 0, +512/-512 at 1, limits +/-500, 60 rpm); not an alarm."},
     // Function PDF pages 68, 69.
     {0x0008, 1, RegisterAccess::READ_ONLY, RegisterSignedness::BITFIELD,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 68,
@@ -99,13 +99,13 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000400u, 70,
      "OVER_LIMIT_STOP", "unspecified",
      "0-1", "0", "RW",
-     "Value 0 described only as free parking; do not assume controlled deceleration or release."},
+     "Value 0 described only as free parking; do not assume controlled deceleration or release. Measured 2026-11-19 (wired bench 11; 0x4EEA/0x0029), drive 4: applies to hardware and soft limits. 0: the drive decelerates (limit to Y0 running-off edge 110-116 ms, tail 201-210 ms, like input function 5 at deceleration 100 ms; soft-limit overshoot about 62 increments at 60 rpm). 1: it stops directly (22-24 ms, tail 134-150 ms; overshoot about 12). Neither releases the motor, sets an alarm or needs recovery: after the limit input is released moves in both directions complete. Not generalized to other firmware."},
     // Function PDF pages 70, 28, 29.
     {0x0018, 1, RegisterAccess::READ_WRITE, RegisterSignedness::ENUMERATED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000100u, 70,
      "SOFT_LIMIT_ENABLE", "unspecified",
      "0-1", "0", "RW",
-     "Enabled limits take effect only after homing. Prose p28 says 0x0019; table p29 and appendix say 0x0018. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029), drive 4, E3: 1 written and read back after home 35; limits then stop velocity at the limit with 0x0007 bit 5 or 6. Production enable stays refused (prompt 11)."},
+     "Enabled limits take effect only after homing. Prose p28 says 0x0019; table p29 and appendix say 0x0018. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029), drive 4, E3: 1 written and read back after home 35; limits then stop velocity at the limit with 0x0007 bit 5 or 6. Wired bench 11: production enable route (`driver set soft-limit 1`) after home 35 with the reference and soft-limits facts and a checked pair read at order 0; S1-S4, S6, S7 measured on drive 4. A soft-limit stop keeps its flag through stop fast and alarm-clear; release then enable clears it and HOMED."},
     // Function PDF pages 70, 30.
     {0x0019, 1, RegisterAccess::READ_WRITE, RegisterSignedness::ENUMERATED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 70,

@@ -147,11 +147,21 @@ Probe::Action checkArmDrive(App& a, const Probe::InputStartRequest& r, const Pro
     if (d.member && d.member->coordinate.reference.nativeKnown && !memberReference(a, *d.member, now).nativeKnown) {
         reason = "member_reference_stale"; return Probe::Action::UNAVAILABLE;
     }
-    const MotionFacts facts = d.member ? memberFacts(a, *d.member, want.move.position.relative ? nullptr : &reference) :
+    MotionFacts facts = d.member ? memberFacts(a, *d.member, want.move.position.relative ? nullptr : &reference) :
         selectedFacts(a, want.move.position.relative ? nullptr : &reference);
+    facts.softLimitBound = false; // Wired bench 11: an arm needs the soft limits known disabled.
     const auto stops = stopInputs(facts, now);
     if (stops.result != StopInputs::CLEAR) {
         noteStopInputRefusal(a, stops); reason = a.settingsRefusal.reason ? a.settingsRefusal.reason : "stop_input";
+        return Probe::Action::UNAVAILABLE;
+    }
+    const auto limits = limitInputs(facts, now);
+    if (limits.result != LimitInputs::CLEAR) {
+        noteLimitInputRefusal(a, limits); reason = a.settingsRefusal.reason ? a.settingsRefusal.reason : "limit_input";
+        return Probe::Action::UNAVAILABLE;
+    }
+    if (d.member ? facts.configuration.raw.softLimitEnable != 0 : softLimitState(a, now) != SoftLimitState::KNOWN_DISABLED) {
+        noteSoftLimitRefusal(a, "soft_limit_state_unknown"); reason = "soft_limit_state_unknown";
         return Probe::Action::UNAVAILABLE;
     }
     if (!moveRequirements(facts, want.move, now, prerequisites)) { reason = "move_readiness"; return Probe::Action::UNAVAILABLE; }

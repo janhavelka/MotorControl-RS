@@ -473,3 +473,21 @@ Offline tests cover this USB-stop decision. They do not qualify the full
 campaign, physical stop behavior or USB driver timing. See the
 [November investigation](reports/2026-11-02_standalone_promptset_audit.md) and
 [rate-ceiling report](reports/2026-11-04_stop_normal_rate_ceiling.md) for actual runs.
+
+## Limit inputs and soft limits (wired bench 11)
+
+`--scenario limits --cases ID... --image-level 11 --address 4`
+(`scripts/bench_limits.py`). One run folder runs the named cases in order.
+L1-L4, L6, L7 and L9 run moves or velocity with an interlocked `relay2` (X1) or
+`relay1` (X2) ON, the running member named with effect `limit` and its
+pre-start `io read`; L10 holds each relay on stopped drives; L5a holds a relay
+and expects every motion start refused before TX (`debug decoded` traffic count).
+Each trial records bits 3-6, the alarm word, the position at the end of the hold
+and after the release, and the recovery the drive needed. `--polls-only` skips
+the Y0 = 2 write (the V-01 run), `--over-limit 0|1` sets `0x0017` for every case,
+`--leave-profile` leaves the profile words of a series. S1, S2, S3, S6, S7 run
+one soft-limit flow (pairs ±500, home 35 with the `soft-limits` fact, the enable
+route, moves, the endpoint refusal, position clear and recovery, disable); S4
+runs ±60 rpm into the bound limits at the run's `0x0017`. Every flow restores
+`0x0018` first, then the pairs and auxiliary; the run's plan restores the
+homing, velocity and profile words from their pinned reads.

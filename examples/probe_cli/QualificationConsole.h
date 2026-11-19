@@ -25,6 +25,9 @@ struct QualificationCommand {
     bool mechanics = false, rates = false, ramp = false, zeroOffset = false;
     bool auxiliary = false, inputs = false, index = false, reference = false; ///< Home facts; ramp and inputs are shared with velocity.
     bool offset = false; ///< Home: measured nonzero offset encoding with auxiliary 6 (wired bench 10).
+    /** Home, method 35 with `reference` only: this home may bind the drive's
+     * soft limits (0x0018 = 1) through the enable route (wired bench 11). */
+    bool softLimits = false;
     bool rpm = false, negative = false; ///< Velocity facts.
     bool clearSemantics = false; ///< Position-clear fact.
     uint16_t rawStartSpeed = 0, minimumRpm = 0; ///< Start-speed relation.
@@ -57,6 +60,7 @@ const Fact HOME[] = {
     {"index", &QualificationCommand::index, false},
     {"reference", &QualificationCommand::reference, false},
     {"offset", &QualificationCommand::offset, false},
+    {"soft-limits", &QualificationCommand::softLimits, false},
 };
 const Fact VELOCITY[] = {
     {"rpm", &QualificationCommand::rpm, true},
@@ -111,6 +115,11 @@ inline const char* parseHomeQualification(const char* const* tokens, std::size_t
     // The offset fact exists for method 35 only (wired bench 10 E1).
     named = "offset";
     if (command.offset && command.home.method != Ess::HomingMethod::METHOD_35) return "fact_not_applicable";
+    // soft-limits (wired bench 11): method 35 only, and the home must publish its reference.
+    named = "soft-limits";
+    if (command.softLimits && command.home.method != Ess::HomingMethod::METHOD_35) return "fact_not_applicable";
+    named = "reference";
+    if (command.softLimits && !command.reference) return "missing_fact";
     named = nullptr;
     return nullptr;
 }

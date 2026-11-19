@@ -47,7 +47,13 @@ enum class VelocityError : int32_t {
     STOP_INPUT,
     /** Running was observed, then a stopped report before the timed stop with
      * no active stop/release report: stopped early, cause unknown. */
-    STOPPED_EARLY
+    STOPPED_EARLY,
+    /** An assigned limit input (function 2 or 3) was reported active before
+     * the timed stop. A reported fact, not a proven cause; the timed stop still runs. */
+    LIMIT_INPUT,
+    /** The drive reported a soft-limit overtravel flag (0x0007 bit 5 or 6)
+     * before the timed stop. Not an alarm; the timed stop still runs. */
+    SOFT_LIMIT
 };
 /** Shared exact conversion/quantization; output unchanged on error. NATIVE is
  * native motor rpm, not command steps/s. Other frames require only their actual

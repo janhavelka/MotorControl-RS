@@ -20,6 +20,9 @@ struct VelocityPrerequisites {
     /** As MovePrerequisites: assigned release/stop inputs (functions 4-6) and
      * their active-low bits. Nonzero adds 0x0008 to each observation read. */
     uint8_t stopInputMask = 0, stopInputActiveLow = 0;
+    /** As MovePrerequisites: assigned limit inputs (functions 2 or 3) and their
+     * active-low bits. Nonzero adds 0x0008 to each observation read. */
+    uint8_t limitInputMask = 0, limitInputActiveLow = 0;
 };
 enum class VelocityPhase : uint8_t { STAGING, TRIGGER, OBSERVING, STOPPING };
 /** Caller-owned, read-only between calls. One axis reservation spans staging,
@@ -55,6 +58,14 @@ struct VelocityContext {
     uint16_t rawInputs = 0;
     bool stopInputObserved = false, stoppedEarly = false;
     ActionEvidence stopInputEvidence, stoppedEvidence;
+    /** Wired bench 11 witnesses, handled like the stop input: the first report
+     * with an assigned limit input active, and the first with a soft-limit flag
+     * (0x0007 bit 5 or 6). Either makes the run FAILED (LIMIT_INPUT, SOFT_LIMIT);
+     * neither sends anything or changes the timed stop. Within one report the
+     * retained reason is STOP_INPUT, LIMIT_INPUT, SOFT_LIMIT, then STOPPED_EARLY;
+     * across reports the first one stays. Alarm and released stay DRIVE_FAULT. */
+    bool limitInputObserved = false, softLimitObserved = false;
+    ActionEvidence limitInputEvidence, softLimitEvidence;
     ActionContext stop;
     Status status;
 };

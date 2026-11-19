@@ -104,6 +104,39 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+On 19 November [wired bench 11](reports/2026-11-19_wired_bench_11_limits.md)
+ran the L cases on production image B (above), then flashed three Arduino
+`bench_s3_load_timer` images built from `58038c5` plus the uncommitted prompt 11
+tree, each after `baseline-compare` (573/573 equal) and a passing
+`before_flash_check`, four regions hash-verified:
+
+- C, `94BED1BC2E678528B5928B3FC8AFF42B45CDFEB5899EEB6617D6D33483C28B34`: first
+  soft-limit run (`soft`, `soft_b`); the binding was dropped by a reconcile read
+  after the enable (deviation 2).
+- D, `EF19FA386E9512E214E95912060398845C1E0B3D57D69FE00B66DC95F97919D3`: the same
+  in the configuration publish path (`soft_d`).
+- Last, E, `34B126BBF2782F5423F2FD8A7DA2297E3B0EFE4E65E29899118A8086417BBE24`
+  (firmware-source diff `8261819B2D5D323CF9409178D3AECB6F5C9DF3263ED8632DFE18A379BC99677C`):
+  S1-S4, S6, S7, L5a, L7 and the L1 regression. It is on the board.
+
+The final tree differs from E only in the regenerated ledger note strings of
+`Registers.cpp`; its Arduino image
+(`EE03FB98FA059F317E06647CD35A78FD1957024ED37096C3AA1A15EB40CD70E7`) and native
+ESP-IDF 5.5.5 image
+(`48D5713690E133D0CE601E2199D838DCC351DD87F41238B06D51E3C2B73B8103`) were built,
+not flashed. Ending state:
+
+- **Board:** image E, outputs off, `aux1` active, drive 1 selected, COM13 closed.
+- **Drives 1/2/4:** enabled, stopped, alarm-free, speed 0. I/O
+  `[0,1,2,3,0,0,0,0,0]`, `0x0017` = 0, `0x0018` = 0, limits [0,0], homing words
+  24/120/60/100/0/0, auxiliary 0, profile [100, 100, 60, 0, 5000].
+  Position words: drive 1 [0, 1251], drive 2 [0, 1238], drive 4 [0, 1059];
+  drive 4 not homed.
+- **Settings:** `baseline-compare`: 573 of 573 fields equal, 0 unknown
+  (`build/bench/2026-11-19_wb11_final_baseline_compare/`). RAM only, nothing saved.
+- **Owner action:** none. The owner is away from 2026-11-20 for about 14 days;
+  no step that needs a power cycle was run.
+
 Later on 19 November the owner power-cycled drive 4 with image B still on the
 board. `baseline-compare` then read all 573 committed fields on drives 1, 2
 and 4 equal to the baseline, 0 unknown

@@ -88,6 +88,13 @@ own poll that sees the input ends it `INPUT_REQUIRED`. Without either, an
 input-stopped search would poll to its deadline: not exercised on the bench
 and handed to prompt 12.
 
+Wired bench 11: a home also needs the soft limits known disabled (`0x0018` read
+0 in a current configuration read); while bound or unknown it refuses before TX
+(`soft_limits_enabled`, `soft_limit_state_unknown`). Bits 5/6 stay home faults.
+Method 35 may carry the `soft-limits` fact (with `reference`) for the enable
+route. A hardware limit asserted during a search (L8) was not run; limit-based
+homing belongs to prompt 12.
+
 ## Origin-reference methods
 
 All eight require a connected origin assigned to input function 1, known

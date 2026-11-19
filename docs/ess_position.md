@@ -786,3 +786,17 @@ The [firmware 0x0029 investigation](reports/2026-10-07_position_completion.md)
 records short-move success and remaining high-subdivision failures. Exact
 matching leaves ambiguous/quantized endpoints unconfirmed; no encoder tolerance
 or universal firmware qualification is invented.
+
+## Limit inputs and soft limits (wired bench 11)
+
+Measured on drive 4 (`0x4EEA`/`0x0029`): a limit input (X1 = 2, X2 = 3) toward the
+motion stops a move short without a flag or alarm; a move away runs to its
+endpoint. The standalone refuses a move while an assigned limit input reads
+active, in both directions (`limit_input_active`), and adds the limit terminals
+declared connected to the observation (`limitInputMask`; 0x0008 read). A move
+that stops after a report with such an input active ends `LIMIT_INPUT` (26). A
+report with `0x0007` bit 5 or 6 ends `SOFT_LIMIT` (27); alarm and release stay
+`DRIVE_FAULT`. A set bit 5 or 6 still refuses preparation. With soft limits
+bound the host axis soft limits check the endpoint before TX
+(`soft_limit_endpoint`); unknown soft-limit state refuses every start
+([state](ess_driver_settings.md#soft-limit-enable-route-and-state-wired-bench-11)).

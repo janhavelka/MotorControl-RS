@@ -10,6 +10,9 @@ constexpr uint16_t HOMED = static_cast<uint16_t>(MotionStatusBit::HOMING_COMPLET
 constexpr uint16_t UNKNOWN_MOTION = 0xFF80; // Only bits 0..6 are documented; unknown is not a drive fault.
 static_assert(ACTION_MAX_POLLS + 2 < 256, "home setup/trigger/poll/zero step must fit uint8_t");
 static_assert(ACTION_MAX_REPLY_BYTES >= 11, "combined home alarm/motion/input reply must fit evidence");
+// Bits 5/6 are soft-limit overtravel flags (wired bench 11), not alarms. A home
+// stays faulted on them: the application admits a home only with soft limits
+// known disabled, so a flag during a home contradicts that admission.
 constexpr uint16_t FAULTS = static_cast<uint16_t>(MotionStatusBit::ALARM) |
     static_cast<uint16_t>(MotionStatusBit::RELEASED) |
     static_cast<uint16_t>(MotionStatusBit::POSITIVE_SOFT_LIMIT) |

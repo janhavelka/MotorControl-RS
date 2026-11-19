@@ -225,11 +225,55 @@ R10 on the production image (drive 4) wrote +300 and -300 through
 `driver set positive-limit`/`negative-limit` (one FC10 and a two-word FC03 each),
 read them decoded as +300/-300 and restored [0,0].
 
-Enabling the limits (`0x0018` = 1) stays refused in production: the standalone
-supplies no `limitSemanticsQualified`. Prompt 11 owns it. Measured on drive 4
-on an experimental image (E3): after home 35 with auxiliary 7 to 0, limits
-+300/-300 and `0x0018` = 1, a 30 rpm velocity run stopped at +332 with `0x0007`
-bit 5 and at -332 with bit 6. Bits 5/6 stay set through `stop fast` and
-`alarm-clear`. A motor release clears them and HOMED; after `enable`,
-`driver set soft-limit 0` and the limit words restore normally, with no power
-cycle. Recovery away from a limit is unmeasured.
+Measured on drive 4 on an experimental image (wired bench 10, E3): after home
+35 with auxiliary 7 to 0, limits +300/-300 and `0x0018` = 1, a 30 rpm velocity
+run stopped at +332 with `0x0007` bit 5 and at -332 with bit 6. Bits 5/6 stay
+set through `stop fast` and `alarm-clear`. A motor release clears them and
+HOMED; after `enable`, `driver set soft-limit 0` and the limit words restore
+normally, with no power cycle.
+
+## Soft-limit enable route and state (wired bench 11)
+
+`driver set soft-limit 1` is the production enable route (model `0x4EEA`,
+firmware `0x0029`). The standalone derives the core's prerequisites only from its
+own evidence (`SoftLimitApp.h`):
+
+| Prerequisite | Source |
+| --- | --- |
+| Home reference | The last home that published a reference: method 35, stated with the `soft-limits` and `reference` facts (`home qualification install 35 S R RAMP ... reference soft-limits`), in the same binding and axis generation. A later home, rebind or configuration change discards it |
+| Pair words | A checked `driver read` after that home, decoded at word order 0 (`limits_decoded`) |
+| Limit semantics | The ledger record of `0x0018` for `0x4EEA`/`0x0029` (wired bench 10 E3, wired bench 11); other identities leave it false |
+| Core checks | HOMED set and not released in the fresh state, ordered bounds within ±`0x0FFFFFFF`, pair words equal to the read-back words, no geometry field in the request (`LIMIT_REFERENCE_REQUIRED`, `LIMIT_DEPENDENCY`) |
+
+Write the pairs while `0x0018` reads 0 and before the home: each DRIVE write
+starts a new axis generation, so pairs written after the home discard it.
+
+The soft-limit state of the selected axis:
+
+| State | Condition | Admitted |
+| --- | --- | --- |
+| known disabled | A current configuration read shows `0x0018` = 0 (any possibly accepted DRIVE write invalidates it) | Every motion start that its other rules admit; homes need this state |
+| enabled and bound | A current configuration read, newer than this application's own confirmed enable, shows 1; the binding of that enable is current (target, binding, generation), HOMED set and not released. The host axis soft limits are installed from the pairs after the enable readback, never before | Moves whose endpoint lies inside the host limits (absolute targets; relative moves need a current native reference), velocity; homes and arms refuse (`soft_limits_enabled`, `soft_limit_state_unknown`) |
+| unknown | Everything else: startup, a lost ACK on `0x0018` or a pair, a pair change, a position clear, a release, a home start, reference loss, a rebind, a geometry or generation change, `0x0018` = 1 without the binding | Reads, stops, the disable write and the enable route; every motion start and arm refuses before TX with `soft_limit_state_unknown` |
+
+An endpoint outside the bound host limits refuses `soft_limit_endpoint` before TX.
+Group members and input-start arms need `0x0018` known 0. The first checked
+reads after our own enable report `0x0018` changed against the pre-write caches;
+those reads keep the binding (measured on images C and D, fixed in image E).
+
+Measured on drive 4 ([wired bench 11](reports/2026-11-19_wired_bench_11_limits.md)): S1 bound ±500 after the
+readback; S2 moves to +400 and -400 completed; S3 +700 refused before TX; S4
+velocity from 0 at 60 rpm stopped at +562/-565 with `0x0017` = 0 and +512/-512
+with `0x0017` = 1, bits 5/6 set, result `SOFT_LIMIT`; S6 a position clear made the
+state unknown and the next move refused; S7 after the disable a move to +700
+completed. After a soft-limit stop only release then enable clears the flag (and
+HOMED); then disable, home and enable again.
+
+## Over-limit stop (`0x0017`, wired bench 11)
+
+Measured on drive 4 (`0x4EEA`/`0x0029`), hardware limits X1 = 2, X2 = 3 and the
+soft limits: 0 decelerates with the configured deceleration (limit to Y0
+running-off edge 110-116 ms, like input function 5 at 100 ms); 1 stops directly
+(22-24 ms, like function 6). Both have a tail mode about 100 ms longer. Neither
+releases the motor, latches an alarm or needs a recovery step. Soft-limit
+overshoot at 60 rpm: about 62 increments at 0, 12 at 1.

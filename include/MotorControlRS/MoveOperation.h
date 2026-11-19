@@ -29,6 +29,12 @@ enum class MoveError : int32_t {
     STOP_INPUT,
     /** Running was observed, then consecutive stopped reports without arrival
      * and without an active stop/release report: stopped short, cause unknown. */
-    STOPPED_SHORT
+    STOPPED_SHORT,
+    /** An assigned limit input (function 2 or 3) was reported active and the
+     * motion stopped before arrival. A reported fact, not a proven cause. */
+    LIMIT_INPUT,
+    /** The drive reported a soft-limit overtravel flag (0x0007 bit 5 or 6).
+     * Not completion and not an alarm. */
+    SOFT_LIMIT
 };
 } // namespace MotorControlRS

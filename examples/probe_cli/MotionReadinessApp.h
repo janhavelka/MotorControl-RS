@@ -22,6 +22,11 @@ struct MotionFacts {
     uint64_t maximumAgeUs;
     const MotorControlRS::AxisReference* reference; ///< Absolute targets only; null refuses them.
     const IoQualification* inputQualifications;
+    /** Wired bench 11: the selected axis's soft-limit state is BOUND
+     * (SoftLimitApp.h). Then 0x0018 = 1 is admitted and the host axis soft
+     * limits bound endpoints. Group members and arms keep false: they need
+     * 0x0018 known 0. */
+    bool softLimitBound = false;
     MotionFacts(const MotorControlRS::AxisConfig& axisConfig, const ESS::ConfigObservation& config,
                 const App::MotionProfileState& motionProfile, const Probe::StateCache& cache,
                 bool relationRequired, const PositionStartSpeedRelation& relation,
@@ -33,8 +38,10 @@ struct MotionFacts {
     const Probe::StateCache::Block& block(ESS::StateBlock kind) const { return state.blocks[static_cast<uint8_t>(kind)]; }
 };
 MotionFacts selectedFacts(const App& a, const MotorControlRS::AxisReference* reference = nullptr) {
-    return MotionFacts(a.axis, a.configuration, a.motionProfile, a.stateCache, a.positionStartSpeedRelationRequired,
+    MotionFacts facts(a.axis, a.configuration, a.motionProfile, a.stateCache, a.positionStartSpeedRelationRequired,
         a.positionStartSpeedRelation, a.bindingGeneration, a.serial.generation, a.observationAgeUs(), reference, a.ioQualifications);
+    facts.softLimitBound = softLimitState(a, nowUs()) == SoftLimitState::BOUND;
+    return facts;
 }
 // Wired bench 07 decision: every motion admission (finite, staged, group,
 // velocity, home) refuses before TX when a fresh input status, read through the
@@ -96,6 +103,61 @@ void noteStopInputRefusal(App& a, const StopInputCheck& check) {
     a.settingsRefusal.readFirst = check.result == StopInputs::MAPPING_UNKNOWN ? "io qualification install" : "read state";
     a.settingsRefusal.purpose = "motion";
     a.settingsRefusal.terminal = check.result == StopInputs::STALE ? -1 : static_cast<int8_t>(check.terminal);
+}
+// Wired bench 11 decision: limit inputs (functions 2 and 3). Measured on drive 4
+// (0x4EEA/0x0029, 0x0010 = 0): the drive stops motion toward an asserted limit
+// (0x0017 = 0 with the configured deceleration, 1 directly), lets a move away
+// from it run to its endpoint, and sets no flag and no alarm. A start toward an
+// active limit refuses before TX. A start away refuses too, until a drive-decided
+// start with the limit held (prompt 11 L5b) shows the drive accepts it. The
+// observers record an assigned limit input reported active (LIMIT_INPUT) on
+// terminals declared connected; an unconnected or undeclared terminal adds no
+// 0x0008 read, and its stop is reported STOPPED_SHORT/STOPPED_EARLY, never success.
+enum class LimitInputs : uint8_t { CLEAR, STALE, MAPPING_UNKNOWN, ACTIVE };
+struct LimitInputCheck {
+    LimitInputs result = LimitInputs::STALE;
+    uint8_t terminal = 0;
+    uint8_t mask = 0;      ///< Terminals assigned 2 or 3, bit i for Xi (admission).
+    uint8_t witness = 0;   ///< Of those, terminals declared connected (observation mask).
+    uint8_t activeLow = 0; ///< Of the witnesses, terminals active when their status bit reads 0.
+};
+LimitInputCheck limitInputs(const MotionFacts& f, uint64_t now) {
+    LimitInputCheck check;
+    const auto& raw = f.configuration.raw;
+    for (uint8_t i = 0; i < 4; ++i)
+        if (raw.inputFunctions[i] == 2 || raw.inputFunctions[i] == 3) {
+            check.mask |= static_cast<uint8_t>(1u << i);
+            if (f.configuration.wiring[i] == MotorControlRS::InputWiring::CONNECTED) check.witness |= static_cast<uint8_t>(1u << i);
+        }
+    if (!check.mask) { check.result = LimitInputs::CLEAR; return check; }
+    const auto& io = f.block(ESS::StateBlock::IO);
+    if (!Probe::fresh(io, f.axis.target, now, f.maximumAgeUs) || io.value.unknownInputBits) return check;
+    for (uint8_t i = 0; i < 4; ++i) {
+        if (!(check.mask & (1u << i))) continue;
+        const uint16_t polarity = (raw.inputPolarity >> i) & 1;
+        const auto* q = stopInputRecord(f, i, now);
+        const auto mapping = q ? q->input.statusMapping : ESS::IoStatusMapping::UNKNOWN;
+        bool active = false;
+        check.terminal = i;
+        if (!effectiveInput(io.value.rawInputs, i, polarity, polarity, mapping, active)) {
+            check.result = LimitInputs::MAPPING_UNKNOWN; return check;
+        }
+        if (active) { check.result = LimitInputs::ACTIVE; return check; }
+        if (mapping == ESS::IoStatusMapping::BEFORE_INVERSION && polarity && (check.witness & (1u << i)))
+            check.activeLow |= static_cast<uint8_t>(1u << i);
+    }
+    check.terminal = 0;
+    check.result = LimitInputs::CLEAR;
+    return check;
+}
+void noteLimitInputRefusal(App& a, const LimitInputCheck& check) {
+    a.settingsRefusal = Probe::SettingsRefusal();
+    if (check.result == LimitInputs::CLEAR) return;
+    a.settingsRefusal.reason = check.result == LimitInputs::ACTIVE ? "limit_input_active" :
+        check.result == LimitInputs::MAPPING_UNKNOWN ? "input_mapping_unknown" : "input_state_stale";
+    a.settingsRefusal.readFirst = check.result == LimitInputs::MAPPING_UNKNOWN ? "io qualification install" : "read state";
+    a.settingsRefusal.purpose = "motion";
+    a.settingsRefusal.terminal = check.result == LimitInputs::STALE ? -1 : static_cast<int8_t>(check.terminal);
 }
 bool moveInputPolicy(const MotionFacts& f, uint64_t now) {
     const auto& raw = f.configuration.raw;
@@ -206,7 +268,7 @@ bool moveRequirements(const MotionFacts& f, const MotorControlRS::MoveRequest& r
     const auto& motion = f.block(ESS::StateBlock::MOTION);
     uint16_t minimumRpm = 0;
     if (!Probe::fresh(io, f.axis.target, now, f.maximumAgeUs) || io.value.unknownInputBits ||
-        raw.softLimitEnable != 0 || !f.configuration.wordOrderKnown || motion.value.released ||
+        (raw.softLimitEnable != 0 && !f.softLimitBound) || !f.configuration.wordOrderKnown || motion.value.released ||
         !positionStartingSpeed(f, now, minimumRpm) || minimumRpm > request.speedRpm ||
         profile.current[1] > 2000 || profile.current[2] > 2000)
         return false;
@@ -214,7 +276,8 @@ bool moveRequirements(const MotionFacts& f, const MotorControlRS::MoveRequest& r
     // and require the checked logical input report for each assigned input.
     // Origin level alone does not trigger a serial move or act as a limit.
     const StopInputCheck stops = stopInputs(f, now);
-    if (stops.result != StopInputs::CLEAR || !moveInputPolicy(f, now)) return false;
+    const LimitInputCheck limits = limitInputs(f, now);
+    if (stops.result != StopInputs::CLEAR || limits.result != LimitInputs::CLEAR || !moveInputPolicy(f, now)) return false;
     if (!request.position.relative && !absoluteMoveReady(f, request, now)) return false;
 
     // Publish only after every guard passes; rejected preparation preserves out.
@@ -234,6 +297,7 @@ bool moveRequirements(const MotionFacts& f, const MotorControlRS::MoveRequest& r
     out.startSpeed = minimumRpm;
     out.maximumAgeUs = f.maximumAgeUs;
     out.stopInputMask = stops.mask; out.stopInputActiveLow = stops.activeLow;
+    out.limitInputMask = limits.witness; out.limitInputActiveLow = limits.activeLow;
     return true;
 }
 bool moveRequirements(const App& a, const MotorControlRS::MoveRequest& request,

@@ -4,6 +4,16 @@
 
 ### Added
 
+- Limit inputs and soft limits (wired bench 11). Move and velocity observers
+  report `LIMIT_INPUT` (26, 28) for a stop with an assigned limit input reported
+  active (connected terminals, 0x0008 read) and `SOFT_LIMIT` (27, 29) for
+  `0x0007` bits 5/6; alarm and release stay `DRIVE_FAULT`. The standalone refuses
+  moves, velocity, group members and arms while a limit input reads active
+  (`limit_input_active`), keeps a soft-limit state (known disabled, bound,
+  unknown) and admits `driver set soft-limit 1` from its own home 35 with the
+  new `soft-limits` home fact, a checked pair read and the measured identity; the
+  host axis soft limits are installed after the readback. Harness scenario
+  `limits` (`scripts/bench_limits.py`).
 - Paired-value encodings (wired bench 10). The register ledger gains an
   `experiment_windows` list (decision D4; now the sixteen PT target pairs),
   which the generator checks like reviewed windows (plus decision, prompt,

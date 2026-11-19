@@ -65,7 +65,7 @@ the owner stays Partial and the next ready prompt starts.
 | 08 | Complete | 09: first bench use of the route (one and three drives, held level, stops, width floor from its sweep, memory and spacing with three armed members) | [2026-11-19](../../reports/2026-11-19_wired_bench_08_input_start_software.md) |
 | 09 | Partial | Drive 4 restoration closed by the 2026-11-19 power cycle (`baseline-compare` 573/573 equal); N05 remainder: staging isolation while moving, a replacement completion witness, refusing an interrupt after an observed arrival (I3) | [2026-11-19](../../reports/2026-11-19_wired_bench_09_input_and_serial_starts.md) |
 | 10 | Complete | Production soft-limit enable and recovery at a limit: 11; auxiliary 3 and other auxiliary choices, offsets with switch methods, method 35 completion from a homed state: 12; PT target promotion (W0): 13; 0x0019 = 1 after save and restart: 17 | [2026-11-19](../../reports/2026-11-19_wired_bench_10_paired_value_encodings.md) |
-| 11 | Pending | — | — |
+| 11 | Partial | L5b, S5: a drive-decided start with a held limit or a set soft-limit flag (the shared-output interlock refuses a second ON while a relay is on; away starts stay refused); L8: limit during a home search (12); CI on the recording commit (lead) | [2026-11-19](../../reports/2026-11-19_wired_bench_11_limits.md) |
 | 12 | Pending | — | — |
 | 13 | Pending | — | — |
 | 14 | Pending | — | — |
@@ -78,6 +78,21 @@ the owner stays Partial and the next ready prompt starts.
 
 States: Pending, Partial, Blocked, Complete. Only the session that did the work
 changes a row.
+
+## Deferred to owner return
+
+The owner is away from 20 November to about 4 December 2026 (D15,
+[COMMON](COMMON.md#owner-absence-20-november-to-about-4-december-2026)).
+Executors add a row for each step that needs the owner and do not wait.
+
+| From | Owner action | Unlocks |
+| --- | --- | --- |
+| all | Power-cycle drives 1, 2 and 4, then `baseline-compare` | Reverts RAM leftovers; V-01 for drives 1 and 2 (11, 17) |
+| 15 | Supervise T12 (encoder resolution change) | T12 |
+| 16 | Cable pull, power cycle and instrument asks of step 6 | F4, R1, R3, A2 drive 1 leg |
+| 17 | Power cycles, DIP switch checks and changes | P0, S1, S2, P2-P5, F1, F2, C1, C2, D1, D2, S3; 05 filter persistence; 10 `0x0019` = 1 after save and restart |
+| 18 | Link removal and restore | L1-L4, U1 |
+| 19 | Power the drives one at a time | B1-B4 |
 
 ## Decisions
 
@@ -96,7 +111,8 @@ changes a row.
 | D11 | On the clamped free-shaft bench, rotation continuing until the controller, link or owner recovers is accepted exposure for deliberate fault cases; each case states it and verifies standstill afterwards | Lead, under D1 |
 | D12 | Raised limits are opt-in only (D6); legacy defaults stay the defaults. One production candidate table per setting is defined where the setting is widened (for example the deviation threshold in 15) and referenced, not redefined, by later prompts | Lead, under D3 |
 | D13 | Drive behavior that the application deliberately refuses to command (for example a start with a limit input held) is characterized only through a path the drive itself decides, such as a staged function-7 start triggered by a bench pulse; host admission is never bypassed and no experiment flag enters the production route | Lead, under D1 |
-| D14 | Shared-output interlock freshness (19 November, from 04's measurement). Within one controller, a drive's assignments or motion change between the interlock reads and the ON only through this controller's own traffic, a bench output or a drive restart. Ordering is the primary guard: the interlock's reads are the last bus traffic before the ON, an output already on refuses, and any accepted operation still pending other than the named running member's refuses. The read age is a 1000 ms backstop (measured worst case 424 ms through the console; the earlier 300 ms default had no hazard basis and is not met by the console path). Prompt 08's firmware trigger applies the same rule and bound to its own read times | Lead, under D1 |
+| D14 | Shared-output interlock freshness (19 November, from 04's measurement). Within one controller, a drive's assignments or motion change between the interlock reads and the ON only through this controller's own traffic, a bench output or a drive restart. Ordering is the primary guard: the interlock's reads are the last bus traffic before the ON, an output already on refuses, and any accepted operation still pending other than the named running member's refuses. The read age is a 1000 ms backstop (measured worst case 424 ms through the console; the earlier 300 ms default had no hazard basis and is not met by the console path). Prompt 08's firmware trigger applies the same rule and bound to its own read times |
+| D15 | During the owner's absence (20 November to about 4 December 2026) prompts run unattended: no owner waits, no save, factory restore or communication-setting write, no fault that only a restart clears; owner steps are deferred to the README table ([COMMON](COMMON.md#owner-absence-20-november-to-about-4-december-2026)) | Owner, 19 November | Lead, under D1 |
 
 ## Superseded hardware work
 

@@ -1241,9 +1241,187 @@ void testMonitorReferenceRefusal() {
     assert(submitMove(requestValue.position, 60, id));
     assert(cancel(app, id) == Probe::Action::OK); pump(); assert(!hardware.writes);
 }
+// Wired bench 11: limit inputs (X1 = 2, X2 = 3 from qualify()) and the
+// soft-limit state of SoftLimitApp.h. Every refusal is before TX.
+void limitStatus(uint16_t raw, uint16_t polarity = 0) {
+    app->configuration.raw.inputPolarity = polarity;
+    auto& io = app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
+    io.valid = true; io.value.target = app->axis.target; io.value.rawInputs = raw;
+    for (uint8_t i = 0; i < 4; ++i) io.value.inputs[i] = (raw >> i) & 1;
+    io.observedEarliestUs = io.observedLatestUs = hardware.time;
+}
+void bindSoftLimits(int64_t minimum, int64_t maximum) {
+    app->configuration.raw.softLimitEnable = 1; app->configuration.softLimitEnableKnown = true;
+    auto& b = app->softLimitBinding; b = App::SoftLimitBinding();
+    b.target = app->axis.target; b.operationId = 50; b.axisGeneration = app->axis.generation;
+    b.bindingGeneration = app->bindingGeneration; b.minimum = minimum; b.maximum = maximum;
+    app->configuration.operationId = 99;
+    app->axis.softLimitsKnown = true; app->axis.softMinimum = minimum; app->axis.softMaximum = maximum;
+    auto& motion = app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+    motion.value.homingComplete = true; motion.value.rawMotion = 3;
+    motion.observedEarliestUs = motion.observedLatestUs = hardware.time;
+}
+void refusedMove(const MoveRequest& r, const char* reason, int8_t terminal = -1) {
+    uint32_t untouched = 77; const auto next = app->nextOperationId;
+    assert(host(app).startMove(app, 1, 1, r, untouched) == Probe::Action::UNAVAILABLE);
+    assert(untouched == 77 && app->nextOperationId == next && !hardware.writes && !axisReserved(*app, 1));
+    Probe::SettingsRefusal refusal;
+    assert(copySettingsRefusal(refusal) && !std::strcmp(refusal.reason, reason) && !std::strcmp(refusal.purpose, "motion"));
+    assert(terminal < 0 || refusal.terminal == terminal);
+}
+MoveRequest moveBy(int64_t steps) { auto r = request(); r.position.value = Rational(steps); return r; }
+MoveRequest moveTo(int64_t target) { auto r = moveBy(target); r.position.relative = false; return r; }
+void testLimitInputsAndSoftLimitState() {
+    // A start toward an active limit refuses; a start away refuses too (L5b not run).
+    for (const auto steps : {int64_t(20), int64_t(-20)}) {
+        fresh(); qualify(); limitStatus(2); refusedMove(moveBy(steps), "limit_input_active", 1);
+        fresh(); qualify(); limitStatus(4); refusedMove(moveBy(steps), "limit_input_active", 2);
+    }
+    command("@3 move relative 20 steps native 60 configured\n");
+    assert(!hardware.writes && Serial.output.find("\"reason\":\"limit_input_active\"") != std::string::npos);
+    // Inverted X1 without a recorded mapping: the level is unknown.
+    fresh(); qualify(); limitStatus(0, 2); refusedMove(moveBy(20), "input_mapping_unknown", 1);
+    // Inactive limits: admitted; connected limit terminals add the 0x0008 witness.
+    fresh(); qualify(); limitStatus(0);
+    app->configuration.wiring[1] = app->configuration.wiring[2] = InputWiring::CONNECTED;
+    auto id = admitMove();
+    assert(view(id).moveContext->prerequisites.limitInputMask == 6);
+    assert(cancel(app, id) == Probe::Action::OK); pump();
+    fresh(); qualify(); limitStatus(0);
+    id = admitMove(); assert(view(id).moveContext->prerequisites.limitInputMask == 0); // Undeclared wiring: no witness read.
+    assert(cancel(app, id) == Probe::Action::OK); pump();
+    // 0x0018 = 1 without this application's binding: unknown, refused.
+    fresh(); qualify(); limitStatus(0); coordinates();
+    app->configuration.raw.softLimitEnable = 1; app->configuration.softLimitEnableKnown = true;
+    refusedMove(moveBy(20), "soft_limit_state_unknown");
+    // Bound: an endpoint inside the host soft limits is admitted, outside refused.
+    fresh(); qualify(); limitStatus(0); coordinates(); bindSoftLimits(-500, 500);
+    assert(softLimitState(*app, nowUs()) == SoftLimitState::BOUND);
+    refusedMove(moveTo(700), "soft_limit_endpoint");
+    id = admitMove(); assert(cancel(app, id) == Probe::Action::OK); pump();
+    // Each transition makes the state unknown and every start refuse.
+    for (unsigned transition = 0; transition < 6; ++transition) {
+        fresh(); qualify(); limitStatus(0); coordinates(); bindSoftLimits(-500, 500);
+        auto& motion = app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+        App::Record write; write.kind = App::OperationKind::DRIVER; write.address = 1; write.operationId = 60;
+        write.driver.kind = ESS::DriverKind::UPDATE; write.driver.group = ESS::DriverGroup::DRIVE;
+        write.driver.request.fields = static_cast<uint32_t>(ESS::DriverField::SOFT_LIMIT_ENABLE);
+        if (transition == 0) invalidateAxis(*app); // Position clear, release, a reference loss.
+        if (transition == 1) { motion.value.homingComplete = false; motion.value.rawMotion = 1; } // HOMED low.
+        if (transition == 2) { // A lost enable ACK: the write's effects, then its uncertain end.
+            write.driver.request.softLimitEnable = ESS::SoftLimitEnable::AFTER_HOMING;
+            write.driver.state = MotorControlRS::ReadState::FAILED; write.driver.uncertain = true;
+            invalidateDriverAssumptions(*app, 1, static_cast<uint32_t>(ESS::DriverField::SOFT_LIMIT_ENABLE), nowUs(), &write);
+            noteSoftLimitWrite(*app, write);
+            app->configuration.operationId = 120; // Even a later read showing 1 does not bind.
+        }
+        if (transition == 3) { // A lost disable ACK.
+            write.driver.request.softLimitEnable = ESS::SoftLimitEnable::LIMITS_OFF;
+            write.driver.state = MotorControlRS::ReadState::FAILED; write.driver.uncertain = true;
+            invalidateDriverAssumptions(*app, 1, static_cast<uint32_t>(ESS::DriverField::SOFT_LIMIT_ENABLE), nowUs(), &write);
+            noteSoftLimitWrite(*app, write); app->configuration.operationId = 120;
+        }
+        if (transition == 4) { // A pair change.
+            invalidateDriverAssumptions(*app, 1, static_cast<uint32_t>(ESS::DriverField::POSITIVE_LIMIT), nowUs());
+            app->configuration.operationId = 120;
+        }
+        if (transition == 5) app->softLimitBinding.bindingGeneration++; // A rebind.
+        assert(softLimitState(*app, nowUs()) == SoftLimitState::UNKNOWN);
+        auto r = moveBy(20); r.position.configurationGeneration = app->axis.generation;
+        uint32_t untouched = 77;
+        assert(host(app).startMove(app, 1, 1, r, untouched) != Probe::Action::OK && untouched == 77 && !hardware.writes);
+    }
+    // Known disabled: admitted as before.
+    fresh(); qualify(); limitStatus(0);
+    assert(softLimitState(*app, nowUs()) == SoftLimitState::KNOWN_DISABLED);
+    id = admitMove(); assert(cancel(app, id) == Probe::Action::OK); pump();
+}
+// The enable route takes its prerequisites only from the application's own
+// evidence; a confirmed readback installs the binding and the host limits.
+void softLimitEnableSetup() {
+    fresh(); qualify(); limitStatus(0); coordinates();
+    app->identity.rawModel = 0x4EEA; app->identity.rawVersion = 0x0029;
+    auto& h = app->softLimitHome; h.target = app->axis.target; h.operationId = 10;
+    h.axisGeneration = app->axis.generation; h.bindingGeneration = app->bindingGeneration; h.stated = true;
+    auto& d = app->driverSettings; d.operationId = 20; d.target = app->axis.target; d.group = ESS::DriverGroup::DRIVE;
+    d.configurationGeneration = app->axis.generation; d.pairKnown = d.limitsDecoded = true;
+    d.positiveLimit = 500; d.negativeLimit = -500;
+    d.positiveWords[0] = 0; d.positiveWords[1] = 500; d.negativeWords[0] = 0xFFFF; d.negativeWords[1] = 0xFE0C;
+}
+void softLimitEnablePrepared(bool expected) {
+    ESS::DriverPrerequisites p; const MotorControlRS::ReadTarget target = app->axis.target;
+    softLimitEnablePrerequisites(*app, p, target, app->axis.generation);
+    assert(p.limitSemanticsQualified == expected && p.homedReferenceQualified == expected);
+    assert((app->softLimitPending.target.id != 0) == expected);
+    if (expected) assert(p.positiveLimit == 500 && p.negativeLimit == -500 && p.qualifiedNegativeWords[0] == 0xFFFF);
+}
+void testSoftLimitEnableRoute() {
+    softLimitEnableSetup(); softLimitEnablePrepared(true);
+    softLimitEnableSetup(); app->softLimitHome.stated = false; softLimitEnablePrepared(false);        // No soft-limits home.
+    softLimitEnableSetup(); app->softLimitHome.axisGeneration++; softLimitEnablePrepared(false);      // Another generation.
+    softLimitEnableSetup(); app->softLimitHome.bindingGeneration++; softLimitEnablePrepared(false);   // Another binding.
+    softLimitEnableSetup(); app->driverSettings.operationId = 5; softLimitEnablePrepared(false);      // Pairs read before the home.
+    softLimitEnableSetup(); app->driverSettings.limitsDecoded = false; softLimitEnablePrepared(false); // No qualified decoder.
+    softLimitEnableSetup(); app->identity.rawVersion = 0x0030; softLimitEnablePrepared(false);        // Another firmware.
+    // Confirmed readback: binding and host limits after it, never before.
+    softLimitEnableSetup(); softLimitEnablePrepared(true);
+    assert(!app->axis.softLimitsKnown);
+    app->softLimitPending.operationId = 70;
+    App::Record write; write.kind = App::OperationKind::DRIVER; write.address = 1; write.operationId = 70;
+    write.driver.kind = ESS::DriverKind::UPDATE; write.driver.group = ESS::DriverGroup::DRIVE;
+    write.driver.request.fields = static_cast<uint32_t>(ESS::DriverField::SOFT_LIMIT_ENABLE);
+    write.driver.request.softLimitEnable = ESS::SoftLimitEnable::AFTER_HOMING;
+    write.driver.state = MotorControlRS::ReadState::SUCCEEDED;
+    invalidateDriverAssumptions(*app, 1, static_cast<uint32_t>(ESS::DriverField::SOFT_LIMIT_ENABLE), nowUs(), &write);
+    noteSoftLimitWrite(*app, write);
+    assert(app->axis.softLimitsKnown && app->axis.softMinimum == -500 && app->axis.softMaximum == 500);
+    assert(softLimitState(*app, nowUs()) == SoftLimitState::UNKNOWN); // No configuration read after the write yet.
+    app->configuration.operationId = 99; app->configuration.target = app->axis.target;
+    app->configuration.raw.softLimitEnable = 1; app->configuration.softLimitEnableKnown = true;
+    auto& motion = app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+    motion.value.homingComplete = true; motion.observedEarliestUs = motion.observedLatestUs = hardware.time;
+    assert(softLimitState(*app, nowUs()) == SoftLimitState::BOUND);
+    // Image C (run soft_b): the first checked read after our own enable reports
+    // 0x0018 changed against the pre-write cache; that read keeps the binding.
+    App::Record read; read.kind = App::OperationKind::TYPED_READ; read.address = 1; read.operationId = 100;
+    const auto before = app->axis.generation;
+    invalidateDriverAssumptions(*app, 1, static_cast<uint32_t>(ESS::DriverField::SOFT_LIMIT_ENABLE), nowUs(), &read);
+    assert(app->axis.generation != before && app->axis.softLimitsKnown && app->softLimitBinding.axisGeneration == app->axis.generation);
+    app->configuration.operationId = 101; app->configuration.target = app->axis.target;
+    motion.observedEarliestUs = motion.observedLatestUs = hardware.time;
+    assert(softLimitState(*app, nowUs()) == SoftLimitState::BOUND);
+    // Image D (run soft_d): the published configuration read differs from the
+    // previous one in 0x0018 only: rebased; any other difference is not.
+    ESS::RawConfig previous = app->configuration.raw; previous.softLimitEnable = 0;
+    const auto enableOnly = static_cast<uint32_t>(ESS::DriverField::SOFT_LIMIT_ENABLE);
+    assert(softLimitReadRebase(*app, previous, app->configuration.raw, enableOnly));
+    assert(softLimitReadRebase(*app, previous, app->configuration.raw, 0));
+    assert(!softLimitReadRebase(*app, previous, app->configuration.raw, enableOnly | 1u));
+    previous.overLimitStop = 1; assert(!softLimitReadRebase(*app, previous, app->configuration.raw, enableOnly));
+    previous.overLimitStop = app->configuration.raw.overLimitStop;
+    { ESS::RawConfig zero = app->configuration.raw; zero.softLimitEnable = 0;
+      assert(!softLimitReadRebase(*app, app->configuration.raw, zero, enableOnly)); }
+    // A read that reports any other field changed ends it.
+    invalidateDriverAssumptions(*app, 1, static_cast<uint32_t>(ESS::DriverField::SOFT_LIMIT_ENABLE) |
+        static_cast<uint32_t>(ESS::DriverField::POSITIVE_LIMIT), nowUs(), &read);
+    app->configuration.operationId = 102; app->configuration.target = app->axis.target;
+    assert(softLimitState(*app, nowUs()) == SoftLimitState::UNKNOWN);
+    softLimitEnableSetup(); softLimitEnablePrepared(true); app->softLimitPending.operationId = 70;
+    invalidateDriverAssumptions(*app, 1, static_cast<uint32_t>(ESS::DriverField::SOFT_LIMIT_ENABLE), nowUs(), &write);
+    write.operationId = 70; write.driver.request.softLimitEnable = ESS::SoftLimitEnable::AFTER_HOMING;
+    noteSoftLimitWrite(*app, write); assert(app->softLimitBinding.operationId == 70);
+    write.operationId = 71; write.driver.request.softLimitEnable = ESS::SoftLimitEnable::LIMITS_OFF;
+    noteSoftLimitWrite(*app, write);
+    assert(!app->softLimitBinding.operationId);
+    // A disable write ends the binding whatever its result.
+    write.operationId = 71; write.driver.request.softLimitEnable = ESS::SoftLimitEnable::LIMITS_OFF;
+    noteSoftLimitWrite(*app, write);
+    assert(!app->softLimitBinding.operationId && softLimitState(*app, nowUs()) == SoftLimitState::UNKNOWN);
+}
 int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--emit-stop-input-results") { emitStopInputResults(); return 0; }
     testQueuedPositionClearInvalidation(); testMonitorReferenceRefusal();
+    testLimitInputsAndSoftLimitState(); testSoftLimitEnableRoute();
     testFailedPreparationAndCrossKindSlotReuse();
     testPositionLimitUsesDriveSubdivision();
     testVerificationReadDoesNotAdoptNewGeneration();

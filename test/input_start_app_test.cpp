@@ -339,6 +339,11 @@ void testArmRefusalsBeforeTx() {
         fresh(); selectedFacts(1); c.first(); command("@9 read state\n"); finish(latest());
         refusedBeforeTx("@8 arm position x3 relative 1000 60\n", c.second);
     }
+    // Wired bench 11: an arm needs the soft limits known disabled, and no active limit input.
+    fresh(); drives[1].regs[0x0018] = 1; selectedFacts(1);
+    refusedBeforeTx("@8 arm position x3 relative 1000 60\n", "soft_limit_state_unknown");
+    fresh(); drives[1].regs[0x0042] = 2; drives[1].regs[0x0008] = 2; selectedFacts(1);
+    refusedBeforeTx("@8 arm position x3 relative 1000 60\n", "limit_input_active");
     fresh(); selectedFacts(1);
     refusedBeforeTx("@8 arm position x3 relative 1000 60 group\n", "group_not_declared");
     command("@10 bench on mosfet2 5000\n"); contains("\"ok\":true");

@@ -86,7 +86,10 @@ Probe::QualificationReply installHomeFacts(const App& a, const Probe::Qualificat
         if (function && function <= 3 && a.inputWiring[i] == InputWiring::CONNECTED)
             p.availableInputs |= static_cast<uint8_t>(1U << (function - 1));
     }
-    return statusReply(installHomeQualification(p));
+    const auto installed = installHomeQualification(p);
+    // The fact follows the latest install; the home admitted under it carries it.
+    if (installed) app->homeSoftLimitsStated = c.softLimits;
+    return statusReply(installed);
 }
 Probe::QualificationReply installVelocityFacts(const App& a, const Probe::QualificationCommand& c) {
     if (!a.axis.generation) return refusal(Probe::Action::UNAVAILABLE, "axis_configuration_unknown");

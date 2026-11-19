@@ -114,6 +114,11 @@ struct MovePrerequisites {
      * (a stated before-inversion mapping with inverted polarity). Nonzero adds
      * 0x0008 to each two-word observation read (wired bench 07). */
     uint8_t stopInputMask = 0, stopInputActiveLow = 0;
+    /** Inputs X0..X3 assigned a limit (functions 2 or 3), bit i for Xi, and of
+     * those the ones active when their status bit reads 0. Nonzero adds 0x0008
+     * to each observation read like stopInputMask. Any masked active input is
+     * recorded, whatever the move direction (wired bench 11). */
+    uint8_t limitInputMask = 0, limitInputActiveLow = 0;
 };
 /** Consecutive stopped observations without arrival, after running, that end a
  * move STOPPED_SHORT. Running polls are 500 ms apart in the standalone owner;
@@ -162,6 +167,12 @@ struct MoveContext {
     bool stopInputObserved = false;
     uint8_t stoppedPolls = 0;
     ActionEvidence stopInputEvidence;
+    /** Wired bench 11: the first report with an assigned limit input active.
+     * A later stopped report without arrival ends the move LIMIT_INPUT; an
+     * arrival still completes it. A soft-limit flag (bit 5 or 6) ends the move
+     * SOFT_LIMIT at that report; alarm and released stay DRIVE_FAULT. */
+    bool limitInputObserved = false;
+    ActionEvidence limitInputEvidence;
     uint16_t words[5] = {}, rawAlarm = 0, rawMotion = 0;
     uint64_t startedUs = 0, deadlineUs = 0, servicedUs = 0, eligibleUs = 0;
     uint8_t step = 0, polls = 0;

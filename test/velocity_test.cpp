@@ -758,6 +758,114 @@ static void testExpiredPollCopiesFailurePrefix() {
     assert(Ess::serviceVelocity(c, c.deadlineUs + 1));
     checkSameActionEvidence(c.failureEvidence, retained); noWork(c);
 }
+// One observation; three words 0x0006-0x0008 when an input mask is set.
+static void observeRun(Ess::VelocityContext& c, uint16_t flags, uint16_t inputs = 0, uint16_t alarm = 0) {
+    const bool three = c.prerequisites.stopInputMask || c.prerequisites.limitInputMask;
+    Ess::PreparedVelocity work; assert(Ess::nextVelocity(c, c.eligibleUs, work));
+    assert(work.kind == Ess::ActionWork::TRANSACTION && !work.write && work.reg == 6 && work.count == (three ? 3 : 2));
+    std::vector<uint8_t> b = {1, 3, uint8_t(three ? 6 : 4), uint8_t(alarm >> 8), uint8_t(alarm), uint8_t(flags >> 8), uint8_t(flags)};
+    if (three) { b.push_back(uint8_t(inputs >> 8)); b.push_back(uint8_t(inputs)); }
+    crc(b); const uint64_t at = c.eligibleUs + 20;
+    assert(Ess::advanceVelocity(c, frame(c, b, at), at + 20));
+}
+// Runs to the end with the given reports; returns the stop writes yielded.
+static unsigned finishRun(Ess::VelocityContext& c, uint16_t flags, uint16_t inputs, uint16_t stopFlags) {
+    unsigned stopWrites = 0;
+    while (c.state == ActionState::ACTIVE) {
+        Ess::PreparedVelocity work; assert(Ess::nextVelocity(c, c.eligibleUs, work));
+        if (work.kind == Ess::ActionWork::WAIT) { assert(Ess::serviceVelocity(c, c.eligibleUs)); continue; }
+        assert(work.kind == Ess::ActionWork::TRANSACTION);
+        if (c.phase == Ess::VelocityPhase::OBSERVING) { observeRun(c, flags, inputs); continue; }
+        assert(c.phase == Ess::VelocityPhase::STOPPING);
+        if (work.write) {
+            assert(work.urgent && work.reg == 0x27 && c.servicedUs >= c.stopDueUs); ++stopWrites; consume(c);
+        } else consume(c, stopFlags);
+    }
+    return stopWrites;
+}
+static Ess::VelocityContext inputRun(uint8_t limitMask, uint8_t limitActiveLow = 0, uint8_t stopMask = 0) {
+    auto p = prerequisites(); p.limitInputMask = limitMask; p.limitInputActiveLow = limitActiveLow; p.stopInputMask = stopMask;
+    Ess::VelocityContext c; assert(Ess::prepareVelocity(c, axis(), 12, request(), p, 100, 10000, options()));
+    assert(c.prerequisites.limitInputMask == limitMask && c.prerequisites.limitInputActiveLow == limitActiveLow);
+    trigger(c); return c;
+}
+static void checkRetained(const Ess::VelocityContext& c, VelocityError reason, const Ess::ActionEvidence& witness, unsigned stopWrites) {
+    assert(c.state == ActionState::FAILED && c.outcome == ActionOutcome::REPLY_ERROR && c.status.code == Err::ILLEGAL_VALUE);
+    assert(c.status.detail == static_cast<int32_t>(reason) && c.uncertain && !c.serviceMissed);
+    assert(c.failureEvidence.step == witness.step && c.failureEvidence.length == witness.length &&
+        std::memcmp(c.failureEvidence.raw, witness.raw, witness.length) == 0);
+    // The timed stop ran once and settled; nothing was sent early or resent.
+    assert(stopWrites == 1 && !c.needsStop && c.completion == ActionCompletion::OBSERVED &&
+        c.stop.completion == ActionCompletion::OBSERVED && c.stop.writeEvidence.earliestUs >= c.stopDueUs);
+    noWork(c);
+}
+// Wired bench 11 (0x4EEA/0x0029): bits 5/6 are soft-limit overtravel flags. A
+// run reports SOFT_LIMIT with the first flagged report; the timed stop keeps its
+// schedule and settles even with the flag still set. Alarm and released stay
+// DRIVE_FAULT with an immediate stop. A set flag refuses a start.
+static void testSoftLimitFlags() {
+    for (uint16_t flag : {uint16_t(0x20), uint16_t(0x40)}) {
+        // Stopped at the limit in the same report: SOFT_LIMIT wins over STOPPED_EARLY.
+        auto c = velocity(); trigger(c); consume(c, 4); consume(c, flag);
+        assert(c.state == ActionState::ACTIVE && c.phase == Ess::VelocityPhase::OBSERVING && c.needsStop);
+        assert(c.softLimitObserved && c.stoppedEarly && c.softLimitEvidence.step == c.stoppedEvidence.step);
+        auto witness = c.softLimitEvidence;
+        checkRetained(c, VelocityError::SOFT_LIMIT, witness, finishRun(c, flag, 0, flag));
+        assert(c.rawMotion == flag && c.runningObserved);
+        // A flag first reported while still running stays the witness across reports.
+        c = velocity(); trigger(c); consume(c, 4); consume(c, uint16_t(flag | 4));
+        witness = c.softLimitEvidence; assert(c.softLimitObserved && !c.stoppedEarly);
+        consume(c, flag); assert(c.stoppedEarly && c.stoppedEvidence.step == witness.step + 1);
+        checkRetained(c, VelocityError::SOFT_LIMIT, witness, finishRun(c, flag, 0, flag));
+        // Alarm bit, released and the alarm word keep precedence and stop at once.
+        for (uint16_t fault : {uint16_t(8), uint16_t(16)}) {
+            c = velocity(); trigger(c); consume(c, 4); consume(c, uint16_t(flag | fault));
+            assert(c.status.detail == static_cast<int32_t>(VelocityError::DRIVE_FAULT));
+            assert(c.phase == Ess::VelocityPhase::STOPPING && c.servicedUs < c.stopDueUs && !c.softLimitObserved);
+        }
+        c = velocity(); trigger(c); consume(c, flag, 3);
+        assert(c.status.detail == static_cast<int32_t>(VelocityError::DRIVE_FAULT) && c.phase == Ess::VelocityPhase::STOPPING);
+        // A set flag refuses before any work is published.
+        auto p = prerequisites(); p.rawMotion = uint16_t(flag | 1);
+        Ess::VelocityContext untouched; untouched.operationId = 77; const Saved<Ess::VelocityContext> saved(untouched);
+        const auto refused = Ess::prepareVelocity(untouched, axis(), 12, request(), p, 100, 10000, options());
+        assert(!refused && refused.detail == static_cast<int32_t>(VelocityError::READINESS)); saved.check(untouched);
+    }
+}
+// Wired bench 11: a hardware limit stops a run toward it with motion word 0, no
+// alarm and no flag. The masked input names it; the timed stop still runs.
+static void testLimitInputWitness() {
+    auto plain = velocity(); trigger(plain); Ess::PreparedVelocity work;
+    assert(Ess::nextVelocity(plain, plain.eligibleUs, work) && work.count == 2);
+    auto c = inputRun(2); // X1 positive limit, active high.
+    observeRun(c, 4, 0); assert(c.runningObserved && !c.limitInputObserved && c.outcome == ActionOutcome::NONE);
+    observeRun(c, 4, 2);
+    assert(c.limitInputObserved && c.rawInputs == 2 && c.state == ActionState::ACTIVE && c.needsStop &&
+        c.status.detail == static_cast<int32_t>(VelocityError::LIMIT_INPUT));
+    auto witness = c.limitInputEvidence; assert(witness.length == 11);
+    observeRun(c, 0, 2); assert(c.stoppedEarly && c.phase == Ess::VelocityPhase::OBSERVING);
+    checkRetained(c, VelocityError::LIMIT_INPUT, witness, finishRun(c, 0, 2, 0));
+    // Active-low mapping, and an input outside the mask is no witness.
+    c = inputRun(4, 4); observeRun(c, 4, 4); observeRun(c, 4, 7); assert(!c.limitInputObserved);
+    observeRun(c, 4, 0); assert(c.limitInputObserved); witness = c.limitInputEvidence;
+    checkRetained(c, VelocityError::LIMIT_INPUT, witness, finishRun(c, 0, 0, 0));
+    c = inputRun(2); observeRun(c, 4, 13); observeRun(c, 0, 13); witness = c.stoppedEvidence;
+    checkRetained(c, VelocityError::STOPPED_EARLY, witness, finishRun(c, 0, 13, 0));
+    assert(!c.limitInputObserved);
+    // Same report: STOP_INPUT, then LIMIT_INPUT, then SOFT_LIMIT, then STOPPED_EARLY.
+    c = inputRun(2, 0, 8); observeRun(c, 4, 0); observeRun(c, 0x20, 10); witness = c.stopInputEvidence;
+    assert(c.stopInputObserved && c.limitInputObserved && c.softLimitObserved && c.stoppedEarly);
+    checkRetained(c, VelocityError::STOP_INPUT, witness, finishRun(c, 0x20, 10, 0x20));
+    c = inputRun(2); observeRun(c, 4, 0); observeRun(c, 0x40, 2); witness = c.limitInputEvidence;
+    checkRetained(c, VelocityError::LIMIT_INPUT, witness, finishRun(c, 0x40, 2, 0x40));
+    // Across reports the first retained reason stays.
+    c = inputRun(2); observeRun(c, 4, 0); observeRun(c, 0x24, 0); witness = c.softLimitEvidence;
+    observeRun(c, 0x20, 2); assert(c.limitInputObserved);
+    checkRetained(c, VelocityError::SOFT_LIMIT, witness, finishRun(c, 0x20, 2, 0x20));
+    // A limit that a successful run never reported leaves it successful.
+    c = inputRun(2);
+    assert(finishRun(c, 4, 1, 0) == 1 && c.state == ActionState::SUCCEEDED && !c.limitInputObserved && c.rawInputs == 1);
+}
 int main() {
     testExpiredPollCopiesFailurePrefix();
     testPollClosureKeepsOverallDeadline();
@@ -770,4 +878,5 @@ int main() {
     testBorrowedAndOversizedEvidence();
     testSharedNumericPreparation();
     testBoundedStopAndPreservedPrimaryFailure();
+    testSoftLimitFlags(); testLimitInputWitness();
 }

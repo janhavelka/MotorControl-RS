@@ -1364,7 +1364,31 @@ static void testNonzeroOffset() {
     p.auxiliaryQualified = false; p.offsetOrder = Order::HIGH_WORD_FIRST;
     assert(Ess::checkHomeQualification(p, 100).detail == static_cast<int32_t>(Ess::HomeError::AUXILIARY_REQUIRED));
 }
+// Wired bench 11: bits 5/6 are soft-limit flags, not alarms, but a home keeps
+// them as faults. The application admits a home only with soft limits known
+// disabled, so a flag during a home contradicts that admission.
+static void testSoftLimitFlagsStayHomeFaults() {
+    for (const uint16_t flag : {uint16_t(0x20), uint16_t(0x40)}) {
+        for (const auto method : {Ess::HomingMethod::METHOD_35, Ess::HomingMethod::METHOD_33}) {
+            for (const bool running : {false, true}) {
+                if (running && method == Ess::HomingMethod::METHOD_35) continue;
+                auto c = home(method); trigger(c);
+                const uint16_t reported = running ? uint16_t(flag | 4) : flag;
+                consume(c, reported);
+                assert(c.state == ActionState::FAILED && c.outcome == ActionOutcome::REPLY_ERROR && c.uncertain);
+                assert(c.status.code == Err::ILLEGAL_VALUE &&
+                    c.status.detail == static_cast<int32_t>(Ess::HomeError::DRIVE_FAULT));
+                assert(c.completion == ActionCompletion::NOT_OBSERVED && c.rawMotion == reported); done(c);
+            }
+        }
+        auto p = prerequisites(); p.rawMotion = uint16_t(flag | 1);
+        Ess::HomeContext untouched; untouched.operationId = 77; const Saved<Ess::HomeContext> saved(untouched);
+        const auto refused = Ess::prepareHome(untouched, axis(), 12, request(), p, 100, 10000, options());
+        assert(!refused && refused.detail == static_cast<int32_t>(Ess::HomeError::READINESS)); saved.check(untouched);
+    }
+}
 int main() {
+    testSoftLimitFlagsStayHomeFaults();
     testWriteClosureBoundaries();
     testNonzeroOffset();
     // Independent fixture age cannot be renewed by fresh motion observations.
