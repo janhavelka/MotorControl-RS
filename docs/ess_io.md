@@ -43,11 +43,11 @@ does not prove physical installation or continued trigger inhibition.
 | 9 JOG+ | Level starts positive JOG | Same finite-move restriction as 8. |
 | 10 JOG- | Level starts negative JOG | Same finite-move restriction as 8. |
 | 11 home | Edge starts homing | May replace serial motion and invalidate its reference. Require inactive level and continued inhibition. |
-| 12 PT trigger | Edge starts the selected position segment | May start a competing segment. Require inactive level and continued inhibition. |
+| 12 PT trigger | Edge starts the selected position segment. Measured (wired bench 13, `0x4EEA`/`0x0029`): one start per trigger edge on drives 1, 2 and 4; a 2000 ms held trigger started one run; with `0x0050` = 1 records still ran as displacements | May start a competing segment. Require inactive level and continued inhibition. Delivered start route: `arm segment xN relative RECORD` and its trigger ([segments](ess_segments.md#pt-arm-wired-bench-13)); `absolute` refuses. |
 | 13 PV trigger | Level, or rising edge with `0x0051=1` | Starts selected velocity; edge mode is still not finite. Require inactive level and inhibition to assign; unassign for unattended finite moves. |
-| 14 PIN0 | Level supplies segment selector bit 0 | May change PT/PV selection. Require corresponding external execution inhibited during configuration and ordinary motion. |
-| 15 PIN1 | Level supplies segment selector bit 1 | Same selector policy as 14. |
-| 16 PIN2 | Level supplies segment selector bit 2 | Same selector policy as 14. |
+| 14 PIN0 | Level supplies segment selector bit 0. Measured (wired bench 13): with 14-16 on X1-X3 and PIN3 absent, every PIN state selected its own PT record 1-8 on drives 1, 2 and 4; the absent PIN3 acted as 0 | May change PT/PV selection. Require corresponding external execution inhibited during configuration and ordinary motion. The PT arm needs 14, 15 and 16 once each beside a 12 trigger, polarity 0, and fresh input status showing the record's bits. |
+| 15 PIN1 | Level supplies segment selector bit 1; measured as 14 | Same selector policy as 14. |
+| 16 PIN2 | Level supplies segment selector bit 2; measured as 14 | Same selector policy as 14. |
 | 17 PIN3 | Level supplies segment selector bit 3 | Same selector policy as 14. |
 
 The source is the function table on physical PDF page 27 and ESS assignments
@@ -415,9 +415,19 @@ PT/PV triggers and PIN0-PIN3 are external-input choices. Their
 setters configure the drive; they do not send a trigger or establish a physical
 edge. Segment execution requires its own assigned connected trigger, selector
 ownership, valid timing and stopped/sequence policy. The manual permits no
-invented serial segment-start command. Missing switches/loads leave physical
-function tests NOT RUN without blocking independent register-path evidence or
-eligible serial-only operations.
+invented serial segment-start command. Since wired bench 13 the PT trigger
+(12) and PIN0-PIN2 (14-16) have a delivered start route: the host holds the
+PIN levels on bench outputs, `arm segment xN relative RECORD` checks them
+with no write, and `arm trigger` pulses the trigger output once
+([segments](ess_segments.md#pt-arm-wired-bench-13),
+[input-started motion](ess_input_start.md)). Measured on `0x4EEA`/`0x0029`
+([report](reports/2026-11-19_wired_bench_13_pt_segments.md)): records 1-8
+each moved their own target on drive 1 and on drives 1, 2 and 4 at once;
+records 9-16 never ran; a held trigger started one run; serial and group
+stops ended runs with no further start. PIN3 (17), the PV trigger (13) and
+absolute PT stay unmeasured or refused. Missing switches/loads leave other
+physical function tests NOT RUN without blocking independent register-path
+evidence or eligible serial-only operations.
 
 FieldCore was inspected read-only at `c40ea8341edf8d665460b902cafefbe857a7f73f`.
 Its motor module retains consumer-qualified serial-input facts; its owner distinguishes confirmed

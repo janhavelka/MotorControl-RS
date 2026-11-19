@@ -1522,9 +1522,10 @@
           "docs/reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md",
           "docs/reports/2026-11-19_wired_bench_06_outputs.md",
           "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md",
-          "docs/reports/2026-11-19_wired_bench_11_limits.md"
+          "docs/reports/2026-11-19_wired_bench_11_limits.md",
+          "docs/reports/2026-11-19_wired_bench_13_pt_segments.md"
         ],
-        "reason": "Thirteen explicit passive/unloaded settings updates and exact restoration PASS as stored-register evidence. Full assignment/physical-function qualification NOT_RUN; checked FC06 source/ACK remains unconfirmed, matching FC03 readback settles only stored values. On 16 November 2026 the M04 round trips (64 updates each, confirmed FC06 replies and full readback, exact restoration) also passed on drives 2 and 4; physical function effects stay NOT_RUN. On 18 November 2026 (wired bench 02) drive 1's board-declared connected X3 refused function 16 without ASSIGN facts before TX, then took 0 -> 16 -> 0 with facts (confirmed replies, readback); drive 4's board-declared Y0 took function 9 and custom 1/0 with one inverted aux1 edge per custom write. Stored-value and controller-timestamped evidence only; function 16 had no observable effect to test. On 19 November 2026 (wired bench 04) the harness restore route wrote drive 4 Y0 0 -> 9 -> 0 and drive 2 X3 0 -> 7 -> 0 with stated ASSIGN facts, each read back; with X3 = 7 the shared-output interlock refused mosfet2 before any ON. Stored-value evidence only. Wired bench 05 (19 November 2026): 81 connected-terminal writes on drives 1, 2, 4 (X0-X3 to function 0, polarity 1 and back at function 0 with mapping unknown, PIN 14+t, polarity with the measured mapping, power-up functions), each confirmed and read back, then drive 1 X3 17 with polarity 8 admitted only with the recorded mapping. Stored-value and drive-reported status evidence; no input function's drive effect. Wired bench 06 (19 November 2026): drive 4 Y0 functions 9, 0, 2, 4, 3, 5 and 1 and output polarity written through the ordinary route with stated facts (load indicator, levels either; the polarity change with mapping unknown is admitted for an either-level load only), each confirmed and read back, every one restored. Y0 output effects measured against aux1 and drive status (O1-O9: custom, polarity, running, arrival, homing complete, brake, alarm); the 0x0009 mapping is recorded (after inversion) for 0x4EEA/0x0029 Y0. Inputs and Y1 output effects stay unmeasured. Wired bench 07 (19 November 2026): X3 = 4, 5 and 6 on drive 4 (and on drives 1, 2 and 4 for group moves) assigned through the ordinary route with ASSIGN facts (triggers-inhibited, protection-removal), each read back and removed again; drive effects measured through mosfet2: 5 stops with the configured deceleration (Y0 running off 108-114 ms after the ON at 100 ms, 930-938 ms at 1000 ms), 6 stops directly (21-23 ms, no alarm), 4 releases the motor while active and the drive re-enables by itself when it goes inactive; a serial enable does not override it. Input functions 1-3 and 7-17 and Y1 stay unmeasured, so the state stays NOT_RUN. Wired bench 11 (19 November 2026, 0x4EEA/0x0029): power-up X1 = 2 and X2 = 3 act. With no I/O write since drive 4's power cycle (V-01), relay2 stopped +4000 moves (1554, 1523 steps) and relay1 a -4000 move; moves away ran to their endpoint; no flag, alarm or recovery; group members 1, 2, 4 stopped; stopped drives unaffected. Function effects of other choices stay NOT_RUN."
+        "reason": "Thirteen explicit passive/unloaded settings updates and exact restoration PASS as stored-register evidence. Full assignment/physical-function qualification NOT_RUN; checked FC06 source/ACK remains unconfirmed, matching FC03 readback settles only stored values. On 16 November 2026 the M04 round trips (64 updates each, confirmed FC06 replies and full readback, exact restoration) also passed on drives 2 and 4; physical function effects stay NOT_RUN. On 18 November 2026 (wired bench 02) drive 1's board-declared connected X3 refused function 16 without ASSIGN facts before TX, then took 0 -> 16 -> 0 with facts (confirmed replies, readback); drive 4's board-declared Y0 took function 9 and custom 1/0 with one inverted aux1 edge per custom write. Stored-value and controller-timestamped evidence only; function 16 had no observable effect to test. On 19 November 2026 (wired bench 04) the harness restore route wrote drive 4 Y0 0 -> 9 -> 0 and drive 2 X3 0 -> 7 -> 0 with stated ASSIGN facts, each read back; with X3 = 7 the shared-output interlock refused mosfet2 before any ON. Stored-value evidence only. Wired bench 05 (19 November 2026): 81 connected-terminal writes on drives 1, 2, 4 (X0-X3 to function 0, polarity 1 and back at function 0 with mapping unknown, PIN 14+t, polarity with the measured mapping, power-up functions), each confirmed and read back, then drive 1 X3 17 with polarity 8 admitted only with the recorded mapping. Stored-value and drive-reported status evidence; no input function's drive effect. Wired bench 06 (19 November 2026): drive 4 Y0 functions 9, 0, 2, 4, 3, 5 and 1 and output polarity written through the ordinary route with stated facts (load indicator, levels either; the polarity change with mapping unknown is admitted for an either-level load only), each confirmed and read back, every one restored. Y0 output effects measured against aux1 and drive status (O1-O9: custom, polarity, running, arrival, homing complete, brake, alarm); the 0x0009 mapping is recorded (after inversion) for 0x4EEA/0x0029 Y0. Inputs and Y1 output effects stay unmeasured. Wired bench 07 (19 November 2026): X3 = 4, 5 and 6 on drive 4 (and on drives 1, 2 and 4 for group moves) assigned through the ordinary route with ASSIGN facts (triggers-inhibited, protection-removal), each read back and removed again; drive effects measured through mosfet2: 5 stops with the configured deceleration (Y0 running off 108-114 ms after the ON at 100 ms, 930-938 ms at 1000 ms), 6 stops directly (21-23 ms, no alarm), 4 releases the motor while active and the drive re-enables by itself when it goes inactive; a serial enable does not override it. Input functions 1-3 and 7-17 and Y1 stay unmeasured, so the state stays NOT_RUN. Wired bench 11 (19 November 2026, 0x4EEA/0x0029): power-up X1 = 2 and X2 = 3 act. With no I/O write since drive 4's power cycle (V-01), relay2 stopped +4000 moves (1554, 1523 steps) and relay1 a -4000 move; moves away ran to their endpoint; no flag, alarm or recovery; group members 1, 2, 4 stopped; stopped drives unaffected. Wired bench 13 (19 November 2026, 0x4EEA/0x0029): X0 = 12 and X1-X3 = 14, 15, 16 assigned on drives 1, 2 and 4 through the ordinary route with ASSIGN facts, each read back, and restored to [0,1,2,3] trigger first. Effects measured through mosfet1 (trigger) and relay2, relay1, mosfet2 (PIN0-PIN2): every PIN state selected its own record 1-8, records 9-16 never ran (absent PIN3 acted as 0), one start per trigger edge and one run for a 2000 ms held trigger; with 0x0050 = 1 PT records still ran as displacements. Function 12 and 14-16 effects are drive-reported evidence for this fixture only; PIN3 (17), the PV trigger (13), the other functions not measured in these reports and persistence stay NOT_RUN, so the state stays NOT_RUN."
       },
       "reason": "Per-terminal exact commissioning facts admit inputs 0-17, outputs 0-5/9-10 and canonical custom outputs. Every FC06 intermediate is checked; connected terminals require confirmed replies. Source-qualified status/polarity mapping and declared load limits stay explicit; no replay or automatic rollback. Output 11/cross-mapping, startup and physical effects remain unresolved or untested. A no-function inversion (previous and final function 0) is admitted with UNKNOWN mapping on any terminal; the recorded mapping (model 0x4EEA, firmware 0x0029: after inversion) admits other polarity changes with a fresh identity.",
       "choices": [
@@ -1778,9 +1779,10 @@
           "docs/archive/reports/ess_release_16_attempt1_2026-10-04.json",
           "docs/archive/reports/ess_release_16_2026-10-04.json",
           "docs/reports/2026-11-16_unattended_bench_tests.md",
-          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md",
+          "docs/reports/2026-11-19_wired_bench_13_pt_segments.md"
         ],
-        "reason": "Speed, acceleration and deceleration changed by one native step and restored in all 16 PT records of drive 1 and records 1 and 16 of drives 2 and 4; every FC06 source-confirmed and every readback matching (16 November 2026). Range edges, record execution (needs trigger inputs) and persistence NOT_RUN. Wired bench 03: PT record 2 speed 120->121->120 on drive 1 with connected X0-X3 and SEGMENT records, acknowledged and read back; refused before TX without records. Stored-value evidence only."
+        "reason": "Speed, acceleration and deceleration changed by one native step and restored in all 16 PT records of drive 1 and records 1 and 16 of drives 2 and 4; every FC06 source-confirmed and every readback matching (16 November 2026). Range edges and persistence NOT_RUN. Wired bench 03: PT record 2 speed 120->121->120 on drive 1 with connected X0-X3 and SEGMENT records, acknowledged and read back; refused before TX without records. Wired bench 13 (19 November 2026, 0x4EEA/0x0029): PT speeds 300 and 15 (W0a) and 60, 90, 120 (tables) written on drives 1, 2 and 4 with SEGMENT facts and restored to 120, each read back; record 1 at 2500 rpm stored (storage keeps 0..3000) and the arm refused it (record_rate_ceiling, P12). Records 1-8 executed through the PT trigger with these stored speeds on drive 1 and on drives 1, 2, 4 at once; their positions are drive-reported, speeds and ramp shapes were not measured."
       },
       "reason": "All16 speed/native ramp scalar fields; whole candidate validated before writes, one checked FC06/FC03 readback per field, exact progress and unknown execution retained. No atomicity, acceleration conversion or persistence claim."
     },
@@ -1811,26 +1813,33 @@
           "prepareSegmentSettings"
         ]
       },
-      "cli_commands": [],
-      "implementation": "UNSUPPORTED",
-      "cli": "NOT_REACHABLE",
+      "cli_commands": [
+        "segment position INDEX set"
+      ],
+      "implementation": "IMPLEMENTED",
+      "cli": "REACHABLE",
       "native": {
         "state": "PASS",
         "evidence": [
           "test/segments_test.cpp",
           "test/probe_app_test.cpp",
-          "test/segment_console_parity_test.py"
+          "test/segment_console_parity_test.py",
+          "test/paired_values_app_test.cpp",
+          "test/input_start_app_test.cpp",
+          "test/codec_test.cpp",
+          "test/generator_test.py"
         ],
-        "reason": "Real indexed core, application owner path and strict C++ console/Python parity; simulated transport is not physical trigger evidence."
+        "reason": "Real indexed core, application owner path with byte-exact FC10/FC03 frames and refusals before TX (negative, order 1, combined candidate), and strict C++ console/Python parity; simulated transport is not physical evidence."
       },
       "hardware": {
-        "state": "NOT_RUN",
+        "state": "PASS",
         "evidence": [
-          "docs/reports/2026-11-19_wired_bench_10_paired_value_encodings.md"
+          "docs/reports/2026-11-19_wired_bench_10_paired_value_encodings.md",
+          "docs/reports/2026-11-19_wired_bench_13_pt_segments.md"
         ],
-        "reason": "Production route still unavailable. Storage only, through the wired bench 10 experiment windows (D4): FC10 of two words acknowledged and read back exactly for all sixteen records on drive 4 ([n, 0x1000+n]) and segment 1 -500 [65535,65036] at 0x0019 = 0, segment 1 on drives 1 and 2, and on drive 4 at 0x0019 = 1. Order and sign meaning need prompt 13's W0 witness (D10); p75 documents 100000 = 0x0001/0x86A0."
+        "reason": "Wired bench 13 W0a (19 November 2026, 0x4EEA/0x0029; docs/reports/2026-11-19_wired_bench_13_pt_segments.md): record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12) moved +65538, +65536 and +65536 on drives 1, 2 and 4, so the high word is at the lower address at 0x0019 = 0 (swapped words would move +1). Wired bench 10 storage: FC10 of two words acknowledged and read back exactly for all sixteen records on drive 4 and record 1 on drives 1 and 2 (P2, P4). Both wrote through the removed experiment builder, whose FC10 frame equals the production builder's. On the production images C and D the promoted setter wrote the non-negative P1/P2/P9 tables (drive 1 +400*N, drive 2 +200*N, drive 4 +300*N) and restored every record to [0,5000] on drives 1, 2 and 4, each acknowledged and read back; the triggered records then moved their written targets within +-1. The sign witness W0b did not run: negative targets stay refused before TX. No atomicity or persistence evidence."
       },
-      "reason": "Every stored target pair stays an experiment window until prompt 13's W0 witness promotes it (D10). Complete candidate rejects before scalar TX; no split FC06, five-word subset or whole reserved-bearing record write."
+      "reason": "Promoted (D10, wired bench 13 W0a): SEGMENT_PULSE_TARGET alone in a POSITION_SEGMENT request, one FC10 0x0060 + 6(n-1)/2 of the target (encodeInt32 at 0x0019 = 0) and one two-word FC03 readback, 0..0x0FFFFFFF, through `segment position N set target VALUE`. Negative targets (sign unresolved) and order 1 or unknown are UNSUPPORTED before TX; a target combined with other fields is invalid. No split FC06, five-word subset or reserved-bearing record write; a readback mismatch is reported and an uncertain write is never replayed."
     },
     {
       "id": "stored_speed_read",
@@ -2106,7 +2115,7 @@
           "docs/reports/2026-11-16_unattended_bench_tests.md",
           "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
         ],
-        "reason": "Record 1 (0x0130) reproduced on 16 November 2026: 1, 10, 60 and 180 each got an exact source-confirmed FC06 echo and read back 0 (READBACK_MISMATCH). Record 2 (0x0131, 1) and record 16 (0x013F, 100) read back and were restored. A full typed read sweep found no other register holding the values: firmware 0x0029 acknowledges and discards record 1's start speed. The 4 October single attempt matches. Records 3-15 NOT_RUN; negative values not attempted. Wired bench 03: start record 2 (0x0131) 0->1->0 on drive 1 with connected X0-X3 and SEGMENT records, acknowledged and read back; refused before TX without records. Record 1 not used (discards writes). Stored-value evidence only; the FAIL for record 1 stands."
+        "reason": "Record 1 (0x0130) reproduced on 16 November 2026: 1, 10, 60 and 180 each got an exact source-confirmed FC06 echo and read back 0 (READBACK_MISMATCH). Record 2 (0x0131, 1) and record 16 (0x013F, 100) read back and were restored. A full typed read sweep found no other register holding the values: firmware 0x0029 acknowledges and discards record 1's start speed. The 4 October single attempt matches. Records 3-15 NOT_RUN; negative values not attempted. Wired bench 03: start record 2 (0x0131) 0->1->0 on drive 1 with connected X0-X3 and SEGMENT records, acknowledged and read back; refused before TX without records. Record 1 not used (discards writes). Stored-value evidence only; the FAIL for record 1 stands. Wired bench 13 (19 November 2026, docs/reports/2026-11-19_wired_bench_13_pt_segments.md) executed PT records 1-8 but did not measure a start-speed effect on records 2-8 (P7 not run)."
       },
       "reason": "All16 shared PT/PV starting-speed fields; native nonnegative subset with negative encoding guarded. Matching readback establishes only stored setting, not active or persistent interpretation."
     },
@@ -3048,7 +3057,7 @@
     "Prompt13 implements seven typed single-word settings and raw paired-limit reads; unavailable limit-pair writes remain UNSUPPORTED. Settings enum choices receive WRITE coverage separately from native action choices. ACK/readback never imply active or saved settings.",
     "All35 homing methods remain accounted for; executable1-14/17/19-30/33-35 receive native staging/trigger coverage. The27 planned switch methods are implemented;18 and collision methods remain unresolved. Physical qualification is separate. Existing auxiliary7 is a prerequisite, never typed setter coverage. Offset write obligation is IN_PROGRESS: zero-only complete reviewed window, no nonzero encoding or pair expansion.",
     "Prompt15 implements all18 documented input assignments and eight resolved output assignments; custom2 remains unresolved. Register readback is distinct from physical switch/load operation and unconfirmed FC06 execution. No external switch/load is required for independent serial-only modes.",
-    "Prompt16 accounts separately for all16 PT records, all16 PV records and all16 shared start-speed words; all16 PT reserved slots remain ACCOUNTED_RESERVED. Stored PT target-pair setters remain UNSUPPORTED; negative PV/start encoding remains guarded. Storage16 is distinct from maximum8 externally selected combinations on four-input ESS drives. PT5ms setup/hold is not inherited by PV. No serial segment execution command exists. Shared EXTERNAL_POSITION_MODE and PV_TRIGGER_MODE reuse existing driver_settings_read/update coverage rather than duplicate operations.",
+    "Prompt16 accounts separately for all16 PT records, all16 PV records and all16 shared start-speed words; all16 PT reserved slots remain ACCOUNTED_RESERVED. Stored PT target-pair setters remained UNSUPPORTED until wired bench 13 W0a promoted them (order 0, non-negative targets; stored_position_pair_write); negative PV/start encoding remains guarded. Storage16 is distinct from maximum8 externally selected combinations on four-input ESS drives. PT5ms setup/hold is not inherited by PV. No serial segment execution command exists. Shared EXTERNAL_POSITION_MODE and PV_TRIGGER_MODE reuse existing driver_settings_read/update coverage rather than duplicate operations.",
     "Prompt17 control settings are native configuration, not commanded torque/current modes. Raw algorithm3 remains unknown; RS20 peak-current dial ratings do not establish maximum-effective-current0102 limits, and percent prose referencing2042 does not establish an0102 denominator. Exact independent qualification is required before affected writes.",
     "Fresh16/17audit fixes closure-budget certainty and optional-host help parity, repeats all48 indexed reads and reversible lock-delay stored restoration. The original shared-start write FAIL remains unresolved; no pair permission, current formula or physical trigger qualification is inferred.",
     "Prompt18 accounts for all20 reviewed scalar tuning fields with group-local masks and fixed bounded read/write sequences. Native filter coefficients, arrival-time/deviation/LA-node/gain codes retain unspecified physical units. Earlier COLLISION_THRESHOLD_003B/COLLISION_CURRENT_003C have unspecified access and remain separate unresolved records, never aliased to0122/0123 or read through a forbidden window. Native gain/collision/arrival writes require exact independent effects qualification; physical effects remain separately unqualified.",
@@ -3057,7 +3066,7 @@
     "Local wiring declarations distinguish unknown, unconnected and connected terminals. They assign no drive function, observe no electrical state and receive no device read/write/action credit. Wired bench 02 (2026-11-18) adds an optional board table applied at boot, after useaddr and to new group members, with per-terminal sources default/board/host/invalid_table; an invalid table makes every declaration unknown. The table and host overrides remain local declarations without device credit; the W06/W08 I/O writes of that run are hardware evidence for io_settings_write only as recorded in its report.",
     "Local profile list and discover inspect/cancel/restore/finish are host/session controls, not READ implementation credit; the discovery device obligation maps to the producing discover route only. Plain monitor is passive; READ coverage maps to monitor INTERVAL_MS COUNT.",
     "Prompt28 reconciles bounded recorded functional action/move evidence, explicitly classifies twelve read-only decoded status/alarm choices, retains the invalid auxiliary value as no-operation metadata and assigns the missing position-interrupt bit to prompt09. Raw setting reads gain no setter credit; per-choice physical activation is not inferred from a passing read.",
-    "Wired bench 08 (19 November 2026): input function 7 (InputFunction.POSITION_MOVE, owned by io_settings_write) gains a production external-start route: `arm position` stages the five 0x0021 words with no start word through the existing stage sessions, `arm trigger` pulses one owned MOSFET output after the firmware line-isolation reads (shared truth table test/line_isolation_cases.json), and the InputStart core attributes the start from fresh 0x0006/7 samples; `disarm` closes observation. The route sends no register write of its own beyond the staged profile; it adds no operation or choice disposition and no hardware evidence. Home (11), PT (12) and PV (13) staging refuse before any traffic until prompts 12, 13 and 14; the first physical use is prompt 09. Wired bench 09 (19 November 2026) ran it on the bench: single starts on drive 4 in both 0x0050 modes and shared starts of drives 1, 2, 4 attributed (A1 20/20, A2 10/10, B1 50/50), held levels started one move, 10 ms pulses start and 5 ms do not, serial, group and X3 stops end input-started moves short, disarm does not inhibit the input; see docs/reports/2026-11-19_wired_bench_09_input_and_serial_starts.md. No disposition changed."
+    "Wired bench 08 (19 November 2026): input function 7 (InputFunction.POSITION_MOVE, owned by io_settings_write) gains a production external-start route: `arm position` stages the five 0x0021 words with no start word through the existing stage sessions, `arm trigger` pulses one owned MOSFET output after the firmware line-isolation reads (shared truth table test/line_isolation_cases.json), and the InputStart core attributes the start from fresh 0x0006/7 samples; `disarm` closes observation. The route sends no register write of its own beyond the staged profile; it adds no operation or choice disposition and no hardware evidence. Home (11), PT (12) and PV (13) staging refuse before any traffic until prompts 12, 13 and 14; the first physical use is prompt 09. Wired bench 09 (19 November 2026) ran it on the bench: single starts on drive 4 in both 0x0050 modes and shared starts of drives 1, 2, 4 attributed (A1 20/20, A2 10/10, B1 50/50), held levels started one move, 10 ms pulses start and 5 ms do not, serial, group and X3 stops end input-started moves short, disarm does not inhibit the input; see docs/reports/2026-11-19_wired_bench_09_input_and_serial_starts.md. No disposition changed. Wired bench 13 (19 November 2026): the route delivers function 12 (InputFunction.PT_TRIGGER): `arm segment xN relative RECORD [group]` arms a stored PT record 1-8 selected by held PIN inputs (functions 14-16) on the three other terminals, with no write, and attributes the start the same way; records 9-16 refuse record_unreachable, a speed above the position speed limit refuses record_rate_ceiling, and `absolute` refuses pt_absolute_unresolved because with 0x0050 = 1 records ran as displacements on 0x4EEA/0x0029 (P2). Measured on drives 1, 2 and 4: records 1-8 each moved their own target within +-1, singly (P1) and as a three-drive group with one edge (P9); a held trigger started one run; serial and group stops ended runs with no further start; see docs/reports/2026-11-19_wired_bench_13_pt_segments.md. Home (11) and PV (13) arms still refuse before any traffic. No disposition changed by the route itself."
   ],
   "gaps": [
     {
@@ -3238,7 +3247,6 @@
     {
       "header": "include/MotorControlRS/profiles/ess_rs/Codec.h",
       "symbols": [
-        "buildExperimentWrite",
         "buildProbe",
         "buildReadRegisters",
         "buildWriteMultipleRegisters",
@@ -3251,23 +3259,20 @@
         "expectedReadRegistersLen",
         "expectedWriteMultipleRegistersLen",
         "expectedWriteSingleRegisterLen",
-        "isExperimentWindow",
         "isReadRangeValid",
         "isValidAddress",
-        "parseExperimentWrite",
         "parseProbe",
         "parseRegister",
         "parseRegisters",
         "parseWriteMultipleRegisters",
         "parseWriteSingleRegister",
-        "validateExperimentWriteRequest",
         "validateReadRegistersRequest",
         "validateReadResponseExpected",
         "validateWriteMultipleRegistersRequest",
         "validateWriteSingleRegisterRequest"
       ],
       "classification": "CODEC",
-      "reason": "Checked raw wire/access helpers; neither typed semantic coverage nor unrestricted register CLI. The experiment builder admits only the ledger's experiment windows (D4).",
+      "reason": "Checked raw wire/access helpers; neither typed semantic coverage nor unrestricted register CLI.",
       "cli_topics": []
     },
     {

@@ -319,6 +319,7 @@ Status getInputStart(const InputStartContext& c, InputStartResult& out) noexcept
     r.stopRequested = c.stopRequested; r.stoppedAfterStop = c.stoppedAfterStop; r.stopId = c.stopId;
     r.positionKnown = c.lastKnown;
     r.positionChange = static_cast<int64_t>(c.lastPosition) - c.baselinePosition;
+    if (c.lastKnown) { r.lastRequestUs = c.last.requestUs; r.lastReplyEndUs = c.last.replyEndUs; }
     r.expectedKnown = c.prerequisites.expectedKnown &&
         (c.effect == InputStartEffect::DISPLACEMENT || c.effect == InputStartEffect::ENDPOINT);
     r.expectedChange = c.effect == InputStartEffect::DISPLACEMENT ? c.prerequisites.expectedDisplacement :

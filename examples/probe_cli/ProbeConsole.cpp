@@ -117,7 +117,7 @@ const Entry COMMANDS[] = {
     {"result", Command::RESULT, "result [operation_id]", "inspect_retained_result_without_consuming", false, "Inspect an operation without consuming its retained result."},
     {"cancel", Command::CANCEL, "cancel [operation_id]", "cancel_local_work_not_motor_stop", false, "Cancel local work; use stop to request a motor stop."},
     {"group", Command::GROUP, "group show|status|clear | group set ADDR [ADDR ...] (1..15) | group wiring ADDR x0|x1|x2|x3|y0|y1 unknown|unconnected|connected | group read state | group move relative value unit frame native_rpm configured [setup write|verify] [start staged|sequential] on-failure leave|stop normal|stop fast | group stop normal|fast | group plan begin [start staged|sequential] on-failure leave|stop normal|stop fast | group plan add ADDR relative|absolute value unit frame native_rpm configured [setup write|verify] | group plan show|clear|submit | group axis ADDR config|config set field value [maximum]|origin native|prepare request | group reference ADDR declaration binding config config_read state_read native max_age_us command-coordinate-qualified | group reference ADDR revoke", "unicast_drive_group_independent_member_operations", true, "Declare up to 15 drives. A member plan stays inert until complete and explicitly submitted. Each member keeps its own coordinates, request and result."},
-    {"arm", Command::ARM, "arm position x0|x1|x2|x3 relative|absolute-by STEPS RPM [group] [poll-ms 20..500] [window-ms 100..30000] | arm position xN absolute TARGET RPM [poll-ms ..] [window-ms ..] | arm trigger ID mosfet1|mosfet2 WIDTH_MS (20..5000) | arm inspect ID | arm home|segment|velocity xN (refused until prompts 12-14)", "input_start_stage_one_owned_pulse_observe_attribute", true, "Input-started motion: stage a function 7 start without a start word, pulse one owned bench output once, then attribute the start from fresh drive samples."},
+    {"arm", Command::ARM, "arm position x0|x1|x2|x3 relative|absolute-by STEPS RPM [group] [poll-ms 20..500] [window-ms 100..30000] | arm position xN absolute TARGET RPM [poll-ms ..] [window-ms ..] | arm trigger ID mosfet1|mosfet2 WIDTH_MS (20..5000) | arm segment xN relative RECORD (1..8) [group] [poll-ms ..] [window-ms ..] (absolute refuses: pt_absolute_unresolved) | arm inspect ID | arm home|velocity xN (refused until prompts 12, 14)", "input_start_stage_one_owned_pulse_observe_attribute", true, "Input-started motion: stage a function 7 start without a start word, or arm a stored PT record selected by held PIN inputs (function 12), pulse one owned bench output once, then attribute the start from fresh drive samples."},
     {"disarm", Command::DISARM, "disarm ID", "close_input_start_observation_no_stop_no_assignment_change", false, "Close an input-start session and turn its owned output off; it does not stop the drive or change the assignment."},
     {"bench", Command::BENCH, "bench | bench on relay1|relay2|mosfet1|mosfet2 HOLD_MS | bench off [relay1|relay2|mosfet1|mosfet2] | bench clear", "bench_fixture_outputs_and_input_no_bus_traffic", false, "Bench fixture only: switch board outputs wired to drive inputs and read the wired drive output. Each on lasts 1..60000 ms, then turns off; any stop turns all off."},
     {"broadcast", Command::BROADCAST, "broadcast accel 300|301 | broadcast start relative | broadcast stop normal|fast", "fixture_only_unconfirmed_address_0_frame_then_silent_window", true, "Bench fixture only: send one fixed address-0 frame to every drive, then listen 200 ms. No drive confirms it; read each drive back."},
@@ -1268,7 +1268,6 @@ const char* parameterWriteKind(ParameterWriteKind kind) {
     case ParameterWriteKind::NONE: return "none";
     case ParameterWriteKind::HOME_RESTORE: return "home_restore";
     case ParameterWriteKind::VELOCITY_RESTORE: return "velocity_restore";
-    case ParameterWriteKind::PAIR_EXPERIMENT: return "pair_experiment";
     }
     return "invalid";
 }
@@ -1336,12 +1335,13 @@ bool inputStartResult(char* out, std::size_t size, std::size_t& used, const Ess:
     for (std::size_t bit = 0; fits && bit < sizeof(INPUT_START_MISSING_NAMES) / sizeof(INPUT_START_MISSING_NAMES[0]); ++bit)
         if (r.missing & (1u << bit)) { fits = append(out, size, used, first ? "\"%s\"" : ",\"%s\"", INPUT_START_MISSING_NAMES[bit]); first = false; }
     return fits && append(out, size, used,
-        "],\"source_commanded\":%s,\"source_active\":%s,\"input_observed\":%s,\"on_us\":%llu,\"off_us\":%llu,\"change_observed\":%s,\"running_observed\":%s,\"change_start_us\":%llu,\"change_end_us\":%llu,\"stop_requested\":%s,\"stopped_after_stop\":%s,\"stop_id\":%lu,\"position_known\":%s,\"position_change\":%lld,\"expected_known\":%s,\"expected_change\":%lld,\"position_matches\":%s,\"samples\":%lu,\"lost_samples\":%lu,\"late_samples\":%lu,\"spacing_us\":{\"min\":%lu,\"median\":%lu,\"max\":%lu,\"count\":%lu},\"code\":\"%s\",\"detail\":%ld}",
+        "],\"source_commanded\":%s,\"source_active\":%s,\"input_observed\":%s,\"on_us\":%llu,\"off_us\":%llu,\"change_observed\":%s,\"running_observed\":%s,\"change_start_us\":%llu,\"change_end_us\":%llu,\"stop_requested\":%s,\"stopped_after_stop\":%s,\"stop_id\":%lu,\"position_known\":%s,\"position_change\":%lld,\"last_request_us\":%llu,\"last_reply_us\":%llu,\"expected_known\":%s,\"expected_change\":%lld,\"position_matches\":%s,\"samples\":%lu,\"lost_samples\":%lu,\"late_samples\":%lu,\"spacing_us\":{\"min\":%lu,\"median\":%lu,\"max\":%lu,\"count\":%lu},\"code\":\"%s\",\"detail\":%ld}",
         boolean(r.sourceCommanded), boolean(r.sourceActive), boolean(r.inputObserved),
         static_cast<unsigned long long>(r.onUs), static_cast<unsigned long long>(r.offUs), boolean(r.changeObserved),
         boolean(r.runningObserved), static_cast<unsigned long long>(r.changeStartUs), static_cast<unsigned long long>(r.changeEndUs),
         boolean(r.stopRequested), boolean(r.stoppedAfterStop), static_cast<unsigned long>(r.stopId), boolean(r.positionKnown),
-        static_cast<long long>(r.positionChange), boolean(r.expectedKnown), static_cast<long long>(r.expectedChange),
+        static_cast<long long>(r.positionChange), static_cast<unsigned long long>(r.lastRequestUs),
+        static_cast<unsigned long long>(r.lastReplyEndUs), boolean(r.expectedKnown), static_cast<long long>(r.expectedChange),
         boolean(r.positionMatches), static_cast<unsigned long>(r.samples), static_cast<unsigned long>(r.lostSamples),
         static_cast<unsigned long>(r.lateSamples), static_cast<unsigned long>(r.spacingMinUs), static_cast<unsigned long>(r.spacingMedianUs),
         static_cast<unsigned long>(r.spacingMaxUs), static_cast<unsigned long>(r.spacingCount), Core::errToString(r.status.code),
@@ -1407,6 +1407,11 @@ void Console::inputStart(uint32_t id, const char* command, const InputStartComma
             i ? "," : "", m.address, static_cast<unsigned long>(m.configurationGeneration), m.function, m.polarity, m.positionMode,
             boolean(m.staged), static_cast<unsigned long>(m.stageOperationId), executionName(m.stageExecution)) &&
             words(output_, sizeof(output_), used, "staged_words", m.stagedWords, 5) &&
+            append(output_, sizeof(output_), used, ",\"record\":%u,\"record_operation_id\":%lu,\"record_target\":%ld",
+                m.record, static_cast<unsigned long>(m.recordOperationId), static_cast<long>(m.recordTarget)) &&
+            words(output_, sizeof(output_), used, "record_words", m.recordWords, 5) &&
+            append(output_, sizeof(output_), used, ",\"selector_terminals\":[%u,%u,%u]", m.selectorTerminals[0],
+                m.selectorTerminals[1], m.selectorTerminals[2]) &&
             append(output_, sizeof(output_), used,
                 ",\"expected_displacement\":%lld,\"expected_endpoint\":%ld,\"baseline_position\":%ld,\"assignment_known\":%s,\"assignment\":%u,\"stop_id\":%lu,\"stop_result\":\"%s\",\"stop_service_delay_us\":%llu",
                 static_cast<long long>(m.expectedDisplacement), static_cast<long>(m.expectedEndpoint), static_cast<long>(m.baselinePosition),
@@ -1869,25 +1874,11 @@ void Console::dispatch() noexcept {
         emit(); return;
     }
     if (entry->command == Command::DRIVER && count > first + 1 && std::strcmp(tokens[first + 1], "experiment") == 0) {
-        // Wired bench 10 (D4) PT pair experiment session, experimental image only:
-        // driver experiment pair FIRST W0 W1 | pair FIRST restore SNAPSHOT_ID |
-        // inspect. Other images refuse `unsupported` before TX.
+        // The wired bench 10 PT pair experiment was removed when wired bench 13
+        // promoted the PT target pairs (`segment position N set target VALUE`).
+        // Every form is refused before any traffic.
         if (outputPending()) { ++inputDropped_; return; }
-        const char* command = "driver-experiment";
-        if (count == first + 3 && !std::strcmp(tokens[first + 2], "inspect")) { parameterWrite(id, command, nullptr); return; }
-        ParameterWriteRequest request;
-        uint32_t start = 0, a = 0, b = 0;
-        if (count < first + 6 || std::strcmp(tokens[first + 2], "pair") || !number(tokens[first + 3], start) || start > 0xFFFF) {
-            error(id, command, "invalid_arguments"); return;
-        }
-        request.kind = ParameterWriteKind::PAIR_EXPERIMENT; request.first = static_cast<uint16_t>(start);
-        if (count == first + 6 && !std::strcmp(tokens[first + 4], "restore")) {
-            if (!number(tokens[first + 5], a) || !a) { error(id, command, "invalid_arguments"); return; }
-            request.snapshotId = a;
-        } else if (count == first + 6 && number(tokens[first + 4], a) && a <= 0xFFFF && number(tokens[first + 5], b) && b <= 0xFFFF) {
-            request.words[0] = static_cast<uint16_t>(a); request.words[1] = static_cast<uint16_t>(b);
-        } else { error(id, command, "invalid_arguments"); return; }
-        parameterWrite(id, command, &request);
+        error(id, "driver-experiment", "unsupported");
         return;
     }
     if ((entry->command == Command::HOME || entry->command == Command::VELOCITY) &&
@@ -2560,13 +2551,33 @@ void Console::dispatch() noexcept {
                 request.kind = InputStartCommandKind::TRIGGER; name = "arm-trigger";
                 valid = args == 4 && number(tokens[first + 2], request.operationId) && request.operationId &&
                     BenchIo::outputIndex(tokens[first + 3], request.output) && number(tokens[first + 4], request.widthMs);
-            } else if (!std::strcmp(verb, "home") || !std::strcmp(verb, "segment") || !std::strcmp(verb, "velocity")) {
-                // Delivered by prompts 12, 13 and 14; the application refuses before any traffic.
+            } else if (!std::strcmp(verb, "segment")) {
+                // Wired bench 13: arm segment xN relative|absolute RECORD [group] [poll-ms N] [window-ms N].
+                request.kind = InputStartCommandKind::ARM; request.armKind = InputStartKind::SEGMENT; name = "arm-segment";
+                uint32_t record = 0;
+                const char* form = args >= 4 ? tokens[first + 3] : "";
+                valid = args >= 4 && terminal(tokens[first + 2], request.terminal) && number(tokens[first + 4], record) &&
+                    record >= 1 && record <= 16;
+                request.record = static_cast<uint8_t>(record);
+                if (!std::strcmp(form, "relative")) request.form = InputStartArmForm::RELATIVE;
+                else if (!std::strcmp(form, "absolute")) request.form = InputStartArmForm::ABSOLUTE;
+                else valid = false;
+                bool poll = false, window = false;
+                for (std::size_t i = first + 5; valid && i < count; ++i) {
+                    if (!std::strcmp(tokens[i], "group") && !request.group) request.group = true;
+                    else if (!std::strcmp(tokens[i], "poll-ms") && !poll && i + 1 < count)
+                        valid = (poll = true) && number(tokens[++i], request.pollMs) &&
+                            request.pollMs >= INPUT_START_MIN_POLL_MS && request.pollMs <= INPUT_START_MAX_POLL_MS;
+                    else if (!std::strcmp(tokens[i], "window-ms") && !window && i + 1 < count)
+                        valid = (window = true) && number(tokens[++i], request.windowMs) &&
+                            request.windowMs >= INPUT_START_MIN_WINDOW_MS && request.windowMs <= INPUT_START_MAX_WINDOW_MS;
+                    else valid = false;
+                }
+            } else if (!std::strcmp(verb, "home") || !std::strcmp(verb, "velocity")) {
+                // Delivered by prompts 12 and 14; the application refuses before any traffic.
                 request.kind = InputStartCommandKind::ARM;
-                request.armKind = !std::strcmp(verb, "home") ? InputStartKind::HOME :
-                    !std::strcmp(verb, "segment") ? InputStartKind::SEGMENT : InputStartKind::VELOCITY;
-                name = request.armKind == InputStartKind::HOME ? "arm-home" : request.armKind == InputStartKind::SEGMENT ?
-                    "arm-segment" : "arm-velocity";
+                request.armKind = !std::strcmp(verb, "home") ? InputStartKind::HOME : InputStartKind::VELOCITY;
+                name = request.armKind == InputStartKind::HOME ? "arm-home" : "arm-velocity";
                 valid = args == 2 && terminal(tokens[first + 2], request.terminal);
             } else if (!std::strcmp(verb, "position")) {
                 request.kind = InputStartCommandKind::ARM; name = "arm-position";
@@ -2788,7 +2799,7 @@ void Console::dispatch() noexcept {
         const auto caps = Ess::readCapabilities();
         Snapshot snapshot; if (host_.snapshot) host_.snapshot(host_.context, snapshot);
         std::snprintf(output_, sizeof(output_),
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"caps\",\"ok\":true,\"probe\":%s,\"identity\":%s,\"config\":%s,\"state\":%s,\"velocity_parameters\":%s,\"homing_parameters\":%s,\"max_steps\":%u,\"max_reply_bytes\":%u,\"writes\":%s,\"motion\":%s,\"write_response_confirmed\":%s,\"axis_reserved\":%s,\"actions\":%s,\"device_queue_guarantee\":false,\"velocity\":%s,\"configured_ramp_policy\":true,\"acceleration_mapping\":false,\"velocity_unsupported\":[\"jerk\",\"blending\",\"live_updates\",\"torque\",\"current\",\"external_jog\"],\"driver_settings\":%s,\"limit_pair_writes\":true,\"limit_pair_word_order\":0,\"soft_limit_enable\":\"home_35_or_switch_auxiliary_7_soft_limits_fact\",\"limit_input_starts\":\"refused\",\"home_offset\":\"order_0_method_35_auxiliary_6_moving_any_auxiliary\",\"home\":%s,\"home_methods\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,17,19,20,21,22,23,24,25,26,27,28,29,30,33,34,35],\"home_physical_qualified\":false,\"io_settings\":%s,\"input_terminals\":4,\"output_terminals\":2,\"no_function\":0,\"input_function_codes\":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17],\"output_function_codes\":[0,1,2,3,4,5,9,10],\"output_function_11\":\"not_admitted\",\"cross_mapped_custom\":\"not_admitted\",\"output_status_mapping\":\"recorded_y0\",\"input_mask\":15,\"output_mask\":3,\"external_enable_precedence\":\"release_input\",\"electrical_output_state_known\":false,\"segment_storage\":16,\"maximum_input_selections\":8,\"segment_execution\":\"external_input\",\"segment_pulse_writes\":false,\"negative_segment_speed_encoding\":\"unresolved\",\"control_settings\":%s,\"control_algorithm_codes\":[1,2],\"configured_encoder_is_identification\":false,\"current_percent_base\":\"unresolved\",\"effective_current_limit_from_peak\":false,\"tuning\":%s,\"tuning_groups\":[\"filters\",\"current-loop\",\"la\",\"collision\"],\"tuning_physical_scaling_known\":false,\"collision_003b_003c_access\":\"unresolved\",\"persistence\":%s,\"persistence_operations\":[\"save\",\"factory_restore\"],\"persistence_verified_all\":false,\"persistence_invocation_limit\":2}",
+            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"caps\",\"ok\":true,\"probe\":%s,\"identity\":%s,\"config\":%s,\"state\":%s,\"velocity_parameters\":%s,\"homing_parameters\":%s,\"max_steps\":%u,\"max_reply_bytes\":%u,\"writes\":%s,\"motion\":%s,\"write_response_confirmed\":%s,\"axis_reserved\":%s,\"actions\":%s,\"device_queue_guarantee\":false,\"velocity\":%s,\"configured_ramp_policy\":true,\"acceleration_mapping\":false,\"velocity_unsupported\":[\"jerk\",\"blending\",\"live_updates\",\"torque\",\"current\",\"external_jog\"],\"driver_settings\":%s,\"limit_pair_writes\":true,\"limit_pair_word_order\":0,\"soft_limit_enable\":\"home_35_or_switch_auxiliary_7_soft_limits_fact\",\"limit_input_starts\":\"refused\",\"home_offset\":\"order_0_method_35_auxiliary_6_moving_any_auxiliary\",\"home\":%s,\"home_methods\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,17,19,20,21,22,23,24,25,26,27,28,29,30,33,34,35],\"home_physical_qualified\":false,\"io_settings\":%s,\"input_terminals\":4,\"output_terminals\":2,\"no_function\":0,\"input_function_codes\":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17],\"output_function_codes\":[0,1,2,3,4,5,9,10],\"output_function_11\":\"not_admitted\",\"cross_mapped_custom\":\"not_admitted\",\"output_status_mapping\":\"recorded_y0\",\"input_mask\":15,\"output_mask\":3,\"external_enable_precedence\":\"release_input\",\"electrical_output_state_known\":false,\"segment_storage\":16,\"maximum_input_selections\":8,\"segment_execution\":\"external_input\",\"segment_pulse_writes\":true,\"segment_pulse_claim\":\"order_0_non_negative\",\"segment_arm\":\"pt_records_1_8_three_selectors\",\"negative_segment_speed_encoding\":\"unresolved\",\"control_settings\":%s,\"control_algorithm_codes\":[1,2],\"configured_encoder_is_identification\":false,\"current_percent_base\":\"unresolved\",\"effective_current_limit_from_peak\":false,\"tuning\":%s,\"tuning_groups\":[\"filters\",\"current-loop\",\"la\",\"collision\"],\"tuning_physical_scaling_known\":false,\"collision_003b_003c_access\":\"unresolved\",\"persistence\":%s,\"persistence_operations\":[\"save\",\"factory_restore\"],\"persistence_verified_all\":false,\"persistence_invocation_limit\":2}",
             static_cast<unsigned long>(id), boolean(caps.probe && callable(Command::PROBE)), boolean(caps.identity && callable(Command::READ_IDENTITY)), boolean(caps.config && callable(Command::READ_CONFIG)), boolean(caps.state && callable(Command::READ_STATE)), boolean(caps.velocityParameters && host_.startTypedRead && host_.snapshot), boolean(caps.homingParameters && host_.startTypedRead && host_.snapshot), caps.maxSteps, caps.maxReplyBytes,
             boolean(callable(Command::ENABLE) || callable(Command::MOVE) || (host_.startVelocity && host_.snapshot && host_.axis) || callable(Command::DRIVER) || (host_.startHome && host_.snapshot && host_.axis) || callable(Command::COMMUNICATION) || callable(Command::PERSISTENCE) || callable(Command::MOTION_PROFILE)),
             boolean(host_.startMove && host_.snapshot && host_.axis), boolean(snapshot.writeResponseConfirmed), boolean(snapshot.axisReserved), callable(Command::ENABLE) ? "[\"enable\",\"release\",\"clear_alarm\",\"clear_position\",\"stop_normal\",\"stop_fast\"]" : "[]", boolean(host_.startVelocity && host_.snapshot && host_.axis), boolean(host_.startDriver && host_.snapshot), boolean(host_.startHome && host_.snapshot && host_.axis), boolean(host_.startDriver && host_.snapshot), boolean(host_.startDriver && host_.snapshot), boolean(host_.startDriver && host_.snapshot), boolean(host_.persistence != nullptr));
@@ -2803,7 +2814,7 @@ void Console::dispatch() noexcept {
         if(!append(output_,sizeof(output_),used,",\"position_interrupt_stored\":%s,\"position_interrupt_completion\":\"not_observed\",\"position_interrupt_new_target\":false,\"qualification_routes\":{\"home\":%s,\"velocity\":%s,\"position_clear\":%s,\"start_speed_relation\":%s,\"io\":%s}}",
             boolean(callable(Command::POSITION)), boolean(routes), boolean(routes), boolean(routes), boolean(routes), boolean(host_.ioQualification != nullptr))) { error(id,"caps","output_capacity"); return; }
         used=std::strlen(output_); if(used) --used;
-        if(!append(output_,sizeof(output_),used,",\"input_start\":%s,\"input_start_kinds\":[\"position\"],\"input_start_functions\":[7],\"input_start_refused_kinds\":{\"home\":\"prompt_12\",\"segment\":\"prompt_13\",\"velocity\":\"prompt_14\"},\"input_start_modes\":[\"relative\",\"absolute\",\"absolute-by\"],\"input_start_trigger_outputs\":[\"mosfet1\",\"mosfet2\"],\"input_start_width_ms\":[%lu,%lu],\"input_start_poll_ms\":[%lu,%lu],\"input_start_window_ms\":[%lu,%lu],\"input_start_post_release_ms\":%lu,\"input_start_post_release_samples\":%u,\"input_start_max_read_age_ms\":%lu,\"input_start_members\":%u,\"input_start_retrigger\":false}",
+        if(!append(output_,sizeof(output_),used,",\"input_start\":%s,\"input_start_kinds\":[\"position\",\"segment\"],\"input_start_functions\":[7,12],\"input_start_refused_kinds\":{\"home\":\"prompt_12\",\"velocity\":\"prompt_14\"},\"input_start_modes\":[\"relative\",\"absolute\",\"absolute-by\"],\"input_start_trigger_outputs\":[\"mosfet1\",\"mosfet2\"],\"input_start_width_ms\":[%lu,%lu],\"input_start_poll_ms\":[%lu,%lu],\"input_start_window_ms\":[%lu,%lu],\"input_start_post_release_ms\":%lu,\"input_start_post_release_samples\":%u,\"input_start_max_read_age_ms\":%lu,\"input_start_members\":%u,\"input_start_retrigger\":false}",
             boolean(host_.inputStart != nullptr), static_cast<unsigned long>(INPUT_START_MIN_WIDTH_MS), static_cast<unsigned long>(INPUT_START_MAX_WIDTH_MS),
             static_cast<unsigned long>(INPUT_START_MIN_POLL_MS), static_cast<unsigned long>(INPUT_START_MAX_POLL_MS),
             static_cast<unsigned long>(INPUT_START_MIN_WINDOW_MS), static_cast<unsigned long>(INPUT_START_MAX_WINDOW_MS),

@@ -74,7 +74,7 @@ guides define complete arguments and prerequisites.
 | `home methods`, `home qualification`, `home ...` | Method inventory, passive qualification inspection and qualified [homing](ess_homing.md); home acceptance replies `accepted`, then one terminal `home` line |
 | `driver`, `io`, `segment`, `control`, `tuning` | Typed reads/whole-candidate updates; [driver](ess_driver_settings.md), [I/O](ess_io.md), [segments](ess_segments.md), [control](ess_control_settings.md), [tuning](ess_tuning.md) |
 | `driver set positive-limit VALUE [negative-limit VALUE] [address]` | Soft-limit pairs, set alone: one FC10 `0x0037/2` or `0x0039/2` and a two-word FC03 readback each, at `0x0019` and `0x0018` known 0 ([paired values](#paired-values-wired-bench-10)) |
-| `driver experiment pair FIRST W0 W1\|pair FIRST restore SNAPSHOT_ID\|inspect` | Experimental image only: one stored-target experiment window write and readback; production images refuse a write `unsupported` before TX ([paired values](#paired-values-wired-bench-10)) |
+| `driver experiment ...` | Removed with the wired bench 13 promotion of the stored targets (`segment position N set target`); every form is refused `unsupported` before TX ([paired values](#paired-values-wired-bench-10)) |
 | `motion-profile read\|inspect\|restore\|forget` / `motion-profile start-speed NATIVE` | Retained position-parameter snapshot and explicit restoration |
 | `motion-profile stage ACC DEC RPM TARGET_W0 TARGET_W1 ORDER ADDRESS [model firmware]` | [Candidate staging](ess_position.md#candidate-profile-staging), five words only, no start/save; one retained result slot |
 | `communication ...`, `persistence ...` | Explicit [drive communication](ess_communication.md) and [save/restore](ess_persistence.md) workflows |
@@ -168,8 +168,9 @@ new-event completion checks still apply.
 Typed settings validate the complete candidate before writes and retain ACK,
 readback, partial progress and uncertain effects separately. Matching stored
 readback does not manufacture a missing acknowledgement or establish physical
-activation. Unsupported native pair setters (the stored PT targets) reject; the
-soft-limit pairs have a typed setter since wired bench 10. I/O `none` means documented
+activation. The soft-limit pairs (wired bench 10) and the stored PT targets
+(wired bench 13, non-negative only) have typed pair setters; no guarded pair
+setter remains. I/O `none` means documented
 function zero; unconnected wiring never implicitly disables an input, limit or
 stop. Settings do not invent torque/current modes or external triggers.
 
@@ -635,9 +636,10 @@ started member reported its stop/release input active.
 ```text
 arm position x0|x1|x2|x3 relative|absolute-by STEPS RPM [group] [poll-ms 20..500] [window-ms 100..30000]
 arm position xN absolute TARGET RPM [poll-ms ...] [window-ms ...]
+arm segment x0|x1|x2|x3 relative RECORD [group] [poll-ms 20..500] [window-ms 100..30000]
 arm trigger ID mosfet1|mosfet2 WIDTH_MS
 arm inspect ID
-arm home|segment|velocity xN
+arm home|velocity xN
 disarm ID
 ```
 
@@ -670,6 +672,69 @@ arming that the 32-edge ring no longer retains, not the ring's own wrap-around
 count. A member result reaches completion only at a reported standstill
 (RUNNING clear and speed word 0).
 
+### PT records (wired bench 13)
+
+Added by [wired bench 13](reports/2026-11-19_wired_bench_13_pt_segments.md)
+(19 November 2026, model `0x4EEA`, firmware `0x0029`).
+
+`arm segment xN relative RECORD` arms the stored PT record `RECORD` on the
+selected axis, or with `group` on every declared member (one record for all:
+one shared selector state). `xN` is the PT trigger terminal. It sends no frame:
+every check uses cached reads, and a refusal leaves the session, the outputs
+and the latest operation unchanged. `RECORD` outside 1..16, a missing form or
+a malformed option answers `invalid_arguments`. Refusal reasons, each from one
+check, with `refused_address` the deciding drive:
+
+| Reason | Check |
+| --- | --- |
+| `record_unreachable` | Records 9-16 (they need PIN3; three selectors and a trigger give records 1-8, function manual p22-23) |
+| `pt_absolute_unresolved` | `absolute` form: with `0x0050` = 1 records ran as displacements (P2) |
+| `function_not_12` | The trigger terminal does not hold 12 |
+| `selector_layout` | The other three terminals do not hold 14, 15 and 16 once each (PIN3, 17, absent) |
+| `terminal_not_connected` | A terminal is not declared connected |
+| `selector_polarity` | A selector terminal has input polarity 1 |
+| `position_mode_unknown`, `position_mode_mismatch` | No fresh DRIVE read of `0x0050`, or it is not 0 |
+| `state_stale`, `alarm`, `released`, `moving` | Fresh state, no alarm, not released, stopped |
+| `triggers_inhibited_required` | No current FINITE_MOVE record with `triggers-inhibited` on the trigger or on a selector |
+| `input_active` | The trigger input reads active |
+| `pin_levels` | The fresh input status does not show the record's PIN bits |
+| `record_stale` | No fresh checked read of that record (`segment position N read [ADDRESS]`; a group member uses its own per-member read) |
+| `word_order_unqualified` | `0x0019` is not known 0 |
+| `record_sign_unqualified` | The stored target is negative (sign not measured) |
+| `record_speed_zero` | The record's speed is 0 |
+| `record_rate_ceiling` | The speed exceeds the position speed limit min(2000, 3,000,000 / subdivision) rpm; storage still admits 0..3000 |
+| `endpoint_outside_limits` | The endpoint (position plus target) leaves ±`0x0FFFFFFF` or the axis native limits |
+| `soft_limit_state_unknown`, `soft_limit_endpoint` | Soft limits not known disabled, or (selected axis) bound with the endpoint outside them |
+
+Stop, release and limit inputs refuse with the motion reasons above
+(`stop_input_active`, `limit_input_active`, ...). The other shared refusals
+(`not_selected`, `not_a_member`, `configuration_stale`, `reserved`,
+`enable_settling`, ...) are as for `arm position`.
+
+`arm trigger ID mosfet1 WIDTH_MS` for a PT session also requires, in each
+member's row `M`, function 12 and its polarity, the selectors unchanged,
+the armed PIN levels in the trigger's own state read and the armed record
+read still the latest (otherwise L4, for example `PIN levels differ from the
+armed record` or `record read witness ended`). Outputs already on are
+admitted for a PT trigger only when none is the trigger's and no participant
+holds a start function 7-13 on a terminal they drive; otherwise L4 `an output
+is on at a terminal with a start function` (or `the trigger output is already
+on`). A function 7 trigger still refuses any output already on.
+
+Each member row of the session view adds `record`, `record_operation_id` (the
+record read the arm used), `record_target` (decoded at order 0),
+`record_words` (speed, acceleration, deceleration and the two target words in
+register order) and `selector_terminals` (the terminals of PIN0, PIN1 and
+PIN2); they are 0 for a function 7 session. `expected_displacement` is the
+target; `expected_endpoint` is the baseline position plus the target. Every
+member `result` (both kinds) adds `last_request_us` and `last_reply_us`, the
+request start and reply end of the latest consumed sample, from which
+`position_change` is taken (core `InputStartResult::lastRequestUs` and
+`lastReplyEndUs`); a host path guard compares the position with its expected
+path at that bracket. `caps` adds `segment_arm`
+`pt_records_1_8_three_selectors` beside `segment_pulse_writes` and
+`segment_pulse_claim` (below).
+
 ### Paired values (wired bench 10)
 
 Added by [wired bench 10](reports/2026-11-19_wired_bench_10_paired_value_encodings.md)
@@ -678,7 +743,6 @@ Added by [wired bench 10](reports/2026-11-19_wired_bench_10_paired_value_encodin
 ```text
 driver set positive-limit VALUE [negative-limit VALUE] [address]
 home METHOD SEARCH RETURN RAMP zero|OFFSET [address]
-driver experiment pair FIRST W0 W1 | pair FIRST restore SNAPSHOT_ID | inspect
 ```
 
 - `driver set positive-limit|negative-limit` takes a signed decimal native
@@ -710,14 +774,17 @@ driver experiment pair FIRST W0 W1 | pair FIRST restore SNAPSHOT_ID | inspect
   application keeps `soft-limits` for the enable route only from method 35 or a
   moving method with stored auxiliary 7.
 - `caps` reports `limit_pair_writes` true, `limit_pair_word_order` 0 and
-  `home_offset` `order_0_method_35_auxiliary_6_moving_any_auxiliary`;
-  `segment_pulse_writes` stays false.
-- `driver experiment` (command `driver-experiment`) exists for the stored PT
-  target experiment windows on an image built with
-  `MOTORCONTROLRS_WB10_EXPERIMENT` only
-  ([experiment windows](ess_pair_writes.md#experiment-windows)). A production
-  image refuses a write `unsupported` before TX. It shares the parameter-write
-  session (`kind` `pair_experiment`) and is kept for prompt 13.
+  `home_offset` `order_0_method_35_auxiliary_6_moving_any_auxiliary`. Since
+  wired bench 13 it reports `segment_pulse_writes` true, `segment_pulse_claim`
+  `order_0_non_negative` and `segment_arm` `pt_records_1_8_three_selectors`.
+- `driver experiment` (command `driver-experiment`), the wired bench 10
+  stored-target experiment route of `MOTORCONTROLRS_WB10_EXPERIMENT` images,
+  was removed when wired bench 13 promoted the stored targets
+  ([experiment windows](ess_pair_writes.md#experiment-windows-removed)). Every
+  image refuses each form `unsupported` before TX. Stored targets use
+  `segment position N set target VALUE` ([segments](ess_segments.md)): the
+  target alone, one FC10 and a two-word FC03, 0..`0x0FFFFFFF` at `0x0019`
+  known 0; negative `unresolved`, order 1 `unsupported`, combined `invalid`.
 
 ### Limit inputs and soft limits (wired bench 11)
 

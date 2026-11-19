@@ -430,7 +430,7 @@ struct Host {
     Action (*discovery)(void*, const DiscoveryCommand*, DiscoveryView&) = nullptr;
     Action (*debug)(void*, const DebugMode* requested, DebugSnapshot&) = nullptr;
     Action (*motionProfile)(void*, MotionProfileCommand, MotionProfileView&) = nullptr;
-    /// Restore or D9 experiment session; null request inspects. View is the current session.
+    /// Home or velocity restore session; null request inspects. View is the current session.
     Action (*parameterWrite)(void*, const ParameterWriteRequest*, ParameterWriteView&) = nullptr;
     /** Input-start route (wired bench 08): arm, trigger, inspect, disarm. The
      * view is the current session, unchanged by a refusal; reply names it. */

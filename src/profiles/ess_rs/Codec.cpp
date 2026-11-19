@@ -224,40 +224,6 @@ Status parseWriteMultipleRegisters(const uint8_t* frame, std::size_t length,
     return status ? checkEcho(frame, start, count, error) : status;
 }
 
-bool isExperimentWindow(uint16_t start, uint16_t count) noexcept {
-    return Detail::canWriteExperiment(start, count);
-}
-
-Status validateExperimentWriteRequest(uint8_t address, uint16_t start,
-                                      const uint16_t* words, uint16_t count) noexcept {
-    if (!isValidAddress(address)) return invalid(address, "expected unicast address 1..247");
-    // Ledger experiment windows only (decision D4); never a reviewed window.
-    if (!Detail::canWriteExperiment(start, count)) return unsupported(start, "not an experiment FC10 window");
-    if (!words) return invalid(0, "null write words");
-    return Ok();
-}
-
-std::size_t buildExperimentWrite(uint8_t address, uint16_t start, const uint16_t* words,
-                                 uint16_t count, uint8_t* output, std::size_t capacity) noexcept {
-    if (!validateExperimentWriteRequest(address, start, words, count)) return 0;
-    const std::size_t length = 9u + 2u * count;
-    if (!output || capacity < length || Rtu::overlaps(words, count * sizeof(*words), output, length)) return 0;
-    Rtu::writeHeader(output, address, WRITE_MULTIPLE, start, count);
-    output[6] = static_cast<uint8_t>(count * 2);
-    for (uint16_t i = 0; i < count; ++i) Rtu::writeWord(output + 7 + 2 * i, words[i]);
-    return Rtu::finishFrame(output, length - 2);
-}
-
-Status parseExperimentWrite(const uint8_t* frame, std::size_t length, uint8_t address,
-                            uint16_t start, uint16_t count, FrameError* error) noexcept {
-    clearError(error);
-    if (!isValidAddress(address)) return argumentError(invalid(address, "expected unicast address 1..247"), error);
-    if (!Detail::canWriteExperiment(start, count))
-        return argumentError(unsupported(start, "not an experiment FC10 window"), error);
-    const Status status = checkReply(frame, length, address, WRITE_MULTIPLE, WRITE_RESPONSE_LEN, error);
-    return status ? checkEcho(frame, start, count, error) : status;
-}
-
 std::size_t buildProbe(uint8_t address, uint8_t* output, std::size_t capacity) noexcept {
     return buildReadRegisters(address, Registers::DRIVER_MODEL, 1, output, capacity);
 }

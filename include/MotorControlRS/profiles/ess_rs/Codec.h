@@ -38,7 +38,11 @@ Status validateReadRegistersRequest(uint8_t address, uint16_t start, uint16_t co
  */
 Status validateWriteSingleRegisterRequest(uint8_t address, uint16_t reg, uint16_t value) noexcept;
 /** @brief Validate reviewed FC10 windows (start/count): 0x0024/2, 0x0021/5,
- * 0x001D/3 and 0x0031/6 (function PDF physical pages 8, 16, 18, 20).
+ * 0x001D/3 and 0x0031/6 (function PDF physical pages 8, 16, 18, 20), and the
+ * pairs promoted from measurements (decision D10): the soft limits 0x0037/2 and
+ * 0x0039/2 (wired bench 10) and the sixteen stored PT targets 0x0060 + 6(n-1)/2
+ * (wired bench 13). The codec checks wire shape only; the typed setters own the
+ * measured word order and value range.
  * words must point to count readable uint16_t values. Other windows/counts are
  * UNSUPPORTED, not an assertion that the drive rejects them. No device-wide
  * FC10 maximum or atomic-write guarantee has been established. Values are raw.
@@ -113,28 +117,6 @@ Status parseWriteSingleRegister(const uint8_t* frame, std::size_t length,
 Status parseWriteMultipleRegisters(const uint8_t* frame, std::size_t length,
                                   uint8_t address, uint16_t start, uint16_t count,
                                   FrameError* error = nullptr) noexcept;
-/** @} */
-
-/** @name Experiment FC10 windows (decision D4, wired bench 10)
- * One separate builder and parser for the ledger's experiment windows only:
- * exactly one writable pair (two words) each, the soft-limit pairs 0x0037/2 and
- * 0x0039/2 and the sixteen stored PT target pairs 0x0060 + 6(n-1)/2 while they
- * remain experimental. A reviewed production window is refused here, and the
- * production builders, validators and typed setters refuse every experiment
- * window. Admission (drive, candidate words, restoration source) belongs to a
- * named application experiment; this layer checks wire shape only. An
- * acknowledgement or matching readback proves storage, not the drive's
- * interpretation of either word, atomicity or persistence. Same buffer rules
- * as the raw builders and checked parsers above.
- * @{ */
-Status validateExperimentWriteRequest(uint8_t address, uint16_t start,
-                                      const uint16_t* words, uint16_t count) noexcept;
-std::size_t buildExperimentWrite(uint8_t address, uint16_t start, const uint16_t* words,
-                                 uint16_t count, uint8_t* output, std::size_t capacity) noexcept;
-Status parseExperimentWrite(const uint8_t* frame, std::size_t length, uint8_t address,
-                            uint16_t start, uint16_t count, FrameError* error = nullptr) noexcept;
-/** True when start/count is one of the ledger's experiment windows. */
-bool isExperimentWindow(uint16_t start, uint16_t count) noexcept;
 /** @} */
 
 /** @brief Smallest documented non-changing ESS probe: FC03, 0x0000, one word.

@@ -12,7 +12,7 @@ constexpr uint8_t DRIVER_FIELD_COUNT = 16;
 constexpr uint8_t DRIVER_READ_STEPS = 4;
 constexpr uint8_t DRIVER_MAX_STEPS = 18;
 constexpr std::size_t DRIVER_MAX_REPLY_BYTES = 15;
-constexpr std::size_t DRIVER_MAX_REQUEST_BYTES = 13; ///< FC10 of one soft-limit pair (two words).
+constexpr std::size_t DRIVER_MAX_REQUEST_BYTES = 13; ///< FC10 of one two-word pair: a soft limit or a stored PT target.
 /** Soft-limit pair claims promoted by wired bench 10 (decision D10), model
  * 0x4EEA firmware 0x0029: FC10 0x0037/2 and 0x0039/2 at 0x0019 = 0, high word
  * at the lower address, two's complement, native position increments (the
@@ -59,7 +59,11 @@ enum class DriverError : int32_t {
  * as one FC10 of two words each (0x0037/2, 0x0039/2), never split FC06 halves.
  * They are admitted alone (one or both), within +-DRIVER_LIMIT_MAGNITUDE, at
  * 0x0019 known 0 and 0x0018 known 0 in the prior DRIVE read (wired bench 10).
- * segmentPulseTarget stays an explicit unsupported candidate (prompt 13).
+ * SEGMENT_PULSE_TARGET (POSITION_SEGMENT group) is one FC10 of the record's
+ * two pulse words (0x0060 + 6(n-1)) then a two-word readback, alone, at 0x0019
+ * known 0 (DriverPrerequisites::wordOrder), within 0..DRIVER_LIMIT_MAGNITUDE:
+ * the claim wired bench 13's W0a witness promoted (order 0, non-negative; the
+ * sign witness did not run, so a negative target is UNSUPPORTED before TX).
  * interruption selects the external PV trigger level/edge, not serial bit 3. */
 struct DriverRequest {
     DriverGroup group = DriverGroup::DRIVE;
@@ -81,7 +85,7 @@ struct DriverRequest {
     uint8_t segmentIndex = 1; ///< Stored record number, 1..16.
     int32_t segmentSpeed = 0, segmentStartSpeed = 0;
     uint16_t segmentAcceleration = 0, segmentDeceleration = 0; ///< Native time words, not physical acceleration.
-    int64_t segmentPulseTarget = 0; ///< Explicit unsupported pair-write candidate.
+    int64_t segmentPulseTarget = 0; ///< Stored PT target in native pulses, 0..DRIVER_LIMIT_MAGNITUDE (wired bench 13).
     ControlAlgorithm controlAlgorithm = ControlAlgorithm::ALGORITHM_1;
     uint16_t encoderResolution = 0, maximumEffectiveCurrentMa = 0;
     uint16_t closedMaximumPercent = 0, closedBasePercent = 0,
@@ -212,6 +216,10 @@ struct DriverPrerequisites {
     uint32_t triggerConfigurationGeneration = 0;
     uint64_t triggerEarliestUs = 0, triggerLatestUs = 0;
     DriverRequest qualifiedSegment;
+    /** 0x0019 of the same target and configuration generation (a configuration
+     * read). A stored PT target write needs it known and 0 (wired bench 13). */
+    bool wordOrderKnown = false;
+    WordOrder wordOrder = WordOrder::HIGH_WORD_FIRST;
     /** External exact-model identification remains independent of raw model
      * codes. Peak datasheet amperes are not an effective/RMS current ceiling. */
     IdentityObservation controlIdentity;
@@ -238,8 +246,9 @@ struct DriverPrerequisites {
 struct DriverProgress {
     DriverField field = DriverField::DIRECTION;
     uint16_t reg = 0, previous = 0, requested = 0, readback = 0;
-    /** Soft-limit pair: both words in address order; previous/requested/
-     * readback above repeat the first (high) word. */
+    /** Two-word pair (a soft limit, 0x0037/0x0039, or a stored PT target,
+     * 0x0060 + 6(n-1)): both words in address order, high word first at word
+     * order 0; previous/requested/readback above repeat the first (high) word. */
     bool pair = false;
     uint16_t previousWords[2] = {}, requestedWords[2] = {}, readbackWords[2] = {};
     bool selected = false, acknowledged = false, readbackKnown = false;
@@ -275,7 +284,7 @@ struct PreparedDriver {
     uint32_t operationId = 0;
     uint8_t step = 0;
     bool write = false;
-    uint8_t function = 0; ///< 3, 6 or 16 (soft-limit pair write).
+    uint8_t function = 0; ///< 3, 6 or 16 (pair write: a soft limit or a stored PT target).
     uint16_t reg = 0, value = 0, count = 0;
     uint8_t bytes[DRIVER_MAX_REQUEST_BYTES] = {};
     std::size_t length = 0;

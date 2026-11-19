@@ -67,7 +67,7 @@ the owner stays Partial and the next ready prompt starts.
 | 10 | Complete | Production soft-limit enable and recovery at a limit: 11; auxiliary 3 and other auxiliary choices, offsets with switch methods, method 35 completion from a homed state: 12; PT target promotion (W0): 13; 0x0019 = 1 after save and restart: 17 | [2026-11-19](../../reports/2026-11-19_wired_bench_10_paired_value_encodings.md) |
 | 11 | Partial | L5b, S5: a drive-decided start with a held limit or a set soft-limit flag (the shared-output interlock refuses a second ON while a relay is on; away starts stay refused); L8: limit during a home search (12) | [2026-11-19](../../reports/2026-11-19_wired_bench_11_limits.md) |
 | 12 | Partial | D0 (dead-man stop: needs a multi-output interlock rule), H10 (home start input: `arm home` staging of 08's route), H11 (method 18 experiment record) not run; collision methods −1..−4 deferred (mechanical stop, vendor encoding); method 35 completion from a homed state and a home missing a short stop input: 20; inherited L5b/S5 stay with 11; CI on the recording commit (lead) | [2026-11-19](../../reports/2026-11-19_wired_bench_12_switch_homing.md) |
-| 13 | Pending | — | — |
+| 13 | Partial | W0b (sign witness: no drive-side stop on a free terminal under D15) and with it the signed claim, drive 2's −400·N table, the negative sentinels and P11; P2 absolute PT FAIL as measured (records run relative with `0x0050` = 1; arm refuses `absolute`; save-and-restart check deferred); P4 late PIN offsets, P6 retrigger during a run, P7 start-speed timing not run; CI on the recording commit (lead) | [2026-11-19](../../reports/2026-11-19_wired_bench_13_pt_segments.md) |
 | 14 | Pending | — | — |
 | 15 | Pending | — | — |
 | 16 | Pending | — | — |
@@ -89,6 +89,8 @@ Executors add a row for each step that needs the owner and do not wait.
 | --- | --- | --- |
 | all | Power-cycle drives 1, 2 and 4, then `baseline-compare` | Reverts RAM leftovers; V-01 for drives 1 and 2 (11, 17) |
 | 12 | Fit a mechanical hard stop on one drive's shaft and obtain the vendor's wire encoding of methods −1..−4 and the meaning of `0x003B/0x003C` | collision homing (prompt 12 item 5) |
+| 13 | Free one input terminal for a drive-side stop (or provide another independent stop), then run W0b | W0b, the signed PT claim, drive 2's −400·N table, the negative sentinels, P11 |
+| 13 | With prompt 17's save and power cycle: `0x0050` = 1 saved, restart, repeat P2 | Whether PT honors absolute mode after a restart (P2) |
 | 15 | Supervise T12 (encoder resolution change) | T12 |
 | 16 | Cable pull, power cycle and instrument asks of step 6 | F4, R1, R3, A2 drive 1 leg |
 | 17 | Power cycles, DIP switch checks and changes | P0, S1, S2, P2-P5, F1, F2, C1, C2, D1, D2, S3; 05 filter persistence; 10 `0x0019` = 1 after save and restart |

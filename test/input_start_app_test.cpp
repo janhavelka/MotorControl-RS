@@ -2,8 +2,10 @@
 // Input-start route (wired bench 08) through the actual cooperative application,
 // its console and public API, on a fake bus with simulated ESS drives and a fake
 // BenchIo::Port. The simulator's function-7 behaviour (one start per rising
-// edge, optional repeats) belongs to this fixture only and says nothing about
-// the real bench; prompt 09 measures that. Both platform variants run it.
+// edge, optional repeats) and its function-12 PT behaviour (the record the
+// PIN levels select starts on the trigger edge) belong to this fixture only and
+// say nothing about the real bench; prompts 09 and 13 measure that. Both
+// platform variants run it.
 #include "../examples/probe_cli/ProbeApp.cpp"
 #include "fakes/esp32_uart/UsbConsoleFixture.h"
 #if MOTORCONTROLRS_TEST_IDF
@@ -83,6 +85,8 @@ struct Drive {
     unsigned runningReads = 0, starts = 0, repeats = 0, restartIn = 0; ///< repeats: further starts while the input stays active.
     int32_t pending = 0;
     bool runForever = false;
+    bool ptRepeat = false; ///< repeats restart the PT record while X0 stays active.
+    uint8_t lastRecord = 0;
 };
 std::map<uint8_t, Drive> drives;
 std::vector<std::vector<uint8_t>> frames;
@@ -121,23 +125,38 @@ void startOn(Drive& d) {
     d.pending = d.regs[0x0050] ? target : position(d) + target;
     d.runningReads = 2; ++d.starts;
 }
+// Function 12 on the switched terminal starts the record the PIN0..PIN3 levels select.
+void startPt(Drive& d) {
+    const uint16_t inputs = bench.inputs();
+    uint8_t record = 1;
+    for (uint8_t t = 0; t < 4; ++t) {
+        const uint16_t f = d.regs[0x0041 + t];
+        if (f >= 14 && f <= 17 && ((inputs >> t) & 1u)) record = static_cast<uint8_t>(record + (1u << (f - 14)));
+    }
+    const int32_t target = pair(d, static_cast<uint16_t>(0x0060 + 6 * (record - 1)));
+    d.pending = d.regs[0x0050] ? target : position(d) + target;
+    d.runningReads = 2; ++d.starts; d.lastRecord = record;
+}
 void edge(uint8_t output) {
     for (auto& entry : drives) {
         auto& d = entry.second;
-        if (d.present && d.regs[0x0041 + OUTPUT_TERMINAL[output]] == 7) startOn(d);
+        const uint16_t function = d.regs[0x0041 + OUTPUT_TERMINAL[output]];
+        if (d.present && function == 7) startOn(d);
+        if (d.present && function == 12) startPt(d);
     }
 }
 uint16_t readWord(Drive& d, uint16_t reg) {
     if (reg == 0x0008) return static_cast<uint16_t>(bench.inputs() | d.regs[0x0008]);
     if (reg == 0x0007 && d.restartIn) { // One stopped report, then the repeated start.
         if (--d.restartIn) return 1;
-        startOn(d); return 4;
+        if (d.ptRepeat) startPt(d); else startOn(d);
+        return 4;
     }
     if (reg == 0x0007 && (d.runningReads || d.runForever)) {
         if (d.runForever) return 4;
         if (!--d.runningReads) {
             setPosition(d, d.pending);
-            if (d.repeats && (bench.inputs() & (1u << 3))) { --d.repeats; d.restartIn = 2; }
+            if (d.repeats && (bench.inputs() & (1u << (d.ptRepeat ? 0 : 3)))) { --d.repeats; d.restartIn = 2; }
             return 1;
         }
         return 4;
@@ -316,7 +335,7 @@ void testSelectedRelativeStartIsAttributed() {
 void testArmRefusalsBeforeTx() {
     fresh();
     refusedBeforeTx("@1 arm home x3\n", "home_staging_prompt_12");
-    refusedBeforeTx("@1 arm segment x3\n", "segment_staging_prompt_13");
+    refusedBeforeTx("@1 arm segment x3 relative 1\n", "target_unknown"); // Wired bench 13: delivered, facts first.
     refusedBeforeTx("@1 arm velocity x3\n", "pv_staging_prompt_14");
     selectedFacts(1);
     drives[1].regs[0x0044] = 0; command("@7 read config\n"); finish(latest());
@@ -670,6 +689,285 @@ void testAux1RingWrapIsNotLostEvidence() {
     assert(result().outcome == Outcome::INDETERMINATE && (result().missing & ESS::INPUT_START_MISSING_OVERWRITE));
     assert(releaseOperation(id));
 }
+// --------------------------------------------- PT records (wired bench 13)
+// Simulator only: X0 = 12 starts the record the PIN0..PIN2 levels select
+// (record = PIN2*4 + PIN1*2 + PIN0 + 1, function manual p22-23) on the trigger's
+// rising edge. Says nothing about the real drive; the bench measures that.
+// PIN outputs: bit 0 relay2 (X1), bit 1 relay1 (X2), bit 2 mosfet2 (X3).
+const uint8_t PIN_OUTPUT[3] = {1, 0, 3};
+const char* const PIN_NAME[3] = {"relay2", "relay1", "mosfet2"};
+void ptLayout(Drive& d) {
+    d.regs[0x0041] = 12; d.regs[0x0042] = 14; d.regs[0x0043] = 15; d.regs[0x0044] = 16; d.regs[0x0019] = 0;
+}
+void setRecord(Drive& d, uint8_t n, int32_t target, uint16_t speed = 60) {
+    const uint16_t base = static_cast<uint16_t>(0x0060 + 6 * (n - 1));
+    d.regs[base] = static_cast<uint16_t>(static_cast<uint32_t>(target) >> 16); d.regs[base + 1] = static_cast<uint16_t>(target);
+    d.regs[base + 2] = speed; d.regs[base + 3] = 100; d.regs[base + 4] = 100;
+}
+void selectPins(uint8_t record) {
+    for (uint8_t b = 0; b < 3; ++b) {
+        const bool want = ((record - 1u) >> b) & 1u;
+        if (want && !bench.outputs[PIN_OUTPUT[b]].active) { command(std::string("@15 bench on ") + PIN_NAME[b] + " 60000\n"); contains("\"ok\":true"); }
+        if (!want && bench.outputs[PIN_OUTPUT[b]].active) { command(std::string("@15 bench off ") + PIN_NAME[b] + "\n"); contains("\"ok\":true"); }
+    }
+}
+// The fresh reads and FINITE_MOVE records a PT arm needs, as the bench helper sends them.
+void ptFacts(uint8_t address, uint8_t record, uint16_t mode = 0, const char* facts = "triggers-inhibited") {
+    if (app->axis.target.address != address) { command("@1 useaddr " + std::to_string(address) + "\n"); contains("\"ok\":true"); }
+    auto& drive = drives[address];
+    if (drive.runningReads) { setPosition(drive, drive.pending); drive.runningReads = 0; }
+    // A mode changed behind the application: the DRIVE read invalidates the
+    // configuration it differs from, so the configuration read follows it.
+    const bool changed = drive.regs[0x0050] != mode;
+    drive.regs[0x0050] = mode;
+    if (changed) { command("@3 driver read\n"); finish(latest()); }
+    for (const std::string& line : {std::string("@2 read config\n"), std::string("@3 driver read\n"),
+                                   "@4 segment position " + std::to_string(record) + " read\n", std::string("@5 read state\n")}) {
+        command(line); finish(latest());
+    }
+    for (uint8_t t = 0; t < 4; ++t)
+        command("@6 io qualification install " + std::to_string(address) + " x" + std::to_string(t) + " " +
+            std::to_string(drive.regs[0x0041 + t]) + " 0 finite-move unknown " + facts + "\n");
+}
+uint32_t armPt(const std::string& args) {
+    command("@20 arm segment " + args + "\n");
+    if (!said("\"result\":\"accepted\"")) { std::fprintf(stderr, "PT arm refused: %s\n", Serial.output.c_str()); assert(false); }
+    assert(session().phase == Phase::ARMED); // No staging: a PT arm writes nothing.
+    return session().operationId;
+}
+void testPtRecordsSelectedByPins() {
+    fresh();
+    auto& d = drives[1];
+    ptLayout(d);
+    for (uint8_t n = 1; n <= 16; ++n) setRecord(d, n, n <= 8 ? 100 * n : -1500, n <= 8 ? 60 : 15);
+    // All eight PIN maps: each record runs its own target; records 9-16 never.
+    for (uint8_t n = 1; n <= 8; ++n) {
+        selectPins(n); ptFacts(1, n);
+        const auto writes = count(isWrite);
+        const auto id = armPt("x0 relative " + std::to_string(n));
+        const auto& mv = session().members[0];
+        assert(mv.record == n && mv.recordTarget == 100 * n && mv.expectedDisplacement == 100 * n && mv.function == 12);
+        assert(mv.selectorTerminals[0] == 1 && mv.selectorTerminals[1] == 2 && mv.selectorTerminals[2] == 3);
+        trigger(id, "mosfet1", 50);
+        assert(session().admitted && !std::strcmp(session().rows[3].row, "M"));
+        done();
+        const auto& r = result();
+        if (r.outcome != Outcome::ATTRIBUTED || r.positionChange != 100 * n || !r.positionMatches)
+            std::fprintf(stderr, "PT record %u: %s change %lld error %s\n", n, Probe::inputStartOutcomeName(r.outcome),
+                static_cast<long long>(r.positionChange), session().error);
+        assert(r.outcome == Outcome::ATTRIBUTED && r.positionChange == 100 * n && r.positionMatches);
+        assert(count(isWrite) == writes && !count(isStart)); // Neither the arm nor the trigger wrote.
+        assert(releaseOperation(id));
+    }
+    assert(d.starts == 8);
+    // Absolute mode refuses before any traffic: on the bench (wired bench 13 P2)
+    // records moved their target from the trigger position with 0x0050 = 1.
+    setRecord(d, 4, 900); selectPins(4); ptFacts(1, 4, 1);
+    refusedBeforeTx("@20 arm segment x0 absolute 4\n", "pt_absolute_unresolved");
+    std::printf("input_start_app: PT arm session %u bytes\n", static_cast<unsigned>(sizeof(App::InputStartSession)));
+}
+void testPtArmRefusalsBeforeTx() {
+    const auto setup = [](uint8_t record, uint16_t mode) {
+        fresh(); auto& d = drives[1]; ptLayout(d);
+        for (uint8_t n = 1; n <= 16; ++n) setRecord(d, n, 100 * n);
+        selectPins(record); ptFacts(1, record, mode);
+    };
+    setup(3, 0);
+    refusedBeforeTx("@8 arm segment x0 relative 9\n", "record_unreachable"); // PIN3 does not exist with a trigger.
+    refusedBeforeTx("@8 arm segment x0 relative 2\n", "pin_levels");          // Levels select record 3.
+    refusedBeforeTx("@8 arm segment x0 absolute 3\n", "pt_absolute_unresolved");
+    command("@9 segment position 2 read\n"); finish(latest());
+    refusedBeforeTx("@8 arm segment x0 relative 3\n", "record_stale");        // The fresh read is of record 2.
+    for (const char* bad : {"@8 arm segment x0 relative 0\n", "@8 arm segment x0 relative 17\n", "@8 arm segment x0 sideways 3\n",
+                            "@8 arm segment x4 relative 3\n", "@8 arm segment x0 relative\n", "@8 arm segment x0 relative 3 group group\n"}) {
+        command(bad); contains("invalid_arguments");
+    }
+    // Unknown 0x0050: no DRIVE read in this binding.
+    fresh(); ptLayout(drives[1]); setRecord(drives[1], 1, 100);
+    for (const char* line : {"@2 read config\n", "@4 segment position 1 read\n", "@5 read state\n"}) { command(line); finish(latest()); }
+    for (uint8_t t = 0; t < 4; ++t)
+        command("@6 io qualification install 1 x" + std::to_string(t) + " " + std::to_string(drives[1].regs[0x0041 + t]) +
+            " 0 finite-move unknown triggers-inhibited\n");
+    refusedBeforeTx("@8 arm segment x0 relative 1\n", "position_mode_unknown");
+    // Selector facts are required on every PIN terminal, not only the trigger.
+    fresh(); ptLayout(drives[1]); setRecord(drives[1], 1, 100); ptFacts(1, 1, 0, "");
+    refusedBeforeTx("@8 arm segment x0 relative 1\n", "triggers_inhibited_required");
+    // Layout: PIN3 instead of PIN2, or X0 not 12.
+    fresh(); ptLayout(drives[1]); drives[1].regs[0x0044] = 17; setRecord(drives[1], 1, 100); ptFacts(1, 1);
+    refusedBeforeTx("@8 arm segment x0 relative 1\n", "selector_layout");
+    fresh(); ptLayout(drives[1]); drives[1].regs[0x0041] = 7; setRecord(drives[1], 1, 100); ptFacts(1, 1);
+    refusedBeforeTx("@8 arm segment x0 relative 1\n", "function_not_12");
+    // Trigger input already active at the arm.
+    setup(1, 0); drives[1].regs[0x0008] = 1; command("@9 read state\n"); finish(latest());
+    refusedBeforeTx("@8 arm segment x0 relative 1\n", "input_active");
+    // Execution rate policy: 2500 rpm at subdivision 1000 is over the 2000 rpm ceiling; storage admitted it.
+    fresh(); ptLayout(drives[1]); setRecord(drives[1], 1, 100, 2500); ptFacts(1, 1);
+    refusedBeforeTx("@8 arm segment x0 relative 1\n", "record_rate_ceiling");
+    fresh(); ptLayout(drives[1]); setRecord(drives[1], 1, 100, 0); ptFacts(1, 1);
+    refusedBeforeTx("@8 arm segment x0 relative 1\n", "record_speed_zero");
+    // Endpoint beyond the native range, and a negative target outside the promoted claim.
+    fresh(); ptLayout(drives[1]); setRecord(drives[1], 1, 0x0FFFFFFF); ptFacts(1, 1);
+    refusedBeforeTx("@8 arm segment x0 relative 1\n", "endpoint_outside_limits");
+    fresh(); ptLayout(drives[1]); setRecord(drives[1], 1, -200); ptFacts(1, 1);
+    refusedBeforeTx("@8 arm segment x0 relative 1\n", "record_sign_unqualified");
+    // Word order 1 and an unknown soft-limit state refuse.
+    fresh(); ptLayout(drives[1]); drives[1].regs[0x0019] = 1; setRecord(drives[1], 1, 100); ptFacts(1, 1);
+    refusedBeforeTx("@8 arm segment x0 relative 1\n", "word_order_unqualified");
+    fresh(); ptLayout(drives[1]); drives[1].regs[0x0018] = 1; setRecord(drives[1], 1, 100); ptFacts(1, 1);
+    refusedBeforeTx("@8 arm segment x0 relative 1\n", "soft_limit_state_unknown");
+    // A held trigger output refuses before any traffic.
+    setup(1, 0);
+    command("@10 bench on mosfet1 5000\n"); contains("\"ok\":true");
+    refusedBeforeTx("@8 arm segment x0 relative 1\n", "output_active");
+}
+void testPtTriggerChecks() {
+    fresh(); auto& d = drives[1]; ptLayout(d);
+    for (uint8_t n = 1; n <= 8; ++n) setRecord(d, n, 100 * n);
+    // A PIN level changed after the arm: the member row refuses, no ON, and the session stays armed.
+    selectPins(3); ptFacts(1, 3);
+    auto id = armPt("x0 relative 3");
+    command("@30 bench off relay1\n"); contains("\"ok\":true");
+    trigger(id, "mosfet1", 50);
+    assert(!session().admitted && !std::strcmp(session().decisionRow, "L4") && !bench.outputs[2].active && !d.starts);
+    assert(!std::strcmp(session().decisionReason, "PIN levels differ from the armed record"));
+    command("@31 disarm " + std::to_string(id) + "\n"); assert(releaseOperation(id));
+    // A non-member whose trigger terminal holds a start function: L5, no ON.
+    selectPins(3); drives[2].regs[0x0041] = 7; ptFacts(1, 3);
+    id = armPt("x0 relative 3");
+    trigger(id, "mosfet1", 50);
+    assert(!session().admitted && !std::strcmp(session().decisionRow, "L5") && session().decisionAddress == 2 && !d.starts);
+    command("@32 disarm " + std::to_string(id) + "\n"); assert(releaseOperation(id));
+    // A held selector on a terminal where a non-member holds a start function (13 here).
+    drives[2].regs[0x0041] = 1; drives[2].regs[0x0043] = 13; ptFacts(1, 3);
+    id = armPt("x0 relative 3");
+    trigger(id, "mosfet1", 50);
+    assert(!session().admitted && !std::strcmp(session().decisionReason, "an output is on at a terminal with a start function"));
+    assert(!d.starts && bench.outputs[0].active); // relay1 (PIN1) still held; no trigger ON.
+    command("@33 disarm " + std::to_string(id) + "\n"); assert(releaseOperation(id));
+    drives[2].regs[0x0043] = 3;
+    // A PIN hold that ends before the pulse plus its margin: refused before the
+    // ON, outputs left as they were, no write (the hold expires after the decision).
+    ptFacts(1, 3);
+    id = armPt("x0 relative 3");
+    bench.outputs[0].dueUs = hardware.time + 95000; // relay1 (PIN1) still on at the sample, hold ends in 95 ms.
+    const auto writes = count(isWrite); const auto ons = bench.onCalls; const auto offs = bench.offCalls;
+    trigger(id, "mosfet1", 50);
+    if (session().admitted || std::strcmp(session().decisionReason, "a PIN output's hold ends before the trigger pulse and its margin"))
+        std::fprintf(stderr, "hold check: admitted %d row %s reason %s\n", session().admitted, session().decisionRow, session().decisionReason);
+    assert(!session().admitted && !std::strcmp(session().decisionReason, "a PIN output's hold ends before the trigger pulse and its margin"));
+    assert(bench.onCalls == ons && bench.offCalls == offs && count(isWrite) == writes && !d.starts && !bench.outputs[2].active);
+    command("@34 disarm " + std::to_string(id) + "\n"); pump(200); assert(releaseOperation(id));
+    pump(20000); selectPins(3); // The shortened hold has ended; PIN1 on again for the next case.
+    // Completion between polls: one stopped sample shows the change; no RUNNING time is invented.
+    ptFacts(1, 3);
+    id = armPt("x0 relative 3 poll-ms 500");
+    replyDelay = nullptr;
+    trigger(id, "mosfet1", 50);
+    d.runningReads = 1; // The first sample after the edge already reads stopped.
+    done();
+    assert(result().outcome == Outcome::ATTRIBUTED && result().positionChange == 300 && !result().runningObserved);
+    assert(result().changeStartUs <= session().onUs && result().changeEndUs > session().onUs);
+    assert(releaseOperation(id));
+    // A second run after one edge: SECOND_START, never a retrigger.
+    ptFacts(1, 3);
+    id = armPt("x0 relative 3");
+    d.repeats = 1; d.ptRepeat = true;
+    trigger(id, "mosfet1", 1500);
+    done();
+    assert(result().outcome == Outcome::SECOND_START && result().further == ESS::InputStartFurther::SEEN);
+    assert(releaseOperation(id));
+}
+void testPtStopAndRecordWrites() {
+    fresh(); auto& d = drives[1]; ptLayout(d);
+    for (uint8_t n = 1; n <= 8; ++n) setRecord(d, n, 100 * n);
+    // Stop during a PT run: the stop request drops the selectors and the trigger first.
+    selectPins(6); ptFacts(1, 6);
+    auto id = armPt("x0 relative 6");
+    trigger(id, "mosfet1", 50);
+    d.runForever = true;
+    runUntil([] { return result().runningObserved; });
+    command("@50 stop fast\n"); contains("\"result\":\"accepted\"");
+    for (uint8_t b = 0; b < 3; ++b) assert(!bench.outputs[PIN_OUTPUT[b]].active);
+    assert(bench.outputs[1].offReason == BenchIo::OffReason::STOP && bench.outputs[3].offReason == BenchIo::OffReason::STOP);
+    done();
+    assert(result().outcome == Outcome::STOPPED && d.starts == 1);
+    assert(releaseOperation(id));
+    // A record write to the armed drive is refused by the reservation, with no frame.
+    selectPins(2); ptFacts(1, 2);
+    id = armPt("x0 relative 2");
+    const auto before = frames.size();
+    command("@51 segment position 2 set speed 61\n"); contains("\"ok\":false"); pump(200);
+    assert(count(isWrite, before) == 0 && session().phase == Phase::ARMED);
+    command("@52 disarm " + std::to_string(id) + "\n"); pump(200); assert(releaseOperation(id));
+    // A lost record-write ACK: the uncertain write invalidates the record read; the next arm refuses.
+    ptFacts(1, 2);
+    command("@53 io qualification install 1 x0 12 0 segment unknown triggers-inhibited\n");
+    command("@54 io qualification install 1 x1 14 0 segment unknown triggers-inhibited\n");
+    command("@55 io qualification install 1 x2 15 0 segment unknown triggers-inhibited\n");
+    command("@56 io qualification install 1 x3 16 0 segment unknown triggers-inhibited\n");
+    replyDelay = [](const std::vector<uint8_t>& f) -> uint32_t { return f[1] == 6 && word(f, 2) == 0x0068 ? 900000u : 0u; };
+    command("@57 segment position 2 set speed 61\n");
+    const auto writeId = latest();
+    finish(writeId);
+    replyDelay = nullptr;
+    pump(20000);
+    if (app->owner.needsRecovery() || uart.needsRecovery()) { command("@58 recover\n"); finish(latest()); pump(2000); }
+    // Fresh state and configuration again; the record read the arm needs is gone.
+    for (const char* line : {"@59 read config\n", "@60 driver read\n", "@61 read state\n"}) { command(line); finish(latest()); }
+    for (uint8_t t = 0; t < 4; ++t)
+        command("@6 io qualification install 1 x" + std::to_string(t) + " " + std::to_string(d.regs[0x0041 + t]) +
+            " 0 finite-move unknown triggers-inhibited\n");
+    refusedBeforeTx("@62 arm segment x0 relative 2\n", "record_stale");
+    // The promoted target setter (wired bench 13 W0a): one FC10 of the pair and a
+    // two-word readback at order 0; a negative target is outside the claim, zero TX.
+    for (uint8_t t = 0; t < 4; ++t)
+        command("@63 io qualification install 1 x" + std::to_string(t) + " " + std::to_string(d.regs[0x0041 + t]) +
+            " 0 segment unknown triggers-inhibited\n");
+    command("@64 segment position 2 read\n"); finish(latest());
+    auto mark = frames.size();
+    command("@65 segment position 2 set target -200\n"); contains("\"ok\":false"); pump(200);
+    assert(count(isWrite, mark) == 0);
+    command("@66 segment position 2 read\n"); finish(latest());
+    for (uint8_t t = 0; t < 4; ++t)
+        command("@67 io qualification install 1 x" + std::to_string(t) + " " + std::to_string(d.regs[0x0041 + t]) +
+            " 0 segment unknown triggers-inhibited\n");
+    mark = frames.size();
+    command("@68 segment position 2 set target 1200\n"); contains("\"ok\":true");
+    finish(latest());
+    assert(count([](const std::vector<uint8_t>& f) { return f[1] == 16 && word(f, 2) == 0x0066 && word(f, 4) == 2; }, mark) == 1);
+    assert(pair(d, 0x0066) == 1200 && count(isWrite, mark) == 1);
+}
+void testPtGroupMembers() {
+    fresh();
+    for (const auto address : {1, 2}) {
+        auto& d = drives[address]; ptLayout(d); d.regs[0x0050] = 0;
+        for (uint8_t n = 1; n <= 8; ++n) setRecord(d, n, (address == 1 ? 400 : 200) * n);
+    }
+    uint8_t list[2] = {1, 2}; uint32_t set = 0;
+    assert(declareGroup(list, 2, set));
+    runUntil([&] { return !groupOperation(*app, set)->result.pending; });
+    assert(groupOperation(*app, set)->result.ok);
+    selectPins(5);
+    uint32_t read = 0; assert(submitGroupStateRead(read));
+    runUntil([&] { return !groupOperation(*app, read)->result.pending; });
+    for (const char* line : {"@1 driver read 1\n", "@2 driver read 2\n", "@3 segment position 5 read 1\n", "@4 segment position 5 read 2\n"}) {
+        command(line); finish(latest());
+    }
+    for (const auto address : {1, 2})
+        for (uint8_t t = 0; t < 4; ++t)
+            command("@5 io qualification install member " + std::to_string(address) + " x" + std::to_string(t) + " " +
+                std::to_string(drives[address].regs[0x0041 + t]) + " 0 finite-move unknown triggers-inhibited\n");
+    command("@20 arm segment x0 relative 5 group\n");
+    if (!said("\"result\":\"accepted\"")) { std::fprintf(stderr, "group PT arm refused: %s\n", Serial.output.c_str()); assert(false); }
+    const auto id = session().operationId;
+    assert(session().count == 2 && session().members[0].recordTarget == 2000 && session().members[1].recordTarget == 1000);
+    trigger(id, "mosfet1", 50);
+    assert(!std::strcmp(session().rows[2].row, "M") && !std::strcmp(session().rows[3].row, "M"));
+    done();
+    assert(result(0).outcome == Outcome::ATTRIBUTED && result(0).positionChange == 2000);
+    assert(result(1).outcome == Outcome::ATTRIBUTED && result(1).positionChange == 1000);
+    assert(bench.onCalls == 2 && drives[1].starts == 1 && drives[2].starts == 1 && !count(isStart));
+}
 } // namespace
 
 int main() {
@@ -687,6 +985,11 @@ int main() {
     testAbsoluteAndAbsoluteBy();
     testGroupMembers();
     testAux1RingWrapIsNotLostEvidence();
+    testPtRecordsSelectedByPins();
+    testPtArmRefusalsBeforeTx();
+    testPtTriggerChecks();
+    testPtStopAndRecordWrites();
+    testPtGroupMembers();
     std::puts("input_start_app: PASS");
     return 0;
 }

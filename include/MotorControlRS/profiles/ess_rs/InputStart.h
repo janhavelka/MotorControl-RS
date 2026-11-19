@@ -112,7 +112,12 @@ struct InputStartPrerequisites {
     int64_t expectedDisplacement = 0;
     int32_t expectedEndpoint = 0;
     bool stagedKnown = false;
-    uint16_t stagedWords[5] = {}; ///< Checked 0x0021/5 readback the start relies on (evidence only).
+    /** Checked words the start relies on (evidence only). Function 7: the
+     * 0x0021/5 profile readback. Function 12: the armed PT record read in
+     * register order of its first five words, pulse words first (0x0060 +
+     * 6(n-1): pulse high, pulse low, speed, acceleration, deceleration), so
+     * index 0..1 is the target at word order 0. */
+    uint16_t stagedWords[5] = {};
     uint64_t maximumAgeUs = 0;    ///< Zero disables age expiry of the baseline.
 };
 struct InputStartOptions {
@@ -216,6 +221,10 @@ struct InputStartResult {
     uint32_t stopId = 0;
     bool positionKnown = false, expectedKnown = false, positionMatches = false;
     int64_t positionChange = 0, expectedChange = 0;
+    /** Bracket of the latest consumed sample (positionChange is from it): its
+     * request start and reply end. A host path guard compares the position
+     * with an expected path at these controller times (wired bench 13). */
+    uint64_t lastRequestUs = 0, lastReplyEndUs = 0;
     uint32_t samples = 0, lostSamples = 0, lateSamples = 0;
     uint32_t spacingMinUs = 0, spacingMedianUs = 0, spacingMaxUs = 0, spacingCount = 0;
     Status status;

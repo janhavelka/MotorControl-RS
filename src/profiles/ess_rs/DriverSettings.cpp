@@ -366,7 +366,8 @@ Status validateStoredTriggerPolicy(const ReadTarget& target, const DriverRequest
     if (((request.fields & (1u << 18)) && request.segmentSpeed != q.segmentSpeed) ||
         ((request.fields & (1u << 19)) && request.segmentAcceleration != q.segmentAcceleration) ||
         ((request.fields & (1u << 20)) && request.segmentDeceleration != q.segmentDeceleration) ||
-        ((request.fields & (1u << 21)) && request.segmentStartSpeed != q.segmentStartSpeed))
+        ((request.fields & (1u << 21)) && request.segmentStartSpeed != q.segmentStartSpeed) ||
+        ((request.fields & (1u << 22)) && request.segmentPulseTarget != q.segmentPulseTarget))
         return invalid(DriverError::TRIGGER_POLICY_REQUIRED, "qualified segment values differ from candidate");
     return Ok();
 }
@@ -653,8 +654,26 @@ Status prepareDriverSettings(DriverContext& output, const ReadTarget& target, ui
     if (single && requested(request, 0) > (request.group == DriverGroup::POSITION_START_SPEED ? 3000 : 11))
         return invalid(DriverError::INVALID_CANDIDATE, "invalid native position start speed or homing auxiliary choice");
     if (segment && (!request.segmentIndex || request.segmentIndex > 16)) return invalid(DriverError::SEGMENT_INDEX, "segment index must be 1..16");
-    if (segment && (request.fields & (1u << 22)))
-        return Status(Err::UNSUPPORTED, static_cast<int32_t>(DriverError::PAIR_WRITE_UNSUPPORTED), "stored pulse pair has no reviewed FC10 window");
+    // Stored PT target (wired bench 13 W0a, D10): alone, one FC10 of its pair at
+    // word order 0, non-negative (the sign witness did not run).
+    const bool ptTarget = segment && (request.fields & (1u << 22));
+    if (ptTarget) {
+        if (request.group != DriverGroup::POSITION_SEGMENT || request.fields != (1u << 22))
+            return invalid(DriverError::INVALID_CANDIDATE, "a stored PT target is written alone");
+        if (request.segmentPulseTarget < 0)
+            return Status(Err::UNSUPPORTED, static_cast<int32_t>(DriverError::SEGMENT_SIGN_UNRESOLVED),
+                "negative PT targets are not promoted (sign witness not run)");
+        if (request.segmentPulseTarget > DRIVER_LIMIT_MAGNITUDE)
+            return invalid(DriverError::INVALID_CANDIDATE, "PT target outside 0..0x0FFFFFFF");
+        const RegisterDescriptor* pulses = positionSegmentRegister(request.segmentIndex, PositionSegmentField::PULSES);
+        if (!pulses) return invalid(DriverError::SEGMENT_INDEX, "segment index must be 1..16");
+        uint16_t words[2] = {};
+        encodeInt32(static_cast<int32_t>(request.segmentPulseTarget), WordOrder::HIGH_WORD_FIRST, words, 2);
+        const Status wire = validateWriteMultipleRegistersRequest(target.address, pulses->address, words, 2);
+        if (!wire) return wire;
+        const Status readback = validateReadRegistersRequest(target.address, pulses->address, 2);
+        if (!readback) return readback;
+    }
     if (segment) {
         const int32_t speed = request.group == DriverGroup::SEGMENT_START_SPEED ? request.segmentStartSpeed : request.segmentSpeed;
         const uint32_t speedBit = request.group == DriverGroup::SEGMENT_START_SPEED ? 1u << 21 : 1u << 18;
@@ -725,6 +744,9 @@ Status prepareDriverSettings(DriverContext& output, const ReadTarget& target, ui
         const Status trigger = validateStoredTriggerPolicy(target, request, prerequisites, nowUs);
         if (!trigger) return trigger;
     }
+    if (ptTarget && (!prerequisites.wordOrderKnown || prerequisites.wordOrder != WordOrder::HIGH_WORD_FIRST))
+        return Status(Err::UNSUPPORTED, static_cast<int32_t>(DriverError::PAIR_WRITE_UNSUPPORTED),
+            "stored PT targets are measured at word order 0 only");
     if (control || tuning) {
         const Status effects = validateModelAndEffects(target, request, prerequisites, nowUs);
         if (!effects) return effects;
@@ -783,6 +805,17 @@ Status prepareDriverSettings(DriverContext& output, const ReadTarget& target, ui
         progress.previousWords[0] = before[0]; progress.previousWords[1] = before[1];
         encodeInt32(static_cast<int32_t>(i ? request.negativeLimit : request.positiveLimit), WordOrder::HIGH_WORD_FIRST,
                     progress.requestedWords, 2);
+        progress.previous = progress.previousWords[0]; progress.requested = progress.requestedWords[0];
+    }
+    // A stored PT target uses the free segment slot 3 (fields 0..2 are the scalars).
+    if (ptTarget) {
+        DriverProgress& progress = output.progress[3];
+        progress = DriverProgress();
+        progress.field = DriverField::SEGMENT_PULSE_TARGET;
+        progress.reg = positionSegmentRegister(request.segmentIndex, PositionSegmentField::PULSES)->address;
+        progress.pair = true; progress.selected = true;
+        progress.previousWords[0] = previous.raw[3]; progress.previousWords[1] = previous.raw[4];
+        encodeInt32(static_cast<int32_t>(request.segmentPulseTarget), WordOrder::HIGH_WORD_FIRST, progress.requestedWords, 2);
         progress.previous = progress.previousWords[0]; progress.requested = progress.requestedWords[0];
     }
     // Only an explicit OFF request can precede dependent changes. Never invent one.

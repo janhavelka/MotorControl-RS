@@ -4,6 +4,37 @@
 
 ### Added
 
+- PT records started by input (wired bench 13). `arm segment xN relative
+  RECORD [group] [poll-ms N] [window-ms N]` arms a stored PT record 1-8 with
+  X0..X3 holding the trigger 12 and PIN0-PIN2 (14-16); it sends no frame and
+  refuses with one reason per check (`function_not_12`, `selector_layout`,
+  `selector_polarity`, `position_mode_unknown|mismatch`,
+  `triggers_inhibited_required`, `input_active`, `pin_levels`, `record_stale`,
+  `word_order_unqualified`, `record_sign_unqualified`, `record_speed_zero`,
+  `record_rate_ceiling`, `endpoint_outside_limits`, `soft_limit_state_unknown`,
+  `soft_limit_endpoint`, ...). Records 9-16 refuse `record_unreachable`. The
+  execution rate ceiling is the position speed limit min(2000, 3,000,000 /
+  subdivision) rpm; storage still admits 0..3000. `absolute` refuses
+  `pt_absolute_unresolved`: with `0x0050` = 1 records ran as displacements
+  on `0x4EEA`/`0x0029` (P2). `group` arms one record for every declared member,
+  each with its own per-member record read. The trigger admits held selector
+  outputs (never the trigger's, no start function 7-13 on their terminals) and
+  checks the armed PIN levels and record read in row M. Member views add
+  `record`, `record_operation_id`, `record_target`, `record_words` and
+  `selector_terminals`; caps add `segment_arm`
+  `pt_records_1_8_three_selectors`, and `input_start_kinds`/`input_start_functions`
+  list `segment`/12. Measured on drives 1, 2 and 4: records 1-8
+  each moved their own target, singly and as a three-drive group.
+- `InputStartResult::lastRequestUs`/`lastReplyEndUs`: the bracket of the
+  latest consumed sample (console `last_request_us`, `last_reply_us`), for a
+  host path guard.
+- Harness `pt-segments` scenario (`scripts/bench_pt.py`: W0a, P1, P2, P2r, P3,
+  P5, P8, P9, P10, P12) with the PIN helper `select_record`, the
+  selection-consequence check over all sixteen records, the W0 path guard,
+  evidence headroom and the prepared stop when a trial raises. The interlock
+  adds the named selection member (row P) and held PIN outputs
+  (`held_selection_problem`); the restoration planner uses the PT target setter
+  from image level 13.
 - Switch homing with host-driven switches (wired bench 12). Moving home methods
   admit every stored auxiliary choice 0-11 with a zero or a stated offset
   (`offset` fact); `homeEndRule` gives the end coordinate (offset, zero,
@@ -183,6 +214,20 @@
   against the validators.
 
 ### Changed
+
+- Stored PT target pairs promoted (wired bench 13 W0a, D10): the sixteen
+  windows `0x0060 + 6(n-1)/2` are reviewed FC10 windows, and
+  `SEGMENT_PULSE_TARGET` (`segment position N set target VALUE`) writes the
+  target alone, one FC10 and a two-word readback, 0..`0x0FFFFFFF` at `0x0019`
+  known 0 (`DriverPrerequisites::wordOrderKnown`/`wordOrder`); negative targets
+  stay refused (sign unmeasured). Caps report `segment_pulse_writes` true and
+  `segment_pulse_claim` `order_0_non_negative`. Removed with the last
+  experiment windows: the ledger `experiment_windows` key (the generator now
+  refuses it), `Detail::canWriteExperiment`, the codec
+  `validateExperimentWriteRequest`/`buildExperimentWrite`/`parseExperimentWrite`/`isExperimentWindow`,
+  `Rtu::essExperimentValidator()`, the `MOTORCONTROLRS_WB10_EXPERIMENT` build
+  flag, `PairExperimentApp.h` and the `PAIR_EXPERIMENT` parameter-write kind.
+  `driver experiment ...` is refused `unsupported` before TX on every image.
 
 - Soft-limit candidates no longer reject with `PAIR_WRITE_UNSUPPORTED` at word
   order 0 (wired bench 10); order 1 still does. The home qualification refusal

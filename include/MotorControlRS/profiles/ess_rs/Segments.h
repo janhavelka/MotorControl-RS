@@ -29,7 +29,8 @@ Status prepareSegmentRead(DriverContext&, const ReadTarget&, uint32_t operationI
     uint32_t configurationGeneration, uint64_t nowUs, uint64_t deadlineUs,
     SegmentKind, uint8_t index) noexcept;
 /** Candidate selects SEGMENT_* fields in a matching segment DriverGroup.
- * Pulse writes always report unsupported before any other candidate field.
+ * A stored PT target (SEGMENT_PULSE_TARGET) is written alone as one FC10 of its
+ * pair at word order 0, non-negative only (wired bench 13 W0a; DriverSettings.h).
  * Native nonnegative speed/time words are supported; negative PV/start speed
  * encoding remains unresolved. External-trigger inhibition and exact stored
  * baseline must be independently qualified for a stopped-state update. */

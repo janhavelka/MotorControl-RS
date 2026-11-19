@@ -53,8 +53,12 @@ class WriteWindowValidation(unittest.TestCase):
             catalogue.validate(data, catalogue.expand(data))
 
     def test_exact_source_windows(self):
+        # Four documented windows, the soft-limit pairs (wired bench 10) and the
+        # sixteen stored PT target pairs (wired bench 13 W0a), all D10.
+        pt_targets = {("0x%04X" % (0x0060 + 6 * n), 2) for n in range(16)}
         self.assertEqual({(w["start"], w["count"]) for w in SOURCE["write_multiple_windows"]},
-                         {("0x0024", 2), ("0x0021", 5), ("0x001D", 3), ("0x0031", 6), ("0x0037", 2), ("0x0039", 2)})
+                         {("0x0024", 2), ("0x0021", 5), ("0x001D", 3), ("0x0031", 6), ("0x0037", 2), ("0x0039", 2)} |
+                         pt_targets)
 
     def test_hexadecimal_address_is_never_emitted_as_octal(self):
         data = copy.deepcopy(SOURCE)
@@ -89,7 +93,8 @@ class WriteWindowValidation(unittest.TestCase):
                 self.rejected(lambda d: d["write_multiple_windows"][0].update(start=start, count=count))
 
     def test_no_pair_splitting(self):
-        for start, count in (("0x0024", 1), ("0x0025", 1), ("0x0021", 4), ("0x0031", 5)):
+        for start, count in (("0x0024", 1), ("0x0025", 1), ("0x0021", 4), ("0x0031", 5),
+                             ("0x0060", 1), ("0x0061", 1), ("0x0061", 2)):
             with self.subTest(start=start, count=count):
                 self.rejected(lambda d: d["write_multiple_windows"][0].update(start=start, count=count))
 
@@ -104,36 +109,19 @@ class WriteWindowValidation(unittest.TestCase):
             with self.subTest(change=change):
                 self.rejected(lambda d: d["write_multiple_windows"][0].update(change))
 
-    def test_experiment_windows_are_separate(self):
-        # Wired bench 10 (D4): two soft-limit pairs and sixteen PT target pairs,
-        # emitted as a separate table; production windows unchanged.
-        experiments = {(w["start"], w["count"]) for w in SOURCE.get("experiment_windows", [])}
-        self.assertFalse(experiments & {(w["start"], w["count"]) for w in SOURCE["write_multiple_windows"]})
+    def test_pt_target_pairs_are_production_windows(self):
+        # Wired bench 13 W0a promoted the PT pairs; no experiment table remains.
         rows = catalogue.expand(SOURCE)
         header = catalogue.access_header(SOURCE, rows)
-        self.assertIn("canWriteExperiment", header)
+        self.assertNotIn("Experiment", header)
         production = header.split("canWriteMultiple")[1].split("hasWriteMultipleCount")[0]
-        for start, _ in experiments:
-            self.assertNotIn("start == 0x%04X" % int(start, 16), production)
-            self.assertIn("(start == 0x%04X && count == 2)" % int(start, 16), header.split("canWriteExperiment")[1])
+        for n in range(16):
+            self.assertIn("(start == 0x%04X && count == 2)" % (0x0060 + 6 * n), production)
+            self.assertNotIn("(start == 0x%04X && count == 6)" % (0x0060 + 6 * n), production)
 
-    def test_experiment_window_rules(self):
-        def change(**fields):
-            return lambda d: d["experiment_windows"][0].update(fields)
-        for bad in (change(start="0x0024"),                 # A reviewed window is not an experiment.
-                    change(start="0x0035"),                 # Home offset alone: only 0x0031/6 exists.
-                    change(count=4),                        # Combined limit span.
-                    change(start="0x0038"),                 # Splits a pair.
-                    change(start="0x0060", count=6),        # Record span over the reserved word.
-                    change(start="0x0011", count=1),        # Not a pair.
-                    change(decision="D10"), change(prompt=""), change(date="19 Nov"),
-                    change(family="other"), change(pages=[]), change(evidence=" "),
-                    change(partial_application="ATOMIC")):
-            with self.subTest():
-                self.rejected(bad)
-        self.rejected(lambda d: d["experiment_windows"].append(dict(d["experiment_windows"][0])))
-        self.rejected(lambda d: d["experiment_windows"].append(dict(d["write_multiple_windows"][0],
-            family="pt_target", decision="D4", prompt="x", date="2026-11-19")))
+    def test_experiment_key_refused(self):
+        # A new experiment window needs a new decision and its own builder.
+        self.rejected(lambda d: d.update(experiment_windows=[]))
 
     def test_missing_pair_disposition(self):
         self.rejected(lambda d: next(r for r in d["registers"] if r["name"] == "HOMING_OFFSET").pop("write_constraint"))

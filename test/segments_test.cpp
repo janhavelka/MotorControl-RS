@@ -61,7 +61,8 @@ E::DriverPrerequisites prerequisites(const E::DriverRequest& r) {
     p.stationaryQualified=true; p.stationaryTarget=target(); p.rawMotion=1;
     p.stationaryEarliestUs=110; p.stationaryLatestUs=120; p.maxAgeUs=10000;
     p.externalTriggerInhibitedQualified=true; p.triggerTarget=target(); p.triggerConfigurationGeneration=17;
-    p.triggerEarliestUs=111; p.triggerLatestUs=121; p.qualifiedSegment=r; return p;
+    p.triggerEarliestUs=111; p.triggerLatestUs=121; p.qualifiedSegment=r;
+    p.wordOrderKnown=true; p.wordOrder=E::WordOrder::HIGH_WORD_FIRST; return p;
 }
 E::DriverContext update(const E::DriverRequest& r,bool echo=false,uint64_t deadline=9000) {
     auto p=prerequisites(r); p.allowEchoReadback=echo;
@@ -96,7 +97,9 @@ void layouts() {
                 assert(!E::validateWriteSingleRegisterRequest(1,w.reg,0));
                 assert(!E::validateWriteSingleRegisterRequest(1,w.reg+1,0));
                 const uint16_t pair[]={1,2};
-                assert(!E::validateWriteMultipleRegistersRequest(1,w.reg,pair,2));
+                // Wired bench 13 W0a promoted the whole pair as one FC10 window (D10); never a half or the reserved word.
+                assert(E::validateWriteMultipleRegistersRequest(1,w.reg,pair,2));
+                assert(!E::validateWriteMultipleRegistersRequest(1,w.reg+1,pair,2));
             }
         }
     }
@@ -138,7 +141,8 @@ void rangesAndPolicies() {
             p=prerequisites(r); p.rawAlarm=1; reject(r,p);
         }
     }
-    auto r=request(); r.fields|=field(E::DriverField::SEGMENT_PULSE_TARGET); reject(r,prerequisites(r),Err::UNSUPPORTED);
+    auto r=request(); r.fields|=field(E::DriverField::SEGMENT_PULSE_TARGET); r.segmentPulseTarget=100;
+    reject(r,prerequisites(r)); // A PT target is written alone.
     r=request(); r.fields|=field(E::DriverField::CUSTOM_OUTPUT); reject(r,prerequisites(r));
     r=request(); r.fields|=field(E::DriverField::SEGMENT_ACCELERATION); r.segmentAcceleration=2001; reject(r,prerequisites(r));
     r=request(); r.fields|=field(E::DriverField::SEGMENT_DECELERATION); r.segmentDeceleration=2001; reject(r,prerequisites(r));
@@ -207,7 +211,7 @@ void admissionPrecedence() {
     p.stationaryQualified = false; p.externalTriggerInhibitedQualified = false;
     refuse(Err::INVALID_CONFIG, E::DriverError::SEGMENT_INDEX, "segment index must be 1..16");
     r.segmentIndex = 1;
-    refuse(Err::UNSUPPORTED, E::DriverError::PAIR_WRITE_UNSUPPORTED, "stored pulse pair has no reviewed FC10 window");
+    refuse(Err::INVALID_CONFIG, E::DriverError::INVALID_CANDIDATE, "a stored PT target is written alone");
     r.fields &= ~field(E::DriverField::SEGMENT_PULSE_TARGET);
     refuse(Err::INVALID_CONFIG, E::DriverError::INVALID_CANDIDATE, "PT speed is nonnegative");
     r = request();
@@ -216,6 +220,53 @@ void admissionPrecedence() {
     refuse(Err::INVALID_CONFIG, E::DriverError::TRIGGER_POLICY_REQUIRED, "fresh exact external-trigger inhibition policy required");
     p.externalTriggerInhibitedQualified = true;
     refuse(Err::INVALID_CONFIG, E::DriverError::TRIGGER_POLICY_REQUIRED, "qualified segment values differ from candidate");
+}
+// Wired bench 13 W0a (D10): the stored PT target is one FC10 of its pair at word
+// order 0 then a two-word readback; only non-negative targets (no sign witness).
+E::DriverRequest targetRequest(int64_t value, uint8_t index = 3) {
+    E::DriverRequest r; r.group = E::DriverGroup::POSITION_SEGMENT; r.segmentIndex = index; r.configurationGeneration = 17;
+    r.fields = field(E::DriverField::SEGMENT_PULSE_TARGET); r.segmentPulseTarget = value; return r;
+}
+void ptTargets() {
+    // Record 3 = 0x006C: 01 10 00 6C 00 02 04 00 01 86 A0 + CRC (100000 = 0x0001/0x86A0, p75).
+    auto r = targetRequest(100000);
+    auto c = update(r, true);
+    auto w = work(c);
+    assert(w.write && w.function == 16 && w.reg == 0x006C && w.count == 2 && w.length == 13);
+    std::vector<uint8_t> expected = {1, 0x10, 0x00, 0x6C, 0x00, 0x02, 0x04, 0x00, 0x01, 0x86, 0xA0}; crc(expected);
+    assert(std::vector<uint8_t>(w.bytes, w.bytes + w.length) == expected);
+    std::vector<uint8_t> ackFrame = {1, 0x10, 0x00, 0x6C, 0x00, 0x02}; crc(ackFrame);
+    auto e = frame(c, ackFrame, c.servicedUs + 2); e.transport.txAccepted = 13;
+    assert(E::advanceDriver(c, e, c.servicedUs + 4) && c.state == ReadState::ACTIVE);
+    w = work(c); assert(!w.write && w.reg == 0x006C && w.count == 2);
+    supply(c, reply({0x0001, 0x86A0}));
+    assert(c.state == ReadState::SUCCEEDED && c.progress[3].readbackWords[0] == 1 && c.progress[3].readbackWords[1] == 0x86A0);
+    assert(c.progress[3].previousWords[0] == 0x1234 && c.progress[3].previousWords[1] == 0x5678);
+    assert(c.effects == field(E::DriverField::SEGMENT_PULSE_TARGET));
+    // A readback with swapped words is a mismatch.
+    c = update(r, true); e = frame(c, ackFrame, c.servicedUs + 2); e.transport.txAccepted = 13;
+    assert(E::advanceDriver(c, e, c.servicedUs + 4)); supply(c, reply({0x86A0, 0x0001}));
+    assert(c.outcome == E::DriverOutcome::READBACK_MISMATCH && c.uncertain);
+    // Bounds of the promoted claim: 0 and 0x0FFFFFFF admitted, above refused, negative unsupported.
+    for (int64_t value : {int64_t(0), int64_t(E::DRIVER_LIMIT_MAGNITUDE)}) { auto ok = update(targetRequest(value, 16)); (void)ok; }
+    reject(targetRequest(int64_t(E::DRIVER_LIMIT_MAGNITUDE) + 1), prerequisites(targetRequest(1)));
+    reject(targetRequest(-200), prerequisites(targetRequest(-200)), Err::UNSUPPORTED);
+    // Word order 1 or unknown: refused before TX; order 1 is never promoted.
+    auto p = prerequisites(r); p.wordOrder = E::WordOrder::LOW_WORD_FIRST; reject(r, p, Err::UNSUPPORTED);
+    p = prerequisites(r); p.wordOrderKnown = false; reject(r, p, Err::UNSUPPORTED);
+    // Still the segment trigger policy: no inhibition, no write.
+    p = prerequisites(r); p.externalTriggerInhibitedQualified = false; reject(r, p);
+    // The qualified candidate must be this target: qualifying A never admits B.
+    p = prerequisites(r); p.qualifiedSegment.segmentPulseTarget = 100001;
+    {
+        E::DriverContext c; c.operationId = 999; Saved<E::DriverContext> saved(c);
+        const auto status = E::prepareSegmentSettings(c, target(), 12, r, p, 200, 9000);
+        assert(!status && status.detail == static_cast<int32_t>(E::DriverError::TRIGGER_POLICY_REQUIRED));
+        saved.check(c);
+        E::PreparedDriver none; assert(!E::nextDriver(c, 200, none)); // An empty context yields no transaction.
+    }
+    // Never a speed record or the start-speed record.
+    auto other = targetRequest(100); other.group = E::DriverGroup::SPEED_SEGMENT; reject(other, prerequisites(other));
 }
 void readFailuresAndLifetime() {
     auto c=read(); auto b=reply({0x1234,0x5678,0xFFFF,50,50}); supply(c,b); b.assign(b.size(),0);
@@ -246,4 +297,5 @@ static void testOptionalAgePolicy() {
     assert(!E::prepareSegmentSettings(c, target(), 12, r, p, 100000, 110000)); saved.check(c);
 }
 int main() {
+    ptTargets();
     testOptionalAgePolicy(); admissionPrecedence(); layouts(); rangesAndPolicies(); progressAndFailure(); readFailuresAndLifetime(); }

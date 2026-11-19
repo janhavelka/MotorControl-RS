@@ -476,6 +476,18 @@ after the line-isolation reads; `arm inspect ID` reports the attribution;
 drive. `release ID` frees a finished session. Prerequisites and outcomes are in
 [input-started motion](ess_input_start.md).
 
+A stored PT record (wired bench 13) needs X0 = 12 and X1-X3 = PIN0-PIN2 (14,
+15, 16) on the armed drives. Set the PIN levels first with `bench on OUTPUT
+HOLD_MS` on the selector outputs (a hold that covers the run; check every
+drive on those lines first), `read state` to see them, read the record with `segment
+position N read` and `driver read` for `0x0050`, then `arm segment x0 relative
+3` (records 1-8; add `group` for every declared member) and `arm trigger ID
+mosfet1 50`. Keep the selector outputs on until the drives stop; `arm trigger`
+admits them, but never the trigger output. `arm segment ... absolute` is
+refused (`pt_absolute_unresolved`). Reasons and reply fields are in the
+[CLI contract](cli_contract.md#pt-records-wired-bench-13); the selection,
+timing and rate rules are in [segments](ess_segments.md#pt-arm-wired-bench-13).
+
 ## Automation
 
 Prefix a command with `@` and a nonzero decimal ID to receive the existing JSONL

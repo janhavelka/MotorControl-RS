@@ -9,8 +9,11 @@ namespace MotorControlRSExample { namespace Probe {
 /** Input-start route (wired bench 08): arm a host observation session, pulse one
  * owned bench output once, observe and attribute, disarm. Console `arm`/`disarm`,
  * the programmatic API (ProbeApp.h) and the Python harness call one route.
- * Function 7 (position start) is delivered; home (11), PT (12) and PV (13)
- * staging refuse before any traffic until prompts 12, 13 and 14. */
+ * Function 7 (position start) and function 12 (PT record, wired bench 13) are
+ * delivered; home (11) and PV (13) staging refuse before any traffic until
+ * prompts 12 and 14. A PT arm writes nothing: the record is stored beforehand
+ * through the segment setters and the PIN selectors are held by their own
+ * bench outputs. */
 constexpr uint8_t INPUT_START_MEMBERS = 4; ///< Drives on one fixture line (FIXTURE_WIRING_CAPACITY).
 /// Shortest trigger pulse. Wired bench 09 (A3, drive 4, input filter 2): 10 ms started
 /// every trial (10..200 ms, 3/3 each), 5 ms none; 20 ms keeps a 10 ms margin.
@@ -20,6 +23,20 @@ constexpr uint32_t INPUT_START_MIN_POLL_MS = 20, INPUT_START_MAX_POLL_MS = 500, 
 constexpr uint32_t INPUT_START_MIN_WINDOW_MS = 100, INPUT_START_MAX_WINDOW_MS = 30000, INPUT_START_DEFAULT_WINDOW_MS = 10000;
 /// D14 backstop: every interlock read is at most this old at the ON.
 constexpr uint32_t INPUT_START_MAX_READ_AGE_MS = 1000;
+/** PT records a four-input drive can select: one terminal is the trigger, three
+ * carry PIN0-PIN2, so record = PIN2*4 + PIN1*2 + PIN0 + 1 reaches 1..8 (function
+ * manual p22-23 table and notice). Records 9-16 need PIN3 and refuse. */
+constexpr uint8_t INPUT_START_PT_SELECTABLE = 8;
+constexpr uint8_t INPUT_START_PT_SELECTORS = 3; ///< PIN0..PIN2, functions 14..16.
+/** A PT trigger needs every PIN output the armed record holds on to stay on for
+ * the trigger pulse plus this margin: the p23 rule (PIN levels valid 5 ms after
+ * the trigger) plus the input delay up to 32.4 ms at filter 2 (wired bench 05)
+ * and relay bounce, rounded up as the harness settle (prompt 13 Implement 5). */
+constexpr uint32_t INPUT_START_PT_PIN_HOLD_MARGIN_MS = 50;
+/** Stored PT target claim promoted by wired bench 13's W0 witness: word order 0
+ * (0x0019 = 0, high word at the lower address) and non-negative targets. A
+ * negative target (W0b sign witness not run) refuses the arm. */
+constexpr bool INPUT_START_PT_SIGNED_TARGETS = false;
 
 enum class InputStartKind : uint8_t { POSITION, HOME, SEGMENT, VELOCITY };
 /// 0x0050 the request needs: RELATIVE 0, ABSOLUTE 1 (absolute and absolute-by).
@@ -32,7 +49,7 @@ enum class InputSourceState : uint8_t {
 };
 struct InputStartMember {
     uint8_t address = 0;
-    MotorControlRS::MoveRequest move; ///< Native steps; relative, or absolute target.
+    MotorControlRS::MoveRequest move; ///< POSITION: native steps; relative, or absolute target. Unused for SEGMENT.
 };
 /** Programmatic arm request. The selected axis: group false, one member with
  * the selected address. A group: every declared member, in any order. */
@@ -41,6 +58,7 @@ struct InputStartRequest {
     uint8_t terminal = 0; ///< X0..X3.
     InputStartMode mode = InputStartMode::RELATIVE;
     bool group = false;
+    uint8_t record = 0; ///< SEGMENT: the PT record 1..16 every member selects (one shared selector state).
     uint8_t count = 0;
     InputStartMember members[INPUT_START_MEMBERS];
     uint32_t pollMs = INPUT_START_DEFAULT_POLL_MS, windowMs = INPUT_START_DEFAULT_WINDOW_MS;
@@ -74,6 +92,15 @@ struct InputStartMemberView {
     uint64_t stopServiceDelayUs = 0; ///< Stop admission to its first accepted TX byte, while sampling.
     bool assignmentKnown = false;
     uint16_t assignment = 0; ///< Function on the terminal at the latest check; disarm never changes it.
+    /** SEGMENT: the armed record, its checked read (speed, acceleration,
+     * deceleration, pulse words in register order), the read's operation, the
+     * decoded target and the terminal of PIN0..PIN2. expectedEndpoint is the
+     * target (absolute) or the baseline plus the pulses (relative). */
+    uint8_t record = 0;
+    uint16_t recordWords[5] = {};
+    uint32_t recordOperationId = 0;
+    int32_t recordTarget = 0;
+    uint8_t selectorTerminals[INPUT_START_PT_SELECTORS] = {};
     bool resultKnown = false;
     MotorControlRS::ESS_RS::InputStartResult result;
 };
@@ -120,6 +147,7 @@ struct InputStartCommand {
     uint8_t terminal = 0;
     int64_t value = 0;
     uint16_t speedRpm = 0;
+    uint8_t record = 0; ///< SEGMENT arm: PT record 1..16.
     bool group = false;
     uint32_t pollMs = INPUT_START_DEFAULT_POLL_MS, windowMs = INPUT_START_DEFAULT_WINDOW_MS;
     uint8_t output = 0;

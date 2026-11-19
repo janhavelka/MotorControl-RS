@@ -406,23 +406,33 @@ def input_start_arguments(command: str, tokens: tuple[str, ...]) -> dict:
                 tokens[1] not in BENCH_OUTPUTS or not re.fullmatch(r"[0-9]{1,10}", tokens[2]) or int(tokens[2]) > 0xFFFFFFFF):
             raise ValueError("arm-trigger requires ID OUTPUT WIDTH_MS")
         return {"action": "trigger", "operation_id": int(tokens[0]), "output": tokens[1], "width_ms": int(tokens[2])}
-    if command != "arm-position":
+    if command == "arm-segment":
+        # Wired bench 13: arm segment xN relative|absolute RECORD [group] [poll-ms N] [window-ms N].
+        if (len(tokens) < 3 or tokens[0] not in ("x0", "x1", "x2", "x3") or tokens[1] not in ("relative", "absolute") or
+                not re.fullmatch(r"[1-9][0-9]?", tokens[2]) or int(tokens[2]) > 16):
+            raise ValueError("arm-segment requires xN relative|absolute RECORD (1..16)")
+        out = {"action": "arm", "kind": "segment", "terminal": tokens[0], "form": tokens[1], "record": int(tokens[2]),
+               "group": False, "poll_ms": 50, "window_ms": 10000}
+        rest = list(tokens[3:])
+    elif command != "arm-position":
         if len(tokens) != 1 or tokens[0] not in ("x0", "x1", "x2", "x3"):
             raise ValueError(command + " requires one terminal")
         return {"action": "arm", "kind": command[4:], "terminal": tokens[0]}
-    if (len(tokens) < 4 or tokens[0] not in ("x0", "x1", "x2", "x3") or tokens[1] not in ("relative", "absolute", "absolute-by")
-            or not re.fullmatch(r"-?[0-9]{1,9}", tokens[2]) or abs(int(tokens[2])) > 0x0FFFFFFF or
-            not re.fullmatch(r"[1-9][0-9]{0,3}", tokens[3]) or int(tokens[3]) > 3000):
-        raise ValueError("arm-position requires xN relative|absolute|absolute-by VALUE RPM")
-    out = {"action": "arm", "kind": "position", "terminal": tokens[0], "form": tokens[1], "value": int(tokens[2]),
-           "rpm": int(tokens[3]), "group": False, "poll_ms": 50, "window_ms": 10000}
-    rest, seen = list(tokens[4:]), set()
+    else:
+        if (len(tokens) < 4 or tokens[0] not in ("x0", "x1", "x2", "x3") or tokens[1] not in ("relative", "absolute", "absolute-by")
+                or not re.fullmatch(r"-?[0-9]{1,9}", tokens[2]) or abs(int(tokens[2])) > 0x0FFFFFFF or
+                not re.fullmatch(r"[1-9][0-9]{0,3}", tokens[3]) or int(tokens[3]) > 3000):
+            raise ValueError("arm-position requires xN relative|absolute|absolute-by VALUE RPM")
+        out = {"action": "arm", "kind": "position", "terminal": tokens[0], "form": tokens[1], "value": int(tokens[2]),
+               "rpm": int(tokens[3]), "group": False, "poll_ms": 50, "window_ms": 10000}
+        rest = list(tokens[4:])
+    seen = set()
     while rest:
         token = rest.pop(0)
         if token in seen:
             raise ValueError("duplicate " + token)
         seen.add(token)
-        if token == "group" and tokens[1] != "absolute":
+        if token == "group" and (out["kind"] == "segment" or tokens[1] != "absolute"):
             out["group"] = True
         elif token in ("poll-ms", "window-ms") and rest and re.fullmatch(r"[0-9]{1,5}", rest[0]):
             low, high = INPUT_START_POLL_MS if token == "poll-ms" else INPUT_START_WINDOW_MS
@@ -714,6 +724,7 @@ def position_interrupt_arguments(tokens: tuple[str, ...]) -> int:
 DRIVER_FIELDS = ("direction", "subdivision", "word-order", "soft-limit", "over-limit", "interruption", "position-mode", "positive-limit", "negative-limit")
 DRIVER_REGISTERS = (0x10, 0x11, 0x19, 0x18, 0x17, 0x51, 0x50)
 PAIR_FIELDS = (128, 256)  # Soft-limit pairs 0x0037/2 and 0x0039/2 (wired bench 10, D10).
+PT_TARGET_FIELD = 1 << 22  # Stored PT target pair 0x0060 + 6(n-1)/2 (wired bench 13 W0a, D10): alone, order 0, >= 0.
 IO_FIELDS = ("input-polarity", "x0", "x1", "x2", "x3", "output-polarity", "y0", "y1", "custom")
 IO_REGISTERS = (0x40, 0x41, 0x42, 0x43, 0x44, 0x4B, 0x4C, 0x4D, 0x4F)
 CONTROL_FIELDS = ("algorithm", "encoder-resolution", "maximum-effective-current", "closed-maximum-current", "closed-base-current", "open-maximum-current", "lock-current", "lock-delay")
@@ -1251,8 +1262,9 @@ class Console:
             record_index = item["segment_index"]
             if group == "position_segment":
                 base = 0x60 + 6 * (record_index - 1)
-                names, registers, windows = ("speed", "acceleration", "deceleration"), (base + 2, base + 3, base + 4), ((base, 5),)
-                masks = (1 << 18, 1 << 19, 1 << 20)
+                names, registers, windows = ("speed", "acceleration", "deceleration", "target"), \
+                    (base + 2, base + 3, base + 4, base), ((base, 5),)
+                masks = (1 << 18, 1 << 19, 1 << 20, PT_TARGET_FIELD)
             elif group == "speed_segment":
                 base = 0xC0 + 3 * (record_index - 1)
                 names, registers, windows = ("speed", "acceleration", "deceleration"), (base, base + 1, base + 2), ((base, 3),)
@@ -1261,6 +1273,7 @@ class Console:
                 base = 0x130 + record_index - 1
                 names, registers, windows, masks = ("value",), (base,), ((base, 1),), (1 << 21,)
         by_field = dict(zip(masks, zip(names, registers)))
+        pair_fields = PAIR_FIELDS if group == "drive" else (PT_TARGET_FIELD,) if group == "position_segment" else ()
         read_steps, update_steps, raw_limit = len(windows), 2 * len(names), 15 if stored or single else 13
         echo_policy = item.get("echo_readback_policy", False)
         require(type(echo_policy) is bool and (stored or not echo_policy), "echo readback policy differs")
@@ -1273,6 +1286,7 @@ class Console:
         def legal(field, value):
             name = by_field[field][0]
             if single: return value <= single_maximum
+            if segment and name == "target": return True  # The high word of a non-negative target (checked below).
             if segment: return value <= (180 if name == "value" else 3000 if name == "speed" else 2000)
             if tuning:
                 minimum, maximum = TUNING_RANGES[group][names.index(name)]
@@ -1337,7 +1351,7 @@ class Console:
                     all(type(p[k]) is bool for k in ("acknowledged", "readback_known", "active_known")) and
                     p["active_known"] is False and p["execution"] in ("not_transmitted", "acknowledged", "rejected", "unknown"), "progress values are invalid")
             require(legal(field, p["requested"]), "candidate is outside reviewed range")
-            if parsed is not None and not (group == "drive" and field in PAIR_FIELDS):
+            if parsed is not None and field not in pair_fields:
                 require(p["requested"] == parsed[by_field[field][0]], "requested value changed")
             fields[field] = p
         require(sum(fields) == item["fields"], "selected field progress is missing")
@@ -1346,7 +1360,10 @@ class Console:
         require(isinstance(pair_rows, list) and all(isinstance(r, list) and len(r) == 7 and all(integer(w, 65535) for w in r[1:])
                                                     for r in pair_rows), "pair words are invalid")
         pairs = {r[0]: {"previous": r[1:3], "requested": r[3:5], "readback": r[5:7]} for r in pair_rows}
-        require(set(pairs) == ({f for f in fields if f in PAIR_FIELDS} if group == "drive" else set()), "pair rows differ from the selected pairs")
+        require(set(pairs) == {f for f in fields if f in pair_fields}, "pair rows differ from the selected pairs")
+        if PT_TARGET_FIELD in fields:
+            require(set(fields) == {PT_TARGET_FIELD} and pairs[PT_TARGET_FIELD]["requested"][0] <= 0x0FFF,
+                    "a PT target is not alone or outside 0..0x0FFFFFFF")
         for field, words in pairs.items():
             p = fields[field]
             require(words["requested"][0] == p["requested"] and words["previous"][0] == p["previous"] and
@@ -1358,7 +1375,9 @@ class Console:
         for index, row in enumerate(evidence):
             require(isinstance(row, list) and len(row) == len(DRIVER_EVIDENCE_COLUMNS), "evidence row is invalid")
             e = dict(zip(DRIVER_EVIDENCE_COLUMNS, row))
-            pair_step = item["driver_kind"] == "update" and e.get("register") in (0x37, 0x39) and group == "drive"
+            pair_step = item["driver_kind"] == "update" and (
+                (e.get("register") in (0x37, 0x39) and group == "drive") or
+                (group == "position_segment" and PT_TARGET_FIELD in fields and e.get("register") == fields[PT_TARGET_FIELD]["register"]))
             request_length = 13 if pair_step and e.get("write") else 8
             require(e["step"] == index and all(integer(e[k], limit) for k, limit in (("register", 65535), ("count", 5 if io or segment else 4), ("event", 3), ("received_length", 2**32 - 1), ("tx_accepted", request_length), ("frame_error", 255))) and e["count"] >= 1 and
                     all(type(e[k]) is bool for k in ("write", "tx_complete", "response_confirmed", "qualified", "execution_unknown")) and
@@ -1378,7 +1397,7 @@ class Console:
                 if group == "drive" and 8 in fields and fields[8]["requested"] == 0:
                     selected = [fields[8]] + [p for p in selected if p["field"] != 8]
                 require(index // 2 < len(selected) and e["register"] == selected[index // 2]["register"] and
-                        e["count"] == (2 if group == "drive" and selected[index // 2]["field"] in PAIR_FIELDS else 1) and
+                        e["count"] == (2 if selected[index // 2]["field"] in pair_fields else 1) and
                         e["write"] == (index % 2 == 0), "update sequence differs")
             if e["event"] == 0:
                 require(e["tx_complete"] and e["tx_accepted"] == request_length, "frame lacks completed request")
@@ -1478,7 +1497,8 @@ class Console:
             elif segment:
                 payload = words[0]
                 values = payload[2:] + payload[:2] if group == "position_segment" else payload + [0] * (5 - len(payload))
-                require(v.get("raw") == values and v.get("known_fields") == sum(mask for mask, value in zip(masks, values) if legal(mask, value)), "record raw observation differs")
+                scalar_masks = [m for m in masks if m != PT_TARGET_FIELD]  # The pulse pair is raw words, not a known field.
+                require(v.get("raw") == values and v.get("known_fields") == sum(mask for mask, value in zip(scalar_masks, values) if legal(mask, value)), "record raw observation differs")
                 require(v.get("paired_write_supported") is False and v.get("signed_encoding") == "unresolved" and v.get("active_settings_known") is False, "record semantics fabricated")
             else:
                 values = [words[0][0], words[0][1], words[1][2], words[1][1], words[1][0], words[3][1], words[3][0]]
@@ -2355,8 +2375,21 @@ class Console:
                     all(integer(w, 0, 0xFFFF) for w in member["staged_words"]), "invalid staged words")
             for key in ("configuration_generation", "stage_operation_id", "stop_id", "stop_service_delay_us", "assignment"):
                 require(integer(member.get(key)), "invalid member " + key)
-            for key in ("expected_displacement", "expected_endpoint", "baseline_position"):
+            for key in ("expected_displacement", "expected_endpoint", "baseline_position", "record_target"):
                 require(type(member.get(key)) is int, "invalid member " + key)
+            # Wired bench 13: a PT member names its record, the checked read it armed on and PIN0..PIN2's terminals.
+            require(integer(member.get("record"), 0, 16) and integer(member.get("record_operation_id")) and
+                    isinstance(member.get("record_words"), list) and len(member["record_words"]) == 5 and
+                    all(integer(w, 0, 0xFFFF) for w in member["record_words"]) and
+                    isinstance(member.get("selector_terminals"), list) and len(member["selector_terminals"]) == 3 and
+                    all(integer(t, 0, 3) for t in member["selector_terminals"]), "invalid member record")
+            if session["kind"] == "segment" and live:
+                require(member["function"] == 12 and 1 <= member["record"] <= 8 and member["record_operation_id"] > 0 and
+                        member["record_words"] == member["staged_words"] and not member["staged"],
+                        "PT member without its record, read or function 12")
+                target = (member["record_words"][3] << 16) | member["record_words"][4]
+                require(member["record_target"] == (target - (1 << 32) if target & 0x80000000 else target),
+                        "PT record target differs from its words")
             require(not member["staged"] or member["stage_execution"] == "acknowledged", "staged without an acknowledged write")
             result = member.get("result")
             require(isinstance(result, dict) and type(result.get("known")) is bool, "invalid member result")
@@ -2396,8 +2429,11 @@ class Console:
             spacing = result.get("spacing_us")
             require(isinstance(spacing, dict) and all(integer(spacing.get(k)) for k in ("min", "median", "max", "count")) and
                     (not spacing["count"] or spacing["min"] <= spacing["median"] <= spacing["max"]), "invalid spacing")
-            for key in ("on_us", "off_us", "change_start_us", "change_end_us", "samples", "lost_samples", "late_samples", "stop_id"):
+            for key in ("on_us", "off_us", "change_start_us", "change_end_us", "samples", "lost_samples", "late_samples", "stop_id",
+                        "last_request_us", "last_reply_us"):
                 require(integer(result.get(key)), "invalid result " + key)
+            require(result["last_request_us"] <= result["last_reply_us"] or not result["last_reply_us"],
+                    "latest sample reply before its request")
             for key in ("source_commanded", "source_active", "input_observed", "change_observed", "running_observed",
                         "stop_requested", "stopped_after_stop", "position_known", "expected_known", "position_matches"):
                 require(type(result.get(key)) is bool, "invalid result " + key)

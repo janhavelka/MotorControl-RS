@@ -331,24 +331,13 @@ struct App {
         uint16_t words[6] = {};
     } homeSnapshots[PARAMETER_SNAPSHOTS], velocitySnapshots[PARAMETER_SNAPSHOTS];
     uint8_t homeSnapshotNext = 0, velocitySnapshotNext = 0;
-    // One restore or D9 experiment session (ParameterWriteApp.h).
+    // One home or velocity restore session (ParameterWriteApp.h).
     struct ParameterWriteSession {
         Probe::ParameterWriteView view;
         Rtu::RequestId request;
         uint8_t phase = 0; ///< 0 none, 1 write, 2 FC03 readback.
         uint8_t tx[32] = {};
     } parameterWrite;
-#if MOTORCONTROLRS_WB10_EXPERIMENT
-    // Experimental image only (PairExperimentApp.h): PT pulse words of checked
-    // segment reads per window, the first read of the binding pinned plus three
-    // recent ones (prompt 13's W0 witness).
-    struct PairSnapshot {
-        uint32_t operationId = 0, serialGeneration = 0;
-        MotorControlRS::ReadTarget target;
-        uint16_t words[2] = {};
-    } pairSnapshots[16][4]; ///< Per PT window: [0] first read of the binding, [1..3] the latest reads, rotating.
-    uint8_t pairNext[16] = {};
-#endif
     ESS::MoveContext stagePrepared; ///< Scratch for the selected-axis stage words; no stack copy.
     // Bench output -> drive terminal map (wired bench 08); validated once.
     int8_t benchOutputTerminals[FIXTURE_BENCH_OUTPUTS] = {FIXTURE_OUTPUT_NONE, FIXTURE_OUTPUT_NONE,
@@ -419,6 +408,14 @@ struct App {
         bool modeKnown = false;
         uint16_t positionMode = 0, pvTriggerMode = 0;
         uint32_t modeOperationId = 0, modeGeneration = 0;
+        // Checked PT record of this member from `segment position N read ADDRESS`
+        // (wired bench 13 group arm): speed, ramps and pulse words, its request
+        // start and generation. Any settings write to the member clears it.
+        bool recordKnown = false;
+        uint8_t recordIndex = 0;
+        uint16_t recordWords[5] = {};
+        uint32_t recordOperationId = 0, recordGeneration = 0;
+        uint64_t recordObservedUs = 0;
     };
     struct GroupOperation {
         Probe::GroupResult result;
@@ -663,9 +660,9 @@ bool axisReserved(const App& a, uint8_t address = 0, bool includeHistory = true)
         if (a.group.members[i].stage.view.pending && (!address || a.group.members[i].address == address)) return true;
     if ((a.motionProfile.view.pending || a.motionProfile.view.restoreUnsettled) &&
         (!address || a.motionProfile.view.address == address)) return true;
-    // A restore or D9 write owns its drive until its readback. An unknown write
-    // refuses the next restore or experiment step until a checked read of its
-    // window; its effects already expired every cache a dependent write needs.
+    // A restore write owns its drive until its readback. An unknown write
+    // refuses the next restore until a checked read of its window; its
+    // effects already expired every cache a dependent write needs.
     if (a.parameterWrite.view.pending && (!address || a.parameterWrite.view.target.address == address)) return true;
     // An input-start session reserves its drives from arming until it is done.
     const auto phase = a.inputStart.view.phase;
@@ -1238,9 +1235,6 @@ void cancelParameterWrite(App&, uint8_t, uint64_t);
 void rememberParameterSnapshot(App&, bool home, uint32_t operationId, const MotorControlRS::ReadTarget&,
                                uint32_t serialGeneration, const uint16_t* words, uint8_t count);
 void settleParameterWrite(App&, Probe::ParameterWriteKind, uint8_t address, uint64_t attemptedUs);
-#if MOTORCONTROLRS_WB10_EXPERIMENT
-void notePairRead(App&, const App::Record&);
-#endif
 
 bool confirmedStop(const App::Record& record) {
     using namespace MotorControlRS;
@@ -2098,9 +2092,10 @@ Probe::Action checkTuningWrite(const App& a, const Rtu::BusRequest& request) {
     return axisReserved(a, request.expected.address) ? Probe::Action::AXIS_CONFLICT : Probe::Action::OK;
 }
 Probe::Action checkSegmentWrite(const App& a, const Rtu::BusRequest& request) {
-    // Descriptors define exactly the legal indexed scalar registers. Neither a
+    // Descriptors define exactly the legal indexed scalar registers and, since
+    // wired bench 13, the whole pulse pair as one FC10 of two words. Neither a
     // pulse-pair half nor the reserved sixth position word can enter this path.
-    bool scalar = false;
+    bool scalar = false, pair = false;
     for (uint8_t index = 1; index <= 16; ++index) {
         for (auto field : {ESS::PositionSegmentField::SPEED, ESS::PositionSegmentField::ACCELERATION_TIME, ESS::PositionSegmentField::DECELERATION_TIME}) {
             const auto* descriptor = ESS::positionSegmentRegister(index, field);
@@ -2112,8 +2107,11 @@ Probe::Action checkSegmentWrite(const App& a, const Rtu::BusRequest& request) {
         }
         const auto* descriptor = ESS::segmentStartSpeedRegister(index);
         if (descriptor && descriptor->address == request.expected.first) scalar = true;
+        const auto* pulses = ESS::positionSegmentRegister(index, ESS::PositionSegmentField::PULSES);
+        if (pulses && pulses->address == request.expected.first) pair = true;
     }
-    if (!scalar || request.expected.count != 1 || request.expected.function != 6 ||
+    if (!(scalar ? request.expected.count == 1 && request.expected.function == 6 :
+          pair && request.expected.count == 2 && request.expected.function == 16) ||
         request.expected.address != a.axis.target.address || request.expected.target != request.expected.address ||
         request.expected.targetGeneration != a.bindingGeneration) return Probe::Action::INVALID;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
@@ -2494,6 +2492,10 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
             prerequisites.triggerTarget = target; prerequisites.triggerConfigurationGeneration = generation;
             prerequisites.triggerEarliestUs = earliest; prerequisites.triggerLatestUs = latest;
             prerequisites.qualifiedSegment = request; prerequisites.allowEchoReadback = true;
+            // Wired bench 13: a stored PT target needs 0x0019 of this target and generation.
+            prerequisites.wordOrderKnown = a.configuration.operationId && a.configuration.wordOrderKnown &&
+                Probe::sameTarget(a.configuration.target, target);
+            prerequisites.wordOrder = a.configuration.wordOrder;
             prerequisites.inputsPermit = true;
         }
         checked = segmentGroup(request.group) ?
@@ -2597,6 +2599,7 @@ void invalidateDriverAssumptions(App& a, uint8_t address, uint32_t changed, uint
     if (a.driverSettings.target.address == address) a.driverSettings.operationId = 0;
     if (a.ioSettings.target.address == address) a.ioSettings.operationId = 0;
     if (a.segmentSettings.target.address == address) a.segmentSettings.operationId = 0;
+    if (auto* member = groupMember(a, address)) member->recordKnown = false;
     if (a.controlSettings.target.address == address) a.controlSettings.operationId = 0;
     for (auto& cache : a.tuningSettings)
         if (cache.target.address == address) cache.operationId = 0;
@@ -2977,9 +2980,6 @@ void updateActionReservation(App& a, App::Record& record) {
         record.axisReserved = false;
         noteSoftLimitWrite(a, record);
         if (record.singleSettingSession) return; // Single-field history is not a DRIVE cache or motion profile.
-#if MOTORCONTROLRS_WB10_EXPERIMENT
-        notePairRead(a, record);
-#endif
         const bool segment = segmentGroup(record.driver.group);
         const bool tuning = ESS::isTuningGroup(record.driver.group);
         auto& cache = tuning ? tuningCache(a, record.driver.group) : segment ? a.segmentSettings : record.driver.group == ESS::DriverGroup::IO ? a.ioSettings : record.driver.group == ESS::DriverGroup::CONTROL_SETTINGS ? a.controlSettings : a.driverSettings;
@@ -2992,6 +2992,19 @@ void updateActionReservation(App& a, App::Record& record) {
                     member->modeKnown = true;
                     member->positionMode = a.driverObserved.raw[6]; member->pvTriggerMode = a.driverObserved.raw[5];
                     member->modeOperationId = record.operationId; member->modeGeneration = member->axis.generation;
+                }
+        // Wired bench 13: a PT record read of a group member, for the segment group arm.
+        if (record.driver.kind == ESS::DriverKind::READ && record.driver.group == ESS::DriverGroup::POSITION_SEGMENT &&
+            record.driver.target.generation == a.bindingGeneration)
+            if (auto* member = groupMember(a, record.address))
+                if (ESS::getDriver(record.driver, a.driverObserved)) {
+                    const auto& o = a.driverObserved;
+                    member->recordKnown = true; member->recordIndex = o.segmentIndex;
+                    std::memcpy(member->recordWords, o.raw, sizeof(member->recordWords));
+                    member->recordOperationId = record.operationId; member->recordGeneration = member->axis.generation;
+                    uint64_t earliest = UINT64_MAX;
+                    for (const auto& e : o.provenance) if (e.count && e.attemptedUs < earliest) earliest = e.attemptedUs;
+                    member->recordObservedUs = earliest == UINT64_MAX ? 0 : earliest;
                 }
         if (record.driver.kind == ESS::DriverKind::READ && record.address == a.axis.target.address &&
             record.configurationGeneration == a.axis.generation && record.driver.target.generation == a.bindingGeneration &&
@@ -3535,9 +3548,6 @@ bool groupBusy(const App& a);
 #include "GroupCoordinatesApp.h"
 #include "GroupApp.h"
 #include "ProfileCandidateApp.h"
-#if MOTORCONTROLRS_WB10_EXPERIMENT
-#include "PairExperimentApp.h"
-#endif
 #include "ParameterWriteApp.h"
 #include "InputStartApp.h"
 

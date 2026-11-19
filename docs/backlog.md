@@ -29,8 +29,9 @@ review. These are future refactors, not unfinished prompts from the completed se
 
 ## Native ESS coverage
 
-The inventory still has **four named native-family gaps and 16 guarded paired
-setters** (the stored PT targets; wired bench 10 promoted the two soft limits). Their exact membership and source restrictions are maintained in
+The inventory still has **four named native-family gaps**. No paired setter
+stays guarded: wired bench 10 promoted the two soft limits and wired bench 13
+W0a the sixteen stored PT targets (non-negative only). Their exact membership and source restrictions are maintained in
 [API coverage](ess_api_cli_coverage.md) and [paired writes](ess_pair_writes.md);
 the register catalogue alone is not semantic command coverage.
 
@@ -106,9 +107,17 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   methods with an offset, method 35 completion from a homed state (12); PT
   target promotion through W0 (13); order 1 after a save and restart (17).
 - [ ] Promote the sixteen stored PT target pairs. Storage is measured (wired
-  bench 10 P2-P4); the drive's interpretation of the words needs prompt 13's W0
-  witness. Implementation: experiment windows, builder and route kept;
-  production write refused. Hardware: storage only.
+  bench 10 P2-P4). Implementation (wired bench 13): the sixteen windows are
+  reviewed FC10 windows; `segment position N set target VALUE` writes the
+  target alone at `0x0019` known 0, 0..`0x0FFFFFFF`; negative targets refused
+  before TX; the experiment windows, builder, validator, route and build flag
+  removed. Hardware: W0a order 0 on drives 1, 2 and 4; the promoted setter
+  wrote the P1/P9 tables and the [0,5000] restoration on the production images
+  and the records moved their written targets
+  ([wired bench 13](reports/2026-11-19_wired_bench_13_pt_segments.md)). Open:
+  the sign. W0b did not run (D15: no drive-side stop on a free terminal), so
+  negative targets, drive 2's negative table and P11 wait for a free terminal
+  or a deliberate function-12 start path beyond an enabled soft limit.
 - [x] Admit soft-limit enable (`0x0018` = 1) in production (prompt 11).
   Implementation: done in [wired bench 11](reports/2026-11-19_wired_bench_11_limits.md): enable route from
   the application's own home 35 (`soft-limits`, `reference` facts), a checked
@@ -132,6 +141,9 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   16 November). Records 2 and 16 store their values. Ask the vendor; keep the
   FAIL and the setter's mismatch report. [Stored-record evidence](archive/reports/ess_release_16_2026-10-04.md),
   [rerun](reports/2026-11-16_unattended_bench_tests.md#shared-start-speed-record-1-the-4-october-fail-reproduced).
+  [Wired bench 13](reports/2026-11-19_wired_bench_13_pt_segments.md) executed
+  PT records 1-8 but did not run P7, so the start-speed effect on records 2-8
+  is not measured (needs drive 4's Y0 = 2 timing); record 1's FAIL stands.
 - [ ] Resolve output function 11 ('User defined 2'; p28 ties functions 9-11 to
   `0x004F`, but p74 defines only terminal bits 0-1) and crossmapped custom actuation. No external trigger/selector edges are synthesized by serial
   settings. [I/O contract](ess_io.md). Measured on Y0 of `0x4EEA`/`0x0029`
@@ -524,7 +536,11 @@ more drives (now addresses 1, 2 and 4, star wiring).
   and 8). Input functions 4, 5 and 6 on X3 were measured in
   [wired bench 07](reports/2026-11-19_wired_bench_07_stop_release_inputs.md)
   (plan step 3 and the shared stop of step 9); the other input functions are
-  prompts 09-14.
+  prompts 09-14. PT segments (plan steps 7 and 10, functions 12 and 14-16)
+  ran in [wired bench 13](reports/2026-11-19_wired_bench_13_pt_segments.md):
+  records 1-8 on drive 1 and on drives 1, 2 and 4 at once, held trigger and
+  stops measured; late PIN changes (P4), a second edge (P6), start speed (P7)
+  and absolute PT after a restart remain.
 - [ ] Start motion from a shared input edge: function 7 with a staged profile
   first (absolute mode preferred), then PT segments with PIN selection, the
   negative PV speed encoding, and observation and stop of input-started motion ([multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)).
@@ -539,10 +555,31 @@ more drives (now addresses 1, 2 and 4, star wiring).
   5 ms do not, a 2 s held level starts one move, serial, group and X3 stops
   end input-started moves short, disarm does not inhibit the input; two route
   defects fixed on the bench (`aux1` ring wrap, stop tails reported as second
-  starts) ([report](reports/2026-11-19_wired_bench_09_input_and_serial_starts.md)). Home (12), PT (13) and PV (14) staging
-  still refuse. PT depends on standalone 04/06; function 7
+  starts) ([report](reports/2026-11-19_wired_bench_09_input_and_serial_starts.md)).
+  PT part, implementation (wired bench 13): `arm segment xN relative RECORD
+  [group]` for records 1-8 with PIN0-PIN2, one refusal reason per check, the
+  position speed limit as execution ceiling, held selector outputs at the
+  trigger, per-member record reads for a group; `absolute` refused. PT part,
+  hardware ([report](reports/2026-11-19_wired_bench_13_pt_segments.md)):
+  records 1-8 moved their own targets within ±1 on drive 1 (P1) and on drives
+  1, 2, 4 with one shared selector state and edge (P9); records 9-16 never ran;
+  a 2000 ms trigger started one run; `stop normal`, `stop fast` and `group stop
+  fast` ended runs with no further start; with `0x0050` = 1 records still ran
+  as displacements (P2 FAIL, absolute refused; a save-and-restart check is
+  deferred to the owner's return). Open: negative targets (W0b), P4, P6, P7.
+  Home (12) and PV (14) staging still refuse. Function 7
   does not need standalone 02's separate archive-import route. Source inhibition,
   intermediate writes and stop/disarm evidence stay explicit.
+- [ ] Close the remaining wired bench 13 audit points on the PT route
+  ([report](reports/2026-11-19_wired_bench_13_pt_segments.md)). Implementation
+  done after the audit: the trigger refuses unless every PIN output the armed
+  record needs stays on for the pulse plus 50 ms (native test), and a qualified
+  PT target must equal the written one (native test). Open: the scenario travel
+  bound is checked by the harness only, not at arm time; the trigger relies on
+  the arm-time record read (D14 ownership: no write can reach a reserved drive
+  between them) instead of a fresh read; the PT observation records no ARRIVED
+  or settling evidence; the lost record-write ACK test asserts the refusal but
+  not which write evidence caused it. Hardware: none needed for the first two.
 - [ ] Finish shared-bus qualification
   ([multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md)).
   Three-drive unicast group evidence already exists; map exact cases/images

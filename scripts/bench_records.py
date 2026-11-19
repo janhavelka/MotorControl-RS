@@ -76,6 +76,17 @@ HOME_NAMED_IO_MAX_AGE_MS = 31000
 # running, or any other assignment, refuses (L4). Every other drive keeps the
 # ordinary rows, so a non-member with 7-13 still refuses (L5).
 START_EFFECT = "position-start"
+# Wired bench 13: a named *selection member* is a stationary drive whose PIN
+# selector (14-16) the case switches while its PT trigger terminal holds 12 and
+# the trigger output is off (row P). A PIN level selects a record; only the
+# trigger's rising edge starts it (function manual p22, p27: 12 edge-valid), and
+# the trigger output is off. Every other drive keeps the ordinary rows. A drive
+# running a record keeps L3 with effect "selection" (a session member).
+SELECT_EFFECT = "pt-selection"
+# Outputs that may stay on while another selector or the trigger is switched
+# (wired bench 13): the PIN layout's selector outputs only, never the trigger's,
+# and only while no participant holds a start function (7-13) on a terminal one
+# of them drives. ``scenario["selection"] = {"outputs": [...], "trigger": OUT}``.
 # Wired bench 09: a member of an active input-start session is reserved, so
 # its `io read` is refused (axis_conflict). Its I/O words then come from the
 # firmware trigger's own isolation read of 0x0040/5 (polarity and X0-X3) just
@@ -515,6 +526,22 @@ def decide_participant(facts: dict, output: str, *, max_age_ms: float = MAX_AGE_
             return decision("L4", False, "named start member reads function %d polarity %d, named 7 polarity %s"
                             % (function, polarity, named.get("polarity")))
         return decision("M", True, "named start member, function 7, stopped (deliberate unarmed start, D13)")
+    if named is not None and named.get("effect") == SELECT_EFFECT and named.get("address") == facts.get("address"):
+        # Wired bench 13: the PT member whose selector is switched before its arm.
+        if named.get("output") != output or named.get("terminal") != terminal:
+            return decision("L4", False, "named selection member on %s/%s, switched %s/%s" % (
+                named.get("output"), named.get("terminal"), output, terminal))
+        if facts["running"]:
+            return decision("L4", False, "named selection member is running")
+        trigger = named.get("trigger_terminal")
+        if trigger not in TERMINALS or facts["functions"][TERMINALS.index(trigger)] != 12:
+            return decision("L4", False, "named selection member has no 12 on its trigger terminal %s" % trigger)
+        if not 14 <= function <= 16 or function != named.get("function") or polarity != 0:
+            return decision("L4", False, "named selection member reads function %d polarity %d, named %s" % (
+                function, polarity, named.get("function")))
+        if named.get("trigger_off") is not True:
+            return decision("L4", False, "the PT trigger output is not known off")
+        return decision("P", True, "named selection member, PIN function %d, trigger 12 with its output off" % function)
     if facts.get("io_source"):
         # Wired bench 07: the member's own pending operation reserves the axis.
         if named is None or named.get("address") != facts.get("address"):
@@ -715,12 +742,43 @@ def interlock(console, output: str, scenario: dict, *, timeout_s=5.0) -> dict:
                                               ("io_read" in m or "session_io" in m)), None))
              for a in participants}
     entry["facts"] = facts
+    trigger = (scenario.get("selection") or {}).get("trigger")
+    for member in members:
+        if member.get("effect") == SELECT_EFFECT:
+            member["trigger_off"] = trigger is not None and trigger not in active
     result = isolation_decision(output, facts, max_age_ms=max_age_ms, named=named, pending=pending)
     entry.update(decision=result["decision"], row=result["row"], reason=result["reason"],
                  address=result["address"], participants=result["participants"])
-    if active:
-        entry.update(decision="refuse", row=None, reason="output already on: " + ", ".join(active))
+    held = held_selection_problem(active, output, scenario.get("selection"), facts) if active else None
+    if active and held:
+        entry.update(decision="refuse", row=None, reason="output already on: %s (%s)" % (", ".join(active), held))
+    elif active:
+        entry["held_outputs"] = list(active)
     return entry
+
+
+def held_selection_problem(active: list, output: str, selection: dict | None, facts: dict) -> str | None:
+    """Why outputs already on refuse this ON (D14), or None (wired bench 13): only
+    the stated PIN outputs may stay on, never the trigger's, the switched output
+    is one of them or the trigger, and no participant holds 7-13 on a terminal
+    a held output drives."""
+    if not selection:
+        return "no PIN selection layout stated"
+    outputs, trigger = list(selection.get("outputs") or []), selection.get("trigger")
+    if trigger in active:
+        return "the PT trigger output is on"
+    if any(o not in outputs for o in active):
+        return "an output outside the PIN layout is on"
+    if output not in outputs and output != trigger:
+        return "the switched output is neither a PIN nor the trigger"
+    for address, f in facts.items():
+        functions = f.get("functions")
+        if not isinstance(functions, list) or len(functions) != 4:
+            return "drive %s functions unknown" % address
+        for o in active:
+            if 7 <= functions[TERMINALS.index(FIXTURE["outputs"][o])] <= 13:
+                return "drive %s holds a start function on the terminal of %s" % (address, o)
+    return None
 
 
 def interlock_ordering(participants, reads: dict, sent: list, drv: dict, named: dict | None) -> dict:
@@ -740,8 +798,8 @@ def interlock_ordering(participants, reads: dict, sent: list, drv: dict, named: 
     if not drv.get("ok") or (ids and drv.get("operation_id") != ids[-1]):
         problems.append("latest admitted operation %s, last interlock read %s" % (drv.get("operation_id"),
                                                                                   ids[-1] if ids else None))
-    # A named start member (wired bench 09) runs nothing: the owner must be idle.
-    if not [m for m in _members(named) if m.get("effect") != START_EFFECT] and drv.get("pending"):
+    # A named start (wired bench 09) or selection member (13) runs nothing: the owner must be idle.
+    if not [m for m in _members(named) if m.get("effect") not in (START_EFFECT, SELECT_EFFECT)] and drv.get("pending"):
         problems.append("owner reports %s pending requests" % drv.get("pending"))
     return {"operation_ids": ids, "drv_operation_id": drv.get("operation_id"), "drv_pending": drv.get("pending"),
             "sent": sent, "problems": problems}
@@ -1689,6 +1747,12 @@ def write_call(field: dict, value, address: int, profile_words=None) -> tuple[st
     if group == "records":
         parts = key.split(".")[1:]
         index = str(field["index"])
+        if parts == ["position", "target"]:
+            if not (isinstance(value, list) and len(value) == 2 and all(type(w) is int and 0 <= w <= 0xFFFF for w in value)):
+                raise RecordError(key + " needs its two raw words")
+            target = pair_value(value)
+            return "segment", {"driver_args": ("position", index, "set", "target", str(target)), "address": address}, \
+                "segment position %s set target %d %d" % (index, target, address)
         if parts == ["start"]:
             return "segment", {"driver_args": ("start", index, "set", "value", str(value)), "address": address}, \
                 "segment start %s set value %s %d" % (index, value, address)
@@ -1820,6 +1884,12 @@ PAIR_ROUTES = {key: {"command": "driver set %s VALUE A" % key.split(".")[1],
                      "facts": "CONFIGURE facts on X0-X3, fresh reads, stopped, 0x0019 and 0x0018 known 0 (wired bench 10)",
                      "readback": "driver read", "order": None, "requires": "10"}
                for key in ("drive.positive-limit", "drive.negative-limit")}
+# Wired bench 13 (W0a, D10): stored PT targets are promoted non-negative at word
+# order 0 through the typed setter (one FC10 of 0x0060 + 6(n-1), two words,
+# then a two-word readback). The 01 baseline [0, 5000] is non-negative.
+PT_TARGET_ROUTE = {"command": "segment position N set target VALUE A",
+                   "facts": "SEGMENT facts on X0-X3, fresh reads, stopped, 0x0019 known 0 (wired bench 13)",
+                   "readback": "segment position N read", "order": None, "requires": "13"}
 
 
 def plan_entry(baseline: dict, entry: dict, image_level: str, facts: dict, *, restore: bool,
@@ -1836,7 +1906,9 @@ def plan_entry(baseline: dict, entry: dict, image_level: str, facts: dict, *, re
     old, new = (entry["candidate"], field["value"]) if restore else (field["value"], entry["candidate"])
     step = {**ident, "register": field["register"], "read": field["read"], "baseline": field["value"],
             "candidate": entry["candidate"], "target": new}
-    route = field.get("restore") or (PAIR_ROUTES.get(field["key"]) if int(image_level) >= 10 else None)
+    route = field.get("restore") or (PAIR_ROUTES.get(field["key"]) if int(image_level) >= 10 else None) or \
+        (PT_TARGET_ROUTE if field["key"] == "records.position.target" and int(image_level) >= 13 and
+         isinstance(new, list) and len(new) == 2 and pair_value(new) >= 0 else None)
     snapshot = snapshot_route(field["key"]) if route is None else None
     if route is None and snapshot and restore and (context or {}).get("snapshots") is not None:
         if int(image_level) < int(SNAPSHOT_IMAGE_LEVEL):

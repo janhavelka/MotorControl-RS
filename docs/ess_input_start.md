@@ -6,16 +6,18 @@ session, pulse one owned bench output once, observe and attribute the result,
 disarm. Wired bench 08 delivered it as software; wired bench 09
 ([prompt](prompts/ess_wired_bench/09_input_and_serial_starts.md)) ran it on the
 bench: see [measured on the bench](#measured-on-the-bench-wired-bench-09).
+Wired bench 13 added stored PT records started by function 12: see
+[PT records](#pt-records-function-12-wired-bench-13).
 
 ## What is delivered
 
 | Part | Where | State |
 | --- | --- | --- |
-| Attribution core | `include/MotorControlRS/profiles/ess_rs/InputStart.h` | Implemented: effects DISPLACEMENT, ENDPOINT, HOME_COMPLETION, VELOCITY_RUN |
-| Application route | `examples/probe_cli/InputStartApp.h`, API in `ProbeApp.h` | Function 7 (position start) on the selected axis or every declared group member |
+| Attribution core | `include/MotorControlRS/profiles/ess_rs/InputStart.h` | Implemented: effects DISPLACEMENT, ENDPOINT, HOME_COMPLETION, VELOCITY_RUN; `InputStartResult::lastRequestUs`/`lastReplyEndUs` bracket the latest sample (wired bench 13) |
+| Application route | `examples/probe_cli/InputStartApp.h`, API in `ProbeApp.h` | Function 7 (position start) and function 12 (PT record, relative only) on the selected axis or every declared group member |
 | Console | `arm`, `disarm` (protocol 3) | Same functions as the API |
-| Harness | `scripts/bench_probe.py` `arm-position`, `arm-trigger`, `arm-inspect`, `disarm`; `scripts/bench_scenarios.py --scenario input-start` | Reply validators; one-drive scenario on run folders |
-| Home (11), PT (12), PV (13) staging | `arm home|segment|velocity` | Refused before any traffic with `unsupported` and the prompt that delivers it (12, 13, 14) |
+| Harness | `scripts/bench_probe.py` `arm-position`, `arm-segment`, `arm-trigger`, `arm-inspect`, `disarm`; `scripts/bench_scenarios.py --scenario input-start`, `pt-segments` | Reply validators; scenarios on run folders |
+| Home (11), PV (13) staging | `arm home|velocity` | Refused before any traffic with `unsupported` and the prompt that delivers it (12, 14) |
 
 The core is framework-independent: no clock, I/O or heap. It yields only the
 existing non-changing seven-word sample read (FC03 `0x0006/7`: alarm, motion,
@@ -27,8 +29,8 @@ and samples. It never yields a write, a retrigger or a retry.
 | Claim | Source (physical page) | Status |
 | --- | --- | --- |
 | Function 7: "when a valid level signal is given ... completes the action according to the given motion parameters" | Function manual p17 | documented (level wording) |
-| Functions 7, 11, 12 "the edge is valid"; 13 level | p27 | documented (edge wording); contradicts p17's level wording. The route depends on neither. Measured (wired bench 09): a 2000 ms held assertion started one move in each mode and nothing after the release; this fits an edge-started drive and a level drive that rearms only after release, and is no general verdict |
-| `0x0050` 0 relative, 1 absolute "when using IO to control positioning motion"; `0x0051` PV trigger level/edge | p75 | documented. The staged target words mean a displacement or an endpoint only through `0x0050`, not through the serial start bit |
+| Functions 7, 11, 12 "the edge is valid"; 13 level | p27 | documented (edge wording); contradicts p17's level wording. The route depends on neither. Measured (wired bench 09): a 2000 ms held assertion started one move in each mode and nothing after the release; this fits an edge-started drive and a level drive that rearms only after release, and is no general verdict. Function 12 (wired bench 13): a 2000 ms held trigger started one run |
+| `0x0050` 0 relative, 1 absolute "when using IO to control positioning motion"; `0x0051` PV trigger level/edge | p75 | documented. The staged target words mean a displacement or an endpoint only through `0x0050`, not through the serial start bit. Contradicted for PT records on `0x4EEA`/`0x0029` within a power cycle (wired bench 13 P2): with `0x0050` = 1 they ran as displacements |
 | X inputs need a level longer than 10 ms | Hardware manual p9 | documented; measured on drive 4 at filter 2: 10 ms started 3/3, 5 ms 0/3 (wired bench 09); the route's minimum stays 20 ms |
 | Interrupt fixed length (function 7 during motion) | p29 | documented; not used by this route |
 
@@ -105,12 +107,60 @@ arms until the controller restarts (wired bench 07 G2).
 An admitted trigger expires the members' cached state (the input may move the
 drive outside any host record), so the next arm needs a fresh `read state`.
 
+### PT records (function 12, wired bench 13)
+
+`arm segment xN relative RECORD [group] [poll-ms ...] [window-ms ...]` arms a
+stored PT record instead of staging words. It differs from function 7 in
+these points:
+
+- **No write.** Nothing is staged: the drive executes its stored record
+  (speed, ramps, target), so the arm needs a fresh checked read of that record
+  (`segment position N read [ADDRESS]`) instead of a profile stage. The record
+  words are kept in the member view. A record write to an armed drive is
+  refused before TX (the drive is reserved), and a lost record-write ACK
+  refuses the next arm (`record_stale`).
+- **Layout.** The armed terminal holds 12; the other three hold PIN0-PIN2 (14,
+  15, 16) once each, polarity 0, each with a FINITE_MOVE record with
+  `triggers-inhibited`. The PIN levels are set on bench outputs before the arm,
+  and the fresh input status must show the record's bits. Records 1-8 only;
+  9-16 refuse `record_unreachable`.
+- **Execution checks.** The record's target is decoded at word order 0 and
+  must be non-negative; its speed must be nonzero and inside the position
+  speed limit (`record_rate_ceiling`); the endpoint (fresh position plus
+  target) must be inside the native and bound soft limits.
+- **Relative only.** `absolute` refuses `pt_absolute_unresolved`: on
+  `0x4EEA`/`0x0029` records ran as displacements with `0x0050` = 1 (P2). The
+  context arms with the DISPLACEMENT effect and `0x0050` = 0 read fresh.
+- **Group.** One record for every member, since the members share one
+  selector state; each member has its own table and its own record read.
+
+At the trigger a member is admitted (row `M`) only with function 12, the
+selectors and their armed PIN levels unchanged in the trigger's own reads and
+the armed record read still the latest. Unlike function 7, outputs already on
+are admitted: the selector outputs stay on through the run, provided none is
+the trigger's output and no participant holds a start function 7-13 on a
+terminal they drive. A stop request still turns every output off first, so
+the selectors drop with the stop. Observation and outcomes are the same as for
+function 7; the expected change is the record's target. Reasons and fields are
+in the [CLI contract](cli_contract.md#pt-records-wired-bench-13); selection,
+timing and the measured runs are in
+[segments](ess_segments.md#pt-arm-wired-bench-13).
+
+Measured in [wired bench 13](reports/2026-11-19_wired_bench_13_pt_segments.md)
+(19 November 2026, `0x4EEA`/`0x0029`): records 1-8 on drive 1 (P1) and on
+drives 1, 2 and 4 at once (P9) each moved their own target within ±1 with one
+start per edge; a 2000 ms trigger started one run (P5); serial and group stops
+ended runs with no further start (P8, P10); with `0x0050` = 1 records still ran
+as displacements (P2); a record over the rate ceiling was refused before any
+frame (P12).
+
 ## Trigger and line isolation
 
 `arm trigger ID mosfet1|mosfet2 WIDTH_MS` (20..5000 ms) requires an ARMED
 session that has not triggered, a MOSFET output mapped to the armed terminal
-(a relay output refuses), no output already on and no other accepted
-operation pending (D14). Then, as the last bus traffic before the ON, it reads
+(a relay output refuses), no output already on (a PT session admits held
+selector outputs, [above](#pt-records-function-12-wired-bench-13)) and no
+other accepted operation pending (D14). Then, as the last bus traffic before the ON, it reads
 for every drive the board table declares connected on the terminal, non-members
 first and members last, each in address order:
 
@@ -275,11 +325,11 @@ These are results for this fixture and firmware, not family-wide claims.
 | Held level, 2000 ms | relative +500: one start, none during the rest of the hold or 2 s after the release; absolute +1000: one start, no RUNNING sample or Y0 edge after it (a zero-length restart at the reached target cannot be excluded) |
 | Capacity, three armed members at poll 50 ms | per-member spacing median 51 ms, max 59.6 ms, no late or lost sample in 150 sessions; `memory` while armed: internal free 341,484 bytes (minimum 336,336), PSRAM free 7,108,140, stack free 3,844 bytes |
 | Final feedback against the staged target | drive 1 exact or +1, drive 2 exact or +1, drive 4 0 to -2 (direction dependent); relative +500 alternated 501/499 with exact pair sums, so the command advances exactly and the feedback differs by about one increment; plain serial absolute moves show the same (drive 4 at T - 1 6/6 with IN_POSITION set, drives 1 and 2 exact 12/12) |
-
 ## Related
 
 [ESS I/O](ess_io.md#console-and-external-trigger-handoff),
 [positioning](ess_position.md), [bench I/O](bench_io.md#input-start-trigger-ownership),
 [segments](ess_segments.md#external-selection-and-execution),
 [CLI contract](cli_contract.md#input-started-motion-wired-bench-08),
-[report](reports/2026-11-19_wired_bench_08_input_start_software.md).
+[report](reports/2026-11-19_wired_bench_08_input_start_software.md),
+[PT report](reports/2026-11-19_wired_bench_13_pt_segments.md).

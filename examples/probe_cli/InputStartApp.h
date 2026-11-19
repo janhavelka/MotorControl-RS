@@ -2,8 +2,22 @@
 // Included inside the standalone application's private namespace.
 // Input-start route (wired bench 08, docs/ess_input_start.md): arm a host
 // observation session, pulse one owned bench output once, observe and attribute
-// with the core InputStart contexts, disarm. Function 7 is delivered; home (11),
-// PT (12) and PV (13) staging refuse before any traffic (prompts 12, 13, 14).
+// with the core InputStart contexts, disarm. Function 7 is delivered, and PT
+// records (function 12, wired bench 13: `arm segment`); home (11) and PV (13)
+// staging refuse before any traffic (prompts 12, 14).
+//
+// - PT arm (`arm segment xN relative RECORD`): no write; `absolute` refuses
+//   (wired bench 13 P2: records ran relative with 0x0050 = 1). Per drive the
+//   trigger terminal holds 12 and the other three hold PIN0..PIN2 (14-16); the
+//   fresh input status shows the PIN levels of RECORD (held by their own bench
+//   outputs, set before the arm); a fresh read of that record (speed, ramps,
+//   target pair decoded at word order 0, the promoted non-negative claim), its
+//   speed inside the position rate ceiling, the endpoint inside the native and
+//   bound soft limits, and the same stop/limit/soft-limit rules as a move. The
+//   contexts arm at once (DISPLACEMENT, 0x0050 = 0 read fresh). At the trigger
+//   the member row also needs the PIN levels and the record read unchanged, and
+//   an output already on is admitted only off the trigger line and on a
+//   terminal with no start function (7-13) on any participant.
 //
 // - Arm: per drive, cached fresh facts are checked before any frame; then each
 //   drive's five 0x0021 words are staged and read back with no start (the
@@ -179,11 +193,326 @@ void baselineFromCache(const Probe::StateCache& state, ESS::InputStartPrerequisi
     p.baselineKnown = true;
     p.baselineUs = std::min(motion.observedEarliestUs, std::min(io.observedEarliestUs, feedback.observedEarliestUs));
 }
+// ------------------------------------------------------- PT arm (wired bench 13)
+// Shared pre-checks of every arm kind: request shape, group, session, bus,
+// bench and the owned trigger output. No traffic; owned names the outputs.
+Probe::Action armPreflight(App& a, const Probe::InputStartRequest& r, uint8_t& owned) {
+    if (r.group) {
+        if (!a.group.declared || r.count != a.group.count) return refuseInputStart(a, Probe::Action::UNAVAILABLE, "group_not_declared");
+    } else if (r.count != 1 || r.members[0].address != a.axis.target.address)
+        return refuseInputStart(a, Probe::Action::INVALID, "not_selected", r.members[0].address);
+    if (inputStartActive(a) || a.inputStart.members[0].sample.owner || a.inputStart.triggerRequest.owner)
+        return refuseInputStart(a, Probe::Action::BUSY, "session_active");
+    if (!platformReady) return refuseInputStart(a, Probe::Action::UNAVAILABLE, "platform");
+    if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned() || a.owner.needsRecovery() || uart.needsRecovery())
+        return refuseInputStart(a, Probe::Action::RECOVERY_REQUIRED, "recovery_required");
+    if (a.owner.commissioningOwned() || a.discovery.owned || groupSequencing(a) || a.owner.active() || a.owner.pending())
+        return refuseInputStart(a, Probe::Action::BUSY, "bus_busy");
+    if (!a.nextOperationId || a.nextOperationId > UINT32_MAX - 2) return refuseInputStart(a, Probe::Action::IDS_EXHAUSTED, "ids_exhausted");
+    if (!a.options.benchIo) return refuseInputStart(a, Probe::Action::UNAVAILABLE, "bench_unavailable");
+    if (a.fixtureState != FixtureState::APPLIED) return refuseInputStart(a, Probe::Action::UNAVAILABLE, "fixture_table_unavailable");
+    owned = outputsForTerminal(a, r.terminal);
+    if (!owned) return refuseInputStart(a, Probe::Action::UNAVAILABLE, "no_output_for_terminal");
+    const auto& view = benchView(a);
+    if (!view.ready) return refuseInputStart(a, Probe::Action::UNAVAILABLE, "bench_unavailable");
+    for (uint8_t i = 0; i < BenchIo::OUTPUTS; ++i)
+        if (((owned >> i) & 1u) && view.outputs[i].active) return refuseInputStart(a, Probe::Action::BUSY, "output_active");
+    return Probe::Action::OK;
+}
+// The three-selector layout of one drive: the other terminals hold PIN0..PIN2
+// (14, 15, 16) once each, so PIN3 (17) is absent. terminals[b] is PIN b's terminal.
+bool selectorLayout(const ESS::ConfigObservation& c, uint8_t trigger, uint8_t* terminals) {
+    uint8_t found[Probe::INPUT_START_PT_SELECTORS] = {}, seen = 0;
+    for (uint8_t t = 0; t < 4; ++t) {
+        if (t == trigger) continue;
+        if (!c.inputFunctionKnown[t]) return false;
+        const uint16_t f = c.raw.inputFunctions[t];
+        if (f < 14 || f > 16 || ((seen >> (f - 14)) & 1u)) return false;
+        seen = static_cast<uint8_t>(seen | (1u << (f - 14))); found[f - 14] = t;
+    }
+    if (seen != 7) return false;
+    std::memcpy(terminals, found, sizeof(found));
+    return true;
+}
+// The checked read of PT record `record` for one drive, current and fresh:
+// the selected axis's segment cache or the member's own record read.
+bool recordRead(const App& a, const ArmDrive& d, uint8_t record, uint64_t now, uint16_t* words, uint32_t& operationId) {
+    const uint64_t age = a.observationAgeUs();
+    if (d.member) {
+        const auto& m = *d.member;
+        if (!m.recordKnown || m.recordIndex != record || !m.axis.generation || m.recordGeneration != m.axis.generation ||
+            !m.recordOperationId || !MotorControlRS::evidenceAgeValid(m.recordObservedUs, now, age)) return false;
+        std::memcpy(words, m.recordWords, sizeof(m.recordWords)); operationId = m.recordOperationId;
+        return true;
+    }
+    const auto& c = a.segmentSettings;
+    if (!c.operationId || c.group != ESS::DriverGroup::POSITION_SEGMENT || c.segmentIndex != record || !a.axis.generation ||
+        !Probe::sameTarget(c.target, a.axis.target) || c.configurationGeneration != a.axis.generation) return false;
+    for (const auto& e : c.provenance)
+        if (e.count && (!e.qualified || !e.status || !MotorControlRS::evidenceAgeValid(e.attemptedUs, now, age))) return false;
+    std::memcpy(words, c.raw, 5 * sizeof(uint16_t)); operationId = c.operationId;
+    return true;
+}
+// Whether the record read the arm relied on is still the latest of that drive.
+bool recordWitness(const App& a, const Probe::InputStartMemberView& mv, bool group) {
+    if (group) {
+        const auto* m = groupMember(a, mv.address);
+        return m && m->recordKnown && m->recordOperationId == mv.recordOperationId && m->recordIndex == mv.record;
+    }
+    return a.segmentSettings.operationId && a.segmentSettings.operationId == mv.recordOperationId &&
+        a.segmentSettings.segmentIndex == mv.record;
+}
+struct SegmentArmFacts {
+    uint16_t words[5] = {};
+    uint32_t operationId = 0;
+    int32_t target = 0, baseline = 0;
+    int64_t endpoint = 0;
+    uint8_t selectors[Probe::INPUT_START_PT_SELECTORS] = {};
+    uint16_t mode = 0, pv = 0, polarity = 0;
+};
+bool qualifiedTerminal(const ArmDrive& d, uint8_t t, uint64_t now) {
+    const auto& c = *d.configuration;
+    const auto& q = d.io[t];
+    return q.target.id && q.purpose == IoPurpose::FINITE_MOVE && q.terminal == t && Probe::sameTarget(q.target, d.axis->target) &&
+        q.configurationGeneration == d.axis->generation && q.function == c.raw.inputFunctions[t] &&
+        q.polarity == ((c.raw.inputPolarity >> t) & 1u) && ioFactsValid(q, now) && q.input.externalTriggersInhibited;
+}
+// Every fact a PT arm needs for one drive, from cached reads only: no traffic.
+Probe::Action checkSegmentArmDrive(App& a, const Probe::InputStartRequest& r, uint8_t address, uint64_t now, ArmDrive& d,
+                                   SegmentArmFacts& f, const char*& reason) {
+    using namespace MotorControlRS;
+    const uint8_t t = r.terminal;
+    if (!armDrive(a, r.group, address, d)) { reason = r.group ? "not_a_member" : "not_selected"; return Probe::Action::INVALID; }
+    if (!knownTarget(a, address)) { reason = "target_unknown"; return Probe::Action::UNAVAILABLE; }
+    if (d.member && !memberCurrent(a, *d.member)) { reason = "member_not_current"; return Probe::Action::UNAVAILABLE; }
+    const auto& c = *d.configuration;
+    if (!c.operationId || !Probe::sameTarget(c.target, d.axis->target) || !c.wordOrderKnown) {
+        reason = "configuration_stale"; return Probe::Action::UNAVAILABLE;
+    }
+    // Wired bench 13 W0: stored PT targets are measured at word order 0 only.
+    if (c.wordOrder != ESS::WordOrder::HIGH_WORD_FIRST) { reason = "word_order_unqualified"; return Probe::Action::UNSUPPORTED; }
+    if (!c.inputFunctionKnown[t] || c.raw.inputFunctions[t] != 12) { reason = "function_not_12"; return Probe::Action::UNAVAILABLE; }
+    if (!selectorLayout(c, t, f.selectors)) { reason = "selector_layout"; return Probe::Action::UNAVAILABLE; }
+    for (uint8_t i = 0; i < 4; ++i)
+        if (d.wiring[i] != InputWiring::CONNECTED) { reason = "terminal_not_connected"; return Probe::Action::UNAVAILABLE; }
+    for (uint8_t b = 0; b < Probe::INPUT_START_PT_SELECTORS; ++b)
+        if ((c.raw.inputPolarity >> f.selectors[b]) & 1u) { reason = "selector_polarity"; return Probe::Action::UNSUPPORTED; }
+    if (!positionMode(a, d, f.mode, f.pv) || f.mode > 1) { reason = "position_mode_unknown"; return Probe::Action::UNAVAILABLE; }
+    if (f.mode != (r.mode == Probe::InputStartMode::ABSOLUTE ? 1u : 0u)) { reason = "position_mode_mismatch"; return Probe::Action::UNAVAILABLE; }
+    const auto age = a.observationAgeUs();
+    const auto& motion = d.state->blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+    const auto& io = d.state->blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
+    const auto& feedback = d.state->blocks[static_cast<uint8_t>(ESS::StateBlock::FEEDBACK)];
+    if (!Probe::fresh(motion, d.axis->target, now, age) || !Probe::fresh(io, d.axis->target, now, age) ||
+        !Probe::fresh(feedback, d.axis->target, now, age) || io.value.unknownInputBits || !feedback.value.pairKnown) {
+        reason = "state_stale"; return Probe::Action::UNAVAILABLE;
+    }
+    if (motion.value.rawAlarm || motion.value.alarmFlag) { reason = "alarm"; return Probe::Action::UNAVAILABLE; }
+    if (motion.value.released) { reason = "released"; return Probe::Action::UNAVAILABLE; }
+    if (motion.value.running || feedback.value.rawSpeed) { reason = "moving"; return Probe::Action::UNAVAILABLE; }
+    f.polarity = (c.raw.inputPolarity >> t) & 1u;
+    // The trigger and every selector need a FINITE_MOVE record with continued
+    // inhibition (the same facts a serial move needs with 12 and 14-16 assigned).
+    if (!qualifiedTerminal(d, t, now)) { reason = "triggers_inhibited_required"; return Probe::Action::QUALIFICATION_REQUIRED; }
+    for (uint8_t b = 0; b < Probe::INPUT_START_PT_SELECTORS; ++b)
+        if (!qualifiedTerminal(d, f.selectors[b], now)) { reason = "triggers_inhibited_required"; return Probe::Action::QUALIFICATION_REQUIRED; }
+    bool active = false;
+    if ((f.polarity && d.io[t].input.statusMapping == ESS::IoStatusMapping::UNKNOWN) ||
+        !effectiveInput(io.value.rawInputs, t, f.polarity, f.polarity, d.io[t].input.statusMapping, active)) {
+        reason = "mapping_unknown"; return Probe::Action::QUALIFICATION_REQUIRED;
+    }
+    if (active) { reason = "input_active"; return Probe::Action::UNAVAILABLE; }
+    // PIN b (polarity 0) reads its level directly; the levels must select the record.
+    for (uint8_t b = 0; b < Probe::INPUT_START_PT_SELECTORS; ++b)
+        if (((io.value.rawInputs >> f.selectors[b]) & 1u) != (((r.record - 1u) >> b) & 1u)) {
+            reason = "pin_levels"; return Probe::Action::UNAVAILABLE;
+        }
+    if (axisReserved(a, address)) { reason = "reserved"; return Probe::Action::AXIS_CONFLICT; }
+    if (enableSettling(a, address, now)) { reason = "enable_settling"; return Probe::Action::BUSY; }
+    if (!recordRead(a, d, r.record, now, f.words, f.operationId)) { reason = "record_stale"; return Probe::Action::UNAVAILABLE; }
+    if (!ESS::decodeInt32(f.words + 3, 2, ESS::WordOrder::HIGH_WORD_FIRST, f.target)) {
+        reason = "record_stale"; return Probe::Action::UNAVAILABLE;
+    }
+    if (f.target < 0 && !Probe::INPUT_START_PT_SIGNED_TARGETS) { reason = "record_sign_unqualified"; return Probe::Action::UNSUPPORTED; }
+    // Execution rate policy: a PT record is a drive positioning, so the serial
+    // position ceiling applies (HW-14, docs/ess_position.md). Storage keeps 0..3000.
+    const uint16_t speed = f.words[0];
+    if (!speed) { reason = "record_speed_zero"; return Probe::Action::UNAVAILABLE; }
+    const uint16_t ceiling = ESS::positionSpeedLimit(c.raw.subdivision);
+    if (!ceiling || speed > ceiling) { reason = "record_rate_ceiling"; return Probe::Action::UNSUPPORTED; }
+    if (!ESS::decodeInt32(feedback.value.rawPositionWords, 2, c.wordOrder, f.baseline)) {
+        reason = "state_stale"; return Probe::Action::UNAVAILABLE;
+    }
+    f.endpoint = f.mode ? static_cast<int64_t>(f.target) : static_cast<int64_t>(f.baseline) + f.target;
+    const auto& axis = *d.axis;
+    if (f.endpoint < -ESS::DRIVER_LIMIT_MAGNITUDE || f.endpoint > ESS::DRIVER_LIMIT_MAGNITUDE ||
+        f.endpoint < axis.nativeMinimum || f.endpoint > axis.nativeMaximum) {
+        reason = "endpoint_outside_limits"; return Probe::Action::UNAVAILABLE;
+    }
+    MotionFacts facts = d.member ? memberFacts(a, *d.member, nullptr) : selectedFacts(a, nullptr);
+    const auto stops = stopInputs(facts, now);
+    if (stops.result != StopInputs::CLEAR) {
+        noteStopInputRefusal(a, stops); reason = a.settingsRefusal.reason ? a.settingsRefusal.reason : "stop_input";
+        return Probe::Action::UNAVAILABLE;
+    }
+    const auto limits = limitInputs(facts, now);
+    if (limits.result != LimitInputs::CLEAR) {
+        noteLimitInputRefusal(a, limits); reason = a.settingsRefusal.reason ? a.settingsRefusal.reason : "limit_input";
+        return Probe::Action::UNAVAILABLE;
+    }
+    // Soft limits: known disabled, or (selected axis) bound with the endpoint inside.
+    const SoftLimitState softState = d.member ? (c.softLimitEnableKnown && c.raw.softLimitEnable == 0 ?
+        SoftLimitState::KNOWN_DISABLED : SoftLimitState::UNKNOWN) : softLimitState(a, now);
+    if (softState == SoftLimitState::UNKNOWN) {
+        noteSoftLimitRefusal(a, "soft_limit_state_unknown"); reason = "soft_limit_state_unknown";
+        return Probe::Action::UNAVAILABLE;
+    }
+    if ((softState == SoftLimitState::BOUND || axis.softLimitsKnown) &&
+        (!axis.softLimitsKnown || f.endpoint < axis.softMinimum || f.endpoint > axis.softMaximum)) {
+        noteSoftLimitRefusal(a, "soft_limit_endpoint"); reason = "soft_limit_endpoint";
+        return Probe::Action::UNAVAILABLE;
+    }
+    return Probe::Action::OK;
+}
+Probe::Action armSegmentIn(App& a, const Probe::InputStartRequest& r, uint32_t& operationId) {
+    using namespace MotorControlRS;
+    if (r.terminal > 3 || !r.count || r.count > Probe::INPUT_START_MEMBERS || r.mode > Probe::InputStartMode::ABSOLUTE ||
+        r.pollMs < Probe::INPUT_START_MIN_POLL_MS || r.pollMs > Probe::INPUT_START_MAX_POLL_MS ||
+        r.windowMs < Probe::INPUT_START_MIN_WINDOW_MS || r.windowMs > Probe::INPUT_START_MAX_WINDOW_MS ||
+        r.record < 1 || r.record > ESS::SEGMENT_RECORD_COUNT) return refuseInputStart(a, Probe::Action::INVALID, "invalid_request");
+    // Records 9-16 need PIN3, which a four-input drive cannot also give (p23).
+    if (r.record > Probe::INPUT_START_PT_SELECTABLE) return refuseInputStart(a, Probe::Action::UNSUPPORTED, "record_unreachable");
+    // Wired bench 13 P2 (0x4EEA/0x0029, drives 1 and 4, homed and not): with
+    // 0x0050 = 1 every PT record still moved its target as a displacement from
+    // the trigger position, so an absolute endpoint cannot be predicted.
+    if (r.mode == Probe::InputStartMode::ABSOLUTE) return refuseInputStart(a, Probe::Action::UNSUPPORTED, "pt_absolute_unresolved");
+    for (uint8_t i = 0; i < r.count; ++i) {
+        if (!ESS::isValidAddress(r.members[i].address)) return refuseInputStart(a, Probe::Action::INVALID, "invalid_member_request");
+        for (uint8_t j = 0; j < i; ++j)
+            if (r.members[j].address == r.members[i].address)
+                return refuseInputStart(a, Probe::Action::INVALID, "duplicate_member", r.members[i].address);
+    }
+    uint8_t owned = 0;
+    const auto pre = armPreflight(a, r, owned);
+    if (pre != Probe::Action::OK) return pre;
+    const uint64_t now = uart.sample();
+    auto& s = a.inputStart;
+    ArmDrive drives[Probe::INPUT_START_MEMBERS];
+    SegmentArmFacts facts[Probe::INPUT_START_MEMBERS];
+    for (uint8_t i = 0; i < r.count; ++i) {
+        const char* reason = "none";
+        const auto checked = checkSegmentArmDrive(a, r, r.members[i].address, now, drives[i], facts[i], reason);
+        if (checked != Probe::Action::OK) return refuseInputStart(a, checked, reason, r.members[i].address);
+    }
+    // Arm every context before anything else changes; a refusal resets them.
+    const uint32_t id = a.nextOperationId;
+    ESS::InputStartOptions options;
+    options.pollIntervalUs = r.pollMs * 1000u; options.windowUs = r.windowMs * 1000u;
+    for (uint8_t i = 0; i < r.count; ++i) {
+        auto& member = s.members[i];
+        const auto& d = drives[i];
+        const auto& f = facts[i];
+        auto& p = member.prerequisites;
+        p = ESS::InputStartPrerequisites();
+        p.target = d.axis->target; p.configurationGeneration = d.axis->generation; p.terminal = r.terminal; p.function = 12;
+        p.polarity = f.polarity; p.statusMapping = d.io[r.terminal].input.statusMapping;
+        p.positionModeKnown = true; p.positionMode = f.mode; p.pvTriggerModeKnown = f.pv <= 1; p.pvTriggerMode = f.pv;
+        p.sourceInhibitedUntilArmed = true; // The session owns the trigger output and checked it off.
+        p.wordOrderKnown = true; p.wordOrder = d.configuration->wordOrder;
+        baselineFromCache(*d.state, p);
+        p.maximumAgeUs = a.observationAgeUs();
+        p.expectedKnown = true; p.expectedDisplacement = f.target; p.expectedEndpoint = f.target;
+        p.stagedKnown = true; std::memcpy(p.stagedWords, f.words, sizeof(p.stagedWords));
+        member.context = ESS::InputStartContext(); member.sample = Rtu::RequestId();
+        const Status prepared = ESS::prepareInputStart(member.context, p, id, options, now);
+        if (!prepared) {
+            for (uint8_t j = 0; j <= i; ++j) s.members[j].context = ESS::InputStartContext();
+            return refuseInputStart(a, Probe::Action::UNAVAILABLE,
+                prepared.detail == static_cast<int32_t>(ESS::InputStartError::STALE_FACTS) ? "baseline_stale" : "context_refused",
+                r.members[i].address);
+        }
+    }
+    // Commit: nothing above changed the session view.
+    s.view.~InputStartView();
+    auto& v = *new (&s.view) Probe::InputStartView();
+    v.operationId = a.nextOperationId++; v.kind = r.kind; v.terminal = r.terminal; v.mode = r.mode; v.group = r.group;
+    v.phase = Probe::InputStartPhase::ARMED; v.pollMs = r.pollMs; v.windowMs = r.windowMs; v.startedUs = v.armedUs = now;
+    v.count = r.count;
+    if (&s.request != &r) s.request = r;
+    s.next = 0; s.stageBegun = false; s.firstOperationId = v.operationId;
+    s.participantCount = s.step = 0; s.triggerRequest = Rtu::RequestId(); s.disarming = false;
+    s.ownedMask = owned;
+    const auto& view = benchView(a);
+    for (uint8_t i = 0; i < BenchIo::OUTPUTS; ++i) s.ownedOns[i] = view.outputs[i].ons;
+    s.debugBase = debugOverwrites(a); s.aux1EdgesBase = view.input.edges;
+    for (uint8_t i = 0; i < r.count; ++i) {
+        auto& member = s.members[i];
+        const auto& f = facts[i];
+        member.address = r.members[i].address; member.sampleSequence = 0; member.seenStopId = 0; member.stopTxSeen = false;
+        auto& mv = s.view.members[i];
+        mv = Probe::InputStartMemberView();
+        mv.address = member.address; mv.configurationGeneration = drives[i].axis->generation; mv.function = 12;
+        mv.polarity = f.polarity; mv.positionMode = f.mode; mv.assignmentKnown = true; mv.assignment = 12;
+        std::memcpy(mv.stagedWords, f.words, sizeof(mv.stagedWords));
+        mv.record = r.record; std::memcpy(mv.recordWords, f.words, sizeof(mv.recordWords));
+        mv.recordOperationId = f.operationId; mv.recordTarget = f.target;
+        std::memcpy(mv.selectorTerminals, f.selectors, sizeof(mv.selectorTerminals));
+        mv.expectedDisplacement = f.mode ? 0 : f.target;
+        mv.expectedEndpoint = static_cast<int32_t>(f.endpoint);
+        mv.baselinePosition = f.baseline;
+    }
+    s.serialGeneration = a.serial.generation; s.bindingGeneration = a.bindingGeneration; s.declaration = a.group.declaration;
+    operationId = a.latestOperationId = v.operationId;
+    return Probe::Action::OK;
+}
+// SEGMENT trigger: every PIN the armed record needs on is driven by a bench
+// output that is on with its hold ending no earlier than the trigger pulse plus
+// INPUT_START_PT_PIN_HOLD_MARGIN_MS, and every PIN it needs off has its output
+// off; otherwise a hold ending between the state sample and the edge could
+// select another record. Null when admitted.
+const char* selectorHoldProblem(const App& a, const BenchIo::View& bench, uint32_t widthMs) {
+    const auto& s = a.inputStart;
+    const uint64_t need = (static_cast<uint64_t>(widthMs) + Probe::INPUT_START_PT_PIN_HOLD_MARGIN_MS) * 1000;
+    for (uint8_t i = 0; i < s.view.count; ++i) {
+        const auto& mv = s.view.members[i];
+        for (uint8_t b = 0; b < Probe::INPUT_START_PT_SELECTORS; ++b) {
+            const bool on = ((mv.record - 1u) >> b) & 1u;
+            bool driven = false;
+            for (uint8_t o = 0; o < BenchIo::OUTPUTS && o < FIXTURE_BENCH_OUTPUTS; ++o) {
+                if (a.benchOutputTerminals[o] != static_cast<int8_t>(mv.selectorTerminals[b])) continue;
+                driven = true;
+                const auto& out = bench.outputs[o];
+                if (!on && out.active) return "a PIN output the armed record needs off is on";
+                if (on && (!out.active || out.dueUs < bench.nowUs + need))
+                    return "a PIN output's hold ends before the trigger pulse and its margin";
+            }
+            if (on && !driven) return "no bench output drives a PIN the armed record needs";
+        }
+    }
+    return nullptr;
+}
+// SEGMENT trigger: an output already on is admitted only when it is not the
+// trigger's and its terminal holds no start function (7-13) on any participant
+// read in this step (the PIN selectors held through the run). Null when admitted.
+const char* heldOutputProblem(const App& a, const BenchIo::View& bench) {
+    const auto& s = a.inputStart;
+    for (uint8_t o = 0; o < BenchIo::OUTPUTS; ++o) {
+        if (!bench.outputs[o].active) continue;
+        if ((s.ownedMask >> o) & 1u) return "the trigger output is already on";
+        const int8_t t = o < FIXTURE_BENCH_OUTPUTS ? a.benchOutputTerminals[o] : FIXTURE_OUTPUT_NONE;
+        if (a.benchOutputMap != FixtureState::APPLIED || t < 0 || t > 3) return "an output with no declared terminal is on";
+        for (uint8_t i = 0; i < s.view.rowCount; ++i) {
+            const uint16_t f = s.view.rows[i].io[1 + t];
+            if (f >= 7 && f <= 13) return "an output is on at a terminal with a start function";
+        }
+    }
+    return nullptr;
+}
 Probe::Action armInputStartIn(App& a, const Probe::InputStartRequest& r, uint32_t& operationId) {
     using namespace MotorControlRS;
     a.inputStartRefusal = Probe::InputStartReply();
     if (r.kind == Probe::InputStartKind::HOME) return refuseInputStart(a, Probe::Action::UNSUPPORTED, "home_staging_prompt_12");
-    if (r.kind == Probe::InputStartKind::SEGMENT) return refuseInputStart(a, Probe::Action::UNSUPPORTED, "segment_staging_prompt_13");
+    if (r.kind == Probe::InputStartKind::SEGMENT) return armSegmentIn(a, r, operationId);
     if (r.kind == Probe::InputStartKind::VELOCITY) return refuseInputStart(a, Probe::Action::UNSUPPORTED, "pv_staging_prompt_14");
     if (r.kind != Probe::InputStartKind::POSITION || r.terminal > 3 || !r.count || r.count > Probe::INPUT_START_MEMBERS ||
         r.mode > Probe::InputStartMode::ABSOLUTE || r.pollMs < Probe::INPUT_START_MIN_POLL_MS ||
@@ -266,7 +595,7 @@ Probe::Action armInputStartIn(App& a, const Probe::InputStartRequest& r, uint32_
     s.ownedMask = owned;
     for (uint8_t i = 0; i < BenchIo::OUTPUTS; ++i) s.ownedOns[i] = view.outputs[i].ons;
     s.debugBase = debugOverwrites(a); s.aux1EdgesBase = view.input.edges;
-    for (uint8_t i = 0; i < r.count; ++i) {
+    for (uint8_t i = 0; i < r.count && i < Probe::INPUT_START_MEMBERS; ++i) {
         auto& member = s.members[i];
         const auto& d = drives[i];
         member.address = r.members[i].address;
@@ -612,6 +941,20 @@ void decideRow(const App& a, Probe::InputStartRow& row, uint8_t terminal, uint64
         } else witness = a.rememberedMoveGeneration == a.axis.generation && a.rememberedMoveBinding == a.bindingGeneration &&
             a.rememberedMoveSerial == a.serial.generation && !std::memcmp(a.rememberedMoveWords, mv.stagedWords, sizeof(mv.stagedWords));
         if (running) { set("L4", false, "armed member running"); return; }
+        if (s.view.kind == Probe::InputStartKind::SEGMENT) {
+            // PT member: function 12, its selectors and their levels, and the record read it armed on.
+            if (function != 12 || polarity != mv.polarity) { set("L4", false, "member assignment changed since arming"); return; }
+            for (uint8_t b = 0; b < Probe::INPUT_START_PT_SELECTORS; ++b) {
+                const uint8_t t = mv.selectorTerminals[b];
+                if (row.io[1 + t] != 14 + b || ((row.io[0] >> t) & 1u)) { set("L4", false, "member selector assignment changed since arming"); return; }
+                if (((row.state[2] >> t) & 1u) != (((mv.record - 1u) >> b) & 1u)) { set("L4", false, "PIN levels differ from the armed record"); return; }
+            }
+            if (row.state[1] & static_cast<uint16_t>(ESS::MotionStatusBit::RELEASED)) { set("L4", false, "armed member released"); return; }
+            if (!recordWitness(a, mv, s.view.group)) { set("L4", false, "record read witness ended"); return; }
+            set("M", true, "armed member, function 12, stopped, PIN levels select the armed record");
+            row.row[1] = 0;
+            return;
+        }
         if (function != 7 || polarity != mv.polarity) { set("L4", false, "member assignment changed since arming"); return; }
         if (row.state[1] & static_cast<uint16_t>(ESS::MotionStatusBit::RELEASED)) { set("L4", false, "armed member released"); return; }
         if (!witness) { set("L4", false, "staged words witness ended"); return; }
@@ -643,7 +986,11 @@ Probe::Action triggerInputStartIn(App& a, uint32_t id, uint8_t output, uint32_t 
     if (widthMs < Probe::INPUT_START_MIN_WIDTH_MS || widthMs > Probe::INPUT_START_MAX_WIDTH_MS)
         return refuseInputStart(a, Probe::Action::INVALID, "width_out_of_range");
     if (!a.options.benchIo || !benchView(a).ready) return refuseInputStart(a, Probe::Action::UNAVAILABLE, "bench_unavailable");
-    if (anyOutputActive(a.benchScratch)) return refuseInputStart(a, Probe::Action::BUSY, "output_already_on");
+    // A PT trigger runs with its selectors held; their outputs are judged at the decision.
+    bool ownedOn = false;
+    for (uint8_t o = 0; o < BenchIo::OUTPUTS; ++o) ownedOn = ownedOn || (((s.ownedMask >> o) & 1u) && a.benchScratch.outputs[o].active);
+    if (v.kind == Probe::InputStartKind::SEGMENT ? ownedOn : anyOutputActive(a.benchScratch))
+        return refuseInputStart(a, Probe::Action::BUSY, "output_already_on");
     if (a.owner.needsRecovery() || uart.needsRecovery()) return refuseInputStart(a, Probe::Action::RECOVERY_REQUIRED, "recovery_required");
     uint8_t pendingAddress = 0;
     if (foreignPending(a, pendingAddress)) {
@@ -701,7 +1048,8 @@ void decideTrigger(App& a, uint64_t now) {
     if (foreignPending(a, pendingAddress)) { refuseTrigger(a, "L4", pendingAddress, "an accepted operation is still pending"); return; }
     const auto& bench = benchView(a);
     if (!bench.ready) { refuseTrigger(a, "L1", 0, "bench view unavailable"); return; }
-    if (anyOutputActive(bench)) { refuseTrigger(a, "L4", 0, "an output is already on"); return; }
+    const bool segment = v.kind == Probe::InputStartKind::SEGMENT;
+    if (!segment && anyOutputActive(bench)) { refuseTrigger(a, "L4", 0, "an output is already on"); return; }
     const uint64_t decision = uart.sample();
     Probe::InputStartRow* refused = nullptr;
     for (uint8_t i = 0; i < v.rowCount; ++i) {
@@ -712,6 +1060,8 @@ void decideTrigger(App& a, uint64_t now) {
         if (!row.admit && !refused) refused = &row;
     }
     if (refused) { refuseTrigger(a, refused->row, refused->address, refused->reason); return; }
+    if (segment) if (const char* held = heldOutputProblem(a, bench)) { refuseTrigger(a, "L4", 0, held); return; }
+    if (segment) if (const char* hold = selectorHoldProblem(a, bench, s.widthMs)) { refuseTrigger(a, "L4", 0, hold); return; }
     v.decided = v.admitted = true; v.decisionAddress = v.rows[0].address; v.decisionReason = "every participant admitted";
     std::memcpy(v.decisionRow, v.rows[0].row, 3);
     // Before the ON: the isolation witness and the pre-edge sample of each member.
@@ -874,6 +1224,15 @@ Probe::Action inputStartCommand(void* context, const Probe::InputStartCommand& c
         built.kind = c.armKind; built.terminal = c.terminal; built.group = c.group;
         built.mode = c.form == Probe::InputStartArmForm::RELATIVE ? Probe::InputStartMode::RELATIVE : Probe::InputStartMode::ABSOLUTE;
         built.pollMs = c.pollMs; built.windowMs = c.windowMs;
+        if (c.armKind == Probe::InputStartKind::SEGMENT) {
+            // One record for every member: the PIN selectors are one shared state.
+            built.record = c.record;
+            if (c.group && (!a.group.declared || !a.group.count)) { result = refuseInputStart(a, Probe::Action::UNAVAILABLE, "group_not_declared"); break; }
+            if (c.group && a.group.count > Probe::INPUT_START_MEMBERS) { result = refuseInputStart(a, Probe::Action::INVALID, "too_many_members"); break; }
+            built.count = c.group ? a.group.count : 1;
+            for (uint8_t i = 0; i < built.count; ++i) built.members[i].address = c.group ? a.group.members[i].address : a.axis.target.address;
+            result = armInputStartIn(a, built, id); break;
+        }
         if (c.armKind != Probe::InputStartKind::POSITION) { result = armInputStartIn(a, built, id); break; }
         if (c.form == Probe::InputStartArmForm::ABSOLUTE && c.group) { result = refuseInputStart(a, Probe::Action::INVALID, "absolute_needs_selected"); break; }
         if (c.group && (!a.group.declared || !a.group.count)) { result = refuseInputStart(a, Probe::Action::UNAVAILABLE, "group_not_declared"); break; }

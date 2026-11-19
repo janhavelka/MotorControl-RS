@@ -1733,7 +1733,7 @@
           ],
           "notes": "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30).",
           "choices": null,
-          "write_constraint": "No production FC10 window: the sixteen pulse pairs stay experiment windows (decision D4) until prompt 13's W0 witness measures order and sign (D10). Wired bench 10 storage: FC10 of two words acknowledged and read back exactly for all sixteen records on drive 4 ([n, 0x1000+n]) and segment 1 -500 [65535,65036] at 0x0019 = 0 (P2), segment 1 on drives 1 and 2 (P4) and on drive 4 at 0x0019 = 1 (P3, storage only). Split FC06 and record spans over the reserved word stay unavailable. p75 documents 100000 = 0x0001/0x86A0 at 0x0060/61."
+          "write_constraint": "Production FC10 window since wired bench 13 W0a (D10): one FC10 of the two words, order 0, non-negative targets only (the sign witness W0b did not run; negative targets refuse before TX). Wired bench 10 storage: FC10 of two words acknowledged and read back exactly for all sixteen records on drive 4 ([n, 0x1000+n]) and segment 1 -500 [65535,65036] at 0x0019 = 0 (P2), segment 1 on drives 1 and 2 (P4) and on drive 4 at 0x0019 = 1 (P3, storage only). Split FC06 and record spans over the reserved word stay unavailable. p75 documents 100000 = 0x0001/0x86A0 at 0x0060/61."
         },
         {
           "offset": 2,
@@ -4032,247 +4032,181 @@
       ],
       "evidence": "NEGATIVE_SOFT_LIMIT pair alone; promoted by wired bench 10 (D10): FC10 acknowledged and read back exactly on drives 1, 2 and 4 at 0x0019 = 0 (P1, P4); order and sign witnessed by E3 (-300 stopped velocity -30 rpm at -332 with 0x0007 bit 6; swapped words would be 0x012C0000). Order 0 only; docs/reports/2026-11-19_wired_bench_10_paired_value_encodings.md",
       "partial_application": "UNSPECIFIED"
-    }
-  ],
-  "experiment_windows": [
+    },
     {
       "start": "0x0060",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         75
       ],
-      "evidence": "POSITION_SEGMENT_01_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_01_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     },
     {
       "start": "0x0066",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         75
       ],
-      "evidence": "POSITION_SEGMENT_02_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_02_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     },
     {
       "start": "0x006C",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         75
       ],
-      "evidence": "POSITION_SEGMENT_03_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_03_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     },
     {
       "start": "0x0072",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         75
       ],
-      "evidence": "POSITION_SEGMENT_04_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_04_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     },
     {
       "start": "0x0078",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         75
       ],
-      "evidence": "POSITION_SEGMENT_05_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_05_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     },
     {
       "start": "0x007E",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         75
       ],
-      "evidence": "POSITION_SEGMENT_06_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_06_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     },
     {
       "start": "0x0084",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         75
       ],
-      "evidence": "POSITION_SEGMENT_07_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_07_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     },
     {
       "start": "0x008A",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         75
       ],
-      "evidence": "POSITION_SEGMENT_08_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_08_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     },
     {
       "start": "0x0090",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         76
       ],
-      "evidence": "POSITION_SEGMENT_09_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_09_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     },
     {
       "start": "0x0096",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         76
       ],
-      "evidence": "POSITION_SEGMENT_10_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_10_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     },
     {
       "start": "0x009C",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         76
       ],
-      "evidence": "POSITION_SEGMENT_11_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_11_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     },
     {
       "start": "0x00A2",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         76
       ],
-      "evidence": "POSITION_SEGMENT_12_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_12_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     },
     {
       "start": "0x00A8",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         76
       ],
-      "evidence": "POSITION_SEGMENT_13_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_13_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     },
     {
       "start": "0x00AE",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         76
       ],
-      "evidence": "POSITION_SEGMENT_14_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_14_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     },
     {
       "start": "0x00B4",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         76
       ],
-      "evidence": "POSITION_SEGMENT_15_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_15_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     },
     {
       "start": "0x00BA",
       "count": 2,
-      "family": "pt_target",
-      "decision": "D4",
-      "prompt": "wired bench 10; wired bench 13 W0",
-      "date": "2026-11-19",
       "pages": [
         22,
         30,
         76
       ],
-      "evidence": "POSITION_SEGMENT_16_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "evidence": "POSITION_SEGMENT_16_PULSES pair alone; promoted by wired bench 13 W0a (D10): storage exact at 0x0019 = 0 (wired bench 10 P2, P4); order witnessed on drives 1, 2 and 4 by record 1 = [0x0001,0x0000] started through its PT trigger (X0 = 12): +65538, +65536, +65536 (order 0; swapped words would move +1). Order 0 and non-negative targets only: the sign witness W0b did not run; docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
       "partial_application": "UNSPECIFIED"
     }
   ]

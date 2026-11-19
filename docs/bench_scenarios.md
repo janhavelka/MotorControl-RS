@@ -207,7 +207,10 @@ only the interlock's reads (with their releases), one local `drv` and one
 `bench` view; the reads must have consecutive controller operation IDs, `drv`
 must report the last of them as the latest admitted operation, and with no
 named member the owner has no request pending. Otherwise row L1 refuses. An
-output already on, or any other pending operation (row L4), refuses too. The
+output already on, or any other pending operation (row L4), refuses too; since
+wired bench 13 held selector outputs of a stated PIN layout are the one
+exception, and a named selection member is row P
+([PT segments](#pt-segments-wired-bench-13)). The
 read age is a 1000 ms backstop: it runs from each read's request start
 (`started_us`) to the bench view plus the host time after it, and after the ON
 the reply's `on_us` gives the actual age; an age above the bound switches all
@@ -423,8 +426,11 @@ takes `--firmware IMAGE` and `--commit TEXT` instead of `--image-level`.
 | RB, E3X, E2R | Experimental | Restorations: PT and limit pairs back to the 01 baseline words; the soft-limit flag exit of an interrupted E3 trial; the interrupted E2 run |
 | R10 | Production | Drive 4: `driver set positive-limit`/`negative-limit` +300/-300 and back to [0,0], decoded reads, home 35 with auxiliary 6 and offsets +500 and -500 from a HOMED-low start, `driver experiment` refused before TX |
 
-Experiment writes go through the experimental image's named admission
-(`driver experiment`, decision D4). Restoration uses the exact words of a
+Experiment writes went through the experimental image's named admission
+(`driver experiment`, decision D4). This is historical: wired bench 13 removed
+the experiment builder and its admission, so every image built since refuses
+`driver experiment` and the experimental cases run only on the recorded wired
+bench 10 images. Restoration uses the exact words of a
 checked read of the same drive taken before the first write (D7) or the
 ordinary routes; from image level 10 the restoration planner also uses
 `driver set positive-limit|negative-limit VALUE` for the limit fields. An
@@ -514,3 +520,54 @@ and offsets; L8 asserts an unused limit during a search; H12 (drive 4) times Y0
 = 3 against HOMED; H13 (drive 4) binds the soft limits after a switch home. The
 run's plan restores the auxiliary, the homing words (`home restore` of the
 first read) and the case writes.
+
+## PT segments (wired bench 13)
+
+`--scenario pt-segments --cases ID... --address A --image-level 13`
+(`scripts/bench_pt.py`; W0a takes `--drives`). One run folder runs the named
+cases in order. Each armed drive gets the layout X0 = 12 (`mosfet1`, the
+trigger), X1 = 14 (`relay2`), X2 = 15 (`relay1`), X3 = 16 (`mosfet2`) through
+`io set` with ASSIGN facts and read-back, and its records through the promoted
+`segment position N set target` and the segment speed setter; records 9-16 hold
++100 at 15 rpm as a discriminator.
+
+| Case | Work |
+| --- | --- |
+| W0a | Word-order witness: record 1 = [`0x0001`,`0x0000`] at 300 rpm, selectors off. Needs the recorded experimental image (`driver experiment`), which later images refuse |
+| P1 | Drive A relative, records 1-8 = +400·N at 60 rpm, one trigger each; each run is returned by a serial absolute move |
+| P2 | The same with `0x0050` = 1 and a repeated record (ran on image C; `absolute` is now refused) |
+| P2r | `arm segment x0 absolute 1` refused `pt_absolute_unresolved`, no operation, no pulse |
+| P3 | No P1/P2 run of the same folder moved the +100 sentinel |
+| P5 | Record 2 with a 2000 ms trigger |
+| P8 | `stop normal` and `stop fast` during record 8 (stop hook at 1.2 s) |
+| P9 | Drives 1, 2, 4 as one group, records 1-8, one selector state and one edge per record |
+| P10 | `group stop fast` during record 8 of the group (stop hook at 0.6 s) |
+| P12 | Record 1 at 2500 rpm: the arm refuses `record_rate_ceiling` with no operation and no pulse |
+
+Every trial runs, in order: the evidence-headroom check (as in wired bench
+12); the selection-consequence check over all sixteen stored records, which
+refuses the trigger if any endpoint the drive could start lies outside the
+travel bound (±4000 relative, ±8000 absolute; in W0a record 1's path bound and
++100 for the others); the PIN helper `select_record` (record bit 0 on
+`relay2`, bit 1 on `relay1`, bit 2 on `mosfet2`, each through the interlocked
+`bench_records.bench_on` with the drives as named selection members, a 60 ms
+settle after the last change, then a `read state` that must show the levels or
+no trigger is sent; it refuses any other layout it reads); the fresh reads and
+FINITE_MOVE records; `arm segment`; and the firmware's `arm trigger ID mosfet1
+50`. The PINs stay on until every armed drive has stopped, then go off. In W0a
+the path guard compares each sample's `position_change` with the band
+min(D, v·t) + 400 above and min(D, v·(t - 0.4 s)) - 400 below, at the sample's
+`last_request_us`/`last_reply_us` bracket, and sends the prepared stop when it
+leaves the band. If a trial loop raises, the prepared `stop fast` (`group stop
+fast` for a group) is sent; every stop turns all bench outputs off first.
+
+`bench_records` adds the named *selection member* (row P): a stationary drive
+whose PIN selector (14-16) the case switches while its trigger terminal holds
+12 and the trigger output is off. An ON with outputs already on is admitted
+only for the stated PIN layout (`held_selection_problem`): never the trigger
+output, only the layout's selector outputs, and no participant with a start
+function 7-13 on a terminal a held output drives. From image level 13 the
+restoration planner restores PT targets through `segment position N set
+target`. `pt.json` keeps the trials, samples and interlock entries;
+`result.json` and both run checks follow as for the other folder scenarios.
+Results: [wired bench 13](reports/2026-11-19_wired_bench_13_pt_segments.md).

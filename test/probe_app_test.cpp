@@ -1627,7 +1627,8 @@ void testSegmentRoutesStoredSettlementAndNoImplicitTrigger() {
     assert(app->segmentSettings.segmentIndex == 16 && app->segmentSettings.raw[3] == 0x1234);
     assert(release(app, baseline) == Probe::Action::OK);
     const auto before = hardware.writes;
-    command("@5 segment position 16 set speed 60 target 0\n"); contains("unsupported"); assert(hardware.writes == before);
+    // Wired bench 13: a stored PT target is written alone; a combined candidate is invalid before TX.
+    command("@5 segment position 16 set speed 60 target 0\n"); contains("\"result\":\"invalid\""); assert(hardware.writes == before);
     command("@6 segment position 16 set speed 60 acceleration 90\n"); contains("accepted");
     const auto update = app->latestOperationId; auto* record = findRecord(*app, update);
     assert(record->axisReserved && record->driver.prerequisites.allowEchoReadback);

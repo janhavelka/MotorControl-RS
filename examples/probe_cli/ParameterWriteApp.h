@@ -7,11 +7,9 @@
 // - velocity restore: 0x001D/3 from an earlier checked velocity read.
 // No start word, no replay and no rollback. A transmitted write whose execution
 // is unknown refuses the next restore until a checked read of the same window.
-// The wired bench 06 D9 custom-output experiment that shared this session ran
-// on image A and was removed with the ledger record (Implement 3).
-// The wired bench 10 PT pair experiment (PAIR_EXPERIMENT) shares the session;
-// its admission exists only in an image built with MOTORCONTROLRS_WB10_EXPERIMENT
-// (PairExperimentApp.h) and every other image refuses it UNSUPPORTED before TX.
+// The wired bench 06 D9 custom-output and wired bench 10 PT pair experiments
+// that shared this session were removed with their ledger records; stored PT
+// targets now use the typed `segment position N set target` setter.
 
 constexpr uint16_t HOME_RESTORE_FIRST = 0x0031, VELOCITY_RESTORE_FIRST = 0x001D;
 constexpr uint8_t HOME_RESTORE_WORDS = 6, VELOCITY_RESTORE_WORDS = 3;
@@ -66,13 +64,10 @@ Probe::Action restoreInputs(App& a, bool home, uint64_t now) {
     }
     return Probe::Action::OK;
 }
-bool pairExperiment(const Probe::ParameterWriteView& v) { return v.kind == Probe::ParameterWriteKind::PAIR_EXPERIMENT; }
 Probe::Action submitParameterFrame(App& a, bool write, uint64_t now) {
     auto& s = a.parameterWrite; const auto& v = s.view;
-    const bool experiment = pairExperiment(v);
     Rtu::BusRequest request;
     request.wire.length = !write ? ESS::buildReadRegisters(v.target.address, v.first, v.count, s.tx, sizeof(s.tx)) :
-        experiment ? ESS::buildExperimentWrite(v.target.address, v.first, v.words, v.count, s.tx, sizeof(s.tx)) :
         ESS::buildWriteMultipleRegisters(v.target.address, v.first, v.words, v.count, s.tx, sizeof(s.tx));
     if (!request.wire.length) return Probe::Action::INVALID;
     request.wire.bytes = s.tx;
@@ -83,17 +78,13 @@ Probe::Action submitParameterFrame(App& a, bool write, uint64_t now) {
     request.expected.targetGeneration = v.target.generation;
     request.expected.function = write ? 16 : 3;
     request.expected.first = v.first; request.expected.count = v.count;
-    request.validator = experiment ? Rtu::essExperimentValidator() : Rtu::essValidator();
+    request.validator = Rtu::essValidator();
     return admissionResult(a.owner.admit(request, now, s.request));
 }
 Probe::Action startParameterWrite(App& a, const Probe::ParameterWriteRequest& r, uint32_t& operationId) {
     using Kind = Probe::ParameterWriteKind;
     auto& s = a.parameterWrite;
-    const bool experiment = r.kind == Kind::PAIR_EXPERIMENT;
-    if (r.kind != Kind::HOME_RESTORE && r.kind != Kind::VELOCITY_RESTORE && !experiment) return Probe::Action::INVALID;
-#if !MOTORCONTROLRS_WB10_EXPERIMENT
-    if (experiment) return Probe::Action::UNSUPPORTED; // Wired bench 10 experimental image only.
-#endif
+    if (r.kind != Kind::HOME_RESTORE && r.kind != Kind::VELOCITY_RESTORE) return Probe::Action::INVALID;
     if (s.view.pending || s.view.unsettled) return Probe::Action::BUSY;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned() ||
@@ -114,24 +105,16 @@ Probe::Action startParameterWrite(App& a, const Probe::ParameterWriteRequest& r,
     v.kind = r.kind; v.target = a.axis.target; v.configurationGeneration = a.axis.generation;
     v.serialGeneration = a.serial.generation;
     const bool home = r.kind == Kind::HOME_RESTORE;
-    if (experiment) {
-#if MOTORCONTROLRS_WB10_EXPERIMENT
-        const auto admitted = pairExperimentAdmission(a, r, v, now);
-        if (admitted != Probe::Action::OK) return admitted;
-        v.snapshotId = r.snapshotId;
-#endif
-    } else {
-        const auto* snapshot = findParameterSnapshot(a, home, r.snapshotId);
-        // Same drive and binding, same host tuple; any other source is stale.
-        if (!snapshot || !Probe::sameTarget(snapshot->target, a.axis.target) ||
-            snapshot->serialGeneration != a.serial.generation) return Probe::Action::UNAVAILABLE;
-        const auto inputs = restoreInputs(a, home, now);
-        if (inputs != Probe::Action::OK) return inputs;
-        v.snapshotId = r.snapshotId;
-        v.first = home ? HOME_RESTORE_FIRST : VELOCITY_RESTORE_FIRST;
-        v.count = home ? HOME_RESTORE_WORDS : VELOCITY_RESTORE_WORDS;
-        std::memcpy(v.words, snapshot->words, v.count * sizeof(uint16_t));
-    }
+    const auto* snapshot = findParameterSnapshot(a, home, r.snapshotId);
+    // Same drive and binding, same host tuple; any other source is stale.
+    if (!snapshot || !Probe::sameTarget(snapshot->target, a.axis.target) ||
+        snapshot->serialGeneration != a.serial.generation) return Probe::Action::UNAVAILABLE;
+    const auto inputs = restoreInputs(a, home, now);
+    if (inputs != Probe::Action::OK) return inputs;
+    v.snapshotId = r.snapshotId;
+    v.first = home ? HOME_RESTORE_FIRST : VELOCITY_RESTORE_FIRST;
+    v.count = home ? HOME_RESTORE_WORDS : VELOCITY_RESTORE_WORDS;
+    std::memcpy(v.words, snapshot->words, v.count * sizeof(uint16_t));
     if (now > UINT64_MAX - 2 * REQUEST_US) return Probe::Action::INVALID;
     v.operationId = a.nextOperationId; v.startedUs = now; v.deadlineUs = now + 2 * REQUEST_US;
     s.~ParameterWriteSession(); new (&s) App::ParameterWriteSession();
@@ -147,11 +130,6 @@ void parameterWriteEffects(App& a, const Probe::ParameterWriteView& v, uint64_t 
     const uint8_t address = v.target.address;
     // As a stored homing policy: expire prepared work, qualifications and the
     // generation; the position counter and the host scale are not changed.
-    if (pairExperiment(v)) { // A PT pulse pair changes its stored record.
-        invalidateDriverAssumptions(a, address, 0, now, nullptr, ESS::DriverGroup::POSITION_SEGMENT);
-        a.segmentSettings.operationId = 0;
-        return;
-    }
     invalidateDriverAssumptions(a, address, 0, now, nullptr, ESS::DriverGroup::HOMING_AUXILIARY);
     if (v.kind == Probe::ParameterWriteKind::HOME_RESTORE) a.homingParameters.operationId = 0;
     else a.velocityParameters.operationId = 0;
@@ -199,10 +177,8 @@ void serviceParameterWrite(App& a, uint64_t now) {
             timely && t.txComplete && !result->executionUnknown;
         if (s.phase == 1) {
             if (t.reason == Rtu::Reason::FRAME)
-                evidence.status = pairExperiment(v) ?
-                    ESS::parseExperimentWrite(result->raw, t.rxLength, v.target.address, v.first, v.count, &evidence.frameError) :
-                    ESS::parseWriteMultipleRegisters(result->raw, t.rxLength, v.target.address,
-                                                     v.first, v.count, &evidence.frameError);
+                evidence.status = ESS::parseWriteMultipleRegisters(result->raw, t.rxLength, v.target.address,
+                                                                   v.first, v.count, &evidence.frameError);
             const bool rejected = timely && evidence.responseConfirmed && !evidence.executionUnknown &&
                 evidence.status.code == Err::EXCEPTION && evidence.status.detail >= 1 && evidence.status.detail <= 7 &&
                 evidence.status.detail != 5;

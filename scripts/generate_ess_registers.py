@@ -107,65 +107,41 @@ def validate(data, rows):
     return occupied
 
 
-EXPERIMENT_FAMILIES = ("soft_limit", "pt_target")
-# The pairs each experiment family may name (wired bench 10 scope).
-EXPERIMENT_FAMILY_PAIRS = {"soft_limit": ("POSITIVE_SOFT_LIMIT", "NEGATIVE_SOFT_LIMIT"),
-                           "pt_target": ("POSITION_SEGMENT_*",)}
-
-
-def check_window_list(windows, by_word, seen, kind):
-    """Structural rules shared by reviewed and experiment FC10 windows."""
-    for window in windows:
-        start, count = int(window["start"], 16), window["count"]
-        # Structural frame-buffer bound only, never an inferred device maximum.
-        if (type(count) is not int or count < 1 or 9 + 2 * count > 256 or start < 0 or
-                start + count > 0x140 or (start, count) in seen):
-            raise ValueError("invalid or duplicate %s FC10 window" % kind)
-        seen.add((start, count))
-        if (not window["pages"] or any(type(page) is not int or not 1 <= page <= 79
-                                       for page in window["pages"]) or
-                not isinstance(window["evidence"], str) or not window["evidence"].strip()):
-            raise ValueError("%s FC10 window requires ESS source evidence" % kind)
-        if window["partial_application"] != "UNSPECIFIED":
-            raise ValueError("no ESS atomic-write guarantee has been established")
-        for word in range(start, start + count):
-            row = by_word.get(word)
-            if (row is None or row["source_access"] not in ("WO", "RW", "RW/S") or
-                    row["signedness"] == "RESERVED"):
-                raise ValueError("%s FC10 window contains a gap or nonwritable word" % kind)
-            first = int(row["address"], 16)
-            if first < start or first + row["words"] > start + count:
-                raise ValueError("%s FC10 window splits a paired field" % kind)
-
-
 def validate_write_windows(data, rows):
     """Validate explicit source windows; writable adjacency never grants FC10.
 
-    ``experiment_windows`` (wired bench 10, decision D4) follow the same
-    structural rules, name their decision, prompt, date and family, cover
-    exactly one writable pair each and never repeat a reviewed window: a
-    window is either reviewed (production) or experimental, not both."""
+    Every listed window is a production window. The wired bench 10 experiment
+    windows were all promoted (D10); a new experiment window needs a new
+    decision and its own builder, so the old ledger key is refused."""
+    if "experiment_windows" in data:
+        raise ValueError("experiment FC10 windows were removed; a new one needs a new decision")
     by_word = {word: row for row in rows for word in
                range(int(row["address"], 16), int(row["address"], 16) + row["words"])}
     seen = set()
     windows = data["write_multiple_windows"]
     if not windows:
         raise ValueError("missing reviewed FC10 windows")
-    check_window_list(windows, by_word, seen, "reviewed")
-    experiments = data.get("experiment_windows", [])
-    check_window_list(experiments, by_word, seen, "experiment")
-    for window in experiments:
-        if (window.get("decision") != "D4" or not isinstance(window.get("prompt"), str) or
-                not window["prompt"].strip() or not isinstance(window.get("date"), str) or
-                len(window["date"]) != 10 or window.get("family") not in EXPERIMENT_FAMILIES):
-            raise ValueError("experiment FC10 window requires decision D4, prompt, date and family")
-        row = by_word[int(window["start"], 16)]
-        if row["words"] != 2 or int(row["address"], 16) != int(window["start"], 16) or window["count"] != 2:
-            raise ValueError("experiment FC10 window must be exactly one writable pair")
-        names = EXPERIMENT_FAMILY_PAIRS[window["family"]]
-        if not any(row["name"] == n or (n.endswith("*") and row["name"].startswith(n[:-1]) and
-                                        row["name"].endswith("_PULSES")) for n in names):
-            raise ValueError("experiment FC10 window is not a pair of its family")
+    for window in windows:
+        start, count = int(window["start"], 16), window["count"]
+        # Structural frame-buffer bound only, never an inferred device maximum.
+        if (type(count) is not int or count < 1 or 9 + 2 * count > 256 or start < 0 or
+                start + count > 0x140 or (start, count) in seen):
+            raise ValueError("invalid or duplicate FC10 window")
+        seen.add((start, count))
+        if (not window["pages"] or any(type(page) is not int or not 1 <= page <= 79
+                                       for page in window["pages"]) or
+                not isinstance(window["evidence"], str) or not window["evidence"].strip()):
+            raise ValueError("FC10 window requires ESS source evidence")
+        if window["partial_application"] != "UNSPECIFIED":
+            raise ValueError("no ESS atomic-write guarantee has been established")
+        for word in range(start, start + count):
+            row = by_word.get(word)
+            if (row is None or row["source_access"] not in ("WO", "RW", "RW/S") or
+                    row["signedness"] == "RESERVED"):
+                raise ValueError("FC10 window contains a gap or nonwritable word")
+            first = int(row["address"], 16)
+            if first < start or first + row["words"] > start + count:
+                raise ValueError("FC10 window splits a paired field")
     for row in rows:
         if row["words"] == 2 and row["source_access"] in ("WO", "RW", "RW/S"):
             if not isinstance(row.get("write_constraint"), str) or not row["write_constraint"].strip():
@@ -226,13 +202,7 @@ def access_header(data, rows):
                   (int(w['start'], 16), w['count']) for w in data['write_multiple_windows']) + ';\n}\n\n',
               'inline bool hasWriteMultipleCount(uint16_t count) noexcept {\n',
               '    return ' + ' || '.join('count == %d' % count for count in
-                  sorted({w['count'] for w in data['write_multiple_windows']})) + ';\n}\n\n']
-    experiments = data.get('experiment_windows', [])
-    lines += ['// Experiment FC10 windows (decision D4): only the separate experiment\n',
-              '// builder admits them; production validation never does.\n',
-              'inline bool canWriteExperiment(uint16_t start, uint16_t count) noexcept {\n',
-              '    return ' + (' ||\n           '.join('(start == 0x%04X && count == %d)' %
-                  (int(w['start'], 16), w['count']) for w in experiments) or '((void)start, (void)count, false)') + ';\n}\n\n',
+                  sorted({w['count'] for w in data['write_multiple_windows']})) + ';\n}\n\n',
               '} // namespace Detail\n', CLOSE_NS]
     return ''.join(lines)
 
@@ -431,22 +401,11 @@ def markdown(data, rows, occupied):
               "maximum; subsets and adjacent fields gain no permission. FC06 rejects every\n",
               "paired half. Atomicity and partial-application behavior remain unspecified.\n",
               "See the [pair-write handoff](../ess_pair_writes.md) for typed availability\n",
-              "and the gated qualification experiment.\n\n",
+              "and the hardware evidence of each promoted window.\n\n",
               "| Start | Count | Physical PDF pages | Evidence |\n| --- | ---: | --- | --- |\n"]
     for window in data["write_multiple_windows"]:
         lines.append("| `%s` | %d | %s | %s |\n" % (window["start"], window["count"],
                      ", ".join(map(str, window["pages"])), window["evidence"]))
-    experiments = data.get("experiment_windows", [])
-    if experiments:
-        lines += ["\nExperiment windows (decision D4) are not reviewed transactions. Only the\n",
-                  "separate experiment builder admits them, for a named bench admission; every\n",
-                  "production builder, validator and typed setter refuses them.\n\n",
-                  "| Start | Count | Family | Prompt | Date | Physical PDF pages | Evidence |\n",
-                  "| --- | ---: | --- | --- | --- | --- | --- |\n"]
-        for window in experiments:
-            lines.append("| `%s` | %d | %s | %s | %s | %s | %s |\n" % (
-                window["start"], window["count"], window["family"], window["prompt"], window["date"],
-                ", ".join(map(str, window["pages"])), window["evidence"]))
     lines += ["\n| Writable pair | First word | Source disposition |\n| --- | --- | --- |\n"]
     for row in rows:
         if "write_constraint" in row:

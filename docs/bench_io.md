@@ -423,7 +423,19 @@ this fixture unlocks.
    case asserted X1 during a method 20 search.
 7. **PT segments.** X0 = 12, X1-X3 = 14-16. Set PIN levels with relays and
    MOSFET2, wait more than 10 ms, pulse X0; read the reached position for
-   several segments.
+   several segments. Run it as `bench_scenarios.py --scenario pt-segments
+   --cases P1 P3 P5 P8 P12 --address 1 --image-level 13`
+   ([guide](bench_scenarios.md#pt-segments-wired-bench-13)): PIN0 is `relay2`,
+   PIN1 `relay1`, PIN2 `mosfet2`, settled 60 ms and read back before `arm
+   segment` and the firmware's 50 ms `mosfet1` trigger. Measured on 19 November
+   ([wired bench 13](reports/2026-11-19_wired_bench_13_pt_segments.md)) on
+   drive 1: records 1-8 each moved their own target within ±1 (P1), records
+   9-16 never ran (P3), a 2000 ms trigger started one run (P5), `stop normal`
+   and `stop fast` ended a run with no further start and the selectors dropped
+   (P8), a record over the rate ceiling was refused (P12). With `0x0050` = 1
+   records still ran as displacements (P2), so `absolute` is refused. Late PIN
+   changes (P4), a second edge (P6), start speed (P7) and negative targets
+   were not run.
 8. **Outputs.** Y0 = 2, 4, 3, 5 and 1 in turn: running, in-position, homed,
    brake and alarm edges against serial state and the move timeline
    (`--scenario outputs --case O4` to `O9`). Measured in wired bench 06; the
@@ -444,7 +456,14 @@ this fixture unlocks.
    X3 stop input stopped input-started group moves short with no restart (B2,
    B3, final image).
 10. **Shared segments.** Steps 7 and 9 together: different stored tables per
-    drive, one shared selector and trigger.
+    drive, one shared selector and trigger. Run it as `bench_scenarios.py
+    --scenario pt-segments --cases P9 P10 --image-level 13` (drives 1, 2 and 4
+    as one group, `arm segment ... group`). Measured on 19 November
+    ([wired bench 13](reports/2026-11-19_wired_bench_13_pt_segments.md)): one
+    selector state and one edge per record moved drive 1 +400·N, drive 2
+    +200·N and drive 4 +300·N, 8 × 3 within ±1 (P9); `group stop fast` during
+    record 8 stopped all three with no further start and the outputs off (P10).
+    Drive 2's negative table needs the signed target claim (not promoted).
 11. JOG/speed inputs (8-10) and PV segments (13), each in an explicit case
     with a prepared serial stop and the 60 s bench hold. Under D1 they may run
     unattended; "attended only" was the older rule.

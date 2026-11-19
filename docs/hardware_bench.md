@@ -104,7 +104,50 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
-On 19 November [wired bench 12](reports/2026-11-19_wired_bench_12_switch_homing.md)
+On 19 November [wired bench 13](reports/2026-11-19_wired_bench_13_pt_segments.md)
+flashed four Arduino `bench_s3_load_timer` images, each after
+`baseline-compare` (A: 573/573 equal; C: 48 differ, the recorded W0 target
+words; D: 16 differ, drive 2's W0 words; E: 573/573 equal) and a passing `before_flash_check` (drives 1, 2, 4 stopped,
+alarm-free, I/O `[0,1,2,3,0,0,0,0,0]`), uploaded from PowerShell with
+`PYTHONIOENCODING=utf-8`, four regions hash-verified and a passing post-flash
+check:
+
+- A, `00C4396977A322DB3DC9BDF2620EA13EB444FD530D3BABEA8F49437334B92956`:
+  experimental (`MOTORCONTROLRS_WB10_EXPERIMENT`, `29ca5bf` plus the
+  uncommitted tree), the W0a order witness only.
+- C, `CF4CB01F975793F7138710411F1E2A93E6875119C136940DFD9C3CD0272A36DE`:
+  production with the promoted PT target setter (`0412698` plus the
+  uncommitted tree): P1, P2, P5, P8, P12.
+- D, `A904242C4D63C488B5D8ED05738AF34F12E0211FC186828FC2BDCAC09C81FDB6`:
+  C plus the absolute PT refusal: P2r, P9, P10, P12.
+- Last, E, `3FF3A04F97D1CC25A6CB9517BB0C8BD81CB45C889EA3B21DF08510C72A2B5491`
+  (firmware-source diff `DD25852ADA5F3577A58CCDDE6EE4266A20A01660CCA67959A3426A79E533B7D7`):
+  D plus the caps fix (`input_start_kinds` lists `segment`) and a header
+  comment: short regression P1, P2r, P12. It is on the board. After the
+  independent audit the tree gained the PT trigger's PIN-hold check and the
+  qualified-target comparison; that image F
+  (`BFC27BE27E637CA8D7F7DC479D2E1DF3893B31A64A4F262E0B762947221FBCD2`) was built,
+  not flashed.
+
+Image B (`8104E1A046BDA9F53B1FAB4FBF78AFEACDCB8227C7267CECD4CFAE84AAC68F9F`)
+was built and not flashed. The native ESP-IDF 5.5.5 image of the final tree
+(`ED1D3D839D097949DC284A851C7846B20255555473C6D6610A41428E0F23B427`) was built,
+not flashed. The PT runs used X0 = 12 and X1-X3 = 14-16 on the armed drives,
+restored trigger first. Ending state:
+
+- **Board:** image E, outputs off, COM13 closed.
+- **Drives 1/2/4:** enabled, stopped, alarm-free. I/O `[0,1,2,3,0,0,0,0,0]`,
+  `0x0050` = 0, every PT record `[120, 100, 100, 0, 5000]` (speed, ramps,
+  target words). Positions: drive 1
+  [0, 15600] not homed, drive 2 [0, 1435] homed, drive 4 [0, 11289] homed.
+- **Settings:** `baseline-compare`: 573 of 573 fields equal
+  (`build/bench/2026-11-19_wb13_final_baseline_compare_e/`). RAM only, nothing saved.
+- **Relay wear:** relay1 25 and relay2 25 ONs added, `mosfet2` 23; `mosfet1`
+  (trigger) only through `arm trigger`.
+- **Owner action:** whether `0x0050` = 1 takes effect for PT after a save and
+  power cycle is deferred to the owner's return (with prompt 17's power cycles).
+
+Earlier on 19 November [wired bench 12](reports/2026-11-19_wired_bench_12_switch_homing.md)
 flashed Arduino `bench_s3_load_timer` image F,
 `A844990952F3F68A83B0B64038F8BAF55DC90C00C9D5A966FFBC003ACF06E362`, built from
 `93f8f36` plus the uncommitted prompt 12 tree (firmware-source diff
@@ -169,7 +212,9 @@ drive 4 needs a home before any homed-reference test.
 On 19 November [wired bench 10](reports/2026-11-19_wired_bench_10_paired_value_encodings.md)
 ran four controller images built from `bae5048` plus the uncommitted working
 tree. Three were experimental images with the
-`MOTORCONTROLRS_WB10_EXPERIMENT` flag:
+`MOTORCONTROLRS_WB10_EXPERIMENT` flag (historical: the flag and its
+`driver experiment` admission were removed when wired bench 13 promoted the
+stored PT targets; no current image has them):
 
 - A, `ADD8DCC43995BE3A1670AC6061C8CC734A8993FD4ABD43D218AD436F6D222E5C`: P1
   first run.

@@ -7,8 +7,11 @@ has no direct write form. The source review alone established no new write
 window. [Wired bench 10](reports/2026-11-19_wired_bench_10_paired_value_encodings.md)
 (19 November 2026, model `0x4EEA`, firmware `0x0029`) then measured the pairs
 and, under decision D10, promoted the two soft-limit pairs to reviewed FC10
-windows and admitted a nonzero home offset for method 35 with auxiliary 6. The
-sixteen stored targets remain the 16 guarded pair setters. Source facts remain in
+windows and admitted a nonzero home offset for method 35 with auxiliary 6.
+Wired bench 13 (19 November 2026) measured the stored-target word order with
+its W0a witness and, under D10, promoted the sixteen stored target pairs for
+non-negative targets at `0x0019=0`. No guarded pair setter remains; negative
+stored targets stay refused (sign unmeasured). Source facts remain in
 [the register ledger](reference/ess_rs_registers.json); operational availability
 remains in [the operation inventory](reference/ess_rs_operations.json).
 
@@ -26,11 +29,12 @@ visually checked for this review. DM-PR pages 80 onward supply no ESS aliases.
 | `0x0031/6` | Homing method, two speeds, ramp and offset pair | p20 |
 | `0x0037/2` | Positive software limit pair | p73; measured at `0x0019=0` (wired bench 10 P1, P4, E3, decision D10) |
 | `0x0039/2` | Negative software limit pair | p73; measured at `0x0019=0` (wired bench 10 P1, P4, E3, decision D10) |
+| `0x0060 + 6(n-1)/2`, n = 1..16 | Stored position target pair of record n | p22, p30, p75; storage measured on wired bench 10 (P2, P4), order 0 on wired bench 13 W0a (decision D10); non-negative targets only |
 
 These are exact reviewed transactions, not a device-wide maximum or permission
 for their subsets. In particular `0x0035/2`, a combined four-word limit span
-and stored-record writes remain unreviewed. The sixteen stored target pairs
-are [experiment windows](#experiment-windows) only. FC06 rejects either
+and stored-record spans (five words, or six over the reserved word) remain
+unreviewed. FC06 rejects either
 half of every pair as library policy against unqualified split updates; this
 is not a claim that firmware necessarily rejects FC06. Generic Modbus limits
 cannot establish ESS acceptance. The malformed p16 request has an extra
@@ -39,30 +43,17 @@ described in [the implementation reference](reference/01_implementation_referenc
 not the printed bytes. The conflicting diagram/prose CRCs on p8 likewise do
 not change the reviewed start/count.
 
-### Experiment windows
+### Experiment windows (removed)
 
-The ledger's `experiment_windows` list (wired bench decision D4) holds windows
-that only a named experiment may write. Since the wired bench 10 promotion it
-holds the sixteen stored target pairs `0x0060 + 6(n-1)/2`, family `pt_target`;
-the soft-limit entries were removed when those pairs became reviewed windows.
-The generator checks each entry with the same structural rules as a reviewed
-window, plus its decision, prompt, date and family, exactly one writable pair
-of that family, and never also a reviewed window. It emits
-`Detail::canWriteExperiment` in `Access.h` and an experiment table in the
-[register catalogue](reference/05_ess_register_catalog.md).
-
-`Codec.h` has a separate builder and parser for these windows:
-`validateExperimentWriteRequest`, `buildExperimentWrite`, `parseExperimentWrite`
-and `isExperimentWindow`. They accept only the experiment table, and the
-production builders, validators and typed setters refuse every experiment
-window. `Rtu::essExperimentValidator()` in
-[EssRtuValidator.h](../examples/common/EssRtuValidator.h) checks frames of an
-experimental image. Only an image built with `MOTORCONTROLRS_WB10_EXPERIMENT`
-admits `driver experiment ...`
-([PairExperimentApp.h](../examples/probe_cli/PairExperimentApp.h)); production
-images refuse it `unsupported` before TX. The windows, builder and route stay
-for prompt 13's W0 witness. An acknowledgement or matching readback through
-them proves storage, not the drive's interpretation, atomicity or persistence.
+Wired bench 10 and 13 wrote the soft-limit and stored-target pairs through a
+ledger `experiment_windows` list (decision D4), a separate codec builder and
+parser, `Rtu::essExperimentValidator()` and a `driver experiment` route that
+only images built with `MOTORCONTROLRS_WB10_EXPERIMENT` admitted. Every one of
+those windows is now a reviewed window, so the list, the builder, the
+validator, the route and the build flag were removed with the wired bench 13
+promotion. The generator refuses an `experiment_windows` key: a new
+experiment window needs a new decision and its own admission. Every image
+refuses `driver experiment ...` `unsupported` before TX.
 
 ## Documented word layout and pulse unit
 
@@ -119,6 +110,15 @@ Measured on drives 1, 2 and 4 (model `0x4EEA`, firmware `0x0029`) on
   after a save and restart is unmeasured (prompt 17). Order 1 is refused for
   every pair write.
 
+### Measured on wired bench 13
+
+Wired bench 13 W0a (19 November 2026, model `0x4EEA`, firmware `0x0029`, X0
+assigned function 12) wrote record 1 = [`0x0001`,`0x0000`] and started it
+through its PT trigger on drives 1, 2 and 4: the drives moved +65538, +65536
+and +65536 position increments. Swapped words would have moved +1. So the
+stored target's high word is at the lower address at `0x0019=0`. The sign
+witness W0b did not run; a negative stored target is unmeasured and refused.
+
 Atomicity, rollback and partial-failure behavior of every FC10 window remain
 undocumented and unmeasured.
 
@@ -135,12 +135,13 @@ All sixteen stored target pairs below share the p22 pulse unit and
 signed-direction semantics, p75 range `-0xFFFFFFF` to `0xFFFFFFF`, and p30
 configurable word order with the p75 worked example at `0x0019=0`. The p75
 example (100000 = `0x0001`/`0x86A0`) documents order 0 but is not a
-measurement. Wired bench 10 wrote every pair through its experiment window
-and read it back (P2-P4); that is storage evidence, not the drive's
-interpretation of the words. **None has a production FC10 window.** Prompt
-13's W0 witness decides their promotion. A two-word pair, five-word parameter
-subset or six-word record cannot be inferred from its readable/writable
-catalogue entry.
+measurement. Wired bench 10 measured storage of every pair (P2-P4) and wired
+bench 13 W0a the drive's word order (above). Each pair has its own reviewed
+FC10 window, promoted under D10 for non-negative targets at `0x0019=0`; the
+typed setter is `segment position N set target VALUE`
+([segments](ess_segments.md)). Order 1, an unknown order and negative targets
+are refused before TX. A five-word parameter subset or six-word record still
+cannot be inferred from its readable/writable catalogue entries.
 
 | Segment | Target pair | Reserved record word | Appendix evidence |
 | --- | --- | --- | --- |
@@ -212,9 +213,11 @@ The soft limits have a typed setter: `DriverField::POSITIVE_LIMIT` and
 two-word FC03 readback ([driver settings](ess_driver_settings.md#soft-limit-pairs)).
 A nonzero home offset uses `HomeRequest.offset` with
 `HomePrerequisites.offsetQualified` and `offsetOrder` inside the reviewed
-`0x0031/6` staging ([homing](ess_homing.md#nonzero-home-offset)). Stored
-targets keep the unsupported `SEGMENT_PULSE_TARGET` candidate until prompt 13.
-Single-word parameters have independent typed settings preparations,
+`0x0031/6` staging ([homing](ess_homing.md#nonzero-home-offset)). A stored
+target uses `DriverField::SEGMENT_PULSE_TARGET` alone in a `POSITION_SEGMENT`
+request: one FC10 of the record's pair, then a two-word FC03 readback, within
+0..`0x0FFFFFFF`, with `DriverPrerequisites::wordOrderKnown` and `wordOrder`
+stating `0x0019=0` ([segments](ess_segments.md)). Single-word parameters have independent typed settings preparations,
 without implying that a complete pair-bearing record can be written.
 
 FieldCore's RodTester now has 21-byte TX storage and an explicit RTU/echo policy,
@@ -233,10 +236,10 @@ production regression R10 on the production image wrote +300/-300 through
 `driver set positive-limit`/`negative-limit` (one FC10 and a two-word FC03
 each), read them decoded and restored [0,0], ran home 35 with auxiliary 6 and
 offsets +500 and -500 to the offset, and saw `driver experiment` refused
-`unsupported` before TX. Still open: soft-limit enable in production
-(prompt 11), auxiliary choices other than 6 and 7 with an offset (prompt 12),
-order 1 after a save and restart (prompt 17) and the stored-target
-interpretation (prompt 13). An analyzer is not an admission
+`unsupported` before TX. Wired bench 11 admitted soft-limit enable, wired
+bench 12 the auxiliary choices of the moving methods and wired bench 13 W0a
+the stored-target word order. Still open: order 1 after a save and restart
+(prompt 17) and negative stored targets (W0b did not run). An analyzer is not an admission
 requirement. A separate parameter-only experiment may examine the already
 reviewed `0x0024/2` parameter on the
 identified firmware, with exclusive bus ownership, checked software TX/RX/DE timing
@@ -270,5 +273,6 @@ Owner decision D4 of the standalone set authorized one fixture-only experiment u
 bench experiments on the paired values, and wired bench 10 ran them on
 19 November 2026 on three experimental images (A, A2, A3), with R10 on the
 production image ([report](reports/2026-11-19_wired_bench_10_paired_value_encodings.md)).
-D10 then promoted the soft-limit windows. The stored-target experiment windows
-still admit no production write.
+D10 then promoted the soft-limit windows, and after wired bench 13 W0a the
+sixteen stored-target windows; the experiment windows and their route were
+removed.

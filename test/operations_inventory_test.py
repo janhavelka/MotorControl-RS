@@ -62,18 +62,21 @@ class Coverage(unittest.TestCase):
         self.assertEqual(home["pair_write_policy"]["reviewed_windows"],
                          [dict(start="0x0031", count=6, pages=[20])])
         self.assertEqual(home["obligations"]["write"], "IN_PROGRESS")
-        # Wired bench 10 (D10) promoted the two soft-limit pairs; the PT targets stay unsupported.
-        for name, start in (("POSITIVE_SOFT_LIMIT", "0x0037"), ("NEGATIVE_SOFT_LIMIT", "0x0039")):
-            self.assertEqual([w["start"] for w in records[name]["pair_write_policy"]["reviewed_windows"]], [start])
+        # Wired bench 10 (D10) promoted the two soft-limit pairs and wired bench 13
+        # W0a the sixteen stored PT target pairs: each has exactly its own window.
+        promoted = [("POSITIVE_SOFT_LIMIT", "0x0037"), ("NEGATIVE_SOFT_LIMIT", "0x0039")]
+        promoted += [("POSITION_SEGMENT_%02d_PULSES" % n, "0x%04X" % (0x0060 + 6 * (n - 1))) for n in range(1, 17)]
+        for name, start in promoted:
+            self.assertEqual([(w["start"], w["count"]) for w in records[name]["pair_write_policy"]["reviewed_windows"]],
+                             [(start, 2)])
             self.assertEqual(records[name]["obligations"]["write"], "IMPLEMENTED")
         for row in pairs:
             policy = row["pair_write_policy"]
             self.assertTrue(policy["reason"])
             self.assertEqual(policy["partial_application"], "UNSPECIFIED")
             self.assertEqual(policy["split_fc06"], "UNAVAILABLE")
-            if row["id"] not in ("POSITION_PULSES", "HOMING_OFFSET", "POSITIVE_SOFT_LIMIT", "NEGATIVE_SOFT_LIMIT"):
-                self.assertEqual(policy["reviewed_windows"], [])
-                self.assertEqual(row["obligations"]["write"], "UNSUPPORTED")
+            self.assertTrue(policy["reviewed_windows"])  # No guarded pair remains.
+            self.assertNotEqual(row["obligations"]["write"], "UNSUPPORTED")
 
     def rejected(self, change):
         inventory = copy.deepcopy(INVENTORY)
@@ -88,7 +91,9 @@ class Coverage(unittest.TestCase):
                          (221, 16, 2, 135))
         self.assertEqual(sum(count for state, count in summary["read"].items() if state in operations.IMPLEMENTATION), 201)
         self.assertEqual(summary["write"].get("NOT_IMPLEMENTED", 0), 0)
-        self.assertEqual(summary["write"]["UNSUPPORTED"], 16)  # The sixteen PT target pairs (soft limits promoted, wired bench 10).
+        # Wired bench 10 promoted the soft limits and wired bench 13 the PT targets: no guarded pair write.
+        self.assertEqual(summary["write"].get("UNSUPPORTED", 0), 0)
+        self.assertEqual(summary["write"]["IMPLEMENTED"], 190)
         self.assertEqual(summary["action"]["IN_PROGRESS"], 2)
         linked = {record for group in INVENTORY["operations"] for record in group["records"]}
         self.assertEqual(len(linked), 203)
@@ -158,8 +163,9 @@ class Coverage(unittest.TestCase):
                 prefix = f"POSITION_SEGMENT_{index:02}_"
                 pair = records[prefix + "PULSES"]
                 self.assertEqual(pair["obligations"]["read"], "IMPLEMENTED")
-                self.assertEqual(pair["obligations"]["write"], "UNSUPPORTED")
-                self.assertEqual(pair["pair_write_policy"]["reviewed_windows"], [])
+                self.assertEqual(pair["obligations"]["write"], "IMPLEMENTED")  # Wired bench 13 W0a.
+                self.assertEqual([(w["start"], w["count"]) for w in pair["pair_write_policy"]["reviewed_windows"]],
+                                 [("0x%04X" % (0x0060 + 6 * (index - 1)), 2)])
                 reserved = records[prefix + "RESERVED"]
                 self.assertEqual(set(reserved["obligations"].values()), {"ACCOUNTED_RESERVED"})
                 self.assertEqual(reserved["read_operations"], [])
