@@ -413,4 +413,6 @@ All in `build/bench/` (not committed): `2026-11-19_wb07_pdf`, `_explore`,
 
 ## Commits and CI
 
-The lead owns Git and CI; none dispatched by this session.
+The lead owns Git and CI; none dispatched by this session. The lead committed
+the work as `b977ea0`; CI run 44462175363 on that exact commit passed all four
+jobs (native gcc, native clang, Arduino, ESP-IDF).

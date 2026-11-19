@@ -2765,7 +2765,149 @@ void testVelocityReadGrammar() {
     send(c,"@7 velocity read 1\n"); f.contains("\"result\":\"busy\""); assert(f.typedReads == 2 && !f.velocities);
     send(c,"@8 help velocity\n"); f.contains("velocity read [address]");
 }
+// Input-start route (wired bench 08): the formatter on canned sessions, for the
+// Python validators (input_start_console_parity_test.py), and the grammar.
+Probe::InputStartView inputView;
+Probe::InputStartReply inputReply;
+Probe::Action inputAction = Probe::Action::OK;
+Probe::InputStartCommand inputCommand;
+unsigned inputCalls = 0;
+Probe::Action fakeInputStart(void*, const Probe::InputStartCommand& c, const Probe::InputStartView*& view, Probe::InputStartReply& reply) {
+    ++inputCalls; inputCommand = c; view = &inputView; reply = inputReply; return inputAction;
+}
+void inputSession(Probe::InputStartPhase phase) {
+    inputView = Probe::InputStartView();
+    auto& v = inputView;
+    v.operationId = 12; v.terminal = 3; v.phase = phase; v.pollMs = 50; v.windowMs = 10000;
+    v.startedUs = 1000; v.armedUs = phase == Probe::InputStartPhase::STAGING ? 0 : 90000; v.count = 1;
+    auto& m = v.members[0];
+    m.address = 1; m.configurationGeneration = 3; m.function = 7; m.staged = phase != Probe::InputStartPhase::STAGING;
+    m.stageOperationId = 11; m.stageExecution = MotorControlRS::ActionExecution::ACKNOWLEDGED;
+    const uint16_t words[5] = {100, 100, 60, 1000, 0};
+    std::memcpy(m.stagedWords, words, sizeof(words));
+    m.expectedDisplacement = 1000; m.baselinePosition = 500; m.assignmentKnown = true; m.assignment = 7;
+}
+void triggeredSession(Probe::InputStartPhase phase) {
+    inputSession(phase);
+    auto& v = inputView;
+    v.triggered = v.outputKnown = true; v.output = 3; v.widthMs = 200; v.source = Probe::InputSourceState::HOLD_ELAPSED;
+    v.onUs = 300000; v.offUs = 500000;
+    v.decided = v.admitted = true; std::memcpy(v.decisionRow, "L7", 3); v.decisionAddress = 2; v.decisionReason = "every participant admitted";
+    v.rowCount = 4;
+    const uint8_t addresses[4] = {2, 4, 5, 1};
+    for (uint8_t i = 0; i < 4; ++i) {
+        auto& row = v.rows[i];
+        row.address = addresses[i]; row.member = i == 3; row.admit = row.ioKnown = row.stateKnown = true;
+        std::memcpy(row.row, i == 3 ? "M" : "L7", i == 3 ? 2 : 3);
+        row.reason = i == 3 ? "armed member, function 7, stopped, staged words current" : "no start function on the terminal";
+        const uint16_t io[5] = {0, 1, 2, 3, static_cast<uint16_t>(i == 3 ? 7 : 0)};
+        std::memcpy(row.io, io, sizeof(io)); row.state[1] = 1; row.state[5] = 500;
+        row.ioStartedUs = 150000 + 20000u * i; row.stateStartedUs = row.ioStartedUs + 9000; row.stateReplyUs = row.stateStartedUs + 8000;
+        row.ioAgeUs = static_cast<uint32_t>(v.onUs - row.ioStartedUs); row.stateAgeUs = static_cast<uint32_t>(v.onUs - row.stateStartedUs);
+    }
+    auto& r = v.members[0].result; v.members[0].resultKnown = true;
+    r.state = MotorControlRS::ActionState::ACTIVE; r.sourceCommanded = true; r.onUs = v.onUs; r.offUs = v.offUs;
+    r.samples = 44; r.spacingMinUs = 48000; r.spacingMedianUs = 50000; r.spacingMaxUs = 61000; r.spacingCount = 43;
+    r.expectedKnown = true; r.expectedChange = 1000; r.positionKnown = true;
+}
+void emitInputStart(const char* name, const std::string& line, const char* command) {
+    Fake f; auto h = f.host(false, true); h.inputStart = fakeInputStart;
+    Probe::Console console(h, Probe::Format::JSON);
+    send(console, line);
+    assert(f.lines.size() == 1);
+    std::string args = line.substr(line.find(' ') + 1);
+    args = args.substr(0, args.size() - 1);
+    std::printf("{\"case\":\"%s\",\"command\":\"%s\",\"line\":\"%s\",\"record\":%s}\n", name, command, args.c_str(), f.lines[0].c_str());
+}
+void inputStartFixtures(bool print) {
+    using P = Probe::InputStartPhase;
+    using O = Ess::InputStartOutcome;
+    const auto emit = [&](const char* name, const std::string& line, const char* command) {
+        if (print) { emitInputStart(name, line, command); return; }
+        Fake f; auto h = f.host(false, true); h.inputStart = fakeInputStart;
+        Probe::Console console(h, Probe::Format::JSON);
+        send(console, line); assert(f.lines.size() == 1 && f.lines[0].size() < Probe::OUTPUT_CAPACITY);
+    };
+    inputAction = Probe::Action::OK; inputReply = Probe::InputStartReply(); inputReply.operationId = 12;
+    inputSession(P::STAGING); emit("arm_accepted", "@1 arm position x3 relative 1000 60\n", "arm-position");
+    inputSession(P::ARMED); emit("armed", "@2 arm inspect 12\n", "arm-inspect");
+    triggeredSession(P::OBSERVING); inputView.source = Probe::InputSourceState::ACTIVE; inputView.offUs = 0;
+    inputView.members[0].result.offUs = 0; inputView.members[0].result.sourceActive = true;
+    emit("trigger_accepted", "@3 arm trigger 12 mosfet2 200\n", "arm-trigger");
+    triggeredSession(P::DONE); inputView.finishedUs = 3000000;
+    {
+        auto& r = inputView.members[0].result;
+        r.state = MotorControlRS::ActionState::SUCCEEDED; r.outcome = O::ATTRIBUTED;
+        r.execution = Ess::InputStartExecution::OBSERVED; r.completion = Ess::InputStartCompletion::FINITE_STOPPED;
+        r.further = Ess::InputStartFurther::NONE_SEEN; r.changeObserved = r.runningObserved = true;
+        r.changeStartUs = 289000; r.changeEndUs = 360000; r.positionChange = 1000; r.positionMatches = true;
+    }
+    emit("attributed", "@4 arm inspect 12\n", "arm-inspect");
+    {
+        auto& r = inputView.members[0].result;
+        r.state = MotorControlRS::ActionState::FAILED; r.outcome = O::INDETERMINATE;
+        r.missing = Ess::INPUT_START_MISSING_SPACING | Ess::INPUT_START_MISSING_SAMPLE; r.lateSamples = 1; r.lostSamples = 1;
+        r.positionMatches = false; r.positionChange = 999;
+    }
+    emit("indeterminate", "@5 arm inspect 12\n", "arm-inspect");
+    {
+        auto& r = inputView.members[0].result;
+        r.state = MotorControlRS::ActionState::SUCCEEDED; r.outcome = O::STOPPED; r.missing = 0; r.lateSamples = r.lostSamples = 0;
+        r.stopRequested = r.stoppedAfterStop = true; r.stopId = 40; r.positionChange = 612; r.further = Ess::InputStartFurther::NOT_EVALUATED;
+        inputView.source = Probe::InputSourceState::QUIESCED_BY_STOP; inputView.members[0].stopId = 40;
+        inputView.members[0].stopResult = "confirmed"; inputView.members[0].stopServiceDelayUs = 900; inputView.stopServiceDelayMaxUs = 900;
+    }
+    emit("stopped", "@6 arm inspect 12\n", "arm-inspect");
+    inputSession(P::ARMED);
+    inputView.decided = true; std::memcpy(inputView.decisionRow, "L5", 3); inputView.decisionAddress = 2;
+    inputView.decisionReason = "terminal holds a start function 7-13"; inputView.rowCount = 1;
+    inputView.rows[0].address = 2; inputView.rows[0].ioKnown = inputView.rows[0].stateKnown = true;
+    std::memcpy(inputView.rows[0].row, "L5", 3); inputView.rows[0].reason = "terminal holds a start function 7-13";
+    inputView.rows[0].io[4] = 7; inputView.rows[0].state[1] = 1; inputView.rows[0].ioStartedUs = 150000; inputView.rows[0].stateStartedUs = 159000;
+    emit("trigger_refused", "@7 arm inspect 12\n", "arm-inspect");
+    inputView = Probe::InputStartView(); inputAction = Probe::Action::UNSUPPORTED;
+    inputReply = Probe::InputStartReply(); inputReply.reason = "home_staging_prompt_12";
+    emit("home_unsupported", "@8 arm home x3\n", "arm-home");
+    inputSession(P::DONE); inputView.error = "disarmed"; inputView.finishedUs = 120000; inputAction = Probe::Action::OK;
+    inputView.members[0].resultKnown = true;
+    {
+        auto& r = inputView.members[0].result;
+        r = Ess::InputStartResult(); r.state = MotorControlRS::ActionState::FAILED; r.outcome = O::CANCELLED;
+        r.status = MotorControlRS::Status(MotorControlRS::Err::ILLEGAL_VALUE, 10, "observation cancelled");
+    }
+    inputReply = Probe::InputStartReply(); inputReply.operationId = 12;
+    emit("disarmed", "@9 disarm 12\n", "disarm");
+    if (print) return;
+    // Grammar: every malformed, duplicate or extra token is refused before the host.
+    Fake f; auto h = f.host(false, true); h.inputStart = fakeInputStart;
+    Probe::Console console(h, Probe::Format::JSON);
+    inputCalls = 0;
+    for (const char* bad : {"@1 arm\n", "@1 arm position\n", "@1 arm position x4 relative 1 60\n", "@1 arm position x3 sideways 1 60\n",
+                            "@1 arm position x3 relative one 60\n", "@1 arm position x3 relative 1 3001\n",
+                            "@1 arm position x3 relative 1 60 group group\n", "@1 arm position x3 relative 1 60 poll-ms 501\n",
+                            "@1 arm position x3 relative 1 60 window-ms 99\n", "@1 arm position x3 relative 1 60 window-ms 100 window-ms 100\n",
+                            "@1 arm position x3 absolute 1 60 group\n", "@1 arm position x3 relative 1 60 poll-ms\n",
+                            "@1 arm trigger 12 mosfet2\n", "@1 arm trigger 0 mosfet2 20\n", "@1 arm trigger 12 mosfet9 20\n",
+                            "@1 arm trigger 12 mosfet2 20 x\n", "@1 arm inspect\n", "@1 arm inspect 0\n", "@1 arm home\n",
+                            "@1 arm home x3 extra\n", "@1 disarm\n", "@1 disarm x\n", "@1 disarm 1 2\n"}) {
+        f.lines.clear(); send(console, bad);
+        assert(f.lines.size() == 1 && f.lines[0].find("invalid_arguments") != std::string::npos);
+    }
+    assert(!inputCalls);
+    f.lines.clear(); send(console, "@2 arm position x3 absolute-by -200 60 group poll-ms 20 window-ms 30000\n");
+    assert(inputCalls == 1 && inputCommand.form == Probe::InputStartArmForm::ABSOLUTE_BY && inputCommand.value == -200 &&
+           inputCommand.group && inputCommand.pollMs == 20 && inputCommand.windowMs == 30000 && inputCommand.terminal == 3);
+    send(console, "@3 arm trigger 12 mosfet1 5000\n");
+    assert(inputCalls == 2 && inputCommand.kind == Probe::InputStartCommandKind::TRIGGER && inputCommand.output == 2 &&
+           inputCommand.widthMs == 5000); // Range checks are the application's, before any port call.
+    f.lines.clear(); send(console, "@4 caps\n");
+    assert(f.lines.size() == 1 && f.lines[0].find("\"input_start\":true") != std::string::npos &&
+           f.lines[0].find("\"input_start_width_ms\":[20,5000]") != std::string::npos);
+    Fake g; Probe::Console without(g.host(false, true), Probe::Format::JSON);
+    send(without, "@5 arm inspect 12\n"); assert(g.lines.size() == 1 && g.lines[0].find("unavailable") != std::string::npos);
+}
 int main(int argc, char** argv) {
+    if (argc == 2 && !std::strcmp(argv[1], "--input-start-fixtures")) { inputStartFixtures(true); return 0; }
     if (argc == 2 && !std::strcmp(argv[1], "--io-qualification-fixtures")) { testIoQualificationRoutes(true); return 0; }
     if (argc == 2 && !std::strcmp(argv[1],"--home-read-fixtures")) { homeReadFixtures(true); return 0; }
     if (argc == 2 && !std::strcmp(argv[1],"--velocity-read-fixtures")) { velocityReadFixtures(true); return 0; }
@@ -2831,4 +2973,5 @@ int main(int argc, char** argv) {
     testDriverProfileGrammarAndRetainedReports();
     testSimpleSubdivisionUsesDriverPath();
     testMaximumDriverReportFitsFixedOutput();
+    inputStartFixtures(false);
 }

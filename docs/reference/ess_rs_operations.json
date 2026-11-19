@@ -3031,7 +3031,8 @@
     "Prompt23 reconciles existing PositionProfile read/restore, including matching ESS profile aliases, and names missing native families owning09/11/14/18 without shrinking221 records/135 choices. PositionProfile write credit is restricted whole-snapshot restoration, not general candidate/archive staging. Installed function roles are separate from typed device obligations. Static CLI prefix checking uses production metadata and implemented family grammar; runtime reachability requires console/application tests.",
     "Local wiring declarations distinguish unknown, unconnected and connected terminals. They assign no drive function, observe no electrical state and receive no device read/write/action credit. Wired bench 02 (2026-11-18) adds an optional board table applied at boot, after useaddr and to new group members, with per-terminal sources default/board/host/invalid_table; an invalid table makes every declaration unknown. The table and host overrides remain local declarations without device credit; the W06/W08 I/O writes of that run are hardware evidence for io_settings_write only as recorded in its report.",
     "Local profile list and discover inspect/cancel/restore/finish are host/session controls, not READ implementation credit; the discovery device obligation maps to the producing discover route only. Plain monitor is passive; READ coverage maps to monitor INTERVAL_MS COUNT.",
-    "Prompt28 reconciles bounded recorded functional action/move evidence, explicitly classifies twelve read-only decoded status/alarm choices, retains the invalid auxiliary value as no-operation metadata and assigns the missing position-interrupt bit to prompt09. Raw setting reads gain no setter credit; per-choice physical activation is not inferred from a passing read."
+    "Prompt28 reconciles bounded recorded functional action/move evidence, explicitly classifies twelve read-only decoded status/alarm choices, retains the invalid auxiliary value as no-operation metadata and assigns the missing position-interrupt bit to prompt09. Raw setting reads gain no setter credit; per-choice physical activation is not inferred from a passing read.",
+    "Wired bench 08 (19 November 2026): input function 7 (InputFunction.POSITION_MOVE, owned by io_settings_write) gains a production external-start route: `arm position` stages the five 0x0021 words with no start word through the existing stage sessions, `arm trigger` pulses one owned MOSFET output after the firmware line-isolation reads (shared truth table test/line_isolation_cases.json), and the InputStart core attributes the start from fresh 0x0006/7 samples; `disarm` closes observation. The route sends no register write of its own beyond the staged profile; it adds no operation or choice disposition and no hardware evidence. Home (11), PT (12) and PV (13) staging refuse before any traffic until prompts 12, 13 and 14; the first physical use is prompt 09."
   ],
   "gaps": [
     {
@@ -3778,6 +3779,23 @@
         "moveto"
       ],
       "reason": "Pure default position operating-policy checks shared by native/common preparation; settings exposes the subdivision RPM ceiling. No device traffic or implicit clamp."
+    },
+    {
+      "header": "include/MotorControlRS/profiles/ess_rs/InputStart.h",
+      "symbols": [
+        "prepareInputStart",
+        "noteInputStartSource",
+        "nextInputStart",
+        "advanceInputStart",
+        "getInputStart",
+        "inputStartLevel"
+      ],
+      "classification": "SEQUENCER",
+      "cli_topics": [
+        "arm",
+        "disarm"
+      ],
+      "reason": "Wired bench 08: bounded observation and attribution of motion a drive input starts (functions 7, 11, 12, 13 effects). It yields only the existing non-changing 0x0006/7 sample reads and consumes caller-noted source edges and samples; it never yields a write, a retrigger or a retry. The application's arm/trigger/disarm route (console arm, disarm) owns staging, the owned bench pulse and the line isolation. No hardware credit: prompt 09 runs the first bench use."
     }
   ],
   "non_operation_choices": [

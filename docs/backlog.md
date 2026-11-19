@@ -463,7 +463,13 @@ more drives (now addresses 1, 2 and 4, star wiring).
 - [ ] Start motion from a shared input edge: function 7 with a staged profile
   first (absolute mode preferred), then PT segments with PIN selection, the
   negative PV speed encoding, and observation and stop of input-started motion ([multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)).
-  Prepared staging is delivered. PT depends on standalone 04/06; function 7
+  Prepared staging is delivered. Software (wired bench 08, 19 November 2026):
+  the arm/trigger/observe/disarm route for function 7 is implemented and
+  natively tested on the selected axis and group members in both `0x0050`
+  modes ([input-started motion](ess_input_start.md),
+  [report](reports/2026-11-19_wired_bench_08_input_start_software.md)); no
+  hardware evidence yet (prompt 09). Home (12), PT (13) and PV (14) staging
+  still refuse. PT depends on standalone 04/06; function 7
   does not need standalone 02's separate archive-import route. Source inhibition,
   intermediate writes and stop/disarm evidence stay explicit.
 - [ ] Finish shared-bus qualification

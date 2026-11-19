@@ -336,6 +336,13 @@ reassignment or polarity workaround changes that, and other firmware is not cove
 
 ## Console and external-trigger handoff
 
+Motion that function 7 starts from a drive input has its own route since wired
+bench 08: `arm position`, `arm trigger`, `arm inspect` and `disarm` stage the
+profile with no start word, pulse one owned bench output once after the
+line-isolation reads and attribute the start from fresh samples. See
+[input-started motion](ess_input_start.md); the facts below remain its
+prerequisites (a FINITE_MOVE record with `triggers-inhibited`).
+
 Upper firmware calls `submitDriverRead` for IO settings and the ordinary
 state-read API for live levels. It uses `inspectIoQualification` to copy the checked baseline,
 adds its terminal facts, then calls `installIoQualification`. Inspection copies

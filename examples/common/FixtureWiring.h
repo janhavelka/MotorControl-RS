@@ -80,6 +80,22 @@ inline bool fixtureWiringFor(const FixtureWiringEntry* entries, std::size_t coun
     }
     return false;
 }
+/** Bench outputs in BenchIo order (relay1, relay2, mosfet1, mosfet2). The board
+ * declares which drive input terminal each one drives (wired bench 08): the same
+ * terminal on every listed drive whose input mask has it. */
+constexpr std::size_t FIXTURE_BENCH_OUTPUTS = 4;
+constexpr int8_t FIXTURE_OUTPUT_NONE = -1; ///< Output wired to no drive input.
+/** First validation error of an output map, or nullptr: each entry -1..3 and no
+ * terminal driven by two outputs. */
+inline const char* fixtureOutputMapError(const int8_t* terminals, std::size_t count) {
+    if (!terminals || count != FIXTURE_BENCH_OUTPUTS) return "output_map_size";
+    for (std::size_t i = 0; i < count; ++i) {
+        if (terminals[i] < FIXTURE_OUTPUT_NONE || terminals[i] > 3) return "output_terminal_out_of_range";
+        for (std::size_t j = 0; j < i; ++j)
+            if (terminals[i] >= 0 && terminals[j] == terminals[i]) return "output_terminal_duplicate";
+    }
+    return nullptr;
+}
 /// Console name of a declaration source.
 inline const char* wiringSourceName(WiringSource source) {
     switch (source) {

@@ -65,5 +65,14 @@ using Board = Esp32S3BenchBoard;
 constexpr FixtureWiringEntry kFixtureWiring[] = {{1, 0xF, 0x0}, {2, 0xF, 0x0}, {4, 0xF, 0x1}};
 /// @brief Entries in kFixtureWiring.
 constexpr std::size_t kFixtureWiringCount = sizeof(kFixtureWiring) / sizeof(kFixtureWiring[0]);
+/**
+ * @brief Drive input terminal each bench output drives (wired bench 08).
+ *
+ * BenchIo order relay1, relay2, mosfet1, mosfet2: relay1 -> X2, relay2 -> X1,
+ * mosfet1 -> X0, mosfet2 -> X3 (relays swapped against the plan, D2). The
+ * input-start trigger needs it in firmware; -1 marks an output on no input.
+ * Applied with kFixtureWiring; menuconfig carries the same map.
+ */
+constexpr int8_t kFixtureBenchOutputs[FIXTURE_BENCH_OUTPUTS] = {2, 1, 0, 3};
 
 }  // namespace MotorControlRSExample

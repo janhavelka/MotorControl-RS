@@ -41,6 +41,9 @@ void setup() {
     options.fixtureWiringSupplied = true;
     options.fixtureWiringCount = static_cast<uint8_t>(kFixtureWiringCount);
     for (std::size_t i = 0; i < kFixtureWiringCount; ++i) options.fixtureWiring[i] = kFixtureWiring[i];
+    // Bench output -> drive terminal map beside the table (wired bench 08).
+    options.benchOutputTerminalsSupplied = true;
+    for (std::size_t i = 0; i < FIXTURE_BENCH_OUTPUTS; ++i) options.benchOutputTerminals[i] = kFixtureBenchOutputs[i];
 #endif
     beginApplication({Board::kRs485TxPin, Board::kRs485RxPin, Board::kRs485DeRePin,
                       Board::kRs485DeReActiveHigh}, Board::kRs485ReceiverDisabledDuringTransmit, options);

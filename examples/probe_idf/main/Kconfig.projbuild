@@ -126,4 +126,35 @@ menu "MotorControl-RS standalone board"
         depends on MOTORCONTROLRS_FIXTURE_WIRING
         range 0x0 0x3
         default 0x0
+    config MOTORCONTROLRS_FIXTURE_OUTPUTS
+        bool "Board-declared bench output to drive terminal map"
+        depends on MOTORCONTROLRS_FIXTURE_WIRING
+        default y
+        help
+            Declares which drive input terminal (X0..X3) each bench output
+            drives on every listed drive; -1 marks an output on no input. The
+            input-start trigger (wired bench 08) needs it to own the right
+            output. Defaults equal kFixtureBenchOutputs in
+            examples/common/BoardPins.h: relay1 X2, relay2 X1, mosfet1 X0,
+            mosfet2 X3. An invalid map makes the trigger unavailable.
+    config MOTORCONTROLRS_FIXTURE_RELAY1_TERMINAL
+        int "relay1 drives input terminal X (-1 none)"
+        depends on MOTORCONTROLRS_FIXTURE_OUTPUTS
+        range -1 3
+        default 2
+    config MOTORCONTROLRS_FIXTURE_RELAY2_TERMINAL
+        int "relay2 drives input terminal X (-1 none)"
+        depends on MOTORCONTROLRS_FIXTURE_OUTPUTS
+        range -1 3
+        default 1
+    config MOTORCONTROLRS_FIXTURE_MOSFET1_TERMINAL
+        int "mosfet1 drives input terminal X (-1 none)"
+        depends on MOTORCONTROLRS_FIXTURE_OUTPUTS
+        range -1 3
+        default 0
+    config MOTORCONTROLRS_FIXTURE_MOSFET2_TERMINAL
+        int "mosfet2 drives input terminal X (-1 none)"
+        depends on MOTORCONTROLRS_FIXTURE_OUTPUTS
+        range -1 3
+        default 3
 endmenu

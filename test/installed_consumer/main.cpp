@@ -18,6 +18,7 @@ static_assert(sizeof(MotorControlRS::VelocityRequest) > 0, "umbrella exports vel
 #include <MotorControlRS/profiles/ess_rs/Tuning.h>
 #include <MotorControlRS/profiles/ess_rs/Communication.h>
 #include <MotorControlRS/profiles/ess_rs/Persistence.h>
+#include <MotorControlRS/profiles/ess_rs/InputStart.h>
 #include <MotorControlRS/ActionOperation.h>
 #include <MotorControlRS/MotorControlRS.h>
 #include <MotorControlRS/MoveOperation.h>
@@ -152,6 +153,9 @@ int main() {
     MotorControlRS::ESS_RS::PersistenceContext persistence;
     MotorControlRS::ESS_RS::PersistencePrerequisites backup;
     if (MotorControlRS::ESS_RS::prepareSave(persistence, MotorControlRS::ReadTarget(), 1, backup, 100, 200)) return 99;
+    MotorControlRS::ESS_RS::InputStartContext inputStart; // Wired bench 08 core: empty facts refuse.
+    if (MotorControlRS::ESS_RS::prepareInputStart(inputStart, MotorControlRS::ESS_RS::InputStartPrerequisites(), 1,
+                                                  MotorControlRS::ESS_RS::InputStartOptions(), 100)) return 98;
     using namespace MotorControlRS;
     using namespace MotorControlRS::ESS_RS;
     ReadTarget target; target.id = 1; target.address = 1; target.generation = 2;

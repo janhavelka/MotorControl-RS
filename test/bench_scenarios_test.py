@@ -1301,5 +1301,35 @@ class StopInputsPlanTest(unittest.TestCase):
         self.assertEqual(self.args('--case', 'S8', '--function', '5', '--deceleration', '1000',
                                    '--stimulus', 'stop fast').repetitions, 5)
 
+
+class InputStartPlanTest(unittest.TestCase):
+    """Wired bench 08: the input-start scenario's plan and bounds (no port)."""
+
+    def args(self, *extra):
+        return scenarios.arguments(['--scenario', 'input-start', '--firmware', str(ROOT / 'README.md'), '--plan-only',
+                                    '--address', '4', *extra])
+
+    def test_plan_names_the_route_write_and_restoration(self):
+        args = self.args('--change', '4', 'io.x3', '7', '--assign-facts', 'x3', 'triggers-inhibited', '--image-level', '08')
+        plan = scenarios.folder_plan(args, scenarios.records.load_baseline(args.baseline))
+        self.assertEqual([c['id'] for c in plan['cases']], ['input-start'])
+        self.assertEqual(plan['cases'][0]['required_levels'], ['local', 'controller-timestamped', 'drive-reported'])
+        self.assertEqual(plan['write_list'], [{'drive': 4, 'key': 'io.x3', 'index': None, 'candidate': 7}])
+        self.assertTrue(plan['restoration_plan']['admissible'])
+        self.assertEqual([s['key'] for s in plan['restoration_plan']['steps']], ['io.x3'])
+        self.assertEqual(plan['terminals'], ['x3'])
+        self.assertIn('arm trigger ID mosfet2 200', plan['commands'])
+        self.assertEqual(plan['bounds']['window_ms'], 10000)
+
+    def test_bounds_and_mismatches_refuse_before_the_port(self):
+        for bad in (('--width-ms', '19'), ('--width-ms', '5001'), ('--poll-ms', '501'), ('--window-ms', '99'),
+                    ('--trigger-output', 'mosfet1'), ('--rpm', '0'),
+                    ('--change', '2', 'io.x3', '7', '--assign-facts', 'x3', 'triggers-inhibited', '--image-level', '08'),
+                    ('--change', '4', 'io.x2', '7', '--assign-facts', 'x2', 'triggers-inhibited', '--image-level', '08'),
+                    ('--change', '4', 'io.x3', '7', '--assign-facts', 'x3', 'triggers-inhibited')):
+            with self.subTest(bad=bad), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                self.args(*bad)
+        self.assertEqual(self.args('--start-terminal', 'x0', '--trigger-output', 'mosfet1').start_terminal, 'x0')
+
 if __name__ == '__main__':
     unittest.main()

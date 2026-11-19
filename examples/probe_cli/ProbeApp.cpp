@@ -323,6 +323,50 @@ struct App {
         uint8_t tx[32] = {};
     } parameterWrite;
     ESS::MoveContext stagePrepared; ///< Scratch for the selected-axis stage words; no stack copy.
+    // Bench output -> drive terminal map (wired bench 08); validated once.
+    int8_t benchOutputTerminals[FIXTURE_BENCH_OUTPUTS] = {FIXTURE_OUTPUT_NONE, FIXTURE_OUTPUT_NONE,
+                                                         FIXTURE_OUTPUT_NONE, FIXTURE_OUTPUT_NONE};
+    FixtureState benchOutputMap = FixtureState::ABSENT;
+    const char* benchOutputMapError = nullptr;
+    // One input-start session (InputStartApp.h, wired bench 08). Contexts and
+    // retained results for every member live here, in the PSRAM App block.
+    struct InputStartSession {
+        Probe::InputStartView view;
+        Probe::InputStartRequest request;
+        struct Member {
+            uint8_t address = 0;
+            ESS::MoveContext prepared; ///< Staged words of a group member (the selected axis uses stagePrepared).
+            ESS::InputStartPrerequisites prerequisites;
+            ESS::InputStartContext context;
+            Rtu::RequestId sample;
+            uint32_t sampleSequence = 0;
+            uint64_t sampleRequestUs = 0;
+            uint8_t tx[8] = {};
+            uint32_t seenStopId = 0;
+            bool stopTxSeen = false;
+        } members[Probe::INPUT_START_MEMBERS];
+        uint8_t next = 0; ///< Member being staged.
+        bool stageBegun = false;
+        uint32_t firstOperationId = 0; ///< Operations at or after this id belong to the session's time.
+        // Trigger step: participant reads, in order, as the last bus traffic before the ON.
+        uint8_t participants[Probe::INPUT_START_MEMBERS] = {};
+        uint8_t participantCount = 0, step = 0;
+        Rtu::RequestId triggerRequest;
+        uint8_t triggerTx[8] = {};
+        uint64_t triggerRequestUs = 0;
+        uint32_t triggerOperationMark = 0; ///< a.nextOperationId when the reads began (D14 ordering).
+        uint8_t output = 0;
+        uint32_t widthMs = 0;
+        uint8_t ownedMask = 0;          ///< Outputs mapped to the armed terminal.
+        uint32_t ownedOns[BenchIo::OUTPUTS] = {};
+        uint32_t debugBase = 0, aux1Base = 0;
+        uint32_t serialGeneration = 0, bindingGeneration = 0, declaration = 0; ///< Context the session was armed in.
+        bool disarming = false;
+        ESS::MovePrerequisites prerequisites[Probe::INPUT_START_MEMBERS]; ///< Arm scratch; never on the loop stack.
+        Probe::InputStartRequest scratch; ///< Console-built arm request.
+    } inputStart;
+    Probe::InputStartReply inputStartRefusal; ///< Latest refused input-start call.
+    BenchIo::View benchScratch; ///< Port view copy for input-start service; not on the stack.
     // Drive group (multi-drive 02). A host selection only: each member keeps its
     // own facts, separate from the selected axis, and never changes the drive.
     struct GroupMember {
@@ -343,6 +387,10 @@ struct App {
         bool storedKnown = false;
         uint16_t storedWords[5] = {};
         uint32_t storedGeneration = 0, storedBinding = 0, storedSerial = 0;
+        // Checked 0x0050/0x0051 of this member from `driver read ADDRESS` (wired bench 08).
+        bool modeKnown = false;
+        uint16_t positionMode = 0, pvTriggerMode = 0;
+        uint32_t modeOperationId = 0, modeGeneration = 0;
     };
     struct GroupOperation {
         Probe::GroupResult result;
@@ -403,6 +451,12 @@ struct App {
                 boardWiringCount = options.fixtureWiringCount;
                 for (uint8_t i = 0; i < boardWiringCount; ++i) boardWiring[i] = options.fixtureWiring[i];
             }
+        }
+        if (options.benchOutputTerminalsSupplied) {
+            benchOutputMapError = fixtureOutputMapError(options.benchOutputTerminals, FIXTURE_BENCH_OUTPUTS);
+            benchOutputMap = benchOutputMapError ? FixtureState::INVALID : FixtureState::APPLIED;
+            if (!benchOutputMapError)
+                for (std::size_t i = 0; i < FIXTURE_BENCH_OUTPUTS; ++i) benchOutputTerminals[i] = options.benchOutputTerminals[i];
         }
         // Part of the initial state: no invalidation, so the boot origin stays.
         // Without a table the legacy declaration is every terminal UNCONNECTED.
@@ -585,6 +639,11 @@ bool axisReserved(const App& a, uint8_t address = 0, bool includeHistory = true)
     // refuses the next restore or experiment step until a checked read of its
     // window; its effects already expired every cache a dependent write needs.
     if (a.parameterWrite.view.pending && (!address || a.parameterWrite.view.target.address == address)) return true;
+    // An input-start session reserves its drives from arming until it is done.
+    const auto phase = a.inputStart.view.phase;
+    if (phase != Probe::InputStartPhase::NONE && phase != Probe::InputStartPhase::DONE)
+        for (uint8_t i = 0; i < a.inputStart.view.count; ++i)
+            if (!address || a.inputStart.members[i].address == address) return true;
     // Recovery changes correlation generation, not the physical target's uncertainty.
     if (includeHistory && address) {
         if (a.actionConflicts[address / 8] & (1U << (address % 8))) return true;
@@ -2803,6 +2862,16 @@ void updateActionReservation(App& a, App::Record& record) {
         const bool segment = segmentGroup(record.driver.group);
         const bool tuning = ESS::isTuningGroup(record.driver.group);
         auto& cache = tuning ? tuningCache(a, record.driver.group) : segment ? a.segmentSettings : record.driver.group == ESS::DriverGroup::IO ? a.ioSettings : record.driver.group == ESS::DriverGroup::CONTROL_SETTINGS ? a.controlSettings : a.driverSettings;
+        // Wired bench 08: a DRIVE read of a group member records its 0x0050 and
+        // 0x0051 for the input-start arm; the member's other caches are unchanged.
+        if (record.driver.kind == ESS::DriverKind::READ && record.driver.group == ESS::DriverGroup::DRIVE &&
+            record.driver.target.generation == a.bindingGeneration)
+            if (auto* member = groupMember(a, record.address))
+                if (ESS::getDriver(record.driver, a.driverObserved)) {
+                    member->modeKnown = true;
+                    member->positionMode = a.driverObserved.raw[6]; member->pvTriggerMode = a.driverObserved.raw[5];
+                    member->modeOperationId = record.operationId; member->modeGeneration = member->axis.generation;
+                }
         if (record.driver.kind == ESS::DriverKind::READ && record.address == a.axis.target.address &&
             record.configurationGeneration == a.axis.generation && record.driver.target.generation == a.bindingGeneration &&
             record.operationId > cache.operationId && record.operationId > a.configuration.operationId &&
@@ -3346,6 +3415,7 @@ bool groupBusy(const App& a);
 #include "GroupApp.h"
 #include "ProfileCandidateApp.h"
 #include "ParameterWriteApp.h"
+#include "InputStartApp.h"
 
 bool lookup(void* context, uint32_t operationId, Probe::ResultView& out) {
     App& a = *static_cast<App*>(context); if (!operationId) operationId = a.latestOperationId;
@@ -3515,6 +3585,8 @@ Probe::Action cancel(void* context, uint32_t operationId) {
 }
 Probe::Action release(void* context, uint32_t operationId) {
     App& a = *static_cast<App*>(context);
+    if (operationId && operationId == a.inputStart.view.operationId)
+        return releaseInputStart(a) ? Probe::Action::OK : Probe::Action::BUSY;
     if (operationId && operationId == a.profileCandidate.view.operationId) {
         auto& s = a.profileCandidate;
         if (s.view.pending || s.request.owner || !s.delivered) return Probe::Action::BUSY;
@@ -3607,10 +3679,17 @@ Probe::Action load(void* context, const Probe::LoadSettings* requested, Probe::L
 #endif
 // Local fixture control without bus traffic. It is allowed during motion: a
 // wired input may be switched while a move or home runs. A null request shows.
+bool inputStartOwnsOutput(const App&, uint8_t output); // InputStartApp.h
 Probe::Action benchIoCommand(void* context, const BenchIo::Request* requested, BenchIo::View& view) {
     App& a = *static_cast<App*>(context);
     if (!a.options.benchIo) return Probe::Action::UNAVAILABLE;
     const BenchIo::Request show;
+    // An input-start session owns the outputs mapped to its terminal: no other
+    // ON reaches them until it is done. OFF always works.
+    if (requested && requested->op == BenchIo::Op::ON && inputStartOwnsOutput(a, requested->output)) {
+        a.options.benchIo->apply(show, view);
+        return Probe::Action::BUSY;
+    }
     switch (a.options.benchIo->apply(requested ? *requested : show, view)) {
     case BenchIo::Result::OK: return Probe::Action::OK;
     case BenchIo::Result::INVALID: return Probe::Action::INVALID;
@@ -3706,6 +3785,8 @@ void copyWiringState(const App& a, Probe::WiringSnapshot& out) {
     std::memcpy(out.outputSources, a.outputSources, sizeof(out.outputSources));
     out.board = a.boardDeclaration(a.axis.target.address);
     out.fixture = a.fixtureState; out.fixtureError = a.fixtureError;
+    std::memcpy(out.benchOutputs, a.benchOutputTerminals, sizeof(out.benchOutputs));
+    out.benchOutputMap = a.benchOutputMap; out.benchOutputMapError = a.benchOutputMapError;
 }
 Probe::Action wiring(void* context, const Probe::WiringRequest* requested, Probe::WiringSnapshot& out) {
     using MotorControlRS::InputWiring;
@@ -3823,7 +3904,7 @@ Probe::Host host(App* a) {
     h.qualification = qualificationCommand;
     h.startPositionInterrupt = startPositionInterrupt;
     h.simpleMotion = simpleMotion;
-    h.monitor = monitor; h.motionProfile = motionProfileCommand; h.parameterWrite = parameterWriteCommand; h.stageProfile = startProfileCandidate; h.debug = debugCommand;
+    h.monitor = monitor; h.motionProfile = motionProfileCommand; h.parameterWrite = parameterWriteCommand; h.inputStart = inputStartCommand; h.stageProfile = startProfileCandidate; h.debug = debugCommand;
     h.axis = axisCommand; h.hostSerial = hostSerial; h.selectTarget = selectTarget;
     h.ioQualification = ioQualificationCommand;
     h.wiring = wiring;
@@ -4437,6 +4518,7 @@ MotorControlRS::Status submitReleaseAfterStop(uint32_t stopId, const ReleaseAfte
     return Ok();
 }
 bool releaseOperation(uint32_t operationId) {
+    if (app && operationId && app->inputStart.view.operationId == operationId) return releaseInputStart(*app);
     if (app && operationId && app->profileCandidate.view.operationId == operationId)
         return release(app, operationId) == Probe::Action::OK;
     if (!app || !operationId) return false;
@@ -4637,6 +4719,7 @@ void serviceApplication() {
         cancelInvalidPositionStages(a, sampled);
         cancelInvalidProfileCandidate(a, sampled);
         cancelInvalidParameterWrite(a, sampled);
+        cancelInvalidInputStart(a, sampled);
         a.owner.service(sampled, recoveryReady);
         if (hadDE && !a.runner.transmitEnabled()) a.recoveryGuardUntilUs = nowUs() + RECOVER_US;
 #if MOTORCONTROLRS_LOAD_FIXTURE
@@ -4656,6 +4739,7 @@ void serviceApplication() {
     serviceProfileCandidate(a, completedSampleUs);
     serviceParameterWrite(a, completedSampleUs);
     serviceGroup(a, completedSampleUs); // No extra clock read while no group operation runs.
+    serviceInputStart(a, completedSampleUs); // No clock read while no session exists.
     serviceCoordinates(a, completedSampleUs);
     RuntimeWitness::mark(RuntimeWitness::CONSOLE);
     a.console.serviceOutput(); deliver(a);

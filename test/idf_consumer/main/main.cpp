@@ -21,6 +21,7 @@
 #include <MotorControlRS/profiles/ess_rs/DriverSettings.h>
 #include <MotorControlRS/profiles/ess_rs/Homing.h>
 #include <MotorControlRS/profiles/ess_rs/Persistence.h>
+#include <MotorControlRS/profiles/ess_rs/InputStart.h>
 #include <MotorControlRS/profiles/ess_rs/Position.h>
 #include <MotorControlRS/profiles/ess_rs/Reads.h>
 #include <MotorControlRS/profiles/ess_rs/Registers.h>

@@ -47,7 +47,8 @@ COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "h
                       "io-qualification-install", "io-qualification-inspect", "io-qualification-revoke",
                       "read-identity", "read-config", "read-state", "velocity-read", "home-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "position-interrupt", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list",
                       "group-show", "group-status", "group-clear", "group-wiring", "group-set", "group-move", "group-stop", "group-read-state",
-                      "group-axis", "group-reference", "group-plan-begin", "group-plan-add", "group-plan-show", "group-plan-clear", "group-plan-submit"})
+                      "group-axis", "group-reference", "group-plan-begin", "group-plan-add", "group-plan-show", "group-plan-clear", "group-plan-submit",
+                      "arm-position", "arm-home", "arm-segment", "arm-velocity", "arm-trigger", "arm-inspect", "disarm"})
 MAX_COMMANDS = 11  # Eight ordinary operations, recovery, reserved stop and local query.
 MAX_OPERATIONS = 10  # Eight ordinary operations, one recovery and one reserved stop.
 MAX_STOPS = 4  # Two primary stops and two reserved cross-address escalations.
@@ -361,6 +362,71 @@ PARAMETER_WRITE_KINDS = {"home-restore": "home_restore", "velocity-restore": "ve
 PARAMETER_WRITE_WINDOWS = {"home_restore": (0x31, 6), "velocity_restore": (0x1D, 3)}
 PARAMETER_WRITE_ERRORS = ("none", "cancelled", "readback_mismatch", "readback_failed", "write_rejected",
                           "write_not_transmitted", "write_unknown", "deadline", "readback_admission")
+# Wired bench 08: input-start route. Every reply is synchronous: the call's
+# result and reason, and the current session; poll with ``arm-inspect``.
+INPUT_START_COMMANDS = {"arm-position": "arm position", "arm-home": "arm home", "arm-segment": "arm segment",
+                        "arm-velocity": "arm velocity", "arm-trigger": "arm trigger", "arm-inspect": "arm inspect",
+                        "disarm": "disarm"}
+INPUT_START_PHASES = ("none", "staging", "armed", "triggering", "observing", "done")
+INPUT_START_SOURCES = ("not_commanded", "active", "hold_elapsed", "quiesced_by_stop", "quiesced_by_disarm",
+                       "quiesced_by_cancel", "off_requested", "port_failed")
+INPUT_START_OUTCOMES = ("none", "attributed", "indeterminate", "no_start", "unattributed_motion", "second_start",
+                        "stopped", "drive_fault", "transport_error", "deadline", "cancelled")
+INPUT_START_EFFECTS = ("displacement", "endpoint", "home_completion", "velocity_run")
+INPUT_START_COMPLETIONS = ("not_observed", "finite_stopped", "homed", "velocity_stopped")
+INPUT_START_FURTHER = ("not_evaluated", "none_seen", "seen", "not_excluded")
+INPUT_START_MISSING = ("pre_edge_sample", "sample_lost", "spacing", "overwrite", "serial_start", "isolation",
+                       "generation", "source_edge", "change_after_edge", "input_before_edge", "running_not_sampled")
+INPUT_START_ROWS = ("L1", "L2", "L3", "L4", "L5", "L6", "L7", "M")
+INPUT_START_WIDTH_MS = (20, 5000)
+INPUT_START_POLL_MS = (20, 500)
+INPUT_START_WINDOW_MS = (100, 30000)
+INPUT_START_MAX_READ_AGE_MS = 1000
+
+
+def input_start_arguments(command: str, tokens: tuple[str, ...]) -> dict:
+    """Grammar of one input-start call, as the console checks it."""
+    if command not in INPUT_START_COMMANDS or not isinstance(tokens, tuple) or any(type(t) is not str for t in tokens):
+        raise ValueError("input start requires a tuple of tokens")
+    ident = r"[1-9][0-9]{0,9}"
+    if command in ("arm-inspect", "disarm"):
+        if len(tokens) != 1 or not re.fullmatch(ident, tokens[0]) or int(tokens[0]) > 0xFFFFFFFF:
+            raise ValueError(command + " requires one session ID")
+        return {"action": "inspect" if command == "arm-inspect" else "disarm", "operation_id": int(tokens[0])}
+    if command == "arm-trigger":
+        if (len(tokens) != 3 or not re.fullmatch(ident, tokens[0]) or int(tokens[0]) > 0xFFFFFFFF or
+                tokens[1] not in BENCH_OUTPUTS or not re.fullmatch(r"[0-9]{1,10}", tokens[2]) or int(tokens[2]) > 0xFFFFFFFF):
+            raise ValueError("arm-trigger requires ID OUTPUT WIDTH_MS")
+        return {"action": "trigger", "operation_id": int(tokens[0]), "output": tokens[1], "width_ms": int(tokens[2])}
+    if command != "arm-position":
+        if len(tokens) != 1 or tokens[0] not in ("x0", "x1", "x2", "x3"):
+            raise ValueError(command + " requires one terminal")
+        return {"action": "arm", "kind": command[4:], "terminal": tokens[0]}
+    if (len(tokens) < 4 or tokens[0] not in ("x0", "x1", "x2", "x3") or tokens[1] not in ("relative", "absolute", "absolute-by")
+            or not re.fullmatch(r"-?[0-9]{1,9}", tokens[2]) or abs(int(tokens[2])) > 0x0FFFFFFF or
+            not re.fullmatch(r"[1-9][0-9]{0,3}", tokens[3]) or int(tokens[3]) > 3000):
+        raise ValueError("arm-position requires xN relative|absolute|absolute-by VALUE RPM")
+    out = {"action": "arm", "kind": "position", "terminal": tokens[0], "form": tokens[1], "value": int(tokens[2]),
+           "rpm": int(tokens[3]), "group": False, "poll_ms": 50, "window_ms": 10000}
+    rest, seen = list(tokens[4:]), set()
+    while rest:
+        token = rest.pop(0)
+        if token in seen:
+            raise ValueError("duplicate " + token)
+        seen.add(token)
+        if token == "group" and tokens[1] != "absolute":
+            out["group"] = True
+        elif token in ("poll-ms", "window-ms") and rest and re.fullmatch(r"[0-9]{1,5}", rest[0]):
+            low, high = INPUT_START_POLL_MS if token == "poll-ms" else INPUT_START_WINDOW_MS
+            value = int(rest.pop(0))
+            if not low <= value <= high:
+                raise ValueError(token + " out of range")
+            out[token.replace("-", "_")] = value
+        else:
+            raise ValueError("unexpected token " + token)
+    return out
+
+
 def parameter_write_arguments(command: str, tokens: tuple[str, ...]) -> dict:
     """``home restore SNAPSHOT_ID``, ``velocity restore SNAPSHOT_ID`` or ``... inspect``."""
     if command not in PARAMETER_WRITE_COMMANDS or not isinstance(tokens, tuple) or \
@@ -2136,6 +2202,153 @@ class Console:
         self.emit("traffic", response=item)
 
     @staticmethod
+    def _check_input_start(handle: Command, item: dict) -> None:
+        """One input-start reply: the call's result and the current session (wired bench 08)."""
+        request = input_start_arguments(handle.command, handle.host_args)
+        def require(condition, message):
+            if not condition:
+                raise BenchError(handle.command + ": " + message)
+        def integer(value, low=0, high=0xFFFFFFFFFFFFFFFF):
+            return type(value) is int and low <= value <= high
+        def name(value):
+            return type(value) is str and re.fullmatch(r"[a-z0-9_]{1,40}", value) is not None
+        asynchronous = request["action"] in ("arm", "trigger")
+        require(item.get("result") == ("accepted" if asynchronous else "done") if item["ok"] else
+                item.get("result") in ADMISSION_FAILURES, "invalid disposition")
+        require(item.get("request") == request["action"], "request differs")
+        require(name(item.get("reason")) and (item["reason"] == "none") == item["ok"], "reason does not name the refusal")
+        require(integer(item.get("refused_address"), 0, 247) and integer(item.get("operation_id"), 0, 0xFFFFFFFF),
+                "invalid refused address or operation ID")
+        require(item.get("bus_traffic") is (item["ok"] and asynchronous), "bus traffic claim differs from the call")
+        if not item["ok"]:
+            require(item["refused_address"] == 0 or request["action"] in ("arm", "trigger"), "refusal names a drive")
+            require(item["operation_id"] == 0, "a refusal carries an operation ID")
+        session = item.get("session")
+        require(isinstance(session, dict), "reply lacks the session")
+        require(integer(session.get("operation_id"), 0, 0xFFFFFFFF), "invalid session ID")
+        if item["ok"] and "operation_id" in request:
+            require(session["operation_id"] == request["operation_id"] == item["operation_id"], "session ID differs")
+        if item["ok"] and request["action"] == "arm":
+            require(session["operation_id"] == item["operation_id"] and session.get("phase") in ("staging", "armed", "done"),
+                    "accepted arm without its session")
+        require(session.get("kind") in ("position", "home", "segment", "velocity") and
+                session.get("terminal") in ("x0", "x1", "x2", "x3") and session.get("mode") in ("relative", "absolute") and
+                type(session.get("group")) is bool and session.get("phase") in INPUT_START_PHASES and name(session.get("error")),
+                "invalid session header")
+        for key in ("poll_ms", "window_ms", "started_us", "armed_us", "finished_us"):
+            require(integer(session.get(key)), "invalid " + key)
+        live = session["phase"] != "none"
+        if live:
+            require(INPUT_START_POLL_MS[0] <= session["poll_ms"] <= INPUT_START_POLL_MS[1] and
+                    INPUT_START_WINDOW_MS[0] <= session["window_ms"] <= INPUT_START_WINDOW_MS[1], "poll or window out of range")
+        require((session["phase"] == "done") == (session["finished_us"] > 0), "finish time differs from the phase")
+        source = session.get("source")
+        require(isinstance(source, dict) and source.get("state") in INPUT_START_SOURCES and type(source.get("triggered")) is bool,
+                "invalid source")
+        require(source.get("evidence") == "controller_gpio_write", "source edges claim more than GPIO-write times")
+        for key in ("width_ms", "on_us", "off_us"):
+            require(integer(source.get(key)), "invalid source " + key)
+        if source["triggered"]:
+            require(source.get("output") in ("mosfet1", "mosfet2") and
+                    INPUT_START_WIDTH_MS[0] <= source["width_ms"] <= INPUT_START_WIDTH_MS[1] and source["on_us"] > 0,
+                    "triggered source without a MOSFET output, width or ON time")
+            require(source["off_us"] == 0 or source["off_us"] >= source["on_us"], "OFF before ON")
+            require(source["state"] != "active" or source["off_us"] == 0, "active source with an OFF edge")
+            require(source["state"] in ("active", "port_failed") or source["off_us"] > 0, "released source without an OFF edge")
+        else:
+            require(source["state"] == "not_commanded" and source["on_us"] == 0, "untriggered source claims an edge")
+        isolation = session.get("isolation")
+        require(isinstance(isolation, dict) and type(isolation.get("decided")) is bool and type(isolation.get("admitted")) is bool
+                and isolation.get("max_read_age_ms") == INPUT_START_MAX_READ_AGE_MS and isinstance(isolation.get("rows"), list) and
+                len(isolation["rows"]) <= 4, "invalid isolation")
+        require(not isolation["admitted"] or isolation["decided"], "admitted without a decision")
+        require(isolation["admitted"] or not source["triggered"], "triggered without an admitted isolation decision")
+        require(isolation.get("row") in ("",) + INPUT_START_ROWS and integer(isolation.get("address"), 0, 247) and
+                type(isolation.get("reason")) is str, "invalid decision row")
+        limit = INPUT_START_MAX_READ_AGE_MS * 1000
+        for row in isolation["rows"]:
+            require(isinstance(row, dict) and integer(row.get("address"), 1, 247) and type(row.get("member")) is bool and
+                    type(row.get("admit")) is bool and row.get("row") in ("",) + INPUT_START_ROWS and type(row.get("reason")) is str,
+                    "invalid isolation row")
+            for key, size in (("io", 5), ("state", 7)):
+                require(isinstance(row.get(key), list) and len(row[key]) == size and all(integer(w, 0, 0xFFFF) for w in row[key]),
+                        "invalid row " + key)
+            for key in ("io_started_us", "state_started_us", "state_reply_us", "io_age_us", "state_age_us"):
+                require(integer(row.get(key)), "invalid row " + key)
+            if row["admit"]:
+                require(row["row"] == ("M" if row["member"] else "L7") and row.get("io_known") is True and
+                        row.get("state_known") is True, "admitted row outside M/L7 or without reads")
+                require(row["member"] or not 7 <= row["io"][1 + int(session["terminal"][1])] <= 13,
+                        "non-member admitted with a start function on the terminal")
+            if isolation["admitted"]:
+                require(row["admit"] and row["io_age_us"] <= limit and row["state_age_us"] <= limit,
+                        "admitted decision with a refused row or a read over the age backstop")
+        capacity = session.get("capacity")
+        require(isinstance(capacity, dict) and all(integer(capacity.get(k)) for k in
+                ("debug_overwrites", "aux1_overwrites", "stop_service_delay_max_us")), "invalid capacity")
+        members = session.get("members")
+        require(isinstance(members, list) and len(members) <= 4 and (not live or members), "invalid members")
+        for member in members:
+            require(isinstance(member, dict) and integer(member.get("address"), 1, 247) and member.get("function") in (7, 11, 12, 13)
+                    and member.get("polarity") in (0, 1) and member.get("position_mode") in (0, 1) and type(member.get("staged")) is bool
+                    and member.get("stage_execution") in EXECUTIONS and member.get("stop_result") in
+                    ("none", "pending", "confirmed", "failed", "unknown"), "invalid member")
+            require(isinstance(member.get("staged_words"), list) and len(member["staged_words"]) == 5 and
+                    all(integer(w, 0, 0xFFFF) for w in member["staged_words"]), "invalid staged words")
+            for key in ("configuration_generation", "stage_operation_id", "stop_id", "stop_service_delay_us", "assignment"):
+                require(integer(member.get(key)), "invalid member " + key)
+            for key in ("expected_displacement", "expected_endpoint", "baseline_position"):
+                require(type(member.get(key)) is int, "invalid member " + key)
+            require(not member["staged"] or member["stage_execution"] == "acknowledged", "staged without an acknowledged write")
+            result = member.get("result")
+            require(isinstance(result, dict) and type(result.get("known")) is bool, "invalid member result")
+            if not result["known"]:
+                require(set(result) == {"known"}, "unknown result carries fields")
+                continue
+            require(result.get("effect") in INPUT_START_EFFECTS and result.get("state") in ("active", "succeeded", "failed") and
+                    result.get("outcome") in INPUT_START_OUTCOMES and result.get("execution") in ("observed", "not_observed") and
+                    result.get("completion") in INPUT_START_COMPLETIONS and result.get("further") in INPUT_START_FURTHER,
+                    "invalid result vocabulary")
+            missing = result.get("missing")
+            require(isinstance(missing, list) and len(set(missing)) == len(missing) and all(m in INPUT_START_MISSING for m in missing),
+                    "invalid missing witnesses")
+            outcome = result["outcome"]
+            require((result["state"] == "active") == (outcome == "none"), "result state differs from its outcome")
+            require((result["state"] == "succeeded") == (outcome in ("attributed", "no_start", "stopped")),
+                    "only attributed, no-start and stopped results succeed")
+            if outcome in ("attributed", "no_start"):
+                require(not missing and result.get("source_commanded") is True, "attribution with a missing witness or no edge")
+            if outcome == "attributed":
+                require(result["execution"] == "observed" and result.get("change_observed") is True and
+                        result["change_start_us"] <= result["change_end_us"] and result["change_end_us"] > result["on_us"],
+                        "attribution without a change bracket after the edge")
+            if outcome == "no_start":
+                require(result["execution"] == "not_observed", "no start with an observed execution")
+            if outcome == "indeterminate":
+                require(missing, "indeterminate result names no missing witness")
+            if outcome == "stopped":
+                require(result.get("stop_requested") is True and result.get("stopped_after_stop") is True and
+                        integer(result.get("stop_id"), 1, 0xFFFFFFFF), "stopped without a stop record and a stopped sample")
+            if result["effect"] == "velocity_run":
+                require(result["completion"] != "finite_stopped" and result.get("expected_known") is False,
+                        "velocity reported as a finite move")
+            if result.get("position_matches"):
+                require(result.get("expected_known") is True and result["completion"] != "not_observed" and
+                        result.get("position_change") == result.get("expected_change"), "position match not shown")
+            spacing = result.get("spacing_us")
+            require(isinstance(spacing, dict) and all(integer(spacing.get(k)) for k in ("min", "median", "max", "count")) and
+                    (not spacing["count"] or spacing["min"] <= spacing["median"] <= spacing["max"]), "invalid spacing")
+            for key in ("on_us", "off_us", "change_start_us", "change_end_us", "samples", "lost_samples", "late_samples", "stop_id"):
+                require(integer(result.get(key)), "invalid result " + key)
+            for key in ("source_commanded", "source_active", "input_observed", "change_observed", "running_observed",
+                        "stop_requested", "stopped_after_stop", "position_known", "expected_known", "position_matches"):
+                require(type(result.get(key)) is bool, "invalid result " + key)
+            require(type(result.get("position_change")) is int and type(result.get("expected_change")) is int and
+                    type(result.get("code")) is str and type(result.get("detail")) is int, "invalid result values")
+            require(not result["late_samples"] or "spacing" in missing or outcome not in ("attributed", "no_start"),
+                    "late samples without a spacing witness")
+
+    @staticmethod
     def _check_parameter_write(handle, item: dict) -> None:
         """One restore or D9 session reply: admission result and the current session."""
         request = parameter_write_arguments(handle.command, handle.host_args)
@@ -2613,6 +2826,17 @@ class Console:
         problem = check_wiring_sources(item["inputs"] + item["outputs"], item["sources"], item["board"],
                                        fixture=item["fixture"])
         require(problem is None, problem or "")
+        # Wired bench 08: the bench output -> terminal map; images before 08 lack it.
+        if "bench_outputs" in item or "bench_output_map" in item:
+            outputs = item.get("bench_outputs")
+            require(isinstance(outputs, list) and len(outputs) == 4 and all(integer(t, -1, 3) for t in outputs) and
+                    len([t for t in outputs if t >= 0]) == len({t for t in outputs if t >= 0}),
+                    "invalid bench output map")
+            require(item.get("bench_output_map") in FIXTURE_STATES, "unknown bench output map state")
+            require(("bench_output_map_error" in item) == (item["bench_output_map"] == "invalid"),
+                    "bench output map error differs from its state")
+            require(item["bench_output_map"] == "applied" or outputs == [-1, -1, -1, -1],
+                    "an unapplied bench output map names terminals")
         if item["ok"] and requested:
             terminal, disposition = requested
             values = item["inputs" if terminal[0] == "x" else "outputs"]
@@ -3135,6 +3359,8 @@ class Console:
             self._check_motion_profile(handle, item)
         if handle.command in PARAMETER_WRITE_COMMANDS:
             self._check_parameter_write(handle, item)
+        if handle.command in INPUT_START_COMMANDS:
+            self._check_input_start(handle, item)
         if handle.command == "useaddr":
             self._check_useaddr(handle, item)
         if handle.command == "wiring":
@@ -3602,6 +3828,9 @@ class Console:
         elif command == "bench":
             host_args = () if host_args is None else host_args
             bench_arguments(host_args)
+        elif command in INPUT_START_COMMANDS:
+            host_args = () if host_args is None else host_args
+            input_start_arguments(command, host_args)
         elif command.startswith("group-"):
             host_args = () if host_args is None else host_args
             group_arguments(command, host_args)
@@ -3736,6 +3965,7 @@ class Console:
             if command == "position-clear-qualification": wire_command = "position-clear qualification"
             if command == "home-auxiliary": wire_command = "home auxiliary"
             if command in PARAMETER_WRITE_COMMANDS: wire_command = PARAMETER_WRITE_COMMANDS[command]
+            if command in INPUT_START_COMMANDS: wire_command = INPUT_START_COMMANDS[command]
             if command == "position-interrupt": wire_command = "position interrupt"
             if command == "profile-list": wire_command = "profile list"
             if command in MOVE_COMMANDS: wire_command = "move " + command[5:]

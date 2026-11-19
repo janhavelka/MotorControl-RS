@@ -45,6 +45,7 @@ class FakeBench:
         self.selected = 1
         self.mapping = dict(mapping or MAPPING)
         self.fixture, self.older_image, self.board_override = fixture, older_image, board
+        self.bench_outputs = [2, 1, 0, 3]
         self.pending = {}
         self.operation = 100
         self.debug_mode = "off"
@@ -170,6 +171,8 @@ class FakeBench:
                      inputs=list(board["inputs"]), outputs=list(board["outputs"]))
         if not self.older_image:
             reply.update(sources=["board"] * 6, board=board if self.fixture == "applied" else None, fixture=self.fixture)
+            if self.bench_outputs is not None:  # Wired bench 08 output map.
+                reply.update(bench_outputs=list(self.bench_outputs), bench_output_map="applied")
             if self.fixture == "invalid":
                 reply.update(fixture_error="duplicate_address", inputs=[0] * 4, outputs=[0] * 2,
                              sources=["invalid_table"] * 6)
@@ -326,6 +329,17 @@ class DeclarationTest(unittest.TestCase):
         result = records.check_declarations(FakeBench(older_image=True))
         self.assertEqual(result["verdict"], "FAIL")
         self.assertIn("older", result["problems"][0])
+
+    def test_bench_output_map_is_compared(self):
+        """Wired bench 08: the firmware output map must equal FIXTURE["outputs"]."""
+        self.assertEqual(records.expected_bench_outputs(), [2, 1, 0, 3])
+        self.assertEqual(records.check_declarations(FakeBench())["verdict"], "PASS")
+        for outputs, text in ((None, "older than the wired bench 08"), ([1, 2, 0, 3], "differs from FIXTURE")):
+            bench = FakeBench()
+            bench.bench_outputs = outputs
+            result = records.check_declarations(bench)
+            self.assertEqual(result["verdict"], "FAIL")
+            self.assertIn(text, result["problems"][0])
 
     def test_board_differing_from_fixture_fails(self):
         result = records.check_declarations(FakeBench(board={"inputs": [2, 2, 2, 1], "outputs": [1, 1]}))

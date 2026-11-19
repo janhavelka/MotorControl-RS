@@ -4,6 +4,27 @@
 
 ### Added
 
+- Input-started motion route (wired bench 08, software only): the core
+  `InputStart.h` attributes a start that a drive input causes from fresh
+  `0x0006/7` samples and caller-noted source edges (outcomes `ATTRIBUTED`,
+  `INDETERMINATE` with the missing witness, `NO_START`, `UNATTRIBUTED_MOTION`,
+  `SECOND_START`, `STOPPED`, ...; execution and completion separate; no write,
+  retrigger or retry). The standalone application, console (`arm position`,
+  `arm trigger`, `arm inspect`, `disarm`) and API (`armInputStart`,
+  `triggerInputStart`, `copyInputStart`, `disarmInputStart`) stage function 7
+  starts with no start word on the selected axis or group members in both
+  `0x0050` modes, own the bench output mapped to the terminal, pulse it once
+  after the firmware's line-isolation reads (shared truth table
+  `test/line_isolation_cases.json`, D14 ordering, 1000 ms backstop) and disarm
+  without stopping or changing an assignment. Home, PT and PV kinds refuse
+  before any traffic until prompts 12-14. The board declares the bench output
+  -> terminal map (`kFixtureBenchOutputs`, menuconfig), reported by `wiring`
+  and compared by the harness. Harness commands `arm-position`, `arm-trigger`,
+  `arm-inspect`, `disarm` and the `input-start` folder scenario. Guide:
+  `docs/ess_input_start.md`. Not run on hardware (prompt 09).
+- A DRIVE settings read of a group member (`driver read ADDRESS`) records that
+  member's `0x0050`/`0x0051` for the input-start arm.
+
 - Standalone `bench` command for the bench board's relays, MOSFETs and isolated
   input, on Arduino and native ESP-IDF. Every on has a 1..60000 ms hold with a
   timer and a service-loop backstop; every stop request turns all outputs off.

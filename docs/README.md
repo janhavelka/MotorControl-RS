@@ -33,6 +33,7 @@ operations and physical qualification are separate; see the
 | Finite velocity and unresolved ramp conversions | [Velocity](ess_velocity.md) |
 | Direction, subdivision, word order and limit settings | [Driver settings](ess_driver_settings.md) |
 | Terminal functions, polarity and documented disable | [Optional I/O](ess_io.md) |
+| Motion a drive input starts (arm, one owned pulse, attribution, disarm) | [Input-started motion](ess_input_start.md) |
 | Homing and method-specific prerequisites | [Homing](ess_homing.md), [method table](ess_homing_methods.md) |
 | Indexed external-trigger records | [Stored segments](ess_segments.md) |
 | Algorithm, encoder, current and lock settings | [Control settings](ess_control_settings.md) |

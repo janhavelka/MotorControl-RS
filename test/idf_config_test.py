@@ -32,6 +32,14 @@ def main():
     root = Path(__file__).resolve().parents[1]
     kconfig, pins, defines = fixture_tables(root)
     assert kconfig == pins == defines == [(1, 0xF, 0x0), (2, 0xF, 0x0), (4, 0xF, 0x1)], (kconfig, pins, defines)
+    # Wired bench 08: the bench output -> terminal map, BenchIo order, in both builds.
+    text = (root / 'examples/probe_idf/main/Kconfig.projbuild').read_text(encoding='utf-8')
+    assert re.search(r'config MOTORCONTROLRS_FIXTURE_OUTPUTS\n\s+bool .*\n(?:\s+.*\n)*?\s+default y', text), 'output map must default on'
+    menu = [int(re.search(r'config MOTORCONTROLRS_FIXTURE_%s_TERMINAL\n(?:\s+.*\n)*?\s+default (-?\d+)' % name, text).group(1))
+            for name in ('RELAY1', 'RELAY2', 'MOSFET1', 'MOSFET2')]
+    board = (root / 'examples/common/BoardPins.h').read_text(encoding='utf-8')
+    pins_map = [int(v) for v in re.search(r'kFixtureBenchOutputs\[FIXTURE_BENCH_OUTPUTS\] = \{([^}]*)\}', board).group(1).split(',')]
+    assert menu == pins_map == [2, 1, 0, 3], (menu, pins_map)
     source = root / 'examples/probe_idf/main/IdfPlatform.cpp'
     includes = [root / 'test/fakes/esp32_uart', root / 'examples/probe_cli']
     with tempfile.TemporaryDirectory() as temporary:

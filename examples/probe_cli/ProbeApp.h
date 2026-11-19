@@ -11,6 +11,7 @@
 #include "QualificationConsole.h"
 #include "IoQualification.h"
 #include "ParameterWrite.h"
+#include "InputStartRoute.h"
 #include <MotorControlRS/profiles/ess_rs/Position.h>
 #include <MotorControlRS/profiles/ess_rs/Reads.h>
 #include <MotorControlRS/profiles/ess_rs/Velocity.h>
@@ -45,6 +46,14 @@ struct ApplicationOptions {
     FixtureWiringEntry fixtureWiring[FIXTURE_WIRING_CAPACITY] = {};
     uint8_t fixtureWiringCount = 0; ///< Entries used; more than FIXTURE_WIRING_CAPACITY is invalid.
     bool fixtureWiringSupplied = false; ///< Distinguishes an absent table from an empty one.
+    /** Optional board declaration of the drive input terminal each bench output
+     * drives (BenchIo order relay1, relay2, mosfet1, mosfet2; -1 none), used by
+     * the input-start trigger (wired bench 08) and reported by `wiring`. Ignored
+     * unless benchOutputTerminalsSupplied; an invalid map leaves the trigger
+     * unavailable and the wiring declarations unchanged. */
+    int8_t benchOutputTerminals[FIXTURE_BENCH_OUTPUTS] = {FIXTURE_OUTPUT_NONE, FIXTURE_OUTPUT_NONE,
+                                                         FIXTURE_OUTPUT_NONE, FIXTURE_OUTPUT_NONE};
+    bool benchOutputTerminalsSupplied = false;
 };
 /** Construct the shared standalone application in required PSRAM and initialize
  * its one UART/capture owner. Failure is explicit; there is no internal-RAM
@@ -344,8 +353,44 @@ MotorControlRS::Status revokePositionClearQualification();
 MotorControlRS::Status submitHome(const MotorControlRS::ESS_RS::HomeRequest&, uint32_t& operationId);
 /// Copy pending/terminal programmatic home evidence. Wrong/missing IDs preserve output.
 bool copyHomeResult(uint32_t operationId, MotorControlRS::ESS_RS::HomeContext& output);
-/// Release any terminal ordinary or group operation after service has retained its result; no motor stop.
+/// Release any terminal ordinary, group or input-start operation after service has retained its result; no motor stop.
 bool releaseOperation(uint32_t operationId);
+
+/** Input-start route (wired bench 08, docs/ess_input_start.md); the console
+ * `arm`/`disarm` commands call the same functions. Call from the service task.
+ * armInputStart: for the selected axis (request.group false, one member with
+ * the selected address) or every declared group member, before any traffic it
+ * requires a fresh checked configuration with function 7 on the terminal, a
+ * current DRIVE settings read whose 0x0050 matches request.mode (`driver read
+ * [ADDRESS]`), fresh stopped alarm-free enabled state with the input inactive,
+ * a current FINITE_MOVE input record with triggers-inhibited for the terminal
+ * (and a stated mapping for an inverted polarity), the ordinary move readiness
+ * for every member's MoveRequest, the terminal declared connected, a bench port
+ * with an output mapped to the terminal and that output off. Then each drive's
+ * five 0x0021 words are staged and read back with no start (stagePositionMove
+ * for the selected axis, the group STAGED phase without its start for members);
+ * any staging failure ends the arm and nothing is resent. Only then is the
+ * session ARMED and sampling begins. The armed drives are reserved against
+ * other motion and settings (stops stay admitted) and the output is owned:
+ * `bench on` for it is refused, `bench off` always works. Home, segment and PV
+ * kinds refuse with UNSUPPORTED before any traffic. Rejection leaves the view
+ * and id unchanged; copyInputStartRefusal names the reason. */
+MotorControlRS::Status armInputStart(const Probe::InputStartRequest& request, uint32_t& operationId);
+/** One pulse of a MOSFET output mapped to the armed terminal, widthMs 20..5000.
+ * First the line-isolation reads (0x0040/5 then 0x0006/7) of every drive the
+ * board table declares connected on the terminal, as the last bus traffic;
+ * then the shared truth table (rows L1-L7) for non-members and the armed facts
+ * for members. Every refusal comes before any port call; a second trigger is
+ * refused. No automatic retrigger. */
+MotorControlRS::Status triggerInputStart(uint32_t operationId, uint8_t output, uint32_t widthMs);
+/// Copy the current session; another id preserves output.
+bool copyInputStart(uint32_t operationId, Probe::InputStartView& output);
+/** Close observation, release the reservation and turn the owned output off if
+ * it is still on. No stop, no assignment change. Release the session with
+ * releaseOperation once it is done. */
+MotorControlRS::Status disarmInputStart(uint32_t operationId);
+/// Reason and deciding address of the latest refused input-start call.
+bool copyInputStartRefusal(Probe::InputStartReply& output);
 
 /** Drive group: the same application functions as the console
  * `group` routes. Call from the serviceApplication task; rejection preserves

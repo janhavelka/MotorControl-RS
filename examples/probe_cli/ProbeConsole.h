@@ -17,6 +17,7 @@
 #include "DriveGroup.h"
 #include "ProfileCandidate.h"
 #include "ParameterWrite.h"
+#include "InputStartRoute.h"
 #include "MotorControlRS/profiles/ess_rs/Codec.h"
 #include "MotorControlRS/profiles/ess_rs/Reads.h"
 #include "MotorControlRS/profiles/ess_rs/Actions.h"
@@ -97,6 +98,11 @@ struct WiringSnapshot {
     BoardWiring board;
     FixtureState fixture = FixtureState::ABSENT;
     const char* fixtureError = nullptr;
+    /// Bench output -> drive terminal map (wired bench 08), BenchIo order; -1 none.
+    int8_t benchOutputs[FIXTURE_BENCH_OUTPUTS] = {FIXTURE_OUTPUT_NONE, FIXTURE_OUTPUT_NONE,
+                                                  FIXTURE_OUTPUT_NONE, FIXTURE_OUTPUT_NONE};
+    FixtureState benchOutputMap = FixtureState::ABSENT;
+    const char* benchOutputMapError = nullptr;
 };
 /** Preserve unresolved driver semantics separately from missing prerequisites. */
 Action driverAdmissionStatus(const MotorControlRS::Status&) noexcept;
@@ -426,6 +432,9 @@ struct Host {
     Action (*motionProfile)(void*, MotionProfileCommand, MotionProfileView&) = nullptr;
     /// Restore or D9 experiment session; null request inspects. View is the current session.
     Action (*parameterWrite)(void*, const ParameterWriteRequest*, ParameterWriteView&) = nullptr;
+    /** Input-start route (wired bench 08): arm, trigger, inspect, disarm. The
+     * view is the current session, unchanged by a refusal; reply names it. */
+    Action (*inputStart)(void*, const InputStartCommand&, const InputStartView*& view, InputStartReply&) = nullptr;
     Action (*stageProfile)(void*, uint32_t commandId, const ProfileCandidate&, uint32_t& operationId) = nullptr;
     /** Drive group. SHOW, STATUS, CLEAR and WIRING are synchronous host
      * declarations without bus traffic. SET, MOVE, STOP and READ_STATE admit one
@@ -513,6 +522,7 @@ private:
                          bool ordinaryStop = false, uint32_t replacedOperationId = 0, bool stopEscalation = false) noexcept;
     void parameterRead(uint32_t id, MotorControlRS::ESS_RS::ReadKind, const char* address) noexcept;
     void parameterWrite(uint32_t id, const char* command, const ParameterWriteRequest* request) noexcept;
+    void inputStart(uint32_t id, const char* command, const InputStartCommand& request) noexcept;
     void qualificationRoute(uint32_t id, QualificationRoute, const char* const* tokens, std::size_t count) noexcept;
     void ioQualificationRoute(uint32_t id, const char* const* tokens, std::size_t count) noexcept;
     void qualificationReply(uint32_t id, const char* command, const char* result, const char* label, const char* value, bool ok = false) noexcept;

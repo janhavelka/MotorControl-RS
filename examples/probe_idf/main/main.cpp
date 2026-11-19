@@ -70,6 +70,15 @@ void ownerTask(void*) {
     for (const auto& slot : slots)
         if (slot.address) options.fixtureWiring[options.fixtureWiringCount++] = slot;
 #endif
+#if CONFIG_MOTORCONTROLRS_FIXTURE_OUTPUTS
+    // Bench output -> drive terminal map (wired bench 08), BenchIo order.
+    const int outputTerminals[FIXTURE_BENCH_OUTPUTS] = {CONFIG_MOTORCONTROLRS_FIXTURE_RELAY1_TERMINAL,
+        CONFIG_MOTORCONTROLRS_FIXTURE_RELAY2_TERMINAL, CONFIG_MOTORCONTROLRS_FIXTURE_MOSFET1_TERMINAL,
+        CONFIG_MOTORCONTROLRS_FIXTURE_MOSFET2_TERMINAL};
+    options.benchOutputTerminalsSupplied = true;
+    for (std::size_t i = 0; i < FIXTURE_BENCH_OUTPUTS; ++i)
+        options.benchOutputTerminals[i] = static_cast<int8_t>(outputTerminals[i]);
+#endif
     beginApplication(pins, receiverDisabledDuringTransmit, options);
     // Initialization failure is reported by the shared application. Its cached
     // console remains available when storage exists; a missing App only idles.

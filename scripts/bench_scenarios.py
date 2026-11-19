@@ -42,6 +42,10 @@ FOLDER_SCENARIOS = {
     'outputs': 'wired bench 06: one Y0 case (--case O1..O11) on drive 4: Y0 set through the ordinary I/O route '
                '(load indicator, levels either), the case stimulus with read-state polls, aux1 edges and debug '
                'decoded traffic tabulated per COMMON Timing, restoration from the baseline',
+    'input-start': 'wired bench 08: one function 7 start on the selected drive: optional --change X3 = 7 with '
+                   'ASSIGN facts, fresh config, driver, profile and state reads, a FINITE_MOVE record with triggers '
+                   'inhibited, arm, one owned MOSFET pulse after the firmware isolation reads, observation to its '
+                   'conclusion, disarm, restoration of the case write',
     'stop-inputs': 'wired bench 07: one case (--case S1..S9, R1, R2a, R2b, R3, G1, G2) and one X3 function '
                    '(--function 4, 5 or 6): X3 assigned on drive 4 (phase A) or 1, 2, 4 (phase B) with ASSIGN facts, '
                    'Y0 2 or 5, interlocked mosfet2 pulses (named running member, pre-start io read), read-state '
@@ -95,6 +99,16 @@ def arguments(argv=None):
     parser.add_argument('--expect-refusal', nargs='+', choices=tuple(records.FIXTURE['outputs']), default=[],
                         help='input-map: outputs whose interlock must refuse (no bench on)')
     parser.add_argument('--hold-ms', type=int, default=2000, help='input-map: bench hold per ON (1..60000)')
+    parser.add_argument('--start-terminal', choices=records.TERMINALS, default='x3', help='input-start: armed terminal')
+    parser.add_argument('--start-mapping', choices=('unknown', 'before-inversion', 'after-inversion', 'recorded'),
+                        default='unknown', help='input-start: status mapping stated in the FINITE_MOVE record')
+    parser.add_argument('--arm-form', choices=('relative', 'absolute-by'), default='relative', help='input-start: arm form')
+    parser.add_argument('--steps', type=int, default=1000, help='input-start: native steps (displacement or absolute-by)')
+    parser.add_argument('--rpm', type=int, default=60, help='input-start: staged speed')
+    parser.add_argument('--trigger-output', choices=('mosfet1', 'mosfet2'), default='mosfet2', help='input-start: pulse output')
+    parser.add_argument('--width-ms', type=int, default=200, help='input-start: pulse width 20..5000 ms')
+    parser.add_argument('--poll-ms', type=int, default=50, help='input-start: sample interval 20..500 ms')
+    parser.add_argument('--window-ms', type=int, default=10000, help='input-start: armed window 100..30000 ms')
     parser.add_argument('--max-age-ms', type=int, default=records.MAX_AGE_MS,
                         help='input-map: interlock read age bound, recorded in the scenario record')
     parser.add_argument('--cycles', type=int, default=5, help='y0-map: custom on/off cycles (1..20)')
@@ -192,7 +206,7 @@ def arguments(argv=None):
                           (args.run_dir, tuple(FOLDER_SCENARIOS)), (args.case, tuple(FOLDER_SCENARIOS)),
                           (args.image_level, tuple(FOLDER_SCENARIOS)),
                           (args.outputs, ('input-map',)), (args.expect_refusal or None, ('input-map',)),
-                          (args.change, ('input-map', 'restore')), (args.assign_facts, ('input-map', 'restore')),
+                          (args.change, ('input-map', 'restore', 'input-start')), (args.assign_facts, ('input-map', 'restore', 'input-start')),
                           (args.drives, ('baseline-compare', 'baseline-capture')),
                           (args.terminals, ('status-mapping',)), (args.mapping_cases, ('status-mapping',)),
                           (args.filter_value, ('input-timing',)), (args.widths, ('input-timing', 'stop-inputs')),
@@ -445,6 +459,18 @@ def _folder_arguments(parser, args):
         if len(set(outputs)) != len(outputs) or any(o not in outputs for o in args.expect_refusal):
             parser.error('input-map outputs are distinct and include every expected refusal')
         args.outputs = outputs
+    if args.scenario == 'input-start':
+        if (not probe.INPUT_START_WIDTH_MS[0] <= args.width_ms <= probe.INPUT_START_WIDTH_MS[1] or
+                not probe.INPUT_START_POLL_MS[0] <= args.poll_ms <= probe.INPUT_START_POLL_MS[1] or
+                not probe.INPUT_START_WINDOW_MS[0] <= args.window_ms <= probe.INPUT_START_WINDOW_MS[1] or
+                not 1 <= args.rpm <= 3000 or not 1 <= abs(args.steps) <= 0x0FFFFFFF):
+            parser.error('input-start bounds: width 20..5000 ms, poll 20..500 ms, window 100..30000 ms, rpm 1..3000')
+        if records.FIXTURE['outputs'][args.trigger_output] != args.start_terminal:
+            parser.error('the trigger output does not drive the armed terminal (FIXTURE outputs)')
+        if args.change is not None and (args.change['drive'] != args.address or args.change['key'] != 'io.' + args.start_terminal):
+            parser.error('input-start --change assigns the armed terminal of the --address drive')
+        if args.change is not None and args.image_level is None:
+            parser.error('a scenario that writes needs --image-level (the prompt whose routes the image has)')
     if args.scenario == 'y0-map':
         if args.address != records.FIXTURE['y0_owner']:
             parser.error('y0-map runs on the Y0 owner, drive %d' % records.FIXTURE['y0_owner'])
@@ -626,6 +652,23 @@ def folder_plan(args, baseline):
         cases, commands, bounds, expected = [], [], {}, {}
     if name in ('outputs', 'stop-inputs'):
         pass
+    elif name == 'input-start':
+        cases.append(_case(case, 'one owned MOSFET pulse on the armed terminal after the firmware isolation reads; the '
+                           'staged function 7 start is ATTRIBUTED from fresh samples (onset bracket, no further start '
+                           'through the post-release window); no serial start word', ['local', 'controller-timestamped',
+                                                                                        'drive-reported']))
+        commands = ['useaddr A', 'case write (--change) with its stated facts' if args.change else 'no case write',
+                    'read config A; driver read A; motion-profile read; read state A',
+                    'io qualification install A %s 7 0 finite-move %s triggers-inhibited' % (args.start_terminal, args.start_mapping),
+                    'arm position %s %s %d %d poll-ms %d window-ms %d' % (args.start_terminal, args.arm_form, args.steps,
+                                                                          args.rpm, args.poll_ms, args.window_ms),
+                    'arm inspect ID until armed', 'arm trigger ID %s %d' % (args.trigger_output, args.width_ms),
+                    'arm inspect ID until done', 'disarm ID if not done; release ID', 'restoration plan steps']
+        bounds = {'steps': args.steps, 'rpm': args.rpm, 'width_ms': args.width_ms, 'poll_ms': args.poll_ms,
+                  'window_ms': args.window_ms, 'output': args.trigger_output, 'terminal': args.start_terminal}
+        expected = {'local': 'arm accepted, staged words read back, session armed',
+                    'controller-timestamped': 'isolation rows (L7 for non-members, M for the member), ON GPIO-write time',
+                    'drive-reported': 'member result outcome, first-change bracket, position change, spacing'}
     elif name == 'input-map':
         mapped = [o for o in args.outputs if o not in args.expect_refusal]
         cases.append(_case(case + '.declarations', 'declaration_agreement: the board table of drives 1, 2, 4 '
@@ -693,6 +736,7 @@ def folder_plan(args, baseline):
     record = {'drives': [{'address': a, 'required_enabled': True} for a in drives],
             'terminals': (['x0', 'x1', 'x2', 'x3'] if name == 'input-map' else ['y0'] if name in ('y0-map', 'outputs') else
                           ['x3', 'y0'] if name == 'stop-inputs' else
+                          [args.start_terminal] if name == 'input-start' else
                           (args.terminals or list(records.TERMINALS)) if name == 'status-mapping' else
                           ['x3'] + (['x0', 'x1'] if args.compare_relay else []) if name == 'input-timing' else []),
             'commands': commands, 'cases': cases,
@@ -2456,7 +2500,98 @@ def _stop_inputs(console, args, record, run, baseline):
     bench_stop.case_verdicts(run, cid, case, detail, error)
 
 
-FOLDER_RUNNERS = {'input-map': _input_map, 'y0-map': _y0_map, 'baseline-compare': _baseline_compare,
+# --------------------------------------------------------------------------
+# Wired bench 08: input-start route (arm, one owned pulse, observe, disarm)
+
+def _inspect_until(console, session, done, limit_s, timeout):
+    """Poll ``arm-inspect`` until done(session) or the bound; the last reply."""
+    deadline = console.clock() + limit_s
+    while True:
+        reply = checked(console, 'arm-inspect', host_args=(str(session),), timeout_s=timeout)
+        if done(reply['session']) or console.clock() >= deadline:
+            return reply
+        console.sleep(0.05)
+
+
+def _input_start(console, args, record, run, baseline):
+    """One function 7 start on the selected drive: the documented fresh reads,
+    the FINITE_MOVE record with triggers inhibited, arm, one owned pulse through
+    the firmware's own isolation decision, observation to its conclusion,
+    disarm, restoration of the case write."""
+    timeout = args.timeout
+    cid = args.case or args.scenario
+    scenario = run.scenario
+    view = _preflight(console, run, timeout)
+    address, terminal = args.address, args.start_terminal
+    before = _read_drives(console, [address], timeout)
+    diff = records.diff_fields(baseline, {address: records.raws_from(before[address])})
+    run.folder.write_json('baseline_before.json', {'bench': records._bench_view(view), 'drives': _compact(before),
+                                                   'diff': [d for d in diff if d['status'] != 'equal']})
+    plan = scenario['restoration_plan']
+    write = (scenario['case_writes'] or [None])[0]
+    detail = {'session': None}
+    session = None
+    try:
+        if write is not None:
+            if write['refusal'] or not plan['admissible']:
+                reason = '; '.join([r['reason'] for r in plan['refused']] + ([write['refusal']['reason']] if write['refusal'] else []))
+                for level in scenario['cases'][0]['required_levels']:
+                    run.verdict(cid, level, 'NOT RUN', 'no admissible route before any write: ' + reason)
+                return
+            outcome, ending = _case_write(console, run, write['entry'], write['steps'], timeout)
+            detail['case_write'] = {'entry': write['entry'], 'readback': ending, 'result': outcome['result']}
+        records.use_drive(console, address, timeout_s=timeout)
+        # The documented fresh sequence after the last write: config, DRIVE (0x0050), profile, state.
+        detail['fresh_reads'] = _compact({address: records.read_drive(
+            console, address, ('config', 'driver', 'motion-profile', 'state'), timeout_s=timeout)})
+        detail['record'] = _install(console, (str(address), terminal, '7', '0', 'finite-move', args.start_mapping,
+                                              'triggers-inhibited'), timeout)
+        arm_args = (terminal, args.arm_form, str(args.steps), str(args.rpm), 'poll-ms', str(args.poll_ms),
+                    'window-ms', str(args.window_ms))
+        arm = console.command('arm-position', host_args=arm_args, timeout_s=timeout)
+        detail['arm'] = arm
+        if not arm.get('ok'):
+            run.verdict(cid, 'local', 'FAIL', 'arm refused: %s (%s)' % (arm.get('result'), arm.get('reason')))
+            return
+        session = arm['session']['operation_id']
+        armed = _inspect_until(console, session, lambda s: s['phase'] != 'staging', 5.0, timeout)
+        detail['armed'] = armed
+        if armed['session']['phase'] != 'armed':
+            run.verdict(cid, 'local', 'FAIL', 'session %s: %s' % (armed['session']['phase'], armed['session']['error']))
+            return
+        run.verdict(cid, 'local', 'PASS')
+        trigger = console.command('arm-trigger', host_args=(str(session), args.trigger_output, str(args.width_ms)),
+                                  timeout_s=timeout)
+        detail['trigger'] = trigger
+        decided = _inspect_until(console, session, lambda s: s['phase'] != 'triggering', 5.0, timeout)
+        isolation = decided['session']['isolation']
+        detail['decided'] = decided
+        if not trigger.get('ok') or not isolation['admitted']:
+            run.verdict(cid, 'controller-timestamped', 'FAIL', 'trigger refused: %s %s %s' % (
+                trigger.get('reason'), isolation.get('row'), isolation.get('reason')))
+            return
+        source = decided['session']['source']
+        run.verdict(cid, 'controller-timestamped', 'PASS' if source['triggered'] and source['on_us'] else 'FAIL',
+                    'isolation rows %s; ON at %s us (GPIO write)' % ([r['row'] for r in isolation['rows']], source['on_us']))
+        final = _inspect_until(console, session, lambda s: s['phase'] == 'done', args.window_ms / 1000.0 + 5.0, timeout)
+        detail['final'] = final
+        member = final['session']['members'][0]['result']
+        outcome = member.get('outcome') if member.get('known') else 'none'
+        verdict = 'PASS' if outcome == 'attributed' else 'indeterminate' if outcome == 'indeterminate' else 'FAIL'
+        run.verdict(cid, 'drive-reported', verdict, 'outcome %s, missing %s, change %s of %s, spacing %s' % (
+            outcome, member.get('missing'), member.get('position_change'), member.get('expected_change'),
+            member.get('spacing_us')), ['input_start.json'])
+    finally:
+        if session is not None:
+            last = console.command('arm-inspect', host_args=(str(session),), timeout_s=timeout)
+            if last.get('ok') and last['session']['phase'] != 'done':
+                detail['disarm'] = console.command('disarm', host_args=(str(session),), timeout_s=timeout)
+            detail['release'] = console.command('release', operation_id=session, timeout_s=timeout)
+        detail['results'] = _restore_written(console, run, plan, timeout)
+        run.folder.write_json('input_start.json', detail)
+
+
+FOLDER_RUNNERS = {'input-start': _input_start, 'input-map': _input_map, 'y0-map': _y0_map, 'baseline-compare': _baseline_compare,
                   'baseline-capture': _baseline_capture, 'restore': _restore, 'status-mapping': _status_mapping,
                   'input-timing': _input_timing, 'outputs': _outputs, 'stop-inputs': _stop_inputs}
 

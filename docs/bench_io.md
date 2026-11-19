@@ -338,6 +338,18 @@ control still starts. The table sends no traffic and changes no drive
 assignment. Replies and rules are in the
 [CLI contract](cli_contract.md#terminal-wiring-declarations).
 
+### Input-start trigger ownership
+
+The input-start route ([input-started motion](ess_input_start.md), wired bench
+08) owns the outputs the board maps to its armed terminal (`wiring` reports the
+map as `bench_outputs`, BenchIo order relay1, relay2, mosfet1, mosfet2:
+`[2, 1, 0, 3]` on this bench) from the arm until the session is done. While it
+owns them `bench on` for those outputs answers `busy` with no port call; `bench
+off` always works. Its own `arm trigger` pulses one MOSFET once (20..5000 ms)
+after its isolation reads of every drive on the line; there is no retrigger. A
+stop, disarm, cancellation or the armed-window deadline turns the output off;
+the hold timer stays the backstop.
+
 ## Test plan once wired
 
 Use stopped, alarm-free drives, fresh reads and the usual prepared stop and

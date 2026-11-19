@@ -626,6 +626,39 @@ results add `stop_inputs` (`mask`, `active_low`, `observed`, `raw_inputs`, and
 `stopped_evidence`). A sequential `group move` sends no later start once a
 started member reported its stop/release input active.
 
+### Input-started motion (wired bench 08)
+
+```text
+arm position x0|x1|x2|x3 relative|absolute-by STEPS RPM [group] [poll-ms 20..500] [window-ms 100..30000]
+arm position xN absolute TARGET RPM [poll-ms ...] [window-ms ...]
+arm trigger ID mosfet1|mosfet2 WIDTH_MS
+arm inspect ID
+arm home|segment|velocity xN
+disarm ID
+```
+
+Each call answers one synchronous reply: `command` `arm-position`,
+`arm-trigger`, `arm-inspect`, `arm-home`, `arm-segment`, `arm-velocity` or
+`disarm`; `result` `accepted` (arm, trigger), `done` (inspect, disarm) or the
+refusal; `reason` names a refusal (for example `function_not_7`,
+`position_mode_mismatch`, `triggers_inhibited_required`, `output_active`,
+`width_out_of_range`, `relay_output`, `already_triggered`, `operation_pending`,
+`home_staging_prompt_12`) and `refused_address` the deciding drive. `session`
+is the current session, unchanged by a refusal: `phase`
+(`staging`, `armed`, `triggering`, `observing`, `done`), `source` (state, output,
+width, GPIO-write `on_us`/`off_us`, `evidence` `controller_gpio_write`),
+`isolation` (decision, row, address, reason and one row per participant with
+its `io` and `state` words, read starts and ages), `capacity` (debug and `aux1`
+overwrites, stop-service delay) and `members` with the staged words, expected
+displacement or endpoint, stop ID and result, assignment and the core
+`result` (effect, outcome, execution, completion, further, missing witnesses,
+first-change bracket, position change against the expectation, sample counts
+and spacing). Malformed, duplicate or extra tokens answer `invalid_arguments`
+before the application. `caps` reports `input_start`, the kinds, modes,
+trigger outputs and the width, poll, window, post-release and read-age bounds.
+`wiring` adds `bench_outputs` and `bench_output_map`. The API, console and
+harness call one route; see [input-started motion](ess_input_start.md).
+
 ## Verification and qualification
 
 Native console/application tests cover help parity, strict parsing, direct API

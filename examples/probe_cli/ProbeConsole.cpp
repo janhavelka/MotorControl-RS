@@ -62,7 +62,7 @@ bool boardWiring(char* output, std::size_t capacity, std::size_t& used, const Bo
         static_cast<unsigned>(board.inputs[3]), static_cast<unsigned>(board.outputs[0]), static_cast<unsigned>(board.outputs[1]));
 }
 
-enum class Command : uint8_t { HELP, VERSION, CONFIG, STATUS, HEALTH, STATS, PROBE, CAPTURE_READ, RECOVER, MEMORY, LOAD, DRV, RESULT, CANCEL, RELEASE, READ, PROFILE, CAPS, READ_IDENTITY, READ_CONFIG, READ_STATE, MONITOR, AXIS, PREPARE, ENABLE, MOTOR_RELEASE, ALARM_CLEAR, STOP, MOVE, POSITION_CLEAR, VELOCITY, DRIVER, IO, HOME, SEGMENT, CONTROL, TUNING, HOST, COMMUNICATION, PERSISTENCE, MOTION_PROFILE, DEBUG, DISCOVER, USEADDR, WIRING, MOVE_BY, MOVE_TO, SPEED, ACCEL, DECEL, MOTION, STEPS_PER_TURN, SETTINGS, SUBDIVISION, POSITION, BROADCAST, GROUP, BENCH };
+enum class Command : uint8_t { HELP, VERSION, CONFIG, STATUS, HEALTH, STATS, PROBE, CAPTURE_READ, RECOVER, MEMORY, LOAD, DRV, RESULT, CANCEL, RELEASE, READ, PROFILE, CAPS, READ_IDENTITY, READ_CONFIG, READ_STATE, MONITOR, AXIS, PREPARE, ENABLE, MOTOR_RELEASE, ALARM_CLEAR, STOP, MOVE, POSITION_CLEAR, VELOCITY, DRIVER, IO, HOME, SEGMENT, CONTROL, TUNING, HOST, COMMUNICATION, PERSISTENCE, MOTION_PROFILE, DEBUG, DISCOVER, USEADDR, WIRING, MOVE_BY, MOVE_TO, SPEED, ACCEL, DECEL, MOTION, STEPS_PER_TURN, SETTINGS, SUBDIVISION, POSITION, BROADCAST, GROUP, BENCH, ARM, DISARM };
 struct Entry { const char* name; Command command; const char* syntax; const char* effect; bool bus; const char* description; };
 const Entry COMMANDS[] = {
     {"moveby", Command::MOVE_BY, "moveby VALUE [steps|deg|turn|mm]", "finite_relative_move_with_readonly_preparation", true, "Move by an amount; default unit is command steps. Round to nearest command step, ties to even."},
@@ -117,6 +117,8 @@ const Entry COMMANDS[] = {
     {"result", Command::RESULT, "result [operation_id]", "inspect_retained_result_without_consuming", false, "Inspect an operation without consuming its retained result."},
     {"cancel", Command::CANCEL, "cancel [operation_id]", "cancel_local_work_not_motor_stop", false, "Cancel local work; use stop to request a motor stop."},
     {"group", Command::GROUP, "group show|status|clear | group set ADDR [ADDR ...] (1..15) | group wiring ADDR x0|x1|x2|x3|y0|y1 unknown|unconnected|connected | group read state | group move relative value unit frame native_rpm configured [setup write|verify] [start staged|sequential] on-failure leave|stop normal|stop fast | group stop normal|fast | group plan begin [start staged|sequential] on-failure leave|stop normal|stop fast | group plan add ADDR relative|absolute value unit frame native_rpm configured [setup write|verify] | group plan show|clear|submit | group axis ADDR config|config set field value [maximum]|origin native|prepare request | group reference ADDR declaration binding config config_read state_read native max_age_us command-coordinate-qualified | group reference ADDR revoke", "unicast_drive_group_independent_member_operations", true, "Declare up to 15 drives. A member plan stays inert until complete and explicitly submitted. Each member keeps its own coordinates, request and result."},
+    {"arm", Command::ARM, "arm position x0|x1|x2|x3 relative|absolute-by STEPS RPM [group] [poll-ms 20..500] [window-ms 100..30000] | arm position xN absolute TARGET RPM [poll-ms ..] [window-ms ..] | arm trigger ID mosfet1|mosfet2 WIDTH_MS (20..5000) | arm inspect ID | arm home|segment|velocity xN (refused until prompts 12-14)", "input_start_stage_one_owned_pulse_observe_attribute", true, "Input-started motion: stage a function 7 start without a start word, pulse one owned bench output once, then attribute the start from fresh drive samples."},
+    {"disarm", Command::DISARM, "disarm ID", "close_input_start_observation_no_stop_no_assignment_change", false, "Close an input-start session and turn its owned output off; it does not stop the drive or change the assignment."},
     {"bench", Command::BENCH, "bench | bench on relay1|relay2|mosfet1|mosfet2 HOLD_MS | bench off [relay1|relay2|mosfet1|mosfet2] | bench clear", "bench_fixture_outputs_and_input_no_bus_traffic", false, "Bench fixture only: switch board outputs wired to drive inputs and read the wired drive output. Each on lasts 1..60000 ms, then turns off; any stop turns all off."},
     {"broadcast", Command::BROADCAST, "broadcast accel 300|301 | broadcast start relative | broadcast stop normal|fast", "fixture_only_unconfirmed_address_0_frame_then_silent_window", true, "Bench fixture only: send one fixed address-0 frame to every drive, then listen 200 ms. No drive confirms it; read each drive back."},
     {"release", Command::RELEASE, "release operation_id", "release_retained_terminal_result", false, "Release an inspected terminal result to free its storage."}
@@ -543,6 +545,7 @@ const char* helpGroup(Command command) {
     case Command::MOVE_BY: case Command::MOVE_TO: case Command::MOTION: case Command::SPEED: case Command::ACCEL: case Command::DECEL:
     case Command::MOVE: case Command::POSITION: case Command::VELOCITY: case Command::HOME: case Command::ENABLE:
     case Command::MOTOR_RELEASE: case Command::ALARM_CLEAR: case Command::POSITION_CLEAR: case Command::STOP: case Command::GROUP:
+    case Command::ARM: case Command::DISARM:
         return "Motor operations";
     case Command::SUBDIVISION: case Command::DRIVER: case Command::IO: case Command::SEGMENT: case Command::CONTROL: case Command::TUNING:
     case Command::MOTION_PROFILE: case Command::PERSISTENCE:
@@ -586,6 +589,8 @@ const char* helpExample(Command command, const Host& host) {
             "motion-profile read\n  motion-profile inspect";
     case Command::MONITOR: return "monitor 500 10\n  monitor off";
     case Command::BENCH: return "bench\n  bench on mosfet1 200\n  bench off\n  bench clear";
+    case Command::ARM: return "arm position x3 relative 1000 60\n  arm trigger 12 mosfet2 200\n  arm inspect 12\n  disarm 12";
+    case Command::DISARM: return "disarm 12  (no stop; use stop for the motor)";
     case Command::PROFILE: return "profile list";
     case Command::AXIS: return "axis config";
     case Command::PREPARE: return "prepare relative 100 steps native actual";
@@ -1301,6 +1306,114 @@ void Console::parameterWrite(uint32_t id, const char* command, const ParameterWr
         writeEvidence(output_, sizeof(output_), used, "write_evidence", v.writeEvidence) &&
         writeEvidence(output_, sizeof(output_), used, "read_evidence", v.readEvidence) &&
         append(output_, sizeof(output_), used, "}");
+    if (!fits) { error(id, command, "output_full"); return; }
+    emit();
+}
+namespace {
+const char* inputActionState(Core::ActionState state) {
+    switch (state) {
+    case Core::ActionState::EMPTY: return "empty";
+    case Core::ActionState::ACTIVE: return "active";
+    case Core::ActionState::SUCCEEDED: return "succeeded";
+    case Core::ActionState::FAILED: return "failed";
+    }
+    return "unknown";
+}
+const char* terminalName(uint8_t terminal) {
+    static const char* const names[4] = {"x0", "x1", "x2", "x3"};
+    return terminal < 4 ? names[terminal] : "unknown";
+}
+bool inputStartResult(char* out, std::size_t size, std::size_t& used, const Ess::InputStartResult& r, bool known) {
+    if (!append(out, size, used, ",\"result\":{\"known\":%s", boolean(known))) return false;
+    if (!known) return append(out, size, used, "}");
+    bool fits = append(out, size, used,
+        ",\"effect\":\"%s\",\"state\":\"%s\",\"outcome\":\"%s\",\"execution\":\"%s\",\"completion\":\"%s\",\"further\":\"%s\",\"missing\":[",
+        inputStartEffectName(r.effect), inputActionState(r.state), inputStartOutcomeName(r.outcome),
+        r.execution == Ess::InputStartExecution::OBSERVED ? "observed" : "not_observed",
+        inputStartCompletionName(r.completion), inputStartFurtherName(r.further));
+    bool first = true;
+    for (std::size_t bit = 0; fits && bit < sizeof(INPUT_START_MISSING_NAMES) / sizeof(INPUT_START_MISSING_NAMES[0]); ++bit)
+        if (r.missing & (1u << bit)) { fits = append(out, size, used, first ? "\"%s\"" : ",\"%s\"", INPUT_START_MISSING_NAMES[bit]); first = false; }
+    return fits && append(out, size, used,
+        "],\"source_commanded\":%s,\"source_active\":%s,\"input_observed\":%s,\"on_us\":%llu,\"off_us\":%llu,\"change_observed\":%s,\"running_observed\":%s,\"change_start_us\":%llu,\"change_end_us\":%llu,\"stop_requested\":%s,\"stopped_after_stop\":%s,\"stop_id\":%lu,\"position_known\":%s,\"position_change\":%lld,\"expected_known\":%s,\"expected_change\":%lld,\"position_matches\":%s,\"samples\":%lu,\"lost_samples\":%lu,\"late_samples\":%lu,\"spacing_us\":{\"min\":%lu,\"median\":%lu,\"max\":%lu,\"count\":%lu},\"code\":\"%s\",\"detail\":%ld}",
+        boolean(r.sourceCommanded), boolean(r.sourceActive), boolean(r.inputObserved),
+        static_cast<unsigned long long>(r.onUs), static_cast<unsigned long long>(r.offUs), boolean(r.changeObserved),
+        boolean(r.runningObserved), static_cast<unsigned long long>(r.changeStartUs), static_cast<unsigned long long>(r.changeEndUs),
+        boolean(r.stopRequested), boolean(r.stoppedAfterStop), static_cast<unsigned long>(r.stopId), boolean(r.positionKnown),
+        static_cast<long long>(r.positionChange), boolean(r.expectedKnown), static_cast<long long>(r.expectedChange),
+        boolean(r.positionMatches), static_cast<unsigned long>(r.samples), static_cast<unsigned long>(r.lostSamples),
+        static_cast<unsigned long>(r.lateSamples), static_cast<unsigned long>(r.spacingMinUs), static_cast<unsigned long>(r.spacingMedianUs),
+        static_cast<unsigned long>(r.spacingMaxUs), static_cast<unsigned long>(r.spacingCount), Core::errToString(r.status.code),
+        static_cast<long>(r.status.detail));
+}
+bool words(char* out, std::size_t size, std::size_t& used, const char* name, const uint16_t* values, std::size_t count) {
+    bool fits = append(out, size, used, ",\"%s\":[", name);
+    for (std::size_t i = 0; fits && i < count; ++i) fits = append(out, size, used, i ? ",%u" : "%u", values[i]);
+    return fits && append(out, size, used, "]");
+}
+} // namespace
+// One reply for every input-start call: this call's result and reason, and the
+// current session, which a refusal leaves unchanged. Poll with `arm inspect ID`.
+void Console::inputStart(uint32_t id, const char* command, const InputStartCommand& request) noexcept {
+    if (!host_.inputStart) { error(id, command, "unavailable"); return; }
+    const InputStartView* view = nullptr;
+    InputStartReply reply;
+    const Action result = host_.inputStart(host_.context, request, view, reply);
+    static const InputStartView empty;
+    const InputStartView& v = view ? *view : empty;
+    const char* requestName = request.kind == InputStartCommandKind::ARM ? "arm" : request.kind == InputStartCommandKind::TRIGGER ?
+        "trigger" : request.kind == InputStartCommandKind::DISARM ? "disarm" : "inspect";
+    const bool async = request.kind == InputStartCommandKind::ARM || request.kind == InputStartCommandKind::TRIGGER;
+    std::size_t used = 0;
+    bool fits = append(output_, sizeof(output_), used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":%s,\"result\":\"%s\",\"request\":\"%s\",\"reason\":\"%s\",\"refused_address\":%u,\"operation_id\":%lu,\"bus_traffic\":%s",
+        static_cast<unsigned long>(id), command, boolean(result == Action::OK),
+        result == Action::OK ? (async ? "accepted" : "done") : actionName(result), requestName, reply.reason ? reply.reason : "none",
+        reply.address, static_cast<unsigned long>(reply.operationId), boolean(result == Action::OK && async));
+    fits = fits && append(output_, sizeof(output_), used,
+        ",\"session\":{\"operation_id\":%lu,\"kind\":\"%s\",\"terminal\":\"%s\",\"mode\":\"%s\",\"group\":%s,\"phase\":\"%s\",\"error\":\"%s\",\"poll_ms\":%lu,\"window_ms\":%lu,\"started_us\":%llu,\"armed_us\":%llu,\"finished_us\":%llu",
+        static_cast<unsigned long>(v.operationId), inputStartKindName(v.kind), terminalName(v.terminal),
+        v.mode == InputStartMode::ABSOLUTE ? "absolute" : "relative", boolean(v.group), inputStartPhaseName(v.phase), v.error,
+        static_cast<unsigned long>(v.pollMs), static_cast<unsigned long>(v.windowMs), static_cast<unsigned long long>(v.startedUs),
+        static_cast<unsigned long long>(v.armedUs), static_cast<unsigned long long>(v.finishedUs));
+    fits = fits && append(output_, sizeof(output_), used,
+        ",\"source\":{\"state\":\"%s\",\"triggered\":%s,\"output\":%s%s%s,\"width_ms\":%lu,\"on_us\":%llu,\"off_us\":%llu,\"evidence\":\"controller_gpio_write\"}",
+        inputSourceName(v.source), boolean(v.triggered), v.outputKnown ? "\"" : "", v.outputKnown ? BenchIo::outputName(v.output) : "null",
+        v.outputKnown ? "\"" : "", static_cast<unsigned long>(v.widthMs), static_cast<unsigned long long>(v.onUs),
+        static_cast<unsigned long long>(v.offUs));
+    fits = fits && append(output_, sizeof(output_), used,
+        ",\"isolation\":{\"decided\":%s,\"admitted\":%s,\"row\":\"%s\",\"address\":%u,\"reason\":\"%s\",\"max_read_age_ms\":%lu,\"rows\":[",
+        boolean(v.decided), boolean(v.admitted), v.decisionRow, v.decisionAddress, v.decisionReason,
+        static_cast<unsigned long>(INPUT_START_MAX_READ_AGE_MS));
+    for (uint8_t i = 0; fits && i < v.rowCount && i < INPUT_START_MEMBERS; ++i) {
+        const auto& row = v.rows[i];
+        fits = append(output_, sizeof(output_), used,
+            "%s{\"address\":%u,\"member\":%s,\"row\":\"%s\",\"admit\":%s,\"reason\":\"%s\",\"io_known\":%s,\"state_known\":%s",
+            i ? "," : "", row.address, boolean(row.member), row.row, boolean(row.admit), row.reason, boolean(row.ioKnown), boolean(row.stateKnown)) &&
+            words(output_, sizeof(output_), used, "io", row.io, 5) && words(output_, sizeof(output_), used, "state", row.state, 7) &&
+            append(output_, sizeof(output_), used, ",\"io_started_us\":%llu,\"state_started_us\":%llu,\"state_reply_us\":%llu,\"io_age_us\":%lu,\"state_age_us\":%lu}",
+                static_cast<unsigned long long>(row.ioStartedUs), static_cast<unsigned long long>(row.stateStartedUs),
+                static_cast<unsigned long long>(row.stateReplyUs), static_cast<unsigned long>(row.ioAgeUs), static_cast<unsigned long>(row.stateAgeUs));
+    }
+    fits = fits && append(output_, sizeof(output_), used,
+        "]},\"capacity\":{\"debug_overwrites\":%lu,\"aux1_overwrites\":%lu,\"stop_service_delay_max_us\":%llu},\"members\":[",
+        static_cast<unsigned long>(v.debugOverwrites), static_cast<unsigned long>(v.aux1Overwrites),
+        static_cast<unsigned long long>(v.stopServiceDelayMaxUs));
+    for (uint8_t i = 0; fits && i < v.count && i < INPUT_START_MEMBERS; ++i) {
+        const auto& m = v.members[i];
+        fits = append(output_, sizeof(output_), used,
+            "%s{\"address\":%u,\"configuration_generation\":%lu,\"function\":%u,\"polarity\":%u,\"position_mode\":%u,\"staged\":%s,\"stage_operation_id\":%lu,\"stage_execution\":\"%s\"",
+            i ? "," : "", m.address, static_cast<unsigned long>(m.configurationGeneration), m.function, m.polarity, m.positionMode,
+            boolean(m.staged), static_cast<unsigned long>(m.stageOperationId), executionName(m.stageExecution)) &&
+            words(output_, sizeof(output_), used, "staged_words", m.stagedWords, 5) &&
+            append(output_, sizeof(output_), used,
+                ",\"expected_displacement\":%lld,\"expected_endpoint\":%ld,\"baseline_position\":%ld,\"assignment_known\":%s,\"assignment\":%u,\"stop_id\":%lu,\"stop_result\":\"%s\",\"stop_service_delay_us\":%llu",
+                static_cast<long long>(m.expectedDisplacement), static_cast<long>(m.expectedEndpoint), static_cast<long>(m.baselinePosition),
+                boolean(m.assignmentKnown), m.assignment, static_cast<unsigned long>(m.stopId), m.stopResult,
+                static_cast<unsigned long long>(m.stopServiceDelayUs)) &&
+            inputStartResult(output_, sizeof(output_), used, m.result, m.resultKnown) && append(output_, sizeof(output_), used, "}");
+    }
+    fits = fits && append(output_, sizeof(output_), used, "]}}");
     if (!fits) { error(id, command, "output_full"); return; }
     emit();
 }
@@ -2340,11 +2453,17 @@ void Console::dispatch() noexcept {
         WiringSnapshot view;
         const Action result = host_.wiring(host_.context, change ? &request : nullptr, view);
         std::size_t used = 0;
+        // Wired bench 08: the bench output -> terminal map precedes the declarations.
+        const bool mapInvalid = view.benchOutputMap == FixtureState::INVALID;
         const bool written = append(output_, sizeof(output_), used,
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"wiring\",\"ok\":%s,\"result\":\"%s\",\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"inputs\":[%u,%u,%u,%u],\"outputs\":[%u,%u]",
+            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"wiring\",\"ok\":%s,\"result\":\"%s\",\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"bench_outputs\":[%d,%d,%d,%d],\"bench_output_map\":\"%s\"%s%s%s,\"inputs\":[%u,%u,%u,%u],\"outputs\":[%u,%u]",
             static_cast<unsigned long>(id), boolean(result == Action::OK), result == Action::OK ? "done" : actionName(result),
             static_cast<unsigned long>(view.target.id), view.target.address, static_cast<unsigned long>(view.target.generation),
-            static_cast<unsigned long>(view.configurationGeneration), static_cast<unsigned>(view.inputs[0]), static_cast<unsigned>(view.inputs[1]),
+            static_cast<unsigned long>(view.configurationGeneration),
+            view.benchOutputs[0], view.benchOutputs[1], view.benchOutputs[2], view.benchOutputs[3],
+            fixtureStateName(view.benchOutputMap), mapInvalid ? ",\"bench_output_map_error\":\"" : "",
+            mapInvalid ? (view.benchOutputMapError ? view.benchOutputMapError : "unknown") : "", mapInvalid ? "\"" : "",
+            static_cast<unsigned>(view.inputs[0]), static_cast<unsigned>(view.inputs[1]),
             static_cast<unsigned>(view.inputs[2]), static_cast<unsigned>(view.inputs[3]), static_cast<unsigned>(view.outputs[0]), static_cast<unsigned>(view.outputs[1])) &&
             wiringSources(output_, sizeof(output_), used, "sources", view.inputSources, 4, view.outputSources, 2) &&
             boardWiring(output_, sizeof(output_), used, view.board) &&
@@ -2388,6 +2507,73 @@ void Console::dispatch() noexcept {
     // Cancellation, monitor off and the validated stop path above remain responsive.
     const bool monitorOff = entry->command == Command::MONITOR && count == first + 2 && std::strcmp(tokens[first + 1], "off") == 0;
     if (outputPending() && entry->command != Command::CANCEL && !monitorOff) { ++inputDropped_; return; }
+    if (entry->command == Command::ARM || entry->command == Command::DISARM) {
+        if (!host_.inputStart) { error(id, entry->name, "unavailable"); return; }
+        const std::size_t args = count - first - 1;
+        InputStartCommand request;
+        const auto signedValue = [](const char* text, int64_t& value) {
+            const bool negative = *text == '-';
+            uint32_t magnitude = 0;
+            if (!number(negative ? text + 1 : text, magnitude) || magnitude > 0x0FFFFFFFu) return false;
+            value = negative ? -static_cast<int64_t>(magnitude) : static_cast<int64_t>(magnitude);
+            return true;
+        };
+        const auto terminal = [](const char* text, uint8_t& value) {
+            if (std::strlen(text) != 2 || text[0] != 'x' || text[1] < '0' || text[1] > '3') return false;
+            value = static_cast<uint8_t>(text[1] - '0'); return true;
+        };
+        bool valid = true;
+        const char* name = entry->name; // Reply names follow the harness: arm-position, arm-trigger, ...
+        if (entry->command == Command::DISARM) {
+            request.kind = InputStartCommandKind::DISARM;
+            valid = args == 1 && number(tokens[first + 1], request.operationId) && request.operationId;
+        } else if (!args) valid = false;
+        else {
+            const char* verb = tokens[first + 1];
+            if (!std::strcmp(verb, "inspect")) {
+                request.kind = InputStartCommandKind::INSPECT; name = "arm-inspect";
+                valid = args == 2 && number(tokens[first + 2], request.operationId) && request.operationId;
+            } else if (!std::strcmp(verb, "trigger")) {
+                request.kind = InputStartCommandKind::TRIGGER; name = "arm-trigger";
+                valid = args == 4 && number(tokens[first + 2], request.operationId) && request.operationId &&
+                    BenchIo::outputIndex(tokens[first + 3], request.output) && number(tokens[first + 4], request.widthMs);
+            } else if (!std::strcmp(verb, "home") || !std::strcmp(verb, "segment") || !std::strcmp(verb, "velocity")) {
+                // Delivered by prompts 12, 13 and 14; the application refuses before any traffic.
+                request.kind = InputStartCommandKind::ARM;
+                request.armKind = !std::strcmp(verb, "home") ? InputStartKind::HOME :
+                    !std::strcmp(verb, "segment") ? InputStartKind::SEGMENT : InputStartKind::VELOCITY;
+                name = request.armKind == InputStartKind::HOME ? "arm-home" : request.armKind == InputStartKind::SEGMENT ?
+                    "arm-segment" : "arm-velocity";
+                valid = args == 2 && terminal(tokens[first + 2], request.terminal);
+            } else if (!std::strcmp(verb, "position")) {
+                request.kind = InputStartCommandKind::ARM; name = "arm-position";
+                uint32_t speed = 0;
+                const char* form = args >= 5 ? tokens[first + 3] : "";
+                valid = args >= 5 && terminal(tokens[first + 2], request.terminal) &&
+                    signedValue(tokens[first + 4], request.value) && number(tokens[first + 5], speed) && speed >= 1 && speed <= 3000;
+                request.speedRpm = static_cast<uint16_t>(speed);
+                if (!std::strcmp(form, "relative")) request.form = InputStartArmForm::RELATIVE;
+                else if (!std::strcmp(form, "absolute")) request.form = InputStartArmForm::ABSOLUTE;
+                else if (!std::strcmp(form, "absolute-by")) request.form = InputStartArmForm::ABSOLUTE_BY;
+                else valid = false;
+                bool poll = false, window = false;
+                for (std::size_t i = first + 6; valid && i < count; ++i) {
+                    if (!std::strcmp(tokens[i], "group") && !request.group && request.form != InputStartArmForm::ABSOLUTE)
+                        request.group = true;
+                    else if (!std::strcmp(tokens[i], "poll-ms") && !poll && i + 1 < count)
+                        valid = (poll = true) && number(tokens[++i], request.pollMs) &&
+                            request.pollMs >= INPUT_START_MIN_POLL_MS && request.pollMs <= INPUT_START_MAX_POLL_MS;
+                    else if (!std::strcmp(tokens[i], "window-ms") && !window && i + 1 < count)
+                        valid = (window = true) && number(tokens[++i], request.windowMs) &&
+                            request.windowMs >= INPUT_START_MIN_WINDOW_MS && request.windowMs <= INPUT_START_MAX_WINDOW_MS;
+                    else valid = false;
+                }
+            } else valid = false;
+        }
+        if (!valid) { error(id, name, "invalid_arguments"); return; }
+        inputStart(id, name, request);
+        return;
+    }
     if (entry->command == Command::AXIS || entry->command == Command::PREPARE) {
         if (!host_.axis) { error(id, entry->name, "unavailable"); return; }
         AxisCommand request;
@@ -2476,6 +2662,7 @@ void Console::dispatch() noexcept {
         case Command::USEADDR: return host_.selectTarget != nullptr;
         case Command::WIRING: return host_.wiring != nullptr;
         case Command::BENCH: return host_.benchIo != nullptr;
+        case Command::ARM: case Command::DISARM: return host_.inputStart != nullptr;
         case Command::DEBUG: return host_.debug && host_.snapshot;
         case Command::MOTION_PROFILE: return host_.motionProfile || host_.stageProfile || (host_.startDriver && host_.snapshot);
         case Command::COMMUNICATION: return host_.communication != nullptr;
@@ -2592,6 +2779,13 @@ void Console::dispatch() noexcept {
         const bool routes = host_.qualification != nullptr;
         if(!append(output_,sizeof(output_),used,",\"position_interrupt_stored\":%s,\"position_interrupt_completion\":\"not_observed\",\"position_interrupt_new_target\":false,\"qualification_routes\":{\"home\":%s,\"velocity\":%s,\"position_clear\":%s,\"start_speed_relation\":%s,\"io\":%s}}",
             boolean(callable(Command::POSITION)), boolean(routes), boolean(routes), boolean(routes), boolean(routes), boolean(host_.ioQualification != nullptr))) { error(id,"caps","output_capacity"); return; }
+        used=std::strlen(output_); if(used) --used;
+        if(!append(output_,sizeof(output_),used,",\"input_start\":%s,\"input_start_kinds\":[\"position\"],\"input_start_functions\":[7],\"input_start_refused_kinds\":{\"home\":\"prompt_12\",\"segment\":\"prompt_13\",\"velocity\":\"prompt_14\"},\"input_start_modes\":[\"relative\",\"absolute\",\"absolute-by\"],\"input_start_trigger_outputs\":[\"mosfet1\",\"mosfet2\"],\"input_start_width_ms\":[%lu,%lu],\"input_start_poll_ms\":[%lu,%lu],\"input_start_window_ms\":[%lu,%lu],\"input_start_post_release_ms\":%lu,\"input_start_post_release_samples\":%u,\"input_start_max_read_age_ms\":%lu,\"input_start_members\":%u,\"input_start_retrigger\":false}",
+            boolean(host_.inputStart != nullptr), static_cast<unsigned long>(INPUT_START_MIN_WIDTH_MS), static_cast<unsigned long>(INPUT_START_MAX_WIDTH_MS),
+            static_cast<unsigned long>(INPUT_START_MIN_POLL_MS), static_cast<unsigned long>(INPUT_START_MAX_POLL_MS),
+            static_cast<unsigned long>(INPUT_START_MIN_WINDOW_MS), static_cast<unsigned long>(INPUT_START_MAX_WINDOW_MS),
+            static_cast<unsigned long>(Ess::INPUT_START_POST_RELEASE_US / 1000), static_cast<unsigned>(Ess::INPUT_START_POST_RELEASE_SAMPLES),
+            static_cast<unsigned long>(INPUT_START_MAX_READ_AGE_MS), static_cast<unsigned>(INPUT_START_MEMBERS))) { error(id,"caps","output_capacity"); return; }
         emit(); return;
     }
     if (entry->command == Command::STATS && arg) {

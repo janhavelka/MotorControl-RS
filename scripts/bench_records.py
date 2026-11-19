@@ -198,6 +198,11 @@ def use_drive(console, address: int, *, timeout_s=5.0) -> tuple[dict, bool]:
     return _ok(console, "wiring", timeout_s=timeout_s), True
 
 
+def expected_bench_outputs() -> list:
+    """FIXTURE outputs as the firmware's map: terminal index per output, BenchIo order."""
+    return [TERMINALS.index(FIXTURE["outputs"][name]) for name in probe.BENCH_OUTPUTS]
+
+
 def _expected_board(address: int) -> dict:
     outputs = [CONNECTED if address == FIXTURE["y0_owner"] else UNCONNECTED, UNCONNECTED]
     return {"inputs": [CONNECTED] * 4, "outputs": outputs}
@@ -208,8 +213,10 @@ def check_declarations(console, *, timeout_s=5.0) -> dict:
 
     Selects each input drive locally, reads ``wiring`` and compares its board
     masks and sources with X0-X3 connected on every input drive and Y0
-    connected on the Y0 owner only. An absent or invalid table, or a reply
-    without the board keys (an image older than wired bench 02), fails. The
+    connected on the Y0 owner only, and the board's bench output -> terminal
+    map (wired bench 08) with ``FIXTURE["outputs"]``. An absent or invalid
+    table or map, or a reply without the board keys (an image older than
+    wired bench 02) or the map (older than wired bench 08), fails. The
     original selection is restored. Status bits are not consulted: this says
     what the board declares, not what is physically wired.
     """
@@ -224,8 +231,14 @@ def check_declarations(console, *, timeout_s=5.0) -> dict:
             row = {"address": address, "selected_by_useaddr": changed, "expected": expected,
                    "fixture": reply.get("fixture"), "board": reply.get("board"),
                    "sources": reply.get("sources"), "inputs": reply.get("inputs"), "outputs": reply.get("outputs")}
+            row["bench_outputs"] = reply.get("bench_outputs")
             if any(key not in reply for key in ("board", "sources", "fixture")):
                 row["problem"] = "reply lacks board/sources/fixture (image older than the board fixture table)"
+            elif "bench_outputs" not in reply:
+                row["problem"] = "reply lacks bench_outputs (image older than the wired bench 08 output map)"
+            elif reply.get("bench_output_map") != "applied" or reply["bench_outputs"] != expected_bench_outputs():
+                row["problem"] = "bench output map %s %s differs from FIXTURE %s" % (
+                    reply.get("bench_output_map"), reply["bench_outputs"], expected_bench_outputs())
             elif reply["fixture"] != "applied":
                 row["problem"] = "fixture table %s%s" % (reply["fixture"], " (%s)" % reply["fixture_error"]
                                                         if reply.get("fixture_error") else "")

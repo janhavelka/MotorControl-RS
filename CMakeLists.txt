@@ -19,7 +19,8 @@ set(MOTORCONTROLRS_SOURCES
     "src/profiles/ess_rs/Tuning.cpp"
     "src/profiles/ess_rs/Homing.cpp"
     "src/profiles/ess_rs/Communication.cpp"
-    "src/profiles/ess_rs/Persistence.cpp")
+    "src/profiles/ess_rs/Persistence.cpp"
+    "src/profiles/ess_rs/InputStart.cpp")
 
 # ESP-IDF component consumption requires no Arduino or FieldCore dependency.
 if(COMMAND idf_component_register)
@@ -59,7 +60,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include(CTest)
     # Distributed source packages contain the core; repository tests stay here.
     if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test")
-        foreach(suite bench_io stop_path_app qualification_routes_app human_console console_text debug_session discovery discovery_app discovery_console persistence persistence_console persistence_app traffic motion_profile_app position_start_speed_app homing_auxiliary_app communication communication_console communication_app commissioning_owner units axis registers codec reads actions position position_command position_interrupt velocity homing driver_settings segments control_settings control_app tuning tuning_app host_app host_console io io_app io_qualification_app driver_app home_app runner bus_owner bus_scheduling probe_console esp32_uart probe_app probe_app_monitor_control move_app group_app position_interrupt_app simple_motion_app velocity_app capture_service fixture_wiring fixture_wiring_app connected_setters_app)
+        foreach(suite bench_io stop_path_app qualification_routes_app human_console console_text debug_session discovery discovery_app discovery_console persistence persistence_console persistence_app traffic motion_profile_app position_start_speed_app homing_auxiliary_app communication communication_console communication_app commissioning_owner units axis registers codec reads actions position position_command position_interrupt velocity homing driver_settings segments control_settings control_app tuning tuning_app host_app host_console io io_app io_qualification_app driver_app home_app runner bus_owner bus_scheduling probe_console esp32_uart probe_app probe_app_monitor_control move_app group_app position_interrupt_app simple_motion_app velocity_app capture_service fixture_wiring fixture_wiring_app connected_setters_app input_start input_start_app)
             add_executable(${suite}_test "test/${suite}_test.cpp")
             target_link_libraries(${suite}_test PRIVATE MotorControlRS)
             set_target_properties(${suite}_test PROPERTIES
@@ -109,19 +110,19 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 examples/probe_cli/ConsoleText.cpp examples/common/RtuBusOwner.cpp
                 examples/common/EssRtuValidator.cpp)
         endforeach()
-        foreach(suite discovery_app persistence_app motion_profile_app position_start_speed_app homing_auxiliary_app communication_app esp32_uart probe_app probe_app_monitor_control move_app group_app position_interrupt_app simple_motion_app velocity_app driver_app home_app stop_path_app qualification_routes_app io_app io_qualification_app control_app tuning_app host_app capture_service fixture_wiring_app connected_setters_app)
+        foreach(suite discovery_app persistence_app motion_profile_app position_start_speed_app homing_auxiliary_app communication_app esp32_uart probe_app probe_app_monitor_control move_app group_app position_interrupt_app simple_motion_app velocity_app driver_app home_app stop_path_app qualification_routes_app io_app io_qualification_app control_app tuning_app host_app capture_service fixture_wiring_app connected_setters_app input_start_app)
             target_sources(${suite}_test PRIVATE examples/common/Esp32S3Uart.cpp examples/common/RtuRunner.cpp
                 test/fakes/esp32_uart/FakeEsp.cpp)
             target_include_directories(${suite}_test PRIVATE test/fakes/esp32_uart)
             target_compile_definitions(${suite}_test PRIVATE CONFIG_IDF_TARGET_ESP32S3=1)
         endforeach()
-        foreach(suite discovery_app persistence_app motion_profile_app position_start_speed_app homing_auxiliary_app communication_app probe_app probe_app_monitor_control move_app group_app position_interrupt_app simple_motion_app velocity_app driver_app home_app stop_path_app qualification_routes_app io_app io_qualification_app control_app tuning_app host_app fixture_wiring_app connected_setters_app)
+        foreach(suite discovery_app persistence_app motion_profile_app position_start_speed_app homing_auxiliary_app communication_app probe_app probe_app_monitor_control move_app group_app position_interrupt_app simple_motion_app velocity_app driver_app home_app stop_path_app qualification_routes_app io_app io_qualification_app control_app tuning_app host_app fixture_wiring_app connected_setters_app input_start_app)
             target_sources(${suite}_test PRIVATE test/fakes/esp32_uart/FakeUsb.cpp
                 examples/probe_cli/DebugSession.cpp)
         endforeach()
         foreach(suite probe_app probe_app_monitor_control move_app group_app position_interrupt_app simple_motion_app
                       motion_profile_app position_start_speed_app homing_auxiliary_app velocity_app driver_app control_app
-                      host_app tuning_app io_app io_qualification_app home_app stop_path_app qualification_routes_app fixture_wiring_app connected_setters_app)
+                      host_app tuning_app io_app io_qualification_app home_app stop_path_app qualification_routes_app fixture_wiring_app connected_setters_app input_start_app)
             target_sources(${suite}_test PRIVATE examples/probe_cli/ProbeConsole.cpp
                 examples/probe_cli/HomeConsoleParser.cpp examples/probe_cli/HomeConsoleFormat.cpp
                 examples/probe_cli/ConsoleText.cpp examples/common/RtuBusOwner.cpp
@@ -165,7 +166,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         endif()
         add_test(NAME idf_app COMMAND idf_app_test)
         # Reuse identical operation/failure assertions with both framework startup adapters.
-        foreach(suite move_app group_app position_interrupt_app simple_motion_app control_app velocity_app home_app motion_profile_app position_start_speed_app homing_auxiliary_app stop_path_app io_qualification_app fixture_wiring_app connected_setters_app)
+        foreach(suite move_app group_app position_interrupt_app simple_motion_app control_app velocity_app home_app motion_profile_app position_start_speed_app homing_auxiliary_app stop_path_app io_qualification_app fixture_wiring_app connected_setters_app input_start_app)
             add_executable(idf_${suite}_test test/${suite}_test.cpp
                 examples/probe_cli/DebugSession.cpp
                 examples/probe_cli/ProbeConsole.cpp examples/probe_cli/ConsoleText.cpp
@@ -183,6 +184,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 target_compile_options(idf_${suite}_test PRIVATE -UNDEBUG -Wall -Wextra -Wpedantic)
             endif()
             add_test(NAME idf_${suite} COMMAND idf_${suite}_test)
+        endforeach()
+        foreach(target input_start_app_test idf_input_start_app_test)
+            target_compile_definitions(${target} PRIVATE
+                MOTORCONTROLRS_LINE_ISOLATION_CASES="${CMAKE_CURRENT_SOURCE_DIR}/test/line_isolation_cases.json")
         endforeach()
         if(TARGET units_preview)
             add_test(NAME units_preview COMMAND units_preview)
@@ -218,6 +223,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 ${CMAKE_CURRENT_SOURCE_DIR}/test/stop_input_parity_test.py
                 $<TARGET_FILE:move_app_test> $<TARGET_FILE:idf_move_app_test>
                 $<TARGET_FILE:velocity_app_test> $<TARGET_FILE:idf_velocity_app_test>)
+            add_test(NAME input_start_console_parity COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/test/input_start_console_parity_test.py
+                $<TARGET_FILE:probe_console_test>)
             add_test(NAME velocity_console_parity COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/test/velocity_console_parity_test.py
                 $<TARGET_FILE:probe_console_test> $<TARGET_FILE:velocity_app_test> $<TARGET_FILE:idf_velocity_app_test>)

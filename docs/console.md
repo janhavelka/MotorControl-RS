@@ -465,6 +465,17 @@ session only (source `host`). Images built before
 boot with every terminal unconnected, reset it to unknown on `useaddr` and need
 manual `wiring` declarations.
 
+## Input-started motion
+
+`arm position x3 relative 1000 60` stages a function 7 start on the selected
+drive (add `group` for every declared group member; `absolute TARGET` or
+`absolute-by STEPS` with `0x0050` = 1) without a start word; `arm inspect ID`
+shows the session. `arm trigger ID mosfet2 200` pulses the owned output once
+after the line-isolation reads; `arm inspect ID` reports the attribution;
+`disarm ID` closes observation and turns the output off without stopping the
+drive. `release ID` frees a finished session. Prerequisites and outcomes are in
+[input-started motion](ess_input_start.md).
+
 ## Automation
 
 Prefix a command with `@` and a nonzero decimal ID to receive the existing JSONL
