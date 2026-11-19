@@ -27,8 +27,15 @@ as the native ESS preparations, including `prepareNormalStop` and
 These are status reports, not independent measurements of winding current,
 shaft standstill or stopping latency. Already-matching flags do not establish
 that the action caused a transition. Alarm clear does not reset faults for which
-the hardware manual requires power cycling. Enable does not promise to override
-an assigned external release input. The implementation changes no input function,
+the hardware manual requires power cycling. Enable does not override an
+assigned external release input: on drive 4 (`0x4EEA`/`0x0029`, wired bench 07
+R3) an acknowledged enable left the drive released for as long as X3 = 4 was
+active, and the drive re-enabled by itself at the first sample after the input
+went inactive. The standalone application therefore refuses `enable` before TX
+while a fresh input status shows an assigned release input active
+(`release_input_active`, caps `external_enable_precedence` `release_input`);
+with no fresh input status it is admitted as before, and stops are never
+refused by an input. The implementation changes no input function,
 polarity, ramp or persistent setting. Device position clear is an explicit
 coordinate change, separate from these other actions and host origin updates.
 
@@ -41,6 +48,19 @@ Custom deceleration and device queue PRESERVE/DISCARD reject before yielding
 traffic. `DeviceQueue::UNSPECIFIED` explicitly requests no device queue guarantee.
 Host continuation cancellation is a separate application effect. A serial fast
 stop is not a qualified independent emergency-stop mechanism.
+
+Input stops against serial stops, measured on drive 4 (`0x4EEA`/`0x0029`,
+wired bench 07, 3000-step moves at 60 rpm): input function 5 behaves like
+`stop normal` (configured deceleration: Y0 running-off about 110 ms after the
+input at 100 ms deceleration, 935 ms at 1000 ms) and function 6 like `stop
+fast` (about 22 ms at either setting). An emergency-stop input during a
+1000 ms `stop normal` ramp ended it about 23 ms after the input. In the bench
+firmware every stop request turns all bench outputs off first, so a `stop fast`
+while `mosfet2` holds X3 also ends that input (`off_reason` `motor_stop`). No
+input function latched an alarm, and nothing restarted after an input went
+inactive. Input-stopped moves fail `STOP_INPUT` or `STOPPED_SHORT` and keep the
+axis reserved until an explicit stop reconciles it, as any failure after an
+acknowledged start.
 
 ## Standalone enable wait
 

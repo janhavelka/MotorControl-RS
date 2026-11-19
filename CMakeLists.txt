@@ -214,6 +214,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                   $<TARGET_FILE:velocity_app_test> $<TARGET_FILE:idf_velocity_app_test>
                   --profile-stage-fixtures $<TARGET_FILE:motion_profile_app_test> $<TARGET_FILE:idf_motion_profile_app_test>
                   --group-member-fixtures $<TARGET_FILE:group_app_test> $<TARGET_FILE:idf_group_app_test>)
+            add_test(NAME stop_input_parity COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/test/stop_input_parity_test.py
+                $<TARGET_FILE:move_app_test> $<TARGET_FILE:idf_move_app_test>
+                $<TARGET_FILE:velocity_app_test> $<TARGET_FILE:idf_velocity_app_test>)
             add_test(NAME velocity_console_parity COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/test/velocity_console_parity_test.py
                 $<TARGET_FILE:probe_console_test> $<TARGET_FILE:velocity_app_test> $<TARGET_FILE:idf_velocity_app_test>)

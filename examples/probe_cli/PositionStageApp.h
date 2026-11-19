@@ -202,6 +202,7 @@ void cancelPositionStages(App& a, uint8_t address, uint64_t now) {
 Probe::Action startSelectedStage(App& a, const MotorControlRS::MoveRequest& supplied, uint32_t& operationId) {
     using namespace MotorControlRS;
     const uint8_t address = a.axis.target.address;
+    a.settingsRefusal = Probe::SettingsRefusal();
     if (a.owner.commissioningOwned() || a.discovery.owned || groupSequencing(a)) return Probe::Action::BUSY;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned() ||

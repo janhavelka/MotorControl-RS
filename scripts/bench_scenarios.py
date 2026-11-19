@@ -19,6 +19,7 @@ import bench_motion as motion
 import bench_outputs as bench_out
 import bench_probe as probe
 import bench_records as records
+import bench_stop_inputs as bench_stop
 from bench_session import checked, run_recorded
 
 # Wired-bench scenarios (prompt 04): one run folder each, scenario record first,
@@ -41,6 +42,10 @@ FOLDER_SCENARIOS = {
     'outputs': 'wired bench 06: one Y0 case (--case O1..O11) on drive 4: Y0 set through the ordinary I/O route '
                '(load indicator, levels either), the case stimulus with read-state polls, aux1 edges and debug '
                'decoded traffic tabulated per COMMON Timing, restoration from the baseline',
+    'stop-inputs': 'wired bench 07: one case (--case S1..S9, R1, R2a, R2b, R3, G1, G2) and one X3 function '
+                   '(--function 4, 5 or 6): X3 assigned on drive 4 (phase A) or 1, 2, 4 (phase B) with ASSIGN facts, '
+                   'Y0 2 or 5, interlocked mosfet2 pulses (named running member, pre-start io read), read-state '
+                   'samples through the hold, the release and 2 s after; Implement 3 classification; restoration',
 }
 
 SCENARIOS = {
@@ -94,7 +99,16 @@ def arguments(argv=None):
                         help='input-map: interlock read age bound, recorded in the scenario record')
     parser.add_argument('--cycles', type=int, default=5, help='y0-map: custom on/off cycles (1..20)')
     parser.add_argument('--phase-s', type=float, default=3.0, help='y0-map: phase length in seconds (0.5..10)')
-    parser.add_argument('--repetitions', type=int, help='outputs: timing repetitions of the case (default per case)')
+    parser.add_argument('--repetitions', type=int, help='outputs/stop-inputs: repetitions of the case (default per case)')
+    parser.add_argument('--function', type=int, choices=(4, 5, 6), help='stop-inputs: X3 input function of the run')
+    parser.add_argument('--deceleration', type=int, choices=(100, 1000), help='stop-inputs S8: configured deceleration (ms)')
+    parser.add_argument('--stimulus', choices=('input', 'stop normal', 'stop fast'),
+                        help='stop-inputs S8: what stops the move (default the input)')
+    parser.add_argument('--sub', choices=('a', 'b', 'c', 'abc'), help='stop-inputs S7: sub-cases (default abc)')
+    parser.add_argument('--leave-profile', action='store_true',
+                        help='stop-inputs G1/G2: leave the 0x0021-0x0025 words of the members changed (RAM) for a later group '
+                             'run of this controller session; a profile stage would revoke the start-speed relation of the members '
+                             'for the session')
     parser.add_argument('--change', nargs=3, metavar=('ADDRESS', 'KEY', 'VALUE'),
                         help='input-map/restore: one explicit case write through the ordinary setter, restored at the end')
     parser.add_argument('--assign-facts', nargs='+', action='append', metavar='TERMINAL FACT',
@@ -181,11 +195,14 @@ def arguments(argv=None):
                           (args.change, ('input-map', 'restore')), (args.assign_facts, ('input-map', 'restore')),
                           (args.drives, ('baseline-compare', 'baseline-capture')),
                           (args.terminals, ('status-mapping',)), (args.mapping_cases, ('status-mapping',)),
-                          (args.filter_value, ('input-timing',)), (args.widths, ('input-timing',)),
+                          (args.filter_value, ('input-timing',)), (args.widths, ('input-timing', 'stop-inputs')),
+                          (args.function, ('stop-inputs',)), (args.deceleration, ('stop-inputs',)),
+                          (args.stimulus, ('stop-inputs',)), (args.sub, ('stop-inputs',)),
+                          (args.leave_profile or None, ('stop-inputs',)),
                           (args.compare_relay or None, ('input-timing',)),
                           (None if args.traffic == 'raw' else args.traffic, ('input-timing',)),
                           (args.reason, ('baseline-capture',)), (args.prompt, ('baseline-capture',)),
-                          (args.repetitions, ('outputs',))):
+                          (args.repetitions, ('outputs', 'stop-inputs'))):
         if option is not None and args.scenario not in scopes:
             parser.error('scenario-specific arguments cannot enter another scenario')
     if args.scenario == 'settings' and args.input_facts == 'segment':
@@ -405,7 +422,7 @@ def _folder_arguments(parser, args):
         parser.error('wired-bench scenarios use the board declarations and choose their own debug mode')
     if args.image_level is not None and not re.fullmatch(r'[0-9]{2}', args.image_level):
         parser.error('--image-level needs a two-digit prompt')
-    if args.scenario in ('restore', 'y0-map', 'status-mapping', 'input-timing', 'outputs') or \
+    if args.scenario in ('restore', 'y0-map', 'status-mapping', 'input-timing', 'outputs', 'stop-inputs') or \
             (args.scenario == 'input-map' and args.change):
         if args.image_level is None:
             parser.error('a scenario that writes needs --image-level (the prompt whose routes the image has)')
@@ -459,6 +476,28 @@ def _folder_arguments(parser, args):
             args.repetitions = bench_out.CASES[args.case]['repetitions']
         if not 0 <= args.repetitions <= 20:
             parser.error('outputs needs 0..20 repetitions')
+    if args.scenario == 'stop-inputs':
+        case = bench_stop.CASES.get(args.case)
+        if case is None:
+            parser.error('stop-inputs needs --case %s (prompt 07 case table)' % ', '.join(bench_stop.CASES))
+        if args.function not in case['functions']:
+            parser.error('%s runs X3 function %s (--function)' % (args.case, ' or '.join(map(str, case['functions']))))
+        if args.image_level is None or int(args.image_level) < 7:
+            parser.error('stop-inputs needs --image-level 07 or later (the stop/release rule and observer witnesses)')
+        if args.repetitions is None:
+            args.repetitions = case['runs']
+        if not 1 <= args.repetitions <= 20:
+            parser.error('stop-inputs needs 1..20 repetitions')
+        if args.case == 'S8' and (args.deceleration is None or args.stimulus is None):
+            parser.error('S8 needs --deceleration 100|1000 and --stimulus input|stop normal|stop fast')
+        if args.case != 'S8' and (args.deceleration is not None or args.stimulus is not None):
+            parser.error('--deceleration and --stimulus belong to S8')
+        if args.sub is not None and args.case != 'S7':
+            parser.error('--sub belongs to S7')
+        if args.leave_profile and case['kind'] != 'group':
+            parser.error('--leave-profile belongs to the group cases')
+        if args.widths is not None and (args.case != 'S9' or any(not 1 <= w <= 200 for w in args.widths)):
+            parser.error('--widths belongs to S9 (1..200 ms)')
     if args.scenario == 'input-timing':
         args.widths = list(args.widths or TIMING_WIDTHS_MS)
         if args.image_level is None or int(args.image_level) < 5:
@@ -507,6 +546,13 @@ def _facts(args):
         return {str(records.FIXTURE['y0_owner']): {'assign': {'y0': ['indicator', 'either']}}}
     if args.scenario == 'outputs':
         return {str(records.FIXTURE['y0_owner']): {'assign': {'y0': ['indicator', 'either']}, 'configure': {}}}
+    if args.scenario == 'stop-inputs':
+        out = {}
+        for address in bench_stop.phase_drives(bench_stop.CASES[args.case]):
+            out[str(address)] = {'assign': {'x3': list(bench_stop.X3_FACTS)}, 'configure': {}}
+        out.setdefault(str(records.FIXTURE['y0_owner']), {'assign': {}, 'configure': {}})
+        out[str(records.FIXTURE['y0_owner'])]['assign']['y0'] = list(bench_stop.Y0_FACTS)
+        return out
     if args.change is None:
         return {}
     stated = {}
@@ -548,7 +594,20 @@ def folder_plan(args, baseline):
     if name == 'input-timing' and args.filter_value != 2:
         write_list = [{'drive': args.address, 'key': 'filters.input-filter', 'index': None, 'candidate': args.filter_value}]
     experiment = None
-    if name == 'outputs':
+    if name == 'stop-inputs':
+        write_list, plan, cases, commands, bounds, expected = _stop_plan(args, baseline, facts)
+        if args.leave_profile:
+            left = [{'drive': e['drive'], 'key': e['key'], 'index': None, 'storage': 'RAM',
+                     'reason': 'group run of a series: a profile stage would revoke the start-speed relation of the members '
+                               'for this controller session; the last group run restores these words'}
+                    for e in write_list if e['key'].startswith('profile.')]
+        for entry in write_list:
+            steps, refusal = records.plan_entry(baseline, entry, args.image_level, facts, restore=False)
+            if refusal and (entry['key'].startswith('profile.') or records.snapshot_route(entry['key'])):
+                refusal = None  # Written by the case stimulus (move, velocity or home staging), not by a setter.
+            forward.append({'entry': entry, 'steps': steps, 'refusal': refusal})
+        write_list_done = True
+    elif name == 'outputs':
         write_list, plan, cases, commands, bounds, expected, experiment = _outputs_plan(args, baseline, facts)
         for entry in write_list:
             steps, refusal = records.plan_entry(baseline, entry, args.image_level, facts, restore=False)
@@ -565,7 +624,7 @@ def folder_plan(args, baseline):
             forward.append({'entry': entry, 'steps': steps, 'refusal': refusal})
     if not write_list_done:
         cases, commands, bounds, expected = [], [], {}, {}
-    if name == 'outputs':
+    if name in ('outputs', 'stop-inputs'):
         pass
     elif name == 'input-map':
         mapped = [o for o in args.outputs if o not in args.expect_refusal]
@@ -629,8 +688,11 @@ def folder_plan(args, baseline):
                     'every baseline read of drive A', 'restoration plan steps', 'every baseline read of drive A']
         expected = {'acknowledged': 'write terminals of the case write and the restoration',
                     'read back': 'group reads before, after the case write and after the restoration'}
+    if name == 'stop-inputs':
+        drives = list(records.FIXTURE['input_drives'])
     record = {'drives': [{'address': a, 'required_enabled': True} for a in drives],
             'terminals': (['x0', 'x1', 'x2', 'x3'] if name == 'input-map' else ['y0'] if name in ('y0-map', 'outputs') else
+                          ['x3', 'y0'] if name == 'stop-inputs' else
                           (args.terminals or list(records.TERMINALS)) if name == 'status-mapping' else
                           ['x3'] + (['x0', 'x1'] if args.compare_relay else []) if name == 'input-timing' else []),
             'commands': commands, 'cases': cases,
@@ -2197,9 +2259,206 @@ def _outputs_verdicts(run, live, cid, detail, error):
                             analysis['summary']['drive_unmeasured'], unpaired), evidence)
 
 
+def _stop_write_list(args):
+    case = bench_stop.CASES[args.case]
+    owner = records.FIXTURE['y0_owner']
+    out = [{'drive': a, 'key': 'io.x3', 'index': None, 'candidate': args.function}
+           for a in bench_stop.phase_drives(case)]
+    if case.get('y0') is not None:
+        out.append({'drive': owner, 'key': 'io.y0', 'index': None, 'candidate': case['y0']})
+    moving = [a for a in records.FIXTURE['input_drives']] if case['kind'] == 'group' else \
+        [owner] if case['kind'] in ('move', 'absolute', 'width', 'race', 'serial') or args.case == 'S5' else []
+    for address in moving:
+        out += [{'drive': address, 'key': key, 'index': None, 'candidate': None} for key in bench_stop.PROFILE_KEYS]
+    if case['kind'] == 'velocity':
+        out += [{'drive': owner, 'key': key, 'index': None, 'candidate': None}
+                for key in records.SNAPSHOT_ROUTES['velocity']['keys']]
+    if case['kind'] == 'home':
+        out += [{'drive': owner, 'key': key, 'index': None, 'candidate': None}
+                for key in records.SNAPSHOT_ROUTES['home']['keys']]
+    if args.case in ('S4', 'S5'):
+        out.append({'drive': owner, 'key': 'homing.auxiliary', 'index': None, 'candidate': 7})
+    return out
+
+
+def _stop_plan(args, baseline, facts):
+    case = bench_stop.CASES[args.case]
+    write_list = _stop_write_list(args)
+    snapshots = {}
+    if case['kind'] == 'velocity':
+        snapshots['velocity'] = {}
+    if case['kind'] == 'home':
+        snapshots['home'] = {}
+    planned = [e for e in write_list if not (getattr(args, 'leave_profile', False) and e['key'].startswith('profile.'))]
+    plan = records.restoration_plan(baseline, planned, args.image_level, facts,
+                                    context={'snapshots': snapshots} if snapshots else None)
+    cid = args.case
+    effect = {4: 'release', 5: 'stop', 6: 'emergency stop'}[args.function]
+    assertion = {
+        'S1': 'X3 = %d (%s): %d relative 3000-step moves, mosfet2 200 ms at ~1 s; each stopped short, not reported '
+              'complete, no start in the hold, the release and 2 s after (Implement 3 witnesses)',
+        'S2': 'X3 = %d (%s): %d absolute moves of 3000 steps, mosfet2 200 ms at ~1 s; as S1',
+        'S3': 'X3 = %d (%s): %d velocity runs 30 rpm 1000 ms, mosfet2 200 ms at ~0.4 s; classified per Implement 3',
+        'S4': 'X3 = %d (%s): %d x home 33 and 34 with mosfet2 during the search; not reported homed',
+        'S5': 'X3 = %d (%s), mosfet2 3000 ms: move, stage, velocity, home 35 and group moves refused before TX with the '
+              'reason and zero traffic records (%d run)',
+        'S6': 'X3 = %d (%s): read state with X3 inactive, mosfet2 3000 ms, a move on that read: start, ignore or '
+              'start after release recorded (%d run)',
+        'S7': 'X3 = %d (%s), deceleration 1000 ms: (a) stop normal then mosfet2, (b) mosfet2 then stop fast, '
+              '(c) stop fast while held: output off_reason motor_stop (%d run each)',
+        'S8': 'X3 = %d (%s): %d moves stopped at ~1 s by the stimulus at the stated deceleration; L1, L2, final position',
+        'S9': 'X3 = %d (%s): 3000-step moves, mosfet2 widths %s ms, %d per width; stopped or not per width',
+        'R1': 'X3 = %d (%s), Y0 = 5, stationary: mosfet2 2000 ms, %d runs; LR, released, re-enabled by itself or not',
+        'R2a': 'X3 = %d (%s), Y0 = 5: %d 1000-step moves, mosfet2 200 ms at ~0.5 s; released sampled, move fails, LR',
+        'R2b': 'X3 = %d (%s), Y0 = 2: %d 1000-step moves, mosfet2 200 ms at ~0.5 s; L1 for function 4, Implement 3',
+        'R3': 'X3 = %d (%s): mosfet2 3000 ms, enable while held (%d run); decides Implement 4',
+        'R2d': 'R2a diagnostic, X3 = %d (%s), Y0 = 5: %d 3000-step moves, mosfet2 1500 ms at ~0.5 s; whether the '
+               'release acts after a delay and the move fails',
+        'R1s': 'R2a diagnostic, X3 = %d (%s), Y0 = 5, stationary: mosfet2 200 ms, %d runs; whether the brake output '
+               'returns without a release',
+        'G1': 'phase B, X3 = %d (%s) on 1, 2, 4: %d staged group moves of 3000 steps, mosfet2 200 ms; every member '
+              'stops short with its own outcome, no restart',
+        'G2': 'phase B, X3 = %d (%s): %d sequential group move, mosfet2 during member 1; no later start sent',
+    }[cid]
+    if cid == 'S9':
+        text = assertion % (args.function, effect, list(args.widths or case['widths']), args.repetitions)
+    else:
+        text = assertion % (args.function, effect, args.repetitions)
+    if cid == 'S8':
+        text += ' (deceleration %d ms, stimulus %s)' % (args.deceleration, args.stimulus)
+    cases = [_case(cid, text, case['levels'])]
+    commands = ['wiring of 1, 2, 4; io read, read config, read state of 1, 2, 4 (baseline words)', 'bench clear',
+                'io set y0 %s 4 (ASSIGN y0 indicator either)' % case.get('y0'),
+                'io set x3 %d A on %s (ASSIGN x3 triggers-inhibited protection-removal)' % (
+                    args.function, ' '.join(map(str, bench_stop.phase_drives(case)))),
+                'shared line check: io read 1, 2, 4 (X3 = F on phase drives, 0 elsewhere, polarity 0, no 7-13)',
+                'per trial: read config, read state, motion-profile read, start-speed relation, io read, read config, '
+                'read state, the operation, read state until the delay, interlock (named member, pre-start io read), '
+                'bench on mosfet2 HOLD, read state through the hold + 2 s, bench views, terminal, stop fast (reconcile)',
+                'restoration: stop fast, enable/alarm-clear if needed, plan steps (X3 0 with protection-removal, Y0 0, '
+                'profile stage, velocity/home restore of the pre-run read)']
+    bounds = {'repetitions': args.repetitions, 'moves_max_steps': 3000, 'speed_rpm': 60, 'velocity_rpm': 30,
+              'velocity_ms': 1000, 'hold_ms_max': 5000, 'function': args.function}
+    expected = {'controller-timestamped': 'mosfet2 on/off times, aux1 edges (Y0 2 running or 5 brake), the stop bracket '
+                                          'from samples (stop_inputs.json)',
+                'drive-reported': 'motion, input and position words of each sample; the operation terminal',
+                'sent': 'refusal replies with reason and the debug traffic counter before and after'}
+    expected = {level: expected[level] for level in case['levels']}
+    return write_list, plan, cases, commands, bounds, expected
+
+
+def window_values(name, words):
+    """Per-field values of one restored snapshot window, in register order
+    (a pair field such as the home offset takes two words)."""
+    if not isinstance(words, list):
+        return {}
+    out, at = {}, 0
+    for key in records.SNAPSHOT_ROUTES[name]['keys']:
+        width = 2 if key == 'homing.offset' else 1
+        if at + width > len(words):
+            break
+        out[key] = words[at] if width == 1 else list(words[at:at + width])
+        at += width
+    return out
+
+
+def _stop_restore(console, live, run, plan, timeout):
+    """Restoration per the prompt 07 step 2 table: prepared stops first, then
+    enable/alarm-clear if needed, then the plan (X3, Y0, snapshots, profile)."""
+    addresses = list(records.FIXTURE['input_drives'])
+    for address in addresses:
+        console.command('stop', stop_policy='fast', address=address, timeout_s=timeout)
+    for address in addresses:
+        state = console.command('read-state', address=address, timeout_s=timeout)
+        summary = _state_summary(state)
+        if not state.get('ok') or summary['running'] or summary['raw_speed']:
+            run.deviations.append('drive %d not reported stopped before restoration' % address)
+            probe.observe_stopped(console, address=address, timeout_s=timeout)
+        if summary['raw_alarm'] or summary['alarm_flag']:
+            console.command('alarm-clear', address=address, timeout_s=timeout)
+            run.deviations.append('drive %d alarm %s cleared before restoration' % (address, summary['raw_alarm']))
+        if summary['released']:
+            console.command('enable', address=address, timeout_s=timeout)
+            time.sleep(1.1)
+    console.command('motion-profile', host_args=('forget',), timeout_s=timeout)
+    snapshots = {k: v for k, v in live.snapshots.items() if k in ('home', 'velocity')}
+    results = records.restore(console, plan, timeout_s=timeout, snapshots=snapshots) if plan['steps'] else []
+    owner = records.FIXTURE['y0_owner']
+    for result in results:
+        if result['key'] == 'profile.start-speed-relation':
+            continue
+        name = result['key'].split('.')[0] if result['key'].endswith('.window') else None
+        if name in ('home', 'velocity'):
+            endings = window_values(name, result['ending'])
+            for key in records.SNAPSHOT_ROUTES[name]['keys']:
+                field = records.baseline_field(live.baseline, owner, key) or {}
+                ending = endings.get(key)
+                run.field({'drive': owner, 'key': key, 'index': None}, baseline=field.get('value'),
+                          ending=ending, restored=result['restored'] or (ending is not None and ending == field.get('value')),
+                          uncertain=result['uncertain'], reason=result['reason'],
+                          restoration={'window': name, 'before': result.get('before'), 'write': result.get('write')})
+            continue
+        run.field(result, ending=result['ending'], restored=result['restored'], uncertain=result['uncertain'],
+                  reason=result['reason'], restoration={k: result.get(k) for k in ('before', 'written', 'write')})
+    return results
+
+
+def _stop_inputs(console, args, record, run, baseline):
+    timeout = args.timeout
+    scenario = run.scenario
+    cid = args.case
+    case = bench_stop.CASES[cid]
+    _preflight(console, run, timeout)
+    declarations = records.check_declarations(console, timeout_s=timeout)
+    before = {a: records.read_drive(console, a, ('io', 'state', 'config'), select=False, timeout_s=timeout)
+              for a in records.FIXTURE['input_drives']}
+    diff = records.diff_fields(baseline, {a: records.raws_from(r) for a, r in before.items()}, ('io',))
+    filters = {a: (console.command('tuning', driver_args=('filters', 'read'), address=a, timeout_s=timeout).get('observation')
+                   or {}).get('raw') for a in records.FIXTURE['input_drives']}
+    debug = checked(console, 'debug', host_args=(), timeout_s=timeout)
+    run.folder.write_json('baseline_before.json', {'declarations': declarations, 'filters': filters, 'debug': debug.get('mode'),
+                                                   'drives': {str(a): {k: {x: e.get(x) for x in ('command', 'operation_id', 'raw', 'error')}
+                                                                       for k, e in r.items()} for a, r in before.items()},
+                                                   'diff': diff})
+    plan = scenario['restoration_plan']
+    if not plan['admissible'] or any(w['refusal'] for w in scenario['case_writes']
+                                     if not w['entry']['key'].startswith('profile.') and not records.snapshot_route(w['entry']['key'])):
+        reasons = [r['reason'] for r in plan['refused']] + [w['refusal']['reason'] for w in scenario['case_writes'] if w['refusal']]
+        for level in scenario['cases'][0]['required_levels']:
+            run.verdict(cid, level, 'NOT RUN', 'no admissible route before any write: ' + '; '.join(reasons))
+        return
+    if declarations['verdict'] != 'PASS' or any(d['status'] != 'equal' for d in diff):
+        raise probe.BenchError('I/O words differ from the baseline or declarations disagree; no write')
+    live = bench_stop.Live(console, run, baseline, args, scenario['facts'], timeout)
+    live.record['declarations'] = declarations
+    detail = {'case': cid, 'function': args.function, 'declarations': declarations['verdict'], 'filters': filters,
+              'debug_mode': debug.get('mode')}
+    error = None
+    try:
+        checked(console, 'bench', host_args=('clear',), timeout_s=timeout)
+        live.view()
+        detail.update(bench_stop.run_case(live, args))
+    except (Exception, KeyboardInterrupt) as caught:
+        error = caught
+        run.deviations.append('case %s stopped: %s' % (cid, caught))
+    finally:
+        if console.synchronized:
+            try:
+                detail['restoration'] = _stop_restore(console, live, run, plan, timeout)
+            except (Exception, KeyboardInterrupt) as caught:
+                run.deviations.append('restoration stopped: %s' % caught)
+        detail.update(events=live.events, snapshots=live.snapshots, views=len(live.views))
+        found, lost = records._merge_edges([records._bench_view(v) for v in live.views if v.get('ok')])
+        detail.update(edges=found, lost_edge_windows=lost)
+        run.folder.write_json('stop_inputs.json', detail)
+    for entry in scenario['left_changed']:
+        run.field(entry, ending=None, restored=False, storage=entry['storage'], reason=entry['reason'])
+    bench_stop.case_verdicts(run, cid, case, detail, error)
+
+
 FOLDER_RUNNERS = {'input-map': _input_map, 'y0-map': _y0_map, 'baseline-compare': _baseline_compare,
                   'baseline-capture': _baseline_capture, 'restore': _restore, 'status-mapping': _status_mapping,
-                  'input-timing': _input_timing, 'outputs': _outputs}
+                  'input-timing': _input_timing, 'outputs': _outputs, 'stop-inputs': _stop_inputs}
 
 
 def run_folder(args, *, port_opener=None, check_board=None):

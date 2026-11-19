@@ -1221,6 +1221,7 @@ bool positionClearReadiness(const App& a, uint8_t address, uint64_t now) {
     return a.axis.target.address == address && Probe::fresh(motion, a.axis.target, now, a.observationAgeUs()) &&
         !motion.value.running && !motion.value.released && !motion.value.rawAlarm && !motion.value.alarmFlag;
 }
+MotionFacts memberFacts(const App&, const App::GroupMember&, const MotorControlRS::AxisReference*); // GroupApp.h
 // A declared group member is a stop target even when its readiness facts are stale.
 Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
                             const MotorControlRS::ActionRequest& request, uint32_t& operationId, bool groupStop,
@@ -1246,6 +1247,22 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
         !releaseFactsValid(a, *releaseFacts, now))) return Probe::Action::QUALIFICATION_REQUIRED;
     if (groupStop && (!stop || scanStop || !groupMember(a, address))) return Probe::Action::INVALID;
     if (!stop && groupSequencing(a)) return Probe::Action::BUSY;
+    // Wired bench 07 (R3, 0x4EEA/0x0029): an acknowledged enable left the drive
+    // released for as long as an assigned release input (function 4) was active,
+    // and the drive re-enabled by itself when the input went inactive. Enable is
+    // therefore refused before TX while a fresh input status shows that input
+    // active; with no fresh input status it is admitted as before. A stop is
+    // never refused by an input; stop (5) and emergency-stop (6) inputs do not
+    // keep the drive released and do not refuse an enable.
+    if (request.kind == ActionKind::ENABLE && !groupStop) {
+        a.settingsRefusal = Probe::SettingsRefusal();
+        const auto* member = address == a.axis.target.address ? nullptr : groupMember(a, address);
+        if (address == a.axis.target.address || member) {
+            const auto facts = member ? memberFacts(a, *member, nullptr) : selectedFacts(a);
+            const auto checked = stopInputs(facts, now);
+            if (checked.result == StopInputs::RELEASE_ACTIVE) { noteStopInputRefusal(a, checked); return Probe::Action::UNAVAILABLE; }
+        }
+    }
     ActionRequest admittedRequest = request;
     uint64_t deadline = now + REQUEST_US + (stop ? STOP_RECOVERY_US : 0);
     ActionOptions actionOptions;
@@ -1437,6 +1454,7 @@ Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
                         const MotorControlRS::MoveRequest& supplied, uint32_t& operationId) {
     using namespace MotorControlRS;
     App& a = *static_cast<App*>(context);
+    a.settingsRefusal = Probe::SettingsRefusal();
     if (a.owner.commissioningOwned() || a.discovery.owned || groupSequencing(a)) return Probe::Action::BUSY;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
@@ -1488,7 +1506,10 @@ Probe::Action prepareSelectedMove(App& a, const MotorControlRS::MoveRequest& sup
                                   uint64_t deadline, ESS::MoveContext& prepared) {
     using namespace MotorControlRS;
     ESS::MovePrerequisites prerequisites = a.movePrerequisites;
+    const StopInputCheck stops = stopInputs(selectedFacts(a), now);
+    if (stops.result != StopInputs::CLEAR) { noteStopInputRefusal(a, stops); return Probe::Action::UNAVAILABLE; }
     if (!prerequisites.commandUnitsVerified && !moveRequirements(a, supplied, now, prerequisites)) return Probe::Action::UNAVAILABLE;
+    prerequisites.stopInputMask = stops.mask; prerequisites.stopInputActiveLow = stops.activeLow;
     const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
     if (!Probe::fresh(motion, a.axis.target, now, prerequisites.maximumAgeUs)) prerequisites.readinessQualified = false;
     else {
@@ -1562,6 +1583,7 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
                             const MotorControlRS::VelocityRequest& supplied, uint32_t& operationId) {
     using namespace MotorControlRS;
     App& a = *static_cast<App*>(context);
+    a.settingsRefusal = Probe::SettingsRefusal();
     if (a.owner.commissioningOwned() || a.discovery.owned || groupSequencing(a)) return Probe::Action::BUSY;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
@@ -1584,6 +1606,14 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
     if (!record) return Probe::Action::RESULTS_FULL;
     const uint64_t now = uart.sample();
     auto prerequisites = a.velocityPrerequisites;
+    // Wired bench 07: velocity takes the shared stop/release rule and, like a
+    // move, a fresh checked I/O read; the observation then reads 0x0008 too.
+    const auto& io = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
+    StopInputCheck stops;
+    if (Probe::fresh(io, a.axis.target, now, a.observationAgeUs()) && !io.value.unknownInputBits)
+        stops = stopInputs(selectedFacts(a), now);
+    if (stops.result != StopInputs::CLEAR) { noteStopInputRefusal(a, stops); return Probe::Action::UNAVAILABLE; }
+    prerequisites.stopInputMask = stops.mask; prerequisites.stopInputActiveLow = stops.activeLow;
     prerequisites.minimumRpm = std::max<int16_t>(prerequisites.minimumRpm,-60);
     prerequisites.maximumRpm = std::min<int16_t>(prerequisites.maximumRpm,60);
     const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
@@ -1724,6 +1754,7 @@ Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
                         const ESS::HomeRequest& supplied, uint32_t& operationId) {
     using namespace MotorControlRS;
     App& a = *static_cast<App*>(context);
+    a.settingsRefusal = Probe::SettingsRefusal();
     if (a.owner.commissioningOwned() || a.discovery.owned || groupSequencing(a)) return Probe::Action::BUSY;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
@@ -1747,6 +1778,12 @@ Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
     if (!record) return Probe::Action::RESULTS_FULL;
     const uint64_t now = uart.sample();
     auto prerequisites = a.homePrerequisites;
+    // The shared stop/release rule names an active input. Staleness and the
+    // core's logical-level policy for other functions stay with homeReadiness.
+    const StopInputCheck stops = stopInputs(selectedFacts(a), now);
+    if (stops.result == StopInputs::STOP_ACTIVE || stops.result == StopInputs::RELEASE_ACTIVE) {
+        noteStopInputRefusal(a, stops); return Probe::Action::UNAVAILABLE;
+    }
     if (!homeReadiness(a, prerequisites, now)) return Probe::Action::UNAVAILABLE;
     if (a.configuration.raw.subdivision < 400 || a.configuration.raw.subdivision > 51200) return Probe::Action::UNAVAILABLE;
     if (!homeRatesWithinPolicy(a, supplied.searchSpeed, supplied.returnSpeed)) return Probe::Action::OPERATING_LIMIT;

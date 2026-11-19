@@ -257,6 +257,146 @@ void testStageReservationAndFreshCompletion() {
     assert(!axisReserved(*app, 1) && !app->owner.needsRecovery());
     assert(view(operation).moveContext->prepared.effectiveNative == 20);
 }
+// Wired bench 07. X3 = function F, its I/O sample raw, the observation read
+// 0x0006..0x0008. A running poll 500 ms apart is reached by advancing to its
+// eligible time; nothing else changes.
+void stopInputs(uint16_t function, uint16_t raw) {
+    app->configuration.raw.inputFunctions[3] = function;
+    auto& io = app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
+    io.valid = true; io.value.target = app->axis.target; io.value.rawInputs = raw; io.value.inputs[3] = (raw & 8) != 0;
+    io.observedEarliestUs = io.observedLatestUs = hardware.time;
+}
+void pollStep(uint32_t operation, std::initializer_list<uint16_t> words) {
+    const auto eligible = view(operation).moveContext->eligibleUs;
+    if (hardware.time + 1000 < eligible) { advanceHardware(eligible - 1000); serviceApplication(); }
+    moveStep(operation, registers(1, words));
+}
+void testStopInputEndsMoveShortWithoutPollingToDeadline() {
+    // Refused before TX with a named cause while the input reads active (Implement 1).
+    struct Refusal { uint16_t function; const char* reason; };
+    for (const auto& r : {Refusal{5, "stop_input_active"}, Refusal{6, "stop_input_active"}, Refusal{4, "release_input_active"}}) {
+        fresh(); qualify(); stopInputs(r.function, 8);
+        uint32_t untouched = 77;
+        assert(host(app).startMove(app, 1, 1, request(), untouched) == Probe::Action::UNAVAILABLE);
+        assert(untouched == 77 && !hardware.writes && !axisReserved(*app, 1));
+        Probe::SettingsRefusal refusal;
+        assert(copySettingsRefusal(refusal) && !std::strcmp(refusal.reason, r.reason) && refusal.terminal == 3);
+        command("@4 move relative 20 steps native 60 configured\n");
+        assert(!hardware.writes && Serial.output.find(std::string("\"reason\":\"") + r.reason) != std::string::npos);
+    }
+    fresh(); qualify(); stopInputs(5, 0);
+    app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)].valid = false;
+    uint32_t untouched = 77;
+    assert(host(app).startMove(app, 1, 1, request(), untouched) == Probe::Action::UNAVAILABLE && !hardware.writes);
+    Probe::SettingsRefusal stale;
+    assert(copySettingsRefusal(stale) && !std::strcmp(stale.reason, "input_state_stale"));
+    // Recorded words, pilot wb07_pilot_s1_f5c (drive 4, 0x4EEA/0x0029, X3 = 5):
+    // running+homed 6 with inputs 0, then 6 with X3 active (8), then 2 (homed,
+    // not running, not in position) with 8. At HEAD the move polled to its
+    // deadline (outcome deadline after 60 polls); it now ends STOP_INPUT.
+    fresh(); qualify(); stopInputs(5, 0);
+    auto id = admitMove();
+    assert(view(id).moveContext->prerequisites.stopInputMask == 8);
+    moveStep(id); moveStep(id);
+    waitTx(id); assert(hardware.tx[1] == 3 && hardware.tx[3] == 6 && hardware.tx[5] == 3);
+    pollStep(id, {0, 6, 0}); pollStep(id, {0, 6, 8});
+    assert(view(id).pending && view(id).moveContext->stopInputObserved);
+    pollStep(id, {0, 2, 8});
+    auto c = *view(id).moveContext;
+    assert(!view(id).pending && c.state == ActionState::FAILED && c.completion == ActionCompletion::NOT_OBSERVED);
+    assert(c.status.detail == static_cast<int32_t>(MoveError::STOP_INPUT) && c.rawInputs == 8);
+    // As any failure after an acknowledged start: uncertain, and the axis waits
+    // for an explicit stop to reconcile it. Nothing is resent.
+    assert(c.uncertain && axisReserved(*app, 1));
+    assert(c.stopInputEvidence.length && c.polls == 3);
+    // The pulse fell between polls: stopped without arrival twice ends STOPPED_SHORT.
+    fresh(); qualify(); stopInputs(5, 0);
+    id = admitMove(); moveStep(id); moveStep(id);
+    pollStep(id, {0, 6, 0}); pollStep(id, {0, 2, 0});
+    assert(view(id).pending && view(id).moveContext->stoppedPolls == 1);
+    pollStep(id, {0, 2, 0});
+    c = *view(id).moveContext;
+    assert(!view(id).pending && c.state == ActionState::FAILED && !c.stopInputObserved);
+    assert(c.status.detail == static_cast<int32_t>(MoveError::STOPPED_SHORT) && c.completion == ActionCompletion::NOT_OBSERVED);
+    // Without a stop/release assignment the observation stays two words; the
+    // same short stop still ends STOPPED_SHORT, and a restart resets the count.
+    fresh(); qualify();
+    id = admitMove(); moveStep(id); moveStep(id);
+    waitTx(id); assert(hardware.tx[5] == 2);
+    pollStep(id, {0, 4}); pollStep(id, {0, 0}); pollStep(id, {0, 4}); pollStep(id, {0, 0});
+    assert(view(id).pending && view(id).moveContext->stoppedPolls == 1);
+    pollStep(id, {0, 1});
+    assert(!view(id).pending && view(id).moveContext->completion == ActionCompletion::OBSERVED);
+    // Natural completion (recorded: 6 then 3 in one sample) is unchanged.
+    fresh(); qualify(); stopInputs(5, 0);
+    id = admitMove(); moveStep(id); moveStep(id);
+    pollStep(id, {0, 6, 0}); pollStep(id, {0, 3, 0});
+    assert(!view(id).pending && view(id).moveContext->state == ActionState::SUCCEEDED);
+}
+// Console terminals of the wired bench 07 outcomes, for the Python validators
+// (test/stop_input_parity_test.py): each move is issued through the console.
+void emitTerminal(const char* name) {
+    const auto start = Serial.output.find("{\"type\":\"move\"");
+    assert(start != std::string::npos);
+    const auto end = Serial.output.find('\n', start);
+    std::printf("{\"case\":\"%s\",\"record\":%s}\n", name, Serial.output.substr(start, end - start).c_str());
+}
+void emitStopInputResults() {
+    struct Trace { const char* name; uint16_t function; std::vector<std::vector<uint16_t>> polls; };
+    const Trace traces[] = {
+        {"stop_input", 5, {{0, 6, 0}, {0, 6, 8}, {0, 2, 8}}},
+        {"stopped_short", 5, {{0, 6, 0}, {0, 2, 0}, {0, 2, 0}}},
+        {"stopped_short_unassigned", 0, {{0, 4}, {0, 0}, {0, 0}}},
+        {"completion_with_stop_input", 6, {{0, 6, 0}, {0, 3, 0}}},
+    };
+    for (const auto& t : traces) {
+        fresh(); qualify(); stopInputs(t.function, 0);
+        command("@4 move relative 20 steps native 60 configured\n");
+        const auto id = app->latestOperationId;
+        moveStep(id); moveStep(id);
+        for (const auto& words : t.polls) {
+            const auto eligible = view(id).moveContext->eligibleUs;
+            if (hardware.time + 1000 < eligible) { advanceHardware(eligible - 1000); serviceApplication(); }
+            std::vector<uint8_t> reply = {1, 3, static_cast<uint8_t>(words.size() * 2)};
+            for (const auto w : words) { reply.push_back(static_cast<uint8_t>(w >> 8)); reply.push_back(static_cast<uint8_t>(w)); }
+            moveStep(id, crc(reply));
+        }
+        pump(200);
+        assert(!view(id).pending);
+        emitTerminal(t.name);
+    }
+}
+// Wired bench 07 Implement 4 (R3): the release input outranks a serial enable,
+// so enable is refused before TX while it reads active. Stop inputs do not
+// keep the drive released and leave enable admitted; so does an unknown level.
+void testEnableRefusedWhileReleaseInputActive() {
+    ActionRequest enable; enable.kind = ActionKind::ENABLE;
+    fresh(); qualify(); stopInputs(4, 8);
+    uint32_t untouched = 77;
+    assert(host(app).startAction(app, 1, 1, enable, untouched) == Probe::Action::UNAVAILABLE);
+    assert(untouched == 77 && !hardware.writes && !axisReserved(*app, 1));
+    Probe::SettingsRefusal refusal;
+    assert(copySettingsRefusal(refusal) && !std::strcmp(refusal.reason, "release_input_active") &&
+           !std::strcmp(refusal.purpose, "motion") && refusal.terminal == 3);
+    command("@7 enable 1\n");
+    assert(!hardware.writes);
+    assert(Serial.output.find("\"reason\":\"release_input_active\"") != std::string::npos);
+    // A stop is never refused by the input, and it names no reason.
+    ActionRequest stop; stop.kind = ActionKind::STOP; stop.stop.behavior = StopBehavior::DIRECT;
+    uint32_t stopId = 0;
+    assert(host(app).startAction(app, 2, 1, stop, stopId) == Probe::Action::OK && stopId);
+    for (const auto& c : {std::pair<uint16_t, uint16_t>{4, 0}, {5, 8}, {6, 8}}) {
+        fresh(); qualify(); stopInputs(c.first, c.second);
+        uint32_t id = 0;
+        assert(host(app).startAction(app, 1, 1, enable, id) == Probe::Action::OK && id);
+        Probe::SettingsRefusal none; assert(!copySettingsRefusal(none));
+    }
+    // No fresh input status: admitted as before (the drive decides).
+    fresh(); qualify(); stopInputs(4, 8);
+    app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)].valid = false;
+    uint32_t id = 0;
+    assert(host(app).startAction(app, 1, 1, enable, id) == Probe::Action::OK && id);
+}
 void testCommonAndProfileCliUseExactPreparation() {
     for (bool native : {false, true}) {
         fresh(); qualify();
@@ -1101,7 +1241,8 @@ void testMonitorReferenceRefusal() {
     assert(submitMove(requestValue.position, 60, id));
     assert(cancel(app, id) == Probe::Action::OK); pump(); assert(!hardware.writes);
 }
-int main() {
+int main(int argc, char** argv) {
+    if (argc == 2 && std::string(argv[1]) == "--emit-stop-input-results") { emitStopInputResults(); return 0; }
     testQueuedPositionClearInvalidation(); testMonitorReferenceRefusal();
     testFailedPreparationAndCrossKindSlotReuse();
     testPositionLimitUsesDriveSubdivision();
@@ -1112,6 +1253,8 @@ int main() {
     testProductionMoveOptionalObservationAge();
     testProductionGateAndImmutableAdmission(); testIndependentWritesRespectQualificationAndMoveStartup();
     testStageReservationAndFreshCompletion();
+    testStopInputEndsMoveShortWithoutPollingToDeadline();
+    testEnableRefusedWhileReleaseInputActive();
     testCommonAndProfileCliUseExactPreparation();
     testWrongStageEchoAndLostTriggerNeverReplay(); testCancellationAndStopAtSequenceBoundaries();
     testFullRetainedResultsStillReserveStop();

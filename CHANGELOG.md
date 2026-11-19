@@ -72,6 +72,31 @@
   `cross_mapped_custom` (`not_admitted`) and `output_status_mapping`
   (`recorded_y0`). Harness: the `outputs` scenario (`scripts/bench_outputs.py`,
   cases O1-O9), and snapshot routes in the restoration planner.
+- Stop and release inputs (wired bench 07). One admission rule for moves,
+  stages, group moves, velocity and home: refused before TX while a fresh
+  input status, read through the terminal's move record (default polarity
+  needs none), shows an assigned release (4), stop (5) or emergency stop (6)
+  input active, with `unavailable` and `reason` `stop_input_active`,
+  `release_input_active`, `input_state_stale` or `input_mapping_unknown`
+  (`purpose` `motion`, `read_first`, `terminal`; API `copySettingsRefusal`).
+  Velocity now needs a fresh checked input status like a move. `enable` is
+  refused while an assigned release input reads active (measured: the input
+  outranks a serial enable); caps `external_enable_precedence` is
+  `release_input`. Stops are never refused by an input.
+- Core move and velocity observers (wired bench 07): `MovePrerequisites` and
+  `VelocityPrerequisites::stopInputMask`/`stopInputActiveLow` add `0x0008` to
+  each observation read. A move ends `MoveError::STOP_INPUT` (24) after a report
+  with that input active and a stopped drive, or `STOPPED_SHORT` (25) after two
+  consecutive stopped reports without arrival once running was seen, instead
+  of polling to its deadline; a velocity run fails `VelocityError::STOP_INPUT`
+  (26) or `STOPPED_EARLY` (27) and keeps its timed stop. Neither is ever a
+  completion. Results add `stop_inputs` and the first report as evidence.
+- Sequential group moves send no later start once a started member reported
+  its stop/release input active.
+- Harness: the `stop-inputs` scenario (`scripts/bench_stop_inputs.py`, cases
+  S1-S9, R1, R2a, R2b, R3, G1, G2) with the Implement 3 trial classification;
+  `test/stop_input_parity_test.py` checks the actual application terminals
+  against the validators.
 
 ### Changed
 
@@ -88,7 +113,16 @@
   margin, 50 ms polls). With output function 5 (brake) assigned, firmware
   `0x0029` reports RELEASED about 1.34 s after the release, past the old
   500 ms window, which ended in `observation_limit`. The write is never repeated.
-- `scripts/verify.py` checks the velocity parity test's app fixtures.
+- `scripts/verify.py` checks the velocity parity test's app fixtures, and the
+  move and velocity fixtures of `stop_input_parity_test.py`.
+- Shared-output interlock row L3 (wired bench 07): a running member's own `io
+  read` is refused during its operation (`axis_conflict`), so a named member
+  may carry its `io read` from just before the operation, with every operation
+  in between recorded as a read or the case's own motion and a 10 s bound
+  (`bench_records.named_io_problem`, `NAMED_IO_MAX_AGE_MS`); several named
+  members per output (group moves); a named member that is stopping under its
+  own operation takes the ordinary rows. The move and velocity validators know
+  the three-word observation and the new failure details.
 - The input-filter tuning experiment admits `MEASURED_INPUT_FILTERS`
   {0, 1, 2, 3, 5, 10, 20, 50} from and to any value in the set (was 2/3);
   100 left the candidate set because it suppressed 200 ms pulses.

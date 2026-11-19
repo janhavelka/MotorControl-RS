@@ -228,8 +228,9 @@ Status nextVelocity(const VelocityContext& c, uint64_t now, PreparedVelocity& ou
             next.value = static_cast<uint16_t>(MotionCommandBit::START_SPEED);
             next.length = buildWriteSingleRegister(c.target.address, next.reg, next.value, next.bytes, sizeof(next.bytes));
         } else {
-            next.function = 3; next.reg = Registers::ERROR_CODE; next.count = 2;
-            next.length = buildReadRegisters(c.target.address, next.reg, 2, next.bytes, sizeof(next.bytes));
+            // 0x0006/7 alarm and motion; 0x0008 inputs when stop/release terminals are assigned.
+            next.function = 3; next.reg = Registers::ERROR_CODE; next.count = c.prerequisites.stopInputMask ? 3 : 2;
+            next.length = buildReadRegisters(c.target.address, next.reg, next.count, next.bytes, sizeof(next.bytes));
         }
         if (!next.length) return invalid(VelocityError::INVALID_STATE, "invalid prepared velocity frame");
     }
@@ -275,13 +276,14 @@ Status advanceVelocity(VelocityContext& c, const ActionEvent& supplied, uint64_t
         return invalid(VelocityError::INVALID_EVENT, "invalid local velocity event envelope");
     ActionEvidence evidence;
     Detail::copyActionEvidence(evidence, supplied, c.step, now);
-    uint16_t words[2] = {}; std::size_t count = 0;
+    uint16_t words[3] = {}; std::size_t count = 0;
+    const std::size_t observed = c.prerequisites.stopInputMask ? 3 : 2;
     if (event.kind == ReadEventKind::FRAME) {
         if (c.phase == VelocityPhase::STAGING) evidence.status = parseWriteMultipleRegisters(event.frame, event.length,
             c.target.address, Registers::JOG_SPEED, 3, &evidence.frameError);
         else if (c.phase == VelocityPhase::TRIGGER) evidence.status = parseWriteSingleRegister(event.frame, event.length,
             c.target.address, Registers::MOTION_COMMAND, static_cast<uint16_t>(MotionCommandBit::START_SPEED), &evidence.frameError);
-        else evidence.status = parseRegisters(event.frame, event.length, c.target.address, 2, words, 2, count, &evidence.frameError);
+        else evidence.status = parseRegisters(event.frame, event.length, c.target.address, observed, words, 3, count, &evidence.frameError);
     } else if (event.kind == ReadEventKind::CANCEL) evidence.status = failed(VelocityError::CANCELLED, "velocity locally cancelled");
     else if (event.kind == ReadEventKind::DEADLINE) evidence.status = expiry(c);
     else evidence.status = failed(VelocityError::TRANSPORT_FAILURE, "velocity transport failed");
@@ -328,10 +330,23 @@ Status advanceVelocity(VelocityContext& c, const ActionEvent& supplied, uint64_t
         if (words[0] || (words[1] & FAULTS)) failStep(c, ActionOutcome::REPLY_ERROR,
             failed(VelocityError::DRIVE_FAULT, "drive alarm, release or limit interrupted velocity"), evidence, now);
         else {
+            if (observed == 3) {
+                c.rawInputs = words[2];
+                const uint8_t active = static_cast<uint8_t>((words[2] ^ c.prerequisites.stopInputActiveLow) &
+                    c.prerequisites.stopInputMask & 15u);
+                if (active && !c.stopInputObserved) { c.stopInputObserved = true; c.stopInputEvidence = evidence; }
+            }
             if (words[1] & RUNNING) {
                 if (!c.runningObserved) c.activityEvidence = evidence;
                 c.runningObserved = true;
-            }
+            } else if (c.runningObserved && !c.stoppedEarly) { c.stoppedEarly = true; c.stoppedEvidence = evidence; }
+            // Wired bench 07: a run that a stop input or another cause ended
+            // before its timed stop is never reported complete. The timed stop
+            // keeps its schedule; this sends nothing.
+            if (c.stopInputObserved) retainFailure(c, ActionOutcome::REPLY_ERROR, failed(VelocityError::STOP_INPUT,
+                "a stop or release input was reported active before the timed stop"), &c.stopInputEvidence);
+            else if (c.stoppedEarly) retainFailure(c, ActionOutcome::REPLY_ERROR, failed(VelocityError::STOPPED_EARLY,
+                "velocity stopped before its timed stop; no stop input was reported"), &c.stoppedEvidence);
             // Preparation made maxPolls * pollIntervalUs cover the duration, and polls are
             // at least one interval apart, so the duration ends first, even on the last poll.
             if (now >= c.stopDueUs) beginStop(c, now);

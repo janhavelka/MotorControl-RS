@@ -36,6 +36,67 @@ MotionFacts selectedFacts(const App& a, const MotorControlRS::AxisReference* ref
     return MotionFacts(a.axis, a.configuration, a.motionProfile, a.stateCache, a.positionStartSpeedRelationRequired,
         a.positionStartSpeedRelation, a.bindingGeneration, a.serial.generation, a.observationAgeUs(), reference, a.ioQualifications);
 }
+// Wired bench 07 decision: every motion admission (finite, staged, group,
+// velocity, home) refuses before TX when a fresh input status, read through the
+// qualified mapping, shows an assigned release (4), stop (5) or emergency stop (6)
+// input active. Stops keep no input check. An input asserted after the last read
+// cannot be excluded by the host; the motion observers report it (STOP_INPUT).
+enum class StopInputs : uint8_t { CLEAR, STALE, MAPPING_UNKNOWN, STOP_ACTIVE, RELEASE_ACTIVE };
+struct StopInputCheck {
+    StopInputs result = StopInputs::STALE;
+    uint8_t terminal = 0;
+    uint8_t mask = 0;      ///< Terminals assigned 4-6, bit i for Xi.
+    uint8_t activeLow = 0; ///< Of those, terminals active when their status bit reads 0.
+};
+// The terminal's move-purpose I/O record states the mapping; without one only
+// default polarity has a known level (as moveInputPolicy).
+const IoQualification* stopInputRecord(const MotionFacts& f, uint8_t i, uint64_t now) {
+    const IoQualification* q = f.inputQualifications ? f.inputQualifications + i : nullptr;
+    const uint16_t function = f.configuration.raw.inputFunctions[i], polarity = (f.configuration.raw.inputPolarity >> i) & 1;
+    return q && q->purpose == IoPurpose::FINITE_MOVE && q->terminal == i && Probe::sameTarget(q->target, f.axis.target) &&
+        q->configurationGeneration == f.axis.generation && q->function == function && q->polarity == polarity &&
+        ioFactsValid(*q, now) ? q : nullptr;
+}
+StopInputCheck stopInputs(const MotionFacts& f, uint64_t now) {
+    StopInputCheck check;
+    const auto& raw = f.configuration.raw;
+    for (uint8_t i = 0; i < 4; ++i)
+        if (raw.inputFunctions[i] >= 4 && raw.inputFunctions[i] <= 6) check.mask |= static_cast<uint8_t>(1u << i);
+    if (!check.mask) { check.result = StopInputs::CLEAR; return check; }
+    const auto& io = f.block(ESS::StateBlock::IO);
+    if (!Probe::fresh(io, f.axis.target, now, f.maximumAgeUs) || io.value.unknownInputBits) return check;
+    for (uint8_t i = 0; i < 4; ++i) {
+        if (!(check.mask & (1u << i))) continue;
+        const uint16_t polarity = (raw.inputPolarity >> i) & 1;
+        const auto* q = stopInputRecord(f, i, now);
+        const auto mapping = q ? q->input.statusMapping : ESS::IoStatusMapping::UNKNOWN;
+        bool active = false;
+        check.terminal = i;
+        if (!effectiveInput(io.value.rawInputs, i, polarity, polarity, mapping, active)) {
+            check.result = StopInputs::MAPPING_UNKNOWN; return check;
+        }
+        if (active) {
+            check.result = raw.inputFunctions[i] == 4 ? StopInputs::RELEASE_ACTIVE : StopInputs::STOP_ACTIVE;
+            return check;
+        }
+        if (mapping == ESS::IoStatusMapping::BEFORE_INVERSION && polarity) check.activeLow |= static_cast<uint8_t>(1u << i);
+    }
+    check.terminal = 0;
+    check.result = StopInputs::CLEAR;
+    return check;
+}
+// Record the named cause of a motion refusal the stop/release rule decided,
+// through the input-decided refusal record the console and API report.
+void noteStopInputRefusal(App& a, const StopInputCheck& check) {
+    a.settingsRefusal = Probe::SettingsRefusal();
+    if (check.result == StopInputs::CLEAR) return;
+    a.settingsRefusal.reason = check.result == StopInputs::STOP_ACTIVE ? "stop_input_active" :
+        check.result == StopInputs::RELEASE_ACTIVE ? "release_input_active" :
+        check.result == StopInputs::MAPPING_UNKNOWN ? "input_mapping_unknown" : "input_state_stale";
+    a.settingsRefusal.readFirst = check.result == StopInputs::MAPPING_UNKNOWN ? "io qualification install" : "read state";
+    a.settingsRefusal.purpose = "motion";
+    a.settingsRefusal.terminal = check.result == StopInputs::STALE ? -1 : static_cast<int8_t>(check.terminal);
+}
 bool moveInputPolicy(const MotionFacts& f, uint64_t now) {
     const auto& raw = f.configuration.raw;
     const auto& io = f.block(ESS::StateBlock::IO);
@@ -152,7 +213,8 @@ bool moveRequirements(const MotionFacts& f, const MotorControlRS::MoveRequest& r
     // Unconnected wiring does not establish inactive assignments. Preserve them
     // and require the checked logical input report for each assigned input.
     // Origin level alone does not trigger a serial move or act as a limit.
-    if (!moveInputPolicy(f, now)) return false;
+    const StopInputCheck stops = stopInputs(f, now);
+    if (stops.result != StopInputs::CLEAR || !moveInputPolicy(f, now)) return false;
     if (!request.position.relative && !absoluteMoveReady(f, request, now)) return false;
 
     // Publish only after every guard passes; rejected preparation preserves out.
@@ -171,6 +233,7 @@ bool moveRequirements(const MotionFacts& f, const MotorControlRS::MoveRequest& r
     out.startSpeedKnown = true;
     out.startSpeed = minimumRpm;
     out.maximumAgeUs = f.maximumAgeUs;
+    out.stopInputMask = stops.mask; out.stopInputActiveLow = stops.activeLow;
     return true;
 }
 bool moveRequirements(const App& a, const MotorControlRS::MoveRequest& request,

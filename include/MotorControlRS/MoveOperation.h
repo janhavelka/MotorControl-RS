@@ -23,6 +23,12 @@ enum class MoveError : int32_t {
     UNRESOLVED_SIGN, UNRESOLVED_BASIS, UNRESOLVED_RAMP, INVALID_STATE,
     WRONG_CORRELATION, INVALID_EVENT, CLOCK_ERROR, DEADLINE_EXPIRED,
     TRANSPORT_FAILURE, CANCELLED, TIMING_UNQUALIFIED, UNCONFIRMED_RESPONSE,
-    OBSERVATION_LIMIT, DRIVE_FAULT, OPERATING_LIMIT
+    OBSERVATION_LIMIT, DRIVE_FAULT, OPERATING_LIMIT,
+    /** A profile-assigned stop/release input was reported active and the motion
+     * stopped before arrival. A reported fact, not a proven cause. */
+    STOP_INPUT,
+    /** Running was observed, then consecutive stopped reports without arrival
+     * and without an active stop/release report: stopped short, cause unknown. */
+    STOPPED_SHORT
 };
 } // namespace MotorControlRS

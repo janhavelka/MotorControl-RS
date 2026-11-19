@@ -334,6 +334,42 @@ edges, writes, samples, rows and analysis; O10/O11 wrote
 words included (snapshot routes `home restore` and `velocity restore`), with
 the prepared `stop fast` sent first.
 
+### Stop inputs (wired bench 07)
+
+[Prompt 07](prompts/ess_wired_bench/07_stop_release_inputs.md) added the
+`stop-inputs` scenario (`scripts/bench_stop_inputs.py`). It needs
+`--image-level 07` and runs one case and one X3 function per folder:
+`--case S1`..`S9`, `R1`, `R2a`, `R2b`, `R3`, `G1`, `G2` with `--function 4|5|6`
+(the case table lists the admitted ones) and `--repetitions`. S8 adds
+`--deceleration 100|1000` and `--stimulus input|stop normal|stop fast`; S7
+`--sub a|b|c|abc`; S9 `--widths`; group runs of one controller session take
+`--leave-profile` except the last (a profile stage revokes the members'
+start-speed relation for the session, so the last group run restores the
+words; the others list them as left changed in RAM).
+
+| Kind | Cases | Per trial |
+| --- | --- | --- |
+| move | S1, S2 (absolute), S8, S9 (widths), R2a, R2b | profile read and start-speed relation, `io read`/`read config`/`read state`, the move, `read state` until RUNNING, interlocked `mosfet2` pulse (or the S8 serial stop at the same time), samples through the hold and 2 s, terminal, prepared `stop fast` |
+| velocity | S3 | snapshot `velocity read`, `velocity qualification install rpm ramp inputs`, 30 rpm 1000 ms, pulse as above |
+| home | S4 | snapshot `home read`, `home auxiliary 7`, `home 33`/`34` at 30 rpm search, pulse during the search |
+| held | S5 | group set, CONFIGURE records, pulse 3000 ms, then move, velocity, `home 35`, profile stage, staged and sequential group moves, each refused with its reason and the debug traffic counter unchanged |
+| race | S6 | the interlock's own reads (input inactive), pulse 3000 ms, a move on that read |
+| release, enable | R1, R3 | stationary drive; R1 with Y0 = 5 (one setup release/enable cycle) |
+| serial | S7 | deceleration 1000 ms: (a) `stop normal` then the pulse, (b) pulse then `stop fast`, (c) `stop fast` while held |
+| group | G1 (staged), G2 (sequential) | X3 on 1, 2 and 4; every member named; `group stop fast` if motion continues |
+
+The interlock names the running member with its `io read` from just before its
+operation, because the firmware refuses that read during the operation
+(`axis_conflict`; row L3, `bench_records.named_io_problem`). Each trial is
+classified by `bench_stop_inputs.classify` (Implement 3): motion seen after the
+start and before the ON, the input bit or a Y0 edge, the first stopped sample
+bracket, stopped short, no further start, no completion, fault or earlier
+safety stop; otherwise `indeterminate` with the missing witness named.
+`stop_inputs.json` keeps every trial, sample, edge, refusal and restoration.
+A homing snapshot is the first checked read after the drive is selected: the
+firmware pins that read, later reads rotate through seven slots, and a later
+`useaddr` makes every snapshot stale.
+
 ## Stress tool
 
 `scripts/bench_stress.py` runs randomized finite cases on the recorded ESS bench.

@@ -106,6 +106,9 @@ INPUT_TERMINALS = ("x0", "x1", "x2", "x3")
 SETTINGS_INPUT_PURPOSES = ("configure", "segment")
 SETTINGS_REFUSAL_REASONS = ("input_facts_required", "input_facts_stale", "input_active")
 SETTINGS_REFUSAL_COMMANDS = ("driver", "segment", "tuning", "home-auxiliary", "motion-profile-start-speed", "motion-profile-stage")
+# Wired bench 07: motion refusals the shared stop/release rule decided (purpose motion).
+MOTION_REFUSAL_REASONS = ("stop_input_active", "release_input_active", "input_state_stale", "input_mapping_unknown")
+MOTION_REFUSAL_COMMANDS = ("move-relative", "move-absolute", "move-angle", "velocity", "home", "group-move", "enable")
 UPDATE_NOT_ADMITTED_REASONS = (*SETTINGS_REFUSAL_REASONS, "binding_changed", "prerequisites_expired", "update_refused")
 QUALIFICATION_FACT_REFUSALS = frozenset({"missing_fact", "unknown_fact", "duplicate_fact", "fact_not_applicable"})
 QUALIFICATION_REFUSALS = QUALIFICATION_FACT_REFUSALS | frozenset({
@@ -2891,7 +2894,14 @@ class Console:
     def _check_admission_refusal(handle: Command, item: dict) -> None:
         if type(item.get("result")) is not str or item["result"] not in ADMISSION_FAILURES:
             raise BenchError("admission refusal lacks a documented disposition")
-        if any(key in item for key in ("reason", "purpose", "read_first", "terminal")):
+        if any(key in item for key in ("reason", "purpose", "read_first", "terminal")) and item.get("purpose") == "motion":
+            # Motion refusals the shared stop/release rule decided (wired bench 07).
+            if (handle.command not in MOTION_REFUSAL_COMMANDS or item["result"] != "unavailable" or
+                    item.get("reason") not in MOTION_REFUSAL_REASONS or
+                    item.get("read_first") not in ("read state", "io qualification install") or
+                    ("terminal" in item and item["terminal"] not in INPUT_TERMINALS)):
+                raise BenchError("motion refusal names no documented stop/release cause")
+        elif any(key in item for key in ("reason", "purpose", "read_first", "terminal")):
             # Settings refusals the selected axis's input facts decided (wired bench 03).
             if (handle.command not in SETTINGS_REFUSAL_COMMANDS or item["result"] != "qualification_required" or
                     item.get("reason") not in SETTINGS_REFUSAL_REASONS or item.get("purpose") not in SETTINGS_INPUT_PURPOSES or

@@ -457,4 +457,6 @@ All in `build/bench/` (not committed):
 
 ## Commits and CI
 
-The lead owns Git and CI; none dispatched by this session.
+The lead owns Git and CI; none dispatched by this session. The lead committed
+the work as `1441c55`; CI run 44450398460 on that exact commit passed all four
+jobs (native gcc, native clang, Arduino, ESP-IDF).

@@ -76,6 +76,18 @@ direction or establish the drive's reaction to that input. Method 35 has no sear
 forbids no sensor level, but a release or stop input still fails it. The manual does not
 say whether a stop input affects a home at all; this rule is a conservative choice.
 
+Measured on drive 4 (`0x4EEA`/`0x0029`, wired bench 07, S4): a 200 ms stop
+input (X3 = 5) during the search of methods 33 and 34 (30 rpm) stopped the
+search (Y0 running-off 95-97 ms after the ON) and no home reported HOMED. The
+standalone `startHome` names an active stop/release input (`stop_input_active`,
+`release_input_active`) before any frame. During a home, a fresh read that
+shows the input active revokes the home qualification (`homeReadiness`), and
+the home ends `cancelled` with `QUALIFICATION_REVOKED` at once; that is how all
+six bench trials ended, because the harness read state throughout. A home's
+own poll that sees the input ends it `INPUT_REQUIRED`. Without either, an
+input-stopped search would poll to its deadline: not exercised on the bench
+and handed to prompt 12.
+
 ## Origin-reference methods
 
 All eight require a connected origin assigned to input function 1, known

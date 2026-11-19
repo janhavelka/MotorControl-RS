@@ -17,6 +17,9 @@ struct VelocityPrerequisites {
     int16_t minimumRpm = -3000, maximumRpm = 3000; ///< Caller-qualified subset; cannot broaden signed 3000-rpm subset.
     uint16_t rawAlarm = 0, rawMotion = 0;
     uint64_t observedUs = 0, maximumAgeUs = 0; ///< Zero disables age expiry; nonzero bounds admission/staging age. Stop deadlines remain mandatory.
+    /** As MovePrerequisites: assigned release/stop inputs (functions 4-6) and
+     * their active-low bits. Nonzero adds 0x0008 to each observation read. */
+    uint8_t stopInputMask = 0, stopInputActiveLow = 0;
 };
 enum class VelocityPhase : uint8_t { STAGING, TRIGGER, OBSERVING, STOPPING };
 /** Caller-owned, read-only between calls. One axis reservation spans staging,
@@ -45,6 +48,13 @@ struct VelocityContext {
     uint64_t startedUs = 0, deadlineUs = 0, stopDueUs = 0, servicedUs = 0, eligibleUs = 0;
     uint8_t step = 0, polls = 0;
     ActionEvidence stagingEvidence, triggerEvidence, activityEvidence, lastObservation, failureEvidence;
+    /** Wired bench 07 witnesses before the timed stop: the latest 0x0008 word
+     * when observed, the first report with an assigned stop/release input
+     * active, and the first stopped report after running. Either one makes the
+     * run FAILED; neither sends anything or changes the timed stop. */
+    uint16_t rawInputs = 0;
+    bool stopInputObserved = false, stoppedEarly = false;
+    ActionEvidence stopInputEvidence, stoppedEvidence;
     ActionContext stop;
     Status status;
 };

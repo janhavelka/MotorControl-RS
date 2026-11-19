@@ -63,6 +63,20 @@ MAX_AGE_MS = 1000
 # Intended effects a named running member may receive (truth table row L3).
 EFFECTS = {"limit": (2, 3), "release": (4,), "stop": (5, 6), "fixed-length": (7,),
            "selection": (14, 15, 16, 17)}
+# Wired bench 07: a running member's own operation reserves its axis, so the
+# firmware refuses its `io read` (axis_conflict, measured). Row L3 then takes
+# the member's I/O words from its last checked `io read` before the operation
+# was admitted, with only read operations in between: from that read to the ON
+# every settings write to the axis is refused by the reservation, and a drive
+# restart cannot resume the operation (the fresh `read state` must still show
+# it running). This bound replaces the 1000 ms backstop for those words only.
+NAMED_IO_MAX_AGE_MS = 10000
+# Operations the console may admit between that io read and the named
+# operation: checked reads (an io entry must be marked a read) and the motion
+# of the case itself (marked motion), none of which changes an I/O assignment.
+BETWEEN_READS = ("read-config", "read-state", "velocity-read", "home-read", "read-identity", "group-read-state")
+BETWEEN_MOTION = ("move-relative", "move-absolute", "velocity", "home", "group-move", "stop", "group-stop", "enable",
+                  "motor-release", "alarm-clear")
 # Per ON and participant: the nine I/O words (polarity word 0, X0-X3 functions
 # words 1-4), then the state, so the motion/alarm sample is the newest. The
 # agreement of the I/O words with ``read config`` is a session-level check
@@ -241,13 +255,57 @@ def check_declarations(console, *, timeout_s=5.0) -> dict:
 # --------------------------------------------------------------------------
 # Line-isolation truth table (shared with prompt 08's firmware trigger)
 
-def participant_facts(address: int, reads: dict, now_us: int | None, extra_ms: float = 0.0) -> dict:
+def named_io_problem(named: dict) -> str | None:
+    """Why a named running member's pre-start ``io read`` cannot stand in for a
+    fresh one (wired bench 07, row L3), or None. ``named['io_read']`` is that
+    read's reply summary; ``named['between']`` lists every operation the
+    console admitted after it and before the named one."""
+    read = named.get("io_read")
+    if not isinstance(read, dict) or not read.get("ok"):
+        return "no checked io read before the named operation"
+    words = read.get("raw")
+    if not (isinstance(words, list) and len(words) == 9 and all(type(w) is int for w in words)):
+        return "pre-start io read lacks nine words"
+    first, last = read.get("operation_id"), named.get("operation_id")
+    if type(first) is not int or type(last) is not int or not first < last:
+        return "pre-start io read is not before the named operation"
+    between = named.get("between")
+    if not isinstance(between, list):
+        return "operations between the io read and the named operation are not recorded"
+    ids = [b.get("operation_id") for b in between]
+    if ids != list(range(first + 1, last)):
+        return "operations %s between the io read %s and the named operation %s are not all recorded" % (
+            ids, first, last)
+    def allowed(b):
+        command = b.get("command")
+        return ((command in BETWEEN_READS and not b.get("motion")) or (command == "io" and b.get("read") is True) or
+                (command in BETWEEN_MOTION and b.get("motion") is True))
+    writes = [b for b in between if not allowed(b)]
+    if writes:
+        return "an operation that may change assignments came between the io read and the named operation: %s" % writes[0]
+    return None
+
+
+def participant_facts(address: int, reads: dict, now_us: int | None, extra_ms: float = 0.0,
+                      named: dict | None = None) -> dict:
     """Decision inputs of one participant from its io read and read state.
 
     Ages run from each read's ``started_us`` (request start) to ``now_us``
     (the controller time of the bench view before the ON) plus ``extra_ms``.
+    A named running member (row L3) uses its pre-start io read, bounded by
+    ``NAMED_IO_MAX_AGE_MS`` (wired bench 07).
     """
     facts = {"address": address, "unknown": [], "ages_ms": {}, "operation_ids": {}}
+    if named is not None and reads.get("io") is None:
+        problem = named_io_problem(named)
+        if problem:
+            facts["unknown"].append(problem)
+            return facts
+        read = named["io_read"]
+        reads = dict(reads, io={"ok": True, "operation_id": read["operation_id"], "started_us": read["started_us"],
+                                "observation": {"raw": list(read["raw"]), "unknown_input_polarity_bits": 0}})
+        facts["age_bounds_ms"] = {"io": NAMED_IO_MAX_AGE_MS}
+        facts["io_source"] = "pre-start io read %s" % read["operation_id"]
     missing = [name for name in INTERLOCK_READS if reads.get(name) is None]
     if missing:
         facts["unknown"].append("missing " + ", ".join(missing))
@@ -306,9 +364,10 @@ def _named_mismatch(named: dict, output: str, terminal: str, function: int, pola
         return "terminal reads function %d, named %d" % (function, named["function"])
     if polarity != named.get("polarity"):
         return "terminal reads polarity %d, named %s" % (polarity, named.get("polarity"))
-    if not any(p.get("operation_id") == named.get("operation_id") and p.get("address") == named.get("address")
-               for p in pending):
-        return "named operation %s is not the pending operation" % named.get("operation_id")
+    console_id = named.get("console_operation_id", named.get("operation_id"))
+    console_address = named.get("console_address", named.get("address"))
+    if not any(p.get("operation_id") == console_id and p.get("address") == console_address for p in pending):
+        return "named operation %s is not the pending operation" % console_id
     return None
 
 
@@ -325,14 +384,27 @@ def decide_participant(facts: dict, output: str, *, max_age_ms: float = MAX_AGE_
         return decision("L1", False, "silent")
     if facts.get("unknown"):
         return decision("L1", False, "; ".join(facts["unknown"]))
-    old = sorted(name for name, age in facts.get("ages_ms", {}).items() if age > max_age_ms)
+    bounds = facts.get("age_bounds_ms") or {}
+    old = sorted(name for name, age in facts.get("ages_ms", {}).items() if age > bounds.get(name, max_age_ms))
     if old or len(facts.get("ages_ms", {})) != len(INTERLOCK_READS):
         return decision("L1", False, "read older than %s ms: %s" % (max_age_ms, ", ".join(old) or "age unknown"))
     if facts["raw_alarm"] or facts["alarm_flag"]:
         return decision("L2", False, "alarm %d flag %s" % (facts["raw_alarm"], facts["alarm_flag"]))
     function = facts["functions"][index]
     polarity = (facts["polarity"] >> index) & 1
-    if named is not None and named.get("address") == facts.get("address") and facts["running"]:
+    if isinstance(named, list):
+        named = next((m for m in named if m.get("address") == facts.get("address")), None)
+    if facts.get("io_source"):
+        # Wired bench 07: the member's own pending operation reserves the axis.
+        if named is None or named.get("address") != facts.get("address"):
+            return decision("L4", False, "pre-start io words admitted only for a named member")
+        mismatch = _named_mismatch(named, output, terminal, function, polarity, pending)
+        if mismatch is not None:
+            return decision("L4", False, "named member mismatch: " + mismatch)
+        if facts["running"]:
+            return decision("L3", True, "named running member, effect %s (pre-start io read)" % named["effect"])
+        # A named member stopping under its own operation: the ordinary rows decide.
+    elif named is not None and named.get("address") == facts.get("address") and facts["running"]:
         mismatch = _named_mismatch(named, output, terminal, function, polarity, pending)
         if mismatch is None:
             return decision("L3", True, "named running member, effect %s" % named["effect"])
@@ -346,10 +418,22 @@ def decide_participant(facts: dict, output: str, *, max_age_ms: float = MAX_AGE_
     return decision("L7", True, "%s holds function %d" % (terminal, function))
 
 
-def _foreign_pending(pending, named: dict | None) -> list:
-    """Accepted operations still pending that are not the named running member's."""
-    return [p for p in pending if not (named is not None and p.get("operation_id") == named.get("operation_id")
-                                       and p.get("address") == named.get("address"))]
+def _members(named) -> list:
+    """Named running members as a list (one dict, a list of them, or None)."""
+    if named is None:
+        return []
+    return list(named) if isinstance(named, list) else [named]
+
+
+def _foreign_pending(pending, named) -> list:
+    """Accepted operations still pending that are not a named running member's.
+    A group operation names its console operation through ``console_operation_id``."""
+    members = _members(named)
+
+    def own(p):
+        return any(p.get("operation_id") == m.get("console_operation_id", m.get("operation_id")) and
+                   p.get("address") == m.get("console_address", m.get("address")) for m in members)
+    return [p for p in pending if not own(p)]
 
 
 def isolation_decision(output: str, participants: dict, *, max_age_ms: float = MAX_AGE_MS,
@@ -365,7 +449,9 @@ def isolation_decision(output: str, participants: dict, *, max_age_ms: float = M
     if not participants:
         return {"decision": "refuse", "row": "L1", "address": None, "reason": "no participant on the line",
                 "participants": []}
-    rows = [decide_participant(participants[a], output, max_age_ms=max_age_ms, named=named, pending=pending)
+    members = _members(named)
+    rows = [decide_participant(participants[a], output, max_age_ms=max_age_ms,
+                               named=next((m for m in members if m.get("address") == a), None), pending=pending)
             for a in sorted(participants)]
     foreign = _foreign_pending(pending, named)
     if foreign:
@@ -430,7 +516,8 @@ def interlock(console, output: str, scenario: dict, *, timeout_s=5.0) -> dict:
     terminal = FIXTURE["outputs"][output]
     index = TERMINALS.index(terminal)
     max_age_ms = scenario.get("max_age_ms", MAX_AGE_MS)
-    named = next((m for m in scenario.get("running_members", []) if m.get("output") == output), None)
+    members = [m for m in scenario.get("running_members", []) if m.get("output") == output]
+    named = members[0] if len(members) == 1 else (members or None)
     entry = {"output": output, "terminal": terminal, "max_age_ms": max_age_ms, "named": named,
              "decision": "refuse", "row": None, "reason": None, "reads": {}}
     declarations = scenario.get("declarations")
@@ -463,7 +550,10 @@ def interlock(console, output: str, scenario: dict, *, timeout_s=5.0) -> dict:
     try:
         for address in participants:
             reads[address] = {}
+            member = next((m for m in members if m.get("address") == address and "io_read" in m), None)
             for name in INTERLOCK_READS:
+                if name == "io" and member is not None:
+                    continue  # Its own operation reserves the axis: the pre-start io read stands (row L3).
                 kwargs = {"driver_args": ("read",)} if name == "io" else {}
                 reads[address][name] = console.command(name, address=address, timeout_s=timeout_s, **kwargs)
             entry["reads"][address] = {name: {k: r.get(k) for k in ("ok", "operation_id", "started_us", "serviced_us")}
@@ -478,6 +568,10 @@ def interlock(console, output: str, scenario: dict, *, timeout_s=5.0) -> dict:
     marked = console.clock()
     entry["samples"] = {a: io_sample(a, reads[a]["read-state"]) for a in participants}
     entry["ordering"] = ordering = interlock_ordering(participants, reads, sent, drv, named)
+    entry["named_io"] = {m["address"]: {"operation_id": m["io_read"].get("operation_id"),
+                                        "started_us": m["io_read"].get("started_us"), "raw": m["io_read"].get("raw"),
+                                        "problem": named_io_problem(m)}
+                         for m in members if "io_read" in m}
     entry["bench_before"] = _bench_view(view)
     if not view.get("ok"):
         entry.update(row="L1", reason="bench view refused: %s" % view.get("result"))
@@ -489,7 +583,9 @@ def interlock(console, output: str, scenario: dict, *, timeout_s=5.0) -> dict:
     pending = pending_operations(console)
     entry["pending"] = pending
     extra_ms = (console.clock() - marked) * 1000.0
-    facts = {a: participant_facts(a, reads[a], view.get("now_us"), extra_ms) for a in participants}
+    facts = {a: participant_facts(a, reads[a], view.get("now_us"), extra_ms,
+                                  named=next((m for m in members if m.get("address") == a and "io_read" in m), None))
+             for a in participants}
     entry["facts"] = facts
     result = isolation_decision(output, facts, max_age_ms=max_age_ms, named=named, pending=pending)
     entry.update(decision=result["decision"], row=result["row"], reason=result["reason"],
@@ -506,17 +602,17 @@ def interlock_ordering(participants, reads: dict, sent: list, drv: dict, named: 
     ``drv`` reports the last of them as the latest admitted operation, with no
     owner request pending (unless a named running member's operation runs)."""
     problems = []
-    expected = [name for _ in participants for name in INTERLOCK_READS] + ["drv", "bench"]
+    expected = [name for a in participants for name in INTERLOCK_READS if name in reads[a]] + ["drv", "bench"]
     others = [name for name in sent if name != "release"]
     if others != expected:
         problems.append("commands sent %s, expected %s" % (others, expected))
-    ids = [reads[a][name].get("operation_id") for a in participants for name in INTERLOCK_READS]
+    ids = [reads[a][name].get("operation_id") for a in participants for name in INTERLOCK_READS if name in reads[a]]
     if not all(type(i) is int and i > 0 for i in ids) or any(b != a + 1 for a, b in zip(ids, ids[1:])):
         problems.append("read operation IDs %s are not consecutive" % ids)
     if not drv.get("ok") or (ids and drv.get("operation_id") != ids[-1]):
         problems.append("latest admitted operation %s, last interlock read %s" % (drv.get("operation_id"),
                                                                                   ids[-1] if ids else None))
-    if named is None and drv.get("pending"):
+    if not _members(named) and drv.get("pending"):
         problems.append("owner reports %s pending requests" % drv.get("pending"))
     return {"operation_ids": ids, "drv_operation_id": drv.get("operation_id"), "drv_pending": drv.get("pending"),
             "sent": sent, "problems": problems}
@@ -544,8 +640,12 @@ def bench_on(console, output: str, hold_ms: int, record: dict, *, timeout_s=5.0)
     on_us = entry["on"]["outputs"][output]["on_us"]
     ages = {a: {name: round((on_us - r["started_us"]) / 1000.0, 3) for name, r in reads.items()}
             for a, reads in entry["reads"].items()}
+    for address, view in (entry.get("named_io") or {}).items():
+        if type(view.get("started_us")) is int:
+            ages.setdefault(address, {})["io (pre-start)"] = round((on_us - view["started_us"]) / 1000.0, 3)
     entry["age_at_on_ms"] = ages
-    if any(age > entry["max_age_ms"] for reads in ages.values() for age in reads.values()):
+    if any(age > (NAMED_IO_MAX_AGE_MS if name == "io (pre-start)" else entry["max_age_ms"])
+           for reads in ages.values() for name, age in reads.items()):
         entry["off_after_age"] = _bench_view(console.command("bench", host_args=("off",), timeout_s=timeout_s))
         raise BenchError("an interlock read was older than %s ms at the ON; all outputs switched off" % entry["max_age_ms"])
     return reply

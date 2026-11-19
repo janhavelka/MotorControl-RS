@@ -74,6 +74,20 @@ urgent admission, then observes a new checked non-running report. RUNNING proves
 neither target speed nor acceleration; a stopped report is not independent shaft
 standstill. Normal success needs fresh activity and checked stop observation.
 
+Stop and release inputs (wired bench 07). The standalone `startVelocity`
+needs a fresh checked input status, like a move, and refuses before any frame
+while an assigned release (4), stop (5) or emergency stop (6) input reads
+active, with the named reasons of the [CLI contract](cli_contract.md#stop-and-release-inputs-wired-bench-07).
+With such an input assigned, `VelocityPrerequisites::stopInputMask` adds
+`0x0008` to each observation read. A report with that input active before the
+timed stop fails the run `STOP_INPUT`; a stopped report after running, before
+the timed stop and without the input seen, fails it `STOPPED_EARLY`. Neither
+sends anything or moves the timed stop, which still runs once at its due time,
+so an input-stopped run is never reported complete. On drive 4 (`0x4EEA`/`0x0029`)
+at 30 rpm both inputs stopped the run before its timed stop: Y0 running-off
+95-99 ms after the `mosfet2` ON with function 5 and 21-28 ms (one trial 98 ms)
+with function 6 ([report](reports/2026-11-19_wired_bench_07_stop_release_inputs.md)).
+
 Stop eligibility serviced later than stopDueUs plus one supplied poll interval
 records SERVICE_MISSED, even if a later checked stop succeeds. This is a host
 service obligation, not an ESS refresh/watchdog or physical stop latency bound.

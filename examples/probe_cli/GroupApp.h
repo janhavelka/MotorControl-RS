@@ -476,10 +476,13 @@ void serviceGroupMove(App& a, uint64_t now) {
     for (uint8_t i = 0; i < r.count; ++i)
         if (auto* m = groupMember(a, r.members[i].address)) servicePositionStage(a, m->stage, now);
     // A stop, cancellation or recovery of any member before every start resolved
-    // ends the sequence at once: no later stage or start is sent.
+    // ends the sequence at once: no later stage or start is sent. So does a
+    // started member's report of its stop/release input active (wired bench 07):
+    // the inputs are shared, so a later start would meet the same input.
     for (uint8_t i = 0; !r.aborted && !op.startsDone && i < r.count; ++i) {
         const auto* record = findRecord(a, r.members[i].operationId);
-        if (record && (record->interruptedByStop || record->cancelContinuation || (record->groupWaiting && terminal(a, *record)))) {
+        if (record && (record->interruptedByStop || record->cancelContinuation || (record->groupWaiting && terminal(a, *record)) ||
+                       (record->kind == App::OperationKind::MOVE && record->move.stopInputObserved))) {
             r.aborted = true; r.failedAddress = r.members[i].address;
         }
     }
@@ -641,6 +644,7 @@ bool validGroupIntent(const MotorControlRS::MoveRequest& move) {
 Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveRequest& supplied,
                              Probe::GroupReply& reply, const Probe::GroupMemberMoves* individual = nullptr) {
     using namespace MotorControlRS;
+    a.settingsRefusal = Probe::SettingsRefusal();
     const auto policy = individual ? individual->onFailure : supplied.onFailure;
     const auto start = individual ? individual->start : supplied.start;
     const bool staged = start == Probe::GroupStartMode::STAGED;
@@ -731,6 +735,8 @@ Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveR
         if (!checked) {
             for (uint8_t j = 0; j <= i; ++j) clearRecord(a.records[GROUP_MOVE_FIRST + j]);
             reply.address = m.address;
+            // A member's active stop/release input (wired bench 07) is named; no member is written.
+            if (!readiness) noteStopInputRefusal(a, stopInputs(facts, now));
             return !readiness ? Probe::Action::UNAVAILABLE :
                 checked.code == Err::UNSUPPORTED ? Probe::Action::UNSUPPORTED : Probe::Action::INVALID;
         }
@@ -954,6 +960,7 @@ const Probe::GroupView& buildGroupView(App& a) {
 Probe::Action groupCommand(void* context, uint32_t commandId, const Probe::GroupCommand& command, Probe::GroupReply& reply) {
     App& a = *static_cast<App*>(context);
     reply = Probe::GroupReply();
+    a.settingsRefusal = Probe::SettingsRefusal(); // Only this command's own refusal is named.
     Probe::Action result = Probe::Action::INVALID;
     switch (command.kind) {
     case Probe::GroupCommandKind::SHOW: case Probe::GroupCommandKind::STATUS: case Probe::GroupCommandKind::PLAN_SHOW:

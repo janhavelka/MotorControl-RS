@@ -1062,10 +1062,13 @@ void Console::action(uint32_t id, const char* command, Action result, uint8_t ad
         if (!append(output_, sizeof(output_), used, ",\"replaced_operation_id\":%lu,\"stop_escalation\":%s}",
             static_cast<unsigned long>(replacedOperationId), boolean(stopEscalation))) return;
     }
-    // Settings refusals decided by the selected axis's input facts name their cause.
+    // Settings refusals decided by the selected axis's input facts name their
+    // cause, and so do motion refusals the stop/release rule decided (wired bench 07).
     const bool setting = std::strcmp(command, "driver") == 0 || std::strcmp(command, "segment") == 0 ||
         std::strcmp(command, "tuning") == 0 || std::strcmp(command, "home-auxiliary") == 0 ||
-        std::strcmp(command, "motion-profile-start-speed") == 0 || std::strcmp(command, "motion-profile-stage") == 0;
+        std::strcmp(command, "motion-profile-start-speed") == 0 || std::strcmp(command, "motion-profile-stage") == 0 ||
+        std::strncmp(command, "move-", 5) == 0 || std::strcmp(command, "velocity") == 0 ||
+        std::strcmp(command, "home") == 0 || std::strcmp(command, "group-move") == 0 || std::strcmp(command, "enable") == 0;
     SettingsRefusal refusal;
     if (result != Action::OK && setting && host_.settingsRefusal && host_.settingsRefusal(host_.context, refusal) && refusal.reason) {
         std::size_t used = std::strlen(output_) - 1;
@@ -2575,7 +2578,7 @@ void Console::dispatch() noexcept {
         const auto caps = Ess::readCapabilities();
         Snapshot snapshot; if (host_.snapshot) host_.snapshot(host_.context, snapshot);
         std::snprintf(output_, sizeof(output_),
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"caps\",\"ok\":true,\"probe\":%s,\"identity\":%s,\"config\":%s,\"state\":%s,\"velocity_parameters\":%s,\"homing_parameters\":%s,\"max_steps\":%u,\"max_reply_bytes\":%u,\"writes\":%s,\"motion\":%s,\"write_response_confirmed\":%s,\"axis_reserved\":%s,\"actions\":%s,\"device_queue_guarantee\":false,\"velocity\":%s,\"configured_ramp_policy\":true,\"acceleration_mapping\":false,\"velocity_unsupported\":[\"jerk\",\"blending\",\"live_updates\",\"torque\",\"current\",\"external_jog\"],\"driver_settings\":%s,\"limit_pair_writes\":false,\"home\":%s,\"home_methods\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,17,19,20,21,22,23,24,25,26,27,28,29,30,33,34,35],\"home_physical_qualified\":false,\"io_settings\":%s,\"input_terminals\":4,\"output_terminals\":2,\"no_function\":0,\"input_function_codes\":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17],\"output_function_codes\":[0,1,2,3,4,5,9,10],\"output_function_11\":\"not_admitted\",\"cross_mapped_custom\":\"not_admitted\",\"output_status_mapping\":\"recorded_y0\",\"input_mask\":15,\"output_mask\":3,\"external_enable_precedence\":\"unknown\",\"electrical_output_state_known\":false,\"segment_storage\":16,\"maximum_input_selections\":8,\"segment_execution\":\"external_input\",\"segment_pulse_writes\":false,\"negative_segment_speed_encoding\":\"unresolved\",\"control_settings\":%s,\"control_algorithm_codes\":[1,2],\"configured_encoder_is_identification\":false,\"current_percent_base\":\"unresolved\",\"effective_current_limit_from_peak\":false,\"tuning\":%s,\"tuning_groups\":[\"filters\",\"current-loop\",\"la\",\"collision\"],\"tuning_physical_scaling_known\":false,\"collision_003b_003c_access\":\"unresolved\",\"persistence\":%s,\"persistence_operations\":[\"save\",\"factory_restore\"],\"persistence_verified_all\":false,\"persistence_invocation_limit\":2}",
+            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"caps\",\"ok\":true,\"probe\":%s,\"identity\":%s,\"config\":%s,\"state\":%s,\"velocity_parameters\":%s,\"homing_parameters\":%s,\"max_steps\":%u,\"max_reply_bytes\":%u,\"writes\":%s,\"motion\":%s,\"write_response_confirmed\":%s,\"axis_reserved\":%s,\"actions\":%s,\"device_queue_guarantee\":false,\"velocity\":%s,\"configured_ramp_policy\":true,\"acceleration_mapping\":false,\"velocity_unsupported\":[\"jerk\",\"blending\",\"live_updates\",\"torque\",\"current\",\"external_jog\"],\"driver_settings\":%s,\"limit_pair_writes\":false,\"home\":%s,\"home_methods\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,17,19,20,21,22,23,24,25,26,27,28,29,30,33,34,35],\"home_physical_qualified\":false,\"io_settings\":%s,\"input_terminals\":4,\"output_terminals\":2,\"no_function\":0,\"input_function_codes\":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17],\"output_function_codes\":[0,1,2,3,4,5,9,10],\"output_function_11\":\"not_admitted\",\"cross_mapped_custom\":\"not_admitted\",\"output_status_mapping\":\"recorded_y0\",\"input_mask\":15,\"output_mask\":3,\"external_enable_precedence\":\"release_input\",\"electrical_output_state_known\":false,\"segment_storage\":16,\"maximum_input_selections\":8,\"segment_execution\":\"external_input\",\"segment_pulse_writes\":false,\"negative_segment_speed_encoding\":\"unresolved\",\"control_settings\":%s,\"control_algorithm_codes\":[1,2],\"configured_encoder_is_identification\":false,\"current_percent_base\":\"unresolved\",\"effective_current_limit_from_peak\":false,\"tuning\":%s,\"tuning_groups\":[\"filters\",\"current-loop\",\"la\",\"collision\"],\"tuning_physical_scaling_known\":false,\"collision_003b_003c_access\":\"unresolved\",\"persistence\":%s,\"persistence_operations\":[\"save\",\"factory_restore\"],\"persistence_verified_all\":false,\"persistence_invocation_limit\":2}",
             static_cast<unsigned long>(id), boolean(caps.probe && callable(Command::PROBE)), boolean(caps.identity && callable(Command::READ_IDENTITY)), boolean(caps.config && callable(Command::READ_CONFIG)), boolean(caps.state && callable(Command::READ_STATE)), boolean(caps.velocityParameters && host_.startTypedRead && host_.snapshot), boolean(caps.homingParameters && host_.startTypedRead && host_.snapshot), caps.maxSteps, caps.maxReplyBytes,
             boolean(callable(Command::ENABLE) || callable(Command::MOVE) || (host_.startVelocity && host_.snapshot && host_.axis) || callable(Command::DRIVER) || (host_.startHome && host_.snapshot && host_.axis) || callable(Command::COMMUNICATION) || callable(Command::PERSISTENCE) || callable(Command::MOTION_PROFILE)),
             boolean(host_.startMove && host_.snapshot && host_.axis), boolean(snapshot.writeResponseConfirmed), boolean(snapshot.axisReserved), callable(Command::ENABLE) ? "[\"enable\",\"release\",\"clear_alarm\",\"clear_position\",\"stop_normal\",\"stop_fast\"]" : "[]", boolean(host_.startVelocity && host_.snapshot && host_.axis), boolean(host_.startDriver && host_.snapshot), boolean(host_.startHome && host_.snapshot && host_.axis), boolean(host_.startDriver && host_.snapshot), boolean(host_.startDriver && host_.snapshot), boolean(host_.startDriver && host_.snapshot), boolean(host_.persistence != nullptr));
@@ -3364,6 +3367,14 @@ bool Console::formatMove(uint32_t id, uint32_t commandId, uint32_t operationId,
             static_cast<long>(c.observedPosition), c.observedSpeed) &&
             actionEvidence(output_, sizeof(output_), used, c.positionMatchEvidence) && append(output_, sizeof(output_), used, "}");
     }
+    if (fits) {
+        // Wired bench 07 witnesses: assigned stop/release inputs and what the observation saw.
+        --used;
+        fits = append(output_, sizeof(output_), used,
+            ",\"stop_inputs\":{\"mask\":%u,\"active_low\":%u,\"observed\":%s,\"raw_inputs\":%u,\"stopped_polls\":%u},\"stop_input_evidence\":",
+            c.prerequisites.stopInputMask, c.prerequisites.stopInputActiveLow, boolean(c.stopInputObserved), c.rawInputs, c.stoppedPolls) &&
+            actionEvidence(output_, sizeof(output_), used, c.stopInputEvidence) && append(output_, sizeof(output_), used, "}");
+    }
     if (fits && relation.originalOperationId) {
         --used;
         fits = moveRelation(output_, sizeof(output_), used, relation) && append(output_, sizeof(output_), used, "}");
@@ -3462,7 +3473,14 @@ bool Console::formatVelocity(uint32_t id, uint32_t commandId, uint32_t operation
         ",\"last_observation\":{\"step\":%u,\"raw_hex\":\"%s\",\"earliest_us\":%llu,\"latest_us\":%llu,\"delivered_us\":%llu}",
         c.lastObservation.step, observedRaw, static_cast<unsigned long long>(c.lastObservation.earliestUs),
         static_cast<unsigned long long>(c.lastObservation.latestUs), static_cast<unsigned long long>(c.lastObservation.deliveredUs)) &&
-        stopRecoveryEvidence(output_, sizeof(output_), used, view) && append(output_, sizeof(output_), used, "}");
+        stopRecoveryEvidence(output_, sizeof(output_), used, view) &&
+        // Wired bench 07 witnesses before the timed stop.
+        append(output_, sizeof(output_), used,
+            ",\"stop_inputs\":{\"mask\":%u,\"active_low\":%u,\"observed\":%s,\"stopped_early\":%s,\"raw_inputs\":%u},\"stop_input_evidence\":",
+            c.prerequisites.stopInputMask, c.prerequisites.stopInputActiveLow, boolean(c.stopInputObserved),
+            boolean(c.stoppedEarly), c.rawInputs) &&
+        actionEvidence(output_, sizeof(output_), used, c.stopInputEvidence) && append(output_, sizeof(output_), used, ",\"stopped_evidence\":") &&
+        actionEvidence(output_, sizeof(output_), used, c.stoppedEvidence) && append(output_, sizeof(output_), used, "}");
     if (!fits || !appendReportSerial(used)) return false;
     emit(inspection ? 0 : operationId); return true;
 }

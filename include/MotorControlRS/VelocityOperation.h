@@ -41,7 +41,13 @@ enum class VelocityError : int32_t {
     INVALID_STATE, WRONG_CORRELATION, INVALID_EVENT, CLOCK_ERROR,
     DEADLINE_EXPIRED, TRANSPORT_FAILURE, CANCELLED, TIMING_UNQUALIFIED,
     UNCONFIRMED_RESPONSE, OBSERVATION_LIMIT, DRIVE_FAULT, SERVICE_MISSED,
-    ACTIVITY_NOT_OBSERVED
+    ACTIVITY_NOT_OBSERVED,
+    /** A profile-assigned stop/release input was reported active before the
+     * timed stop. A reported fact, not a proven cause; the timed stop still runs. */
+    STOP_INPUT,
+    /** Running was observed, then a stopped report before the timed stop with
+     * no active stop/release report: stopped early, cause unknown. */
+    STOPPED_EARLY
 };
 /** Shared exact conversion/quantization; output unchanged on error. NATIVE is
  * native motor rpm, not command steps/s. Other frames require only their actual

@@ -1251,12 +1251,19 @@ def check_move(item: dict, address: int | None, arguments: tuple[str, ...] | Non
                 item["endpoint_native"] != reference["native_position"] and
                 -2**31 <= item["endpoint_native"] < 2**31,
                 "position completion lacks a changed qualified endpoint")
-    observation_size, observation_bytes = (19, 14) if position_feedback else (9, 4)
+    # Wired bench 07: assigned stop/release inputs add 0x0008 to each observation.
+    stop = item.get("stop_inputs", {"mask": 0, "active_low": 0, "observed": False, "raw_inputs": 0, "stopped_polls": 0})
+    require(isinstance(stop, dict) and integer(stop.get("mask"), 0, 15) and integer(stop.get("active_low"), 0, 15) and
+            not stop["active_low"] & ~stop["mask"] and type(stop.get("observed")) is bool and
+            integer(stop.get("raw_inputs"), 0, 65535) and integer(stop.get("stopped_polls"), 0, 255) and
+            (stop["mask"] or not stop["observed"]), "stop-input witnesses are invalid")
+    observation_size, observation_bytes = (19, 14) if position_feedback else (11, 6) if stop["mask"] else (9, 4)
     evidence = {}
     specs = [("staging_evidence", trigger_step - 1, setup_size), ("trigger_evidence", trigger_step, 8),
              ("activity_evidence", None, 8), ("last_observation", None, 8), ("failure_evidence", None, None)]
     if "setup" in item or setup == "verify": specs.append(("verification_evidence", 0, 8))
     if "position_match_evidence" in item: specs.append(("position_match_evidence", None, 8))
+    if "stop_input_evidence" in item: specs.append(("stop_input_evidence", None, 8))
     for name, token, tx_size in specs:
         entry = item.get(name)
         require(isinstance(entry, dict), "missing " + name)
@@ -1391,6 +1398,13 @@ def check_move(item: dict, address: int | None, arguments: tuple[str, ...] | Non
             require(activity == observed, "same activity and observation token changed retained evidence")
     else:
         require(item.get("raw_alarm") is None and item.get("raw_motion") is None and evidence["last_observation"][2], "unknown report publishes values")
+    if stop["observed"]:
+        seen, seen_raw = confirmed("stop_input_evidence", (item["address"], 3, observation_bytes), observation_size)
+        require(trigger["delivered_us"] < seen["earliest_us"] and seen["step"] <= item["polls"] + trigger_step and
+                (int.from_bytes(seen_raw[7:9], "big") ^ stop["active_low"]) & stop["mask"],
+                "stop-input report lacks an active assigned input")
+    else:
+        require(evidence.get("stop_input_evidence", (None, None, True))[2], "unobserved stop input retains a report")
     if position_feedback and item["observation_known"]:
         pair = [int.from_bytes(raw[i:i+2], "big") for i in (11, 13)]
         if prerequisites["word_order"]: pair.reverse()
@@ -1450,6 +1464,17 @@ def check_move(item: dict, address: int | None, arguments: tuple[str, ...] | Non
         elif not failure["response_confirmed"] and not (failure["step"] == trigger_step and unconfirmed_trigger):
             expected = "unconfirmed_response"
         elif failure["step"] > trigger_step and len(raw) == observation_size and (int.from_bytes(raw[3:5], "big") or int.from_bytes(raw[5:7], "big") & 0x78):
+            expected = "reply_error"
+        elif failure["step"] > trigger_step and len(raw) == observation_size and item["status"] == "ILLEGAL_VALUE" and \
+                item["detail"] in (24, 25):
+            # Wired bench 07: STOP_INPUT (24) after a report with an assigned
+            # stop/release input active; STOPPED_SHORT (25) after consecutive
+            # stopped reports without arrival. Neither is a completion.
+            motion = int.from_bytes(raw[5:7], "big")
+            require(not motion & 4 and (
+                (item["detail"] == 24 and stop["observed"]) or
+                (item["detail"] == 25 and not stop["observed"] and item["running_observed"] and not motion & 1 and
+                 stop["stopped_polls"] >= 2)), "stopped-short failure lacks its witness")
             expected = "reply_error"
         else:
             require(item["outcome"] in ("deadline", "observation_limit") and
@@ -1586,8 +1611,14 @@ def check_velocity(item: dict, address: int | None, arguments: tuple[str, ...] |
     for name in ("staging_evidence", "trigger_evidence"):
         if item["ok"]:
             require(evidence[name][0]["latest_us"] <= item["stop_due_us"], name + " exceeds finite run deadline")
+    stop = item.get("stop_inputs", {"mask": 0, "active_low": 0, "observed": False, "stopped_early": False, "raw_inputs": 0})
+    require(isinstance(stop, dict) and integer(stop.get("mask"), 0, 15) and integer(stop.get("active_low"), 0, 15) and
+            not stop["active_low"] & ~stop["mask"] and type(stop.get("observed")) is bool and
+            type(stop.get("stopped_early")) is bool and integer(stop.get("raw_inputs"), 0, 65535) and
+            (stop["mask"] or not stop["observed"]), "stop-input witnesses are invalid")
+    size, data = (11, 6) if stop["mask"] else (9, 4)
     if item["running_observed"]:
-        activity, raw = confirmed("activity_evidence", (item["address"], 3, 4), 9)
+        activity, raw = confirmed("activity_evidence", (item["address"], 3, data), size)
         require(item["execution"] == "acknowledged" and raw[3:5] == b"\0\0" and int.from_bytes(raw[5:7], "big") & 4 and
                 not int.from_bytes(raw[5:7], "big") & 0x78 and 2 <= activity["step"] <= item["polls"] + 1 and
                 activity["earliest_us"] > evidence["trigger_evidence"][0]["delivered_us"] and activity["latest_us"] <= item["deadline_us"], "running report differs")
@@ -1599,7 +1630,7 @@ def check_velocity(item: dict, address: int | None, arguments: tuple[str, ...] |
             isinstance(latest.get("raw_hex"), str) and re.fullmatch(r"(?:[0-9a-fA-F]{2}){0,19}", latest["raw_hex"]) is not None, "latest observation invalid")
     if item["observation_known"]:
         raw = bytes.fromhex(latest["raw_hex"])
-        require(len(raw) == 9 and raw[:3] == bytes((item["address"], 3, 4)) and wire_crc(raw) == 0 and
+        require(len(raw) == size and raw[:3] == bytes((item["address"], 3, data)) and wire_crc(raw) == 0 and
                 item["execution"] == "acknowledged" and item["polls"] >= 1 and latest["step"] == item["polls"] + 1 and
                 latest["earliest_us"] > evidence["trigger_evidence"][0]["delivered_us"] and
                 item["started_us"] <= latest["earliest_us"] <= latest["latest_us"] <= min(latest["delivered_us"], item["deadline_us"]) and
@@ -1646,6 +1677,21 @@ def check_velocity(item: dict, address: int | None, arguments: tuple[str, ...] |
         absent_activity = (item["outcome"] == "observation_limit" and item["detail"] == 25 and
                            not item["running_observed"] and item["stop_completion"] == "observed")
         require(stop_failed or local_deadline or absent_activity, "failure lacks terminal evidence")
+    if not item["ok"] and item["outcome"] == "reply_error" and item["status"] == "ILLEGAL_VALUE" and item["detail"] in (26, 27):
+        # Wired bench 07: STOP_INPUT (26) or STOPPED_EARLY (27) before the
+        # timed stop; the failure evidence is that report, the stop still ran.
+        name = "stop_input_evidence" if item["detail"] == 26 else "stopped_evidence"
+        witness = item.get(name)
+        require(isinstance(witness, dict) and (stop["observed"] if item["detail"] == 26 else
+                (stop["stopped_early"] and not stop["observed"])) and
+                {k: witness.get(k) for k in ("step", "raw_hex", "earliest_us", "latest_us", "delivered_us")} ==
+                {k: item["failure_evidence"].get(k) for k in ("step", "raw_hex", "earliest_us", "latest_us", "delivered_us")},
+                "stop-input failure lacks its retained report")
+        raw = bytes.fromhex(witness["raw_hex"])
+        require(len(raw) == size and raw[:3] == bytes((item["address"], 3, data)) and wire_crc(raw) == 0 and
+                (item["detail"] == 27 and not int.from_bytes(raw[5:7], "big") & 4 or
+                 item["detail"] == 26 and (int.from_bytes(raw[7:9], "big") ^ stop["active_low"]) & stop["mask"]),
+                "stop-input report differs")
 
 
 def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | None) -> None:

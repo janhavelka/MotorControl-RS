@@ -491,7 +491,8 @@
         "evidence": [
           "test/position_test.cpp",
           "test/move_app_test.cpp",
-          "test/group_app_test.cpp"
+          "test/group_app_test.cpp",
+          "test/stop_input_parity_test.py"
         ]
       },
       "hardware": {
@@ -499,9 +500,10 @@
         "evidence": [
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json",
-          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md",
+          "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md"
         ],
-        "reason": "Positive finite relative commands of 100 native increments at 60 RPM, configured native ramps and fresh running/completion reports PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. The new per-member group route has no physical credit from these older records."
+        "reason": "Positive finite relative commands of 100 native increments at 60 RPM, configured native ramps and fresh running/completion reports PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. The new per-member group route has no physical credit from these older records. Wired bench 07 (19 November 2026, drive 4): 3000-step relative moves at 60 rpm stopped short by X3 = 5 or 6 pulses (S1/S2/S8/S9), each ended STOP_INPUT or STOPPED_SHORT, never complete, with no further start; staged group moves on drives 1, 2 and 4 (G1) the same."
       },
       "id": "move_relative",
       "kind": "ACTION",
@@ -581,7 +583,8 @@
           "test/actions_test.cpp",
           "test/probe_app_test.cpp",
           "test/probe_console_test.cpp",
-          "test/bench_probe_test.py"
+          "test/bench_probe_test.py",
+          "test/move_app_test.cpp"
         ]
       },
       "hardware": {
@@ -589,9 +592,10 @@
         "evidence": [
           "docs/archive/reports/ess_release_23_2026-10-05.md",
           "docs/archive/reports/ess_release_23_2026-10-05.json",
-          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md",
+          "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md"
         ],
-        "reason": "Explicit enable command and fresh drive-state observation PASS in the recorded prompt23 preceding-image (994d20...) finite action campaign; final image 041232... repeated read-only checks only, with the same production motor path. Archived software outcomes report acknowledged execution and observed completion under the declared receiver topology; independent electrical response-source, winding-current, shaft and external-input precedence measurements remain absent."
+        "reason": "Explicit enable command and fresh drive-state observation PASS in the recorded prompt23 preceding-image (994d20...) finite action campaign; final image 041232... repeated read-only checks only, with the same production motor path. Archived software outcomes report acknowledged execution and observed completion under the declared receiver topology; independent electrical response-source, winding-current, shaft and external-input precedence measurements remain absent. Wired bench 07 R3 (19 November 2026, drive 4): with X3 = 4 held an acknowledged enable left the drive released for the whole hold and it re-enabled by itself when the input went inactive (external-input precedence: the release input). The standalone enable is therefore refused before TX while a fresh input status shows an assigned release input active; caps external_enable_precedence release_input."
       },
       "reason": "Explicit one-shot command plus bounded checked state observation; acknowledgement is distinct from reported completion and physical effect."
     },
@@ -713,9 +717,10 @@
         "evidence": [
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json",
-          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md",
+          "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md"
         ],
-        "reason": "Normal stop during a finite 250-increment move PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified."
+        "reason": "Normal stop during a finite 250-increment move PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. Wired bench 07 S7/S8 (19 November 2026, drive 4, 3000-step moves at 60 rpm): Y0 running off 112-215 ms at 100 ms and 933-940 ms at 1000 ms deceleration after the stop admission; an assigned emergency-stop input during a 1000 ms normal stop ramp ended it about 23 ms after the input."
       },
       "reason": "Explicit one-shot command plus bounded checked state observation; acknowledgement is distinct from reported completion and physical effect."
     },
@@ -755,9 +760,10 @@
         "evidence": [
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json",
-          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md",
+          "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md"
         ],
-        "reason": "Direct stop during a finite 250-increment move PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified."
+        "reason": "Direct stop during a finite 250-increment move PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. Wired bench 07 S7/S8 (19 November 2026, drive 4, 3000-step moves at 60 rpm): Y0 running off 23-143 ms at 100 ms and 23-28 ms at 1000 ms deceleration after the stop admission; an assigned emergency-stop input during a 1000 ms normal stop ramp ended it about 23 ms after the input."
       },
       "reason": "Explicit one-shot command plus bounded checked state observation; acknowledgement is distinct from reported completion and physical effect."
     },
@@ -794,15 +800,17 @@
           "test/move_app_test.cpp",
           "test/probe_console_test.cpp",
           "test/bench_probe_test.py",
-          "test/group_app_test.cpp"
+          "test/group_app_test.cpp",
+          "test/stop_input_parity_test.py"
         ]
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/2026-11-16_hil_regression.md"
+          "docs/reports/2026-11-16_hil_regression.md",
+          "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md"
         ],
-        "reason": "bench_scenarios absolute and return phases within the raw 0..250 fixture window on drive 1 (e56d4c0 and baa91c9) and return phases on drives 2 and 4 (baa91c9), each observed. Outside that window the scenario refuses before writes. Group per-member absolute targets and independent shaft/origin/path measurement are NOT RUN."
+        "reason": "bench_scenarios absolute and return phases within the raw 0..250 fixture window on drive 1 (e56d4c0 and baa91c9) and return phases on drives 2 and 4 (baa91c9), each observed. Outside that window the scenario refuses before writes. Group per-member absolute targets and independent shaft/origin/path measurement are NOT RUN. Wired bench 07 (19 November 2026, drive 4): 3000-step absolute moves at 60 rpm stopped short by X3 = 5 or 6 pulses (S1/S2/S8/S9), each ended STOP_INPUT or STOPPED_SHORT, never complete, with no further start; staged group moves on drives 1, 2 and 4 (G1) the same."
       },
       "reason": "Unwrapped absolute and explicitly wrapped paths use the existing finite mover and START_POSITION choice, counted separately under move_relative; full turns, direction/ties, fresh references and selected-path limits are retained. Multi-drive09 uses these same core preparations for copied per-member intents through submitGroupMoves and the inert group plan submit route; each member retains its own target, reference, staging and completion evidence."
     },
@@ -990,18 +998,20 @@
           "test/velocity_test.cpp",
           "test/velocity_app_test.cpp",
           "test/probe_console_test.cpp",
-          "test/bench_probe_test.py"
+          "test/bench_probe_test.py",
+          "test/stop_input_parity_test.py"
         ]
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
           "docs/reports/2026-11-16_hil_regression.md",
-          "docs/reports/2026-11-16_unattended_bench_tests.md"
+          "docs/reports/2026-11-16_unattended_bench_tests.md",
+          "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md"
         ],
-        "reason": "Finite +60 native rpm for 1,000 ms with configured 100 ms ramps and stated rpm/ramp/inputs facts; normal and fast stop endings observed on drive 1 (exact image e56d4c0, 16 November 2026). Negative speed with the stated negative fact on image baa91c9: -6 and -60 rpm ran in reverse with the positive magnitude on drives 1, 2 and 4 (two's-complement word). The application admits only +/-60 rpm. Longer durations and independent velocity/acceleration/stop-distance measurement are NOT RUN."
+        "reason": "Finite +60 native rpm for 1,000 ms with configured 100 ms ramps and stated rpm/ramp/inputs facts; normal and fast stop endings observed on drive 1 (exact image e56d4c0, 16 November 2026). Negative speed with the stated negative fact on image baa91c9: -6 and -60 rpm ran in reverse with the positive magnitude on drives 1, 2 and 4 (two's-complement word). The application admits only +/-60 rpm. Longer durations and independent velocity/acceleration/stop-distance measurement are NOT RUN. Wired bench 07 (19 November 2026, drive 4, 30 rpm for 1000 ms): X3 = 5 and 6 pulses stopped 10 of 10 runs before their timed stop (classified input-stopped with every witness), each reported STOP_INPUT; a held stop input refused the velocity before TX."
       },
-      "reason": "Finite duration includes setup; checked signed speed plus retained native ramps, one start, bounded observations and existing priority stop; no acceleration formula, external JOG, live target updates or watchdog inferred.",
+      "reason": "Finite duration includes setup; checked signed speed plus retained native ramps, one start, bounded observations and existing priority stop; no acceleration formula, external JOG, live target updates or watchdog inferred. With an assigned stop/release input (functions 4-6) the standalone admission needs a fresh checked input status, refuses while one reads active (stop_input_active, release_input_active), and the observation reads 0x0008; a run with the input reported active or stopped before its timed stop fails STOP_INPUT or STOPPED_EARLY and is never reported complete.",
       "id": "velocity_start",
       "kind": "ACTION",
       "records": [
@@ -1386,9 +1396,10 @@
         "state": "PASS",
         "evidence": [
           "docs/reports/2026-11-02_standalone_14_bench_regression.md",
-          "docs/reports/2026-11-16_hil_regression.md"
+          "docs/reports/2026-11-16_hil_regression.md",
+          "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md"
         ],
-        "reason": "Methods 33, 34 and 35 and stop during a method 34 search on a free shaft; switch methods NOT RUN."
+        "reason": "Methods 33, 34 and 35 and stop during a method 34 search on a free shaft; switch methods NOT RUN. Wired bench 07 S4 (19 November 2026, drive 4): a 200 ms stop input during the method 33 and 34 search stopped it; no home reported HOMED (cancelled when a fresh read showed the input, QUALIFICATION_REVOKED)."
       },
       "reason": "Ordinary submitHome/copyHomeResult and home route consume install/inspect/revoke qualification, from the public API or the typed console routes in host_routes, bound to checked CONFIG/MOTION/IO/HOMING_PARAMETERS. Explicit start after checked staging, qualified transitions and stopped/arrival plus zero. Copied revokeHome cancels before new reference publication while retaining settled zero/effects; stop uses existing urgent path. Methods1/2/17/33/34/35 use the same production path; sampled I/O does not establish every physical edge or internal Z passage.",
       "choices": [
@@ -1488,9 +1499,10 @@
           "docs/reports/2026-11-18_wired_bench_02_fixture_wiring.md",
           "docs/reports/2026-11-19_wired_bench_04_harness.md",
           "docs/reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md",
-          "docs/reports/2026-11-19_wired_bench_06_outputs.md"
+          "docs/reports/2026-11-19_wired_bench_06_outputs.md",
+          "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md"
         ],
-        "reason": "Thirteen explicit passive/unloaded settings updates and exact restoration PASS as stored-register evidence. Full assignment/physical-function qualification NOT_RUN; checked FC06 source/ACK remains unconfirmed, matching FC03 readback settles only stored values. On 16 November 2026 the M04 round trips (64 updates each, confirmed FC06 replies and full readback, exact restoration) also passed on drives 2 and 4; physical function effects stay NOT_RUN. On 18 November 2026 (wired bench 02) drive 1's board-declared connected X3 refused function 16 without ASSIGN facts before TX, then took 0 -> 16 -> 0 with facts (confirmed replies, readback); drive 4's board-declared Y0 took function 9 and custom 1/0 with one inverted aux1 edge per custom write. Stored-value and controller-timestamped evidence only; function 16 had no observable effect to test. On 19 November 2026 (wired bench 04) the harness restore route wrote drive 4 Y0 0 -> 9 -> 0 and drive 2 X3 0 -> 7 -> 0 with stated ASSIGN facts, each read back; with X3 = 7 the shared-output interlock refused mosfet2 before any ON. Stored-value evidence only. Wired bench 05 (19 November 2026): 81 connected-terminal writes on drives 1, 2, 4 (X0-X3 to function 0, polarity 1 and back at function 0 with mapping unknown, PIN 14+t, polarity with the measured mapping, power-up functions), each confirmed and read back, then drive 1 X3 17 with polarity 8 admitted only with the recorded mapping. Stored-value and drive-reported status evidence; no input function's drive effect. Wired bench 06 (19 November 2026): drive 4 Y0 functions 9, 0, 2, 4, 3, 5 and 1 and output polarity written through the ordinary route with stated facts (load indicator, levels either; the polarity change with mapping unknown is admitted for an either-level load only), each confirmed and read back, every one restored. Y0 output effects measured against aux1 and drive status (O1-O9: custom, polarity, running, arrival, homing complete, brake, alarm); the 0x0009 mapping is recorded (after inversion) for 0x4EEA/0x0029 Y0. Inputs and Y1 output effects stay unmeasured."
+        "reason": "Thirteen explicit passive/unloaded settings updates and exact restoration PASS as stored-register evidence. Full assignment/physical-function qualification NOT_RUN; checked FC06 source/ACK remains unconfirmed, matching FC03 readback settles only stored values. On 16 November 2026 the M04 round trips (64 updates each, confirmed FC06 replies and full readback, exact restoration) also passed on drives 2 and 4; physical function effects stay NOT_RUN. On 18 November 2026 (wired bench 02) drive 1's board-declared connected X3 refused function 16 without ASSIGN facts before TX, then took 0 -> 16 -> 0 with facts (confirmed replies, readback); drive 4's board-declared Y0 took function 9 and custom 1/0 with one inverted aux1 edge per custom write. Stored-value and controller-timestamped evidence only; function 16 had no observable effect to test. On 19 November 2026 (wired bench 04) the harness restore route wrote drive 4 Y0 0 -> 9 -> 0 and drive 2 X3 0 -> 7 -> 0 with stated ASSIGN facts, each read back; with X3 = 7 the shared-output interlock refused mosfet2 before any ON. Stored-value evidence only. Wired bench 05 (19 November 2026): 81 connected-terminal writes on drives 1, 2, 4 (X0-X3 to function 0, polarity 1 and back at function 0 with mapping unknown, PIN 14+t, polarity with the measured mapping, power-up functions), each confirmed and read back, then drive 1 X3 17 with polarity 8 admitted only with the recorded mapping. Stored-value and drive-reported status evidence; no input function's drive effect. Wired bench 06 (19 November 2026): drive 4 Y0 functions 9, 0, 2, 4, 3, 5 and 1 and output polarity written through the ordinary route with stated facts (load indicator, levels either; the polarity change with mapping unknown is admitted for an either-level load only), each confirmed and read back, every one restored. Y0 output effects measured against aux1 and drive status (O1-O9: custom, polarity, running, arrival, homing complete, brake, alarm); the 0x0009 mapping is recorded (after inversion) for 0x4EEA/0x0029 Y0. Inputs and Y1 output effects stay unmeasured. Wired bench 07 (19 November 2026): X3 = 4, 5 and 6 on drive 4 (and on drives 1, 2 and 4 for group moves) assigned through the ordinary route with ASSIGN facts (triggers-inhibited, protection-removal), each read back and removed again; drive effects measured through mosfet2: 5 stops with the configured deceleration (Y0 running off 108-114 ms after the ON at 100 ms, 930-938 ms at 1000 ms), 6 stops directly (21-23 ms, no alarm), 4 releases the motor while active and the drive re-enables by itself when it goes inactive; a serial enable does not override it. Input functions 1-3 and 7-17 and Y1 stay unmeasured, so the state stays NOT_RUN."
       },
       "reason": "Per-terminal exact commissioning facts admit inputs 0-17, outputs 0-5/9-10 and canonical custom outputs. Every FC06 intermediate is checked; connected terminals require confirmed replies. Source-qualified status/polarity mapping and declared load limits stay explicit; no replay or automatic rollback. Output 11/cross-mapping, startup and physical effects remain unresolved or untested. A no-function inversion (previous and final function 0) is admitted with UNKNOWN mapping on any terminal; the recorded mapping (model 0x4EEA, firmware 0x0029: after inversion) admits other polarity changes with a fresh identity.",
       "choices": [

@@ -74,6 +74,7 @@ there. See the [dependency and delivery handoff](../docs/archive/reports/2026-10
 | `bench_session.py` | Shared session/evidence implementation imported by the campaign tools |
 | `bench_records.py` | Wired-bench records: fixture, shared-output interlock, run folders, `result.json`, run checker, baseline comparison/restoration (snapshot routes for homing and JOG words), edge correlation; `check FOLDER` is offline |
 | `bench_outputs.py` | Wired bench 06 `outputs` scenario: drive 4 Y0 cases O1-O11, `aux1` edges against write TX/ACK/closure and state-sample brackets, set/clear events against `0x0007` |
+| `bench_stop_inputs.py` | Wired bench 07 `stop-inputs` scenario: X3 functions 4-6 during moves, velocity, homing, held stops, serial stops and group moves; interlocked `mosfet2` pulses with the named running member; Implement 3 trial classification, L1/LR/L2 tables |
 
 `bench_stress.py` is a separate, bench-specific campaign tool. It has its own
 console parser and is not covered by the strict parser claim above. It checks

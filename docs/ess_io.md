@@ -35,9 +35,9 @@ does not prove physical installation or continued trigger inhibition.
 | 1 origin | Origin sensor level | Home uses its method's sensor policy. A finite move keeps the existing origin policy. An active sensor may be assigned. |
 | 2 positive limit | Positive limit level | Home/move retain their limit policy. An active sensor may be assigned; removing a connected limit needs an explicit fact. |
 | 3 negative limit | Negative limit level | Same policy as 2, for the negative limit. |
-| 4 release | Valid level releases the motor | Conflicts with motor torque and motion. Require inactive level and external trigger inhibition before assignment. |
-| 5 stop | Valid level forces a stop | Conflicts with motion. Require inactive level and inhibition. |
-| 6 emergency stop | Valid level requests urgent stop | Conflicts with motion. Require inactive level and inhibition. |
+| 4 release | Valid level releases the motor; measured: released while active, re-enabled by itself when inactive, a serial enable does not override it | Conflicts with motor torque and motion. Require inactive level and external trigger inhibition before assignment. Motion and enable refuse while it reads active. |
+| 5 stop | Valid level forces a stop; measured: with the configured deceleration, like `stop normal` | Conflicts with motion. Require inactive level and inhibition. Motion refuses while it reads active. |
+| 6 emergency stop | Valid level requests urgent stop; measured: direct, like `stop fast`, no alarm | Conflicts with motion. Require inactive level and inhibition. Motion refuses while it reads active. |
 | 7 position | Page 27 says edge; page 17 says valid level | May start another position command. Require inactive level and continued inhibition; retain the source ambiguity. |
 | 8 speed | Level starts speed mode | May run indefinitely. Require inactive level and inhibition to assign; unassign for unattended finite moves. |
 | 9 JOG+ | Level starts positive JOG | Same finite-move restriction as 8. |
@@ -123,6 +123,43 @@ checked setter for this explicit disabling action. Inverting polarity and
 writing a custom output invalid are different operations. No-function does not
 document voltage, de-energization of an attached load, activation delay or
 persistence. An echo and matching register readback do not supply those facts.
+
+### Measured stop and release inputs (wired bench 07)
+
+Measured on 19 November 2026 ([wired bench 07](reports/2026-11-19_wired_bench_07_stop_release_inputs.md)):
+model `0x4EEA`, firmware `0x0029`, X3 driven by `mosfet2`, input filter 2,
+polarity 0, drive 4 (and drives 1, 2, 4 for group moves), moves of 3000 steps
+at 60 rpm, acceleration 100 ms. L1 is drive 4's Y0 running-off edge (function
+2) after the `mosfet2` ON on the controller clock, min/median/max; it includes
+the board input filter and is not electrical timing.
+
+| Input | Effect on a move | L1 | Further behavior |
+| --- | --- | --- | --- |
+| 5 stop | stops short with the configured deceleration; RUNNING clears at the end of the ramp, IN_POSITION stays 0 | 107.8/110.3/113.9 ms at 100 ms deceleration, 930.1/935.1/938.2 ms at 1000 ms; serial `stop normal` 111.5/115.3/214.7 and 932.5/935.6/940.4 ms after its admission | no restart after the release; a start sent while it is held is ignored and does not run after the release; no alarm |
+| 6 emergency stop | stops directly, independent of the deceleration setting | 20.5/22.1/22.8 ms at 100 ms, 20.6/21.9/23.0 ms at 1000 ms; serial `stop fast` 22.6/24.3/143.0 and 23.2/25.1/27.5 ms | as 5; no alarm latched; ends a running 1000 ms `stop normal` ramp about 23 ms after the ON |
+| 4 release | with Y0 = 2 (no brake function): RUNNING clears and the move stops short within about 15 ms; RELEASED from the first stationary sample (18 ms) | 13.2/14.6/15.3 ms (1000-step moves) | re-enables by itself when the input goes inactive; an acknowledged serial enable does not override it while active |
+
+The shortest tested pulse that stopped 3 of 3 moves at filter 2 was 10 ms for
+functions 5 and 6 alike; 5 ms stopped none (3 trials each) and widths between
+5 and 10 ms were not tested. This is consistent with the hardware manual's
+"greater than 10 ms" rule (p9), which it neither confirms nor contradicts
+exactly, and with the measured filter delay of about 5 ms at 2. Single
+trials took about 80-120 ms longer than the median (for example 98 ms for
+function 6 in a velocity run, where the drive still reported RUNNING with X3
+active 29-38 ms after the ON). Velocity (30 rpm) and homing searches (methods
+33 and 34) stop the same way. Group members each stop and report their own
+outcome.
+
+With output function 5 (brake) on Y0 the release input behaves differently:
+the brake output goes off 10.5/11.5/12.6 ms after the ON, but the motor is
+released only after the input has been held about 1.3 s (RELEASED reported
+1.19-1.31 s after the ON; during a move the drive keeps running until then).
+A shorter pulse (200 ms) releases nothing: the move runs to its end, and the
+brake output stays off with the motor enabled until the next enable or a
+completed release cycle. After a completed release the drive re-enables by
+itself when the input goes inactive and the brake output returns 212-214 ms
+later. With a real brake wired to Y0 this would apply the brake while the
+motor drives; the register behind the 1.3 s is not identified (prompt 16).
 
 ## Public preparation and retained effects
 
@@ -291,9 +328,11 @@ restart. Restart and wired-effect checks remain separate physical work.
 
 For known unconnected inputs, serial-only operations do not acquire a blanket
 home/limit/trigger wiring requirement. They still need their own documented
-mode, actual assignments, logical state and readiness policy. Serial enable
-versus an asserted external release input remains unresolved. No automatic
-reassignment, polarity workaround or precedence assumption resolves it.
+mode, actual assignments, logical state and readiness policy. An asserted
+external release input outranks a serial enable on `0x4EEA`/`0x0029`
+(measured, [wired bench 07](reports/2026-11-19_wired_bench_07_stop_release_inputs.md));
+the application refuses enable while it reads active. No automatic
+reassignment or polarity workaround changes that, and other firmware is not covered.
 
 ## Console and external-trigger handoff
 

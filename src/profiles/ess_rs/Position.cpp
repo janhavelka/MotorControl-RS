@@ -87,7 +87,8 @@ void beginMove(MoveContext& c, const ReadTarget& target, uint32_t id,
     if (c.request.setup == MoveSetup::USE_STORED) { c.step = c.triggerStep; c.setupCount = 0; }
 }
 uint16_t observationCount(const MoveContext& c) {
-    return c.prerequisites.positionFeedbackMatchesCommand ? 7 : 2;
+    // 0x0006/7 alarm and motion; 0x0008 inputs when stop/release terminals are assigned.
+    return c.prerequisites.positionFeedbackMatchesCommand ? 7 : c.prerequisites.stopInputMask ? 3 : 2;
 }
 uint16_t startValue(bool relative, PositionInterruption interruption) {
     return static_cast<uint16_t>(MotionCommandBit::START_POSITION) |
@@ -442,6 +443,12 @@ Status advanceMove(MoveContext& c, const ActionEvent& supplied, uint64_t nowUs) 
         const bool runningEarlier = c.runningObserved;
         ++c.polls; c.lastObservation = evidence; c.observationKnown = true;
         c.rawAlarm = words[0]; c.rawMotion = words[1];
+        if (observationCount(c) >= 3) {
+            c.rawInputs = words[2];
+            const uint8_t active = static_cast<uint8_t>((words[2] ^ c.prerequisites.stopInputActiveLow) &
+                c.prerequisites.stopInputMask & 15u);
+            if (active && !c.stopInputObserved) { c.stopInputObserved = true; c.stopInputEvidence = evidence; }
+        }
         bool endpointMatch = false;
         if (c.prerequisites.positionFeedbackMatchesCommand) {
             decodeInt32(words + 4, 2, c.prerequisites.wordOrder, c.observedPosition);
@@ -455,7 +462,7 @@ Status advanceMove(MoveContext& c, const ActionEvent& supplied, uint64_t nowUs) 
             failed(MoveError::DRIVE_FAULT, "drive alarm, release or limit interrupted the move"));
         else if (words[1] & RUNNING) {
             if (!c.runningObserved) c.activityEvidence = evidence;
-            c.runningObserved = true;
+            c.runningObserved = true; c.stoppedPolls = 0;
         } else if (c.runningObserved && (words[1] & ARRIVED) &&
                    (!c.prerequisites.positionFeedbackMatchesCommand || !c.observedSpeed)) {
             c.completion = ActionCompletion::OBSERVED;
@@ -464,6 +471,14 @@ Status advanceMove(MoveContext& c, const ActionEvent& supplied, uint64_t nowUs) 
             c.positionMismatch = c.prerequisites.positionFeedbackMatchesCommand && c.prepared.endpointKnown &&
                 c.observedPosition != c.prepared.endpointNative;
             finish(c, ActionOutcome::OBSERVED, Ok());
+        } else if (c.stopInputObserved) {
+            // Wired bench 07: a stop input ends the move short of its target and
+            // the drive never reports arrival, so polling to the deadline adds nothing.
+            finish(c, ActionOutcome::REPLY_ERROR,
+                failed(MoveError::STOP_INPUT, "a stop or release input was reported active; motion stopped before arrival"));
+        } else if (c.runningObserved && !(words[1] & ARRIVED) && ++c.stoppedPolls >= STOPPED_SHORT_POLLS) {
+            finish(c, ActionOutcome::REPLY_ERROR,
+                failed(MoveError::STOPPED_SHORT, "motion stopped before arrival; no stop input was reported"));
         }
         if (c.state == ActionState::ACTIVE && endpointMatch) {
             if (c.positionMatchEvidence.length) {

@@ -111,6 +111,16 @@ void qualify() {
     motion.valid = true; motion.value.target = app->axis.target;
     motion.value.rawMotion = 1; motion.value.inPosition = motion.value.enabled = true;
     motion.observedEarliestUs = motion.observedLatestUs = hardware.time;
+    // Wired bench 07: velocity needs a fresh checked I/O read like a move.
+    auto& io = app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
+    io.valid = true; io.value.target = app->axis.target; io.value.rawInputs = 0;
+    io.observedEarliestUs = io.observedLatestUs = hardware.time;
+}
+void inputs(uint16_t functionX3, uint16_t raw, uint16_t polarity = 0) {
+    app->configuration.raw.inputFunctions[3] = functionX3; app->configuration.raw.inputPolarity = polarity;
+    auto& io = app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
+    io.value.rawInputs = raw; io.value.inputs[3] = (raw & 8) != 0;
+    io.observedEarliestUs = io.observedLatestUs = hardware.time;
 }
 uint32_t admitVelocity(uint32_t commandId = 1) {
     uint32_t id = 0;
@@ -774,7 +784,143 @@ void emitRestoreReplies() {
     emit("@873 velocity restore " + std::to_string(moving));
 }
 } // namespace
+// Wired bench 07 Implement 2: the shared stop/release rule in startVelocity.
+void stopReleaseRule() {
+    struct Case { uint16_t function, raw, polarity; const char* reason; int8_t terminal; };
+    const Case refused[] = {{5, 8, 0, "stop_input_active", 3}, {6, 8, 0, "stop_input_active", 3},
+                            {4, 8, 0, "release_input_active", 3}, {5, 0, 8, "input_mapping_unknown", 3}};
+    for (const auto& c : refused) {
+        fresh(); qualify(); inputs(c.function, c.raw, c.polarity);
+        uint32_t untouched = 77; const auto next = app->nextOperationId;
+        assert(startVelocity(app, 2, 1, request(), untouched) == Probe::Action::UNAVAILABLE);
+        assert(untouched == 77 && app->nextOperationId == next && !hardware.writes && !axisReserved(*app, 1));
+        Probe::SettingsRefusal refusal;
+        assert(copySettingsRefusal(refusal) && !std::strcmp(refusal.reason, c.reason) &&
+               !std::strcmp(refusal.purpose, "motion") && refusal.terminal == c.terminal);
+        command("@5 velocity 30 rpm native 200 configured normal\n");
+        assert(!hardware.writes);
+        assert(Serial.output.find(std::string("\"reason\":\"") + c.reason + "\"") != std::string::npos);
+        assert(Serial.output.find("\"purpose\":\"motion\"") != std::string::npos);
+    }
+    // Stale I/O: velocity needs a fresh checked read, like a move.
+    fresh(); qualify();
+    app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)].valid = false;
+    uint32_t untouched = 77;
+    assert(startVelocity(app, 2, 1, request(), untouched) == Probe::Action::UNAVAILABLE && !hardware.writes);
+    Probe::SettingsRefusal stale;
+    assert(copySettingsRefusal(stale) && !std::strcmp(stale.reason, "input_state_stale") && stale.terminal == -1);
+    fresh(); qualify(); inputs(5, 0);
+    app->options.observationMaxAgeMs = 1000; // The default 0 keeps observations without age expiry.
+    advanceHardware(hardware.time + app->observationAgeUs() + 1000);
+    auto& motion = app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+    motion.observedEarliestUs = motion.observedLatestUs = hardware.time;
+    app->velocityPrerequisites.observedUs = hardware.time;
+    assert(startVelocity(app, 2, 1, request(), untouched) == Probe::Action::UNAVAILABLE && !hardware.writes);
+    // Inactive stop input: admitted; the observation reads 0x0006..0x0008.
+    fresh(); qualify(); inputs(5, 0);
+    const auto id = admitVelocity();
+    assert(view(id).velocityContext->prerequisites.stopInputMask == 8);
+    velocityStep(id); velocityStep(id);
+    waitTx(id); assert(hardware.tx[1] == 3 && hardware.tx[3] == 6 && hardware.tx[5] == 3);
+    // No refusal reason is left behind by an admitted run.
+    Probe::SettingsRefusal none; assert(!copySettingsRefusal(none));
+    assert(cancel(app, id) == Probe::Action::OK);
+    // A stopping input never blocks a stop.
+    fresh(); qualify(); inputs(5, 8);
+    const auto stop = admitStop();
+    assert(stop && hardware.writes == 0);
+    pump(100); waitTx(stop); assert(hardware.tx[1] == 6 && hardware.tx[3] == 0x27);
+}
+// Implement 3 witnesses through the application: a run whose report shows the
+// stop input and then a stopped drive before the timed stop fails STOP_INPUT;
+// a stopped report without the input fails STOPPED_EARLY. The timed stop is
+// still sent once, at its due time, and nothing is resent.
+uint32_t admitLongVelocity() {
+    auto r = request(); r.durationUs = 1000000;
+    uint32_t id = 0;
+    assert(host(app).startVelocity(app, 1, 1, r, id) == Probe::Action::OK);
+    return id;
+}
+void timedStop(uint32_t id) {
+    assert(!findRecord(*app, id)->requestId.owner);
+    const auto due = view(id).velocityContext->stopDueUs;
+    advanceHardware(due); serviceApplication();
+    velocityStep(id); assert(hardware.tx[1] == 6 && hardware.tx[3] == 0x27 && hardware.writeStarted >= due);
+    velocityStep(id, registers(1, {0, 1}));
+}
+void stopInputWitnesses() {
+    for (bool inputSeen : {true, false}) {
+        fresh(); qualify(); inputs(5, 0);
+        const auto id = admitLongVelocity();
+        velocityStep(id); velocityStep(id);
+        velocityStep(id, registers(1, {0, 4, 0}));
+        assert(view(id).velocityContext->runningObserved && !view(id).velocityContext->stopInputObserved);
+        velocityStep(id, registers(1, {0, 4, static_cast<uint16_t>(inputSeen ? 8 : 0)}));
+        velocityStep(id, registers(1, {0, 0, 0}));
+        const auto& c = *view(id).velocityContext;
+        assert(c.stopInputObserved == inputSeen && c.stoppedEarly && c.phase == ESS::VelocityPhase::OBSERVING);
+        assert(c.state == ActionState::ACTIVE && c.needsStop);
+        // The run keeps its schedule: the one timed stop at the due time.
+        timedStop(id);
+        const auto& done = *view(id).velocityContext;
+        assert(!view(id).pending && done.state == ActionState::FAILED && !done.needsStop);
+        assert(done.status.detail == static_cast<int32_t>(inputSeen ? VelocityError::STOP_INPUT : VelocityError::STOPPED_EARLY));
+        assert(done.completion == ActionCompletion::OBSERVED); // The timed stop's own settlement, not a completed run.
+        Serial.output.clear(); pump(200);
+    }
+    // Negative trace: the input is reported active, but the drive keeps running
+    // until the route's own timed stop. The run fails STOP_INPUT and stoppedEarly
+    // stays false, so no input stop is claimed (the harness classifies it indeterminate).
+    fresh(); qualify(); inputs(5, 0);
+    const auto id = admitLongVelocity();
+    velocityStep(id); velocityStep(id);
+    velocityStep(id, registers(1, {0, 4, 8}));
+    velocityStep(id, registers(1, {0, 4, 0}));
+    timedStop(id);
+    const auto& done = *view(id).velocityContext;
+    assert(done.state == ActionState::FAILED && done.stopInputObserved && !done.stoppedEarly);
+    assert(done.status.detail == static_cast<int32_t>(VelocityError::STOP_INPUT));
+    // Without a stop/release assignment the observation stays two words and a
+    // healthy run still succeeds.
+    fresh(); qualify();
+    const auto healthy = admitLongVelocity();
+    assert(!view(healthy).velocityContext->prerequisites.stopInputMask);
+    velocityStep(healthy); velocityStep(healthy);
+    waitTx(healthy); assert(hardware.tx[5] == 2);
+    velocityStep(healthy, registers(1, {0, 4}));
+    timedStop(healthy);
+    assert(view(healthy).velocityContext->state == ActionState::SUCCEEDED);
+}
+// Console terminals of the wired bench 07 outcomes, for the Python validators.
+void emitStopInputResults() {
+    struct Trace { const char* name; uint16_t function; std::vector<std::vector<uint16_t>> polls; };
+    const Trace traces[] = {
+        {"stop_input", 5, {{0, 4, 0}, {0, 4, 8}, {0, 0, 0}}},
+        {"stopped_early", 5, {{0, 4, 0}, {0, 0, 0}}},
+        {"input_then_timed_stop", 6, {{0, 4, 8}, {0, 4, 0}}},
+        {"success_with_stop_input", 4, {{0, 4, 0}}},
+    };
+    for (const auto& t : traces) {
+        fresh(); qualify(); inputs(t.function, 0);
+        command("@6 velocity 30 rpm native 1000 configured normal\n");
+        const auto id = app->latestOperationId;
+        velocityStep(id); velocityStep(id);
+        for (const auto& words : t.polls) {
+            std::vector<uint8_t> reply = {1, 3, static_cast<uint8_t>(words.size() * 2)};
+            for (const auto w : words) { reply.push_back(static_cast<uint8_t>(w >> 8)); reply.push_back(static_cast<uint8_t>(w)); }
+            velocityStep(id, crc(reply));
+        }
+        timedStop(id);
+        pump(200);
+        assert(!view(id).pending);
+        const auto start = Serial.output.find("{\"type\":\"velocity\"");
+        assert(start != std::string::npos);
+        const auto end = Serial.output.find('\n', start);
+        std::printf("{\"case\":\"%s\",\"record\":%s}\n", t.name, Serial.output.substr(start, end - start).c_str());
+    }
+}
 int main(int argc, char** argv) {
+    if (argc == 2 && std::string(argv[1]) == "--emit-stop-input-results") { emitStopInputResults(); return 0; }
     if (argc == 2 && std::string(argv[1]) == "--emit-recovery-result") {
         ownedStopBeforeTxRetainsSettlement(true); return 0;
     }
@@ -796,4 +942,6 @@ int main(int argc, char** argv) {
     ownedStopBeforeTxRetainsSettlement();
     ownedStopRecoveryFailureAndCancellation();
     velocityRestoreRoutes();
+    stopReleaseRule();
+    stopInputWitnesses();
 }

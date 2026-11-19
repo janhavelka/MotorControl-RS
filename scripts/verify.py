@@ -84,6 +84,12 @@ def check_inventory(root, listing, build):
                     args[8] != "--profile-stage-fixtures" or args[11] != "--group-member-fixtures" or
                     [str(Path(arg).resolve()) for arg in args[1:3] + args[4:8] + args[9:11] + args[12:]] != expected):
                 raise RuntimeError("wrong interruption, stop, profile or group fixtures: bench_probe_test.py")
+        elif path.name == "stop_input_parity_test.py":
+            python_command(registered, path)
+            expected = [str((build / (binary+suffix)).resolve()) for binary in
+                        ("move_app_test", "idf_move_app_test", "velocity_app_test", "idf_velocity_app_test")]
+            if [str(Path(arg).resolve()) for arg in registered["command"][2:]] != expected:
+                raise RuntimeError("wrong move and velocity fixtures: stop_input_parity_test.py")
         elif path.name.endswith("_console_parity_test.py") or path.name == "discovery_harness_test.py":
             target = "discovery_console_test" if path.name == "discovery_harness_test.py" else "probe_console_test"
             python_command(registered, path)

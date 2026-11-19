@@ -182,7 +182,10 @@ functional evidence; independent shaft calibration remains absent.
   decision D14 (ordering as the primary guard, 1000 ms read-age backstop; the
   earlier 300 ms default was measured unreachable at 419-424 ms). Prompt 08's
   trigger applies the same rule and bound. Bench evidence of L3 (named running
-  member) belongs to prompt 07.
+  member) belongs to prompt 07: on the bench the running member's own `io read`
+  is refused during its operation (`axis_conflict`), so prompt 07 named it with
+  its `io read` from just before the operation (only reads or its own motion in
+  between, 10 s bound) and ran every stop-input pulse through that row.
 - [x] Measure the input status mapping and the input filter
   ([wired bench 05](prompts/ess_wired_bench/05_status_mapping_and_input_timing.md)).
   Implementation: done. Core and application admit a polarity change with
@@ -265,6 +268,12 @@ functional evidence; independent shaft calibration remains absent.
   input/output activation/precedence. Methods 33/34/35 and stop during a search
   have free-shaft evidence from 2 November. This does not qualify switch methods
   or independent shaft motion. Unwired terminals are not disabled assignments.
+  Stop latency and precedence of input functions 4-6 were measured in
+  [wired bench 07](reports/2026-11-19_wired_bench_07_stop_release_inputs.md)
+  on drive 4 (and drives 1, 2, 4 for group moves): function 5 stops with the
+  configured deceleration, 6 directly, 4 releases and outranks a serial enable.
+  Open from it: a home whose own polls miss a short stop input polls to its
+  deadline (not exercised; prompt 12), and the switch methods stay with 11/12.
 - [ ] Qualify position start-speed scaling, activation timing and persistence.
   Write/readback, restoration and the relation latch passed on 2 November.
 - [ ] Qualify the homing behavior of auxiliary choices other than 0 and 7. All
@@ -447,7 +456,10 @@ more drives (now addresses 1, 2 and 4, star wiring).
   [wired bench 04](reports/2026-11-19_wired_bench_04_harness.md).
   Output functions 1-5 and 9-11 of drive 4 Y0 were measured in
   [wired bench 06](reports/2026-11-19_wired_bench_06_outputs.md) (plan steps 2
-  and 8). No input function has been tested through the wiring yet.
+  and 8). Input functions 4, 5 and 6 on X3 were measured in
+  [wired bench 07](reports/2026-11-19_wired_bench_07_stop_release_inputs.md)
+  (plan step 3 and the shared stop of step 9); the other input functions are
+  prompts 09-14.
 - [ ] Start motion from a shared input edge: function 7 with a staged profile
   first (absolute mode preferred), then PT segments with PIN selection, the
   negative PV speed encoding, and observation and stop of input-started motion ([multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)).

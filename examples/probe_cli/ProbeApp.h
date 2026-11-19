@@ -125,7 +125,11 @@ bool copyParameterWrite(uint32_t operationId, Probe::ParameterWriteView& output)
 /** Copy the input-facts cause of the settings or profile-stage refusal just
  * returned by a submit call or console command: reason, read_first, purpose and
  * terminal. Valid until the next serviceApplication turn or admission attempt.
- * False when the latest refusal had another cause. No traffic. */
+ * False when the latest refusal had another cause. No traffic.
+ * Wired bench 07: also a motion refusal of the shared stop/release rule
+ * (purpose motion): moves, stages, group moves, velocity and home with an
+ * assigned function 4-6 input active, stale or of unknown mapping, and enable
+ * with an assigned release input active. */
 bool copySettingsRefusal(Probe::SettingsRefusal& output);
 
 /** Explicit stop on a selected or previously checked address, through the same

@@ -109,7 +109,17 @@ struct MovePrerequisites {
      * It caps setup/trigger writes without changing the motion observation age.
      * The default adds no expiry. A completed trigger keeps its observation budget. */
     uint64_t inputEvidenceDeadlineUs = std::numeric_limits<uint64_t>::max();
+    /** Inputs X0..X3 assigned release, stop or emergency stop (functions 4-6),
+     * bit i for Xi, and the INPUT_STATUS (0x0008) bits whose active level is 0
+     * (a stated before-inversion mapping with inverted polarity). Nonzero adds
+     * 0x0008 to each two-word observation read (wired bench 07). */
+    uint8_t stopInputMask = 0, stopInputActiveLow = 0;
 };
+/** Consecutive stopped observations without arrival, after running, that end a
+ * move STOPPED_SHORT. Running polls are 500 ms apart in the standalone owner;
+ * natural completions on firmware 0x0029 reported arrival in the same sample
+ * that cleared RUNNING (wired bench 07). */
+constexpr uint8_t STOPPED_SHORT_POLLS = 2;
 enum class MoveAdmission : uint8_t { OBSERVED_STATE, NATIVE_INTENT };
 /** Caller-owned, read-only between API calls. WRITE_ALL stages then starts.
  * VERIFY_AND_UPDATE reads 0x0021/5, writes only a changed scalar or target pair
@@ -145,6 +155,13 @@ struct MoveContext {
     int32_t observedPosition = 0;
     uint16_t observedSpeed = 0;
     ActionEvidence positionMatchEvidence; ///< First of two consecutive exact stopped endpoint reports.
+    /** Wired bench 07 witnesses: the latest 0x0008 word when observed, the first
+     * report with an assigned stop/release input active, and the consecutive
+     * stopped-without-arrival reports after running. */
+    uint16_t rawInputs = 0;
+    bool stopInputObserved = false;
+    uint8_t stoppedPolls = 0;
+    ActionEvidence stopInputEvidence;
     uint16_t words[5] = {}, rawAlarm = 0, rawMotion = 0;
     uint64_t startedUs = 0, deadlineUs = 0, servicedUs = 0, eligibleUs = 0;
     uint8_t step = 0, polls = 0;

@@ -61,7 +61,7 @@ the owner stays Partial and the next ready prompt starts.
 | 04 | Complete | — (D14 interlock freshness applies to 08's trigger) | [2026-11-19](../../reports/2026-11-19_wired_bench_04_harness.md) |
 | 05 | Complete | — (output mapping: 06; 10 ms rule via latched inputs: 07/09; filter persistence: 17) | [2026-11-19](../../reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md) |
 | 06 | Partial | Owner power cycle of drive 4, then `baseline-compare` (homing words 35/60/30 in RAM, baseline 24/120/60); `home 35` completion from a homed state: 12; alarm-5 no-reply interval and brake report delay: 16 | [2026-11-19](../../reports/2026-11-19_wired_bench_06_outputs.md) |
-| 07 | Pending | — | — |
+| 07 | Complete | 06's drive 4 power cycle and `baseline-compare` (homing words 35/60/30 in RAM); home whose own polls miss a stop input: 12; release delay with brake function 5 (R2a): 16 | [2026-11-19](../../reports/2026-11-19_wired_bench_07_stop_release_inputs.md) |
 | 08 | Pending | — | — |
 | 09 | Pending | — | — |
 | 10 | Pending | — | — |

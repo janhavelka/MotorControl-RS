@@ -371,7 +371,14 @@ this fixture unlocks.
 3. **Stop by input.** X3 = 5 (stop), then 6 (emergency stop), during a small
    finite move; `bench on mosfet2 200`. Y0 = 2 (running) gives the
    `mosfet2` on time to `aux1` edge interval. Repeat with X3 = 4 (release) on a
-   stopped drive.
+   stopped drive. Run it as `bench_scenarios.py --scenario stop-inputs --case
+   S1..S9|R1|R2a|R2b|R3 --function 4|5|6 --image-level 07`
+   ([guide](bench_scenarios.md#stop-inputs-wired-bench-07)). Measured on
+   19 November ([wired bench 07](reports/2026-11-19_wired_bench_07_stop_release_inputs.md)):
+   see [ESS I/O](ess_io.md#measured-stop-and-release-inputs-wired-bench-07). The
+   running member's own `io read` is refused during its operation
+   (`axis_conflict`), so the interlock names it with its `io read` from just
+   before the operation (row L3).
 4. **Function 7 position start.** Stage a profile, absolute mode
    (`0x0050` = 1), X0 = 7, one `bench on mosfet1 50` pulse. Then hold the level
    for 2 s to see whether a held level starts a second move.
@@ -391,7 +398,10 @@ this fixture unlocks.
 9. **Shared start.** Stage a profile on each of drives 1, 2 and 4, set X0 = 7 on
    all three, pulse `mosfet1` once, and compare the three drives' recorded
    motion with drive 4's `aux1` running edge. Then a shared stop: X3 = 5 on all
-   three during a group move.
+   three during a group move. The shared stop ran on 19 November as `--case
+   G1` (staged) and `G2` (sequential): every member stopped short with its own
+   outcome and nothing restarted. During a sequential group's start phase the
+   console answers `busy`, so a pulse can only follow the last start.
 10. **Shared segments.** Steps 7 and 9 together: different stored tables per
     drive, one shared selector and trigger.
 11. JOG/speed inputs (8-10) and PV segments (13), each in an explicit case

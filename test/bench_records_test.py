@@ -1053,5 +1053,76 @@ class SnapshotRouteTest(unittest.TestCase):
         self.assertEqual(bench.stage_words, [100, 100, 60, 0, 5000])
         self.assertEqual(results[0]["window"], [100, 100, 60, 0, 5000])
 
+class NamedPreStartTest(unittest.TestCase):
+    """Wired bench 07: the running member's io read is refused (axis_conflict);
+    row L3 then uses its pre-start io read when only reads or its own motion
+    came between."""
+
+    def facts(self, between, io_age_ms=900, running=True, function=5):
+        named = {"address": 4, "operation_id": 510, "output": "mosfet2", "terminal": "x3", "function": function,
+                 "polarity": 0, "effect": "stop" if function in (5, 6) else "release",
+                 "io_read": {"ok": True, "operation_id": 507, "started_us": 10_000_000 - io_age_ms * 1000,
+                             "raw": [0, 1, 2, 3, function, 0, 0, 0, 0]},
+                 "between": between}
+        state = FakeBench()._state(4)
+        for block in state["state_blocks"]:
+            if block["block"] == 0:
+                block["running"] = running
+        state["started_us"] = 9_950_000
+        facts = records.participant_facts(4, {"read-state": state}, 10_000_000, named=named)
+        return named, facts
+
+    def decide(self, named, facts):
+        return records.decide_participant(facts, "mosfet2", named=named, pending=[{"operation_id": 510, "address": 4}])
+
+    def test_reads_between_admit_l3(self):
+        named, facts = self.facts([{"command": "read-config", "operation_id": 508},
+                                   {"command": "read-state", "operation_id": 509}])
+        self.assertEqual(self.decide(named, facts)["row"], "L3")
+
+    def test_write_or_gap_between_refuses(self):
+        for between in ([{"command": "io", "operation_id": 508}, {"command": "read-state", "operation_id": 509}],
+                        [{"command": "read-config", "operation_id": 508}],
+                        [{"command": "driver", "operation_id": 508, "motion": True},
+                         {"command": "read-state", "operation_id": 509}]):
+            with self.subTest(between=between):
+                named, facts = self.facts(between)
+                self.assertEqual(self.decide(named, facts)["row"], "L1", facts.get("unknown"))
+        named, facts = self.facts([{"command": "move-relative", "operation_id": 508, "motion": True},
+                                   {"command": "io", "operation_id": 509, "read": True}])
+        self.assertEqual(self.decide(named, facts)["row"], "L3")
+
+    def test_age_bound_and_mismatch(self):
+        named, facts = self.facts([{"command": "read-config", "operation_id": 508},
+                                   {"command": "read-state", "operation_id": 509}], io_age_ms=10_500)
+        self.assertEqual(self.decide(named, facts)["row"], "L1")
+        named, facts = self.facts([{"command": "read-config", "operation_id": 508},
+                                   {"command": "read-state", "operation_id": 509}])
+        self.assertEqual(records.decide_participant(facts, "mosfet2", named=dict(named, function=6), pending=[
+            {"operation_id": 510, "address": 4}])["row"], "L4")
+        self.assertEqual(records.decide_participant(facts, "mosfet2", named=named, pending=[])["row"], "L4")
+
+    def test_stationary_named_member_takes_the_ordinary_rows(self):
+        named, facts = self.facts([{"command": "read-config", "operation_id": 508},
+                                   {"command": "read-state", "operation_id": 509}], running=False)
+        self.assertEqual(self.decide(named, facts)["row"], "L7")
+
+    def test_interlock_skips_the_refused_read_of_a_named_member(self):
+        case = next(c for c in CASES["cases"] if c["id"] == "LI10")
+        bench = InterlockConsoleTest().bench_for(case)
+        named = dict(case["named"], io_read={"ok": True, "operation_id": bench.operation - 2, "started_us": bench.now_us - 200000,
+                                             "raw": [0, 1, 2, 3, 5, 0, 0, 0, 0]},
+                     between=[{"command": "read-config", "operation_id": bench.operation - 1}],
+                     operation_id=bench.operation)
+        bench.pending = {1: Pending(named["operation_id"], 4)}
+        record = {"running_members": [named]}
+        records.bench_on(bench, "mosfet2", 50, record)
+        entry = record["interlock"][-1]
+        self.assertNotIn("io", entry["reads"][4])
+        member = next(p for p in entry["participants"] if p["address"] == 4)
+        self.assertEqual(member["row"], "L3")
+        self.assertIn("io (pre-start)", entry["age_at_on_ms"][4])
+
+
 if __name__ == "__main__":
     unittest.main()

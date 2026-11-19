@@ -591,6 +591,41 @@ records. The harness helper `bench_probe.install_input_facts` reads `read config
 and `read state`, copies each function and polarity and adds only the facts the
 caller names per terminal.
 
+### Stop and release inputs (wired bench 07)
+
+Every motion admission (`move relative|absolute|angle`, the selected-axis
+stage, `group move`, `velocity` and `home`) is refused before any frame while
+the latest checked input status, read through the terminal's move-purpose I/O
+record (default polarity needs none), shows an assigned release (4), stop (5)
+or emergency stop (6) input active. `enable` is refused while an assigned
+release input reads active: on firmware `0x0029` an acknowledged enable left
+the drive released for as long as the input was active (caps
+`external_enable_precedence` is `release_input`). Stops are never refused by
+an input. The refusal is `unavailable` with:
+
+| Field | Values |
+| --- | --- |
+| `reason` | `stop_input_active`, `release_input_active`; `input_state_stale` (a 4-6 input is assigned, or the command is `velocity`, and no fresh checked input status exists); `input_mapping_unknown` (an assigned 4-6 input is inverted and its record states no mapping) |
+| `purpose` | `motion` |
+| `read_first` | `read state`, or `io qualification install` for an unknown mapping |
+| `terminal` | `x0`..`x3` for the deciding terminal; absent for `input_state_stale` |
+
+A `group move` refusal also carries the deciding member's `address`. The API
+returns the same refusal through `copySettingsRefusal`. An input asserted after
+the last read cannot be excluded by the host. With a 4-6 input assigned, move
+and velocity observations also read `0x0008`. A move whose report shows that
+input active and then a stopped drive ends `reply_error` with `detail` 24
+(`STOP_INPUT`); a move stopped without arrival in two consecutive reports after
+running, without that input seen, ends with `detail` 25 (`STOPPED_SHORT`). Both
+are failures, never a completion, and stop polling at once instead of at the
+deadline. A velocity run with that input seen before its timed stop fails
+`detail` 26 (`STOP_INPUT`), or `detail` 27 (`STOPPED_EARLY`) when it stopped
+without the input seen; the timed stop keeps its schedule. Move and velocity
+results add `stop_inputs` (`mask`, `active_low`, `observed`, `raw_inputs`, and
+`stopped_polls` or `stopped_early`) and `stop_input_evidence` (velocity also
+`stopped_evidence`). A sequential `group move` sends no later start once a
+started member reported its stop/release input active.
+
 ## Verification and qualification
 
 Native console/application tests cover help parity, strict parsing, direct API

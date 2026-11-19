@@ -106,11 +106,14 @@ Action driverAdmissionStatus(const MotorControlRS::Status&) noexcept;
  * has no record of the purpose), input_facts_stale (a record no longer matches
  * current reads, binding, configuration or age) or input_active (an assigned
  * limit/stop/control input reads active); null for every other refusal.
+ * Purpose motion (wired bench 07): a move, velocity, home, group move or stage
+ * refused by the shared stop/release rule, reason stop_input_active,
+ * release_input_active, input_state_stale or input_mapping_unknown.
  * readFirst names the command that supplies the missing evidence. Static text. */
 struct SettingsRefusal {
     const char* reason = nullptr;
     const char* readFirst = nullptr;
-    const char* purpose = nullptr; ///< configure or segment.
+    const char* purpose = nullptr; ///< configure, segment or motion.
     int8_t terminal = -1; ///< X0..X3 = 0..3 for the first terminal that decided it.
 };
 

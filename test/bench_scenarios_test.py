@@ -1165,5 +1165,141 @@ class RecordCasesScenarioTest(FolderBase):
         self.assertIn(('1', 'x3', '17', '1', 'assign', 'recorded', 'triggers-inhibited'), bench.installs)
         self.assertEqual(bench.debug_mode, 'off')
 
+
+import bench_stop_inputs as stop_inputs  # noqa: E402
+
+
+def _sample(t_us, motion, inputs=0, speed=0, position=0, address=4):
+    """One read-state sample in bench_outputs.state_sample form; request start t_us, reply 25 ms later."""
+    words = [(position >> 16) & 0xFFFF, position & 0xFFFF]
+    return {'operation_id': t_us, 'address': address, 'motion': motion, 'alarm': 0, 'outputs': 0, 'inputs': inputs,
+            'speed': speed, 'position_words': words,
+            'windows': {'motion': [t_us, t_us + 25000], 'outputs': [t_us, t_us + 25000], 'feedback': [t_us, t_us + 25000]}}
+
+
+def _trial(samples, **extra):
+    trial = {'on_us': 1_000_000, 'off_us': 1_200_000, 'samples': samples, 'start_us': 0, 'steps': 3000,
+             'start_position': 0, 'terminal': {'ok': False}, 'edges': [{'at_us': 1_110_000, 'active': True}],
+             'y0': 2, 'function': 5}
+    trial.update(extra)
+    return trial
+
+
+class StopInputClassificationTest(unittest.TestCase):
+    """Implement 3: every witness, or indeterminate with the missing one named."""
+
+    def recorded(self):
+        # Shape of wb07_pilot_s1_f5c: running, X3 seen, stopped short, no further start.
+        return [_sample(200_000, 6, speed=60, position=100), _sample(600_000, 6, speed=60, position=500),
+                _sample(1_018_000, 6, 8, speed=59, position=900), _sample(1_100_000, 2, 8, speed=49, position=930),
+                _sample(1_190_000, 2, 8, speed=4, position=933), _sample(1_300_000, 2, 0, position=933),
+                _sample(3_100_000, 2, 0, position=933)]
+
+    def test_recorded_stop_is_input_stopped(self):
+        result = stop_inputs.classify(_trial(self.recorded()))
+        self.assertEqual(result['class'], 'input-stopped', result['missing'])
+        w = result['witnesses']
+        self.assertEqual(w['y0_edge_us'], 110_000)
+        self.assertEqual(w['stop_bracket_us'], [18_000, 125_000])
+        self.assertTrue(w['stopped_short'] and not w['further_start'] and w['input_seen'])
+
+    def test_completion_or_restart_is_never_input_stopped(self):
+        done = stop_inputs.classify(_trial(self.recorded(), terminal={'ok': True}))
+        self.assertEqual(done['class'], 'indeterminate')
+        self.assertIn('the operation reported completion', done['missing'])
+        samples = self.recorded() + [_sample(3_200_000, 6, speed=60, position=1000)]
+        again = stop_inputs.classify(_trial(samples))
+        self.assertTrue(again['witnesses']['further_start'])
+        self.assertEqual(stop_inputs.move_verdict([dict(_trial(samples), analysis=again)])[0], 'FAIL')
+
+    def test_velocity_stop_after_its_own_timed_stop_is_indeterminate(self):
+        # The input is seen while running; the first stopped sample follows the
+        # route's own timed stop (competing end at 1000 ms after the start).
+        samples = [_sample(200_000, 4, speed=30), _sample(1_018_000, 4, 8, speed=30), _sample(1_150_000, 4, 8, speed=30),
+                   _sample(1_400_000, 0, 0)]
+        result = stop_inputs.classify(_trial(samples, steps=None, start_position=None, competing_end_us=1_300_000,
+                                             edges=[]))
+        self.assertEqual(result['class'], 'indeterminate')
+        self.assertIn('the stop is not separated from the competing end condition', result['missing'])
+        early = stop_inputs.classify(_trial(samples[:2] + [_sample(1_100_000, 0, 8)], steps=None, start_position=None,
+                                            competing_end_us=1_300_000, edges=[]))
+        self.assertEqual(early['class'], 'input-stopped', early['missing'])
+
+    def test_stop_first_seen_after_the_safety_stop_is_indeterminate(self):
+        result = stop_inputs.classify(_trial(self.recorded(), safety_stop_us=1_050_000))
+        self.assertEqual(result['class'], 'indeterminate')
+        self.assertIn('first stopped sample after the prepared safety stop', result['missing'])
+
+    def test_missing_witnesses_are_named(self):
+        no_motion = stop_inputs.classify(_trial([_sample(1_100_000, 2, 8, position=0), _sample(1_300_000, 2)]))
+        self.assertIn('no motion witnessed after the start and before the stimulus', no_motion['missing'])
+        unseen = [dict(s, inputs=0) for s in self.recorded()]
+        blind = stop_inputs.classify(_trial(unseen, edges=[]))
+        self.assertIn('neither the input bit nor a Y0 edge witnessed the stimulus', blind['missing'])
+        self.assertEqual(stop_inputs.classify({'samples': []})['missing'], ['source not commanded'])
+
+    def test_short_pulse_that_did_not_stop_the_move(self):
+        samples = [_sample(200_000, 6, speed=60, position=100), _sample(1_050_000, 6, speed=60, position=1000),
+                   _sample(2_900_000, 6, speed=60, position=2900), _sample(3_200_000, 3, position=3000)]
+        result = stop_inputs.classify(_trial(samples, terminal={'ok': True}))
+        self.assertEqual(result['class'], 'not stopped')
+
+    def test_group_verdict(self):
+        member = lambda **w: {'class': 'input-stopped', 'witnesses': dict({'stopped_short': True, 'further_start': False,
+                                                                           'reported_complete': False, 'travel': 1300}, **w),
+                              'missing': []}
+        trial = {'index': 1, 'on_us': 1, 'starts_after_on': 0, 'members': [{'address': a, 'state': 'failed'} for a in (1, 2, 4)],
+                 'per_member': {a: member() for a in (1, 2, 4)}}
+        self.assertEqual(stop_inputs.group_verdict([trial]), ('PASS', None))
+        self.assertEqual(stop_inputs.group_verdict([dict(trial, starts_after_on=1)])[0], 'FAIL')
+        restart = dict(trial, per_member={1: member(further_start=True), 2: member(), 4: member()})
+        self.assertEqual(stop_inputs.group_verdict([restart])[0], 'FAIL')
+        refused = {'index': 1, 'interlock_refused': 'read operation IDs are not consecutive'}
+        self.assertEqual(stop_inputs.group_verdict([refused])[0], 'indeterminate')
+
+
+class StopInputsPlanTest(unittest.TestCase):
+    def args(self, *extra):
+        return scenarios.arguments(['--scenario', 'stop-inputs', '--firmware', str(ROOT / 'README.md'), '--plan-only',
+                                    '--address', '4', '--image-level', '07', *extra])
+
+    def test_plan_restores_x3_y0_and_profile_per_drive(self):
+        baseline = scenarios.records.load_baseline(scenarios.records.DEFAULT_BASELINE)
+        args = self.args('--case', 'S1', '--function', '5')
+        plan = scenarios.folder_plan(args, baseline)
+        steps = [(s['drive'], s['key'], s['write']['text']) for s in plan['restoration_plan']['steps']]
+        self.assertEqual(steps, [(4, 'io.x3', 'io set x3 0 4'), (4, 'io.y0', 'io set y0 0 4'),
+                                 (4, 'profile.acceleration', 'motion-profile stage 100 100 60 0 5000 0 4')])
+        self.assertEqual(plan['restoration_plan']['steps'][0]['facts'], {'x3': ['triggers-inhibited', 'protection-removal']})
+        group = scenarios.folder_plan(self.args('--case', 'G1', '--function', '6', '--leave-profile'), baseline)
+        self.assertEqual(sorted({s['drive'] for s in group['restoration_plan']['steps'] if s['key'] == 'io.x3'}), [1, 2, 4])
+        self.assertFalse(any(s['key'].startswith('profile.') for s in group['restoration_plan']['steps']))
+        self.assertEqual(len(group['left_changed']), 12)
+        self.assertTrue(all(e['storage'] == 'RAM' and e['reason'] for e in group['left_changed']))
+        velocity = scenarios.folder_plan(self.args('--case', 'S3', '--function', '6'), baseline)
+        self.assertIn('snapshot', [s['route'] for s in velocity['restoration_plan']['steps']])
+
+    def test_snapshot_window_maps_per_field(self):
+        # A restored window is split into its fields, so a scalar baseline
+        # (jog.speed 120) is compared with its own word, not the whole window.
+        self.assertEqual(scenarios.window_values('velocity', [120, 100, 100]),
+                         {'jog.speed': 120, 'jog.acceleration': 100, 'jog.deceleration': 100})
+        self.assertEqual(scenarios.window_values('home', [35, 60, 30, 100, 0, 0]),
+                         {'homing.method': 35, 'homing.search-speed': 60, 'homing.return-speed': 30,
+                          'homing.ramp': 100, 'homing.offset': [0, 0]})
+        self.assertEqual(scenarios.window_values('home', None), {})
+
+    def test_arguments_are_bounded_per_case(self):
+        for bad in (['--case', 'S1', '--function', '4'], ['--case', 'S8', '--function', '5'],
+                    ['--case', 'S1', '--function', '5', '--leave-profile'], ['--case', 'S7', '--function', '5'],
+                    ['--case', 'S1', '--function', '5', '--sub', 'a'], ['--case', 'X9', '--function', '5']):
+            with self.subTest(bad=bad), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                self.args(*bad)
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            scenarios.arguments(['--scenario', 'stop-inputs', '--firmware', 'x', '--plan-only', '--case', 'S1',
+                                 '--function', '5', '--image-level', '06'])
+        self.assertEqual(self.args('--case', 'S8', '--function', '5', '--deceleration', '1000',
+                                   '--stimulus', 'stop fast').repetitions, 5)
+
 if __name__ == '__main__':
     unittest.main()

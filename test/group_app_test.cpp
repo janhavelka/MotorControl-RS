@@ -33,11 +33,13 @@ struct Drive {
     unsigned runningReads = 0;
     unsigned startsApplied = 0;
     uint16_t ignoredWrite = 0; ///< Nonzero: this register keeps its value (readback mismatch).
+    bool stoppedByInput = false; ///< Wired bench 07: a shared X3 stop input ended the motion short.
 };
 std::map<uint8_t, Drive> drives;
 std::vector<std::vector<uint8_t>> frames; // Every transmitted request, in order.
 std::function<bool(const std::vector<uint8_t>&)> dropReply; // True: this request gets no reply.
 std::function<bool(const std::vector<uint8_t>&)> loseAcknowledgement; // Apply write, then lose its reply.
+std::function<uint32_t(const std::vector<uint8_t>&)> replyDelay; // Extra reply latency per request (us).
 unsigned servedWrites = 0;
 
 std::vector<uint8_t> crc(std::vector<uint8_t> bytes) {
@@ -60,6 +62,7 @@ void addDrive(uint8_t address) {
     drives[address] = drive;
 }
 uint16_t readWord(Drive& drive, uint16_t reg) {
+    if (reg == 0x0007 && drive.stoppedByInput) return 0; // Stopped short: not running, not in position.
     if (reg == 0x0007 && drive.runningReads) { --drive.runningReads; return 4; } // RUNNING.
     return reg < 0x140 ? drive.regs[reg] : 0;
 }
@@ -100,7 +103,8 @@ void serveBus() {
         reply = crc(std::vector<uint8_t>(frame.begin(), frame.begin() + 6));
     } else return;
     if (loseAcknowledgement && loseAcknowledgement(frame)) return;
-    scheduleReply(std::max(hardware.writeStarted + frame.size() * 87 + 1000, hardware.time + 1000), reply);
+    scheduleReply(std::max(hardware.writeStarted + frame.size() * 87 + 1000, hardware.time + 1000) +
+        (replyDelay ? replyDelay(frame) : 0), reply);
 }
 void step(uint32_t us = 10) { advanceHardware(hardware.time + us); serviceApplication(); serveBus(); }
 void pump(unsigned count = 64) { for (unsigned i = 0; i < count; ++i) step(); }
@@ -117,7 +121,7 @@ void fresh(const std::vector<uint8_t>& present = {1, 2, 4}) {
     if (app) { app->~App(); std::free(app); app = nullptr; }
     uart.~Esp32S3Uart(); new (&uart) Esp32S3Uart;
     resetHardware(); resetUsbConsole(); platformReady = false;
-    drives.clear(); frames.clear(); dropReply = nullptr; loseAcknowledgement = nullptr; servedWrites = 0;
+    drives.clear(); frames.clear(); dropReply = nullptr; loseAcknowledgement = nullptr; replyDelay = nullptr; servedWrites = 0;
     for (const auto address : present) addDrive(address);
     ApplicationOptions options; options.moveTimeoutMs = 3000; // Keeps unobservable moves short in fake time.
     assert(beginApplication({Board::kRs485TxPin, Board::kRs485RxPin, Board::kRs485DeRePin,
@@ -511,6 +515,69 @@ void testSequentialMoveStartsEachMemberInOrder() {
     runUntil([] { return app->group.move.result.operationId && !app->group.move.result.pending && app->group.move.delivered; }, 2000000);
     pump(2000);
     contains("\"type\":\"group\""); contains("\"start\":\"sequential\""); contains("\"start_tx_spread_us\":");
+}
+// Wired bench 07 Implement 5. X3 = 5 on every member (one shared input line).
+void sharedStopInput(const std::vector<uint8_t>& list) {
+    for (const auto address : list) drives[address].regs[0x0044] = 5;
+}
+void assertStopInputRule(const std::vector<uint8_t>& list) {
+    // A group with one member's X3 active refuses before any write, naming it.
+    fresh(list); sharedStopInput(list); readyGroup(list);
+    drives[2].regs[0x0008] = 8; readGroupState();
+    const auto from = frames.size();
+    uint32_t refused = 77;
+    assert(!submitGroupMove(groupMove(Policy::LEAVE, Mode::SEQUENTIAL), refused) && refused == 77);
+    assert(count(isWrite, from) == 0);
+    Probe::SettingsRefusal refusal;
+    assert(copySettingsRefusal(refusal) && !std::strcmp(refusal.reason, "stop_input_active") && refusal.terminal == 3);
+    command("@31 group move relative 50 steps native 60 configured start sequential on-failure leave\n");
+    contains("\"reason\":\"stop_input_active\""); contains("\"address\":2");
+    assert(count(isWrite, from) == 0);
+}
+void testSharedStopInputGroupOutcomes() {
+    const std::vector<uint8_t> list = {1, 2, 4};
+    assertStopInputRule(list);
+    // Sequential: member 1 reports the input before member 4 started. No later
+    // start is sent; each member keeps its own outcome.
+    fresh(list); sharedStopInput(list); readyGroup(list);
+    // Hold member 2's staging reply so member 1's first poll lands before member 4 begins.
+    replyDelay = [](const std::vector<uint8_t>& f) -> uint32_t { return f[0] == 2 && f[1] == 16 ? 40000 : 0; };
+    uint32_t id = 0;
+    assert(submitGroupMove(groupMove(Policy::LEAVE, Mode::SEQUENTIAL), id));
+    const auto from = frames.size();
+    runUntil([&] { return count([](const std::vector<uint8_t>& f) { return isStart(f, 1); }, from) == 1; });
+    // The shared stop input: every drive stops short and reports X3 active.
+    for (const auto address : list) { drives[address].regs[0x0008] = 8; drives[address].stoppedByInput = true; }
+    const auto inputFrom = frames.size();
+    runUntil([&] { return terminalGroup(id); }, 4000000);
+    std::size_t inputSeen = 0;
+    for (std::size_t i = inputFrom; i < frames.size() && !inputSeen; ++i)
+        if (frames[i][0] == 1 && frames[i][1] == 3 && word(frames[i], 2) == 0x0006 && word(frames[i], 4) == 3) inputSeen = i;
+    const auto& r = groupOp(id).result;
+    assert(!r.ok && r.aborted);
+    assert(inputSeen && count(isAnyStart, inputSeen + 1) == 0); // No start after the report.
+    assert(count([](const std::vector<uint8_t>& f) { return isStart(f, 4); }, from) == 0);
+    const auto& first = memberResult(id, 1);
+    assert(first.start == Probe::GroupStart::STARTED && first.state == ActionState::FAILED);
+    assert(first.status.detail == static_cast<int32_t>(MoveError::STOP_INPUT) && first.completion == ActionCompletion::NOT_OBSERVED);
+    const auto& last = memberResult(id, 4);
+    assert(last.start != Probe::GroupStart::STARTED && last.state == ActionState::FAILED);
+    for (const auto address : list) assert(memberResult(id, address).completion != ActionCompletion::OBSERVED);
+    noWriteOutside(list, from);
+    // Staged: every member stopped by the shared input fails with its own STOP_INPUT.
+    fresh(list); sharedStopInput(list); readyGroup(list);
+    uint32_t staged = 0;
+    assert(submitGroupMove(groupMove(Policy::LEAVE, Mode::STAGED), staged));
+    const auto stagedFrom = frames.size();
+    runUntil([&] { return count(isAnyStart, stagedFrom) == 3; });
+    for (const auto address : list) { drives[address].regs[0x0008] = 8; drives[address].stoppedByInput = true; }
+    runUntil([&] { return terminalGroup(staged); }, 4000000);
+    for (const auto address : list) {
+        const auto& m = memberResult(staged, address);
+        assert(m.start == Probe::GroupStart::STARTED && m.state == ActionState::FAILED &&
+               m.status.detail == static_cast<int32_t>(MoveError::STOP_INPUT));
+    }
+    assert(count(isAnyStart, stagedFrom) == 3); // No restart or replay.
 }
 void testStagedMoveStagesAllBeforeStarts() {
     fresh(); readyGroup();
@@ -1932,6 +1999,7 @@ int main(int argc, char** argv) {
     testWorstCaseGroupLineFits();
     testSequentialMoveStartsEachMemberInOrder();
     testStagedMoveStagesAllBeforeStarts();
+    testSharedStopInputGroupOutcomes();
     testStagingFailureSendsNoStart();
     testLostStartAndTimeoutUnderBothPolicies();
     testCancelledGroupStopsRetainPendingRecovery();
