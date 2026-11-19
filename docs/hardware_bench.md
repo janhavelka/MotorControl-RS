@@ -104,6 +104,14 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+Later on 19 November the owner power-cycled drive 4 with image B still on the
+board. `baseline-compare` then read all 573 committed fields on drives 1, 2
+and 4 equal to the baseline, 0 unknown
+(`build/bench/2026-11-19_wb10_power_cycle_compare/`). Drive 4 reloaded its
+stored homing words 24/120/60 and jog speed 120; the 06/09 owner action is
+closed. HOMED and the -500 position from prompt 10 are gone with the restart;
+drive 4 needs a home before any homed-reference test.
+
 On 19 November [wired bench 10](reports/2026-11-19_wired_bench_10_paired_value_encodings.md)
 ran four controller images built from `bae5048` plus the uncommitted working
 tree. Three were experimental images with the

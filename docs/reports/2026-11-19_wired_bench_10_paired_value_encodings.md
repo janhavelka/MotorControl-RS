@@ -311,4 +311,5 @@ flashes `_flash_a`, `_flash_a2`, `_flash_a3`, `_flash_b`; compares
 ## Commits and CI
 
 The lead owns Git and CI; nothing was committed, pushed or dispatched by this
-session.
+session. The lead committed the work as `e4d0e3d`; CI run 44494998631 on that
+exact commit passed all four jobs (native gcc, native clang, Arduino, ESP-IDF).
