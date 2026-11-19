@@ -336,4 +336,6 @@ Each run folder has `scenario.json`, `session.jsonl`, `console.log`,
 
 The lead owns Git and CI. Nothing was committed, pushed or dispatched by this
 session; the four CI jobs are required on the recording commit (firmware,
-console and harness changed).
+console and harness changed). The lead committed the work as `29ca5bf`; CI
+run 44530196836 on that exact commit passed all four jobs (native gcc, native
+clang, Arduino, ESP-IDF).

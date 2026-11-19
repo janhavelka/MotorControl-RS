@@ -13,6 +13,32 @@ entry gates. Run active instructions only; finished prompts belong in the
 | [Lichuan LC57BK-R / RC](lichuan_lc57bk_rs485/README.md) | NOT STARTED | Profile, ordinary application routes and qualification. |
 | [Lichuan TLO57R / TLC57R](lichuan_tl57_rs485/README.md) | NOT STARTED | Separate profile, ordinary application routes and qualification. |
 
+## Unattended plan, 20 November to about 4 December 2026
+
+The owner is away and asked for all remaining sets to run in this order. Bench
+work follows the absence rules (D15) in the
+[wired bench contract](ess_wired_bench/COMMON.md#owner-absence-20-november-to-about-4-december-2026)
+for every set: no owner waits, no save, factory restore or communication
+write, no fault that only a restart clears; owner steps are deferred to the
+[wired bench table](ess_wired_bench/README.md#deferred-to-owner-return).
+
+| Period | Work, in order | Notes |
+| --- | --- | --- |
+| A | ESS wired bench 13-20 | Running |
+| B | Standalone 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 17; multi-drive 05, 06, 07; standalone 13 last | Hardware already moved to the wired bench is not rerun; each stage gets its remaining software, a disposition per item, and NOT RUN for steps that need an instrument, S2 hardware or the owner |
+| C | Lichuan shared 01; LC57BK 01, 02, shared 02 with LC57BK 02b, LC57BK 03-11 | Software only: no Lichuan fixture exists, so 12a and 12 hardware stay NOT RUN |
+| D | TL57 01, 02, 02b, 03-11 | Extends C's shared work; 12 hardware stays NOT RUN |
+
+Each stage (one executor at a time) ends with a cleanup pass: CHANGELOG,
+READMEs and guides, Doxygen on changed public API, no dead code or stale
+comments in touched files. The lead then runs local checks and one independent
+OpenAI audit of the stage diff, fixes confirmed important findings, records
+minor ones in the backlog, commits, pushes and verifies CI on the exact
+commit. Each period ends with a complexity review: an independent audit for
+simplification, readability and maintainability with unchanged behavior, then
+the agreed refactors in small tested blocks, native tests, both firmware
+builds and a short bench regression.
+
 Delivered ESS behavior belongs in the [operation guides](../README.md#public-operations).
 The [standalone revalidation](../reports/2026-11-15_standalone_audit_revalidation.md)
 and [multi-drive 04/09 audit](../reports/2026-11-16_multi_drive_04_09_audit.md)
