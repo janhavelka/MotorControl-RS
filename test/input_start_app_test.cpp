@@ -87,6 +87,10 @@ struct Drive {
     bool runForever = false;
     bool ptRepeat = false; ///< repeats restart the PT record while X0 stays active.
     uint8_t lastRecord = 0;
+    // Wired bench 14: a speed, JOG or PV run, and whether 0x0008 reports the level after inversion.
+    bool velocityRun = false, afterInversion = false;
+    uint8_t velocityTerminal = 0;
+    int32_t velocityStep = 0;
 };
 std::map<uint8_t, Drive> drives;
 std::vector<std::vector<uint8_t>> frames;
@@ -137,16 +141,47 @@ void startPt(Drive& d) {
     d.pending = d.regs[0x0050] ? target : position(d) + target;
     d.runningReads = 2; ++d.starts; d.lastRecord = record;
 }
+// Functions 8-10 and 13 run while their input is active (13 with 0x0051 = 1:
+// until a stop): 9 forward, 10 backward, 8 by the sign of 0x001D, 13 by the
+// sign of the selected PV record (simulator only; wired bench 14 measures it).
+void startVelocity(Drive& d, uint8_t terminal) {
+    const uint16_t function = d.regs[0x0041 + terminal];
+    int16_t speed = static_cast<int16_t>(d.regs[0x001D]);
+    if (function == 13) {
+        const uint16_t inputs = bench.inputs();
+        uint8_t record = 1;
+        for (uint8_t t = 0; t < 4; ++t) {
+            const uint16_t f = d.regs[0x0041 + t];
+            if (f >= 14 && f <= 17 && ((inputs >> t) & 1u)) record = static_cast<uint8_t>(record + (1u << (f - 14)));
+        }
+        speed = static_cast<int16_t>(d.regs[0x00C0 + 3 * (record - 1)]); d.lastRecord = record;
+    }
+    d.velocityStep = function == 9 ? 10 : function == 10 ? -10 : speed < 0 ? -10 : 10;
+    d.velocityRun = true; d.velocityTerminal = terminal; ++d.starts;
+}
 void edge(uint8_t output) {
     for (auto& entry : drives) {
         auto& d = entry.second;
         const uint16_t function = d.regs[0x0041 + OUTPUT_TERMINAL[output]];
         if (d.present && function == 7) startOn(d);
         if (d.present && function == 12) startPt(d);
+        if (d.present && ((function >= 8 && function <= 10) || function == 13)) startVelocity(d, static_cast<uint8_t>(OUTPUT_TERMINAL[output]));
     }
 }
+// The effective level of terminal t: the source, inverted by polarity 1.
+bool effectiveLevel(const Drive& d, uint8_t t) { return (((bench.inputs() ^ d.regs[0x0040]) >> t) & 1u) != 0; }
 uint16_t readWord(Drive& d, uint16_t reg) {
-    if (reg == 0x0008) return static_cast<uint16_t>(bench.inputs() | d.regs[0x0008]);
+    if (reg == 0x0008)
+        return static_cast<uint16_t>((d.afterInversion ? bench.inputs() ^ d.regs[0x0040] : bench.inputs()) | d.regs[0x0008]);
+    if (reg == 0x0007 && d.velocityRun) {
+        bool stopped = false;
+        for (uint8_t t = 0; t < 4; ++t) stopped = stopped || (d.regs[0x0041 + t] == 5 && effectiveLevel(d, t));
+        const bool edgePv = d.regs[0x0041 + d.velocityTerminal] == 13 && d.regs[0x0051] == 1;
+        if (!stopped && (edgePv || effectiveLevel(d, d.velocityTerminal))) {
+            setPosition(d, position(d) + d.velocityStep); d.regs[0x000C] = 60; return 4;
+        }
+        d.velocityRun = false; d.regs[0x000C] = 0; return 1;
+    }
     if (reg == 0x0007 && d.restartIn) { // One stopped report, then the repeated start.
         if (--d.restartIn) return 1;
         if (d.ptRepeat) startPt(d); else startOn(d);
@@ -166,7 +201,7 @@ uint16_t readWord(Drive& d, uint16_t reg) {
 void writeWord(Drive& d, uint16_t reg, uint16_t value) {
     if (reg >= 0x140) return;
     d.regs[reg] = value;
-    if (reg == 0x0027 && (value & 0x0300)) { d.runningReads = 0; d.runForever = false; } // Stop.
+    if (reg == 0x0027 && (value & 0x0300)) { d.runningReads = 0; d.runForever = false; d.velocityRun = false; d.regs[0x000C] = 0; } // Stop.
 }
 void serveBus() {
     if (hardware.writes == servedWrites) return;
@@ -336,7 +371,8 @@ void testArmRefusalsBeforeTx() {
     fresh();
     refusedBeforeTx("@1 arm home x3\n", "home_staging_prompt_12");
     refusedBeforeTx("@1 arm segment x3 relative 1\n", "target_unknown"); // Wired bench 13: delivered, facts first.
-    refusedBeforeTx("@1 arm velocity x3\n", "pv_staging_prompt_14");
+    refusedBeforeTx("@1 arm velocity x3\n", "target_unknown"); // Wired bench 14: delivered, facts first.
+    refusedBeforeTx("@1 arm pv x0 1 pin3\n", "target_unknown");
     selectedFacts(1);
     drives[1].regs[0x0044] = 0; command("@7 read config\n"); finish(latest());
     refusedBeforeTx("@8 arm position x3 relative 1000 60\n", "function_not_7");
@@ -968,6 +1004,189 @@ void testPtGroupMembers() {
     assert(result(1).outcome == Outcome::ATTRIBUTED && result(1).positionChange == 1000);
     assert(bench.onCalls == 2 && drives[1].starts == 1 && drives[2].starts == 1 && !count(isStart));
 }
+// ------------------------------------------------ wired bench 14: velocity and PV
+// The fresh reads and FINITE_MOVE records a velocity or PV arm needs.
+void velocityFacts(uint8_t address, const std::string& stored, const char* mapping = "unknown") {
+    if (app->axis.target.address != address) { command("@1 useaddr " + std::to_string(address) + "\n"); contains("\"ok\":true"); }
+    auto& d = drives[address];
+    for (const std::string& line : {std::string("@2 read config\n"), std::string("@3 driver read\n"), stored, std::string("@5 read state\n")}) {
+        command(line); finish(latest());
+    }
+    for (uint8_t t = 0; t < 4; ++t)
+        command("@6 io qualification install " + std::to_string(address) + " x" + std::to_string(t) + " " +
+            std::to_string(d.regs[0x0041 + t]) + " " + std::to_string((d.regs[0x0040] >> t) & 1u) + " finite-move " +
+            (t == 3 ? mapping : "unknown") + " triggers-inhibited\n");
+}
+void setJog(Drive& d, int16_t speed) { d.regs[0x001D] = static_cast<uint16_t>(speed); d.regs[0x001E] = 100; d.regs[0x001F] = 100; }
+uint32_t armVelocity(const std::string& args) {
+    command("@20 arm " + args + "\n");
+    if (!said("\"result\":\"accepted\"")) { std::fprintf(stderr, "velocity arm refused: %s\n", Serial.output.c_str()); assert(false); }
+    assert(session().phase == Phase::ARMED); // No staging: the stored words are already there.
+    return session().operationId;
+}
+void testVelocityInputArms() {
+    // JOG+ (9) on X0, JOG- (10) on X3, speed input (8) with a negative 0x001D: direction, level end, no write.
+    struct Case { uint8_t terminal; uint16_t function; int16_t stored; const char* output; int8_t direction; };
+    for (const Case c : {Case{0, 9, -30, "mosfet1", 1}, Case{3, 10, 30, "mosfet2", -1}, Case{0, 8, -30, "mosfet1", -1}, Case{0, 8, 30, "mosfet1", 1}}) {
+        fresh(); auto& d = drives[1];
+        d.regs[0x0041 + c.terminal] = c.function; setJog(d, c.stored);
+        velocityFacts(1, "@4 velocity read\n");
+        const auto writes = count(isWrite);
+        const auto id = armVelocity("velocity x" + std::to_string(c.terminal));
+        const auto& mv = session().members[0];
+        assert(session().kind == Probe::InputStartKind::VELOCITY && mv.function == c.function && mv.storedRpm == c.stored);
+        assert(mv.expectedDirection == c.direction && mv.stagedWords[0] == static_cast<uint16_t>(c.stored) && mv.stagedWords[1] == 100);
+        trigger(id, c.output, 300);
+        assert(session().admitted && !std::strcmp(session().rows[3].row, "M"));
+        done();
+        const auto& r = result();
+        if (r.outcome != Outcome::ATTRIBUTED) std::fprintf(stderr, "velocity arm %u: %s %s\n", c.function, Probe::inputStartOutcomeName(r.outcome), session().error);
+        assert(r.outcome == Outcome::ATTRIBUTED && r.effect == ESS::InputStartEffect::VELOCITY_RUN);
+        assert(r.completion == ESS::InputStartCompletion::VELOCITY_STOPPED && (r.positionChange > 0) == (c.direction > 0) && r.positionChange);
+        assert(count(isWrite) == writes && !count(isStart) && d.starts == 1); // The drive input ran it; the host wrote nothing.
+        assert(releaseOperation(id));
+    }
+    // Refusals before any frame.
+    const auto setup = [](uint16_t function, int16_t stored) {
+        fresh(); auto& d = drives[1]; d.regs[0x0041] = function; setJog(d, stored); velocityFacts(1, "@4 velocity read\n");
+    };
+    setup(9, 61); refusedBeforeTx("@8 arm velocity x0\n", "outside_velocity_limits");
+    setup(9, 0); refusedBeforeTx("@8 arm velocity x0\n", "speed_zero");
+    setup(7, 30); refusedBeforeTx("@8 arm velocity x0\n", "function_not_8_9_10");
+    setup(9, 30); refusedBeforeTx("@8 arm velocity x0 group\n", "invalid_arguments");
+    fresh(); drives[1].regs[0x0041] = 9; setJog(drives[1], 30);
+    for (const char* line : {"@2 read config\n", "@3 driver read\n", "@4 velocity read\n", "@5 read state\n"}) { command(line); finish(latest()); }
+    refusedBeforeTx("@8 arm velocity x0\n", "triggers_inhibited_required"); // No FINITE_MOVE record on the trigger.
+    fresh(); drives[1].regs[0x0041] = 9; setJog(drives[1], 30); velocityFacts(1, "@4 read state\n");
+    refusedBeforeTx("@8 arm velocity x0\n", "velocity_read_stale");
+    fresh(); drives[1].regs[0x0041] = 9; drives[1].regs[0x0018] = 1; setJog(drives[1], 30); velocityFacts(1, "@4 velocity read\n");
+    refusedBeforeTx("@8 arm velocity x0\n", "soft_limit_state_unknown");
+    setup(9, 30); drives[1].regs[0x0008] = 1; command("@9 read state\n"); finish(latest());
+    refusedBeforeTx("@8 arm velocity x0\n", "input_active");
+    // Audit F2: raised limits are serial-only; an arm keeps the legacy speed while raised.
+    setup(9, 120); refusedBeforeTx("@8 arm velocity x0\n", "outside_velocity_limits");
+    static Probe::VelocityCell promoted[1];
+    promoted[0].rpm = 120; promoted[0].accelerationTime = promoted[0].decelerationTime = 100;
+    promoted[0].subdivision = 1000; promoted[0].durationMs = 2000;
+    app->velocityPromoted = promoted; app->velocityPromotedCount = 1;
+    command("@9 velocity limits raise\n"); contains("\"raised\":true");
+    refusedBeforeTx("@8 arm velocity x0\n", "outside_velocity_limits");
+    // A non-member with a start function on the trigger terminal: L5, no ON.
+    setup(9, 30); drives[2].regs[0x0041] = 10;
+    auto id = armVelocity("velocity x0");
+    trigger(id, "mosfet1", 300);
+    assert(!session().admitted && !std::strcmp(session().decisionRow, "L5") && !drives[1].starts);
+    command("@11 disarm " + std::to_string(id) + "\n"); pump(200); assert(releaseOperation(id));
+}
+void testVelocityDeadman() {
+    // X3 = 5 with polarity 1 (AFTER_INVERSION, wired bench 05): the stop reads active
+    // while mosfet2 is off, so the arm refuses; mosfet2 held makes it inactive.
+    fresh(); auto& d = drives[1];
+    d.regs[0x0041] = 9; d.regs[0x0044] = 5; d.regs[0x0040] = 8; d.afterInversion = true; setJog(d, 30);
+    command("@12 bench on mosfet2 60000\n"); contains("\"ok\":true");
+    velocityFacts(1, "@4 velocity read\n", "after");
+    command("@13 bench off mosfet2\n"); contains("\"ok\":true");
+    command("@14 read state\n"); finish(latest());
+    refusedBeforeTx("@8 arm velocity x0\n", "stop_input_active");
+    command("@12 bench on mosfet2 60000\n"); contains("\"ok\":true");
+    velocityFacts(1, "@4 velocity read\n", "after");
+    const auto id = armVelocity("velocity x0");
+    trigger(id, "mosfet1", 3000);
+    assert(session().admitted); // The held dead-man output is on a terminal without a start function.
+    runUntil([] { return result().runningObserved; });
+    command("@13 bench off mosfet2\n"); contains("\"ok\":true"); // The dead-man lapses: the drive stops itself.
+    runUntil([] { return !drives[1].velocityRun; });
+    assert(bench.outputs[2].active); // The JOG level is still on; the stop input ended the run.
+    done();
+    assert(result().completion == ESS::InputStartCompletion::VELOCITY_STOPPED && result().positionChange > 0 && d.starts == 1);
+    assert(releaseOperation(id));
+}
+void setPv(Drive& d, uint8_t n, int16_t speed) {
+    const uint16_t base = static_cast<uint16_t>(0x00C0 + 3 * (n - 1));
+    d.regs[base] = static_cast<uint16_t>(speed); d.regs[base + 1] = 100; d.regs[base + 2] = 100;
+}
+void testPvArms() {
+    // pin3 layout (X0 = 13, X1-X3 PIN0-PIN2): every record its own speed, level mode ends with the trigger.
+    fresh(); auto& d = drives[1];
+    d.regs[0x0041] = 13; d.regs[0x0042] = 14; d.regs[0x0043] = 15; d.regs[0x0044] = 16; d.regs[0x0051] = 0;
+    for (uint8_t n = 1; n <= 8; ++n) setPv(d, n, static_cast<int16_t>(5 * n));
+    for (uint8_t n : {1, 6}) {
+        selectPins(n); velocityFacts(1, "@4 segment speed " + std::to_string(n) + " read\n");
+        const auto id = armVelocity("pv x0 " + std::to_string(n) + " pin3");
+        const auto& mv = session().members[0];
+        assert(session().kind == Probe::InputStartKind::PV && mv.record == n && mv.storedRpm == 5 * n && mv.selectorCount == 3);
+        assert(mv.layout == Probe::InputStartLayout::PIN3 && mv.expectedDirection == 1);
+        trigger(id, "mosfet1", 300);
+        assert(session().admitted);
+        done();
+        assert(result().outcome == Outcome::ATTRIBUTED && result().positionChange > 0 && d.lastRecord == n);
+        assert(releaseOperation(id));
+    }
+    // Refusals: a record the layout cannot reach, PIN levels, the record read, the sign, the layout and 0x0051.
+    selectPins(2); velocityFacts(1, "@4 segment speed 2 read\n");
+    refusedBeforeTx("@8 arm pv x0 9 pin3\n", "record_unreachable");
+    refusedBeforeTx("@8 arm pv x0 3 pin3\n", "pin_levels");
+    refusedBeforeTx("@8 arm pv x0 2 pv2-deadman\n", "selector_layout");
+    command("@9 segment speed 3 read\n"); finish(latest());
+    refusedBeforeTx("@8 arm pv x0 2 pin3\n", "record_stale");
+    setPv(d, 2, -30); velocityFacts(1, "@4 segment speed 2 read\n");
+    refusedBeforeTx("@8 arm pv x0 2 pin3\n", "record_sign_unqualified");
+    setPv(d, 2, 61); velocityFacts(1, "@4 segment speed 2 read\n");
+    refusedBeforeTx("@8 arm pv x0 2 pin3\n", "outside_velocity_limits");
+    for (const char* bad : {"@8 arm pv x0 2\n", "@8 arm pv x0 0 pin3\n", "@8 arm pv x0 2 pin4\n", "@8 arm pv x0 2 pin3 group\n"}) {
+        command(bad); contains("invalid_arguments");
+    }
+    // No DRIVE read in this binding: 0x0051 is unknown.
+    fresh(); auto& u = drives[1];
+    u.regs[0x0041] = 13; u.regs[0x0042] = 14; u.regs[0x0043] = 15; u.regs[0x0044] = 16; setPv(u, 1, 20);
+    for (const char* line : {"@2 read config\n", "@4 segment speed 1 read\n", "@5 read state\n"}) { command(line); finish(latest()); }
+    for (uint8_t t = 0; t < 4; ++t)
+        command("@6 io qualification install 1 x" + std::to_string(t) + " " + std::to_string(u.regs[0x0041 + t]) +
+            " 0 finite-move unknown triggers-inhibited\n");
+    refusedBeforeTx("@8 arm pv x0 1 pin3\n", "pv_trigger_mode_unknown");
+    // pv2-deadman (X3 = 5 inverted) in edge mode (0x0051 = 1): the run continues after the
+    // trigger until a stop; the dead-man lapse stops it here.
+    fresh(); auto& e = drives[1];
+    e.regs[0x0041] = 13; e.regs[0x0042] = 14; e.regs[0x0043] = 15; e.regs[0x0044] = 5; e.regs[0x0040] = 8; e.regs[0x0051] = 1;
+    e.afterInversion = true;
+    for (uint8_t n = 1; n <= 4; ++n) setPv(e, n, static_cast<int16_t>(10 * n));
+    selectPins(2); // relay2 (PIN0) on; PIN1 off; mosfet2 is the dead-man here, not PIN2.
+    command("@12 bench on mosfet2 60000\n"); contains("\"ok\":true");
+    velocityFacts(1, "@4 segment speed 2 read\n", "after");
+    refusedBeforeTx("@8 arm pv x0 2 pin3\n", "selector_layout"); // The pin3 helper refuses X3 = 5.
+    const auto id = armVelocity("pv x0 2 pv2-deadman window-ms 20000");
+    assert(session().members[0].selectorCount == 2 && session().members[0].layout == Probe::InputStartLayout::PV2_DEADMAN);
+    trigger(id, "mosfet1", 50);
+    assert(session().admitted);
+    runUntil([] { return result().runningObserved; });
+    pump(20000);
+    assert(e.velocityRun && !bench.outputs[2].active); // Edge mode: still running after the trigger ended.
+    command("@13 bench off mosfet2\n"); contains("\"ok\":true");
+    runUntil([] { return !drives[1].velocityRun; });
+    done();
+    assert(result().completion == ESS::InputStartCompletion::VELOCITY_STOPPED && e.lastRecord == 2);
+    assert(releaseOperation(id));
+    // pv-pt-mix (X3 = 12): the pv2-deadman helper refuses it. The mix needs 0x0051 = 1 (p29),
+    // and an edge-mode arm needs the dead-man layout (audit F3): refused in both modes.
+    fresh(); auto& m = drives[1];
+    m.regs[0x0041] = 13; m.regs[0x0042] = 14; m.regs[0x0043] = 15; m.regs[0x0044] = 12; m.regs[0x0051] = 1;
+    for (uint8_t n = 1; n <= 4; ++n) setPv(m, n, 20);
+    selectPins(1); velocityFacts(1, "@4 segment speed 1 read\n");
+    refusedBeforeTx("@8 arm pv x0 1 pv2-deadman\n", "selector_layout");
+    refusedBeforeTx("@8 arm pv x0 1 pv-pt-mix\n", "pv_edge_needs_deadman");
+    m.regs[0x0051] = 0; command("@3 driver read\n"); finish(latest()); // The changed mode invalidates the configuration.
+    velocityFacts(1, "@4 segment speed 1 read\n");
+    refusedBeforeTx("@8 arm pv x0 1 pv-pt-mix\n", "pv_pt_mix_needs_edge_mode");
+    // Audit F3: edge mode in the three-selector layout (no dead-man) refuses before any frame or pulse.
+    fresh(); auto& g = drives[1];
+    g.regs[0x0041] = 13; g.regs[0x0042] = 14; g.regs[0x0043] = 15; g.regs[0x0044] = 16; g.regs[0x0051] = 1; setPv(g, 1, 20);
+    velocityFacts(1, "@4 segment speed 1 read\n");
+    refusedBeforeTx("@8 arm pv x0 1 pin3\n", "pv_edge_needs_deadman");
+    g.regs[0x0051] = 0; command("@3 driver read\n"); finish(latest());
+    velocityFacts(1, "@4 segment speed 1 read\n");
+    const auto level = armVelocity("pv x0 1 pin3"); // Level mode ends with the trigger width.
+    command("@14 disarm " + std::to_string(level) + "\n"); pump(200); assert(releaseOperation(level));
+}
 } // namespace
 
 int main() {
@@ -990,6 +1209,9 @@ int main() {
     testPtTriggerChecks();
     testPtStopAndRecordWrites();
     testPtGroupMembers();
+    testVelocityInputArms();
+    testVelocityDeadman();
+    testPvArms();
     std::puts("input_start_app: PASS");
     return 0;
 }

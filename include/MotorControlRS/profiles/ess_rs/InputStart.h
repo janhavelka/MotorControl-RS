@@ -33,7 +33,9 @@ constexpr std::size_t INPUT_START_SPACING_RING = 64;    ///< Retained spacings f
 /** What the staged input function does when it starts (function manual p27, p75).
  * DISPLACEMENT: function 7 or 12 with 0x0050 = 0 (relative); ENDPOINT: 0x0050 = 1
  * (absolute); HOME_COMPLETION: function 11; VELOCITY_RUN: function 13 (0x0051
- * selects level or rising edge). A velocity run is never reported finite. */
+ * selects level or rising edge) and the level-valid speed functions 8 (speed
+ * input, sign of 0x001D), 9 (JOG+) and 10 (JOG-), wired bench 14. A velocity
+ * run is never reported finite. */
 enum class InputStartEffect : uint8_t { DISPLACEMENT, ENDPOINT, HOME_COMPLETION, VELOCITY_RUN };
 enum class InputStartOutcome : uint8_t {
     NONE,
@@ -93,7 +95,7 @@ struct InputStartPrerequisites {
     ReadTarget target;
     uint32_t configurationGeneration = 0;
     uint8_t terminal = 0;   ///< X0..X3.
-    uint16_t function = 0;  ///< 0x0041 + terminal: 7, 11, 12 or 13.
+    uint16_t function = 0;  ///< 0x0041 + terminal: 7..13 (7 position, 8-10 speed/JOG, 11 home, 12 PT, 13 PV).
     uint16_t polarity = 0;  ///< That terminal's bit of 0x0040.
     IoStatusMapping statusMapping = IoStatusMapping::UNKNOWN; ///< Of 0x0008 against the inversion.
     bool positionModeKnown = false;
@@ -112,11 +114,15 @@ struct InputStartPrerequisites {
     int64_t expectedDisplacement = 0;
     int32_t expectedEndpoint = 0;
     bool stagedKnown = false;
-    /** Checked words the start relies on (evidence only). Function 7: the
-     * 0x0021/5 profile readback. Function 12: the armed PT record read in
-     * register order of its first five words, pulse words first (0x0060 +
-     * 6(n-1): pulse high, pulse low, speed, acceleration, deceleration), so
-     * index 0..1 is the target at word order 0. */
+    /** Checked words the start relies on (evidence only; the context never
+     * interprets them). Function 7: the 0x0021/5 profile readback. Function 12:
+     * the armed PT record read in register order of its first five words, pulse
+     * words first (0x0060 + 6(n-1): pulse high, pulse low, speed, acceleration,
+     * deceleration), so index 0..1 is the target at word order 0. Functions 8,
+     * 9 and 10: the checked 0x001D/3 read (JOG speed as a signed native rpm
+     * word, acceleration, deceleration), index 3..4 zero. Function 13: the
+     * armed PV record read in register order (0x00C0 + 3(n-1): speed,
+     * acceleration, deceleration), index 3..4 zero. */
     uint16_t stagedWords[5] = {};
     uint64_t maximumAgeUs = 0;    ///< Zero disables age expiry of the baseline.
 };
@@ -232,7 +238,7 @@ struct InputStartResult {
 
 /** Validate the facts and arm. Output is unchanged on any error. The effect
  * follows the function and the stated mode: 7/12 need a known 0x0050 (0 or 1),
- * 13 a known 0x0051. An inverted polarity with UNKNOWN mapping, an active input,
+ * 13 a known 0x0051; 8, 9 and 10 need neither. An inverted polarity with UNKNOWN mapping, an active input,
  * a running, alarmed or released baseline or speed, stale facts, or a missing
  * source inhibition statement refuse. The first sample is due at nowUs. */
 Status prepareInputStart(InputStartContext& output, const InputStartPrerequisites&, uint32_t operationId,

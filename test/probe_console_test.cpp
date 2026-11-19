@@ -1412,7 +1412,7 @@ void testVelocityExactRoutesRetentionAndBound() {
     assert(Core::prepareVelocityTarget(fake.velocityRequest, fake.axisConfig, target)); assert(target.nativeRpm == 30);
     const auto count = fake.velocities;
     for (const auto* invalid : {"velocity nan rpm native 100 configured normal", "velocity 1/0 rpm native 100 configured normal",
-            "velocity 1 rpm native 0 configured normal", "velocity 1 rpm native 10001 configured normal", "velocity 1 rpm native 10 acceleration normal",
+            "velocity 1 rpm native 0 configured normal", "velocity 1 rpm native 12001 configured normal", "velocity 1 rpm native 10 acceleration normal",
             "velocity 1 rpm native 10 configured release", "velocity 1 rpm native 10 configured normal round nearest -1",
             "velocity 1 rpm native 10 configured normal round nearest 1 approx 1", "velocity 1 rpm native 10 configured normal junk",
             "jog", "torque 1", "current 1", "velocity-update 10", "jog"}) { send(console, (std::string(invalid) + "\n").c_str()); fake.contains("\"ok\":false"); }

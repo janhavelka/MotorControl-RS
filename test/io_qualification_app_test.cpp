@@ -530,9 +530,14 @@ void readySelected() {
     assert(host(app).motionProfile(app,Probe::MotionProfileCommand::SNAPSHOT,profile) == Probe::Action::OK);
     until([] { return !app->motionProfile.view.pending; }); idle(); assert(app->motionProfile.view.ok);
 }
+// Wired bench 14: FINITE_MOVE records also state inhibition of 8-10 and 13 (the
+// velocity and PV arms, serial velocity); an active one refuses like any control.
 bool finiteAllowed(uint16_t function, bool active) {
-    if (function == 8 || function == 9 || function == 10 || function == 13) return false;
-    return !(active && function >= 2 && function <= 12);
+    return !(active && function >= 2 && function <= 13);
+}
+// Serial moves keep refusing a speed, JOG or PV input whatever its record states.
+bool moveAllowed(uint16_t function, bool active) {
+    return finiteAllowed(function, active) && !(function >= 8 && function <= 10) && function != 13;
 }
 void queuedStageExpiry() {
     for (bool callerAge : {false,true}) {
@@ -677,7 +682,7 @@ void finiteMoveMatrix() {
             assert(installIoQualification(q).isOk() == finiteAllowed(function,active != 0));
             const auto before = frames.size(); uint32_t id = 777;
             const auto accepted = moveBy(Rational(10),PositionUnit::STEPS,id,60);
-            assert(accepted.isOk() == finiteAllowed(function,active != 0));
+            assert(accepted.isOk() == moveAllowed(function,active != 0));
             if (!accepted) { assert(id == 777 && frames.size() == before); continue; }
             until([&] { MoveProgress progress; return moveProgress(id,progress) && !progress.pending; });
             MoveProgress progress; assert(moveProgress(id,progress)); assert(progress.completion == ActionCompletion::OBSERVED);
@@ -697,7 +702,7 @@ void finiteMoveMatrix() {
             request.move.speedRpm = 60; request.move.ramp = MoveRamp::VERIFIED_CONFIGURED;
             request.onFailure = Probe::GroupFailurePolicy::LEAVE; request.start = Probe::GroupStartMode::STAGED;
             const auto before = frames.size(); id = 777; const auto accepted = submitGroupMove(request,id);
-            assert(accepted.isOk() == finiteAllowed(function,active != 0));
+            assert(accepted.isOk() == moveAllowed(function,active != 0));
             if (!accepted) { assert(id == 777 && frames.size() == before); continue; }
             until([&] { Probe::GroupResult r; return copyGroupResult(id,r) && !r.pending; });
             Probe::GroupResult done; assert(copyGroupResult(id,done) && done.ok);

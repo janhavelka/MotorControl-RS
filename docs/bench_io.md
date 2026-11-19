@@ -268,11 +268,16 @@ PT/PV selection drops to two segments.
    three drives or remove the I/O feed. Output levels during reset are not yet
    measured here.
 6. Input functions 8, 9, 10 and 13 run the motor at a speed with no end
-   position. The bench hold (at most 60 s) and the stop rule below limit them,
-   but they are not a hardwired stop. Run them only in an explicit case with a
-   prepared serial stop. Under the owner's 18 November authorization (wired
-   bench D1) they may run unattended; the older rule required attendance and an
-   explicit instruction ([multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)).
+   position. The trigger width (at most 5000 ms through `arm trigger`), the
+   bench hold (at most 60 s) and the stop rule below end them in the
+   controller; they are not a hardwired stop, and an edge-started PV run
+   (`0x0051` = 1) ends only with a stop. Run them in an explicit case with a
+   prepared serial stop. Under D1 (owner, 18 November) they run unattended;
+   the older "attended only" rule of
+   [multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md) is
+   superseded. A dead-man stop (X3 = 5, input polarity 1, held inactive by
+   `mosfet2` on a renewed hold) ended serial velocity, JOG+ and an edge PV run
+   when its hold lapsed ([wired bench 14](reports/2026-11-19_wired_bench_14_velocity_jog_pv.md)).
 7. Check the wiring declarations (`wiring`, source `board` on the bench
    images) before assigning functions; on images before wired bench 02,
    declare them first. `io set` keeps refusing connected terminals without the
@@ -465,8 +470,13 @@ this fixture unlocks.
     record 8 stopped all three with no further start and the outputs off (P10).
     Drive 2's negative table needs the signed target claim (not promoted).
 11. JOG/speed inputs (8-10) and PV segments (13), each in an explicit case
-    with a prepared serial stop and the 60 s bench hold. Under D1 they may run
-    unattended; "attended only" was the older rule.
+    with a prepared serial stop. Under D1 they run unattended; "attended
+    only" is superseded. [Wired bench 14](reports/2026-11-19_wired_bench_14_velocity_jog_pv.md)
+    measured on drive 1: JOG+ (X0, `mosfet1`) and JOG- (X3, `mosfet2`) kept
+    their direction for both signs of `0x001D`, the speed input followed the
+    sign, PV records 1-8 (X0 = 13, PIN0-PIN2 on `relay2`, `relay1`, `mosfet2`)
+    each ran at their own speed in level mode, and edge-mode PV ran until the
+    prepared stop.
 
 This covers the open backlog items for wired input effects, output loads and
 status mapping ([multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md)),

@@ -17,7 +17,9 @@ Wired bench 13 added stored PT records started by function 12: see
 | Application route | `examples/probe_cli/InputStartApp.h`, API in `ProbeApp.h` | Function 7 (position start) and function 12 (PT record, relative only) on the selected axis or every declared group member |
 | Console | `arm`, `disarm` (protocol 3) | Same functions as the API |
 | Harness | `scripts/bench_probe.py` `arm-position`, `arm-segment`, `arm-trigger`, `arm-inspect`, `disarm`; `scripts/bench_scenarios.py --scenario input-start`, `pt-segments` | Reply validators; scenarios on run folders |
-| Home (11), PV (13) staging | `arm home|velocity` | Refused before any traffic with `unsupported` and the prompt that delivers it (12, 14) |
+| Speed input and JOG (8, 9, 10) | `arm velocity xN` | Stored JOG words from a fresh `velocity read`, speed within the input velocity limit; the level lasts the trigger width (wired bench 14) |
+| PV records (13) | `arm pv xN RECORD pin3\|pv2-deadman\|pv-pt-mix` | A named selector layout, a fresh `segment speed N read` and `0x0051`; level mode ends with the trigger, edge mode only with a stop (wired bench 14) |
+| Home (11) staging | `arm home` | Refused before any traffic with `unsupported` |
 
 The core is framework-independent: no clock, I/O or heap. It yields only the
 existing non-changing seven-word sample read (FC03 `0x0006/7`: alarm, motion,
@@ -153,6 +155,41 @@ start per edge; a 2000 ms trigger started one run (P5); serial and group stops
 ended runs with no further start (P8, P10); with `0x0050` = 1 records still ran
 as displacements (P2); a record over the rate ceiling was refused before any
 frame (P12).
+
+### Speed input, JOG and PV (functions 8-10, 13, wired bench 14)
+
+`arm velocity xN` arms the selected axis for the function its trigger
+terminal holds (8 speed input, 9 JOG+, 10 JOG-); `arm pv xN RECORD LAYOUT`
+arms a PV record (13, [segments](ess_segments.md#pv-arm-wired-bench-14)).
+Neither writes. The velocity arm needs a fresh checked `velocity read` of the
+binding (the stored `0x001D/3`), a nonzero stored speed within the input
+velocity limit (60 rpm; raised limits are serial-only) and ramp words up to
+2000. A PV arm in edge mode (`0x0051` = 1) needs the `pv2-deadman` layout. Both need a
+current configuration with the terminal declared connected, a FINITE_MOVE
+record with triggers inhibited on the trigger and every terminal holding 7-17,
+fresh stopped alarm-free state, the trigger and every other start input
+inactive, no stop or limit input active, the soft limits known disabled, and
+the trigger output off. The member view reports `stored_rpm` and
+`expected_direction` (9: +1, 10: -1, 8 and 13: the sign of the stored speed).
+The core context (`prepareInputStart`) arms 8-10 as `VELOCITY_RUN`, like 13;
+a velocity run is never reported finite. At the trigger the member row needs
+the function and polarity unchanged and the read the arm used still the
+latest; outputs already on are admitted under the PT rules (held selectors, a
+dead-man stop on a terminal with no start function). The group form is not
+delivered.
+
+Measured on drive 1, 19 November 2026 (`0x4EEA`/`0x0029`, 1000 ms trigger,
+`0x001D` +60 then -60): JOG+ on X0 moved +996 and +998 (J0, no dead-man) and
++996 twice (J1, dead-man), JOG- on X3 moved -995 and -998 (J2), and the speed
+input moved +996/-997 (J3, dead-man) and +997/-997 (J3n). JOG+ also ran with
+X3 = 5 at polarity 0 (J0b) and with X3 = 0 at polarity 1 (J0c). In the
+dead-man layout a JOG+ run with a 3000 ms trigger stopped at the dead-man
+lapse (about 1.0 s) before the width ended, +593 and +590 at 30 rpm (R5); the
+first R5 attempt, right after R4 in the same session, did not start at all
+(`no_start`, input observed active, dead-man held) and was not reproduced in
+two deliberate repeats, R4 then R5 included. The cause is unresolved; the
+missing measurement is the raw `0x0008`/`0x0007` words of every session sample
+in that attempt.
 
 ## Trigger and line isolation
 

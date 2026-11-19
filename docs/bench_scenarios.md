@@ -571,3 +571,44 @@ restoration planner restores PT targets through `segment position N set
 target`. `pt.json` keeps the trials, samples and interlock entries;
 `result.json` and both run checks follow as for the other folder scenarios.
 Results: [wired bench 13](reports/2026-11-19_wired_bench_13_pt_segments.md).
+
+Case G1 (`--image-level 14`) checks prompt 13's post-audit image: record 2
+runs once, then a trigger asking 3000 ms whose PIN0 hold was renewed to end
+2 s later must refuse before the ON.
+
+## Velocity, JOG and PV (wired bench 14)
+
+`--scenario velocity-jog-pv --cases ID... --address A --image-level 14`
+(`scripts/bench_velocity.py`; phase C cases only with `--address 2`, D15).
+Phase C needs `--evidence-records 200000 --evidence-mib 64`; `--c1-rows
+RAMP:SIGN` resumes C1 rows and `--c4-rpm` names C4's speed when C1 ran in an
+earlier folder. One run folder runs the named cases in order on drive A.
+
+| Case | Work |
+| --- | --- |
+| R1 | `velocity 61 rpm` and `1001 ms` refuse `outside_velocity_limits`, no operation |
+| R2 | One cell `velocity limits qualify 120 100 100 1000 2000 normal`, its run sampled, then the same request and 121 rpm refused |
+| R3 | `velocity jog set 60 100 100` read back; 120 refused |
+| R4, R5, R6 | Dead-man checks in their own layouts: serial 30 rpm with the lapse at 0.3 s; JOG+ width 3000 with the lapse at 1.0 s; edge PV record 2 with the lapse at 0.5 s and the prepared stop at 2 s |
+| V1 | +-60 rpm, 1000 ms, ramps 100/300/500 through the JOG setter, `0x0020` 0 and 30: slope and ramp fit |
+| J0, J0b, J0c, J1, J2, J3, J3n | JOG+, JOG- and the speed input with `0x001D` +60 and -60, 1000 ms trigger, with and without the dead-man (J0-J0c are the R5 diagnostics) |
+| PV1, PV3 | `pin3` records 1-8 (12..54 rpm, level mode); `pv2-deadman` edge mode with a prepared stop |
+| C1-C4 | Drive 2 cells: 120-3000 rpm x ramps 100/500 x signs (3 trials, 2 s); 300 rpm 10 s; subdivision 6000 creep runs; deceleration 2000 |
+| J4, PV2, PV4, PV5, PV6 | NOT RUN with their reasons |
+
+Every case's terminal purposes pass the plan checker (`plan_problem`: one
+purpose per terminal) before any output turns on. A dead-man layout is set as
+input polarity 1 at X3 = 0, `mosfet2` on through the interlock (60 s setup
+hold), then X3 = 5 with the recorded mapping; during a run each trial-loop pass
+renews it to 1 s (`bench_renew`), and a lapse hook ends the renewals at a set
+time. Serial runs sample `read state` continuously (phase C every ~0.15 s);
+speed is the least-squares slope of the feedback position over the feedback
+read midpoints. Every trial checks the evidence headroom first and sends the
+prepared `stop fast` if it raises; after each run a settle window sends it if
+the drive still moves, and phase C ends on a stop fast that does not stop the
+drive. An alarm is cleared with `alarm-clear` on drives 2 and 4 only, after one
+explicit `recover` if the drive was silent. The interlock's selection row P
+also admits a PV trigger (13). `velocity.json` keeps the cases, events and
+samples; restoration puts the layout back first, then the plan (velocity
+restore of the run's first read, PV records, `0x0051`, `0x0020`,
+subdivision). Results: [wired bench 14](reports/2026-11-19_wired_bench_14_velocity_jog_pv.md).

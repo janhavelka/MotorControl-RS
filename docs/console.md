@@ -37,6 +37,8 @@ after success or a read-only preparation rejection. Actual enable, alarm, encodi
 | `home read` | Read raw homing parameters and offset words; known method codes do not imply executable or qualified homing. |
 | `velocity read` | Read raw JOG speed and acceleration/deceleration words; speed/sign/ramp scaling remain unresolved. |
 | `home restore ID`, `velocity restore ID` | Write back the exact words of the checked `home read` or `velocity read` with operation ID `ID` (same drive and binding), no start, then read them back. `... restore inspect` shows the last restore. A lost reply is never resent. |
+| `velocity jog set 60 100 100` | JOG setter (wired bench 14): write the JOG speed and both ramp words (`0x001D/3`) after a `velocity read`, no start, then read them back; the speed stays within 60 rpm (raised limits are serial-only). |
+| `velocity limits` | Show the active velocity limits; `qualify RPM ACCEL DECEL SUBDIVISION MS normal\|fast` admits one exact run above +-60 rpm / 1000 ms, `raise` the promoted table, `reset` the legacy envelope. |
 | `settings` | Read actual drive settings; also show choices for the next move. |
 | `subdivision` | Read the drive's subdivision and related settings. |
 | `subdivision options` | Show the documented range and useful example values. |

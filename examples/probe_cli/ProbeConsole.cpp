@@ -105,7 +105,7 @@ const Entry COMMANDS[] = {
     {"stop", Command::STOP, "stop normal|fast [address]", "priority_stop_with_explicit_policy_then_observe_flags", true, "normal: stop with deceleration; fast: ESS emergency stop without the ramp. An admitted ordinary stop may recover once before its first send; target, tuple, lease and capacity checks still apply. A sent stop whose reply is lost is never resent; stop fast can escalate a running stop normal."},
     {"move", Command::MOVE, "move relative|absolute value unit frame native_rpm configured [setup write|verify|stored] [basis actual|commanded|queued] [round mode error [approx error]] [address] | move angle value unit frame positive|negative|shortest reject|positive|negative native_rpm configured [setup write|verify|stored] [round mode error [approx error]] [address]", "finite_move_through_public_coordinate_preparation", true, "Advanced move: explicit frame, rounding and setup policy; ordinary moves use moveby/moveto."},
     {"position-clear", Command::POSITION_CLEAR, "position-clear [address]", "explicit_device_position_zero_only", true, "Explicitly set the drive position counter to zero."},
-    {"velocity", Command::VELOCITY, "velocity read [address] | velocity restore SNAPSHOT_ID|inspect | velocity value rpm|steps/s|fullsteps/s|counts/s|turns/s|deg/s|rad/s|mm/s native|motor|load duration_ms configured normal|fast [round mode error [approx error]] [address]", "checked_parameter_read_or_finite_serial_velocity_with_explicit_stop", true, "Read native velocity parameters or request finite velocity with an explicit stop policy."},
+    {"velocity", Command::VELOCITY, "velocity read [address] | velocity restore SNAPSHOT_ID|inspect | velocity jog set SPEED ACCEL DECEL|inspect | velocity limits [qualify RPM ACCEL DECEL SUBDIVISION DURATION_MS normal|fast|raise|reset] | velocity value rpm|steps/s|fullsteps/s|counts/s|turns/s|deg/s|rad/s|mm/s native|motor|load duration_ms configured normal|fast [round mode error [approx error]] [address]", "checked_parameter_read_or_finite_serial_velocity_with_explicit_stop", true, "Read native velocity parameters or request finite velocity with an explicit stop policy."},
     {"monitor", Command::MONITOR, "monitor [off | interval_ms count]", "finite_nonconsuming_state_polling", true, "Read drive state a finite number of times; off ends local polling."},
     {"caps", Command::CAPS, "caps", "show_implemented_routes_and_explicit_capability_gaps", false, "Show implemented operations and unsupported or unresolved capabilities."},
     {"axis", Command::AXIS, "axis config [set field value [maximum]] | axis origin exact_native", "configure_host_coordinates_only", false, "Configure host coordinates, units and origin without motor traffic."},
@@ -117,7 +117,7 @@ const Entry COMMANDS[] = {
     {"result", Command::RESULT, "result [operation_id]", "inspect_retained_result_without_consuming", false, "Inspect an operation without consuming its retained result."},
     {"cancel", Command::CANCEL, "cancel [operation_id]", "cancel_local_work_not_motor_stop", false, "Cancel local work; use stop to request a motor stop."},
     {"group", Command::GROUP, "group show|status|clear | group set ADDR [ADDR ...] (1..15) | group wiring ADDR x0|x1|x2|x3|y0|y1 unknown|unconnected|connected | group read state | group move relative value unit frame native_rpm configured [setup write|verify] [start staged|sequential] on-failure leave|stop normal|stop fast | group stop normal|fast | group plan begin [start staged|sequential] on-failure leave|stop normal|stop fast | group plan add ADDR relative|absolute value unit frame native_rpm configured [setup write|verify] | group plan show|clear|submit | group axis ADDR config|config set field value [maximum]|origin native|prepare request | group reference ADDR declaration binding config config_read state_read native max_age_us command-coordinate-qualified | group reference ADDR revoke", "unicast_drive_group_independent_member_operations", true, "Declare up to 15 drives. A member plan stays inert until complete and explicitly submitted. Each member keeps its own coordinates, request and result."},
-    {"arm", Command::ARM, "arm position x0|x1|x2|x3 relative|absolute-by STEPS RPM [group] [poll-ms 20..500] [window-ms 100..30000] | arm position xN absolute TARGET RPM [poll-ms ..] [window-ms ..] | arm trigger ID mosfet1|mosfet2 WIDTH_MS (20..5000) | arm segment xN relative RECORD (1..8) [group] [poll-ms ..] [window-ms ..] (absolute refuses: pt_absolute_unresolved) | arm inspect ID | arm home|velocity xN (refused until prompts 12, 14)", "input_start_stage_one_owned_pulse_observe_attribute", true, "Input-started motion: stage a function 7 start without a start word, or arm a stored PT record selected by held PIN inputs (function 12), pulse one owned bench output once, then attribute the start from fresh drive samples."},
+    {"arm", Command::ARM, "arm position x0|x1|x2|x3 relative|absolute-by STEPS RPM [group] [poll-ms 20..500] [window-ms 100..30000] | arm position xN absolute TARGET RPM [poll-ms ..] [window-ms ..] | arm trigger ID mosfet1|mosfet2 WIDTH_MS (20..5000) | arm segment xN relative RECORD (1..8) [group] [poll-ms ..] [window-ms ..] (absolute refuses: pt_absolute_unresolved) | arm velocity xN [poll-ms ..] [window-ms ..] | arm pv xN RECORD pin3|pv2-deadman|pv-pt-mix [poll-ms ..] [window-ms ..] | arm inspect ID | arm home xN (refused)", "input_start_stage_one_owned_pulse_observe_attribute", true, "Input-started motion: stage a function 7 start without a start word, or arm a stored PT record (function 12), the stored JOG speed (functions 8-10) or a stored PV record (function 13) selected by held PIN inputs, pulse one owned bench output once, then attribute the start from fresh drive samples."},
     {"disarm", Command::DISARM, "disarm ID", "close_input_start_observation_no_stop_no_assignment_change", false, "Close an input-start session and turn its owned output off; it does not stop the drive or change the assignment."},
     {"bench", Command::BENCH, "bench | bench on relay1|relay2|mosfet1|mosfet2 HOLD_MS | bench off [relay1|relay2|mosfet1|mosfet2] | bench clear", "bench_fixture_outputs_and_input_no_bus_traffic", false, "Bench fixture only: switch board outputs wired to drive inputs and read the wired drive output. Each on lasts 1..60000 ms, then turns off; any stop turns all off."},
     {"broadcast", Command::BROADCAST, "broadcast accel 300|301 | broadcast start relative | broadcast stop normal|fast", "fixture_only_unconfirmed_address_0_frame_then_silent_window", true, "Bench fixture only: send one fixed address-0 frame to every drive, then listen 200 ms. No drive confirms it; read each drive back."},
@@ -1268,6 +1268,7 @@ const char* parameterWriteKind(ParameterWriteKind kind) {
     case ParameterWriteKind::NONE: return "none";
     case ParameterWriteKind::HOME_RESTORE: return "home_restore";
     case ParameterWriteKind::VELOCITY_RESTORE: return "velocity_restore";
+    case ParameterWriteKind::VELOCITY_SET: return "velocity_jog_set";
     }
     return "invalid";
 }
@@ -1304,9 +1305,43 @@ void Console::parameterWrite(uint32_t id, const char* command, const ParameterWr
         executionName(v.execution), v.error, static_cast<unsigned long long>(v.startedUs),
         static_cast<unsigned long long>(v.deadlineUs), static_cast<unsigned long long>(v.finishedUs)) &&
         writeEvidence(output_, sizeof(output_), used, "write_evidence", v.writeEvidence) &&
-        writeEvidence(output_, sizeof(output_), used, "read_evidence", v.readEvidence) &&
-        append(output_, sizeof(output_), used, "}");
+        writeEvidence(output_, sizeof(output_), used, "read_evidence", v.readEvidence);
+    // A refused write names its cause when the route recorded one (wired bench 14).
+    SettingsRefusal refusal;
+    if (fits && result != Action::OK && request && host_.settingsRefusal && host_.settingsRefusal(host_.context, refusal) &&
+        refusal.reason)
+        fits = append(output_, sizeof(output_), used, ",\"reason\":\"%s\",\"read_first\":\"%s\"", refusal.reason,
+            refusal.readFirst ? refusal.readFirst : "none");
+    fits = fits && append(output_, sizeof(output_), used, "}");
     if (!fits) { error(id, command, "output_full"); return; }
+    emit();
+}
+namespace {
+bool velocityCellJson(char* out, std::size_t size, std::size_t& used, const char* name, const VelocityCell& c) {
+    return append(out, size, used, ",\"%s\":{\"rpm\":%d,\"acceleration\":%u,\"deceleration\":%u,\"subdivision\":%u,\"duration_ms\":%lu,\"stop\":\"%s\",\"rate\":%lu}",
+        name, c.rpm, c.accelerationTime, c.decelerationTime, c.subdivision, static_cast<unsigned long>(c.durationMs),
+        c.stop == VelocityStop::FAST ? "fast" : "normal", static_cast<unsigned long>(velocityRate(c.rpm, c.subdivision)));
+}
+} // namespace
+// Velocity limits (wired bench 14): local, never bus traffic; the reply shows
+// the active envelope after the call, which a refusal leaves unchanged.
+void Console::velocityLimitsReply(uint32_t id, const VelocityLimitsCommand& request) noexcept {
+    VelocityLimitsView v;
+    const Action result = host_.velocityLimits(host_.context, &request, v);
+    const char* requestName = request.kind == VelocityLimitsCommandKind::QUALIFY ? "qualify" :
+        request.kind == VelocityLimitsCommandKind::RAISE ? "raise" : request.kind == VelocityLimitsCommandKind::RESET ? "reset" : "show";
+    std::size_t used = 0;
+    bool fits = append(output_, sizeof(output_), used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"velocity-limits\",\"ok\":%s,\"result\":\"%s\",\"request\":\"%s\",\"reason\":\"%s\",\"bus_traffic\":false,\"source\":\"%s\",\"address\":%u,\"max_rpm\":%u,\"max_duration_ms\":%lu,\"subdivision\":%u,\"max_rate\":%lu,\"poll_ms\":%lu,\"stop_budget_ms\":%lu,\"legacy\":{\"max_rpm\":%u,\"max_duration_ms\":%lu},\"cell_armed\":%s,\"raised\":%s,\"consumed_operation_id\":%lu,\"promoted_count\":%u",
+        static_cast<unsigned long>(id), boolean(result == Action::OK), result == Action::OK ? "done" : actionName(result), requestName,
+        v.reason ? v.reason : "none", velocityLimitsSourceName(v.source), v.address, v.maximumRpm,
+        static_cast<unsigned long>(v.maximumDurationMs), v.subdivision, static_cast<unsigned long>(v.maximumRate),
+        static_cast<unsigned long>(v.pollMs), static_cast<unsigned long>(v.stopBudgetMs), VELOCITY_LEGACY_MAX_RPM,
+        static_cast<unsigned long>(VELOCITY_LEGACY_MAX_DURATION_MS), boolean(v.cellArmed), boolean(v.raised),
+        static_cast<unsigned long>(v.consumedOperationId), v.promotedCount);
+    if (fits && v.cellArmed) fits = velocityCellJson(output_, sizeof(output_), used, "cell", v.cell);
+    fits = fits && append(output_, sizeof(output_), used, "}");
+    if (!fits) { error(id, "velocity-limits", "output_full"); return; }
     emit();
 }
 namespace {
@@ -1412,6 +1447,8 @@ void Console::inputStart(uint32_t id, const char* command, const InputStartComma
             words(output_, sizeof(output_), used, "record_words", m.recordWords, 5) &&
             append(output_, sizeof(output_), used, ",\"selector_terminals\":[%u,%u,%u]", m.selectorTerminals[0],
                 m.selectorTerminals[1], m.selectorTerminals[2]) &&
+            append(output_, sizeof(output_), used, ",\"layout\":\"%s\",\"selector_count\":%u,\"stored_rpm\":%d,\"expected_direction\":%d",
+                inputStartLayoutName(m.layout), m.selectorCount, m.storedRpm, m.expectedDirection) &&
             append(output_, sizeof(output_), used,
                 ",\"expected_displacement\":%lld,\"expected_endpoint\":%ld,\"baseline_position\":%ld,\"assignment_known\":%s,\"assignment\":%u,\"stop_id\":%lu,\"stop_result\":\"%s\",\"stop_service_delay_us\":%llu",
                 static_cast<long long>(m.expectedDisplacement), static_cast<long>(m.expectedEndpoint), static_cast<long>(m.baselinePosition),
@@ -1881,6 +1918,56 @@ void Console::dispatch() noexcept {
         error(id, "driver-experiment", "unsupported");
         return;
     }
+    if (entry->command == Command::VELOCITY && count > first + 1 && std::strcmp(tokens[first + 1], "jog") == 0) {
+        // Wired bench 14: velocity jog set SPEED ACCEL DECEL | velocity jog inspect.
+        if (outputPending()) { ++inputDropped_; return; }
+        const char* command = "velocity-jog";
+        if (count == first + 3 && !std::strcmp(tokens[first + 2], "inspect")) { parameterWrite(id, command, nullptr); return; }
+        uint32_t acceleration = 0, deceleration = 0, magnitude = 0;
+        const char* text = count == first + 6 ? tokens[first + 3] : "";
+        const bool negative = *text == '-';
+        if (count != first + 6 || std::strcmp(tokens[first + 2], "set") != 0 || !number(negative ? text + 1 : text, magnitude) ||
+            magnitude > 3000 || !number(tokens[first + 4], acceleration) || !number(tokens[first + 5], deceleration) ||
+            acceleration > 2000 || deceleration > 2000) { error(id, command, "invalid_arguments"); return; }
+        const int32_t speed = negative ? -static_cast<int32_t>(magnitude) : static_cast<int32_t>(magnitude);
+        ParameterWriteRequest request;
+        request.kind = ParameterWriteKind::VELOCITY_SET;
+        request.words[0] = static_cast<uint16_t>(static_cast<int16_t>(speed));
+        request.words[1] = static_cast<uint16_t>(acceleration); request.words[2] = static_cast<uint16_t>(deceleration);
+        parameterWrite(id, command, &request);
+        return;
+    }
+    if (entry->command == Command::VELOCITY && count > first + 1 && std::strcmp(tokens[first + 1], "limits") == 0) {
+        // Wired bench 14 (D6): velocity limits [qualify RPM ACCEL DECEL SUBDIVISION DURATION_MS normal|fast | raise | reset].
+        if (outputPending()) { ++inputDropped_; return; }
+        if (!host_.velocityLimits) { error(id, "velocity-limits", "unavailable"); return; }
+        VelocityLimitsCommand request;
+        const char* verb = count > first + 2 ? tokens[first + 2] : "";
+        bool valid = true;
+        if (count == first + 2) request.kind = VelocityLimitsCommandKind::SHOW;
+        else if (!std::strcmp(verb, "raise")) { request.kind = VelocityLimitsCommandKind::RAISE; valid = count == first + 3; }
+        else if (!std::strcmp(verb, "reset")) { request.kind = VelocityLimitsCommandKind::RESET; valid = count == first + 3; }
+        else if (!std::strcmp(verb, "qualify") && count == first + 9) {
+            request.kind = VelocityLimitsCommandKind::QUALIFY;
+            const char* text = tokens[first + 3];
+            const bool negative = *text == '-';
+            uint32_t magnitude = 0, acceleration = 0, deceleration = 0, subdivision = 0, duration = 0;
+            valid = number(negative ? text + 1 : text, magnitude) && magnitude <= 3000 &&
+                number(tokens[first + 4], acceleration) && acceleration <= 0xFFFF && number(tokens[first + 5], deceleration) &&
+                deceleration <= 0xFFFF && number(tokens[first + 6], subdivision) && subdivision <= 0xFFFF &&
+                number(tokens[first + 7], duration);
+            request.cell.rpm = static_cast<int16_t>(negative ? -static_cast<int32_t>(magnitude) : static_cast<int32_t>(magnitude));
+            request.cell.accelerationTime = static_cast<uint16_t>(acceleration);
+            request.cell.decelerationTime = static_cast<uint16_t>(deceleration);
+            request.cell.subdivision = static_cast<uint16_t>(subdivision); request.cell.durationMs = duration;
+            if (!std::strcmp(tokens[first + 8], "normal")) request.cell.stop = VelocityStop::NORMAL;
+            else if (!std::strcmp(tokens[first + 8], "fast")) request.cell.stop = VelocityStop::FAST;
+            else valid = false;
+        } else valid = false;
+        if (!valid) { error(id, "velocity-limits", "invalid_arguments"); return; }
+        velocityLimitsReply(id, request);
+        return;
+    }
     if ((entry->command == Command::HOME || entry->command == Command::VELOCITY) &&
         count > first + 1 && std::strcmp(tokens[first + 1], "restore") == 0) {
         // home restore SNAPSHOT_ID | home restore inspect (velocity the same):
@@ -2130,7 +2217,7 @@ void Console::dispatch() noexcept {
         Core::VelocityRequest request; uint32_t duration = 0;
         if (count < args + 6 || !Core::parseExactNumber(tokens[args], request.value) ||
             !rateUnit(tokens[args + 1], request.unit) || !coordinateFrame(tokens[args + 2], request.frame) ||
-            !number(tokens[args + 3], duration) || duration < 1 || duration > 1000 ||
+            !number(tokens[args + 3], duration) || duration < 1 || duration > VELOCITY_MAX_DURATION_MS ||
             std::strcmp(tokens[args + 4], "configured") != 0) { error(id, "velocity", "invalid_arguments"); return; }
         request.durationUs = duration * 1000; request.ramp = Core::VelocityRamp::VERIFIED_CONFIGURED;
         if (std::strcmp(tokens[args + 5], "normal") == 0) request.stop.behavior = Core::StopBehavior::CONFIGURED_DECELERATION;
@@ -2573,12 +2660,40 @@ void Console::dispatch() noexcept {
                             request.windowMs >= INPUT_START_MIN_WINDOW_MS && request.windowMs <= INPUT_START_MAX_WINDOW_MS;
                     else valid = false;
                 }
-            } else if (!std::strcmp(verb, "home") || !std::strcmp(verb, "velocity")) {
-                // Delivered by prompts 12 and 14; the application refuses before any traffic.
-                request.kind = InputStartCommandKind::ARM;
-                request.armKind = !std::strcmp(verb, "home") ? InputStartKind::HOME : InputStartKind::VELOCITY;
-                name = request.armKind == InputStartKind::HOME ? "arm-home" : "arm-velocity";
+            } else if (!std::strcmp(verb, "home")) {
+                // Staging is not delivered; the application refuses before any traffic.
+                request.kind = InputStartCommandKind::ARM; request.armKind = InputStartKind::HOME; name = "arm-home";
                 valid = args == 2 && terminal(tokens[first + 2], request.terminal);
+            } else if (!std::strcmp(verb, "velocity") || !std::strcmp(verb, "pv")) {
+                // Wired bench 14: arm velocity xN | arm pv xN RECORD pin3|pv2-deadman|pv-pt-mix,
+                // then [poll-ms N] [window-ms N].
+                request.kind = InputStartCommandKind::ARM;
+                const bool pv = !std::strcmp(verb, "pv");
+                request.armKind = pv ? InputStartKind::PV : InputStartKind::VELOCITY;
+                name = pv ? "arm-pv" : "arm-velocity";
+                std::size_t next = first + 3;
+                valid = args >= 2 && terminal(tokens[first + 2], request.terminal);
+                if (valid && pv) {
+                    uint32_t record = 0;
+                    valid = args >= 4 && number(tokens[first + 3], record) && record >= 1 && record <= 16;
+                    request.record = static_cast<uint8_t>(record);
+                    const char* layout = args >= 4 ? tokens[first + 4] : "";
+                    if (!std::strcmp(layout, "pin3")) request.layout = InputStartLayout::PIN3;
+                    else if (!std::strcmp(layout, "pv2-deadman")) request.layout = InputStartLayout::PV2_DEADMAN;
+                    else if (!std::strcmp(layout, "pv-pt-mix")) request.layout = InputStartLayout::PV_PT_MIX;
+                    else valid = false;
+                    next = first + 5;
+                }
+                bool poll = false, window = false;
+                for (std::size_t i = next; valid && i < count; ++i) {
+                    if (!std::strcmp(tokens[i], "poll-ms") && !poll && i + 1 < count)
+                        valid = (poll = true) && number(tokens[++i], request.pollMs) &&
+                            request.pollMs >= INPUT_START_MIN_POLL_MS && request.pollMs <= INPUT_START_MAX_POLL_MS;
+                    else if (!std::strcmp(tokens[i], "window-ms") && !window && i + 1 < count)
+                        valid = (window = true) && number(tokens[++i], request.windowMs) &&
+                            request.windowMs >= INPUT_START_MIN_WINDOW_MS && request.windowMs <= INPUT_START_MAX_WINDOW_MS;
+                    else valid = false;
+                }
             } else if (!std::strcmp(verb, "position")) {
                 request.kind = InputStartCommandKind::ARM; name = "arm-position";
                 uint32_t speed = 0;
@@ -2799,7 +2914,7 @@ void Console::dispatch() noexcept {
         const auto caps = Ess::readCapabilities();
         Snapshot snapshot; if (host_.snapshot) host_.snapshot(host_.context, snapshot);
         std::snprintf(output_, sizeof(output_),
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"caps\",\"ok\":true,\"probe\":%s,\"identity\":%s,\"config\":%s,\"state\":%s,\"velocity_parameters\":%s,\"homing_parameters\":%s,\"max_steps\":%u,\"max_reply_bytes\":%u,\"writes\":%s,\"motion\":%s,\"write_response_confirmed\":%s,\"axis_reserved\":%s,\"actions\":%s,\"device_queue_guarantee\":false,\"velocity\":%s,\"configured_ramp_policy\":true,\"acceleration_mapping\":false,\"velocity_unsupported\":[\"jerk\",\"blending\",\"live_updates\",\"torque\",\"current\",\"external_jog\"],\"driver_settings\":%s,\"limit_pair_writes\":true,\"limit_pair_word_order\":0,\"soft_limit_enable\":\"home_35_or_switch_auxiliary_7_soft_limits_fact\",\"limit_input_starts\":\"refused\",\"home_offset\":\"order_0_method_35_auxiliary_6_moving_any_auxiliary\",\"home\":%s,\"home_methods\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,17,19,20,21,22,23,24,25,26,27,28,29,30,33,34,35],\"home_physical_qualified\":false,\"io_settings\":%s,\"input_terminals\":4,\"output_terminals\":2,\"no_function\":0,\"input_function_codes\":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17],\"output_function_codes\":[0,1,2,3,4,5,9,10],\"output_function_11\":\"not_admitted\",\"cross_mapped_custom\":\"not_admitted\",\"output_status_mapping\":\"recorded_y0\",\"input_mask\":15,\"output_mask\":3,\"external_enable_precedence\":\"release_input\",\"electrical_output_state_known\":false,\"segment_storage\":16,\"maximum_input_selections\":8,\"segment_execution\":\"external_input\",\"segment_pulse_writes\":true,\"segment_pulse_claim\":\"order_0_non_negative\",\"segment_arm\":\"pt_records_1_8_three_selectors\",\"negative_segment_speed_encoding\":\"unresolved\",\"control_settings\":%s,\"control_algorithm_codes\":[1,2],\"configured_encoder_is_identification\":false,\"current_percent_base\":\"unresolved\",\"effective_current_limit_from_peak\":false,\"tuning\":%s,\"tuning_groups\":[\"filters\",\"current-loop\",\"la\",\"collision\"],\"tuning_physical_scaling_known\":false,\"collision_003b_003c_access\":\"unresolved\",\"persistence\":%s,\"persistence_operations\":[\"save\",\"factory_restore\"],\"persistence_verified_all\":false,\"persistence_invocation_limit\":2}",
+            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"caps\",\"ok\":true,\"probe\":%s,\"identity\":%s,\"config\":%s,\"state\":%s,\"velocity_parameters\":%s,\"homing_parameters\":%s,\"max_steps\":%u,\"max_reply_bytes\":%u,\"writes\":%s,\"motion\":%s,\"write_response_confirmed\":%s,\"axis_reserved\":%s,\"actions\":%s,\"device_queue_guarantee\":false,\"velocity\":%s,\"configured_ramp_policy\":true,\"acceleration_mapping\":false,\"velocity_unsupported\":[\"jerk\",\"blending\",\"live_updates\",\"torque\",\"current\"],\"driver_settings\":%s,\"limit_pair_writes\":true,\"limit_pair_word_order\":0,\"soft_limit_enable\":\"home_35_or_switch_auxiliary_7_soft_limits_fact\",\"limit_input_starts\":\"refused\",\"home_offset\":\"order_0_method_35_auxiliary_6_moving_any_auxiliary\",\"home\":%s,\"home_methods\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,17,19,20,21,22,23,24,25,26,27,28,29,30,33,34,35],\"home_physical_qualified\":false,\"io_settings\":%s,\"input_terminals\":4,\"output_terminals\":2,\"no_function\":0,\"input_function_codes\":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17],\"output_function_codes\":[0,1,2,3,4,5,9,10],\"output_function_11\":\"not_admitted\",\"cross_mapped_custom\":\"not_admitted\",\"output_status_mapping\":\"recorded_y0\",\"input_mask\":15,\"output_mask\":3,\"external_enable_precedence\":\"release_input\",\"electrical_output_state_known\":false,\"segment_storage\":16,\"maximum_input_selections\":8,\"segment_execution\":\"external_input\",\"segment_pulse_writes\":true,\"segment_pulse_claim\":\"order_0_non_negative\",\"segment_arm\":\"pt_records_1_8_three_selectors\",\"negative_segment_speed_encoding\":\"unresolved\",\"control_settings\":%s,\"control_algorithm_codes\":[1,2],\"configured_encoder_is_identification\":false,\"current_percent_base\":\"unresolved\",\"effective_current_limit_from_peak\":false,\"tuning\":%s,\"tuning_groups\":[\"filters\",\"current-loop\",\"la\",\"collision\"],\"tuning_physical_scaling_known\":false,\"collision_003b_003c_access\":\"unresolved\",\"persistence\":%s,\"persistence_operations\":[\"save\",\"factory_restore\"],\"persistence_verified_all\":false,\"persistence_invocation_limit\":2}",
             static_cast<unsigned long>(id), boolean(caps.probe && callable(Command::PROBE)), boolean(caps.identity && callable(Command::READ_IDENTITY)), boolean(caps.config && callable(Command::READ_CONFIG)), boolean(caps.state && callable(Command::READ_STATE)), boolean(caps.velocityParameters && host_.startTypedRead && host_.snapshot), boolean(caps.homingParameters && host_.startTypedRead && host_.snapshot), caps.maxSteps, caps.maxReplyBytes,
             boolean(callable(Command::ENABLE) || callable(Command::MOVE) || (host_.startVelocity && host_.snapshot && host_.axis) || callable(Command::DRIVER) || (host_.startHome && host_.snapshot && host_.axis) || callable(Command::COMMUNICATION) || callable(Command::PERSISTENCE) || callable(Command::MOTION_PROFILE)),
             boolean(host_.startMove && host_.snapshot && host_.axis), boolean(snapshot.writeResponseConfirmed), boolean(snapshot.axisReserved), callable(Command::ENABLE) ? "[\"enable\",\"release\",\"clear_alarm\",\"clear_position\",\"stop_normal\",\"stop_fast\"]" : "[]", boolean(host_.startVelocity && host_.snapshot && host_.axis), boolean(host_.startDriver && host_.snapshot), boolean(host_.startHome && host_.snapshot && host_.axis), boolean(host_.startDriver && host_.snapshot), boolean(host_.startDriver && host_.snapshot), boolean(host_.startDriver && host_.snapshot), boolean(host_.persistence != nullptr));
@@ -2814,12 +2929,22 @@ void Console::dispatch() noexcept {
         if(!append(output_,sizeof(output_),used,",\"position_interrupt_stored\":%s,\"position_interrupt_completion\":\"not_observed\",\"position_interrupt_new_target\":false,\"qualification_routes\":{\"home\":%s,\"velocity\":%s,\"position_clear\":%s,\"start_speed_relation\":%s,\"io\":%s}}",
             boolean(callable(Command::POSITION)), boolean(routes), boolean(routes), boolean(routes), boolean(routes), boolean(host_.ioQualification != nullptr))) { error(id,"caps","output_capacity"); return; }
         used=std::strlen(output_); if(used) --used;
-        if(!append(output_,sizeof(output_),used,",\"input_start\":%s,\"input_start_kinds\":[\"position\",\"segment\"],\"input_start_functions\":[7,12],\"input_start_refused_kinds\":{\"home\":\"prompt_12\",\"velocity\":\"prompt_14\"},\"input_start_modes\":[\"relative\",\"absolute\",\"absolute-by\"],\"input_start_trigger_outputs\":[\"mosfet1\",\"mosfet2\"],\"input_start_width_ms\":[%lu,%lu],\"input_start_poll_ms\":[%lu,%lu],\"input_start_window_ms\":[%lu,%lu],\"input_start_post_release_ms\":%lu,\"input_start_post_release_samples\":%u,\"input_start_max_read_age_ms\":%lu,\"input_start_members\":%u,\"input_start_retrigger\":false}",
+        if(!append(output_,sizeof(output_),used,",\"input_start\":%s,\"input_start_kinds\":[\"position\",\"segment\",\"velocity\",\"pv\"],\"input_start_functions\":[7,8,9,10,12,13],\"input_start_refused_kinds\":{\"home\":\"staging_not_delivered\"},\"pv_layouts\":[\"pin3\",\"pv2-deadman\",\"pv-pt-mix\"],\"negative_pv_speed\":\"unsupported\",\"input_start_modes\":[\"relative\",\"absolute\",\"absolute-by\"],\"input_start_trigger_outputs\":[\"mosfet1\",\"mosfet2\"],\"input_start_width_ms\":[%lu,%lu],\"input_start_poll_ms\":[%lu,%lu],\"input_start_window_ms\":[%lu,%lu],\"input_start_post_release_ms\":%lu,\"input_start_post_release_samples\":%u,\"input_start_max_read_age_ms\":%lu,\"input_start_members\":%u,\"input_start_retrigger\":false}",
             boolean(host_.inputStart != nullptr), static_cast<unsigned long>(INPUT_START_MIN_WIDTH_MS), static_cast<unsigned long>(INPUT_START_MAX_WIDTH_MS),
             static_cast<unsigned long>(INPUT_START_MIN_POLL_MS), static_cast<unsigned long>(INPUT_START_MAX_POLL_MS),
             static_cast<unsigned long>(INPUT_START_MIN_WINDOW_MS), static_cast<unsigned long>(INPUT_START_MAX_WINDOW_MS),
             static_cast<unsigned long>(Ess::INPUT_START_POST_RELEASE_US / 1000), static_cast<unsigned>(Ess::INPUT_START_POST_RELEASE_SAMPLES),
             static_cast<unsigned long>(INPUT_START_MAX_READ_AGE_MS), static_cast<unsigned>(INPUT_START_MEMBERS))) { error(id,"caps","output_capacity"); return; }
+        // Wired bench 14: the active velocity limits of the selected axis (local, no traffic).
+        VelocityLimitsView limits;
+        if (host_.velocityLimits) host_.velocityLimits(host_.context, nullptr, limits);
+        used=std::strlen(output_); if(used) --used;
+        if(!append(output_,sizeof(output_),used,",\"velocity_limits\":{\"route\":%s,\"source\":\"%s\",\"max_rpm\":%u,\"max_duration_ms\":%lu,\"subdivision\":%u,\"max_rate\":%lu,\"legacy_max_rpm\":%u,\"legacy_max_duration_ms\":%lu,\"cell_max_duration_ms\":%lu,\"cell_armed\":%s,\"raised\":%s,\"promoted_count\":%u},\"jog_setter\":%s}",
+            boolean(host_.velocityLimits != nullptr), velocityLimitsSourceName(limits.source), limits.maximumRpm,
+            static_cast<unsigned long>(limits.maximumDurationMs), limits.subdivision, static_cast<unsigned long>(limits.maximumRate),
+            VELOCITY_LEGACY_MAX_RPM, static_cast<unsigned long>(VELOCITY_LEGACY_MAX_DURATION_MS),
+            static_cast<unsigned long>(VELOCITY_MAX_DURATION_MS), boolean(limits.cellArmed), boolean(limits.raised), limits.promotedCount,
+            boolean(host_.parameterWrite != nullptr))) { error(id,"caps","output_capacity"); return; }
         emit(); return;
     }
     if (entry->command == Command::STATS && arg) {

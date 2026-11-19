@@ -184,8 +184,8 @@ trigger/selector wiring, current logical input observations, verified
 polarity, the selected record's parameters and a prepared stop. Disabled,
 unwired, unknown or stale required inputs block execution without blocking
 storage reads or independently eligible serial motion. There is no serial
-segment-start command. PV records (function 13) are not executed: `arm
-velocity` refuses before traffic (prompt 14).
+segment-start command. PV records (function 13) run through `arm pv`
+([below](#pv-arm-wired-bench-14)).
 
 ### PT arm (wired bench 13)
 
@@ -261,6 +261,44 @@ P10: `group stop fast` 0.6 s into record 8 stopped all three (+936, +1416,
 edge during a run), P7, P11 (negative targets) and drive 2's negative table.
 These results are for this fixture and firmware, free shafts and the recorded
 images only.
+
+### PV arm (wired bench 14)
+
+A stored PV record runs through the same route with a named selector layout:
+
+```text
+arm pv xN RECORD pin3|pv2-deadman|pv-pt-mix [poll-ms N] [window-ms N]
+arm trigger ID mosfet1 WIDTH_MS
+```
+
+`pin3` is prompt 13's layout (the other three terminals hold PIN0-PIN2,
+records 1-8). `pv2-deadman` is X0 = 13, X1/X2 = PIN0/PIN1 and X3 = 5 with
+input polarity 1, a dead-man stop held inactive by `mosfet2` (records 1-4).
+`pv-pt-mix` is X0 = 13, X1/X2 = PIN0/PIN1 and X3 = 12 (records 1-4). Each
+layout's helper refuses any other assignment (`selector_layout`). The arm
+writes nothing; it needs a fresh `driver read` (`0x0051`), a fresh
+`segment speed N read` of the record, the PIN levels of the record, a
+FINITE_MOVE record with triggers inhibited on every terminal holding 7-17, the
+soft limits known disabled and no stop or limit input active. The record's
+speed must be nonzero and within the input velocity limit (60 rpm, also while
+raised); a negative word refuses `record_sign_unqualified` (negative PV stays
+unsupported: the experiment route of prompt 14 item 6 was not built). The
+group form is not delivered. With `0x0051` = 0 the run lasts the trigger
+width; with `0x0051` = 1 it lasts until a stop, so an edge-mode arm is admitted
+only in `pv2-deadman` (`pv_edge_needs_deadman` otherwise). `pv-pt-mix` needs
+`0x0051` = 1 (p29; `pv_pt_mix_needs_edge_mode`) and has no dead-man, so it is
+refused in both modes for now.
+
+Measured on drive 1, 19 November 2026 (`0x4EEA`/`0x0029`,
+[wired bench 14](reports/2026-11-19_wired_bench_14_velocity_jog_pv.md)):
+records 1-8 at 12, 18, ..., 54 rpm, level mode, 1000 ms each, ran at
+200, 300, 398, 496, 597, 700, 797 and 898 increments/s against 200-900 (PV1,
+within 1 %). In edge mode a 50 ms and a 3000 ms trigger each started a run
+that went on until the prepared stop (1.16 s and 4.17 s, PV3), and in the
+`pv2-deadman` layout the dead-man lapse at 0.5 s ended a run of record 2 at
+30 rpm 0.92 s after the ON, before the prepared stop at 2.08 s (R6). Not run:
+a PIN change during a held run (PV2), negative PV words (PV4), the p29 mixed
+PV/PT method (PV5) and a shared three-drive run (PV6).
 
 The current [bench evidence](archive/reports/ess_release_16_2026-10-04.json) reads
 position, speed and shared starting-speed records 1 and 16, preserving raw

@@ -347,7 +347,10 @@ void velocityThroughConsole() {
     command("@65 velocity qualification install rpm ramp inputs"); saying("\"result\":\"done\""); noNewFrames();
     // The stated facts do not widen the application's finite envelope or the sign.
     command("@66 velocity 61 rpm native 200 configured normal"); saying("\"result\":\"invalid\""); noNewFrames();
-    command("@67 velocity 30 rpm native 1001 configured normal"); saying("\"result\":\"invalid_arguments\""); noNewFrames();
+    // Wired bench 14: 1001 ms parses; the legacy limits refuse it before any frame.
+    command("@67 velocity 30 rpm native 1001 configured normal"); saying("\"result\":\"invalid\"");
+    saying("\"reason\":\"outside_velocity_limits\""); noNewFrames();
+    command("@70 velocity 30 rpm native 12001 configured normal"); saying("\"result\":\"invalid_arguments\""); noNewFrames();
     command("@68 velocity -30 rpm native 200 configured normal"); saying("\"result\":\"invalid\""); noNewFrames();
 
     command(run); saying("\"result\":\"accepted\""); const auto id = app->latestOperationId;

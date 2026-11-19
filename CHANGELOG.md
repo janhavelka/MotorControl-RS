@@ -4,6 +4,42 @@
 
 ### Added
 
+- Velocity limits record and D6 calls (wired bench 14, `VelocityLimits.h`,
+  `VelocityLimitsApp.h`). Serial velocity keeps the legacy envelope (|rpm| <=
+  60, 1..1000 ms) without a call. `velocity limits qualify RPM ACCEL DECEL
+  SUBDIVISION DURATION_MS normal|fast` (API `velocityLimits`) admits exactly one
+  matching run, which consumes it; `velocity limits raise` admits the promoted
+  table (`VelocityPromoted.h`, empty) and its interpolation rule
+  (`velocityPromotedAdmission`: only between two same-ramp, same-direction,
+  same-subdivision, same-stop entries at most a factor of two apart, never
+  between standalone HW-14 rate cells); `velocity limits reset`, `useaddr`,
+  `recover`, a host tuple change and a restart return to the legacy envelope.
+  The poll interval grows so 64 polls cover the duration (up to 12000 ms); the
+  stop budget follows the stop policy. Refusals name `outside_velocity_limits`.
+  Caps report `velocity_limits` and the console parses 1..12000 ms.
+- JOG setter `velocity jog set SPEED ACCEL DECEL` (API `setJogParameters`):
+  one FC10 `0x001D/3` with no start and a readback, after a checked
+  `velocity read`, the speed within the input velocity limit (60 rpm, also
+  while raised: raised limits are serial-only), no active input 8-10 and
+  CONFIGURE facts for them. `qualify` and `raise` are exclusive
+  (`raise_active`, `cell_armed`, `cell_run_active`); a standalone promoted
+  entry admits only its exact duration.
+- Speed input, JOG and PV started by input: `arm velocity xN` (functions 8,
+  9, 10) and `arm pv xN RECORD pin3|pv2-deadman|pv-pt-mix` (function 13), the
+  selected axis only, no write at arm; the core `prepareInputStart` admits 8-10
+  as `VELOCITY_RUN`. Member views add `layout`, `selector_count`, `stored_rpm`
+  and `expected_direction`; the trigger admits held selector and dead-man
+  outputs under the PT rules. An edge-mode PV arm (`0x0051` = 1) is admitted
+  only in `pv2-deadman` (`pv_edge_needs_deadman`); `pv-pt-mix` refuses mode 0
+  (`pv_pt_mix_needs_edge_mode`).
+- Harness `velocity-jog-pv` scenario (`scripts/bench_velocity.py`): the plan
+  checker (one purpose per terminal), dead-man setup and renewal, read-state
+  slope sampling, the ramp fit, the creep detector, phase C cells with abort
+  rules and the prepared `stop fast` on any harness failure; pt-segments case
+  G1 (image F regression). The interlock admits a named selection member with a
+  PV trigger (13); `bench_records` passes a stated input mapping to settings
+  facts.
+
 - PT records started by input (wired bench 13). `arm segment xN relative
   RECORD [group] [poll-ms N] [window-ms N]` arms a stored PT record 1-8 with
   X0..X3 holding the trigger 12 and PIN0-PIN2 (14-16); it sends no frame and
@@ -215,6 +251,11 @@
 
 ### Changed
 
+- Serial velocity with a speed, JOG or PV input (8-10, 13) on a connected
+  terminal needs a FINITE_MOVE record with triggers inhibited and the input
+  inactive (`triggers_inhibited_required`, `input_active`); FINITE_MOVE records
+  now accept 8-10 and 13 (serial moves still refuse them). `caps` no longer
+  lists `external_jog` as unsupported.
 - Stored PT target pairs promoted (wired bench 13 W0a, D10): the sixteen
   windows `0x0060 + 6(n-1)/2` are reviewed FC10 windows, and
   `SEGMENT_PULSE_TARGET` (`segment position N set target VALUE`) writes the

@@ -1875,7 +1875,7 @@ class Framing(unittest.TestCase):
     def test_velocity_parser_is_exact_bounded_and_requires_cleanup_policy(self):
         for args in (("nan", *self.VELOCITY_ARGS[1:]), ("1/0", *self.VELOCITY_ARGS[1:]),
                 (*self.VELOCITY_ARGS[:3], "0", *self.VELOCITY_ARGS[4:]),
-                (*self.VELOCITY_ARGS[:3], "1001", *self.VELOCITY_ARGS[4:]),
+                (*self.VELOCITY_ARGS[:3], "12001", *self.VELOCITY_ARGS[4:]),  # Wired bench 14: the console bound.
                 (*self.VELOCITY_ARGS, "round", "nearest", "-1"),
                 (*self.VELOCITY_ARGS, "round", "nearest", "1", "approx", "1")):
             with self.assertRaises(ValueError): bench.velocity_arguments(args)

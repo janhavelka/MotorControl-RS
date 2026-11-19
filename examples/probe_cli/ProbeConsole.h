@@ -18,6 +18,7 @@
 #include "ProfileCandidate.h"
 #include "ParameterWrite.h"
 #include "InputStartRoute.h"
+#include "VelocityLimits.h"
 #include "MotorControlRS/profiles/ess_rs/Codec.h"
 #include "MotorControlRS/profiles/ess_rs/Reads.h"
 #include "MotorControlRS/profiles/ess_rs/Actions.h"
@@ -430,8 +431,11 @@ struct Host {
     Action (*discovery)(void*, const DiscoveryCommand*, DiscoveryView&) = nullptr;
     Action (*debug)(void*, const DebugMode* requested, DebugSnapshot&) = nullptr;
     Action (*motionProfile)(void*, MotionProfileCommand, MotionProfileView&) = nullptr;
-    /// Home or velocity restore session; null request inspects. View is the current session.
+    /// Home or velocity restore session, or the JOG setter; null request inspects. View is the current session.
     Action (*parameterWrite)(void*, const ParameterWriteRequest*, ParameterWriteView&) = nullptr;
+    /** Velocity limits of the selected axis (wired bench 14): show, qualify one
+     * cell, raise to the promoted table, reset. Local; never bus traffic. */
+    Action (*velocityLimits)(void*, const VelocityLimitsCommand*, VelocityLimitsView&) = nullptr;
     /** Input-start route (wired bench 08): arm, trigger, inspect, disarm. The
      * view is the current session, unchanged by a refusal; reply names it. */
     Action (*inputStart)(void*, const InputStartCommand&, const InputStartView*& view, InputStartReply&) = nullptr;
@@ -522,6 +526,7 @@ private:
                          bool ordinaryStop = false, uint32_t replacedOperationId = 0, bool stopEscalation = false) noexcept;
     void parameterRead(uint32_t id, MotorControlRS::ESS_RS::ReadKind, const char* address) noexcept;
     void parameterWrite(uint32_t id, const char* command, const ParameterWriteRequest* request) noexcept;
+    void velocityLimitsReply(uint32_t id, const VelocityLimitsCommand& request) noexcept;
     void inputStart(uint32_t id, const char* command, const InputStartCommand& request) noexcept;
     void qualificationRoute(uint32_t id, QualificationRoute, const char* const* tokens, std::size_t count) noexcept;
     void ioQualificationRoute(uint32_t id, const char* const* tokens, std::size_t count) noexcept;

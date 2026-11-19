@@ -151,8 +151,9 @@ def check_cli_route(command, metadata, operation_kind):
     elif root in {"velocity", "home"}:
         auxiliary = root == "home" and tail == ["auxiliary", "CHOICE"]
         restore = tail == ["restore", "SNAPSHOT_ID"]  # Wired bench 06: snapshot restore, no start.
-        valid = tail == ["read"] or not tail or auxiliary or restore
-        effects = {"READ"} if tail == ["read"] else {"WRITE"} if auxiliary or restore else {"WRITE", "ACTION"}
+        jog = root == "velocity" and tail == ["jog", "set", "SPEED", "ACCEL", "DECEL"]  # Wired bench 14: JOG setter, no start.
+        valid = tail == ["read"] or not tail or auxiliary or restore or jog
+        effects = {"READ"} if tail == ["read"] else {"WRITE"} if auxiliary or restore or jog else {"WRITE", "ACTION"}
     elif root == "discover":
         valid = not tail or tail in [["inspect"], ["cancel"], ["restore"], ["finish"]]
         # Session inspection/control are mapped in the separate host surface.

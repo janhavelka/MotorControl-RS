@@ -12,6 +12,7 @@
 #include "IoQualification.h"
 #include "ParameterWrite.h"
 #include "InputStartRoute.h"
+#include "VelocityPromoted.h"
 #include <MotorControlRS/profiles/ess_rs/Position.h>
 #include <MotorControlRS/profiles/ess_rs/Reads.h>
 #include <MotorControlRS/profiles/ess_rs/Velocity.h>
@@ -129,6 +130,28 @@ MotorControlRS::Status restoreHomingParameters(uint32_t snapshotId, uint32_t& op
  * checked velocity read (0x001D/3 window); inputs with functions 8-10 refuse
  * unless inhibited; a velocity read settles an unknown write. */
 MotorControlRS::Status restoreVelocityParameters(uint32_t snapshotId, uint32_t& operationId);
+/** JOG setter (wired bench 14), the console `velocity jog set SPEED ACCEL DECEL`:
+ * one FC10 of the speed, acceleration and deceleration words to 0x001D/3 with no
+ * start, then one FC03 readback, in the restore session (copyParameterWrite).
+ * Needs a checked velocity read of the selected axis and binding first, a nonzero
+ * signed speed whose magnitude lies within the input velocity limit (inputs 8-10
+ * run at the stored speed: 60 rpm; raised limits are serial-only), ramp words
+ * 0..2000, fresh stopped state, no active input with function 8-10 and CONFIGURE
+ * facts with triggers inhibited for any 8-10 input. Refusal detail is the
+ * Probe::Action; copySettingsRefusal names the reason. Nothing is resent. */
+MotorControlRS::Status setJogParameters(int16_t speedRpm, uint16_t accelerationTime, uint16_t decelerationTime,
+                                       uint32_t& operationId);
+/** Velocity limits of the selected axis (wired bench 14, D6/D12), the console
+ * `velocity limits` route. A null or SHOW command copies the active envelope;
+ * QUALIFY arms one exact run above the legacy envelope (the cell's subdivision
+ * must equal the checked 0x0011; one cell at a time, none while raised), which
+ * its admitted run consumes; RAISE admits the promoted table and its
+ * interpolation rule (VelocityLimits.h), not while a cell is armed or its run is
+ * active; RESET returns to the legacy envelope. Raised limits apply to serial
+ * runs only. Local, no traffic.
+ * `useaddr`, recovery, a host tuple change and a restart also return to legacy.
+ * Refusal detail is the Probe::Action; output.reason names it. */
+MotorControlRS::Status velocityLimits(const Probe::VelocityLimitsCommand* command, Probe::VelocityLimitsView& output);
 /// Copy the current or finished restore session; another ID preserves output.
 bool copyParameterWrite(uint32_t operationId, Probe::ParameterWriteView& output);
 /** Copy the input-facts cause of the settings or profile-stage refusal just
@@ -329,7 +352,8 @@ MotorControlRS::Status revokeHomeQualification();
 /** Install supplied velocity facts against a checked velocity-parameter read, from
  * the service task while idle. Rejection preserves the previous witness; no traffic
  * or motion occurs. Fresh stationary state is still checked at each submission, and
- * this application keeps its finite free-shaft speed and duration envelope. */
+ * each run must fit the active velocity limits (velocityLimits): the legacy
+ * +-60 rpm, 1..1000 ms envelope unless a cell or the promoted table admits it. */
 MotorControlRS::Status installVelocityQualification(const MotorControlRS::ESS_RS::VelocityPrerequisites&);
 /// Clear future velocity admission. An admitted run keeps its snapshot and its stop.
 MotorControlRS::Status revokeVelocityQualification();

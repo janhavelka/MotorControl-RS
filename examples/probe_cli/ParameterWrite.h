@@ -13,13 +13,20 @@ namespace MotorControlRSExample { namespace Probe {
  * HOME_RESTORE writes 0x0031/6 and VELOCITY_RESTORE 0x001D/3 (reviewed FC10
  * windows) with the words of an earlier checked `home read` / `velocity read`
  * of the same drive and binding (snapshotId; D7 exact raw words, a nonzero
- * offset included). */
-enum class ParameterWriteKind : uint8_t { NONE, HOME_RESTORE, VELOCITY_RESTORE };
+ * offset included). VELOCITY_SET (the JOG setter, wired bench 14) writes the
+ * supplied JOG speed and both ramp words to 0x001D/3: it needs a checked
+ * `velocity read` of the same binding first, a nonzero signed speed inside the
+ * input velocity limits (inputs 8-10 run at the stored speed) and ramp words
+ * 0..2000. */
+enum class ParameterWriteKind : uint8_t { NONE, HOME_RESTORE, VELOCITY_RESTORE, VELOCITY_SET };
 
-/** Request for one session: the kind and the operation ID of the checked source read. */
+/** Request for one session: the kind and the operation ID of the checked source
+ * read (restores), or the three words to write (VELOCITY_SET: speed as a signed
+ * native rpm in two's complement, acceleration and deceleration words). */
 struct ParameterWriteRequest {
     ParameterWriteKind kind = ParameterWriteKind::NONE;
     uint32_t snapshotId = 0;
+    uint16_t words[3] = {};
 };
 
 /** Copied session state. pending covers the write and its readback. ok means

@@ -77,6 +77,14 @@ and stopping for the recorded subset; independent shaft timing remains unmeasure
 
 The factory subdivision 1,000 keeps the full 2,000 rpm (33,333 increments/s).
 
+Wired bench 14 (19 November 2026) kept this position ceiling at 50,000
+increments/s: the stop-normal report's late-stop position matrix was not
+rerun on this firmware, which is the condition for raising it. Its velocity
+results (serial velocity up to 3000 rpm at subdivision 1000 and the C3 creep
+runs at subdivision 6000) are recorded in the
+[velocity guide](ess_velocity.md#velocity-limits-jog-setter-and-input-velocity-wired-bench-14);
+they do not qualify position moves above the ceiling.
+
 ### Why the rate ceiling is 50,000 increments/s
 
 Until 4 November 2026 the default was 200,000 increments/s. Then the

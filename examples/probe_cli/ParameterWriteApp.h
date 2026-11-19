@@ -4,7 +4,9 @@
 // through the ordinary owner, on the selected axis (wired bench 06):
 // - home restore: 0x0031/6 from an earlier checked home read (method, rates,
 //   ramp, raw offset pair);
-// - velocity restore: 0x001D/3 from an earlier checked velocity read.
+// - velocity restore: 0x001D/3 from an earlier checked velocity read;
+// - JOG setter (wired bench 14): 0x001D/3 with supplied words after a checked
+//   velocity read of the same binding, the speed inside the input limits.
 // No start word, no replay and no rollback. A transmitted write whose execution
 // is unknown refuses the next restore until a checked read of the same window.
 // The wired bench 06 D9 custom-output and wired bench 10 PT pair experiments
@@ -42,7 +44,10 @@ const App::ParameterSnapshot* findParameterSnapshot(const App& a, bool home, uin
 // was delivered settles it: the stored words are then known.
 void settleParameterWrite(App& a, Probe::ParameterWriteKind kind, uint8_t address, uint64_t attemptedUs) {
     auto& v = a.parameterWrite.view;
-    if (v.unsettled && v.kind == kind && v.target.address == address && attemptedUs > v.writeEvidence.deliveredUs)
+    // The JOG setter writes the same window as the velocity restore.
+    const bool same = v.kind == kind || (kind == Probe::ParameterWriteKind::VELOCITY_RESTORE &&
+        v.kind == Probe::ParameterWriteKind::VELOCITY_SET);
+    if (v.unsettled && same && v.target.address == address && attemptedUs > v.writeEvidence.deliveredUs)
         v.unsettled = false;
 }
 // A restore needs no input that would act on the words: function 11 (home
@@ -84,7 +89,9 @@ Probe::Action submitParameterFrame(App& a, bool write, uint64_t now) {
 Probe::Action startParameterWrite(App& a, const Probe::ParameterWriteRequest& r, uint32_t& operationId) {
     using Kind = Probe::ParameterWriteKind;
     auto& s = a.parameterWrite;
-    if (r.kind != Kind::HOME_RESTORE && r.kind != Kind::VELOCITY_RESTORE) return Probe::Action::INVALID;
+    a.settingsRefusal = Probe::SettingsRefusal();
+    if (r.kind != Kind::HOME_RESTORE && r.kind != Kind::VELOCITY_RESTORE && r.kind != Kind::VELOCITY_SET)
+        return Probe::Action::INVALID;
     if (s.view.pending || s.view.unsettled) return Probe::Action::BUSY;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned() ||
@@ -105,16 +112,47 @@ Probe::Action startParameterWrite(App& a, const Probe::ParameterWriteRequest& r,
     v.kind = r.kind; v.target = a.axis.target; v.configurationGeneration = a.axis.generation;
     v.serialGeneration = a.serial.generation;
     const bool home = r.kind == Kind::HOME_RESTORE;
-    const auto* snapshot = findParameterSnapshot(a, home, r.snapshotId);
+    if (r.kind == Kind::VELOCITY_SET) {
+        // The prior read: a checked velocity read of this binding and generation.
+        const auto& prior = a.velocityParameters;
+        if (!prior.operationId || !Probe::sameTarget(prior.target, a.axis.target) ||
+            prior.configurationGeneration != a.axis.generation) {
+            a.settingsRefusal.reason = "velocity_read_required"; a.settingsRefusal.readFirst = "velocity read";
+            a.settingsRefusal.purpose = "configure"; a.settingsRefusal.terminal = -1;
+            return Probe::Action::UNAVAILABLE;
+        }
+        const int16_t speed = static_cast<int16_t>(r.words[0]);
+        const int32_t magnitude = speed < 0 ? -static_cast<int32_t>(speed) : speed;
+        if (r.words[1] > Probe::VELOCITY_MAX_RAMP_WORD || r.words[2] > Probe::VELOCITY_MAX_RAMP_WORD || !speed)
+            return Probe::Action::INVALID;
+        if (magnitude > inputVelocityMaximumRpm(a)) { noteVelocityLimitsRefusal(a); return Probe::Action::INVALID; }
+        // Inputs 8-10 run at the stored speed: none may read active, I/O must be fresh.
+        const auto& io = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
+        const auto& c = a.configuration;
+        for (uint8_t t = 0; t < 4; ++t) {
+            const uint16_t f = c.raw.inputFunctions[t];
+            if (f < 8 || f > 10) continue;
+            const auto& q = a.ioQualifications[t];
+            const uint16_t polarity = (c.raw.inputPolarity >> t) & 1u;
+            bool active = false;
+            if (!Probe::fresh(io, a.axis.target, now, a.observationAgeUs()) || io.value.unknownInputBits ||
+                !effectiveInput(io.value.rawInputs, t, polarity, polarity, q.input.statusMapping, active) || active) {
+                a.settingsRefusal.reason = active ? "input_active" : "input_state_stale"; a.settingsRefusal.readFirst = "read state";
+                a.settingsRefusal.purpose = "configure"; a.settingsRefusal.terminal = static_cast<int8_t>(t);
+                return Probe::Action::UNAVAILABLE;
+            }
+        }
+    }
+    const auto* snapshot = r.kind == Kind::VELOCITY_SET ? nullptr : findParameterSnapshot(a, home, r.snapshotId);
     // Same drive and binding, same host tuple; any other source is stale.
-    if (!snapshot || !Probe::sameTarget(snapshot->target, a.axis.target) ||
-        snapshot->serialGeneration != a.serial.generation) return Probe::Action::UNAVAILABLE;
+    if (r.kind != Kind::VELOCITY_SET && (!snapshot || !Probe::sameTarget(snapshot->target, a.axis.target) ||
+        snapshot->serialGeneration != a.serial.generation)) return Probe::Action::UNAVAILABLE;
     const auto inputs = restoreInputs(a, home, now);
     if (inputs != Probe::Action::OK) return inputs;
-    v.snapshotId = r.snapshotId;
+    v.snapshotId = r.kind == Kind::VELOCITY_SET ? a.velocityParameters.operationId : r.snapshotId;
     v.first = home ? HOME_RESTORE_FIRST : VELOCITY_RESTORE_FIRST;
     v.count = home ? HOME_RESTORE_WORDS : VELOCITY_RESTORE_WORDS;
-    std::memcpy(v.words, snapshot->words, v.count * sizeof(uint16_t));
+    std::memcpy(v.words, snapshot ? snapshot->words : r.words, v.count * sizeof(uint16_t));
     if (now > UINT64_MAX - 2 * REQUEST_US) return Probe::Action::INVALID;
     v.operationId = a.nextOperationId; v.startedUs = now; v.deadlineUs = now + 2 * REQUEST_US;
     s.~ParameterWriteSession(); new (&s) App::ParameterWriteSession();

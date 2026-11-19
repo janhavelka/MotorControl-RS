@@ -48,7 +48,8 @@ Preparation outputs remain unchanged on error. Zero/custom acceleration ramp,
 jerk, blending and live updates are not silently mapped. ACCELERATION policy
 returns UNSUPPORTED: engineering `convertAcceleration` still supports steps/s2,
 deg/s2, rad/s2 and rpm/s, but no qualified ESS formula translates these to time.
-Torque/current and external-input JOG modes are unsupported console routes.
+Torque and current modes are unsupported console routes; external-input JOG
+and speed runs start through `arm velocity` ([below](#velocity-limits-jog-setter-and-input-velocity-wired-bench-14)).
 
 The caller owns `VelocityContext` for the whole operation and treats it as
 read-only between calls. `nextVelocity` yields a bounded copied frame or wait;
@@ -118,12 +119,14 @@ velocity -30 rpm native 200 configured normal
 Units: rpm, steps/s, fullsteps/s, counts/s, turns/s, deg/s, rad/s, mm/s.
 Frames: native/motor/load. Optional `round exact|nearest|zero|floor|ceil ERROR`
 and `approx ERROR` use strict exact-number parsing; optional final address is
-1..247. This reference limits requested/effective speed to +/-60 native RPM and
-duration to 1..1000 ms. A direct stop has an additional immutable 2 s budget and
-20 ms poll interval; normal stop has a 3 s budget and 50 ms interval for the
-configured ramp. Both allow at most 64 polls. This is a software envelope, not physical
-qualification. Qualification starts false and `velocity` replies
-`qualification_required` until the facts are stated:
+1..247. The console parses 1..12000 ms; the application's
+[velocity limits](#velocity-limits-jog-setter-and-input-velocity-wired-bench-14)
+admit +/-60 native rpm and 1..1000 ms unless a qualification cell or the
+promoted table admits more. A direct stop has an additional immutable 2 s
+budget and a normal stop 3 s; the poll interval is 20 ms (direct) or 50 ms
+(normal), longer when 64 polls would not cover the duration. This is a software
+envelope, not physical qualification. Qualification starts false and
+`velocity` replies `qualification_required` until the facts are stated:
 
 ```
 velocity read
@@ -136,8 +139,8 @@ velocity qualification revoke
 and without it negative speeds reject. The ramp words come from the checked `velocity
 read`, which the route names when it is missing; a later read reporting other ramps
 removes the statement. `installVelocityQualification` is the same operation for an
-application. The facts widen neither the envelope above nor the requirement for
-fresh stationary state. See [qualification routes](cli_contract.md#qualification-routes).
+application. The facts widen neither the velocity limits nor the requirement
+for fresh stationary state. See [qualification routes](cli_contract.md#qualification-routes).
 
 Preparation rejects a duration that `maxPolls * pollIntervalUs` cannot cover; the
 `ActionOptions` defaults cover 200 ms. A poll closing after the duration ends the
@@ -201,6 +204,78 @@ See [implementation/evidence](archive/reports/ess_release_11_2026-10-04.md) and 
 [fresh independent audit](archive/reports/ess_release_11_audit_2026-10-04.md). The native
 console emits ten actual public-operation velocity outcomes and five parameter-read outcomes for a registered Python
 parity check; synthetic terminal records do not substitute for that path.
+
+## Velocity limits, JOG setter and input velocity (wired bench 14)
+
+[Wired bench 14](reports/2026-11-19_wired_bench_14_velocity_jog_pv.md)
+replaced the literals of `startVelocity` with a limits record
+(`examples/probe_cli/VelocityLimits.h`). Without a call (D12) a run needs
+|rpm| <= 60 and 1..1000 ms. Two explicit calls (D6) admit more for the selected
+axis; `velocity limits reset`, `useaddr`, `recover`, a host tuple change and a
+restart drop them, and the caller owns the measured risk:
+
+- `velocity limits qualify RPM ACCEL DECEL SUBDIVISION DURATION_MS normal|fast`
+  (API `velocityLimits`) names one exact run: signed rpm, both ramp words, the
+  checked subdivision, the duration and the stop policy. The matching run is
+  admitted once and consumes the cell; every other request, the same one
+  included, refuses `outside_velocity_limits` before any frame.
+- `velocity limits raise` admits the promoted table
+  (`examples/probe_cli/VelocityPromoted.h`, firmware data changed only in its
+  own commit with its evidence). A run is admitted when an entry has the same
+  ramps, subdivision, stop policy and direction, a duration no shorter, and the
+  same |rpm|; an untested |rpm| only strictly between two such entries at most
+  a factor of two apart. Nothing is inferred above the highest entry, below the
+  lowest, for other ramps, directions, subdivisions or stop policies, or between
+  standalone (HW-14 rate) entries; a standalone entry admits only its exact
+  duration. The table is empty in this change, so `raise` refuses
+  `no_promoted_cells`.
+
+A cell and a raise are exclusive: `qualify` refuses `raise_active`, and `raise`
+refuses `cell_armed` or `cell_run_active` until the cell's run has ended.
+Raised limits apply to serial runs only.
+
+The record reports `max_rpm`, `max_duration_ms`, `max_rate` (|rpm| x
+subdivision / 60 at the checked `0x0011`), `poll_ms` (64 polls cover the
+duration) and `stop_budget_ms`. A serial run with a speed, JOG or PV input
+(8-10, 13) on a connected terminal also needs a current FINITE_MOVE record with
+triggers inhibited and that input inactive, because the run rewrites
+`0x001D`.
+
+`velocity jog set SPEED ACCEL DECEL` (API `setJogParameters`) writes the JOG
+words with no start: one FC10 `0x001D/3` and a readback, after a checked
+`velocity read` of the binding, |speed| within the input velocity limit (60
+rpm, also while raised: inputs 8-10 run at the stored speed and no input
+promotion policy exists),
+ramp words 0..2000, no input 8-10 active and CONFIGURE facts with triggers
+inhibited for them. `arm velocity xN` starts the stored JOG words through
+functions 8, 9 or 10 ([input-started motion](ess_input_start.md)); the level
+lasts the trigger width (at most 5000 ms).
+
+Measured on `0x4EEA`/`0x0029`, 19 November 2026, free shafts:
+
+| Case | Drive | Result |
+| --- | --- | --- |
+| R1 | 1 | 61 rpm and 1001 ms refused `outside_velocity_limits`, no operation |
+| R2 | 1 | A 120 rpm 2000 ms cell (ramps 100, subdivision 1000, normal) ran once at 1994 increments/s against 2000; the same request and 121 rpm then refused before any frame |
+| R3 | 1 | JOG setter 60 read back [60, 100, 100]; 120 refused |
+| R4 | 1 | Dead-man (X3 = 5, polarity 1, `mosfet2` renewed): a lapse at 0.3 s stopped a 30 rpm 1000 ms run (`STOP_INPUT`), standstill 0.46 s before its timed stop (twice) |
+| V1 | 1 | +-60 rpm, 1000 ms: the ramp to full speed took the ramp word in ms (fits 0.10-0.11, 0.31-0.32 and 0.50-0.51 s for 100, 300, 500), with `0x0020` 0 or 30 alike; a model starting at the `0x0020` speed fits worse, so p17's initial velocity is not `0x0020` here |
+| C1 | 2 | 120, 300, 600, 1200, 2000 and 3000 rpm x ramps 100 and 500 x both signs, subdivision 1000, 2 s, 3 trials each: every run within 0.4 % of its rate, every stop observed, no alarm; with ramp 500 the ramp took 0.50-0.53 s at every speed (ramp time does not scale with speed) |
+| C2 | 2 | 300 rpm for 10 s, twice: 4987 increments/s against 5000 |
+| C3 | 2 | Subdivision 6000, 500, 600, 700 and 1000 rpm (50,000-100,000 increments/s), ramp 500, both signs, `stop normal` at 0.9 of the ramp (450 ms runs) and at constant speed (2000 ms), 10 runs each: 160 runs, every stop observed, no creep (RUNNING or motion 0.5 s after the stop), no alarm |
+| C4 | 2 | 3000 rpm, ramp 100, deceleration 2000, twice: the stop ended about 2.1 s after it was sent, inside the 3 s normal budget |
+
+The velocity rate decision: no HW-14 creep was seen in velocity mode up to
+100,000 increments/s (C3), so velocity keeps no separate rate ceiling beyond
+its limits record; the passing phase C cells are promotion candidates for the
+table in a separate change. The position ceiling stays 50,000 increments/s:
+its late-stop matrix was not rerun.
+
+The ACCELERATION policy stays UNSUPPORTED: the ramp word matched the time to
+full speed in these runs, but the fits resolve about 10 ms with 50-150 ms
+sampling and no shaft instrument confirms it. JOG and PV results are in the
+[input-start](ess_input_start.md) and [segments](ess_segments.md#pv-arm-wired-bench-14)
+guides.
 
 ## Limit inputs and soft limits (wired bench 11)
 

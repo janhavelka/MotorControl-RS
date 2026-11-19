@@ -111,7 +111,9 @@ bool ioFactsValid(const IoQualification& q, uint64_t now) {
         if ((q.function >= 4 || q.previousFunction >= 4) && !q.input.externalTriggersInhibited) return false;
         return true; // Core checks the entire FC06 sequence before any write.
     }
-    if (q.purpose == IoPurpose::FINITE_MOVE && ((q.function >= 8 && q.function <= 10) || q.function == 13)) return false;
+    // Wired bench 14: a FINITE_MOVE record of a speed, JOG or PV input (8-10, 13)
+    // states its continued inhibition for the velocity and PV arms and for serial
+    // velocity; serial moves still refuse those functions (moveInputPolicy).
     if (q.function >= 2 && q.function <= 13 && active) return false;
     // CONFIGURE and SEGMENT are separate stated purposes. Both require sources
     // inhibited for active controls; neither is inferred from move readiness.

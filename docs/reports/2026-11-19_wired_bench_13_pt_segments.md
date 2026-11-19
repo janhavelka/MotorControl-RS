@@ -346,4 +346,7 @@ the native IDF image.
 
 The lead owns Git and CI. Nothing was committed, pushed or dispatched by this
 session; the four CI jobs are required on the recording commit (core, firmware,
-console and harness changed).
+console and harness changed). The lead committed the work, with the audit
+fixes, as `eb0dbad`; CI run 44554811124 on that exact commit passed all four
+jobs (native gcc, native clang, Arduino, ESP-IDF). The independent audit
+(aud-20261119-151616-c4d1d5) and its disposition are in "After the audit".

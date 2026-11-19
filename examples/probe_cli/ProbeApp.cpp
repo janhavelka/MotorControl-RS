@@ -293,6 +293,17 @@ struct App {
     ESS::HomePrerequisites homePrerequisites; // Explicit method/active-auxiliary/native/reference qualification.
     ESS::VelocityPrerequisites velocityPrerequisites; // Independent commissioning evidence, initially unqualified.
     ESS::VelocityParametersObservation velocityParameters; // Checked observation, never desired/staged values.
+    // Velocity limits of the selected axis (VelocityLimitsApp.h, wired bench 14):
+    // the armed qualification cell or the raise, bound to address, binding and
+    // host serial generation. RAM only; the legacy envelope applies otherwise.
+    struct VelocityLimitsState {
+        bool cellArmed = false, raised = false;
+        Probe::VelocityCell cell;
+        uint8_t address = 0;
+        uint32_t bindingGeneration = 0, serialGeneration = 0, consumedOperationId = 0;
+    } velocityLimits;
+    const Probe::VelocityCell* velocityPromoted = Probe::VELOCITY_PROMOTED; ///< Native fixtures may install another table.
+    std::size_t velocityPromotedCount = Probe::VELOCITY_PROMOTED_COUNT;
     ESS::HomingParametersObservation homingParameters; // Raw observation is separate from home qualification.
     uint32_t bindingGeneration = 1;
     uint8_t actionConflicts[32] = {}; ///< Physical address conflicts survive result release and host recovery.
@@ -1229,6 +1240,7 @@ bool signedFeedback(uint32_t raw, int64_t& native) {
 #include "SoftLimitApp.h"
 #include "MotionReadinessApp.h"
 #include "MotionProfileApp.h"
+#include "VelocityLimitsApp.h"
 void cancelSimplePreparation(App&, uint8_t, uint64_t);
 void cancelPositionStages(App&, uint8_t, uint64_t);
 void cancelParameterWrite(App&, uint8_t, uint64_t);
@@ -1692,7 +1704,10 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
     if (a.owner.commissioningOwned() || a.discovery.owned || groupSequencing(a)) return Probe::Action::BUSY;
     if (!platformReady) return Probe::Action::UNAVAILABLE;
     if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned()) return Probe::Action::RECOVERY_REQUIRED;
-    if (!ESS::isValidAddress(address) || !supplied.durationUs || supplied.durationUs > 1000000)
+    // Wired bench 14: the duration bound of the active limits is checked below
+    // with the prepared rpm; this is the longest run any call can admit.
+    if (!ESS::isValidAddress(address) || !supplied.durationUs ||
+        supplied.durationUs > static_cast<uint64_t>(Probe::VELOCITY_MAX_DURATION_MS) * 1000)
         return Probe::Action::INVALID;
     if (!a.commandPolarityKnown && supplied.frame != CoordinateFrame::NATIVE) return Probe::Action::UNAVAILABLE;
     if (supplied.ramp == VelocityRamp::ACCELERATION || supplied.acceleration || supplied.deceleration ||
@@ -1730,26 +1745,44 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
     if (softLimitState(a, now) == SoftLimitState::UNKNOWN) {
         noteSoftLimitRefusal(a, "soft_limit_state_unknown"); return Probe::Action::UNAVAILABLE;
     }
-    prerequisites.minimumRpm = std::max<int16_t>(prerequisites.minimumRpm,-60);
-    prerequisites.maximumRpm = std::min<int16_t>(prerequisites.maximumRpm,60);
+    // Wired bench 14: an assigned speed, JOG or PV input (8-10, 13) on a connected
+    // terminal also acts on 0x001D, which this run rewrites; it needs a current
+    // FINITE_MOVE record with triggers inhibited, and it must read inactive.
+    if (const char* blocked = velocityInputBlocked(a, now)) {
+        a.settingsRefusal = Probe::SettingsRefusal();
+        a.settingsRefusal.reason = blocked; a.settingsRefusal.purpose = "motion";
+        const bool facts = !std::strcmp(blocked, "triggers_inhibited_required");
+        a.settingsRefusal.readFirst = facts ? "io qualification install" : "read state";
+        a.settingsRefusal.terminal = -1;
+        return facts ? Probe::Action::QUALIFICATION_REQUIRED : Probe::Action::UNAVAILABLE;
+    }
     const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
     if (!Probe::fresh(motion, a.axis.target, now, prerequisites.maximumAgeUs)) prerequisites.readinessQualified = false;
     else {
         prerequisites.rawAlarm = motion.value.rawAlarm; prerequisites.rawMotion = motion.value.rawMotion;
         prerequisites.observedUs = motion.observedEarliestUs;
     }
-    // Proposed finite free-shaft envelope only; commissioning flags stay false until
-    // an operator or API caller states them. Setup consumes duration; the normal-stop
-    // observation budget covers the same legal ramp as an independently requested stop.
+    // Commissioning flags stay false until an operator or API caller states them.
+    // Setup consumes duration. Wired bench 14: the velocity limits record decides
+    // the envelope below; the poll interval grows so that 64 polls cover the
+    // duration, and the stop budget follows the stop policy (20 ms / 2 s direct,
+    // 50 ms / 3 s normal, the budget covering a 2000 ms deceleration word).
     const bool normalStop = supplied.stop.behavior == StopBehavior::CONFIGURED_DECELERATION;
-    const uint64_t deadline = now + supplied.durationUs + (normalStop ? NORMAL_STOP_US : 2000000);
-    ActionOptions options; options.maxPolls = ESS::ACTION_MAX_POLLS; options.pollIntervalUs = 20000;
-    if (normalStop) options.pollIntervalUs = NORMAL_STOP_POLL_US;
+    const auto stopPolicy = normalStop ? Probe::VelocityStop::NORMAL : Probe::VelocityStop::FAST;
+    const uint32_t durationMs = static_cast<uint32_t>((supplied.durationUs + 999) / 1000);
+    const uint64_t deadline = now + supplied.durationUs + static_cast<uint64_t>(Probe::velocityStopBudgetMs(stopPolicy)) * 1000;
+    ActionOptions options; options.maxPolls = ESS::ACTION_MAX_POLLS;
+    options.pollIntervalUs = Probe::velocityPollMs(durationMs, stopPolicy) * 1000;
     const auto checked = ESS::prepareVelocity(record->velocity, a.axis, a.nextOperationId,
         supplied, prerequisites, now, deadline, options);
     if (!checked) { clearRecord(*record); return checked.code == Err::UNSUPPORTED ? Probe::Action::UNSUPPORTED : Probe::Action::INVALID; }
-    if (record->velocity.prepared.nativeRpm < -60 || record->velocity.prepared.nativeRpm > 60) {
-        clearRecord(*record); return Probe::Action::INVALID;
+    Probe::VelocityCell run;
+    run.rpm = record->velocity.prepared.nativeRpm;
+    run.accelerationTime = prerequisites.accelerationTime; run.decelerationTime = prerequisites.decelerationTime;
+    run.subdivision = selectedSubdivision(a); run.durationMs = durationMs; run.stop = stopPolicy;
+    const auto admission = velocityRunAdmission(a, run, supplied.durationUs % 1000 == 0);
+    if (admission == Probe::VelocityAdmission::REFUSED) {
+        clearRecord(*record); noteVelocityLimitsRefusal(a); return Probe::Action::INVALID;
     }
     ESS::PreparedVelocity work;
     if (!ESS::nextVelocity(record->velocity, now, work)) { clearRecord(*record); return Probe::Action::FAILED; }
@@ -1758,6 +1791,7 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
     record->serialTuple = a.serial.active; record->serialGeneration = a.serial.generation;
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
     record->deadlineUs = deadline; record->kind = App::OperationKind::VELOCITY; record->axisReserved = true;
+    if (admission == Probe::VelocityAdmission::CELL) consumeVelocityCell(a, record->operationId);
     operationId = a.latestOperationId = record->operationId; return Probe::Action::OK;
 }
 Probe::Action admitHomeStep(App& a, App::Record& record, const ESS::PreparedHome& work, uint64_t now) {
@@ -4038,7 +4072,7 @@ Probe::Host host(App* a) {
     h.qualification = qualificationCommand;
     h.startPositionInterrupt = startPositionInterrupt;
     h.simpleMotion = simpleMotion;
-    h.monitor = monitor; h.motionProfile = motionProfileCommand; h.parameterWrite = parameterWriteCommand; h.inputStart = inputStartCommand; h.stageProfile = startProfileCandidate; h.debug = debugCommand;
+    h.monitor = monitor; h.motionProfile = motionProfileCommand; h.parameterWrite = parameterWriteCommand; h.velocityLimits = velocityLimitsCommand; h.inputStart = inputStartCommand; h.stageProfile = startProfileCandidate; h.debug = debugCommand;
     h.axis = axisCommand; h.hostSerial = hostSerial; h.selectTarget = selectTarget;
     h.ioQualification = ioQualificationCommand;
     h.wiring = wiring;
@@ -4809,6 +4843,20 @@ MotorControlRS::Status restoreVelocityParameters(uint32_t snapshotId, uint32_t& 
     Probe::ParameterWriteRequest request;
     request.kind = Probe::ParameterWriteKind::VELOCITY_RESTORE; request.snapshotId = snapshotId;
     return submitParameterWrite(request, operationId);
+}
+MotorControlRS::Status setJogParameters(int16_t speedRpm, uint16_t accelerationTime, uint16_t decelerationTime,
+                                       uint32_t& operationId) {
+    Probe::ParameterWriteRequest request;
+    request.kind = Probe::ParameterWriteKind::VELOCITY_SET;
+    request.words[0] = static_cast<uint16_t>(speedRpm); request.words[1] = accelerationTime; request.words[2] = decelerationTime;
+    return submitParameterWrite(request, operationId);
+}
+MotorControlRS::Status velocityLimits(const Probe::VelocityLimitsCommand* command, Probe::VelocityLimitsView& output) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    const auto result = velocityLimitsCommand(app, command, output);
+    if (result != Probe::Action::OK) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(result), output.reason);
+    return Ok();
 }
 bool copyParameterWrite(uint32_t operationId, Probe::ParameterWriteView& output) {
     if (!app || !operationId || app->parameterWrite.view.operationId != operationId) return false;

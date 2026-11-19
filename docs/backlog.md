@@ -309,7 +309,11 @@ functional evidence; independent shaft calibration remains absent.
   (HW-14): default rate ceiling 50,000 increments/s, rechecked on the bench.
   [Stop normal study](reports/2026-11-04_stop_normal_rate_ceiling.md).
 - [ ] Ask the vendor about that creep above about 60,000 increments/s and whether
-  newer firmware fixes it. Raising the ceiling needs a fix or a rerun of the
+  newer firmware fixes it. Velocity mode (wired bench 14 C3, drive 2,
+  subdivision 6000, 50,000-100,000 increments/s): 160 runs with `stop normal` at
+  0.9 of a 500 ms ramp and at constant speed showed no creep and no alarm
+  ([report](reports/2026-11-19_wired_bench_14_velocity_jog_pv.md)); the position
+  ceiling stays 50,000 (its late-stop matrix was not rerun). Raising the ceiling needs a fix or a rerun of the
   late-stop matrix on the new firmware.
 - [ ] Measure the enable settling time (HW-15) beyond one drive's 0.6 s for
   position starts: home and velocity starts, other drives or firmware, an enable
@@ -360,9 +364,18 @@ functional evidence; independent shaft calibration remains absent.
 - [ ] Qualify physical ramp/acceleration mappings before broadening velocity
   claims. The two's-complement negative speed is verified on drives 1, 2 and 4
   ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md#negative-velocity-image-a)); the `negative` fact
-  stays a caller statement. Velocity has no rate ceiling; test its
-  `stop normal` above 60,000 increments/s first (HW-14 was found in position mode). Same-endpoint in-motion speed changes remain
-  unavailable; bare speed writes are not proven smooth updates.
+  stays a caller statement. Same-endpoint in-motion speed changes remain
+  unavailable; bare speed writes are not proven smooth updates. Wired bench 14
+  ([report](reports/2026-11-19_wired_bench_14_velocity_jog_pv.md)): the
+  velocity limits record, the qualification cell and the promoted-table raise
+  are delivered (legacy +-60 rpm, 1..1000 ms by default); ramp mapping measured
+  on drives 1 and 2: the ramp to full speed took the ramp word in ms at 60 rpm
+  (100, 300, 500) and at 120-3000 rpm (500), with `0x0020` not used as an
+  initial velocity; the ACCELERATION policy stays unsupported (no shaft
+  instrument, ~10 ms fit resolution). Phase C on drive 2: 120-3000 rpm x ramps
+  100/500 x signs (72 runs), 300 rpm for 10 s, 160 C3 creep runs and two
+  deceleration-2000 stops all passed. Open: promoting the passing cells into
+  the table (a separate change with its evidence).
   [Live-speed review](archive/reports/2026-10-06_rounding_and_live_speed.md).
 - [ ] Resolve effective-current limits/percentage denominator and qualify
   torque, encoder, lock, filtering, gains and collision effects. Peak current
@@ -567,9 +580,24 @@ more drives (now addresses 1, 2 and 4, star wiring).
   fast` ended runs with no further start; with `0x0050` = 1 records still ran
   as displacements (P2 FAIL, absolute refused; a save-and-restart check is
   deferred to the owner's return). Open: negative targets (W0b), P4, P6, P7.
-  Home (12) and PV (14) staging still refuse. Function 7
+  Speed/JOG and PV part (wired bench 14,
+  [report](reports/2026-11-19_wired_bench_14_velocity_jog_pv.md)): `arm velocity
+  xN` (8-10) and `arm pv xN RECORD LAYOUT` (13) on the selected axis; JOG+ and
+  JOG- kept their direction for both signs, the speed input followed the sign,
+  PV records 1-8 ran at their own speeds, edge PV ran until a stop, and the
+  dead-man layouts ended serial, JOG and edge-PV runs. Open: negative PV words
+  (experiment route not built), a PIN change during a held run (PV2), the p29
+  mixed method (PV5), group PV (PV6), JOG precedence (J4) and the unreproduced
+  first R5 no-start. Home (12) staging still refuses. Function 7
   does not need standalone 02's separate archive-import route. Source inhibition,
   intermediate writes and stop/disarm evidence stay explicit.
+- [ ] Wired bench 14 audit (aud-20261119-171053-5db43c) items left open
+  ([report](reports/2026-11-19_wired_bench_14_velocity_jog_pv.md#after-the-audit)):
+  report the promoted table in `caps`/`settings` (F8); tighten the JOG setter's
+  prior-read predicate (F6, speculative); a group PV arm (F5, PV6 NOT RUN);
+  further failure-path tests of the velocity limits, JOG setter and arms (F7).
+  An owned stop for edge-mode PV outside the dead-man layout would admit
+  `pv-pt-mix` again.
 - [ ] Close the remaining wired bench 13 audit points on the PT route
   ([report](reports/2026-11-19_wired_bench_13_pt_segments.md)). Implementation
   done after the audit: the trigger refuses unless every PIN output the armed

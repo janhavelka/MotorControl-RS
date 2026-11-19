@@ -77,6 +77,11 @@ CASES = {
     "P10": dict(kind="group-stop", record=8, levels=["drive-reported"],
                 assertion="group stop mid-record stops every member; PINs drop; nothing restarts"),
     "P12": dict(kind="ceiling", levels=["sent"], assertion="a record at 2500 rpm refuses the arm before any frame or pulse"),
+    # Wired bench 14's first flash carries prompt 13's post-audit changes (image F):
+    # one PT record still runs, and a trigger whose PIN hold ends too early refuses.
+    "G1": dict(kind="regression", record=2, levels=["drive-reported", "sent"],
+               assertion="record 2 runs +800 once; a trigger whose PIN0 hold ends before the 3000 ms pulse plus 50 ms "
+                         "refuses before the ON"),
 }
 # Tables on the D10 path (bench step 3), only the non-negative claim: drive 2
 # gets +200*N (its -400*N table needs the signed claim; NOT RUN).
@@ -765,6 +770,42 @@ def run_absolute(live, address):
             "ons_before": ons, "ons_after": {o["name"]: o["ons"] for o in after["outputs"]}}
 
 
+def run_regression(live, address, record):
+    """G1: one record arm and trigger, then a trigger refused for a short PIN hold."""
+    out = {}
+    trial = pt_trial(live, record, 0, [address])
+    trial["expected_change"] = (trial.get("expected") or {}).get(address)
+    trial["verdict"] = run_verdict(dict(trial, result=(trial.get("results") or {}).get(address)))
+    out["run"] = trial
+    if trial.get("start", {}).get(address) is not None and not trial.get("refused"):
+        trial["return"] = return_to(live, address, trial["start"][address])
+    headroom(live)
+    select_record(live, record, [address])
+    arm_reads(live, address, record)
+    reply = live.call("arm-segment", host_args=(TRIGGER_TERMINAL, "relative", str(record)))
+    out["arm"] = {k: reply.get(k) for k in ("ok", "result", "reason")}
+    if not reply.get("ok"):
+        return out
+    session = reply["session"]["operation_id"]
+    try:
+        view = records._bench_view(live.checked("bench", host_args=()))
+        out["ons_before"] = view["outputs"][TRIGGER_OUTPUT]["ons"]
+        # The PIN0 hold now ends 2 s from here: inside the interlock reads, before 3000 ms + 50 ms.
+        records.bench_renew(live.console, PIN_OUTPUTS[0], 2000, view["outputs"][PIN_OUTPUTS[0]]["on_us"], timeout_s=live.timeout)
+        trigger = live.call("arm-trigger", host_args=(str(session), TRIGGER_OUTPUT, "3000"))
+        decided = starts.wait_phase(live, session, lambda s: s["phase"] != "triggering", 5.0)
+        isolation = decided.get("isolation") or {}
+        out["trigger"] = {"ok": trigger.get("ok"), "admitted": isolation.get("admitted"), "row": isolation.get("row"),
+                          "reason": isolation.get("reason"), "source": (decided.get("source") or {}).get("state")}
+        out["ons_after"] = records._bench_view(live.checked("bench", host_args=()))["outputs"][TRIGGER_OUTPUT]["ons"]
+    finally:
+        out["finish"] = starts.finish_session(live, session)
+        outputs_off(live)
+        moving, _ = starts.settle_stopped(live, [address])
+        out["continued_motion"] = moving
+    return out
+
+
 def run_cases(live, args, cases):
     detail = {"cases": {}, "address": args.address}
     live.partial = detail["cases"]
@@ -819,6 +860,12 @@ def run_cases(live, args, cases):
                     restore_layout(live, address)
         elif kind == "absolute":
             out["trials"] = [run_absolute(live, args.address)]
+        elif kind == "regression":
+            setup_table(live, args.address, 0)
+            try:
+                out["trials"] = [run_regression(live, args.address, case["record"])]
+            finally:
+                restore_layout(live, args.address)
         elif kind == "ceiling":
             setup_table(live, args.address, 0)
             try:
@@ -878,6 +925,16 @@ def case_verdicts(run, cid, detail, error):
                if v[0] != "PASS"]
         run.verdict(cid, "drive-reported", "FAIL" if bad or len(trials) != 8 else "PASS",
                     "; ".join(bad) if bad else "%d records x %d drives" % (len(trials), len(DRIVES)), ["pt.json"])
+        return
+    if kind == "regression":
+        t = trials[0]
+        run_v = (t.get("run") or {}).get("verdict", ("FAIL", "no run"))
+        run.verdict(cid, "drive-reported", run_v[0], "record %d: %s" % (case["record"], run_v[1] or "ran its target"), ["pt.json"])
+        tr = t.get("trigger") or {}
+        ok = (tr.get("admitted") is False and tr.get("reason") == "a PIN output's hold ends before the trigger pulse and its margin"
+              and t.get("ons_before") == t.get("ons_after") and not t.get("continued_motion"))
+        run.verdict(cid, "sent", "PASS" if ok else "FAIL", "short PIN hold: %s; mosfet1 ons %s -> %s" % (
+            tr, t.get("ons_before"), t.get("ons_after")), ["pt.json"])
         return
     if kind in ("ceiling", "absolute"):
         t = trials[0]

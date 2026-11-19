@@ -956,6 +956,217 @@ void limitVelocityRule() {
     assert(view(id).velocityContext->prerequisites.limitInputMask == 6);
     assert(cancel(app, id) == Probe::Action::OK);
 }
+// ---------------------------------------------------------------- wired bench 14
+Probe::VelocityCell cellOf(int16_t rpm, uint16_t ramp = 100, uint16_t subdivision = 1000, uint32_t ms = 2000,
+                           Probe::VelocityStop stop = Probe::VelocityStop::NORMAL, bool alone = false) {
+    Probe::VelocityCell c; c.rpm = rpm; c.accelerationTime = c.decelerationTime = ramp; c.subdivision = subdivision;
+    c.durationMs = ms; c.stop = stop; c.standalone = alone; return c;
+}
+void velocityLimitRules() {
+    using namespace Probe;
+    using A = VelocityAdmission;
+    assert(velocityRate(60, 1000) == 1000 && velocityRate(-3000, 1000) == 50000 && velocityRate(600, 6000) == 60000);
+    assert(velocityRate(-500, 6000) == 50000 && velocityRate(1, 400) == 7);
+    // Polls: 64 cover the duration; the base interval stays for short runs (legacy values).
+    assert(velocityPollMs(1000, VelocityStop::NORMAL) == 50 && velocityPollMs(1000, VelocityStop::FAST) == 20);
+    assert(velocityPollMs(2000, VelocityStop::FAST) == 32 && velocityPollMs(10000, VelocityStop::NORMAL) == 157);
+    assert(velocityPollMs(VELOCITY_MAX_DURATION_MS, VelocityStop::FAST) * VELOCITY_POLLS >= VELOCITY_MAX_DURATION_MS);
+    assert(velocityStopBudgetMs(VelocityStop::NORMAL) == 3000 && velocityStopBudgetMs(VelocityStop::FAST) == 2000);
+    const VelocityCell table[] = {cellOf(120), cellOf(300), cellOf(600), cellOf(1200), cellOf(-120),
+        cellOf(500, 500, 6000, 2000, VelocityStop::NORMAL, true), cellOf(600, 500, 6000, 2000, VelocityStop::NORMAL, true)};
+    const auto admit = [&](const VelocityCell& run) { return velocityPromotedAdmission(table, 7, run); };
+    assert(admit(cellOf(300)) == A::PROMOTED && admit(cellOf(300, 100, 1000, 1500)) == A::PROMOTED);
+    assert(admit(cellOf(400)) == A::INTERPOLATED && admit(cellOf(900)) == A::INTERPOLATED);
+    assert(admit(cellOf(200)) == A::REFUSED);  // 120 and 300 are more than a factor of two apart.
+    assert(admit(cellOf(1300)) == A::REFUSED && admit(cellOf(100)) == A::REFUSED); // Above the highest, below the lowest.
+    assert(admit(cellOf(-120)) == A::PROMOTED && admit(cellOf(-300)) == A::REFUSED); // Per direction.
+    assert(admit(cellOf(400, 500)) == A::REFUSED && admit(cellOf(400, 100, 2000)) == A::REFUSED); // Ramp, subdivision.
+    assert(admit(cellOf(400, 100, 1000, 2001)) == A::REFUSED); // Longer than the tested runs.
+    assert(admit(cellOf(400, 100, 1000, 2000, VelocityStop::FAST)) == A::REFUSED);
+    assert(admit(cellOf(600, 500, 6000)) == A::PROMOTED && admit(cellOf(550, 500, 6000)) == A::REFUSED); // HW-14 cells stand alone.
+    // Audit F4: a standalone entry admits only its exact duration (its stop point is part of the cell).
+    assert(admit(cellOf(600, 500, 6000, 1500)) == A::REFUSED && admit(cellOf(600, 500, 6000, 2001)) == A::REFUSED);
+    assert(velocityPromotedAdmission(nullptr, 0, cellOf(300)) == A::REFUSED);
+    assert(velocityLegacyRun(cellOf(60, 100, 1000, 1000)) && velocityLegacyRun(cellOf(-60, 2000, 51200, 1)));
+    assert(!velocityLegacyRun(cellOf(61, 100, 1000, 1000)) && !velocityLegacyRun(cellOf(60, 100, 1000, 1001)));
+    assert(!velocityCellValid(cellOf(0)) && !velocityCellValid(cellOf(3001)) && !velocityCellValid(cellOf(120, 2001)));
+    assert(!velocityCellValid(cellOf(120, 100, 399)) && !velocityCellValid(cellOf(120, 100, 1000, 12001)));
+}
+VelocityRequest runRequest(int32_t rpm, uint32_t ms, bool normal = true) {
+    auto r = request(); r.value = Rational(rpm); r.durationUs = ms * 1000;
+    r.stop.behavior = normal ? StopBehavior::CONFIGURED_DECELERATION : StopBehavior::DIRECT; return r;
+}
+Probe::Action tryRun(int32_t rpm, uint32_t ms, uint32_t& id, bool normal = true) {
+    id = 77; const auto result = host(app).startVelocity(app, 9, 1, runRequest(rpm, ms, normal), id);
+    if (result != Probe::Action::OK) assert(id == 77);
+    return result;
+}
+Probe::VelocityLimitsView limitsCall(Probe::VelocityLimitsCommandKind kind, const Probe::VelocityCell* cell = nullptr,
+                                     Probe::Action expected = Probe::Action::OK) {
+    Probe::VelocityLimitsCommand c; c.kind = kind; if (cell) c.cell = *cell;
+    Probe::VelocityLimitsView v; assert(velocityLimitsCommand(app, &c, v) == expected); return v;
+}
+void dropRun(uint32_t id) {
+    assert(cancel(app, id) == Probe::Action::OK); pump(1000);
+    assert(!view(id).pending && !axisReserved(*app, 1));
+    clearRecord(*findRecord(*app, id)); // Never delivered to a console; free the slot.
+    qualify(); // A possible run expires the readiness observations; the fixture states them again.
+}
+bool refusedFor(const char* reason) {
+    Probe::SettingsRefusal r; return copySettingsRefusal(r) && !std::strcmp(r.reason, reason);
+}
+void velocityLimitsRoutes() {
+    using K = Probe::VelocityLimitsCommandKind;
+    using P = Probe::Action;
+    fresh(); qualify();
+    uint32_t id = 0; const unsigned writes = hardware.writes;
+    // Legacy refusals without any call (D12): 61 rpm, 1001 ms; zero frames, named reason.
+    assert(tryRun(61, 1000, id) == P::INVALID && refusedFor("outside_velocity_limits"));
+    assert(tryRun(30, 1001, id) == P::INVALID && tryRun(-61, 200, id) == P::INVALID && hardware.writes == writes);
+    auto v = limitsCall(K::SHOW);
+    assert(v.source == Probe::VelocityLimitsSource::LEGACY && v.maximumRpm == 60 && v.maximumDurationMs == 1000);
+    assert(v.subdivision == 1000 && v.maximumRate == 1000 && v.pollMs == 50 && v.stopBudgetMs == 3000 && !v.promotedCount);
+    // A legacy run keeps its poll interval and stop budget.
+    assert(tryRun(60, 1000, id) == P::OK);
+    assert(view(id).velocityContext->options.pollIntervalUs == 50000);
+    assert(view(id).velocityContext->deadlineUs - view(id).velocityContext->startedUs == 4000000);
+    dropRun(id);
+    assert(tryRun(-60, 1000, id, false) == P::OK && view(id).velocityContext->options.pollIntervalUs == 20000);
+    assert(view(id).velocityContext->deadlineUs - view(id).velocityContext->startedUs == 3000000);
+    dropRun(id);
+    // Qualification cell: checked against the selected axis, one at a time.
+    const auto cell = cellOf(120);
+    auto bad = cell; bad.subdivision = 6000;
+    v = limitsCall(K::QUALIFY, &bad, P::UNAVAILABLE); assert(!std::strcmp(v.reason, "subdivision_mismatch") && !v.cellArmed);
+    bad = cellOf(30, 100, 1000, 500); v = limitsCall(K::QUALIFY, &bad, P::INVALID); assert(!std::strcmp(v.reason, "inside_legacy_limits"));
+    bad = cellOf(0); v = limitsCall(K::QUALIFY, &bad, P::INVALID); assert(!std::strcmp(v.reason, "invalid_cell"));
+    v = limitsCall(K::QUALIFY, &cell);
+    assert(v.cellArmed && v.source == Probe::VelocityLimitsSource::CELL && v.maximumRpm == 120 && v.maximumDurationMs == 2000);
+    assert(v.maximumRate == 2000 && v.cell.rpm == 120);
+    assert(!std::strcmp(limitsCall(K::QUALIFY, &cell, P::BUSY).reason, "cell_armed"));
+    // Every other combination refuses before any frame while the cell is armed.
+    assert(tryRun(121, 2000, id) == P::INVALID && tryRun(120, 2001, id) == P::INVALID && tryRun(-120, 2000, id) == P::INVALID);
+    assert(tryRun(120, 2000, id, false) == P::INVALID && tryRun(120, 1999, id) == P::INVALID && hardware.writes == writes);
+    app->velocityPrerequisites.accelerationTime = 200;
+    assert(tryRun(120, 2000, id) == P::INVALID); // Other ramp words.
+    app->velocityPrerequisites.accelerationTime = 100;
+    // The matching run is admitted once: 64 polls cover 2 s, the normal stop budget follows; it consumes the cell.
+    assert(tryRun(120, 2000, id) == P::OK);
+    assert(view(id).velocityContext->options.pollIntervalUs == 50000);
+    assert(view(id).velocityContext->deadlineUs - view(id).velocityContext->startedUs == 5000000);
+    v = limitsCall(K::SHOW); assert(!v.cellArmed && v.source == Probe::VelocityLimitsSource::LEGACY && v.consumedOperationId == id);
+    dropRun(id);
+    uint32_t again = 0;
+    assert(tryRun(120, 2000, again) == P::INVALID && tryRun(121, 2000, again) == P::INVALID && hardware.writes == writes);
+    // Reset paths: reset, useaddr, recover.
+    limitsCall(K::QUALIFY, &cell); limitsCall(K::RESET); assert(!limitsCall(K::SHOW).cellArmed);
+    assert(tryRun(120, 2000, again) == P::INVALID);
+    limitsCall(K::QUALIFY, &cell); command("@80 useaddr 2\n"); command("@81 useaddr 1\n"); qualify();
+    assert(!limitsCall(K::SHOW).cellArmed && tryRun(120, 2000, again) == P::INVALID && refusedFor("outside_velocity_limits"));
+    limitsCall(K::QUALIFY, &cell);
+    uint32_t recovery = 0; assert(recover(app, 0, recovery) == P::OK);
+    for (unsigned i = 0; i < 250000 && view(recovery).pending; ++i) step();
+    qualify(); assert(!limitsCall(K::SHOW).cellArmed && tryRun(120, 2000, again) == P::INVALID);
+    // Raise: only with a promoted table; then exact and interpolated runs, nothing else.
+    v = limitsCall(K::RAISE, nullptr, P::UNAVAILABLE); assert(!std::strcmp(v.reason, "no_promoted_cells") && !v.raised);
+    static const Probe::VelocityCell promoted[] = {cellOf(120), cellOf(300), cellOf(600)};
+    app->velocityPromoted = promoted; app->velocityPromotedCount = 3;
+    // Audit F4: a cell and a raise are exclusive, also while the cell's run is active.
+    limitsCall(K::QUALIFY, &cell);
+    v = limitsCall(K::RAISE, nullptr, P::BUSY); assert(!std::strcmp(v.reason, "cell_armed") && !v.raised);
+    assert(tryRun(120, 2000, id) == P::OK);
+    v = limitsCall(K::RAISE, nullptr, P::BUSY); assert(!std::strcmp(v.reason, "cell_run_active") && !v.raised);
+    dropRun(id);
+    v = limitsCall(K::RAISE);
+    assert(!std::strcmp(limitsCall(K::QUALIFY, &cell, P::BUSY).reason, "raise_active") && !limitsCall(K::SHOW).cellArmed);
+    assert(v.raised && v.source == Probe::VelocityLimitsSource::RAISED && v.maximumRpm == 600 && v.promotedCount == 3);
+    const unsigned raisedWrites = hardware.writes;
+    assert(tryRun(300, 2000, id) == P::OK); dropRun(id);
+    assert(tryRun(400, 1500, id) == P::OK); dropRun(id); // Interpolated between 300 and 600.
+    assert(tryRun(200, 2000, id) == P::INVALID && tryRun(700, 2000, id) == P::INVALID && tryRun(-300, 2000, id) == P::INVALID);
+    assert(tryRun(300, 2000, id) == P::OK); dropRun(id); // A raise is not consumed by a run.
+    assert(hardware.writes == raisedWrites);
+    limitsCall(K::RESET); assert(tryRun(300, 2000, id) == P::INVALID);
+    // The console route: show, qualify, reset; malformed forms refuse before the application.
+    command("@82 velocity limits\n");
+    assert(Serial.output.find("\"command\":\"velocity-limits\"") != std::string::npos &&
+           Serial.output.find("\"source\":\"legacy\"") != std::string::npos && Serial.output.find("\"bus_traffic\":false") != std::string::npos);
+    command("@83 velocity limits qualify -120 100 100 1000 2000 fast\n");
+    assert(Serial.output.find("\"cell_armed\":true") != std::string::npos && Serial.output.find("\"rpm\":-120") != std::string::npos);
+    command("@84 velocity limits qualify 120 100 100 1000 2000\n");
+    assert(Serial.output.find("invalid_arguments") != std::string::npos);
+    command("@85 velocity limits reset\n"); assert(Serial.output.find("\"cell_armed\":false") != std::string::npos);
+    command("@86 velocity 61 rpm native 1000 configured normal\n");
+    assert(Serial.output.find("\"reason\":\"outside_velocity_limits\"") != std::string::npos && hardware.writes == raisedWrites);
+    command("@87 caps\n");
+    assert(Serial.output.find("\"velocity_limits\":{\"route\":true,\"source\":\"legacy\",\"max_rpm\":60") != std::string::npos);
+    assert(Serial.output.find("\"external_jog\"") == std::string::npos);
+}
+// Wired bench 14: a velocity start with a speed, JOG or PV input on a connected terminal.
+void velocityInputFunctions() {
+    for (const uint16_t function : {8, 9, 10, 13}) {
+        fresh(); qualify();
+        app->configuration.raw.inputFunctions[0] = function;
+        app->configuration.wiring[0] = InputWiring::CONNECTED;
+        uint32_t id = 0;
+        assert(tryRun(30, 200, id) == Probe::Action::QUALIFICATION_REQUIRED && refusedFor("triggers_inhibited_required"));
+        auto& q = app->ioQualifications[0]; q = IoQualification();
+        q.target = app->axis.target; q.configurationGeneration = app->axis.generation; q.terminal = 0;
+        q.purpose = IoPurpose::FINITE_MOVE; q.wiring = InputWiring::CONNECTED; q.function = q.previousFunction = function;
+        q.qualifiedUs = hardware.time; q.maximumAgeUs = 60000000; q.input.supplied = true; q.input.externalTriggersInhibited = true;
+        assert(ioFactsValid(q, nowUs()));
+        auto& io = app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
+        io.value.rawInputs = 1; io.observedEarliestUs = io.observedLatestUs = hardware.time;
+        assert(tryRun(30, 200, id) == Probe::Action::UNAVAILABLE && refusedFor("input_active") && !hardware.writes);
+        io.value.rawInputs = 0;
+        assert(tryRun(30, 200, id) == Probe::Action::OK); dropRun(id);
+        // An unconnected terminal has no source: admitted without the record.
+        fresh(); qualify(); app->configuration.raw.inputFunctions[0] = function;
+        app->configuration.wiring[0] = InputWiring::UNCONNECTED;
+        assert(tryRun(30, 200, id) == Probe::Action::OK); dropRun(id);
+    }
+}
+// Wired bench 14: the JOG setter writes 0x001D/3 with no start, inside the input limits.
+void jogSetter() {
+    fresh(); restoreReads();
+    uint32_t id = 77; unsigned writes = hardware.writes;
+    auto status = setJogParameters(60, 100, 100, id);
+    assert(!status && status.detail == static_cast<int32_t>(Probe::Action::UNAVAILABLE) && id == 77 && hardware.writes == writes);
+    Probe::SettingsRefusal r; assert(copySettingsRefusal(r) && !std::strcmp(r.reason, "velocity_read_required"));
+    velocitySnapshot(120, 100, 100); writes = hardware.writes;
+    status = setJogParameters(61, 100, 100, id);
+    assert(!status && status.detail == static_cast<int32_t>(Probe::Action::INVALID) && refusedFor("outside_velocity_limits"));
+    assert(!setJogParameters(-61, 100, 100, id) && !setJogParameters(0, 100, 100, id) && !setJogParameters(60, 2001, 100, id));
+    assert(hardware.writes == writes && id == 77);
+    assert(setJogParameters(-60, 300, 500, id) && axisReserved(*app, 1));
+    serveRestore(id, VELOCITY_RESTORE_ACK);
+    assert(hardware.writes == writes + 1 && hardware.tx == crc({1, 16, 0, 0x1D, 0, 3, 6, 0xFF, 0xC4, 1, 0x2C, 1, 0xF4}));
+    serveRestore(id, registers(1, {0xFFC4, 300, 500}));
+    auto v = restoreView(id);
+    assert(!v.pending && v.ok && v.kind == Probe::ParameterWriteKind::VELOCITY_SET && v.readback[0] == 0xFFC4 && !axisReserved(*app, 1));
+    assert(hardware.writes == writes + 2 && !app->velocityParameters.operationId); // The write expired the read.
+    // Audit F1: raised limits are serial-only; the setter keeps the legacy speed while raised.
+    restoreReads(); velocitySnapshot(120, 100, 100);
+    static const Probe::VelocityCell promoted[] = {cellOf(120)};
+    app->velocityPromoted = promoted; app->velocityPromotedCount = 1;
+    assert(limitsCall(Probe::VelocityLimitsCommandKind::RAISE).raised);
+    writes = hardware.writes; id = 77;
+    status = setJogParameters(120, 100, 100, id);
+    assert(!status && status.detail == static_cast<int32_t>(Probe::Action::INVALID) && refusedFor("outside_velocity_limits"));
+    assert(id == 77 && hardware.writes == writes);
+    // An active JOG input refuses; one without a CONFIGURE record that inhibits it too.
+    fresh(); restoreReads(9); velocitySnapshot(120, 100, 100);
+    status = setJogParameters(30, 100, 100, id);
+    assert(!status && status.detail == static_cast<int32_t>(Probe::Action::QUALIFICATION_REQUIRED));
+    // The console route and its reply.
+    fresh(); restoreReads(); velocitySnapshot(120, 100, 100);
+    command("@89 velocity jog set 120 100 100\n");
+    assert(Serial.output.find("\"reason\":\"outside_velocity_limits\"") != std::string::npos);
+    command("@90 velocity jog set 30 100\n"); assert(Serial.output.find("invalid_arguments") != std::string::npos);
+    command("@88 velocity jog set 30 100 100\n");
+    assert(Serial.output.find("\"command\":\"velocity-jog\"") != std::string::npos &&
+           Serial.output.find("\"kind\":\"velocity_jog_set\"") != std::string::npos && Serial.output.find("\"words\":[30,100,100]") != std::string::npos);
+}
 int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--emit-stop-input-results") { emitStopInputResults(); return 0; }
     if (argc == 2 && std::string(argv[1]) == "--emit-recovery-result") {
@@ -982,4 +1193,8 @@ int main(int argc, char** argv) {
     stopReleaseRule();
     limitVelocityRule();
     stopInputWitnesses();
+    velocityLimitRules();
+    velocityLimitsRoutes();
+    velocityInputFunctions();
+    jogSetter();
 }

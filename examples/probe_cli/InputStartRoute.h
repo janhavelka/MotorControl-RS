@@ -9,11 +9,11 @@ namespace MotorControlRSExample { namespace Probe {
 /** Input-start route (wired bench 08): arm a host observation session, pulse one
  * owned bench output once, observe and attribute, disarm. Console `arm`/`disarm`,
  * the programmatic API (ProbeApp.h) and the Python harness call one route.
- * Function 7 (position start) and function 12 (PT record, wired bench 13) are
- * delivered; home (11) and PV (13) staging refuse before any traffic until
- * prompts 12 and 14. A PT arm writes nothing: the record is stored beforehand
- * through the segment setters and the PIN selectors are held by their own
- * bench outputs. */
+ * Function 7 (position start), 12 (PT record, wired bench 13), 8-10 (speed input
+ * and JOG) and 13 (PV record, wired bench 14) are delivered; home (11) staging
+ * refuses before any traffic. PT, velocity and PV arms write nothing: the record
+ * or the JOG words are stored beforehand through their setters and selectors are
+ * held by their own bench outputs. */
 constexpr uint8_t INPUT_START_MEMBERS = 4; ///< Drives on one fixture line (FIXTURE_WIRING_CAPACITY).
 /// Shortest trigger pulse. Wired bench 09 (A3, drive 4, input filter 2): 10 ms started
 /// every trial (10..200 ms, 3/3 each), 5 ms none; 20 ms keeps a 10 ms margin.
@@ -38,7 +38,19 @@ constexpr uint32_t INPUT_START_PT_PIN_HOLD_MARGIN_MS = 50;
  * negative target (W0b sign witness not run) refuses the arm. */
 constexpr bool INPUT_START_PT_SIGNED_TARGETS = false;
 
-enum class InputStartKind : uint8_t { POSITION, HOME, SEGMENT, VELOCITY };
+/** VELOCITY: functions 8, 9, 10 on the trigger terminal (stored 0x001D/3 words);
+ * PV: function 13 with a named selector layout (stored speed record). */
+enum class InputStartKind : uint8_t { POSITION, HOME, SEGMENT, VELOCITY, PV };
+/** Selector layouts of a PV arm (wired bench 14); each refuses any other
+ * assignment it reads on the drive.
+ * PIN3: the other three terminals hold PIN0..PIN2 (14-16) once each, records 1-8
+ * (prompt 13's layout). PV2_DEADMAN: X0 = 13, X1 = 14, X2 = 15, X3 = 5 with input
+ * polarity 1 (a dead-man stop held inactive by its bench output), records 1-4.
+ * PV_PT_MIX: X0 = 13, X1 = 14, X2 = 15, X3 = 12 (one PT trigger to switch the
+ * run to fixed length, p29 method 2), records 1-4. */
+enum class InputStartLayout : uint8_t { NONE, PIN3, PV2_DEADMAN, PV_PT_MIX };
+/// Records each PV layout reaches with its selectors.
+constexpr uint8_t INPUT_START_PV2_SELECTABLE = 4;
 /// 0x0050 the request needs: RELATIVE 0, ABSOLUTE 1 (absolute and absolute-by).
 enum class InputStartMode : uint8_t { RELATIVE, ABSOLUTE };
 enum class InputStartPhase : uint8_t { NONE, STAGING, ARMED, TRIGGERING, OBSERVING, DONE };
@@ -58,7 +70,8 @@ struct InputStartRequest {
     uint8_t terminal = 0; ///< X0..X3.
     InputStartMode mode = InputStartMode::RELATIVE;
     bool group = false;
-    uint8_t record = 0; ///< SEGMENT: the PT record 1..16 every member selects (one shared selector state).
+    uint8_t record = 0; ///< SEGMENT: the PT record 1..16 every member selects (one shared selector state). PV: the speed record.
+    InputStartLayout layout = InputStartLayout::NONE; ///< PV only.
     uint8_t count = 0;
     InputStartMember members[INPUT_START_MEMBERS];
     uint32_t pollMs = INPUT_START_DEFAULT_POLL_MS, windowMs = INPUT_START_DEFAULT_WINDOW_MS;
@@ -101,6 +114,15 @@ struct InputStartMemberView {
     uint32_t recordOperationId = 0;
     int32_t recordTarget = 0;
     uint8_t selectorTerminals[INPUT_START_PT_SELECTORS] = {};
+    /** VELOCITY and PV (wired bench 14): the selector count (PV), the layout, the
+     * stored speed the run uses (0x001D for 8-10, the record's speed word for PV)
+     * and the direction the function gives it: +1, -1 (9 forces +, 10 forces -,
+     * 8 and 13 follow the sign). stagedWords hold the checked 0x001D/3 read for
+     * VELOCITY; recordWords the record's speed, acceleration, deceleration for PV. */
+    uint8_t selectorCount = 0;
+    InputStartLayout layout = InputStartLayout::NONE;
+    int16_t storedRpm = 0;
+    int8_t expectedDirection = 0;
     bool resultKnown = false;
     MotorControlRS::ESS_RS::InputStartResult result;
 };
@@ -147,7 +169,8 @@ struct InputStartCommand {
     uint8_t terminal = 0;
     int64_t value = 0;
     uint16_t speedRpm = 0;
-    uint8_t record = 0; ///< SEGMENT arm: PT record 1..16.
+    uint8_t record = 0; ///< SEGMENT arm: PT record 1..16; PV arm: speed record 1..8.
+    InputStartLayout layout = InputStartLayout::NONE; ///< PV arm.
     bool group = false;
     uint32_t pollMs = INPUT_START_DEFAULT_POLL_MS, windowMs = INPUT_START_DEFAULT_WINDOW_MS;
     uint8_t output = 0;
@@ -190,6 +213,16 @@ inline const char* inputStartKindName(InputStartKind kind) {
     case InputStartKind::HOME: return "home";
     case InputStartKind::SEGMENT: return "segment";
     case InputStartKind::VELOCITY: return "velocity";
+    case InputStartKind::PV: return "pv";
+    }
+    return "unknown";
+}
+inline const char* inputStartLayoutName(InputStartLayout layout) {
+    switch (layout) {
+    case InputStartLayout::NONE: return "none";
+    case InputStartLayout::PIN3: return "pin3";
+    case InputStartLayout::PV2_DEADMAN: return "pv2-deadman";
+    case InputStartLayout::PV_PT_MIX: return "pv-pt-mix";
     }
     return "unknown";
 }

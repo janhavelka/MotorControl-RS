@@ -63,7 +63,8 @@ guides define complete arguments and prerequisites.
 | `move relative\|absolute\|angle` | Detailed [finite moves](ess_position.md) with explicit frame/setup/rounding |
 | `velocity read [address]` | One checked native JOG-parameter read; canonical `velocity-read`, no writes or qualification |
 | `velocity restore SNAPSHOT_ID\|inspect [address]` | Writes back the three JOG words of an earlier checked `velocity read` (FC10 `0x001D/3`, no start) and reads them back; canonical `velocity-restore`; [velocity guide](ess_velocity.md) |
-| `velocity` | [Finite velocity](ess_velocity.md) with explicit duration and stop policy |
+| `velocity` | [Finite velocity](ess_velocity.md) with explicit duration and stop policy, inside the [velocity limits](#velocity-limits-jog-setter-and-input-velocity-wired-bench-14) |
+| `velocity limits [qualify ...\|raise\|reset]`, `velocity jog set SPEED ACCEL DECEL\|inspect` | Velocity limits of the selected axis and the JOG setter (wired bench 14), [below](#velocity-limits-jog-setter-and-input-velocity-wired-bench-14) |
 | `home qualification install METHOD SEARCH RETURN RAMP FACT...`, `home qualification revoke`, `velocity qualification install FACT...`, `velocity qualification revoke`, `position-clear qualification install clear-semantics`, `position-clear qualification revoke` | [Named commissioning facts](#qualification-routes), local and on the ordinary image |
 | `io qualification install|inspect|revoke ...` | [Exact terminal facts](#terminal-qualification), local; assignment, drive configuration, finite move and segment purposes stay separate |
 | `motion-profile start-speed relation RAW_WORD MIN_RPM` | State the minimum speed for the stored start-speed word |
@@ -639,7 +640,9 @@ arm position xN absolute TARGET RPM [poll-ms ...] [window-ms ...]
 arm segment x0|x1|x2|x3 relative RECORD [group] [poll-ms 20..500] [window-ms 100..30000]
 arm trigger ID mosfet1|mosfet2 WIDTH_MS
 arm inspect ID
-arm home|velocity xN
+arm velocity xN [poll-ms ..] [window-ms ..]
+arm pv xN RECORD pin3|pv2-deadman|pv-pt-mix [poll-ms ..] [window-ms ..]
+arm home xN
 disarm ID
 ```
 
@@ -734,6 +737,88 @@ request start and reply end of the latest consumed sample, from which
 path at that bracket. `caps` adds `segment_arm`
 `pt_records_1_8_three_selectors` beside `segment_pulse_writes` and
 `segment_pulse_claim` (below).
+
+### Velocity limits, JOG setter and input velocity (wired bench 14)
+
+Added by [wired bench 14](reports/2026-11-19_wired_bench_14_velocity_jog_pv.md)
+(19 November 2026, model `0x4EEA`, firmware `0x0029`).
+
+```text
+velocity limits
+velocity limits qualify RPM ACCEL DECEL SUBDIVISION DURATION_MS normal|fast
+velocity limits raise
+velocity limits reset
+velocity jog set SPEED ACCEL DECEL
+velocity jog inspect
+arm velocity xN [poll-ms 20..500] [window-ms 100..30000]
+arm pv xN RECORD pin3|pv2-deadman|pv-pt-mix [poll-ms ..] [window-ms ..]
+```
+
+`velocity limits` answers `velocity-limits` with `result` `done` or the
+refusal, `request` (`show`, `qualify`, `raise`, `reset`), `reason`,
+`bus_traffic` false, `source` (`legacy`, `cell`, `raised`), `max_rpm`,
+`max_duration_ms`, `subdivision` (checked `0x0011`, 0 when unknown),
+`max_rate` (increments/s at that subdivision), `poll_ms`, `stop_budget_ms`,
+`legacy` `{max_rpm 60, max_duration_ms 1000}`, `cell_armed`, `raised`,
+`consumed_operation_id`, `promoted_count` and, while armed, `cell` (`rpm`,
+`acceleration`, `deceleration`, `subdivision`, `duration_ms`, `stop`, `rate`).
+Without a call the legacy envelope applies: |rpm| <= 60 and 1..1000 ms.
+`qualify` names one exact serial run; it refuses `invalid_cell` (outside
+|rpm| 1..3000, ramp words 0..2000, subdivision 400..51200, 1..12000 ms),
+`inside_legacy_limits`, `configuration_stale`, `subdivision_mismatch` (the cell
+must name the checked `0x0011`), `cell_armed` (one at a time) and
+`raise_active`. The run that matches it is admitted once and consumes it; a
+refusal before any frame keeps it. `raise` admits the promoted table
+(`no_promoted_cells` while it is empty) and its interpolation rule (velocity
+guide; a standalone entry admits only its exact duration); it refuses
+`cell_armed` and `cell_run_active` (the cell's run has not ended). Raised
+limits apply to serial runs only. `reset`, `useaddr`, `recover`, a host tuple
+change and a restart return to the legacy envelope.
+
+`velocity` parses durations 1..12000 ms. A run outside the active limits
+refuses `invalid` with `reason` `outside_velocity_limits`, `purpose`
+`velocity_limits`, `read_first` `velocity limits` and no frame. With a speed,
+JOG or PV input (8-10, 13) on a connected terminal it also needs a current
+FINITE_MOVE record with `triggers-inhibited` (`qualification_required`,
+`reason` `triggers_inhibited_required`) and the input inactive (`unavailable`,
+`input_active`, purpose `motion`). FINITE_MOVE records now accept 8-10 and 13;
+serial moves still refuse those functions.
+
+`velocity jog set` answers `velocity-jog` with the restore session schema,
+`kind` `velocity_jog_set` and the written `words`; `snapshot_id` is the checked
+`velocity read` it relied on. It sends one FC10 `0x001D/3` and one FC03
+readback, never a start. Refusals: `unavailable` with `reason`
+`velocity_read_required` (no checked velocity read of this binding),
+`input_active` or `input_state_stale` (an input 8-10); `invalid` for speed 0 or
+a ramp word above 2000, or with `reason` `outside_velocity_limits` when |speed|
+exceeds the input velocity limit (60 rpm, also while raised);
+`qualification_required` without CONFIGURE `triggers-inhibited` records for
+inputs 8-10. A refused write carries `reason` and `read_first`.
+
+`arm velocity xN` (functions 8, 9, 10) and `arm pv xN RECORD LAYOUT`
+(function 13) answer `arm-velocity` and `arm-pv` with the input-start session
+(selected axis only; `group` is `invalid_arguments`). Neither writes: the JOG
+words come from a fresh `velocity read`, a PV record from a fresh
+`segment speed N read`. Refusal reasons beside the shared ones:
+`function_not_8_9_10`, `function_not_13`, `selector_layout`,
+`selector_polarity`, `pv_trigger_mode_unknown`, `record_unreachable`,
+`pin_levels`, `velocity_read_stale`, `record_stale`,
+`record_sign_unqualified` (a negative PV word), `speed_zero`,
+`ramp_out_of_range`, `outside_velocity_limits` (above 60 rpm, also while
+raised), `pv_edge_needs_deadman` (`0x0051` = 1 outside the `pv2-deadman`
+layout: an edge-started run ends only with a stop), `pv_pt_mix_needs_edge_mode`
+(`pv-pt-mix` with `0x0051` = 0; p29), `stop_input_active`,
+`soft_limit_state_unknown`. `pv-pt-mix` is therefore refused in both modes
+until the route owns an edge run's end without a dead-man. The trigger admits outputs already on (PIN
+selectors, a held dead-man) under the PT rules. Members add `layout`,
+`selector_count`, `stored_rpm` and `expected_direction` (9 gives +1, 10 gives
+-1, 8 and 13 the sign of the stored speed); `staged_words` are the checked
+`0x001D/3` words (velocity) and `record_words` the record's speed and ramps
+(PV). `caps` adds `velocity_limits` (route, source, envelope, legacy values,
+`cell_max_duration_ms`, promoted count), `jog_setter`, `pv_layouts`,
+`negative_pv_speed` `unsupported`, `input_start_kinds`
+`["position","segment","velocity","pv"]` and functions `[7,8,9,10,12,13]`;
+`external_jog` left `velocity_unsupported`.
 
 ### Paired values (wired bench 10)
 

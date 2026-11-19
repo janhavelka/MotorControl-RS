@@ -92,6 +92,12 @@ void testPrepareRefusalsPreserveOutput() {
     };
     const auto refuse = [&](const InputStartPrerequisites& p, InputStartError error) { refuseWith(p, error, options()); };
     auto p = facts(); p.function = 5; refuse(p, InputStartError::INVALID_FUNCTION);
+    p = facts(); p.function = 14; refuse(p, InputStartError::INVALID_FUNCTION);
+    // Wired bench 14: speed input and JOG (8, 9, 10) arm as velocity runs, without 0x0050 or 0x0051.
+    for (uint16_t f : {8, 9, 10}) {
+        p = facts(); p.function = f; p.positionModeKnown = p.pvTriggerModeKnown = false; p.expectedKnown = false;
+        InputStartContext v; assert(prepareInputStart(v, p, OP, options(), 1000) && v.effect == InputStartEffect::VELOCITY_RUN);
+    }
     p = facts(); p.positionModeKnown = false; refuse(p, InputStartError::POSITION_MODE_UNKNOWN);
     p = facts(); p.positionMode = 2; refuse(p, InputStartError::POSITION_MODE_UNKNOWN);
     p = facts(13); p.pvTriggerModeKnown = false; refuse(p, InputStartError::PV_TRIGGER_MODE_UNKNOWN);

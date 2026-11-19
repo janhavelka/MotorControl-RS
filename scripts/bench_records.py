@@ -534,14 +534,17 @@ def decide_participant(facts: dict, output: str, *, max_age_ms: float = MAX_AGE_
         if facts["running"]:
             return decision("L4", False, "named selection member is running")
         trigger = named.get("trigger_terminal")
-        if trigger not in TERMINALS or facts["functions"][TERMINALS.index(trigger)] != 12:
-            return decision("L4", False, "named selection member has no 12 on its trigger terminal %s" % trigger)
+        # Wired bench 14: a PV trigger (13) also starts only from its own level or
+        # edge (p24, p27), so a PIN change with its output off starts nothing.
+        if trigger not in TERMINALS or facts["functions"][TERMINALS.index(trigger)] not in (12, 13):
+            return decision("L4", False, "named selection member has no 12 or 13 on its trigger terminal %s" % trigger)
         if not 14 <= function <= 16 or function != named.get("function") or polarity != 0:
             return decision("L4", False, "named selection member reads function %d polarity %d, named %s" % (
                 function, polarity, named.get("function")))
         if named.get("trigger_off") is not True:
             return decision("L4", False, "the PT trigger output is not known off")
-        return decision("P", True, "named selection member, PIN function %d, trigger 12 with its output off" % function)
+        return decision("P", True, "named selection member, PIN function %d, trigger %d with its output off" % (
+            function, facts["functions"][TERMINALS.index(trigger)]))
     if facts.get("io_source"):
         # Wired bench 07: the member's own pending operation reserves the axis.
         if named is None or named.get("address") != facts.get("address"):
@@ -2090,7 +2093,9 @@ def _prerequisites(console, step: dict, *, timeout_s: float, check=None) -> dict
     if purpose in ("configure", "segment"):
         if check is not None:
             check(out)
-        out["facts"] = probe.install_input_facts(console, address, purpose,
+        # ``step["input_mapping"]`` (default ``unknown``): ``recorded`` while an
+        # inverted function terminal (a wired bench 14 dead-man) needs the mapping.
+        out["facts"] = probe.install_input_facts(console, address, purpose, step.get("input_mapping", "unknown"),
                                                  facts={t: tuple(v) for t, v in step["facts"].items()},
                                                  timeout_s=timeout_s)
         if stage_step(step):

@@ -154,8 +154,8 @@ Status prepareInputStart(InputStartContext& output, const InputStartPrerequisite
         return invalid(E::INVALID_TARGET, "invalid input-start target");
     if (!operationId) return invalid(E::INVALID_OPERATION, "zero operation id");
     if (p.terminal > 3) return invalid(E::INVALID_TERMINAL, "terminal outside X0..X3");
-    if (p.function != 7 && p.function != 11 && p.function != 12 && p.function != 13)
-        return invalid(E::INVALID_FUNCTION, "not a start function (7, 11, 12, 13)");
+    if (p.function < 7 || p.function > 13)
+        return invalid(E::INVALID_FUNCTION, "not a start function (7..13)");
     if (o.pollIntervalUs < INPUT_START_MIN_POLL_US || o.pollIntervalUs > INPUT_START_MAX_POLL_US ||
         o.windowUs < INPUT_START_MIN_WINDOW_US || o.windowUs > INPUT_START_MAX_WINDOW_US || !o.postReleaseUs ||
         o.postReleaseSamples < INPUT_START_POST_RELEASE_SAMPLES || p.polarity > 1 ||
@@ -167,6 +167,8 @@ Status prepareInputStart(InputStartContext& output, const InputStartPrerequisite
     } else if (p.function == 13) {
         if (!p.pvTriggerModeKnown || p.pvTriggerMode > 1) return invalid(E::PV_TRIGGER_MODE_UNKNOWN, "0x0051 unknown");
         effect = InputStartEffect::VELOCITY_RUN;
+    } else if (p.function != 11) {
+        effect = InputStartEffect::VELOCITY_RUN; // 8 speed input, 9 JOG+, 10 JOG- (level-valid, p27).
     }
     if (p.statusMapping == IoStatusMapping::UNKNOWN && p.polarity)
         return invalid(E::MAPPING_UNKNOWN, "inverted polarity needs a stated status mapping");

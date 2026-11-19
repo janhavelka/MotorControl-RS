@@ -104,6 +104,40 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+On 19 November [wired bench 14](reports/2026-11-19_wired_bench_14_velocity_jog_pv.md)
+flashed Arduino `bench_s3_load_timer` image G,
+`B8531E8D161BEBE8D1DD2A2200F9E3F2505AC0B9A93AEE5C975505E86C1B2AEB`, built from
+`eb0dbad` plus the uncommitted prompt 14 tree, after `baseline-compare`
+(573/573 equal) and a passing `before_flash_check` (drives 1, 2, 4 stopped,
+alarm-free, I/O `[0,1,2,3,0,0,0,0,0]`), uploaded from PowerShell with
+`PYTHONIOENCODING=utf-8`, four regions hash-verified, post-flash check PASS. It
+carries prompt 13's image F changes (G1: one PT record ran +801 of 800; a
+trigger whose PIN hold ended too early refused before the ON). Image H of the
+final tree (comments and one unused helper removed,
+`3958357FBAAF54D02F8C69CAA5C9CB08A84CA061698B794EDF57029946BD9D59`) and the
+native ESP-IDF 5.5.5 image
+(`40539336AE7762D8B571480EC3A7C44E0BC29A6AFE12933B5785008897F70EC6`) were
+built, not flashed; after the independent audit the tree changed again (raised
+limits serial-only, qualify/raise exclusive, edge-mode PV only in the dead-man
+layout): Arduino image I
+`2599C8A8913D72F813A6D997603EFF21168C94A302809FDFA65B017D93BB5D4D` and the
+native IDF image
+`4E7F1280CDDBDAD60B48C817E7215BDE5D2603F0ABA244F2D24E8378DDC0F4B1`, built, not
+flashed. Phase B ran on drive 1 with X0 = 8, 9, 13, X1/X2 = 14/15,
+X3 = 5 (polarity 1, dead-man), 10 or 16, restored trigger first; phase C ran
+on drive 2 at subdivision 1000 and 6000 (restored to 1000). Ending state:
+
+- **Board:** image G, outputs off, COM13 closed.
+- **Drives 1/2/4:** enabled, stopped, alarm-free. I/O `[0,1,2,3,0,0,0,0,0]`,
+  `0x0050` = 0, `0x0051` = 0, JOG words [120, 100, 100], PV records 1-8 at
+  100 rpm, every PT record `[120, 100, 100, 0, 5000]`. Positions: drive 1
+  [0, 38488] not homed, drive 2 [6, 43197] homed, drive 4 [0, 11289] homed.
+- **Settings:** `baseline-compare`: 573 of 573 fields equal
+  (`build/bench/2026-11-19_wb14_final_compare/`). RAM only, nothing saved.
+- **Relay wear:** relay1 2 and relay2 9 ONs added (each with its release);
+  `mosfet1` 27 and `mosfet2` 22 since the flash.
+- **Velocity limits:** legacy on every restart; no cell promoted.
+
 On 19 November [wired bench 13](reports/2026-11-19_wired_bench_13_pt_segments.md)
 flashed four Arduino `bench_s3_load_timer` images, each after
 `baseline-compare` (A: 573/573 equal; C: 48 differ, the recorded W0 target

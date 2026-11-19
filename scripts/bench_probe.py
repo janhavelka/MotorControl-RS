@@ -41,14 +41,14 @@ MAX_INPUT = 98304
 MAX_TRAFFIC_INPUT = 1048576  # Independent finite diagnostic budget per command/drain.
 COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "health", "memory", "stats", "load",
                       "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "bench", "communication", "persistence", "motion-profile", "motion-profile-stage", "motion-profile-start-speed", "motion-profile-start-speed-relation", "home-auxiliary", "debug",
-                      "home-restore", "velocity-restore", "driver-experiment",
+                      "home-restore", "velocity-restore", "velocity-jog", "velocity-limits", "driver-experiment",
                       "home-qualification-install", "home-qualification-revoke", "velocity-qualification-install", "velocity-qualification-revoke",
                       "position-clear-qualification", "position-clear-qualification-install", "position-clear-qualification-revoke",
                       "io-qualification-install", "io-qualification-inspect", "io-qualification-revoke",
                       "read-identity", "read-config", "read-state", "velocity-read", "home-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "position-interrupt", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list",
                       "group-show", "group-status", "group-clear", "group-wiring", "group-set", "group-move", "group-stop", "group-read-state",
                       "group-axis", "group-reference", "group-plan-begin", "group-plan-add", "group-plan-show", "group-plan-clear", "group-plan-submit",
-                      "arm-position", "arm-home", "arm-segment", "arm-velocity", "arm-trigger", "arm-inspect", "disarm"})
+                      "arm-position", "arm-home", "arm-segment", "arm-velocity", "arm-pv", "arm-trigger", "arm-inspect", "disarm"})
 MAX_COMMANDS = 11  # Eight ordinary operations, recovery, reserved stop and local query.
 MAX_OPERATIONS = 10  # Eight ordinary operations, one recovery and one reserved stop.
 MAX_STOPS = 4  # Two primary stops and two reserved cross-address escalations.
@@ -111,7 +111,11 @@ SETTINGS_REFUSAL_COMMANDS = ("driver", "segment", "tuning", "home-auxiliary", "m
 # Wired bench 07: motion refusals the shared stop/release rule decided (purpose motion).
 # Wired bench 11 adds the limit-input and soft-limit-state reasons.
 MOTION_REFUSAL_REASONS = ("stop_input_active", "release_input_active", "input_state_stale", "input_mapping_unknown",
-                          "limit_input_active", "soft_limit_state_unknown", "soft_limit_endpoint", "soft_limits_enabled")
+                          "limit_input_active", "soft_limit_state_unknown", "soft_limit_endpoint", "soft_limits_enabled",
+                          "triggers_inhibited_required", "input_active")
+# Wired bench 14: velocity refusals with a speed, JOG or PV input (8-10, 13) on a
+# connected terminal, and runs outside the active velocity limits.
+VELOCITY_INPUT_REASONS = ("triggers_inhibited_required", "input_active")
 MOTION_REFUSAL_COMMANDS = ("move-relative", "move-absolute", "move-angle", "velocity", "home", "group-move", "enable")
 UPDATE_NOT_ADMITTED_REASONS = (*SETTINGS_REFUSAL_REASONS, "binding_changed", "prerequisites_expired", "update_refused")
 QUALIFICATION_FACT_REFUSALS = frozenset({"missing_fact", "unknown_fact", "duplicate_fact", "fact_not_applicable"})
@@ -361,9 +365,40 @@ def debug_session(console, mode: str | None, timeout_s: float):
 # Wired bench 06: snapshot restores, one session each (synchronous admission,
 # `... inspect` until it is not pending).
 PARAMETER_WRITE_COMMANDS = {"home-restore": "home restore", "velocity-restore": "velocity restore",
-                            "driver-experiment": "driver experiment"}
-PARAMETER_WRITE_KINDS = {"home-restore": "home_restore", "velocity-restore": "velocity_restore"}
-PARAMETER_WRITE_WINDOWS = {"home_restore": (0x31, 6), "velocity_restore": (0x1D, 3)}
+                            "velocity-jog": "velocity jog", "driver-experiment": "driver experiment"}
+PARAMETER_WRITE_KINDS = {"home-restore": "home_restore", "velocity-restore": "velocity_restore",
+                         "velocity-jog": "velocity_jog_set"}
+PARAMETER_WRITE_WINDOWS = {"home_restore": (0x31, 6), "velocity_restore": (0x1D, 3), "velocity_jog_set": (0x1D, 3)}
+# Wired bench 14 (D6/D12): the velocity limits of the selected axis. The legacy
+# envelope, the longest run a cell names, and the stop policies a cell takes.
+VELOCITY_LEGACY_MAX_RPM, VELOCITY_LEGACY_MAX_DURATION_MS = 60, 1000
+VELOCITY_MAX_DURATION_MS = 12000
+VELOCITY_LIMIT_SOURCES = ("legacy", "cell", "raised")
+
+
+def velocity_limits_arguments(tokens: tuple[str, ...]) -> dict:
+    """``velocity limits`` [qualify RPM ACCEL DECEL SUBDIVISION DURATION_MS normal|fast | raise | reset]."""
+    if not isinstance(tokens, tuple) or any(type(t) is not str for t in tokens):
+        raise ValueError("velocity limits requires a tuple of tokens")
+    if not tokens:
+        return {"request": "show"}
+    if tokens in (("raise",), ("reset",)):
+        return {"request": tokens[0]}
+    number = r"(?:0|[1-9][0-9]{0,4})"
+    if (len(tokens) == 7 and tokens[0] == "qualify" and re.fullmatch(r"-?" + number, tokens[1]) and
+            all(re.fullmatch(number, t) for t in tokens[2:6]) and tokens[6] in ("normal", "fast")):
+        rpm, acc, dec, sub, ms = int(tokens[1]), *(int(t) for t in tokens[2:6])
+        if not (rpm and abs(rpm) <= 3000 and acc <= 2000 and dec <= 2000 and 400 <= sub <= 51200 and
+                1 <= ms <= VELOCITY_MAX_DURATION_MS):
+            raise ValueError("velocity limits qualify values are outside the cell ranges")
+        return {"request": "qualify", "cell": {"rpm": rpm, "acceleration": acc, "deceleration": dec, "subdivision": sub,
+                                               "duration_ms": ms, "stop": tokens[6]}}
+    raise ValueError("velocity limits requires qualify RPM ACCEL DECEL SUBDIVISION DURATION_MS normal|fast, raise or reset")
+
+
+def velocity_cell_rate(cell: dict) -> int:
+    """|rpm| x subdivision / 60, rounded up (increments per second)."""
+    return (abs(cell["rpm"]) * cell["subdivision"] + 59) // 60
 # Wired bench 10 (D4): the PT pair experiment windows of an experimental image
 # only; the production image refuses the route `unsupported` before TX.
 EXPERIMENT_KINDS = ("pair_experiment",)
@@ -373,8 +408,9 @@ PARAMETER_WRITE_ERRORS = ("none", "cancelled", "readback_mismatch", "readback_fa
 # Wired bench 08: input-start route. Every reply is synchronous: the call's
 # result and reason, and the current session; poll with ``arm-inspect``.
 INPUT_START_COMMANDS = {"arm-position": "arm position", "arm-home": "arm home", "arm-segment": "arm segment",
-                        "arm-velocity": "arm velocity", "arm-trigger": "arm trigger", "arm-inspect": "arm inspect",
-                        "disarm": "disarm"}
+                        "arm-velocity": "arm velocity", "arm-pv": "arm pv", "arm-trigger": "arm trigger",
+                        "arm-inspect": "arm inspect", "disarm": "disarm"}
+INPUT_START_LAYOUTS = ("none", "pin3", "pv2-deadman", "pv-pt-mix")
 INPUT_START_PHASES = ("none", "staging", "armed", "triggering", "observing", "done")
 INPUT_START_SOURCES = ("not_commanded", "active", "hold_elapsed", "quiesced_by_stop", "quiesced_by_disarm",
                        "quiesced_by_cancel", "off_requested", "port_failed")
@@ -414,6 +450,18 @@ def input_start_arguments(command: str, tokens: tuple[str, ...]) -> dict:
         out = {"action": "arm", "kind": "segment", "terminal": tokens[0], "form": tokens[1], "record": int(tokens[2]),
                "group": False, "poll_ms": 50, "window_ms": 10000}
         rest = list(tokens[3:])
+    elif command in ("arm-velocity", "arm-pv"):
+        # Wired bench 14: arm velocity xN | arm pv xN RECORD LAYOUT, then [poll-ms N] [window-ms N]; selected axis only.
+        pv = command == "arm-pv"
+        if (not tokens or tokens[0] not in ("x0", "x1", "x2", "x3") or
+                (pv and (len(tokens) < 3 or not re.fullmatch(r"[1-9][0-9]?", tokens[1]) or int(tokens[1]) > 16 or
+                         tokens[2] not in INPUT_START_LAYOUTS[1:]))):
+            raise ValueError(command + " requires xN" + (" RECORD (1..16) pin3|pv2-deadman|pv-pt-mix" if pv else ""))
+        out = {"action": "arm", "kind": "pv" if pv else "velocity", "terminal": tokens[0], "group": False,
+               "poll_ms": 50, "window_ms": 10000}
+        if pv:
+            out.update(record=int(tokens[1]), layout=tokens[2])
+        rest = list(tokens[3 if pv else 1:])
     elif command != "arm-position":
         if len(tokens) != 1 or tokens[0] not in ("x0", "x1", "x2", "x3"):
             raise ValueError(command + " requires one terminal")
@@ -432,7 +480,7 @@ def input_start_arguments(command: str, tokens: tuple[str, ...]) -> dict:
         if token in seen:
             raise ValueError("duplicate " + token)
         seen.add(token)
-        if token == "group" and (out["kind"] == "segment" or tokens[1] != "absolute"):
+        if token == "group" and (out["kind"] == "segment" or (out["kind"] == "position" and tokens[1] != "absolute")):
             out["group"] = True
         elif token in ("poll-ms", "window-ms") and rest and re.fullmatch(r"[0-9]{1,5}", rest[0]):
             low, high = INPUT_START_POLL_MS if token == "poll-ms" else INPUT_START_WINDOW_MS
@@ -454,6 +502,14 @@ def parameter_write_arguments(command: str, tokens: tuple[str, ...]) -> dict:
         raise ValueError("parameter write requires a tuple of tokens")
     if tokens == ("inspect",):
         return {"action": "inspect"}
+    if command == "velocity-jog":
+        # Wired bench 14: velocity jog set SPEED ACCEL DECEL (0x001D/3, no start).
+        number = r"(?:0|[1-9][0-9]{0,3})"
+        if (len(tokens) == 4 and tokens[0] == "set" and re.fullmatch(r"-?" + number, tokens[1]) and
+                abs(int(tokens[1])) <= 3000 and all(re.fullmatch(number, t) and int(t) <= 2000 for t in tokens[2:])):
+            speed = int(tokens[1])
+            return {"action": "write", "kind": "velocity_jog_set", "words": [speed & 0xFFFF, int(tokens[2]), int(tokens[3])]}
+        raise ValueError("velocity jog requires set SPEED ACCEL DECEL or inspect")
     if command == "driver-experiment":
         number = r"(?:0|[1-9][0-9]{0,4})"
         if len(tokens) == 4 and tokens[0] == "pair" and re.fullmatch(number, tokens[1]) and \
@@ -2309,7 +2365,7 @@ class Console:
         if item["ok"] and request["action"] == "arm":
             require(session["operation_id"] == item["operation_id"] and session.get("phase") in ("staging", "armed", "done"),
                     "accepted arm without its session")
-        require(session.get("kind") in ("position", "home", "segment", "velocity") and
+        require(session.get("kind") in ("position", "home", "segment", "velocity", "pv") and
                 session.get("terminal") in ("x0", "x1", "x2", "x3") and session.get("mode") in ("relative", "absolute") and
                 type(session.get("group")) is bool and session.get("phase") in INPUT_START_PHASES and name(session.get("error")),
                 "invalid session header")
@@ -2367,7 +2423,7 @@ class Console:
         members = session.get("members")
         require(isinstance(members, list) and len(members) <= 4 and (not live or members), "invalid members")
         for member in members:
-            require(isinstance(member, dict) and integer(member.get("address"), 1, 247) and member.get("function") in (7, 11, 12, 13)
+            require(isinstance(member, dict) and integer(member.get("address"), 1, 247) and member.get("function") in (7, 8, 9, 10, 11, 12, 13)
                     and member.get("polarity") in (0, 1) and member.get("position_mode") in (0, 1) and type(member.get("staged")) is bool
                     and member.get("stage_execution") in EXECUTIONS and member.get("stop_result") in
                     ("none", "pending", "confirmed", "failed", "unknown"), "invalid member")
@@ -2383,6 +2439,22 @@ class Console:
                     all(integer(w, 0, 0xFFFF) for w in member["record_words"]) and
                     isinstance(member.get("selector_terminals"), list) and len(member["selector_terminals"]) == 3 and
                     all(integer(t, 0, 3) for t in member["selector_terminals"]), "invalid member record")
+            # Wired bench 14: the stored speed a velocity or PV member runs at, its direction and layout.
+            require(member.get("layout") in INPUT_START_LAYOUTS and integer(member.get("selector_count"), 0, 3) and
+                    type(member.get("stored_rpm")) is int and -3000 <= member["stored_rpm"] <= 3000 and
+                    member.get("expected_direction") in (-1, 0, 1), "invalid member speed fields")
+            if session["kind"] in ("velocity", "pv") and live:
+                pv = session["kind"] == "pv"
+                require(member["function"] == 13 if pv else member["function"] in (8, 9, 10), "velocity member function")
+                require(member["record_operation_id"] > 0 and member["expected_direction"] in (-1, 1) and member["stored_rpm"] and
+                        member["staged_words"][0] == member["stored_rpm"] & 0xFFFF and not member["staged"],
+                        "velocity member without its stored speed read or direction")
+                require(member["expected_direction"] == (1 if member["function"] == 9 else -1 if member["function"] == 10 else
+                                                          (1 if member["stored_rpm"] > 0 else -1)), "direction differs from the function")
+                if pv:
+                    require(1 <= member["record"] <= 8 and member["layout"] != "none" and
+                            member["selector_count"] == (3 if member["layout"] == "pin3" else 2) and
+                            member["record_words"][:3] == member["staged_words"][:3], "PV member without its record or layout")
             if session["kind"] == "segment" and live:
                 require(member["function"] == 12 and 1 <= member["record"] <= 8 and member["record_operation_id"] > 0 and
                         member["record_words"] == member["staged_words"] and not member["staged"],
@@ -2443,6 +2515,39 @@ class Console:
                     "late samples without a spacing witness")
 
     @staticmethod
+    def _check_velocity_limits(handle, item: dict) -> None:
+        """Wired bench 14: the active velocity limits after one local call."""
+        request = velocity_limits_arguments(handle.host_args or ())
+        def require(condition, message):
+            if not condition:
+                raise BenchError("velocity-limits: " + message)
+        def integer(value, low=0, high=0xFFFFFFFF):
+            return type(value) is int and low <= value <= high
+        require(item.get("result") == "done" if item["ok"] else item.get("result") in ADMISSION_FAILURES, "invalid disposition")
+        require(item.get("request") == request["request"] and item.get("bus_traffic") is False, "request or traffic claim differs")
+        require(type(item.get("reason")) is str and (item["reason"] == "none") == item["ok"], "reason does not name the refusal")
+        require(item.get("source") in VELOCITY_LIMIT_SOURCES and integer(item.get("address"), 0, 247), "invalid source")
+        for key in ("max_rpm", "max_duration_ms", "subdivision", "max_rate", "poll_ms", "stop_budget_ms",
+                    "consumed_operation_id", "promoted_count"):
+            require(integer(item.get(key)), "invalid " + key)
+        require(item.get("legacy") == {"max_rpm": VELOCITY_LEGACY_MAX_RPM, "max_duration_ms": VELOCITY_LEGACY_MAX_DURATION_MS},
+                "legacy envelope differs")
+        require(item["max_rpm"] >= VELOCITY_LEGACY_MAX_RPM and item["max_duration_ms"] >= VELOCITY_LEGACY_MAX_DURATION_MS,
+                "active envelope below the legacy one")
+        require(type(item.get("cell_armed")) is bool and type(item.get("raised")) is bool, "invalid flags")
+        require(item["source"] == ("cell" if item["cell_armed"] else "raised" if item["raised"] else "legacy"), "source differs from the flags")
+        require(("cell" in item) == item["cell_armed"], "cell shown without being armed")
+        if item["cell_armed"]:
+            c = item["cell"]
+            require(isinstance(c, dict) and type(c.get("rpm")) is int and c.get("stop") in ("normal", "fast") and
+                    all(integer(c.get(k)) for k in ("acceleration", "deceleration", "subdivision", "duration_ms", "rate")) and
+                    c["rate"] == velocity_cell_rate(c), "invalid cell")
+        if item["ok"] and request["request"] == "qualify":
+            require(item["cell_armed"] and {k: item["cell"][k] for k in request["cell"]} == request["cell"], "armed cell differs from the request")
+        if item["ok"] and request["request"] == "reset":
+            require(item["source"] == "legacy", "reset left raised limits")
+
+    @staticmethod
     def _check_parameter_write(handle, item: dict) -> None:
         """One restore or D9 session reply: admission result and the current session."""
         request = parameter_write_arguments(handle.command, handle.host_args)
@@ -2495,7 +2600,10 @@ class Console:
         if request["action"] == "write" and item["ok"]:
             expected_kind = request.get("kind") or PARAMETER_WRITE_KINDS[handle.command]
             require(kind == expected_kind and item["pending"], "admitted write is not this session")
-            require(item["snapshot_id"] == request["snapshot_id"], "snapshot differs from the request")
+            if kind == "velocity_jog_set":
+                require(item["words"] == request["words"], "JOG words differ from the request")
+            else:
+                require(item["snapshot_id"] == request["snapshot_id"], "snapshot differs from the request")
             if kind == "pair_experiment":
                 require(item["first"] == request["first"] and
                         ("words" not in request or item["words"] == request["words"]), "experiment words differ from the request")
@@ -3219,9 +3327,17 @@ class Console:
     def _check_admission_refusal(handle: Command, item: dict) -> None:
         if type(item.get("result")) is not str or item["result"] not in ADMISSION_FAILURES:
             raise BenchError("admission refusal lacks a documented disposition")
-        if any(key in item for key in ("reason", "purpose", "read_first", "terminal")) and item.get("purpose") == "motion":
+        if any(key in item for key in ("reason", "purpose", "read_first", "terminal")) and item.get("purpose") == "velocity_limits":
+            if (handle.command != "velocity" or item["result"] != "invalid" or item.get("reason") != "outside_velocity_limits" or
+                    item.get("read_first") != "velocity limits" or "terminal" in item):
+                raise BenchError("velocity limits refusal names no documented cause")
+        elif any(key in item for key in ("reason", "purpose", "read_first", "terminal")) and item.get("purpose") == "motion":
             # Motion refusals the shared stop/release rule decided (wired bench 07).
-            if (handle.command not in MOTION_REFUSAL_COMMANDS or item["result"] != "unavailable" or
+            velocity_input = handle.command == "velocity" and item.get("reason") in VELOCITY_INPUT_REASONS
+            if (handle.command not in MOTION_REFUSAL_COMMANDS or
+                    item["result"] != ("qualification_required" if velocity_input and item.get("reason") ==
+                                       "triggers_inhibited_required" else "unavailable") or
+                    (item.get("reason") in VELOCITY_INPUT_REASONS and not velocity_input) or
                     item.get("reason") not in MOTION_REFUSAL_REASONS or
                     item.get("read_first") not in ("read state", "io qualification install", "read config") or
                     ("terminal" in item and item["terminal"] not in INPUT_TERMINALS)):
@@ -3460,6 +3576,8 @@ class Console:
             self._check_motion_profile(handle, item)
         if handle.command in PARAMETER_WRITE_COMMANDS:
             self._check_parameter_write(handle, item)
+        if handle.command == "velocity-limits":
+            self._check_velocity_limits(handle, item)
         if handle.command in INPUT_START_COMMANDS:
             self._check_input_start(handle, item)
         if handle.command == "useaddr":
@@ -3899,6 +4017,9 @@ class Console:
             motion_profile_arguments(host_args)
         elif command in PARAMETER_WRITE_COMMANDS:
             parameter_write_arguments(command, host_args)
+        elif command == "velocity-limits":
+            host_args = () if host_args is None else host_args
+            velocity_limits_arguments(host_args)
         elif command == "motion-profile-stage":
             candidate = profile_stage_arguments(host_args)
             if address is not None and address != candidate["address"]:
@@ -4066,6 +4187,7 @@ class Console:
             if command == "position-clear-qualification": wire_command = "position-clear qualification"
             if command == "home-auxiliary": wire_command = "home auxiliary"
             if command in PARAMETER_WRITE_COMMANDS: wire_command = PARAMETER_WRITE_COMMANDS[command]
+            if command == "velocity-limits": wire_command = "velocity limits"
             if command in INPUT_START_COMMANDS: wire_command = INPUT_START_COMMANDS[command]
             if command == "position-interrupt": wire_command = "position interrupt"
             if command == "profile-list": wire_command = "profile list"

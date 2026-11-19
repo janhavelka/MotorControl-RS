@@ -23,6 +23,7 @@ import bench_stop_inputs as bench_stop
 import bench_limits as bench_lim
 import bench_switch as bench_sw
 import bench_pt
+import bench_velocity
 import bench_input_starts as bench_starts
 from bench_session import checked, run_recorded
 
@@ -74,6 +75,10 @@ FOLDER_SCENARIOS = {
                    '(relay2, relay1, mosfet2) with read-back, record targets through the promoted setter, PIN selection '
                    'through the interlock with named selection members, arm segment (relative), the firmware trigger, '
                    'path guard and prepared stop; restoration from the baseline',
+    'velocity-jog-pv': 'wired bench 14: velocity limits, JOG setter, speed/JOG inputs, PV records and the phase C cells '
+                       '(--cases R1..R6, V1, J1..J4, PV1..PV6, C1..C4) on one drive (--address; phase C on drive 2): '
+                       'qualification cells per run, dead-man X3 = 5 inverted on a renewed mosfet2 hold, read-state '
+                       'sampling, the prepared stop fast on any harness failure; restoration from the baseline',
 }
 
 SCENARIOS = {
@@ -169,6 +174,8 @@ def arguments(argv=None):
                         help='input-map/restore: ASSIGN facts for one terminal of the change drive: '
                              'xN [triggers-inhibited] [protection-removal] or yN LOAD LEVELS')
     parser.add_argument('--drives', nargs='+', type=int, help='baseline-compare/capture: drives (default 1 2 4)')
+    parser.add_argument('--c4-rpm', type=int, help='velocity-jog-pv C4: the highest passing C1 speed when C1 ran in an earlier run')
+    parser.add_argument('--c1-rows', nargs='+', help='velocity-jog-pv C1: RAMP:SIGN rows to run (a resumed run), default all four')
     parser.add_argument('--terminals', nargs='+', choices=records.TERMINALS,
                         help='status-mapping: terminals in order (default x0 x1 x2 x3)')
     parser.add_argument('--filter-value', type=int, help='input-timing: input-filter coefficient for the run')
@@ -248,12 +255,14 @@ def arguments(argv=None):
                           (args.outputs, ('input-map',)), (args.expect_refusal or None, ('input-map',)),
                           (args.change, ('input-map', 'restore', 'input-start')), (args.assign_facts, ('input-map', 'restore', 'input-start')),
                           (args.drives, ('baseline-compare', 'baseline-capture', 'pt-segments')),
+                          (args.c4_rpm, ('velocity-jog-pv',)),
+                          (args.c1_rows, ('velocity-jog-pv',)),
                           (args.terminals, ('status-mapping',)), (args.mapping_cases, ('status-mapping',)),
                           (args.filter_value, ('input-timing',)), (args.widths, ('input-timing', 'stop-inputs')),
                           (args.function, ('stop-inputs',)), (args.deceleration, ('stop-inputs',)),
                           (args.stimulus, ('stop-inputs',)), (args.sub, ('stop-inputs',)),
                           (args.leave_profile or None, ('stop-inputs', 'limits', *bench_starts.FAMILIES)),
-                          (args.cases, (*bench_starts.FAMILIES, 'limits', 'switch', 'pt-segments')),
+                          (args.cases, (*bench_starts.FAMILIES, 'limits', 'switch', 'pt-segments', 'velocity-jog-pv')),
                           (args.methods, ('switch',)), (args.branches, ('switch',)), (args.search, ('switch',)),
                           (args.return_speed, ('switch',)), (args.auxiliary, ('switch',)), (args.choices, ('switch',)),
                           (args.budget_gap_ms, ('switch',)), (args.budget_decision_ms, ('switch',)),
@@ -614,6 +623,17 @@ def _folder_arguments(parser, args):
             parser.error('the D10-path cases need the promoted image (--image-level 13)')
         if 'W0a' in args.cases and int(args.image_level) >= 13:
             parser.error('W0a runs on the experimental image (--image-level 12)')
+    if args.scenario == 'velocity-jog-pv':
+        if not args.cases or any(c not in bench_velocity.CASES for c in args.cases) or len(set(args.cases)) != len(args.cases):
+            parser.error('velocity-jog-pv needs --cases from %s' % ', '.join(bench_velocity.CASES))
+        if args.image_level is None or int(args.image_level) < 14:
+            parser.error('velocity-jog-pv needs --image-level 14 (the velocity limits route)')
+        if args.case is not None:
+            parser.error('velocity-jog-pv names its cases with --cases')
+        if args.address not in records.FIXTURE['input_drives']:
+            parser.error('velocity-jog-pv runs on drive 1, 2 or 4')
+        if {c for c in args.cases if c.startswith('C')} and args.address != 2:
+            parser.error('phase C runs on drive 2 (D15 safeguard for prompt 14)')
     if args.scenario in bench_starts.FAMILIES:
         family = bench_starts.FAMILIES[args.scenario]
         allowed = [c for c, case in bench_starts.CASES.items() if case['family'] == family]
@@ -677,6 +697,8 @@ def _facts(args):
         return bench_starts.facts()
     if args.scenario == 'pt-segments':
         return bench_pt.pt_facts()
+    if args.scenario == 'velocity-jog-pv':
+        return bench_velocity.facts()
     if args.scenario == 'switch':
         out = {str(args.address): {'configure': {}}}
         if args.address == records.FIXTURE['y0_owner']:
@@ -760,12 +782,15 @@ def folder_plan(args, baseline):
                 refusal = None  # Written by the case's moves or velocity run, not by a setter.
             forward.append({'entry': entry, 'steps': steps, 'refusal': refusal})
         write_list_done = True
-    elif name == 'pt-segments':
-        write_list, plan, cases, commands, bounds, expected, left = bench_pt.plan(args, baseline, facts)
+    elif name in ('pt-segments', 'velocity-jog-pv'):
+        module = bench_pt if name == 'pt-segments' else bench_velocity
+        write_list, plan, cases, commands, bounds, expected, left = module.plan(args, baseline, facts)
         for entry in write_list:
             steps, refusal = records.plan_entry(baseline, entry, args.image_level, facts, restore=False)
             if refusal and entry['key'].startswith('profile.'):
                 refusal = None  # Written by the return moves, restored through the stage route.
+            if refusal and name == 'velocity-jog-pv' and records.snapshot_route(entry['key']) == 'velocity':
+                refusal = None  # Written by the JOG setter and velocity runs; restored by velocity restore.
             forward.append({'entry': entry, 'steps': steps, 'refusal': refusal})
         write_list_done = True
     elif name == 'switch':
@@ -806,7 +831,7 @@ def folder_plan(args, baseline):
             forward.append({'entry': entry, 'steps': steps, 'refusal': refusal})
     if not write_list_done:
         cases, commands, bounds, expected = [], [], {}, {}
-    if name in ('outputs', 'stop-inputs', 'limits', 'switch', 'pt-segments') or name in bench_starts.FAMILIES:
+    if name in ('outputs', 'stop-inputs', 'limits', 'switch', 'pt-segments', 'velocity-jog-pv') or name in bench_starts.FAMILIES:
         pass
     elif name == 'input-start':
         cases.append(_case(case, 'one owned MOSFET pulse on the armed terminal after the firmware isolation reads; the '
@@ -887,14 +912,14 @@ def folder_plan(args, baseline):
                     'every baseline read of drive A', 'restoration plan steps', 'every baseline read of drive A']
         expected = {'acknowledged': 'write terminals of the case write and the restoration',
                     'read back': 'group reads before, after the case write and after the restoration'}
-    if name in ('stop-inputs', 'limits', 'switch', 'pt-segments') or name in bench_starts.FAMILIES:
+    if name in ('stop-inputs', 'limits', 'switch', 'pt-segments', 'velocity-jog-pv') or name in bench_starts.FAMILIES:
         drives = list(records.FIXTURE['input_drives'])
     record = {'drives': [{'address': a, 'required_enabled': True} for a in drives],
             'terminals': (['x0', 'x1', 'x2', 'x3'] if name == 'input-map' else ['y0'] if name in ('y0-map', 'outputs') else
                           ['x3', 'y0'] if name == 'stop-inputs' else
                           ['x1', 'x2', 'y0'] if name == 'limits' else
                           ['x0', 'x1', 'x2'] if name == 'switch' else
-                          list(records.TERMINALS) if name == 'pt-segments' else
+                          list(records.TERMINALS) if name in ('pt-segments', 'velocity-jog-pv') else
                           ['x0', 'x3', 'y0'] if name in bench_starts.FAMILIES else
                           [args.start_terminal] if name == 'input-start' else
                           (args.terminals or list(records.TERMINALS)) if name == 'status-mapping' else
@@ -2937,6 +2962,58 @@ def _pt(console, args, record, run, baseline):
         bench_pt.case_verdicts(run, cid, detail, error)
 
 
+def _velocity(console, args, record, run, baseline):
+    """Wired bench 14: velocity limits, JOG, speed inputs, PV records, phase C cells (bench_velocity.py)."""
+    timeout = args.timeout
+    scenario = run.scenario
+    _preflight(console, run, timeout)
+    declarations = records.check_declarations(console, timeout_s=timeout)
+    before = {a: records.read_drive(console, a, ('io', 'state', 'config'), select=False, timeout_s=timeout)
+              for a in records.FIXTURE['input_drives']}
+    diff = records.diff_fields(baseline, {a: records.raws_from(r) for a, r in before.items()}, ('io',))
+    run.folder.write_json('baseline_before.json', {'declarations': declarations,
+                                                   'drives': {str(a): {k: {x: e.get(x) for x in ('command', 'operation_id', 'raw', 'error')}
+                                                                       for k, e in r.items()} for a, r in before.items()},
+                                                   'diff': diff})
+    plan = scenario['restoration_plan']
+    if not plan['admissible'] or any(w['refusal'] for w in scenario['case_writes']):
+        reasons = [r['reason'] for r in plan['refused']] + [w['refusal']['reason'] for w in scenario['case_writes'] if w['refusal']]
+        for case in scenario['cases']:
+            for level in case['required_levels']:
+                run.verdict(case['id'], level, 'NOT RUN', 'no admissible route before any write: ' + '; '.join(reasons))
+        return
+    if declarations['verdict'] != 'PASS' or any(d['status'] != 'equal' for d in diff):
+        raise probe.BenchError('I/O words differ from the baseline or declarations disagree; no write')
+    live = bench_velocity.Live(console, run, baseline, args, timeout)
+    live.record['declarations'] = declarations
+    detail = {'cases_requested': list(args.cases), 'declarations': declarations['verdict']}
+    error = None
+    try:
+        checked(console, 'bench', host_args=('clear',), timeout_s=timeout)
+        live.view()
+        detail.update(bench_velocity.run_cases(live, args, args.cases))
+    except (Exception, KeyboardInterrupt) as caught:
+        error = caught
+        run.deviations.append('velocity-jog-pv run stopped: %s' % caught)
+        detail.setdefault('error', str(caught))
+        detail.setdefault('cases', getattr(live, 'partial', {}))
+    finally:
+        if console.synchronized:
+            try:
+                console.command('stop', stop_policy='fast', address=args.address, timeout_s=timeout)
+                console.command('velocity-limits', host_args=('reset',), timeout_s=timeout)
+                bench_velocity.restore_layout(live)
+                detail['restoration'] = _stop_restore(console, live, run, plan, timeout, owner=args.address)
+            except (Exception, KeyboardInterrupt) as caught:
+                run.deviations.append('restoration stopped: %s' % caught)
+        detail.update(events=live.events, snapshots=live.snapshots, views=len(live.views),
+                      interlock=live.record.get('interlock', []), samples=live.samples,
+                      relay_operations=live.relay_operations)
+        run.folder.write_json('velocity.json', detail)
+    for cid in args.cases:
+        bench_velocity.case_verdicts(run, cid, detail, error)
+
+
 # --------------------------------------------------------------------------
 # Wired bench 08: input-start route (arm, one owned pulse, observe, disarm)
 
@@ -3180,7 +3257,7 @@ FOLDER_RUNNERS = {'input-start': _input_start, 'input-start-single': _input_star
                   'position-interrupt': _input_starts, 'input-map': _input_map, 'y0-map': _y0_map, 'baseline-compare': _baseline_compare,
                   'baseline-capture': _baseline_capture, 'restore': _restore, 'status-mapping': _status_mapping,
                   'input-timing': _input_timing, 'outputs': _outputs, 'stop-inputs': _stop_inputs, 'limits': _limits,
-                  'switch': _switch, 'pt-segments': _pt}
+                  'switch': _switch, 'pt-segments': _pt, 'velocity-jog-pv': _velocity}
 
 
 def run_folder(args, *, port_opener=None, check_board=None):

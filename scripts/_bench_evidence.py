@@ -670,8 +670,10 @@ def velocity_arguments(arguments: tuple[str, ...]) -> dict:
              "turn/s": (3, 0), "turns/s": (3, 0), "deg/s": (4, 0), "rad/s": (5, 0), "mm/s": (6, 0)}
     if unit not in units or frame not in ("native", "motor", "load") or ramp != "configured" or stop not in ("normal", "fast"):
         raise ValueError("velocity unit, frame, ramp or stop is invalid")
-    if re.fullmatch(r"[0-9]+", duration) is None or not 1 <= int(duration) <= 1000:
-        raise ValueError("velocity duration must be within 1..1000 ms")
+    # Wired bench 14: the console parses 1..12000 ms; the application's velocity
+    # limits refuse more than 1000 ms unless a cell or the promoted table admits it.
+    if re.fullmatch(r"[0-9]+", duration) is None or not 1 <= int(duration) <= 12000:
+        raise ValueError("velocity duration must be within 1..12000 ms")
     result = dict(value=value, unit=units[unit], frame=("native", "motor", "load").index(frame), duration_us=int(duration) * 1000,
                   stop=stop, rounding=0, error="0", approximate=False, approximation_error="0")
     index = 6
@@ -1546,7 +1548,7 @@ def check_velocity(item: dict, address: int | None, arguments: tuple[str, ...] |
     require(isinstance(requested, dict) and integer(requested.get("numerator"), -2**63, 2**63 - 1) and
             integer(requested.get("denominator"), 1) and integer(requested.get("position_unit"), 0, 6) and
             integer(requested.get("time_unit"), 0, 2) and integer(requested.get("frame"), 0, 2) and integer(requested.get("rounding"), 0, 4) and
-            integer(requested.get("duration_us"), 1000, 1000000) and item["stop_due_us"] - item["started_us"] == requested["duration_us"] and
+            integer(requested.get("duration_us"), 1000, 12000000) and item["stop_due_us"] - item["started_us"] == requested["duration_us"] and
             type(requested.get("approximate")) is bool, "retained request differs")
     for key in ("rounding_error", "approximation_error_bound", "requested_rpm_approximate"):
         require(type(item.get(key)) in (int, float) and math.isfinite(item[key]), "invalid " + key)
