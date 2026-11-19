@@ -29,9 +29,8 @@ The standard configuration contains fifteen words; it is a **partial backup**.
 `PersistenceContext::configurationSnapshotComplete` remains false. Factory
 restore additionally requires an externally retained complete configuration
 backup with a source token and a qualified recommissioning route. The standalone
-bench also requires a backup/restart/route-back procedure before invoking save.
-The current fixture has no motor restart control; neither physical invocation
-is enabled by a console flag.
+application admits a begin only after the operator's stated facts (below); no
+console flag manufactures them.
 
 One operation token admits one FC06 write. Repeated `nextPersistence` inspection
 returns the same work; the cooperative application prevents duplicate admission.
@@ -56,11 +55,66 @@ cannot provide motor-restart evidence. Factory defaults are never guessed.
 persistence inspect
 persistence plan save|factory-restore
 persistence snapshot
+persistence qualification install save stationary effects route-back backup TOKEN
+persistence qualification inspect|revoke
 persistence begin save|factory-restore
+persistence node record
+persistence node restore WORD SOURCE dip-observed
+persistence node inspect
 persistence verify
 persistence host before
 persistence finish
 ```
+
+**Stated facts (wired bench 17).** `stationary`, `effects`, `route-back` and
+`backup TOKEN` are required; TOKEN is the first 32 bits (8 hex digits) of the
+SHA-256 of the harness field table that backs the drive's stored image
+(`bench_persistence.py`). The statement is bound and age-limited like the
+communication facts, to the persistence endpoint: the confirmed responding
+endpoint inside an open communication session, else the selected axis. The
+begin needs the statement, the snapshot and the prepared write to name the same
+endpoint, so a save at a changed endpoint (D1, C2) needs facts stated after the
+confirmation. A parsed `persistence begin` takes the statement before any check
+(busy, an open invocation, an exhausted budget included); `plan` and `inspect`
+leave it. Statements are allowed inside the commissioning lease. Factory
+restore is refused `recommissioning_unavailable` both at the statement and at
+`persistence begin factory-restore` (reply `reason`): the restricted
+recommissioning sequence (below) is specified but not implemented, so no
+factory command reaches the wire. API: `installPersistenceFacts`,
+`inspectPersistenceFacts`, `revokePersistenceFacts`.
+
+**No restart fact.** The application admits no motor restart evidence, so
+`verify` never reports `VERIFIED_FIELDS`. The restart marker of prompt 17 must
+use prompt 14's JOG setter inside the lease, which needs the typed reads its
+admission checks to run inside the lease; until then `persistence marker ...`
+is refused `marker_setter_unavailable` and `persistence restart ...`
+`restart_witness_unavailable`, before any traffic. The owner-return session
+proves a restart host-side (`witness_plan`): after `persistence finish`, the
+ordinary JOG setter writes a speed distinct from the drive's stored JOG word,
+unsaved; after the owner's power cycle `velocity read` returns the stored word.
+That evidence is labelled host-only.
+
+**Custom node route back (D7).** `node record` (local) retains the target, the
+`0x0013` word and the source configuration read ID of the current checked
+session snapshot, normally S1 after an owner power cycle with no write since.
+`node restore WORD SOURCE dip-observed` writes exactly that word back (FC06,
+then an FC03 readback) inside a later snapshot lease of the same drive. WORD
+and SOURCE must equal the record; `dip-observed` states the operator's
+observation of SW2-SW5; the session snapshot's identity read must be at most
+60 s old and show `0x0002` equal to the drive's address while `0x0013` holds
+another word. Everything else is refused before bus admission. One attempt per
+snapshot; the write does not change the responding address, and the save then
+needs a fresh snapshot. API: `persistenceNode`.
+
+**Recommissioning after a factory restore (specified, not implemented).**
+Factory restore sent, then under the same lease only target identity,
+configuration and state reads, the field table's restoration writes, one save
+(the second invocation of the boot), verification captures and finish; motion,
+enable/release, communication changes, other addresses and discovery refused
+before TX; after the save no other write. A lost
+factory or save reply stays UNKNOWN and restoration proceeds from reads. After a
+controller reset the session is gone: the harness run log is the witness and
+refuses a second factory command in that run (`factory_guard`).
 
 Inspect/plan are passive. Snapshot acquires the existing exclusive commissioning
 lease and executes identity, five configuration windows and three state windows:
@@ -103,6 +157,8 @@ step leaves retained evidence and ownership for explicit inspection/recovery;
 there is no automatic replay or cleanup persistence write.
 
 Implementation tests and bench dispositions are in the
-[persistence report](archive/reports/ess_release_21_2026-10-04.md). Physical save, restart
-survival and factory restoration remain NOT RUN without the restart/backup/
-recommissioning procedure. Register readback does not close those proof gaps.
+[persistence report](archive/reports/ess_release_21_2026-10-04.md) and
+[wired bench 17](reports/2026-11-19_wired_bench_17_communication_and_persistence.md).
+Physical save, restart survival and factory restoration remain NOT RUN: every
+save, power cycle and factory restore waits for the owner (D15). Factory
+defaults are not measured. Register readback does not close those proof gaps.

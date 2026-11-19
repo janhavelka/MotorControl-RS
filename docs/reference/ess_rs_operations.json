@@ -1533,7 +1533,7 @@
           "docs/reports/2026-11-19_wired_bench_13_pt_segments.md",
           "docs/reports/2026-11-19_wired_bench_14_velocity_jog_pv.md"
         ],
-        "reason": "Thirteen explicit passive/unloaded settings updates and exact restoration PASS as stored-register evidence. Full assignment/physical-function qualification NOT_RUN; checked FC06 source/ACK remains unconfirmed, matching FC03 readback settles only stored values. On 16 November 2026 the M04 round trips (64 updates each, confirmed FC06 replies and full readback, exact restoration) also passed on drives 2 and 4; physical function effects stay NOT_RUN. On 18 November 2026 (wired bench 02) drive 1's board-declared connected X3 refused function 16 without ASSIGN facts before TX, then took 0 -> 16 -> 0 with facts (confirmed replies, readback); drive 4's board-declared Y0 took function 9 and custom 1/0 with one inverted aux1 edge per custom write. Stored-value and controller-timestamped evidence only; function 16 had no observable effect to test. On 19 November 2026 (wired bench 04) the harness restore route wrote drive 4 Y0 0 -> 9 -> 0 and drive 2 X3 0 -> 7 -> 0 with stated ASSIGN facts, each read back; with X3 = 7 the shared-output interlock refused mosfet2 before any ON. Stored-value evidence only. Wired bench 05 (19 November 2026): 81 connected-terminal writes on drives 1, 2, 4 (X0-X3 to function 0, polarity 1 and back at function 0 with mapping unknown, PIN 14+t, polarity with the measured mapping, power-up functions), each confirmed and read back, then drive 1 X3 17 with polarity 8 admitted only with the recorded mapping. Stored-value and drive-reported status evidence; no input function's drive effect. Wired bench 06 (19 November 2026): drive 4 Y0 functions 9, 0, 2, 4, 3, 5 and 1 and output polarity written through the ordinary route with stated facts (load indicator, levels either; the polarity change with mapping unknown is admitted for an either-level load only), each confirmed and read back, every one restored. Y0 output effects measured against aux1 and drive status (O1-O9: custom, polarity, running, arrival, homing complete, brake, alarm); the 0x0009 mapping is recorded (after inversion) for 0x4EEA/0x0029 Y0. Inputs and Y1 output effects stay unmeasured. Wired bench 07 (19 November 2026): X3 = 4, 5 and 6 on drive 4 (and on drives 1, 2 and 4 for group moves) assigned through the ordinary route with ASSIGN facts (triggers-inhibited, protection-removal), each read back and removed again; drive effects measured through mosfet2: 5 stops with the configured deceleration (Y0 running off 108-114 ms after the ON at 100 ms, 930-938 ms at 1000 ms), 6 stops directly (21-23 ms, no alarm), 4 releases the motor while active and the drive re-enables by itself when it goes inactive; a serial enable does not override it. Input functions 1-3 and 7-17 and Y1 stay unmeasured, so the state stays NOT_RUN. Wired bench 11 (19 November 2026, 0x4EEA/0x0029): power-up X1 = 2 and X2 = 3 act. With no I/O write since drive 4's power cycle (V-01), relay2 stopped +4000 moves (1554, 1523 steps) and relay1 a -4000 move; moves away ran to their endpoint; no flag, alarm or recovery; group members 1, 2, 4 stopped; stopped drives unaffected. Wired bench 13 (19 November 2026, 0x4EEA/0x0029): X0 = 12 and X1-X3 = 14, 15, 16 assigned on drives 1, 2 and 4 through the ordinary route with ASSIGN facts, each read back, and restored to [0,1,2,3] trigger first. Effects measured through mosfet1 (trigger) and relay2, relay1, mosfet2 (PIN0-PIN2): every PIN state selected its own record 1-8, records 9-16 never ran (absent PIN3 acted as 0), one start per trigger edge and one run for a 2000 ms held trigger; with 0x0050 = 1 PT records still ran as displacements. Function 12 and 14-16 effects are drive-reported evidence for this fixture only; PIN3 (17), the PV trigger (13), the other functions not measured in these reports and persistence stay NOT_RUN, so the state stays NOT_RUN. Wired bench 14 (19 November 2026, drive 1): X0 = 8, 9, 13, X1/X2 = 14/15, X3 = 5 (polarity 1 with the recorded mapping, written while mosfet2 held it inactive), 10, 12 and 16 assigned with ASSIGN facts, each read back and restored; drive effects measured: 8 follows the sign of 0x001D, 9 positive and 10 negative for both signs, 13 runs the PIN-selected PV record (level and edge mode), the inverted 5 stops serial, JOG and PV runs when its hold lapses."
+        "reason": "Thirteen explicit passive/unloaded settings updates and exact restoration PASS as stored-register evidence. Full assignment/physical-function qualification NOT_RUN; checked FC06 source/ACK remains unconfirmed, matching FC03 readback settles only stored values. On 16 November 2026 the M04 round trips (64 updates each, confirmed FC06 replies and full readback, exact restoration) also passed on drives 2 and 4; physical function effects stay NOT_RUN. On 18 November 2026 (wired bench 02) drive 1's board-declared connected X3 refused function 16 without ASSIGN facts before TX, then took 0 -> 16 -> 0 with facts (confirmed replies, readback); drive 4's board-declared Y0 took function 9 and custom 1/0 with one inverted aux1 edge per custom write. Stored-value and controller-timestamped evidence only; function 16 had no observable effect to test. On 19 November 2026 (wired bench 04) the harness restore route wrote drive 4 Y0 0 -> 9 -> 0 and drive 2 X3 0 -> 7 -> 0 with stated ASSIGN facts, each read back; with X3 = 7 the shared-output interlock refused mosfet2 before any ON. Stored-value evidence only. Wired bench 05 (19 November 2026): 81 connected-terminal writes on drives 1, 2, 4 (X0-X3 to function 0, polarity 1 and back at function 0 with mapping unknown, PIN 14+t, polarity with the measured mapping, power-up functions), each confirmed and read back, then drive 1 X3 17 with polarity 8 admitted only with the recorded mapping. Stored-value and drive-reported status evidence; no input function's drive effect. Wired bench 06 (19 November 2026): drive 4 Y0 functions 9, 0, 2, 4, 3, 5 and 1 and output polarity written through the ordinary route with stated facts (load indicator, levels either; the polarity change with mapping unknown is admitted for an either-level load only), each confirmed and read back, every one restored. Y0 output effects measured against aux1 and drive status (O1-O9: custom, polarity, running, arrival, homing complete, brake, alarm); the 0x0009 mapping is recorded (after inversion) for 0x4EEA/0x0029 Y0. Inputs and Y1 output effects stay unmeasured. Wired bench 07 (19 November 2026): X3 = 4, 5 and 6 on drive 4 (and on drives 1, 2 and 4 for group moves) assigned through the ordinary route with ASSIGN facts (triggers-inhibited, protection-removal), each read back and removed again; drive effects measured through mosfet2: 5 stops with the configured deceleration (Y0 running off 108-114 ms after the ON at 100 ms, 930-938 ms at 1000 ms), 6 stops directly (21-23 ms, no alarm), 4 releases the motor while active and the drive re-enables by itself when it goes inactive; a serial enable does not override it. Input functions 1-3 and 7-17 and Y1 stay unmeasured, so the state stays NOT_RUN. Wired bench 11 (19 November 2026, 0x4EEA/0x0029): power-up X1 = 2 and X2 = 3 act. With no I/O write since drive 4's power cycle (V-01), relay2 stopped +4000 moves (1554, 1523 steps) and relay1 a -4000 move; moves away ran to their endpoint; no flag, alarm or recovery; group members 1, 2, 4 stopped; stopped drives unaffected. Wired bench 13 (19 November 2026, 0x4EEA/0x0029): X0 = 12 and X1-X3 = 14, 15, 16 assigned on drives 1, 2 and 4 through the ordinary route with ASSIGN facts, each read back, and restored to [0,1,2,3] trigger first. Effects measured through mosfet1 (trigger) and relay2, relay1, mosfet2 (PIN0-PIN2): every PIN state selected its own record 1-8, records 9-16 never ran (absent PIN3 acted as 0), one start per trigger edge and one run for a 2000 ms held trigger; with 0x0050 = 1 PT records still ran as displacements. Function 12 and 14-16 effects are drive-reported evidence for this fixture only; PIN3 (17), the PV trigger (13), the other functions not measured in these reports and persistence stay NOT_RUN, so the state stays NOT_RUN. Wired bench 14 (19 November 2026, drive 1): X0 = 8, 9, 13, X1/X2 = 14/15, X3 = 5 (polarity 1 with the recorded mapping, written while mosfet2 held it inactive), 10, 12 and 16 assigned with ASSIGN facts, each read back and restored; drive effects measured: 8 follows the sign of 0x001D, 9 positive and 10 negative for both signs, 13 runs the PIN-selected PV record (level and edge mode), the inverted 5 stops serial, JOG and PV runs when its hold lapses. Persistence of I/O assignments across power cycles and whether stored stop/limit functions act right after power-up remain wired bench 17 P2-P5 and P4a-P4c, deferred to the owner (D15)."
       },
       "reason": "Per-terminal exact commissioning facts admit inputs 0-17, outputs 0-5/9-10 and canonical custom outputs. Every FC06 intermediate is checked; connected terminals require confirmed replies. Source-qualified status/polarity mapping and declared load limits stay explicit; no replay or automatic rollback. Output 11/cross-mapping, startup and physical effects remain unresolved or untested. A no-function inversion (previous and final function 0) is admitted with UNKNOWN mapping on any terminal; the recorded mapping (model 0x4EEA, firmware 0x0029: after inversion) admits other polarity changes with a fresh identity.",
       "choices": [
@@ -2694,21 +2694,23 @@
       "native": {
         "state": "PASS",
         "evidence": [
-          "test/communication_test.cpp",
+          "test/commissioning_owner_test.cpp",
           "test/communication_app_test.cpp",
           "test/communication_console_test.cpp",
-          "test/commissioning_owner_test.cpp",
-          "test/communication_harness_test.py"
+          "test/communication_harness_test.py",
+          "test/communication_test.cpp",
+          "test/persistence_app_test.cpp"
         ]
       },
       "hardware": {
         "state": "NOT_RUN",
         "evidence": [
-          "docs/ess_communication.md"
+          "docs/ess_communication.md",
+          "docs/reports/2026-11-19_wired_bench_17_communication_and_persistence.md"
         ],
-        "reason": "No qualified restart/route-back fixture. Default application rejects begin without TX; read-only regression does not qualify activation."
+        "reason": "Begin needs the operator's stated facts (communication qualification install, wired bench 17); without them it is refused before TX (measured on image T, 19 November 2026: unavailable, runner frame count unchanged). Address, baud and format changes, restart and restoration need the owner's power cycles and DIP switches: NOT RUN, deferred (D15)."
       },
-      "reason": "Single typed FC06 with exact before/requested contexts, explicit bounded confirmation, no write replay/save/restart. Address acknowledgement/activation remains unresolved; custom addressing requires explicit prompt21 save. Baud/format require restart; their persistence requirement remains unresolved.",
+      "reason": "Single typed FC06 with exact before/requested contexts, explicit bounded confirmation, no write replay/save/restart. Address acknowledgement/activation remains unresolved; the DIP fact states that SW2-SW5 go OFF before the activation restart, and a custom address needs an explicit save. Baud/format require restart; their save requirement remains unresolved (C1).",
       "choices": [
         "BaudRateCode.BAUD_115200",
         "BaudRateCode.BAUD_38400",
@@ -2756,9 +2758,10 @@
         "state": "NOT_RUN",
         "evidence": [
           "docs/ess_persistence.md",
-          "docs/archive/reports/ess_release_21_2026-10-04.md"
+          "docs/archive/reports/ess_release_21_2026-10-04.md",
+          "docs/reports/2026-11-19_wired_bench_17_communication_and_persistence.md"
         ],
-        "reason": "No actual motor restart and backup/recommissioning procedure. Final-image plans, snapshot and zero-TX gates pass; no nonvolatile command transmitted."
+        "reason": "Begin needs stated persistence facts with the field-table token for the snapshot's endpoint (wired bench 17); none installed on the bench. No in-app restart evidence: the restart marker and fact were withdrawn after the audit, so VERIFIED_FIELDS is unreachable and restarts are proven host-side; every save and power cycle is deferred to the owner (D15). No nonvolatile command transmitted."
       },
       "reason": "Explicit stopped-state all-parameter action, one admitted FC06 and no replay. ACK, live register readback and restart-qualified individual field survival are distinct. Partial15-word backup never proves all-parameter persistence; factory restore requires complete external backup and route back. Pending-address save reuses communication commissioning token."
     },
@@ -2798,9 +2801,10 @@
         "state": "NOT_RUN",
         "evidence": [
           "docs/ess_persistence.md",
-          "docs/archive/reports/ess_release_21_2026-10-04.md"
+          "docs/archive/reports/ess_release_21_2026-10-04.md",
+          "docs/reports/2026-11-19_wired_bench_17_communication_and_persistence.md"
         ],
-        "reason": "No actual motor restart and backup/recommissioning procedure. Final-image plans, snapshot and zero-TX gates pass; no nonvolatile command transmitted."
+        "reason": "Factory restore is refused before TX at the facts statement and at the begin boundary (recommissioning_unavailable, measured on image T for the statement) until the restricted recommissioning sequence exists; F1/F2 BLOCKED and deferred. No nonvolatile command transmitted."
       },
       "reason": "Explicit stopped-state all-parameter action, one admitted FC06 and no replay. ACK, live register readback and restart-qualified individual field survival are distinct. Partial15-word backup never proves all-parameter persistence; factory restore requires complete external backup and route back. Pending-address save reuses communication commissioning token."
     },
@@ -3967,6 +3971,48 @@
       "api": "installPositionLimits",
       "facts": [],
       "reason": "Wired bench 16 (D6/D12): the explicit, named install of host position limits for the selected axis (rpm 1..3000, rate 1..2,560,000 increments/s, minimum ramp 0..2000 ms). RAM only; recover, useaddr, a configuration or host tuple change, position limits default (revokePositionLimits) and a restart end it. Selected-axis finite moves and staging use it; interrupts keep their original move's limits; group moves, input-started moves and homing keep the defaults. Move results echo the case and values. No register is written and no frame is sent."
+    },
+    {
+      "route": "communication qualification install",
+      "wire_command": "communication-qualification-install",
+      "syntax": "communication qualification install FIELD VALUE stationary effects route-back [dip-off]",
+      "api": "installCommunicationFacts",
+      "facts": [
+        "stationary",
+        "effects",
+        "route-back",
+        "dip-off"
+      ],
+      "reason": "Wired bench 17: states one exact address, baud or format change for the selected target. dip-off (address only) states that SW2-SW5 go OFF before the activation restart. Bound to target, binding, configuration and host serial generations, 60 s; a parsed communication begin takes it before any check, and a begin without it is refused before TX."
+    },
+    {
+      "route": "communication qualification revoke",
+      "wire_command": "communication-qualification-revoke",
+      "syntax": "communication qualification revoke",
+      "api": "revokeCommunicationFacts",
+      "facts": [],
+      "reason": "Clears the stated communication facts; no bus traffic."
+    },
+    {
+      "route": "persistence qualification install",
+      "wire_command": "persistence-qualification-install",
+      "syntax": "persistence qualification install KIND stationary effects route-back backup TOKEN [complete-backup]",
+      "api": "installPersistenceFacts",
+      "facts": [
+        "stationary",
+        "effects",
+        "route-back",
+        "complete-backup"
+      ],
+      "reason": "Wired bench 17: states one save with the field-table token (first 32 bits of its SHA-256), bound to the persistence endpoint (the confirmed responding endpoint inside a communication session, else the selected axis) and age-limited; a parsed persistence begin takes it before any check, and the facts, the snapshot and the prepared write must name one endpoint. Factory restore is refused (recommissioning_unavailable) until the restricted recommissioning sequence exists."
+    },
+    {
+      "route": "persistence qualification revoke",
+      "wire_command": "persistence-qualification-revoke",
+      "syntax": "persistence qualification revoke",
+      "api": "revokePersistenceFacts",
+      "facts": [],
+      "reason": "Clears the stated persistence facts; no bus traffic."
     }
   ]
 }

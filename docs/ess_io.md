@@ -327,13 +327,18 @@ pulse marked "10ms or more" and nothing else: no filter, no polarity, no
 detection delay. The input filter (`0x0108`) and the detection delay the bench
 measured are in [ESS tuning](ess_tuning.md#input-filter-measured-delay-and-pulse-width).
 
-Hardware page 9 says startup inputs are unspecified/invalid. Function pages
-73-74 give stored defaults 1/2/3/0, also read on the
-[initial bench](archive/reports/ess_release_05_2026-10-04.md). These may describe
+Hardware page 9 says "Each time the drive is powered on, X0-X3 defaults to the
+unspecified state. At this time, the input signal is invalid. The user can
+configure the X0-X3 input function through the bus." Function pages 73-74 give
+stored defaults 1/2/3/0, also read after power-up on the
+[initial bench](archive/reports/ess_release_05_2026-10-04.md) and on drive 4 after
+its 19 November power cycle (`[0,1,2,3,0,0,0,0,0]`). These may describe
 different effective and stored states. This is an ambiguity, not a demonstrated
 register contradiction. Neither source proves saved-assignment persistence or
-startup activation. Require fresh assignments, polarity and state after any
-restart. Restart and wired-effect checks remain separate physical work.
+startup activation; whether a stored stop or limit assignment acts right after
+power-up is unknown (wired bench 17 P4a-P4c, deferred to the owner,
+[report](reports/2026-11-19_wired_bench_17_communication_and_persistence.md)). Require fresh assignments, polarity and state after
+any restart.
 
 For known unconnected inputs, serial-only operations do not acquire a blanket
 home/limit/trigger wiring requirement. They still need their own documented

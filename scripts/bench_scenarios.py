@@ -26,6 +26,7 @@ import bench_pt
 import bench_velocity
 import bench_tuning
 import bench_alarms
+import bench_persistence
 import bench_input_starts as bench_starts
 from bench_session import checked, run_recorded
 
@@ -90,6 +91,9 @@ FOLDER_SCENARIOS = {
                        'the silence diagnostics and the Implement 3 classification, alarm-clear, the named position-limits '
                        'install for the HW-14 and Q05 attempts, step 5 for every failed stop, the prepared stop fast on any '
                        'harness failure; restoration from the baseline',
+    'comm-persistence': 'wired bench 17: communication changes and persistence (--cases S0, P0, S1, S2, P2..P5, F1, F2, '
+                        'C1, C2, D1, D2, S3): S0 is the read-only live snapshot of each drive (--drives, default 1 2 4) '
+                        'with its field table and token; every owner case is refused before TX under D15',
 }
 
 SCENARIOS = {
@@ -267,7 +271,7 @@ def arguments(argv=None):
                           (args.image_level, tuple(FOLDER_SCENARIOS)),
                           (args.outputs, ('input-map',)), (args.expect_refusal or None, ('input-map',)),
                           (args.change, ('input-map', 'restore', 'input-start')), (args.assign_facts, ('input-map', 'restore', 'input-start')),
-                          (args.drives, ('baseline-compare', 'baseline-capture', 'pt-segments')),
+                          (args.drives, ('baseline-compare', 'baseline-capture', 'pt-segments', 'comm-persistence')),
                           (args.c4_rpm, ('velocity-jog-pv',)),
                           (args.c1_rows, ('velocity-jog-pv',)),
                           (args.fields, ('control-tuning',)),
@@ -278,7 +282,7 @@ def arguments(argv=None):
                           (args.stimulus, ('stop-inputs',)), (args.sub, ('stop-inputs',)),
                           (args.leave_profile or None, ('stop-inputs', 'limits', *bench_starts.FAMILIES)),
                           (args.cases, (*bench_starts.FAMILIES, 'limits', 'switch', 'pt-segments', 'velocity-jog-pv',
-                                        'control-tuning', 'alarms-failures')),
+                                        'control-tuning', 'alarms-failures', 'comm-persistence')),
                           (args.methods, ('switch',)), (args.branches, ('switch',)), (args.search, ('switch',)),
                           (args.return_speed, ('switch',)), (args.auxiliary, ('switch',)), (args.choices, ('switch',)),
                           (args.budget_gap_ms, ('switch',)), (args.budget_decision_ms, ('switch',)),
@@ -678,6 +682,15 @@ def _folder_arguments(parser, args):
             parser.error('alarms-failures --repetitions sets the A1/A2 trials within 1..5')
         if args.delays is not None and (len(args.delays) > 6 or any(not 0 <= d <= 2.0 for d in args.delays)):
             parser.error('alarms-failures --delays takes at most six A3 delays within 0..2 s')
+    if args.scenario == 'comm-persistence':
+        if not args.cases or any(c not in bench_persistence.CASES for c in args.cases) or len(set(args.cases)) != len(args.cases):
+            parser.error('comm-persistence needs --cases from %s' % ', '.join(bench_persistence.CASES))
+        if args.image_level is None or int(args.image_level) < 17:
+            parser.error('comm-persistence needs --image-level 17 (the stated-facts routes)')
+        if args.case is not None:
+            parser.error('comm-persistence names its cases with --cases')
+        if any(d not in records.FIXTURE['input_drives'] for d in args.drives or ()):
+            parser.error('comm-persistence reads drives 1, 2 and 4 only')
     if args.scenario in bench_starts.FAMILIES:
         family = bench_starts.FAMILIES[args.scenario]
         allowed = [c for c, case in bench_starts.CASES.items() if case['family'] == family]
@@ -785,7 +798,7 @@ def folder_plan(args, baseline):
     facts = _facts(args)
     write_list, left = [], []
     drives = sorted(set(records.FIXTURE['input_drives'] if name in ('input-map', 'status-mapping', 'input-timing') else
-                        args.drives or records.FIXTURE['input_drives'] if name.startswith('baseline') else
+                        args.drives or records.FIXTURE['input_drives'] if name.startswith('baseline') or name == 'comm-persistence' else
                         [args.address]) | ({args.change['drive']} if args.change else set()))
     plan = {'admissible': True, 'steps': [], 'refused': []}
     forward = []
@@ -826,9 +839,9 @@ def folder_plan(args, baseline):
                 refusal = None  # Written by the case's moves or velocity run, not by a setter.
             forward.append({'entry': entry, 'steps': steps, 'refusal': refusal})
         write_list_done = True
-    elif name in ('pt-segments', 'velocity-jog-pv', 'control-tuning', 'alarms-failures'):
+    elif name in ('pt-segments', 'velocity-jog-pv', 'control-tuning', 'alarms-failures', 'comm-persistence'):
         module = bench_pt if name == 'pt-segments' else bench_velocity if name == 'velocity-jog-pv' else \
-            bench_tuning if name == 'control-tuning' else bench_alarms
+            bench_tuning if name == 'control-tuning' else bench_persistence if name == 'comm-persistence' else bench_alarms
         write_list, plan, cases, commands, bounds, expected, left = module.plan(args, baseline, facts)
         for entry in write_list:
             steps, refusal = records.plan_entry(baseline, entry, args.image_level, facts, restore=False)
@@ -877,7 +890,7 @@ def folder_plan(args, baseline):
     if not write_list_done:
         cases, commands, bounds, expected = [], [], {}, {}
     if name in ('outputs', 'stop-inputs', 'limits', 'switch', 'pt-segments', 'velocity-jog-pv', 'control-tuning',
-                'alarms-failures') or name in bench_starts.FAMILIES:
+                'alarms-failures', 'comm-persistence') or name in bench_starts.FAMILIES:
         pass
     elif name == 'input-start':
         cases.append(_case(case, 'one owned MOSFET pulse on the armed terminal after the firmware isolation reads; the '
@@ -3162,6 +3175,13 @@ def _alarms(console, args, record, run, baseline):
         bench_alarms.case_verdicts(run, cid, detail, error)
 
 
+def _comm_persistence(console, args, record, run, baseline):
+    """Wired bench 17: S0 live snapshots; owner cases refused before TX (bench_persistence.py)."""
+    _preflight(console, run, args.timeout)
+    detail = bench_persistence.run_cases(console, run, baseline, args, args.timeout)
+    run.folder.write_json('comm_persistence.json', detail)
+
+
 # --------------------------------------------------------------------------
 # Wired bench 08: input-start route (arm, one owned pulse, observe, disarm)
 
@@ -3406,7 +3426,7 @@ FOLDER_RUNNERS = {'input-start': _input_start, 'input-start-single': _input_star
                   'baseline-capture': _baseline_capture, 'restore': _restore, 'status-mapping': _status_mapping,
                   'input-timing': _input_timing, 'outputs': _outputs, 'stop-inputs': _stop_inputs, 'limits': _limits,
                   'switch': _switch, 'pt-segments': _pt, 'velocity-jog-pv': _velocity, 'control-tuning': _tuning,
-                  'alarms-failures': _alarms}
+                  'alarms-failures': _alarms, 'comm-persistence': _comm_persistence}
 
 
 def run_folder(args, *, port_opener=None, check_board=None):

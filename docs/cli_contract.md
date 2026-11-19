@@ -185,7 +185,24 @@ after delivery. Original write bytes, deadline and uncertainty remain intact.
 
 Communication, persistence and discovery use exclusive application sessions.
 Planning/inspection are passive; writes are explicit. Save ACK, live readback
-and restart survival are different evidence. Discovery retains findings and
+and restart survival are different evidence. A communication or persistence
+begin needs the operator's stated facts (`communication qualification install
+FIELD VALUE stationary effects route-back [dip-off]`, `persistence
+qualification install KIND stationary effects route-back backup TOKEN
+[complete-backup]`, each with `inspect` and `revoke`; replies
+`communication-qualification-*` and `persistence-qualification-*`, local, no
+bus traffic): one exact request, bound to the selected target, binding,
+configuration and host generations, 60 s, consumed by one begin; without it the
+begin is refused `unavailable` before TX. Factory restore facts are refused
+`recommissioning_unavailable`, also at `persistence begin factory-restore`
+(reply `reason`). A parsed begin takes the statement before any refusal; the
+persistence statement names the snapshot's endpoint. `persistence node record`
+and `persistence node restore WORD SOURCE dip-observed` (reply
+`persistence-node`) record the `0x0013` word of a checked snapshot and write
+exactly that word back while a fresh identity read shows the DIP address. The
+restart marker and restart fact are withdrawn: `persistence marker ...` replies
+`marker_setter_unavailable`, `persistence restart ...`
+`restart_witness_unavailable` (wired bench 17). Discovery retains findings and
 restores host selection before ordinary work resumes; a fault requires explicit
 recovery/restoration and does not restart the scan.
 

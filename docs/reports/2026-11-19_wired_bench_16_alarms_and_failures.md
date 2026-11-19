@@ -306,4 +306,7 @@ consumers, codec symbols); Arduino `bench_s3_load_timer` and native ESP-IDF
 ## Commits and CI
 
 The lead owns Git and CI. Nothing was committed, pushed or dispatched by this
-session; the four CI jobs are required on the recording commit.
+session; the four CI jobs are required on the recording commit. The lead
+committed the work, with the audit follow-up, as `bd99963`; CI run 44617440910
+on that exact commit passed all four jobs (native gcc, native clang, Arduino,
+ESP-IDF). The independent audit was aud-20261119-210004-f55a5f.

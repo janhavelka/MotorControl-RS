@@ -4,6 +4,32 @@
 
 ### Added
 
+- Wired bench 17: stated facts for drive communication changes and
+  persistence in the standalone application. `communication qualification
+  install FIELD VALUE stationary effects route-back [dip-off]` and `persistence
+  qualification install KIND stationary effects route-back backup TOKEN
+  [complete-backup]`, each with `inspect` and `revoke` (API
+  `installCommunicationFacts`, `installPersistenceFacts` and their pairs;
+  `CommissioningFacts.h`): one exact request bound to the selected target,
+  binding, configuration and host serial generations, 60 s, consumed by one
+  begin. A parsed begin takes the statement before any refusal; the
+  persistence statement names the snapshot's endpoint, which the save writes
+  to. Factory restore is refused before TX (`recommissioning_unavailable`) at
+  the statement and at the begin. The custom node route back `persistence node
+  record` and `persistence node restore WORD SOURCE dip-observed` (API
+  `persistenceNode`) writes only the word recorded from a checked snapshot of
+  the same drive, with the stated DIP observation and a fresh identity read
+  showing the DIP address. The restart marker and restart fact are withdrawn
+  after the audit (`marker_setter_unavailable`, `restart_witness_unavailable`):
+  the marker must use prompt 14's JOG setter inside the lease. Operation
+  inventory host routes for the four statements.
+- Harness scenario `comm-persistence` (`scripts/bench_persistence.py`): S0 live
+  snapshot with the field table, its SHA-256 and backup token; owner cases
+  refused before TX under D15; owner-return helpers (live/stored difference,
+  save gate, factory gate, address policy, host-side restart witness, factory
+  command guard);
+  grammar and reply checks for the new routes in `bench_probe`.
+
 - Wired bench 16: named position limits (D6/D12) in the standalone
   application. `position limits [set RPM RATE RAMP case NAME | default]` (API
   `installPositionLimits`, `inspectPositionLimits`, `revokePositionLimits`;
@@ -287,6 +313,14 @@
 
 ### Changed
 
+- `communication begin` and `persistence begin` need the stated facts above;
+  the application no longer reads route-back, backup and DIP facts from
+  `commissioningPrerequisites`/`persistencePrerequisites` fields that only
+  native tests could set. The DIP fact (`addressDipOffQualified`) now states
+  that the operator will set SW2-SW5 OFF before the activation restart, since
+  `0x0013` is written while the switches still set the old address. A begin
+  without a valid statement is refused `unavailable` before TX (measured on
+  image T). Register ledger notes for `0x0003` and `0x0013`-`0x0015`.
 - Accepted alarm-clear bytes start the 1 s enable wait (HW-15), as an enable
   does. Wired bench 16 A3 (drive 4, firmware `0x0029`): a start 0.59 s after
   the clear's acknowledgement was ignored 3 of 3 times; starts from 0.91 s were

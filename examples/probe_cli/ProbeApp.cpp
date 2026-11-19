@@ -113,7 +113,7 @@ struct App {
     Rtu::ProducerSlot producers[1];
     Probe::HostSnapshot serial;
     ESS::CommunicationContext commissioning, commissioningPrepared;
-    ESS::CommunicationPrerequisites commissioningPrerequisites; // Exact supplied fixture/effects evidence; unavailable by default.
+    ESS::CommunicationPrerequisites commissioningPrerequisites; // Facts of the consumed statement (wired bench 17); cleared at finish.
     Rtu::RequestId commissioningRequest;
     uint64_t commissioningLease = 0;
     uint32_t commissioningConfirmedGeneration = 0, commissioningRequestBinding = 0;
@@ -136,6 +136,17 @@ struct App {
     bool persistenceCapture = false, persistenceAfter = false, persistenceBaselineKnown = false,
         persistenceSnapshotFailed = false, persistenceInvalidated = false,
         persistenceParentSession = false, persistenceFinished = false;
+    // Wired bench 17: stated facts (each consumed by one begin) and the custom
+    // node record and restore (PersistenceApp.h).
+    Probe::CommunicationFacts communicationFacts;
+    Probe::PersistenceFacts persistenceFacts;
+    struct NodeSession {
+        Probe::NodeView view;
+        Rtu::RequestId request;
+        uint8_t phase = 0; ///< 0 none, 1 FC06 write, 2 FC03 readback.
+        uint64_t deadlineUs = 0;
+        uint8_t tx[32] = {};
+    } node;
     Rtu::Runner runner;
     Rtu::BusOwner owner;
     Probe::Console console;
@@ -4211,6 +4222,8 @@ Probe::Host host(App* a) {
     h.wiring = wiring;
     if (a->options.benchIo) h.benchIo = benchIoCommand;
     h.communication = communication; h.persistence = persistence;
+    h.communicationFacts = communicationFactsCommand; h.persistenceFacts = persistenceFactsCommand;
+    h.persistenceNode = persistenceNodeCommand;
     h.discovery = discoveryCommand;
     h.group = groupCommand;
     h.result = lookup; h.cancel = cancel; h.release = release;
@@ -5006,6 +5019,60 @@ bool inspectPositionLimits(Probe::PositionLimitsView& output) {
     if (!app) return false;
     positionLimitsWork(*app, nullptr, output);
     return true;
+}
+MotorControlRS::Status installCommunicationFacts(const Probe::CommunicationFactsCommand& command,
+                                                 Probe::CommunicationFactsView& output) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    if (command.action != Probe::FactsAction::INSTALL)
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(Probe::Action::INVALID), "install needs an INSTALL command");
+    const auto reply = communicationFactsWork(*app, command, output);
+    if (reply.result != Probe::Action::OK) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(reply.result),
+        output.reason ? output.reason : "facts refused");
+    return Ok();
+}
+bool inspectCommunicationFacts(Probe::CommunicationFactsView& output) {
+    if (!app) return false;
+    communicationFactsWork(*app, Probe::CommunicationFactsCommand(), output);
+    return true;
+}
+MotorControlRS::Status revokeCommunicationFacts() {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    app->communicationFacts = Probe::CommunicationFacts();
+    return Ok();
+}
+MotorControlRS::Status installPersistenceFacts(const Probe::PersistenceFactsCommand& command,
+                                               Probe::PersistenceFactsView& output) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    if (command.action != Probe::FactsAction::INSTALL)
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(Probe::Action::INVALID), "install needs an INSTALL command");
+    const auto reply = persistenceFactsWork(*app, command, output);
+    if (reply.result != Probe::Action::OK) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(reply.result),
+        output.reason ? output.reason : "facts refused");
+    return Ok();
+}
+bool inspectPersistenceFacts(Probe::PersistenceFactsView& output) {
+    if (!app) return false;
+    persistenceFactsWork(*app, Probe::PersistenceFactsCommand(), output);
+    return true;
+}
+MotorControlRS::Status revokePersistenceFacts() {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    app->persistenceFacts = Probe::PersistenceFacts();
+    return Ok();
+}
+MotorControlRS::Status persistenceNode(const Probe::NodeCommand& command, Probe::NodeView& output, const char** reason) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    const auto reply = persistenceNodeWork(*app, command, uart.sample());
+    output = app->node.view;
+    if (reason) *reason = reply.reason;
+    if (reply.result != Probe::Action::OK) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(reply.result),
+        reply.reason ? reply.reason : "refused");
+    return Ok();
 }
 MotorControlRS::Status revokePositionLimits() {
     using namespace MotorControlRS;

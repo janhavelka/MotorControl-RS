@@ -27,7 +27,7 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000140u, 68,
      "DIP_STATUS", "bitfield",
      "unspecified", "unspecified", "RO",
-     "Source describes SW1-SW7 in bits 0-6; ESS23 hardware has SW1-SW5. Hardware pp8,11 assign SW1 to termination and SW2-SW5 to address; the generic speed example p18 instead assigns address 1 using SW1. Preserve raw bits; mapping unqualified."},
+     "Source describes SW1-SW7 in bits 0-6; ESS23 hardware has SW1-SW5. Hardware pp8,11 assign SW1 to termination and SW2-SW5 to address; the generic speed example p18 instead assigns address 1 using SW1. Preserve raw bits; mapping unqualified. Wired bench 17 (19 November 2026, 0x4EEA/0x0029): the p68 bit map (bit 0 = SW1) with hardware p11 (SW2 ON = address 1) predicts word 2 at address 1, while the 12 November bus check read 1, 2 and 4 equal to the addresses; mapping inferred, physical switch inspection deferred to the owner."},
     // Function PDF pages 68.
     {0x0006, 1, RegisterAccess::READ_ONLY, RegisterSignedness::ENUMERATED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000040u, 68,
@@ -81,19 +81,19 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000040u, 69,
      "CUSTOM_NODE", "slave address",
      "0-255", "0", "RW",
-     "Effective when address DIP switches are OFF. Hardware p11 identifies SW2-SW5 as address switches, requires custom addresses to be set and saved, and reserves all-ON for factory restore, not address 15. Activation timing of a saved custom node is unspecified. Library unicast policy 1-247 is separate from source range 0-255."},
+     "Effective when address DIP switches are OFF. Hardware p11 identifies SW2-SW5 as address switches, requires custom addresses to be set and saved, and reserves all-ON for factory restore, not address 15. Activation timing of a saved custom node is unspecified. Library unicast policy 1-247 is separate from source range 0-255. Wired bench 17: the address route writes 0x0013 while the switches still set the old address (the dip-off fact states that SW2-SW5 go OFF before the activation restart); the route back restores the exact snapshot word, 0 included, while 0x0002 shows the DIP address. Drives 1, 2 and 4 read 0 (0x4EEA/0x0029). No change sent yet (owner away)."},
     // Function PDF pages 69.
     {0x0014, 1, RegisterAccess::READ_WRITE, RegisterSignedness::ENUMERATED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 69,
      "BAUD_RATE", "unspecified",
      "0-3", "0", "RW",
-     "Requires power cycle after modification."},
+     "Requires power cycle after modification. Function manual p6/p69: takes effect after power-on again. Whether a write without save survives a power cycle is unresolved (wired bench 17 C1, deferred to the owner)."},
     // Function PDF pages 69.
     {0x0015, 1, RegisterAccess::READ_WRITE, RegisterSignedness::ENUMERATED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 69,
      "SERIAL_FORMAT", "unspecified",
      "0-3", "0", "RW",
-     "Requires power cycle after modification."},
+     "Requires power cycle after modification. Function manual p69: takes effect after power-on again. Whether a write without save survives a power cycle is unresolved (wired bench 17 C1, deferred to the owner)."},
     // Function PDF pages 70.
     {0x0017, 1, RegisterAccess::READ_WRITE, RegisterSignedness::ENUMERATED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000400u, 70,

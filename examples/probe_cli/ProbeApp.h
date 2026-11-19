@@ -171,6 +171,51 @@ bool inspectPositionLimits(Probe::PositionLimitsView& output);
 /** Return the selected axis to the core position defaults (`position limits
  * default`). Admitted moves keep the limits they were admitted with. Local. */
 MotorControlRS::Status revokePositionLimits();
+/** State the facts of one exact drive communication change (wired bench 17),
+ * the console `communication qualification install FIELD VALUE stationary
+ * effects route-back [dip-off]`. command.action must be INSTALL, every fact the
+ * field needs set (dip-off for ADDRESS only: SW2-SW5 go OFF before the
+ * activation restart). The statement binds the selected target, its binding,
+ * configuration and host serial generations and expires after
+ * COMMISSIONING_FACTS_MAX_AGE_US; the next parsed `communication begin` takes
+ * it before any check, refused or not, and a begin without a valid statement of the
+ * same request is refused before TX. Refused while a commissioning lease or a
+ * discovery scan is held. Local, no traffic. Refusal detail is the
+ * Probe::Action; output.reason names a specific cause. */
+MotorControlRS::Status installCommunicationFacts(const Probe::CommunicationFactsCommand& command,
+                                                 Probe::CommunicationFactsView& output);
+/** Copy the stated communication facts and their validity now. False only before the application starts. */
+bool inspectCommunicationFacts(Probe::CommunicationFactsView& output);
+/** Clear the stated communication facts. Local. */
+MotorControlRS::Status revokeCommunicationFacts();
+/** State the facts of one save (wired bench 17), the console `persistence
+ * qualification install KIND stationary effects route-back backup TOKEN
+ * [complete-backup]`: bound and age-limited like installCommunicationFacts and
+ * consumed by the next `persistence begin`. The statement binds the persistence
+ * endpoint: the confirmed responding endpoint inside an open communication
+ * session, else the selected axis; the begin needs it for the snapshot's
+ * endpoint. TOKEN is nonzero, the first 32 bits of the SHA-256 of the harness
+ * field table. FACTORY_RESTORE is refused ("recommissioning_unavailable"), as
+ * is `persistence begin factory-restore`, until the restricted recommissioning
+ * sequence of prompt 17 item 6 exists. Allowed inside the commissioning lease. Local. */
+MotorControlRS::Status installPersistenceFacts(const Probe::PersistenceFactsCommand& command,
+                                               Probe::PersistenceFactsView& output);
+/** Copy the stated persistence facts and their validity now. False only before the application starts. */
+bool inspectPersistenceFacts(Probe::PersistenceFactsView& output);
+/** Clear the stated persistence facts. Local. */
+MotorControlRS::Status revokePersistenceFacts();
+/** The custom node route back of wired bench 17 (`persistence node ...`, D7).
+ * RECORD (local) retains target, `0x0013` word and source read ID of the
+ * current checked session snapshot, normally S1. RESTORE writes exactly that
+ * word back (FC06, then an FC03 readback) inside a later snapshot lease of the
+ * same drive: command.word and command.source must equal the record,
+ * command.dipObserved states the operator's observation of SW2-SW5, and the
+ * snapshot's identity read, at most COMMISSIONING_FACTS_MAX_AGE_US old, must
+ * show `0x0002` equal to the drive's address with another word in `0x0013`.
+ * Any other request is refused before bus admission; the write is one attempt,
+ * never resent. INSPECT copies the state. *reason names a refusal. */
+MotorControlRS::Status persistenceNode(const Probe::NodeCommand& command, Probe::NodeView& output,
+                                       const char** reason = nullptr);
 /** Control and tuning candidates (wired bench 15, `tuning candidates`). SHOW
  * reports the deviation-threshold D6 call of the selected axis; THRESHOLD names
  * one value 4001..65535 for 0x010A, bound to the selected address, binding and

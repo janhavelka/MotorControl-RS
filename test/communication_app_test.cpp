@@ -51,10 +51,17 @@ ESS::CommunicationRequest baudRequest() {
     ESS::CommunicationRequest request; request.field = ESS::CommunicationField::BAUD;
     request.baud = ESS::BaudRateCode::BAUD_38400; return request;
 }
+Probe::QualificationReply stateFacts(Probe::FactsAction action, const ESS::CommunicationRequest& request,
+                                Probe::CommunicationFactsView& view) {
+    Probe::CommunicationFactsCommand c; c.action = action; c.request = request;
+    c.stationary = c.effects = c.routeBack = true; c.dipOff = request.field == ESS::CommunicationField::ADDRESS;
+    return host(app).communicationFacts(app, c, view);
+}
+// The operator's stated facts through the console's API route (wired bench 17).
 void qualify(const ESS::CommunicationRequest& request) {
-    auto& p = app->commissioningPrerequisites;
-    p.maxAgeUs = 5000000; p.stationaryQualified = p.effectsQualified = p.routeBackQualified = true;
-    p.addressDipOffQualified = true; p.qualifiedRequest = request;
+    Probe::CommunicationFactsView view;
+    assert(stateFacts(Probe::FactsAction::INSTALL, request, view).result == Probe::Action::OK);
+    assert(view.facts.present && view.validity == Probe::FactsValidity::VALID);
     writeResponseConfirmed = true; // Simulated source/timing qualification, not hardware evidence.
 }
 Probe::Action command(Kind kind, const ESS::CommunicationRequest& request = baudRequest()) {
@@ -99,7 +106,10 @@ void prerequisitesAndExclusiveAdmission() {
     assert(command(Kind::BEGIN) == Probe::Action::UNAVAILABLE && hardware.writes == initial);
     qualify(baudRequest());
     auto invalid = baudRequest(); invalid.baud = static_cast<ESS::BaudRateCode>(99);
-    assert(command(Kind::BEGIN, invalid) == Probe::Action::INVALID && !app->owner.commissioningOwned());
+    // A request other than the stated one is refused and consumes the statement.
+    assert(command(Kind::BEGIN, invalid) == Probe::Action::UNAVAILABLE && !app->owner.commissioningOwned());
+    assert(!app->communicationFacts.present && hardware.writes == initial);
+    qualify(baudRequest());
     Probe::MonitorSettings settings; settings.enabled = true; settings.count = 1; settings.intervalMs = 100;
     Probe::MonitorSnapshot monitoring;
     assert(host(app).monitor(app, &settings, monitoring) == Probe::Action::OK);
@@ -338,6 +348,63 @@ void confirmationWaitsForRecoveryQuarantine() {
     assert(command(Kind::CONFIRM_BEFORE) == Probe::Action::OK); reply(words({1}));
     assert(command(Kind::FINISH) == Probe::Action::OK);
 }
+
+// Wired bench 17 item 1: one exact stated request, bound and age-limited,
+// consumed by one begin; nothing is inferred from a register.
+void statedFactsBindingAndConsumption() {
+    fresh(); configuration(); const auto count = hardware.writes;
+    Probe::CommunicationFactsView view;
+    auto address = baudRequest(); address.field = ESS::CommunicationField::ADDRESS; address.address = 20;
+    Probe::CommunicationFactsCommand c; c.action = Probe::FactsAction::INSTALL; c.request = address;
+    c.stationary = c.effects = c.routeBack = true;
+    assert(host(app).communicationFacts(app, c, view).result == Probe::Action::INVALID && !view.facts.present); // dip-off missing.
+    c.request = baudRequest(); c.dipOff = true;
+    assert(host(app).communicationFacts(app, c, view).result == Probe::Action::INVALID); // dip-off not applicable.
+    qualify(baudRequest());
+    auto other = baudRequest(); other.baud = ESS::BaudRateCode::BAUD_9600;
+    assert(command(Kind::BEGIN, other) == Probe::Action::UNAVAILABLE && !app->communicationFacts.present);
+    assert(!app->owner.commissioningOwned() && hardware.writes == count);
+    qualify(baudRequest());
+    step(static_cast<uint32_t>(Probe::COMMISSIONING_FACTS_MAX_AGE_US + 1000));
+    assert(stateFacts(Probe::FactsAction::INSPECT, baudRequest(), view).result == Probe::Action::OK &&
+        view.validity == Probe::FactsValidity::EXPIRED);
+    assert(command(Kind::BEGIN) == Probe::Action::UNAVAILABLE && hardware.writes == count);
+    configuration(); const auto reads = hardware.writes; qualify(baudRequest());
+    for (char ch : std::string("@88 recover\n")) app->console.feed(ch);
+    const uint32_t id = app->recovery.operationId; assert(id);
+    assert(stateFacts(Probe::FactsAction::INSPECT, baudRequest(), view).result == Probe::Action::OK &&
+        view.validity == Probe::FactsValidity::BINDING_CHANGED);
+    for (unsigned i = 0; i < 5000 && (result(id).pending || !app->recovery.delivered); ++i) step(1000);
+    assert(host(app).release(app, id) == Probe::Action::OK);
+    while (hardware.time <= app->recoveryGuardUntilUs) step(100);
+    configuration(); qualify(baudRequest());
+    invalidateDriverAssumptions(*app, 1, UINT32_MAX, hardware.time);
+    assert(stateFacts(Probe::FactsAction::INSPECT, baudRequest(), view).result == Probe::Action::OK &&
+        view.validity == Probe::FactsValidity::CONFIGURATION_CHANGED);
+    assert(command(Kind::BEGIN) == Probe::Action::UNAVAILABLE && hardware.writes > reads);
+    configuration(); qualify(baudRequest());
+    assert(stateFacts(Probe::FactsAction::REVOKE, baudRequest(), view).result == Probe::Action::OK && !view.facts.present);
+    const auto revoked = hardware.writes;
+    assert(command(Kind::BEGIN) == Probe::Action::UNAVAILABLE && hardware.writes == revoked);
+    begin(); assert(!app->communicationFacts.present && app->commissioningPrerequisites.routeBackQualified);
+    assert(stateFacts(Probe::FactsAction::INSTALL, baudRequest(), view).result == Probe::Action::BUSY); // Lease held.
+}
+// Audit F5: a parsed begin takes the statement before any refusal; preview leaves it.
+void factsConsumedByAnyBegin() {
+    fresh(); configuration(); qualify(baudRequest());
+    Probe::CommunicationFactsView view;
+    assert(command(Kind::PREVIEW) == Probe::Action::OK && app->communicationFacts.present);
+    Probe::MonitorSettings settings; settings.enabled = true; settings.count = 1; settings.intervalMs = 100;
+    Probe::MonitorSnapshot monitoring;
+    assert(host(app).monitor(app, &settings, monitoring) == Probe::Action::OK);
+    assert(command(Kind::BEGIN) == Probe::Action::BUSY && !app->communicationFacts.present);
+    settings.enabled = false; assert(host(app).monitor(app, &settings, monitoring) == Probe::Action::OK);
+    pump(); configuration(); const auto count = hardware.writes;
+    assert(command(Kind::BEGIN) == Probe::Action::UNAVAILABLE && hardware.writes == count);
+    assert(!app->owner.commissioningOwned() && !app->commissioningRequest.owner);
+    begin(); assert(app->commissioningRequest.owner);
+    assert(stateFacts(Probe::FactsAction::INSTALL, baudRequest(), view).result == Probe::Action::BUSY); // Lease held.
+}
 }
 int main() {
     prerequisitesAndExclusiveAdmission(); storedReadbackAndKnownRestoration();
@@ -349,4 +416,5 @@ int main() {
     recoveryExcludesUnharvestedConfirmation();
     unchangedHostSelectionPreservesConfirmation();
     confirmationWaitsForRecoveryQuarantine();
+    statedFactsBindingAndConsumption(); factsConsumedByAnyBegin();
 }

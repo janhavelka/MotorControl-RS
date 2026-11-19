@@ -25,10 +25,24 @@ struct Fake {
         if(c){f.request=*c;if(c->kind==Probe::PersistenceCommandKind::BEGIN)++f.writes;}
         out=f.view;return f.result;
     }
+    // Wired bench 17 routes: record the parsed request, reply with the stored view.
+    unsigned factCalls=0;
+    Probe::PersistenceFactsCommand facts;Probe::PersistenceFactsView factsView;
+    Probe::NodeCommand node;Probe::NodeView nodeView;
+    static Probe::QualificationReply persistenceFacts(void* p,const Probe::PersistenceFactsCommand& c,Probe::PersistenceFactsView& out){
+        auto& f=*static_cast<Fake*>(p);++f.factCalls;f.facts=c;out=f.factsView;return Probe::QualificationReply(Probe::Action::OK);
+    }
+    static Probe::QualificationReply persistenceNode(void* p,const Probe::NodeCommand& c,Probe::NodeView& out){
+        auto& f=*static_cast<Fake*>(p);++f.factCalls;f.node=c;out=f.nodeView;
+        Probe::QualificationReply r(c.dipObserved||c.kind!=Probe::NodeCommandKind::RESTORE?Probe::Action::OK:Probe::Action::UNAVAILABLE);
+        if(r.result!=Probe::Action::OK)r.reason="dip_fact_required";
+        return r;
+    }
     static Probe::Action probe(void*,uint32_t,uint8_t,uint32_t&){return Probe::Action::UNAVAILABLE;}
     static Probe::Action recover(void*,uint32_t,uint32_t&){return Probe::Action::UNAVAILABLE;}
     static void reset(void*){}
-    Probe::Host hooks(){Probe::Host h;h.context=this;h.emitLine=emit;h.snapshot=snapshot;h.persistence=persistence;h.startProbe=probe;h.recover=recover;h.resetStats=reset;return h;}
+    Probe::Host hooks(){Probe::Host h;h.context=this;h.emitLine=emit;h.snapshot=snapshot;h.persistence=persistence;h.startProbe=probe;h.recover=recover;h.resetStats=reset;
+        h.persistenceFacts=persistenceFacts;h.persistenceNode=persistenceNode;return h;}
     bool has(const char* s)const{return !lines.empty() && lines.back().find(s)!=std::string::npos;}
 };
 void send(Probe::Console& c,const std::string& s){for(char v:s)c.feed(v);c.feed('\n');}
@@ -91,5 +105,48 @@ int main(){
     Fake absent;auto h=absent.hooks();h.persistence=nullptr;Probe::Console legacy(h, Probe::Format::JSON);
     send(legacy,"help");assert(!absent.has("\"persistence\""));send(legacy,"persistence inspect");assert(absent.has("unavailable") && !absent.calls);
     send(c,"caps");assert(f.has("\"persistence\":true"));
+    // Wired bench 17: facts and custom-node grammar; marker and restart withdrawn.
+    const unsigned factCalls=f.factCalls;
+    const char* refusedFacts[][2]={{"install save stationary effects route-back","missing_fact"},
+        {"install save stationary effects route-back backup 0","invalid_token"},
+        {"install save stationary effects route-back backup 123456789","invalid_token"},
+        {"install save stationary effects route-back backup","invalid_token"},
+        {"install save stationary effects route-back backup 1 backup 2","duplicate_fact"},
+        {"install save stationary effects route-back backup 1a complete-backup","fact_not_applicable"},
+        {"install save stationary effects backup 1a","missing_fact"},
+        {"install save stationary stationary effects route-back backup 1a","duplicate_fact"},
+        {"install save stationary effects route-back backup 1a quick","unknown_fact"},
+        {"install all stationary effects route-back backup 1a","invalid_kind"},{"inspect extra","invalid_arguments"}};
+    for(const auto& row:refusedFacts){send(c,std::string("persistence qualification ")+row[0]);assert(f.has(row[1]) && f.has("\"ok\":false"));}
+    for(const char* bad:{"restart observed 4 beef","restart","marker set 7","marker read",
+                         "node restore 256 5","node restore 0 0","node restore 0","node set 0 5","node record extra",
+                         "node restore 0 5 dip","node restore 0 5 dip-observed extra"}){
+        send(c,std::string("persistence ")+bad);assert(f.has("\"ok\":false"));
+    }
+    assert(f.factCalls==factCalls && f.writes==writes);
+    send(c,"persistence qualification install save stationary effects route-back backup 1A2b3C4d");
+    assert(f.has("persistence-qualification-install") && f.has("\"ok\":true"));
+    assert(f.facts.action==Probe::FactsAction::INSTALL && f.facts.kind==Ess::PersistenceKind::SAVE && f.facts.backupToken==0x1A2B3C4Du);
+    assert(f.facts.stationary && f.facts.effects && f.facts.routeBack && !f.facts.completeBackup);
+    send(c,"persistence qualification install factory-restore route-back effects stationary complete-backup backup ffffffff");
+    assert(f.facts.kind==Ess::PersistenceKind::FACTORY_RESTORE && f.facts.completeBackup && f.facts.backupToken==0xFFFFFFFFu);
+    f.factsView.facts.present=true;f.factsView.facts.backupToken=0x1A2B3C4Du;f.factsView.validity=Probe::FactsValidity::EXPIRED;
+    send(c,"persistence qualification inspect");
+    assert(f.has("\"validity\":\"expired\"") && f.has("\"backup_token\":\"1a2b3c4d\"") && f.has("\"bus_traffic\":false"));
+    send(c,"persistence qualification revoke");assert(f.facts.action==Probe::FactsAction::REVOKE && f.has("\"ok\":true"));
+    const unsigned before17=f.factCalls;
+    send(c,"persistence marker set 7");assert(f.has("marker_setter_unavailable") && f.has("persistence-marker"));
+    send(c,"persistence restart observed 4 beef");assert(f.has("restart_witness_unavailable"));
+    assert(f.factCalls==before17);
+    const char* nodes[]={"node inspect","node record","node restore 0 55 dip-observed","node restore 0 55"};
+    const Probe::NodeCommandKind nodeKinds[]={Probe::NodeCommandKind::INSPECT,Probe::NodeCommandKind::RECORD,
+        Probe::NodeCommandKind::RESTORE,Probe::NodeCommandKind::RESTORE};
+    for(unsigned n=0;n<4;++n){send(c,std::string("persistence ")+nodes[n]);assert(f.node.kind==nodeKinds[n] && f.has("\"record\":{"));}
+    assert(!f.node.dipObserved && f.has("dip_fact_required") && f.has("persistence-node"));
+    send(c,"persistence node restore 0 55 dip-observed");assert(f.node.word==0 && f.node.source==55 && f.node.dipObserved && f.has("\"ok\":true"));
+    f.nodeView.record.present=true;f.nodeView.record.source=0xFFFFFFFFu;f.nodeView.record.recordedUs=std::numeric_limits<uint64_t>::max();
+    f.nodeView.writeEvidence.length=f.nodeView.readEvidence.length=Ess::ACTION_MAX_REPLY_BYTES;
+    send(c,"persistence node inspect");assert(f.has("\"source\":4294967295") && !f.has("output_full"));
+    assert(f.writes==writes);
     return 0;
 }

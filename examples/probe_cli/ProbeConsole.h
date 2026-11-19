@@ -21,6 +21,7 @@
 #include "VelocityLimits.h"
 #include "PositionLimitsRoute.h"
 #include "SettingCandidates.h"
+#include "CommissioningFacts.h"
 #include "MotorControlRS/profiles/ess_rs/Codec.h"
 #include "MotorControlRS/profiles/ess_rs/Reads.h"
 #include "MotorControlRS/profiles/ess_rs/Actions.h"
@@ -193,7 +194,9 @@ struct CommunicationView {
 };
 
 enum class PersistenceCommandKind : uint8_t { PREVIEW, BEGIN, VERIFY, FINISH, SNAPSHOT, SELECT_BEFORE };
-/** One explicit persistence session action; null input inspects cached evidence. */
+/** One explicit persistence session action; null input inspects cached evidence.
+ * BEGIN needs stated persistence facts and consumes them; BEGIN of
+ * FACTORY_RESTORE is refused before TX (view reason recommissioning_unavailable). */
 struct PersistenceCommand {
     PersistenceCommandKind kind = PersistenceCommandKind::PREVIEW;
     MotorControlRS::ESS_RS::PersistenceKind request = MotorControlRS::ESS_RS::PersistenceKind::SAVE;
@@ -209,6 +212,7 @@ struct PersistenceView {
     uint8_t invocations = 0; ///< At most two explicit nonvolatile write admissions per boot.
     bool snapshotFailed = false;
     uint8_t verificationAttempts = 0; ///< Successful or failed explicit read sequences, maximum two.
+    const char* reason = nullptr; ///< Named refusal of the call, or nullptr (wired bench 17).
     HostSnapshot host;
 };
 
@@ -428,6 +432,13 @@ struct Host {
     Action (*benchIo)(void*, const BenchIo::Request*, BenchIo::View&) = nullptr;
     Action (*communication)(void*, const CommunicationCommand*, CommunicationView&) = nullptr;
     Action (*persistence)(void*, const PersistenceCommand*, PersistenceView&) = nullptr;
+    /** Communication and persistence facts (wired bench 17). Local statements
+     * through the application API; never bus traffic. */
+    QualificationReply (*communicationFacts)(void*, const CommunicationFactsCommand&, CommunicationFactsView&) = nullptr;
+    QualificationReply (*persistenceFacts)(void*, const PersistenceFactsCommand&, PersistenceFactsView&) = nullptr;
+    /** Custom node record (local) and restore inside a persistence snapshot's
+     * lease; INSPECT copies. The view is copied during the call. */
+    QualificationReply (*persistenceNode)(void*, const NodeCommand&, NodeView&) = nullptr;
     /** Application-owned finite scan; null inspects retained evidence. Request
      * and borrowed view are consumed during this synchronous call only. */
     Action (*discovery)(void*, const DiscoveryCommand*, DiscoveryView&) = nullptr;
@@ -544,6 +555,9 @@ private:
     void inputStart(uint32_t id, const char* command, const InputStartCommand& request) noexcept;
     void qualificationRoute(uint32_t id, QualificationRoute, const char* const* tokens, std::size_t count) noexcept;
     void ioQualificationRoute(uint32_t id, const char* const* tokens, std::size_t count) noexcept;
+    void communicationFactsRoute(uint32_t id, const char* const* tokens, std::size_t count) noexcept;
+    void persistenceFactsRoute(uint32_t id, const char* const* tokens, std::size_t count) noexcept;
+    void nodeRoute(uint32_t id, const char* const* tokens, std::size_t count) noexcept;
     void qualificationReply(uint32_t id, const char* command, const char* result, const char* label, const char* value, bool ok = false) noexcept;
     void emit(uint32_t terminalOperation = 0, bool humanText = false) noexcept;
     bool outstanding(uint32_t id) const noexcept;

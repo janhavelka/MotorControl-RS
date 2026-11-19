@@ -25,10 +25,16 @@ struct Fake {
         if (command) { f.request=*command; if(command->kind==Probe::CommunicationCommandKind::BEGIN) ++f.writes; }
         out=f.view; return f.result;
     }
+    unsigned factCalls=0;
+    Probe::CommunicationFactsCommand facts;
+    Probe::CommunicationFactsView factsView;
+    static Probe::QualificationReply communicationFacts(void* p,const Probe::CommunicationFactsCommand& c,Probe::CommunicationFactsView& out) {
+        auto& f=*static_cast<Fake*>(p); ++f.factCalls; f.facts=c; out=f.factsView; return Probe::QualificationReply(Probe::Action::OK);
+    }
     static Probe::Action probe(void*,uint32_t,uint8_t,uint32_t&) { return Probe::Action::UNAVAILABLE; }
     static Probe::Action recover(void*,uint32_t,uint32_t&) { return Probe::Action::UNAVAILABLE; }
     static void reset(void*) {}
-    Probe::Host hooks() { Probe::Host h;h.context=this;h.emitLine=emit;h.snapshot=snapshot;h.communication=communication;
+    Probe::Host hooks() { Probe::Host h;h.context=this;h.emitLine=emit;h.snapshot=snapshot;h.communication=communication;h.communicationFacts=communicationFacts;
         h.startProbe=probe;h.recover=recover;h.resetStats=reset;return h; }
     bool has(const char* s) const { return !lines.empty() && lines.back().find(s)!=std::string::npos; }
 };
@@ -75,5 +81,27 @@ int main() {
     Fake absent;auto h=absent.hooks();h.communication=nullptr;Probe::Console legacy(h, Probe::Format::JSON);
     send(legacy,"help");assert(!absent.has("\"communication\""));
     send(legacy,"communication inspect");assert(absent.has("unavailable"));assert(absent.calls==0);
+    // Wired bench 17: stated facts; the console names the missing or extra fact.
+    const char* refused[][2]={{"install address 20 stationary effects route-back","missing_fact"},
+        {"install baud 38400 stationary effects route-back dip-off","fact_not_applicable"},
+        {"install baud 57600 stationary effects route-back","invalid_baud"},{"install address 0 stationary effects route-back dip-off","invalid_address"},
+        {"install format 8E2 stationary effects route-back","invalid_format"},{"install parity 1 stationary effects route-back","invalid_field"},
+        {"install baud 38400 stationary effects","missing_fact"},{"install baud 38400 stationary effects route-back route-back","duplicate_fact"},
+        {"install baud 38400 stationary effects route-back save","unknown_fact"},{"install baud","invalid_arguments"},{"revoke now","invalid_arguments"}};
+    const unsigned factCalls=f.factCalls;
+    for(const auto& row:refused){send(c,std::string("communication qualification ")+row[0]);assert(f.has(row[1]) && f.has("\"ok\":false"));}
+    assert(f.factCalls==factCalls && f.writes==writes);
+    send(c,"communication qualification install baud 38400 route-back stationary effects");
+    assert(f.facts.action==Probe::FactsAction::INSTALL && f.facts.request.field==Ess::CommunicationField::BAUD &&
+        f.facts.request.baud==Ess::BaudRateCode::BAUD_38400 && !f.facts.dipOff && f.has("communication-qualification-install"));
+    send(c,"communication qualification install address 20 stationary effects route-back dip-off");
+    assert(f.facts.request.field==Ess::CommunicationField::ADDRESS && f.facts.request.address==20 && f.facts.dipOff);
+    send(c,"communication qualification install format 8E1 stationary effects route-back");
+    assert(f.facts.request.format==Ess::SerialFormatCode::FORMAT_8E1);
+    f.factsView.facts.present=true;f.factsView.facts.request=f.facts.request;f.factsView.validity=Probe::FactsValidity::VALID;
+    send(c,"communication qualification inspect");
+    assert(f.has("\"present\":true,\"validity\":\"valid\",\"field\":\"format\",\"register\":21,\"value\":2") && f.has("\"bus_traffic\":false"));
+    send(c,"communication qualification revoke");assert(f.facts.action==Probe::FactsAction::REVOKE && f.has("\"ok\":true"));
+    assert(f.writes==writes);
     return 0;
 }

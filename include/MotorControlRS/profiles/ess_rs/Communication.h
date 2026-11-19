@@ -33,8 +33,11 @@ struct CommunicationRequest {
 /** Application qualifications refer to this exact candidate and previous target.
  * An available route back includes actual restart/fixture control where needed;
  * a software host restore alone does not establish it. Stationary qualification
- * imposes no unwired external-I/O requirement. DIP qualification for ADDRESS
- * independently establishes the address switches OFF; raw DIP is not decoded.
+ * imposes no unwired external-I/O requirement. addressDipOffQualified (ADDRESS
+ * only) states that the operator will set address switches SW2-SW5 OFF before
+ * the activation restart: 0x0013 is written while the switches still set the
+ * old address, because with every switch OFF and custom node 0 the drive would
+ * have no usable address. Raw DIP is not decoded.
  * Configuration block 0x0013/3 is re-parsed and age checked before any work.
  * Stored baud/format must match beforeSerial; pending older changes require
  * reconciliation before staging another change with only two candidates. */

@@ -84,8 +84,8 @@ const Entry COMMANDS[] = {
     {"useaddr", Command::USEADDR, "useaddr 1..247", "idle_host_selection_invalidates_dependent_confidence_no_motor_io", false, "Select a host target while idle; this does not change the drive address."},
     {"wiring", Command::WIRING, "wiring [x0|x1|x2|x3|y0|y1 unknown|unconnected|connected]", "declare_external_wiring_only_no_device_assignment_or_io", false, "Declare connected or unconnected terminals without changing their functions. Boot, useaddr and new group members start from the board table; sources show default, board, host or invalid_table."},
     {"host", Command::HOST, "host [baud RATE | fmt 8N1|8N2|8E1|8O1 | set RATE FORMAT | restore | caps]", "settled_host_serial_only_no_motor_settings", false, "Show or change host UART settings; drive settings stay separate."},
-    {"communication", Command::COMMUNICATION, "communication [inspect | plan|begin address|baud|format VALUE [address] | host before|requested | confirm before|requested | finish]", "explicit_communication_session_no_save_restart_or_replay", true, "Plan and apply a drive communication change, then check its responding endpoint."},
-    {"persistence", Command::PERSISTENCE, "persistence [inspect | snapshot | plan|begin save|factory-restore | verify | host before | finish]", "one_explicit_save_or_factory_restore_no_retry_or_inferred_durability", true, "Inspect, plan or attempt an explicit save or factory restoration."},
+    {"communication", Command::COMMUNICATION, "communication [inspect | plan|begin address|baud|format VALUE [address] | host before|requested | confirm before|requested | finish] | communication qualification install FIELD VALUE stationary effects route-back [dip-off] | communication qualification inspect | communication qualification revoke", "explicit_communication_session_no_save_restart_or_replay", true, "Plan and apply a drive communication change, then check its responding endpoint."},
+    {"persistence", Command::PERSISTENCE, "persistence [inspect | snapshot | plan|begin save|factory-restore | verify | host before | finish] | persistence qualification install KIND stationary effects route-back backup TOKEN [complete-backup] | persistence qualification inspect | persistence qualification revoke | persistence node record | persistence node restore WORD SOURCE dip-observed | persistence node inspect", "one_explicit_save_or_factory_restore_no_retry_or_inferred_durability", true, "Inspect, plan or attempt an explicit save; factory restore is refused until its recommissioning sequence exists."},
     {"status", Command::STATUS, "status", "show_cached_observations", false, "Show cached drive and transport observations, including their age."},
     {"health", Command::HEALTH, "health", "show_cached_health", false, "Show cached health; use read state to refresh observations."},
     {"stats", Command::STATS, "stats [reset]", "show_or_clear_host_counters", false, "Show diagnostic counters; stats reset clears host counters only."},
@@ -1588,6 +1588,209 @@ void Console::ioQualificationRoute(uint32_t id, const char* const* tokens, std::
     }
     emit();
 }
+// Wired bench 17: communication and persistence facts, the restart fact and
+// the custom node record and restore. Statements are local; the node restore
+// runs inside a persistence snapshot's lease.
+namespace {
+struct NamedFact { const char* name; bool* field; bool required; };
+// Returns nullptr or the refusal; named is the offending fact.
+const char* parseNamedFacts(const char* const* tokens, std::size_t count, NamedFact* facts, std::size_t factCount,
+                            const char*& named) noexcept {
+    for (std::size_t i = 0; i < count; ++i) {
+        NamedFact* match = nullptr;
+        for (std::size_t f = 0; f < factCount; ++f) if (!std::strcmp(tokens[i], facts[f].name)) match = facts + f;
+        if (!match) {
+            named = "unprintable";
+            bool safe = tokens[i][0] != '\0';
+            for (const char* c = tokens[i]; *c; ++c)
+                safe = safe && ((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '-' || *c == '_');
+            if (safe) named = tokens[i];
+            return "unknown_fact";
+        }
+        if (*match->field) { named = match->name; return "duplicate_fact"; }
+        *match->field = true;
+    }
+    for (std::size_t f = 0; f < factCount; ++f)
+        if (facts[f].required && !*facts[f].field) { named = facts[f].name; return "missing_fact"; }
+    return nullptr;
+}
+// 1..8 hex digits, nonzero.
+bool hexToken(const char* text, uint32_t& value) noexcept {
+    uint32_t result = 0; std::size_t digits = 0;
+    for (const char* c = text; *c; ++c, ++digits) {
+        const int d = *c >= '0' && *c <= '9' ? *c - '0' : *c >= 'a' && *c <= 'f' ? *c - 'a' + 10 :
+            *c >= 'A' && *c <= 'F' ? *c - 'A' + 10 : -1;
+        if (d < 0 || digits == 8) return false;
+        result = (result << 4) | static_cast<uint32_t>(d);
+    }
+    if (!digits || !result) return false;
+    value = result; return true;
+}
+const char* factsValidityName(FactsValidity v) {
+    switch (v) {
+    case FactsValidity::VALID: return "valid";
+    case FactsValidity::EXPIRED: return "expired";
+    case FactsValidity::BINDING_CHANGED: return "binding_changed";
+    case FactsValidity::CONFIGURATION_CHANGED: return "configuration_changed";
+    case FactsValidity::HOST_CHANGED: return "host_changed";
+    case FactsValidity::NONE: break;
+    }
+    return "none";
+}
+const char* nodeKindName(NodeCommandKind k) {
+    return k == NodeCommandKind::RECORD ? "record" : k == NodeCommandKind::RESTORE ? "restore" : "inspect";
+}
+} // namespace
+void Console::communicationFactsRoute(uint32_t id, const char* const* tokens, std::size_t count) noexcept {
+    const char* verb = count ? tokens[0] : "";
+    const char* command = !std::strcmp(verb, "install") ? "communication-qualification-install" :
+        !std::strcmp(verb, "revoke") ? "communication-qualification-revoke" : "communication-qualification-inspect";
+    if (!host_.communicationFacts) { error(id, command, "unavailable"); return; }
+    CommunicationFactsCommand request;
+    const char* rejected = nullptr;
+    const char* named = nullptr;
+    if (count == 1 && !std::strcmp(verb, "inspect")) request.action = FactsAction::INSPECT;
+    else if (count == 1 && !std::strcmp(verb, "revoke")) request.action = FactsAction::REVOKE;
+    else if (count >= 3 && !std::strcmp(verb, "install")) {
+        request.action = FactsAction::INSTALL;
+        uint32_t value = 0;
+        if (!std::strcmp(tokens[1], "address")) {
+            request.request.field = Ess::CommunicationField::ADDRESS;
+            if (!number(tokens[2], value) || value < 1 || value > 247) rejected = "invalid_address";
+            request.request.address = static_cast<uint16_t>(value);
+        } else if (!std::strcmp(tokens[1], "baud")) {
+            request.request.field = Ess::CommunicationField::BAUD;
+            if (!number(tokens[2], value) || (value != 115200 && value != 38400 && value != 19200 && value != 9600)) rejected = "invalid_baud";
+            request.request.baud = static_cast<Ess::BaudRateCode>(value == 115200 ? 0 : value == 38400 ? 1 : value == 19200 ? 2 : 3);
+        } else if (!std::strcmp(tokens[1], "format")) {
+            HostFormat format = HostFormat::N8_1;
+            request.request.field = Ess::CommunicationField::FORMAT;
+            if (!parseFormat(tokens[2], format)) rejected = "invalid_format";
+            request.request.format = static_cast<Ess::SerialFormatCode>(format);
+        } else rejected = "invalid_field";
+        const bool address = request.request.field == Ess::CommunicationField::ADDRESS;
+        NamedFact facts[] = {{"stationary", &request.stationary, true}, {"effects", &request.effects, true},
+                             {"route-back", &request.routeBack, true}, {"dip-off", &request.dipOff, address}};
+        if (!rejected) rejected = parseNamedFacts(tokens + 3, count - 3, facts, 4, named);
+        if (!rejected && !address && request.dipOff) { rejected = "fact_not_applicable"; named = "dip-off"; }
+    } else rejected = "invalid_arguments";
+    if (rejected) { qualificationReply(id, command, rejected, named ? "fact" : nullptr, named); return; }
+    CommunicationFactsView view;
+    const QualificationReply reply = host_.communicationFacts(host_.context, request, view);
+    if (reply.result != Action::OK) {
+        qualificationReply(id, command, reply.reason ? reply.reason : actionName(reply.result), nullptr, nullptr); return;
+    }
+    if (request.action != FactsAction::INSPECT) { qualificationReply(id, command, "done", nullptr, nullptr, true); return; }
+    const auto& f = view.facts;
+    const uint16_t value = f.request.field == Ess::CommunicationField::ADDRESS ? f.request.address :
+        f.request.field == Ess::CommunicationField::BAUD ? static_cast<uint16_t>(f.request.baud) : static_cast<uint16_t>(f.request.format);
+    std::size_t used = 0;
+    if (!append(output_, sizeof(output_), used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":true,\"result\":\"done\",\"present\":%s,\"validity\":\"%s\",\"field\":\"%s\",\"register\":%u,\"value\":%u,\"address\":%u,\"target\":%lu,\"generation\":%lu,\"binding_generation\":%lu,\"configuration_generation\":%lu,\"serial_generation\":%lu,\"installed_us\":%llu,\"now_us\":%llu,\"maximum_age_us\":%llu,\"stationary\":%s,\"effects\":%s,\"route_back\":%s,\"dip_off\":%s,\"bus_traffic\":false}",
+        static_cast<unsigned long>(id), command, boolean(f.present), factsValidityName(view.validity),
+        f.present ? communicationField(f.request.field) : "none", f.present ? 0x0013u + static_cast<unsigned>(f.request.field) : 0u,
+        f.present ? value : 0u, f.target.address, static_cast<unsigned long>(f.target.id), static_cast<unsigned long>(f.target.generation),
+        static_cast<unsigned long>(f.bindingGeneration), static_cast<unsigned long>(f.configurationGeneration),
+        static_cast<unsigned long>(f.serialGeneration), static_cast<unsigned long long>(f.installedUs),
+        static_cast<unsigned long long>(view.nowUs), static_cast<unsigned long long>(COMMISSIONING_FACTS_MAX_AGE_US),
+        boolean(f.stationary), boolean(f.effects), boolean(f.routeBack), boolean(f.dipOff))) {
+        error(id, command, "output_full"); return;
+    }
+    emit();
+}
+void Console::persistenceFactsRoute(uint32_t id, const char* const* tokens, std::size_t count) noexcept {
+    const char* verb = count ? tokens[0] : "";
+    const char* command = !std::strcmp(verb, "install") ? "persistence-qualification-install" :
+        !std::strcmp(verb, "revoke") ? "persistence-qualification-revoke" : "persistence-qualification-inspect";
+    if (!host_.persistenceFacts) { error(id, command, "unavailable"); return; }
+    PersistenceFactsCommand request;
+    const char* rejected = nullptr;
+    const char* named = nullptr;
+    if (count == 1 && !std::strcmp(verb, "inspect")) request.action = FactsAction::INSPECT;
+    else if (count == 1 && !std::strcmp(verb, "revoke")) request.action = FactsAction::REVOKE;
+    else if (count >= 2 && !std::strcmp(verb, "install")) {
+        request.action = FactsAction::INSTALL;
+        if (!std::strcmp(tokens[1], "save")) request.kind = Ess::PersistenceKind::SAVE;
+        else if (!std::strcmp(tokens[1], "factory-restore")) request.kind = Ess::PersistenceKind::FACTORY_RESTORE;
+        else rejected = "invalid_kind";
+        // `backup TOKEN` is one fact with its value; take it out before the names.
+        const char* names[8] = {};
+        std::size_t nameCount = 0;
+        bool backup = false;
+        for (std::size_t i = 2; !rejected && i < count; ++i) {
+            if (!std::strcmp(tokens[i], "backup")) {
+                if (backup) { rejected = "duplicate_fact"; named = "backup"; }
+                else if (i + 1 == count || !hexToken(tokens[i + 1], request.backupToken)) rejected = "invalid_token";
+                backup = true; ++i;
+            } else if (nameCount == sizeof(names) / sizeof(names[0])) rejected = "invalid_arguments";
+            else names[nameCount++] = tokens[i];
+        }
+        NamedFact facts[] = {{"stationary", &request.stationary, true}, {"effects", &request.effects, true},
+                             {"route-back", &request.routeBack, true}, {"complete-backup", &request.completeBackup, false}};
+        if (!rejected) rejected = parseNamedFacts(names, nameCount, facts, 4, named);
+        if (!rejected && !backup) { rejected = "missing_fact"; named = "backup"; }
+        if (!rejected && request.completeBackup && request.kind != Ess::PersistenceKind::FACTORY_RESTORE) {
+            rejected = "fact_not_applicable"; named = "complete-backup";
+        }
+    } else rejected = "invalid_arguments";
+    if (rejected) { qualificationReply(id, command, rejected, named ? "fact" : nullptr, named); return; }
+    PersistenceFactsView view;
+    const QualificationReply reply = host_.persistenceFacts(host_.context, request, view);
+    if (reply.result != Action::OK) {
+        qualificationReply(id, command, reply.reason ? reply.reason : actionName(reply.result), nullptr, nullptr); return;
+    }
+    if (request.action != FactsAction::INSPECT) { qualificationReply(id, command, "done", nullptr, nullptr, true); return; }
+    const auto& f = view.facts;
+    std::size_t used = 0;
+    if (!append(output_, sizeof(output_), used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":true,\"result\":\"done\",\"present\":%s,\"validity\":\"%s\",\"kind\":\"%s\",\"address\":%u,\"target\":%lu,\"generation\":%lu,\"binding_generation\":%lu,\"configuration_generation\":%lu,\"serial_generation\":%lu,\"installed_us\":%llu,\"now_us\":%llu,\"maximum_age_us\":%llu,\"stationary\":%s,\"effects\":%s,\"route_back\":%s,\"complete_backup\":%s,\"backup_token\":\"%08lx\",\"bus_traffic\":false}",
+        static_cast<unsigned long>(id), command, boolean(f.present), factsValidityName(view.validity),
+        f.present ? persistenceKind(f.kind) : "none", f.target.address, static_cast<unsigned long>(f.target.id),
+        static_cast<unsigned long>(f.target.generation), static_cast<unsigned long>(f.bindingGeneration),
+        static_cast<unsigned long>(f.configurationGeneration), static_cast<unsigned long>(f.serialGeneration),
+        static_cast<unsigned long long>(f.installedUs), static_cast<unsigned long long>(view.nowUs),
+        static_cast<unsigned long long>(COMMISSIONING_FACTS_MAX_AGE_US), boolean(f.stationary), boolean(f.effects),
+        boolean(f.routeBack), boolean(f.completeBackup), static_cast<unsigned long>(f.backupToken))) {
+        error(id, command, "output_full"); return;
+    }
+    emit();
+}
+void Console::nodeRoute(uint32_t id, const char* const* tokens, std::size_t count) noexcept {
+    // persistence node record | restore WORD SOURCE dip-observed | inspect
+    const char* command = "persistence-node";
+    if (!host_.persistenceNode) { error(id, command, "unavailable"); return; }
+    NodeCommand request;
+    uint32_t word = 0, source = 0;
+    if (count == 1 && !std::strcmp(tokens[0], "inspect")) request.kind = NodeCommandKind::INSPECT;
+    else if (count == 1 && !std::strcmp(tokens[0], "record")) request.kind = NodeCommandKind::RECORD;
+    else if (count == 3 && !std::strcmp(tokens[0], "restore") && number(tokens[1], word) && word <= 255 &&
+             number(tokens[2], source) && source) {
+        request.kind = NodeCommandKind::RESTORE; request.word = static_cast<uint16_t>(word); request.source = source;
+    } else if (count == 4 && !std::strcmp(tokens[0], "restore") && !std::strcmp(tokens[3], "dip-observed") &&
+               number(tokens[1], word) && word <= 255 && number(tokens[2], source) && source) {
+        request.kind = NodeCommandKind::RESTORE; request.word = static_cast<uint16_t>(word); request.source = source;
+        request.dipObserved = true;
+    } else { error(id, command, "invalid_arguments"); return; }
+    NodeView v;
+    const QualificationReply reply = host_.persistenceNode(host_.context, request, v);
+    const auto& r = v.record;
+    const auto& n = v.restore;
+    std::size_t used = 0;
+    const bool fits = append(output_, sizeof(output_), used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":%s,\"result\":\"%s\",\"request\":\"%s\",\"pending\":%s,\"operation_id\":%lu,\"error\":\"%s\",\"record\":{\"present\":%s,\"address\":%u,\"target\":%lu,\"word\":%u,\"source\":%lu,\"recorded_us\":%llu},\"restore\":{\"address\":%u,\"word\":%u,\"previous\":%u,\"source\":%lu,\"snapshot_operation_id\":%lu,\"attempted\":%s,\"execution\":\"%s\",\"readback_known\":%s,\"readback\":%u,\"ok\":%s}",
+        static_cast<unsigned long>(id), command, boolean(reply.result == Action::OK),
+        reply.result == Action::OK ? "done" : reply.reason ? reply.reason : actionName(reply.result),
+        nodeKindName(request.kind), boolean(v.pending), static_cast<unsigned long>(v.operationId), v.error,
+        boolean(r.present), r.address, static_cast<unsigned long>(r.targetId), r.word, static_cast<unsigned long>(r.source),
+        static_cast<unsigned long long>(r.recordedUs), n.target.address, n.word, n.previous, static_cast<unsigned long>(n.source),
+        static_cast<unsigned long>(n.snapshotOperationId), boolean(n.attempted), executionName(n.execution),
+        boolean(n.readbackKnown), n.readback, boolean(n.ok)) &&
+        writeEvidence(output_, sizeof(output_), used, "write_evidence", v.writeEvidence) &&
+        writeEvidence(output_, sizeof(output_), used, "read_evidence", v.readEvidence) &&
+        append(output_, sizeof(output_), used, "}");
+    if (!fits) { error(id, command, "output_full"); return; }
+    emit();
+}
 void Console::dispatch() noexcept {
     char* tokens[22] = {}; // Full-width rationals, path policies and bounded preview options.
     std::size_t count = 0;
@@ -1863,6 +2066,23 @@ void Console::dispatch() noexcept {
         if (!fits) { error(id, "host", "output_full"); return; }
         emit(); return;
     }
+    if (entry->command == Command::PERSISTENCE && count > first + 1 && (!std::strcmp(tokens[first + 1], "qualification") ||
+        !std::strcmp(tokens[first + 1], "restart") || !std::strcmp(tokens[first + 1], "marker") ||
+        !std::strcmp(tokens[first + 1], "node"))) {
+        if (outputPending()) { ++inputDropped_; return; }
+        const char* sub = tokens[first + 1];
+        if (!std::strcmp(sub, "qualification")) persistenceFactsRoute(id, tokens + first + 2, count - first - 2);
+        else if (!std::strcmp(sub, "node")) nodeRoute(id, tokens + first + 2, count - first - 2);
+        // Withdrawn after the wired bench 17 audit: the restart marker needs prompt
+        // 14's JOG setter inside the lease, and no restart is admitted without it.
+        else if (!std::strcmp(sub, "marker")) error(id, "persistence-marker", "marker_setter_unavailable");
+        else error(id, "persistence-restart", "restart_witness_unavailable");
+        return;
+    }
+    if (entry->command == Command::COMMUNICATION && count > first + 1 && !std::strcmp(tokens[first + 1], "qualification")) {
+        if (outputPending()) { ++inputDropped_; return; }
+        communicationFactsRoute(id, tokens + first + 2, count - first - 2); return;
+    }
     if (entry->command == Command::PERSISTENCE) {
         if (outputPending()) { ++inputDropped_; return; }
         if (!host_.persistence) { error(id,"persistence","unavailable"); return; }
@@ -1895,8 +2115,10 @@ void Console::dispatch() noexcept {
         else fits=fits && append(output_,sizeof(output_),used,"null");
         fits=fits && append(output_,sizeof(output_),used,",\"context\":") && persistenceContext(output_,sizeof(output_),used,view.context) &&
             append(output_,sizeof(output_),used,",\"host\":{\"active\":") && hostTuple(output_,sizeof(output_),used,view.host.active) &&
-            append(output_,sizeof(output_),used,",\"active_known\":%s,\"blocked\":%s,\"serial_generation\":%lu,\"actual_baud\":%lu,\"failure\":\"%s\"}}",
-                boolean(view.host.activeKnown),boolean(view.host.blocked),static_cast<unsigned long>(view.host.generation),static_cast<unsigned long>(view.host.actualBaud),hostFailure(view.host.failure));
+            append(output_,sizeof(output_),used,",\"active_known\":%s,\"blocked\":%s,\"serial_generation\":%lu,\"actual_baud\":%lu,\"failure\":\"%s\"}",
+                boolean(view.host.activeKnown),boolean(view.host.blocked),static_cast<unsigned long>(view.host.generation),static_cast<unsigned long>(view.host.actualBaud),hostFailure(view.host.failure)) &&
+            (!view.reason || append(output_,sizeof(output_),used,",\"reason\":\"%s\"",view.reason)) &&
+            append(output_,sizeof(output_),used,"}");
         if(!fits) {error(id,"persistence","output_full");return;}
         emit();return;
     }

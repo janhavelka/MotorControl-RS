@@ -26,6 +26,9 @@ IO_ROUTE_SOURCES = {"grammar": ROOT / "examples/probe_cli/IoQualificationConsole
                     "handler": ROOT / "examples/probe_cli/IoQualificationApp.h"}
 # Wired bench 16: the named position-limits install (D6); console grammar in ProbeConsole.cpp.
 LIMITS_ROUTE_HANDLER = ROOT / "examples/probe_cli/PositionLimitsApp.h"
+# Wired bench 17: stated communication and persistence facts; grammar in ProbeConsole.cpp.
+FACTS_ROUTE_HANDLERS = {"communication-qualification-": ROOT / "examples/probe_cli/CommunicationApp.h",
+                        "persistence-qualification-": ROOT / "examples/probe_cli/PersistenceApp.h"}
 PUBLIC_DECLARATION = re.compile(
     r"^(?:(?:inline|constexpr)\s+)*(?:const\s+)?[A-Za-z_][\w:]*(?:\s*\*)?\s+([A-Za-z_]\w*)\s*\(", re.MULTILINE)
 
@@ -183,6 +186,7 @@ def check_host_routes(routes, keys):
     grammar, handler, api = (ROUTE_SOURCES[name].read_text(encoding="utf-8") for name in ("grammar", "handler", "api"))
     io_grammar, io_handler = (IO_ROUTE_SOURCES[name].read_text(encoding="utf-8") for name in ("grammar", "handler"))
     limits_handler = LIMITS_ROUTE_HANDLER.read_text(encoding="utf-8")
+    facts_handlers = {prefix: path.read_text(encoding="utf-8") for prefix, path in FACTS_ROUTE_HANDLERS.items()}
     produced = set(re.findall(r'"([a-z-]+-qualification-(?:install|revoke)|io-qualification-inspect|motion-profile-start-speed-relation|position-limits)"', console))
     listed = set()
     for route in routes:
@@ -196,12 +200,15 @@ def check_host_routes(routes, keys):
         if route.get("syntax") not in {part.strip() for literal in re.findall(r'"([^"]*)"', console) for part in literal.split("|")}:
             raise ValueError("host route grammar absent from production help: " + str(name))
         symbol = route.get("api", "")
+        facts_prefix = next((prefix for prefix in facts_handlers if name.startswith(prefix)), None)
         route_handler = (io_handler if name.startswith("io-qualification-") else
-                         limits_handler if name == "position-limits" else handler)
+                         limits_handler if name == "position-limits" else
+                         facts_handlers[facts_prefix] if facts_prefix else handler)
         if not re.search(r"\b" + re.escape(symbol) + r"\s*\(", api) or not re.search(r"\b" + re.escape(symbol) + r"\s*\(", route_handler):
             raise ValueError("host route handler does not call its application API: " + str(name))
         for fact in route.get("facts", []):
             found = ('std::strcmp(tokens[i], "' + fact + '")') in io_grammar if name.startswith("io-qualification-") else (
+                '{"' + fact + '", &request.') in console if facts_prefix else (
                 '{"' + fact + '", &QualificationCommand::') in grammar
             if not found:
                 raise ValueError("host route fact absent from the parser: " + str(fact))

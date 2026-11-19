@@ -106,8 +106,10 @@ void preparation() {
     }
     p = prerequisites(r);
     assert(!Ess::prepareCommunication(c, target(), 10, r, p, 10010, 11000)); saved.check(c);
+    // The DIP fact states that SW2-SW5 go OFF before the activation restart (wired bench 17).
     r = request(Ess::CommunicationField::ADDRESS); p = prerequisites(r); p.addressDipOffQualified = false;
-    assert(!Ess::prepareCommunication(c, target(), 10, r, p, 100, 1000)); saved.check(c);
+    const Status dip = Ess::prepareCommunication(c, target(), 10, r, p, 100, 1000);
+    assert(!dip && dip.detail == static_cast<int32_t>(Ess::CommunicationError::DIP_REQUIRED)); saved.check(c);
     for (uint16_t address : {uint16_t(0), uint16_t(248), uint16_t(255), uint16_t(256)}) {
         r.address = address; p = prerequisites(r);
         assert(!Ess::prepareCommunication(c, target(), 10, r, p, 100, 1000)); saved.check(c);

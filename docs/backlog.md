@@ -470,6 +470,22 @@ functional evidence; independent shaft calibration remains absent.
   motor restart control is unavailable; acknowledgement is not durability.
   [Communication](ess_communication.md), [persistence](ess_persistence.md).
   Exhausted confirmation slots require explicit handoff, not automatic scans.
+  Wired bench 17 (19 November): the stated-facts routes, the custom node route
+  back and the native handoff test done; the restart marker and fact withdrawn
+  after the audit (the marker needs prompt 14's JOG setter inside the lease, so
+  restarts are proven host-side); S0 live snapshots PASS on drives 1, 2, 4. Every hardware case (P0,
+  S1, S2, P2-P5, F1, F2, C1, C2, D1, D2, S3) is deferred to the owner's return
+  (D15) with the [run plan](reports/2026-11-19_wired_bench_17_communication_and_persistence.md#owner-return-run-plan).
+  Open: the restricted recommissioning after a factory restore (item 6) is
+  specified, not implemented, so factory restore stays refused before TX;
+  the alternate tuples and the save-before-restart question (C1) wait for the
+  owner.
+- [ ] Wired bench 17 audit remainder: a stated fact expires at begin, not at the
+  first transmitted byte, so a queued write can leave after the 60 s age; and
+  the save gate (RAM image equals the stored image plus the named changes) is
+  harness evidence only, not seen by the firmware. Run the JOG setter inside
+  the persistence lease (typed reads in the lease) to restore the in-app restart
+  fact and `VERIFIED_FIELDS`.
 - [ ] Qualify ESP32-S2 hardware/UART and other SDKs. S2 core and portable
   application builds are compile-only; S3 Arduino/native-IDF functional parity
   does not qualify another adapter. [Platform evidence](archive/reports/ess_release_26_2026-10-05.md).
@@ -576,7 +592,10 @@ more drives (now addresses 1, 2 and 4, star wiring).
   for model `0x4EEA`, firmware `0x0029`). Output mapping: measured on drive 4
   Y0 in wired bench 06 (after inversion, recorded); Y1, input function effects
   and persistence remain. Input functions 2-6 effects are measured on drive 4
-  (wired bench 07 and 11); other functions and persistence remain.
+  (wired bench 07 and 11); other functions and persistence remain. Whether a
+  stored stop or limit assignment acts right after power-up (hardware p9 calls
+  the inputs unspecified and invalid at power-on) is wired bench 17 P4a-P4c,
+  deferred to the owner.
   These physical checks moved from [multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md)
   to the [wired bench set](prompts/ess_wired_bench/README.md) (05, 06, 17).
 - [x] Wire the [bench I/O fixture](bench_io.md): X inputs of drives 1, 2 and 4 in

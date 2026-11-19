@@ -2,7 +2,10 @@
 
 Host serial configuration changes the standalone application's UART settings.
 It does not change ESS registers, save drive parameters or change a selected
-endpoint. The implementation remains application support under
+endpoint. A drive's own tuple changes only through the
+[communication session](ess_communication.md) with stated facts; whether such a
+change needs a save before the power cycle is unresolved (wired bench 17 C1,
+deferred to the owner). The implementation remains application support under
 `examples/common/`, outside the installed `MotorControlRS` core.
 
 The reviewed intersection is four ESS baud rates, **9600, 19200, 38400 and

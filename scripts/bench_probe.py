@@ -45,6 +45,9 @@ COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "h
                       "home-qualification-install", "home-qualification-revoke", "velocity-qualification-install", "velocity-qualification-revoke",
                       "position-clear-qualification", "position-clear-qualification-install", "position-clear-qualification-revoke",
                       "io-qualification-install", "io-qualification-inspect", "io-qualification-revoke",
+                      "communication-qualification-install", "communication-qualification-inspect", "communication-qualification-revoke",
+                      "persistence-qualification-install", "persistence-qualification-inspect", "persistence-qualification-revoke",
+                      "persistence-node",
                       "read-identity", "read-config", "read-state", "velocity-read", "home-read", "monitor", "axis", "prepare", "enable", "motor-release", "alarm-clear", "stop", "position-clear", "position-interrupt", "move-relative", "move-absolute", "move-angle", "velocity", "driver", "io", "segment", "control", "tuning", "home", "discover", "profile-list",
                       "group-show", "group-status", "group-clear", "group-wiring", "group-set", "group-move", "group-stop", "group-read-state",
                       "group-axis", "group-reference", "group-plan-begin", "group-plan-add", "group-plan-show", "group-plan-clear", "group-plan-submit",
@@ -794,6 +797,83 @@ def persistence_arguments(tokens: tuple[str, ...]) -> dict:
         raise ValueError("persistence requires inspect, snapshot, plan/begin save/factory-restore, verify, host before or finish")
     return dict(action=0 if tokens[0] == "plan" else 1, kind=tokens[1], register=45,
                 value=66 if tokens[1] == "save" else 65)
+
+
+# Wired bench 17: stated communication and persistence facts (local, no bus
+# traffic) and the custom node record and restore (0x0013) of a persistence
+# snapshot's lease. The restart marker and restart fact were withdrawn after the
+# audit (the marker needs prompt 14's JOG setter inside the lease).
+COMMISSIONING_ROUTES = {**{"communication-qualification-" + a: "communication qualification " + a
+                           for a in ("install", "inspect", "revoke")},
+                        **{"persistence-qualification-" + a: "persistence qualification " + a
+                           for a in ("install", "inspect", "revoke")},
+                        "persistence-node": "persistence node"}
+COMMUNICATION_FACTS = ("stationary", "effects", "route-back", "dip-off")
+PERSISTENCE_FACTS = ("stationary", "effects", "route-back", "complete-backup")
+FACT_VALIDITIES = ("none", "valid", "expired", "binding_changed", "configuration_changed", "host_changed")
+FACT_REFUSALS = QUALIFICATION_FACT_REFUSALS | frozenset({
+    "invalid_token", "invalid_kind", "invalid_baud", "invalid_format", "invalid_field", "invalid_address",
+    "invalid_arguments", "busy", "invalid", "unavailable", "axis_configuration_unknown", "recommissioning_unavailable"})
+NODE_REQUESTS = ("inspect", "record", "restore")
+NODE_ERRORS = ("none", "readback_mismatch", "readback_failed", "write_rejected", "write_not_transmitted",
+               "write_unknown", "deadline", "readback_admission")
+NODE_REFUSALS = ADMISSION_FAILURES | frozenset({
+    "lease_required", "snapshot_required", "node_record_required", "wrong_target", "record_mismatch",
+    "source_mismatch", "dip_fact_required", "dip_evidence_stale", "dip_not_governing", "word_unchanged",
+    "already_attempted"})
+
+
+def _hex_token(token: str) -> int:
+    if not re.fullmatch(r"[0-9a-fA-F]{1,8}", token) or not int(token, 16):
+        raise ValueError("a token is 1..8 hex digits, nonzero")
+    return int(token, 16)
+
+
+def commissioning_arguments(command: str, tokens: tuple[str, ...]) -> dict:
+    """Exact grammar of the wired bench 17 routes; the firmware names any missing fact."""
+    if command not in COMMISSIONING_ROUTES or not isinstance(tokens, tuple) or any(type(t) is not str for t in tokens):
+        raise ValueError("commissioning route requires a known command and a tuple of strings")
+    def integer(token, low, high):
+        if not token.isascii() or not token.isdigit() or not low <= int(token) <= high:
+            raise ValueError("commissioning value is outside its range")
+        return int(token)
+    if command.endswith(("-inspect", "-revoke")):
+        if tokens:
+            raise ValueError("qualification inspect/revoke take no arguments")
+        return dict(action=command.rsplit("-", 1)[1])
+    if command == "communication-qualification-install":
+        if len(tokens) < 3:
+            raise ValueError("communication qualification install requires FIELD VALUE FACT...")
+        field, raw, facts = tokens[0], tokens[1], tokens[2:]
+        if field == "address":
+            value, register = integer(raw, 1, 247), 0x13
+        elif field == "baud" and raw.isascii() and raw.isdigit() and int(raw) in HOST_BAUDS:
+            value, register = (115200, 38400, 19200, 9600).index(int(raw)), 0x14
+        elif field == "format" and raw in HOST_FORMATS:
+            value, register = HOST_FORMATS.index(raw), 0x15
+        else:
+            raise ValueError("invalid communication field or value")
+        if len(facts) != len(set(facts)) or any(f not in COMMUNICATION_FACTS for f in facts):
+            raise ValueError("communication facts must be distinct names from " + ", ".join(COMMUNICATION_FACTS))
+        return dict(action="install", field=field, value=value, register=register, facts=tuple(facts))
+    if command == "persistence-qualification-install":
+        if not tokens or tokens[0] not in ("save", "factory-restore"):
+            raise ValueError("persistence qualification install requires save or factory-restore")
+        rest = list(tokens[1:])
+        if rest.count("backup") != 1 or rest.index("backup") + 1 >= len(rest):
+            raise ValueError("persistence facts require exactly one backup TOKEN")
+        at = rest.index("backup")
+        token = _hex_token(rest[at + 1])
+        facts = rest[:at] + rest[at + 2:]
+        if len(facts) != len(set(facts)) or any(f not in PERSISTENCE_FACTS for f in facts):
+            raise ValueError("persistence facts must be distinct names from " + ", ".join(PERSISTENCE_FACTS))
+        return dict(action="install", kind=tokens[0], backup_token=token, facts=tuple(facts))
+    if tokens in (("inspect",), ("record",)):
+        return dict(action=tokens[0])
+    if len(tokens) not in (3, 4) or tokens[0] != "restore" or tokens[3:] not in ((), ("dip-observed",)):
+        raise ValueError("persistence node requires inspect, record or restore WORD SOURCE [dip-observed]")
+    return dict(action="restore", value=integer(tokens[1], 0, 255), source=integer(tokens[2], 1, 0xFFFFFFFF),
+                dip_observed=len(tokens) == 4)
 
 
 def host_arguments(arguments: tuple[str, ...]) -> dict:
@@ -2084,6 +2164,60 @@ class Console:
             fmt="8N2" if endpoint["stop_bits"] == 2 else {1:"8N1",2:"8E1",3:"8O1"}[endpoint["parity"]]
             require(host["active"] == dict(baud=endpoint["baud"],format=fmt), "host differs from before tuple")
         self.persistence_invocations=item["invocations"]
+
+    @staticmethod
+    def _check_commissioning(handle: Command, item: dict) -> None:
+        """Wired bench 17 replies: local statements and the custom node route back."""
+        request = commissioning_arguments(handle.command, handle.host_args or ())
+        def require(condition, message):
+            if not condition:
+                raise BenchError(handle.command + ": " + message)
+        def integer(value, low=0, high=0xFFFFFFFFFFFFFFFF):
+            return type(value) is int and low <= value <= high
+        def token(value):
+            return type(value) is str and re.fullmatch(r"[0-9a-f]{8}", value) is not None
+        result, fact = item.get("result"), item.get("fact")
+        if handle.command == "persistence-node":
+            require(result == "done" if item["ok"] else result in NODE_REFUSALS, "invalid disposition")
+            require(item.get("request") == request["action"] and type(item.get("pending")) is bool and
+                    integer(item.get("operation_id"), 0, 0xFFFFFFFF) and item.get("error") in NODE_ERRORS,
+                    "invalid session header")
+            record, restore = item.get("record"), item.get("restore")
+            require(isinstance(record, dict) and isinstance(restore, dict), "missing record or restore state")
+            require(type(record.get("present")) is bool and integer(record.get("word"), 0, 255) and
+                    integer(record.get("source"), 0, 0xFFFFFFFF) and integer(record.get("address"), 0, 247) and
+                    (record["present"] or (not record["source"] and not record["address"])), "invalid record")
+            for key in ("attempted", "readback_known", "ok"):
+                require(type(restore.get(key)) is bool, "invalid restore " + key)
+            require(restore.get("execution") in EXECUTIONS and integer(restore.get("word"), 0, 255) and
+                    integer(restore.get("previous"), 0, 0xFFFF), "invalid restore state")
+            require(not restore["ok"] or (restore["readback_known"] and restore["readback"] == restore["word"] and
+                                          restore["execution"] == "acknowledged"), "restore claimed without its readback")
+            if item["ok"] and request["action"] == "restore":
+                require(restore["attempted"] and restore["word"] == request["value"] and restore["source"] == request["source"],
+                        "accepted restore differs from the request")
+            for name in ("write_evidence", "read_evidence"):
+                require(isinstance(item.get(name), dict), "missing " + name)
+            return
+        if request["action"] in ("install", "revoke") or not item["ok"]:
+            valid = (result == "done" and fact is None) if item["ok"] else \
+                (result in FACT_REFUSALS and (result in QUALIFICATION_FACT_REFUSALS) == (fact is not None))
+            require(valid and "operation_id" not in item, "not an exact local disposition")
+            return
+        require(result == "done" and type(item.get("present")) is bool and item.get("validity") in FACT_VALIDITIES and
+                item.get("bus_traffic") is False, "invalid inspection")
+        require(item["present"] or item["validity"] == "none", "absent statement reported valid")
+        for key in ("target", "generation", "binding_generation", "configuration_generation", "serial_generation",
+                    "installed_us", "now_us", "maximum_age_us"):
+            require(integer(item.get(key)), "invalid " + key)
+        for key in ("stationary", "effects", "route_back"):
+            require(type(item.get(key)) is bool, "invalid " + key)
+        if handle.command.startswith("communication"):
+            require(item.get("field") in ("none", "address", "baud", "format") and type(item.get("dip_off")) is bool and
+                    (item["field"] == "none") == (not item["present"]), "invalid communication statement")
+        else:
+            require(item.get("kind") in ("none", "save", "factory-restore") and token(item.get("backup_token")) and
+                    type(item.get("complete_backup")) is bool, "invalid persistence statement")
 
     def _check_communication(self, handle: Command, item: dict) -> None:
         expected = communication_arguments(handle.host_args)
@@ -3719,6 +3853,8 @@ class Console:
             self._check_communication(handle, item)
         if handle.command == "persistence":
             self._check_persistence(handle, item)
+        if handle.command in COMMISSIONING_ROUTES:
+            self._check_commissioning(handle, item)
         if handle.command == "debug":
             self._check_debug(handle, item)
         if handle.command == "motion-profile":
@@ -4203,6 +4339,9 @@ class Console:
         elif command in IO_QUALIFICATION_ROUTES:
             host_args = () if host_args is None else host_args
             io_qualification_arguments(command, host_args)
+        elif command in COMMISSIONING_ROUTES:
+            host_args = () if host_args is None else host_args
+            commissioning_arguments(command, host_args)
         elif command == "wiring":
             host_args = () if host_args is None else host_args
             wiring_arguments(host_args)
@@ -4343,6 +4482,7 @@ class Console:
             if command == "motion-profile-stage": wire_command = "motion-profile stage"
             if command in QUALIFICATION_ROUTES: wire_command = QUALIFICATION_ROUTES[command]
             if command in IO_QUALIFICATION_ROUTES: wire_command = IO_QUALIFICATION_ROUTES[command]
+            if command in COMMISSIONING_ROUTES: wire_command = COMMISSIONING_ROUTES[command]
             if command == "position-clear-qualification": wire_command = "position-clear qualification"
             if command == "home-auxiliary": wire_command = "home auxiliary"
             if command in PARAMETER_WRITE_COMMANDS: wire_command = PARAMETER_WRITE_COMMANDS[command]

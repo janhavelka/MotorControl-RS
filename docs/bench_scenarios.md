@@ -665,3 +665,23 @@ profile stage`) and, for A5, the JOG words; the host limits are dropped with
 | F3, F4, R1, R3, N1 | NOT RUN with their reasons |
 
 Results: [wired bench 16](reports/2026-11-19_wired_bench_16_alarms_and_failures.md).
+
+## Communication changes and persistence (wired bench 17)
+
+`--scenario comm-persistence --cases ID... --image-level 17 [--drives 1 2 4]`
+(`scripts/bench_persistence.py`). S0 is read-only: per drive the 61 baseline
+reads, the field table (register, ledger storage class, live value, stored
+value once S1 read it, restore route, readback), its SHA-256 and the
+`backup TOKEN` (first 32 bits), the readable ledger words no read covers, and
+the difference against the committed baseline (`s0_drive_A.json`). Every other
+case (P0, S1, S2, P2-P5, F1, F2, C1, C2, D1, D2, S3) needs the owner and is
+recorded NOT RUN `deferred: owner away` with no traffic. The module also holds
+the owner-return helpers: `differences` (live minus stored), `save_gate` (the
+RAM image must equal the stored image plus only the named changes),
+`factory_gate` (fields without a route), `address_problem` (0, 3, 6, 16, 131,
+134, 144 and addresses in use refused), `witness_plan`/`witness_verdict` (the
+host-side restart witness through prompt 14's JOG setter after `persistence
+finish`) and
+`factory_guard` (a second factory command in one run log is refused).
+
+Results: [wired bench 17](reports/2026-11-19_wired_bench_17_communication_and_persistence.md).
