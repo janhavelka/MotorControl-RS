@@ -411,11 +411,11 @@ Missing facts leave the operation refused with `qualification_required`.
 | `home qualification install METHOD SEARCH RETURN RAMP` | `mechanics` | Method trajectory, direction and travel suit this installation |
 | | `rates`, `ramp` | The exact native search/return and ramp words |
 | | `zero-offset` | Zero offset is the intended reference offset |
-| | `auxiliary` | Stored auxiliary 7 is the active policy, or auxiliary 6 with `offset` |
+| | `auxiliary` | The stored auxiliary choice is the active policy: 7, or 6 with `offset`, for method 35; any of 0-11 for a moving method (wired bench 12) |
 | | `inputs` | Terminal assignments and levels suit this method |
 | | `index` | Internal Z is usable; required only by methods 1-14, 33, 34, refused elsewhere |
 | | `reference` | Optional: homing zero maps to command coordinates. Without it no reference is published |
-| | `offset` | Optional, method 35 only (else `fact_not_applicable`): the measured offset encoding and auxiliary 6 end coordinate hold for this drive (wired bench 10). Needs `read config` with a known word order. Without it a nonzero offset is `unresolved` |
+| | `offset` | Optional: the measured offset encoding and the stored choice's end coordinate hold for this drive (wired bench 10; every implemented method since wired bench 12). Needs `read config` with a known word order. Without it a nonzero offset is `unresolved` |
 | `velocity qualification install` | `rpm`, `ramp`, `inputs` | Native signed rpm, the stored ramp words, serial inputs permit motion |
 | | `negative` | Optional: two's-complement negative speed. Without it negative speeds are refused |
 | `position-clear qualification install` | `clear-semantics` | The zero-only clear's effect is understood for this axis |
@@ -694,15 +694,24 @@ driver experiment pair FIRST W0 W1 | pair FIRST restore SNAPSHOT_ID | inspect
   `negative_limit`, with `signed_limits` `measured_order_0` and `native_scale`
   `position_increments` when decoded (order 0), otherwise `unresolved`.
 - `home ... OFFSET` is a signed decimal native offset, nonzero, within
-  ±`0x0FFFFFFF`; zero is stated as `zero`. The application admits a nonzero
-  offset only with method 35, stored auxiliary 6, the `offset` qualification
-  fact and `0x0019` known 0, otherwise `unresolved`
-  ([nonzero home offset](ess_homing.md#nonzero-home-offset)). The home result
-  adds `offset`, `expected_position`, `end_known`, `end_position` and
-  `prerequisites.offset_qualified`/`offset_order`. `home methods` reports
-  `offset` `zero_or_method_35_auxiliary_6` and `auxiliary` `[7,6]`.
+  ±`0x0FFFFFFF`; zero is stated as `zero`. A nonzero offset needs the `offset`
+  qualification fact and `0x0019` known 0, otherwise `unresolved`. Method 35
+  admits it with stored auxiliary 6 only; since wired bench 12 a moving method
+  admits every stored auxiliary choice 0-11 (zero or stated offset)
+  ([nonzero home offset](ess_homing.md#nonzero-home-offset),
+  [auxiliary with switch methods](ess_homing.md#auxiliary-choices-and-offsets-with-moving-methods)).
+  The home result adds `offset`, `expected_position`, `expected_known` (false
+  for auxiliary 3-5 and 9-11: the observed end coordinate is published),
+  `end_known`, `end_position` and `prerequisites.offset_qualified`/`offset_order`.
+  `home methods` reports `offset` `zero_or_measured_encoding`, `auxiliary`
+  `[0..11]` and `auxiliary_method_35` `[7,6]`.
+- `home qualification install` accepts the `offset` fact for every implemented
+  method (wired bench 12) and `soft-limits` for every implemented method; the
+  application keeps `soft-limits` for the enable route only from method 35 or a
+  moving method with stored auxiliary 7.
 - `caps` reports `limit_pair_writes` true, `limit_pair_word_order` 0 and
-  `home_offset` `method_35_auxiliary_6_order_0`; `segment_pulse_writes` stays false.
+  `home_offset` `order_0_method_35_auxiliary_6_moving_any_auxiliary`;
+  `segment_pulse_writes` stays false.
 - `driver experiment` (command `driver-experiment`) exists for the stored PT
   target experiment windows on an image built with
   `MOTORCONTROLRS_WB10_EXPERIMENT` only
@@ -741,8 +750,8 @@ driver set soft-limit 1|0 [address]
   Velocity results add the same object; details `LIMIT_INPUT` (28) and
   `SOFT_LIMIT` (29), with the timed stop still sent once. The witness mask holds
   only limit terminals declared connected.
-- `caps` adds `soft_limit_enable` `home_35_soft_limits_fact` and
-  `limit_input_starts` `refused`.
+- `caps` adds `soft_limit_enable` `home_35_or_switch_auxiliary_7_soft_limits_fact`
+  (wired bench 12; `home_35_soft_limits_fact` before) and `limit_input_starts` `refused`.
 
 ## Verification and qualification
 

@@ -4,6 +4,19 @@
 
 ### Added
 
+- Switch homing with host-driven switches (wired bench 12). Moving home methods
+  admit every stored auxiliary choice 0-11 with a zero or a stated offset
+  (`offset` fact); `homeEndRule` gives the end coordinate (offset, zero,
+  -offset, or the observed coordinate for 3-5 and 9-11, published as such) and
+  the home result adds `expected_known`. Method 35 keeps 7 and 6. The
+  `soft-limits` fact also applies to a moving method with auxiliary 7, so the
+  enable route accepts a switch home's zero reference. Harness: the virtual
+  switch `scripts/bench_switch.py` (window mode, bracketed bound, preflight,
+  live budget, travel guard, hold renewal) and the `switch` scenario; the
+  interlock gains the `origin` effect, a home member's pre-start io bound up to
+  the home deadline (`HOME_NAMED_IO_MAX_AGE_MS`) and `bench_renew`. A switch trial
+  starts only with evidence headroom and stops a drive still moving after the
+  home terminal (wired bench 12 deviations 1 and 2).
 - Limit inputs and soft limits (wired bench 11). Move and velocity observers
   report `LIMIT_INPUT` (26, 28) for a stop with an assigned limit input reported
   active (connected terminals, 0x0008 read) and `SOFT_LIMIT` (27, 29) for

@@ -104,7 +104,28 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
-On 19 November [wired bench 11](reports/2026-11-19_wired_bench_11_limits.md)
+On 19 November [wired bench 12](reports/2026-11-19_wired_bench_12_switch_homing.md)
+flashed Arduino `bench_s3_load_timer` image F,
+`A844990952F3F68A83B0B64038F8BAF55DC90C00C9D5A966FFBC003ACF06E362`, built from
+`93f8f36` plus the uncommitted prompt 12 tree (firmware-source diff
+`18129F07841EE298FA53DC7AFC83F198087107322129BE6275E72DAF232F0F5E`), after
+`baseline-compare` (573/573 equal) and a passing `before_flash_check`, four
+regions hash-verified. The native ESP-IDF 5.5.5 image of the same tree
+(`AE9325CDDD8E2968CA7D0978888D0839DF82A7B678F2CE2BFDDA8396B2BD7613`) was built,
+not flashed. The switch-homing runs moved drives 1, 2 and 4 with emulated
+switches on X0-X2; one run's evidence cap left a drive 1 search running until a
+later prepared stop (report deviation 1). Ending state:
+
+- **Board:** image F, outputs off, COM13 closed, drive 1 selected.
+- **Drives 1/2/4:** enabled, stopped, alarm-free. I/O `[0,1,2,3,0,0,0,0,0]`,
+  `0x0017` = 0, `0x0018` = 0, limits [0,0], homing words 24/120/60/100/0/0,
+  auxiliary 0. Positions: drive 1 [0, 19167], drive 2 [0, 1435], drive 4 [65535, 65136] (-400); drives 2 and 4 homed, drive 1 not (its last homes were H6, H7, L8).
+- **Settings:** `baseline-compare`: 573 of 573 fields equal, 0 unknown
+  (`build/bench/2026-11-19_wb12_final_baseline_compare/`). RAM only, nothing saved.
+- **Owner action:** none needed for prompt 12; the collision methods wait for a
+  mechanical stop (README deferred table).
+
+Earlier on 19 November [wired bench 11](reports/2026-11-19_wired_bench_11_limits.md)
 ran the L cases on production image B (above), then flashed three Arduino
 `bench_s3_load_timer` images built from `58038c5` plus the uncommitted prompt 11
 tree, each after `baseline-compare` (573/573 equal) and a passing

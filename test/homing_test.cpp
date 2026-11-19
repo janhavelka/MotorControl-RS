@@ -877,7 +877,7 @@ template<size_t N> void testSwitchAdmission(const SwitchCase (&cases)[N]) {
             case 21: p.qualifiedUs = 0; p.qualificationMaximumAgeUs = 100; break;
             case 22: p.observedUs = 101; break;
             case 23: p.inputFunctions[0] = source.functions[0] == 2 ? 3 : 2; break;
-            case 24: p.auxiliary = Ess::HomingAuxiliary::MOVE_OFFSET_SET_ZERO; break;
+            case 24: p.auxiliary = static_cast<Ess::HomingAuxiliary>(12); break; // Choices 0-11 are admitted (wired bench 12).
             case 25: p.auxiliaryQualified = false; break;
             case 26: p.zeroOffsetQualified = false; break;
             case 27: p.nativeRatesQualified = false; break;
@@ -1346,7 +1346,8 @@ static void testNonzeroOffset() {
         {Aux::KEEP_POSITION_SET_OFFSET, false, 500, Ess::HomingMethod::METHOD_35, Ess::HomeError::UNRESOLVED_OFFSET, Err::UNSUPPORTED},
         {Aux::KEEP_POSITION_SET_OFFSET, true, 0x10000000, Ess::HomingMethod::METHOD_35, Ess::HomeError::UNRESOLVED_OFFSET, Err::UNSUPPORTED},
         {Aux::KEEP_POSITION_SET_OFFSET, true, -0x10000000, Ess::HomingMethod::METHOD_35, Ess::HomeError::UNRESOLVED_OFFSET, Err::UNSUPPORTED},
-        {Aux::KEEP_POSITION_SET_OFFSET, true, 500, Ess::HomingMethod::METHOD_33, Ess::HomeError::AUXILIARY_REQUIRED, Err::INVALID_CONFIG},
+        {static_cast<Aux>(12), true, 500, Ess::HomingMethod::METHOD_33, Ess::HomeError::AUXILIARY_REQUIRED, Err::INVALID_CONFIG},
+        {Aux::KEEP_POSITION_KEEP_ACTUAL, false, 500, Ess::HomingMethod::METHOD_33, Ess::HomeError::UNRESOLVED_OFFSET, Err::UNSUPPORTED},
         {Aux::MOVE_OFFSET_KEEP_ACTUAL, true, 500, Ess::HomingMethod::METHOD_35, Ess::HomeError::AUXILIARY_REQUIRED, Err::INVALID_CONFIG},
         {Aux::MOVE_OFFSET_SET_OFFSET, true, 500, Ess::HomingMethod::METHOD_35, Ess::HomeError::AUXILIARY_REQUIRED, Err::INVALID_CONFIG},
         {Aux::KEEP_POSITION_KEEP_ACTUAL, true, 500, Ess::HomingMethod::METHOD_35, Ess::HomeError::AUXILIARY_REQUIRED, Err::INVALID_CONFIG},
@@ -1363,6 +1364,69 @@ static void testNonzeroOffset() {
     assert(!Ess::prepareHome(c, axis(), 12, r, p, 100, 10000, options())); saved.check(c);
     p.auxiliaryQualified = false; p.offsetOrder = Order::HIGH_WORD_FIRST;
     assert(Ess::checkHomeQualification(p, 100).detail == static_cast<int32_t>(Ess::HomeError::AUXILIARY_REQUIRED));
+}
+// Wired bench 12: a moving method admits every auxiliary choice 0-11 with a
+// zero or a qualified nonzero offset. 0/6 expect the offset, 1/7 zero, 2/8 the
+// negated offset; 3-5 and 9-11 publish the observed coordinate. A wrong stored
+// order, an unqualified offset or a mismatching end coordinate fails without a
+// reference and without changing the caller's context on refusal.
+static void testAuxiliaryChoicesWithMovingMethods() {
+    using Aux = Ess::HomingAuxiliary;
+    using Order = Ess::WordOrder;
+    const auto method = Ess::HomingMethod::METHOD_33;
+    for (uint16_t choice = 0; choice <= 11; ++choice) {
+        assert(Ess::homeEndRule(static_cast<Aux>(choice)) == static_cast<Ess::HomeEndRule>(
+            choice % 6 == 0 ? 0 : choice % 6 == 1 ? 1 : choice % 6 == 2 ? 2 : 3));
+        for (int64_t offset : {int64_t(0), int64_t(2000), int64_t(-2000)}) {
+            auto p = prerequisites(method); p.auxiliary = static_cast<Aux>(choice);
+            p.offsetQualified = offset != 0; p.offsetOrder = Order::HIGH_WORD_FIRST;
+            auto r = request(method); r.offset = offset;
+            Ess::HomeContext c; assert(Ess::prepareHome(c, axis(), 12, r, p, 100, 10000, options()));
+            const auto rule = Ess::homeEndRule(p.auxiliary);
+            const int32_t expected = rule == Ess::HomeEndRule::OFFSET ? int32_t(offset) :
+                rule == Ess::HomeEndRule::NEGATIVE_OFFSET ? int32_t(-offset) : 0;
+            assert(c.expectedKnown == (rule != Ess::HomeEndRule::OBSERVED) && c.expectedPosition == expected);
+            const uint32_t staged = static_cast<uint32_t>(static_cast<int32_t>(offset));
+            assert(c.words[4] == uint16_t(staged >> 16) && c.words[5] == uint16_t(staged & 0xFFFF));
+            // Observed choices publish whatever the drive reports; the others need the exact coordinate.
+            const int32_t reported = rule == Ess::HomeEndRule::OBSERVED ? 4321 : expected;
+            const uint32_t bits = static_cast<uint32_t>(reported);
+            trigger(c); consume(c, 4); consume(c, 0); consume(c, 2); assert(c.phase == Ess::HomePhase::ZERO_CHECK);
+            const auto b = positionReply(uint16_t(bits >> 16), uint16_t(bits & 0xFFFF)); const auto at = c.eligibleUs + 20;
+            assert(Ess::advanceHome(c, frame(c, b, at), at + 20));
+            assert(c.outcome == ActionOutcome::OBSERVED && c.endKnown && c.endPosition == reported);
+            AxisReference reference;
+            assert(Ess::getHomeReference(c, c.servicedUs, 0, reference) && reference.nativePosition == reported);
+            if (rule == Ess::HomeEndRule::OBSERVED) continue;
+            // One increment off fails without a reference.
+            Ess::HomeContext wrong; assert(Ess::prepareHome(wrong, axis(), 12, r, p, 100, 10000, options()));
+            trigger(wrong); consume(wrong, 4); consume(wrong, 0); consume(wrong, 2);
+            const uint32_t off = static_cast<uint32_t>(reported + 1);
+            const auto w = positionReply(uint16_t(off >> 16), uint16_t(off & 0xFFFF)); const auto when = wrong.eligibleUs + 20;
+            assert(Ess::advanceHome(wrong, frame(wrong, w, when), when + 20));
+            assert(wrong.outcome == ActionOutcome::REPLY_ERROR && wrong.status.detail == static_cast<int32_t>(Ess::HomeError::ZERO_NOT_OBSERVED));
+            assert(!Ess::getHomeReference(wrong, wrong.servicedUs, 0, reference));
+        }
+    }
+    // Refusals leave the context unchanged: nonzero offset without the encoding,
+    // no zero-offset or offset fact, an invalid word order for a decoding choice,
+    // and method 35 with any choice but 7 and 6.
+    auto c = home();
+    struct Refusal { Aux auxiliary; bool zeroFact, offsetFact; int64_t value; Order order; Ess::HomingMethod method; };
+    const Refusal refusals[] = {
+        {Aux::KEEP_POSITION_KEEP_ACTUAL, true, false, 2000, Order::HIGH_WORD_FIRST, method},
+        {Aux::KEEP_POSITION_SET_ZERO, false, false, 0, Order::HIGH_WORD_FIRST, method},
+        {Aux::KEEP_POSITION_KEEP_ACTUAL, true, false, 0, static_cast<Order>(2), method},
+        {Aux::MOVE_OFFSET_SET_ZERO, true, true, 0, Order::HIGH_WORD_FIRST, Ess::HomingMethod::METHOD_35},
+        {Aux::KEEP_POSITION_KEEP_ACTUAL, true, true, 500, Order::HIGH_WORD_FIRST, Ess::HomingMethod::METHOD_35},
+    };
+    for (const auto& k : refusals) {
+        auto p = prerequisites(k.method); p.auxiliary = k.auxiliary; p.zeroOffsetQualified = k.zeroFact;
+        p.offsetQualified = k.offsetFact; p.offsetOrder = k.order;
+        auto r = request(k.method); r.offset = k.value;
+        const Saved<Ess::HomeContext> saved(c);
+        assert(!Ess::prepareHome(c, axis(), 12, r, p, 100, 10000, options())); saved.check(c);
+    }
 }
 // Wired bench 11: bits 5/6 are soft-limit flags, not alarms, but a home keeps
 // them as faults. The application admits a home only with soft limits known
@@ -1388,6 +1452,7 @@ static void testSoftLimitFlagsStayHomeFaults() {
     }
 }
 int main() {
+    testAuxiliaryChoicesWithMovingMethods();
     testSoftLimitFlagsStayHomeFaults();
     testWriteClosureBoundaries();
     testNonzeroOffset();

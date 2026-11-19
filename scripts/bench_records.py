@@ -62,7 +62,13 @@ UNCONNECTED = 1
 MAX_AGE_MS = 1000
 # Intended effects a named running member may receive (truth table row L3).
 EFFECTS = {"limit": (2, 3), "release": (4,), "stop": (5, 6), "fixed-length": (7,),
-           "selection": (14, 15, 16, 17)}
+           "selection": (14, 15, 16, 17), "origin": (1,)}
+# Wired bench 12: a home is one reserved operation for up to its 30 s
+# observation deadline, so a named home member may state a pre-start io read
+# bound up to that deadline (plus 1 s) instead of the 10 s move bound. The
+# member's pending console operation must be a `home`; the reservation refuses
+# every settings write to the axis meanwhile, as for row L3.
+HOME_NAMED_IO_MAX_AGE_MS = 31000
 # Wired bench 09 (D13): a named *start member* is the stationary drive of the
 # case that a deliberate unarmed pulse may start through its own function 7
 # (row M, as the firmware trigger's armed member). It must read stopped and
@@ -312,6 +318,15 @@ def named_io_problem(named: dict) -> str | None:
     return None
 
 
+def named_io_bound(named: dict | None) -> int:
+    """Age bound of a named member's pre-start io read: NAMED_IO_MAX_AGE_MS, or a
+    stated ``io_age_bound_ms`` up to HOME_NAMED_IO_MAX_AGE_MS (a home member)."""
+    bound = (named or {}).get("io_age_bound_ms")
+    if type(bound) is int and NAMED_IO_MAX_AGE_MS < bound <= HOME_NAMED_IO_MAX_AGE_MS:
+        return bound
+    return NAMED_IO_MAX_AGE_MS
+
+
 def participant_facts(address: int, reads: dict, now_us: int | None, extra_ms: float = 0.0,
                       named: dict | None = None) -> dict:
     """Decision inputs of one participant from its io read and read state.
@@ -332,7 +347,7 @@ def participant_facts(address: int, reads: dict, now_us: int | None, extra_ms: f
         read = named["io_read"]
         reads = dict(reads, io={"ok": True, "operation_id": read["operation_id"], "started_us": read["started_us"],
                                 "observation": {"raw": list(read["raw"]), "unknown_input_polarity_bits": 0}})
-        facts["age_bounds_ms"] = {"io": NAMED_IO_MAX_AGE_MS}
+        facts["age_bounds_ms"] = {"io": named_io_bound(named)}
         facts["io_source"] = "pre-start io read %s" % read["operation_id"]
     missing = [name for name in INTERLOCK_READS if reads.get(name) is None]
     if missing:
@@ -458,8 +473,11 @@ def _named_mismatch(named: dict, output: str, terminal: str, function: int, pola
         return None
     console_id = named.get("console_operation_id", named.get("operation_id"))
     console_address = named.get("console_address", named.get("address"))
-    if not any(p.get("operation_id") == console_id and p.get("address") == console_address for p in pending):
+    mine = [p for p in pending if p.get("operation_id") == console_id and p.get("address") == console_address]
+    if not mine:
         return "named operation %s is not the pending operation" % console_id
+    if named_io_bound(named) > NAMED_IO_MAX_AGE_MS and mine[0].get("command") != "home":
+        return "an io read bound over %d ms needs a pending home" % NAMED_IO_MAX_AGE_MS
     return None
 
 
@@ -730,7 +748,8 @@ def interlock_ordering(participants, reads: dict, sent: list, drv: dict, named: 
 
 
 def bench_on(console, output: str, hold_ms: int, record: dict, *, timeout_s=5.0) -> dict:
-    """The only harness function that sends ``bench on``; the interlock runs first.
+    """The only harness function that turns an output ON; the interlock runs first.
+    (``bench_renew`` sends ``bench on`` only to renew an output already on.)
 
     A refusal sends no ON, records the entry in ``record['interlock']`` and
     raises ``InterlockRefused``. After an ON the reply's ``on_us`` gives the
@@ -758,10 +777,33 @@ def bench_on(console, output: str, hold_ms: int, record: dict, *, timeout_s=5.0)
         if type(view.get("started_us")) is int:
             ages.setdefault(address, {})["io (pre-start)"] = round((on_us - view["started_us"]) / 1000.0, 3)
     entry["age_at_on_ms"] = ages
-    if any(age > (NAMED_IO_MAX_AGE_MS if name in ("io (pre-start)", "io (session)") else entry["max_age_ms"])
-           for reads in ages.values() for name, age in reads.items()):
+    members = {m.get("address"): m for m in record.get("running_members", []) if m.get("output") == output}
+
+    def bound(address, name):
+        if name == "io (pre-start)":
+            return named_io_bound(members.get(address))
+        return NAMED_IO_MAX_AGE_MS if name == "io (session)" else entry["max_age_ms"]
+    if any(age > bound(address, name) for address, reads in ages.items() for name, age in reads.items()):
         entry["off_after_age"] = _bench_view(console.command("bench", host_args=("off",), timeout_s=timeout_s))
         raise BenchError("an interlock read was older than %s ms at the ON; all outputs switched off" % entry["max_age_ms"])
+    return reply
+
+
+def bench_renew(console, output: str, hold_ms: int, on_us: int, *, timeout_s=5.0) -> dict:
+    """Renew the hold of an output that is already on (wired bench 12). Not an ON:
+    the firmware keeps ``on_us`` and moves the due time. If the reply shows another
+    ``on_us`` the hold had lapsed and the renewal made a new ON without the
+    interlock: every output goes off at once and the renewal fails."""
+    if type(hold_ms) is not int or not 1 <= hold_ms <= probe.BENCH_MAX_HOLD_MS:
+        raise ValueError("hold must be 1..60000 ms")
+    reply = console.command("bench", host_args=("on", output, str(hold_ms)), timeout_s=timeout_s)
+    view = _bench_view(reply)
+    if not reply.get("ok"):
+        raise BenchError("bench renewal of %s failed: %s" % (output, reply.get("result")))
+    if view["outputs"][output]["on_us"] != on_us:
+        console.command("bench", host_args=("off",), timeout_s=timeout_s)
+        raise BenchError("hold of %s lapsed before its renewal (on_us %s, expected %s); all outputs switched off"
+                         % (output, view["outputs"][output]["on_us"], on_us))
     return reply
 
 

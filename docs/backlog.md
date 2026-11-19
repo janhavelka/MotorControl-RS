@@ -124,6 +124,9 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
 - [ ] Resolve method 18's conflicting signal captions and collision methods
   -4..-1's missing trajectory/encoding. The 30 implemented methods keep their
   qualification guards. See [method dispositions](ess_homing_methods.md).
+  [Wired bench 12](reports/2026-11-19_wired_bench_12_switch_homing.md) did not run method 18 (H11): its exact-target experiment
+  record for an unresolved descriptor was not built. Collision methods need a
+  mechanical stop (owner, deferred) and the vendor's negative encoding.
 - [ ] Resolve shared-start 1: firmware `0x0029` acknowledges writes to `0x0130`
   with a source-confirmed echo and keeps reading 0 (1, 10, 60 and 180 on
   16 November). Records 2 and 16 store their values. Ask the vendor; keep the
@@ -326,15 +329,19 @@ functional evidence; independent shaft calibration remains absent.
   power cycle) and group members 1, 2: a limit stops motion toward it, motion
   away runs on, `0x0017` 0 decelerates and 1 stops directly, no flag, alarm or
   recovery. Starts are refused while a limit reads active (both directions).
-  Open: a limit asserted during a home search (L8) and limit-based homing (12),
-  drive-decided away starts (L5b).
+  Open: drive-decided away starts (L5b). [Wired bench 12](reports/2026-11-19_wired_bench_12_switch_homing.md) ran every branch
+  of the switch methods 1-14, 17 and 19-30 on drive 1 with host-driven switches
+  (emulated edges with a bounded position error; no real sensor) and L8. Open
+  from it: the dead-man stop (D0) and the home start input (H10) were not run;
+  physical switch qualification stays open.
 - [ ] Qualify position start-speed scaling, activation timing and persistence.
   Write/readback, restoration and the relation latch passed on 2 November.
-- [ ] Qualify the homing behavior of auxiliary choices other than 0, 6 and 7
+- [x] Qualify the homing behavior of auxiliary choices other than 0, 6 and 7
   (prompt 12). All twelve choices are written and read back on drives 1, 2 and 4
-  ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md)); 0 and
-  7 have run a home. Wired bench 10 admitted 6 with method 35 (end coordinate =
-  offset) and ran 3 once (E2: the coordinate kept start plus offset; refused).
+  ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md)).
+  Wired bench 10 admitted 6 with method 35. [Wired bench 12](reports/2026-11-19_wired_bench_12_switch_homing.md) admits 0-11 with
+  moving methods and ran method 20 with every choice at offset 0 and ±2000 on
+  drive 1; the measured coordinate per choice is in its report (H8, H9).
 - [x] Record separate hardware evidence for velocity and position-clear
   qualification routes: finite +60 rpm velocity with both stop endings and the
   qualified zero clear on drives 1, 2 and 4 ([HIL regression](reports/2026-11-16_hil_regression.md)).

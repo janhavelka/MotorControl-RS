@@ -491,3 +491,26 @@ route, moves, the endpoint refusal, position clear and recovery, disable); S4
 runs ±60 rpm into the bound limits at the run's `0x0017`. Every flow restores
 `0x0018` first, then the pairs and auxiliary; the run's plan restores the
 homing, velocity and profile words from their pinned reads.
+
+## Switch homing with host-driven switches (wired bench 12)
+
+`--scenario switch --cases ID... --image-level 12 --address A --search H
+--return-speed L --budget-gap-ms G --budget-decision-ms D` (`scripts/bench_switch.py`;
+optional `--methods`, `--branches`, `--auxiliary` (default 9), `--choices`,
+`--repetitions`). Use `--evidence-mib 64 --evidence-records 200000` for long
+series: a trial needs 4 MiB and 6000 records of evidence left or the run stops
+before the next home. Each trial reads the start, lays out the origin window
+(X0, `mosfet1`) and the method's limit (X1 `relay2` or X2 `relay1`) relative to
+it, refuses a layout over the budget before the trigger, then runs `home M H L
+100 zero|OFFSET` while a `read state` loop switches the outputs: `bench off` for
+a deassertion, the D14 interlock with the drive as a named member (effect
+`origin` or `limit`) for an assertion. Every emulated edge records its bound
+`dx`; a gap over G, a decision over D, a speed over 1.25 x H, a window crossed
+unseen, the travel guard (12,000 increments) or a drive still moving after the
+home's terminal (its 30 s observation deadline ends observation only) takes `stop fast`. H0 measures
+the budget; H1-H5 run every branch of methods 1-14, 17 and 19-30; H6 has no
+origin (guard); H7 stops mid-search; H8/H9 run method 20 with auxiliary 0-11
+and offsets; L8 asserts an unused limit during a search; H12 (drive 4) times Y0
+= 3 against HOMED; H13 (drive 4) binds the soft limits after a switch home. The
+run's plan restores the auxiliary, the homing words (`home restore` of the
+first read) and the case writes.

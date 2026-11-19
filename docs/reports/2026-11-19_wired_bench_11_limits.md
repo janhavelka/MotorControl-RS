@@ -275,4 +275,5 @@ catalogue, operation inventory (`driver_settings_update`,
 ## Commits and CI
 
 The lead owns Git and CI; nothing was committed, pushed or dispatched by this
-session.
+session. The lead committed the work as `93f8f36`; CI run 44514805815 on that
+exact commit passed all four jobs (native gcc, native clang, Arduino, ESP-IDF).

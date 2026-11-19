@@ -53,16 +53,20 @@ Probe::QualificationReply installHomeFacts(const App& a, const Probe::Qualificat
     if (const char* read = homeFirstRead(a, now)) return needRead(read);
     const auto& parameters = a.homingParameters;
     // homeReadiness refuses these; name them, because no read will change them.
-    // Auxiliary 7 always; 6 with the offset fact (wired bench 10, method 35).
+    // Method 35: auxiliary 7, or 6 with the offset fact (wired bench 10).
+    // Moving methods: any stored choice 0-11 (wired bench 12).
     // A stored nonzero offset needs the offset fact: each home then states the
     // offset it stages (zero included) instead of silently erasing it.
     const auto stored = static_cast<ESS::HomingAuxiliary>(parameters.rawAuxiliary);
-    if (stored != ESS::HomingAuxiliary::KEEP_POSITION_SET_ZERO &&
-        !(stored == ESS::HomingAuxiliary::KEEP_POSITION_SET_OFFSET && c.offset))
+    const auto* method = ESS::homeMethod(c.home.method);
+    const bool moving = method && method->moves;
+    if (parameters.rawAuxiliary > 11 || (!moving && stored != ESS::HomingAuxiliary::KEEP_POSITION_SET_ZERO &&
+        !(stored == ESS::HomingAuxiliary::KEEP_POSITION_SET_OFFSET && c.offset)))
         return refusal(Probe::Action::UNAVAILABLE, "stored_auxiliary_differs");
     if ((parameters.rawOffsetWords[0] || parameters.rawOffsetWords[1]) && !c.offset)
         return refusal(Probe::Action::UNAVAILABLE, "stated_offset_required");
-    if (c.offset && !a.configuration.wordOrderKnown) return needRead("read config");
+    if ((c.offset || stored != ESS::HomingAuxiliary::KEEP_POSITION_SET_ZERO) && !a.configuration.wordOrderKnown)
+        return needRead("read config");
     const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
     if (motion.value.rawAlarm || (motion.value.rawMotion & 0x7C))
         return refusal(Probe::Action::UNAVAILABLE, "drive_not_ready", "read state");

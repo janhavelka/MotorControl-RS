@@ -91,9 +91,13 @@ and handed to prompt 12.
 Wired bench 11: a home also needs the soft limits known disabled (`0x0018` read
 0 in a current configuration read); while bound or unknown it refuses before TX
 (`soft_limits_enabled`, `soft_limit_state_unknown`). Bits 5/6 stay home faults.
-Method 35 may carry the `soft-limits` fact (with `reference`) for the enable
-route. A hardware limit asserted during a search (L8) was not run; limit-based
-homing belongs to prompt 12.
+Method 35, or a moving method with auxiliary 7 (wired bench 12), may carry the
+`soft-limits` fact (with `reference`) for the enable route. Wired bench 12 L8
+(drive 1): X1 = 2 asserted during a method 20 search toward it stopped the drive
+(140 increments past the emulated threshold); the home ended `cancelled`
+(`QUALIFICATION_REVOKED`, the fresh read showed the unused limit) with no
+reference. Limit-based homing (1, 2, 17 and the limit-assisted families) ran in
+the same prompt with emulated switches.
 
 ## Origin-reference methods
 
@@ -310,8 +314,9 @@ Old HOMED-high, a missed transition, start echo or interrupted search cannot
 establish a new reference. Retained low/activity/completion evidence records
 the relevant observations. A subsequent checked current-position pair must
 equal the expected end coordinate before completion is published: two zero
-words with auxiliary 7, the offset decoded in `offsetOrder` with auxiliary 6;
-otherwise the home fails `ZERO_NOT_OBSERVED`. `rawPositionWords` publishes
+words for auxiliary 1 and 7, the offset (0, 6) or its negation (2, 8) decoded
+in `offsetOrder`, and any decodable pair for 3-5 and 9-11, which is published as
+observed (`homeEndRule`, wired bench 12); otherwise the home fails `ZERO_NOT_OBSERVED`. `rawPositionWords` publishes
 only a qualified, confirmed, on-time zero-check frame; `zeroEvidence` retains any other.
 
 From a homed state the drive clears HOMED for about 13 ms only (wired bench 06
@@ -340,8 +345,8 @@ its nonmoving current-position procedure and cannot establish the reference.
 
 `getHomeReference` additionally requires caller-qualified correspondence
 between homing zero, feedback zero and actual command coordinates. It returns
-an `AxisReference` at the reported end coordinate (zero with auxiliary 7, the
-offset with auxiliary 6), bound to the admitted target/configuration and
+an `AxisReference` at the reported end coordinate (zero for the `ZERO` rule,
+otherwise the decoded end pair), bound to the admitted target/configuration and
 aged from the completing status request's eligibility, rather than response
 delivery or the later zero read. Errors leave its output unchanged. It changes
 neither host origin nor generation. Explicit device-position clear and host
@@ -388,11 +393,12 @@ offset) at `0x0019` = 0.
 - Auxiliary 3 is refused (`AUXILIARY_REQUIRED`). Wired bench 10 E2 ran it once
   on an experimental image: a +500 home from coordinate -500 ran (RUNNING
   observed), set HOMED and ended at coordinate 0, start plus offset. The
-  coordinate is not reset, so end = offset does not hold. Every other choice
-  and switch methods with an offset stay refused (prompt 12).
-- The standalone application admits a nonzero offset only with method 35,
-  stored auxiliary 6, the home `offset` fact and `0x0019` known 0 in
-  `read config`; otherwise `startHome` returns `unresolved`. Order 1 stays
+  coordinate is not reset, so end = offset does not hold. Method 35 keeps
+  refusing every choice but 7 and 6; moving methods admit all twelve since
+  wired bench 12 ([below](#auxiliary-choices-and-offsets-with-moving-methods)).
+- The standalone application admits a nonzero offset with the home `offset`
+  fact and `0x0019` known 0 in `read config`: method 35 with stored auxiliary 6,
+  or a moving method with any stored choice; otherwise `startHome` returns `unresolved`. Order 1 stays
   refused: the offset did not follow `0x0019` = 1 within a power cycle
   ([paired writes](ess_pair_writes.md#measured-on-wired-bench-10)).
 
@@ -401,6 +407,28 @@ Measured on drive 4 (model `0x4EEA`, firmware `0x0029`): E1 staged
 [..,65535,65036] it read -500. R10 on the production image ran +500 and -500,
 each from a HOMED-low start (motor release, then enable); both completed at
 the offset.
+
+## Auxiliary choices and offsets with moving methods
+
+Added by [wired bench 12](reports/2026-11-19_wired_bench_12_switch_homing.md).
+A moving method (1-14, 17, 19-30, 33, 34) admits every stored auxiliary choice
+0-11 under the `auxiliary` fact, with a zero offset (`zero-offset` or `offset`
+fact) or a nonzero one (`offset` fact, `0x0019` known 0). `homeEndRule` maps the
+choice to the end coordinate the home checks:
+
+| Choice | Rule | Completion needs | Published reference |
+| --- | --- | --- | --- |
+| 0, 6 | `OFFSET` | end pair = offset | the offset |
+| 1, 7 | `ZERO` | end pair = 0 | 0 |
+| 2, 8 | `NEGATIVE_OFFSET` | end pair = -offset | -offset |
+| 3-5, 9-11 | `OBSERVED` | a decodable end pair | the observed end coordinate |
+
+`HomeContext::expectedKnown` (console `expected_known`) is false for the
+observed choices. Choices other than 7 decode the end pair in `offsetOrder`, so
+they need a valid word order. Method 35 keeps wired bench 10's subset. The
+soft-limit enable route takes its reference from method 35 or from a moving
+method with auxiliary 7 (end coordinate 0). The measured coordinate of each
+choice with method 20 is in the [wired bench 12 report](reports/2026-11-19_wired_bench_12_switch_homing.md#h8-and-h9-auxiliary-choices-and-offsets).
 
 <a id="planned-auxiliary-setting-and-switch-method-integration-not-implemented"></a>
 
@@ -431,11 +459,12 @@ not independent flags. The ESS-RS function manual physical p72 documents one RW
 The table does not establish write activation timing or an immediate counter
 change. Physical p73 does not resolve offset order/sign/scale or the sampling
 instant of its term actual value. Selecting a stored policy implements no new
-coordinate policy as motion. `prepareHome` still requires independently
-qualified active auxiliary7 with a qualified zero offset (or auxiliary 6 with
-method 35 and a qualified offset, [above](#nonzero-home-offset)), exact native
-parameters and methods1–14/17/19–30/33–35. A stored/readback choice never
-grants any of those qualifications.
+coordinate policy as motion. `prepareHome` still requires the stated
+qualification of the active choice: method 35 with 7 (zero offset) or 6 (qualified
+offset, [above](#nonzero-home-offset)); a moving method with any choice 0-11 and a
+zero or qualified offset ([below](#auxiliary-choices-and-offsets-with-moving-methods));
+exact native parameters and methods1–14/17/19–30/33–35. A stored/readback choice
+never grants any of those qualifications.
 
 Bench, 16 November 2026: every choice 0..11 was written and read back on drives
 1, 2 and 4, ending at 0 ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md)).
@@ -545,8 +574,9 @@ settled frame/status remains in phase/failure evidence, even a valid zero reply.
 Actual `ConfigObservation` supplies functions/polarity, `StateBlock::IO` supplies
 live logical levels and `MOTION` supplies readiness. A current parameter read
 supplies stored auxiliary/method/rate/offset facts; it does not qualify them.
-Installation and submission require a current read with auxiliary7, or auxiliary 6
-with the `offset` fact. Home never writes auxiliary. Both stored offset words must
+Installation and submission require a current read with auxiliary 7, or 6 with the
+`offset` fact, for method 35, and any stored choice 0-11 for a moving method (wired
+bench 12; every choice but 7 also needs a known word order). Home never writes auxiliary. Both stored offset words must
 be zero unless the `offset` fact is stated, because staging would otherwise
 silently erase the stored offset; with the fact each home states the offset it
 stages, `zero` included. The `offset` fact also needs a `read config` with a
@@ -630,10 +660,10 @@ The last argument is `zero` or `OFFSET`: a signed decimal native offset,
 nonzero, within ±`0x0FFFFFFF` (zero is stated as `zero`). The parser checks
 only its form; the application and core decide admission
 ([nonzero offset](#nonzero-home-offset)). The optional `offset` qualification
-fact exists for method 35 only; elsewhere it is `fact_not_applicable`.
-`home methods` reports implemented, unimplemented and unresolved choices with
-input/index/movement prerequisites, `offset` `zero_or_method_35_auxiliary_6`
-and `auxiliary` `[7,6]`. Terminal results and retained `result`
+fact applies to every implemented method since wired bench 12 (method 35 only
+before). `home methods` reports implemented, unimplemented and unresolved choices with
+input/index/movement prerequisites, `offset` `zero_or_measured_encoding`,
+`auxiliary` `[0..11]` and `auxiliary_method_35` `[7,6]`. Terminal results and retained `result`
 inspection preserve acknowledgement, completion, raw flags, generations,
 uncertainty and bounded evidence.
 `home qualification` passively shows future-slot presence, validity, exact
@@ -641,9 +671,10 @@ binding/native words and independent qualification age. It accepts no extra
 tokens and cannot install facts. `home qualification install` states each fact by
 name, as the [qualification routes](cli_contract.md#qualification-routes) list; a
 missing or unknown fact is refused by name, and missing reads name what to run first.
-A fresh drive stores method 24 and auxiliary 0 per the manual (p72), so it first needs
-`home auxiliary 7` (or `home auxiliary 6` with the `offset` fact), then new reads; it is
-refused with `stored_auxiliary_differs` until then. A stored nonzero offset is refused
+A fresh drive stores method 24 and auxiliary 0 per the manual (p72). Method 35 first
+needs `home auxiliary 7` (or `home auxiliary 6` with the `offset` fact), then new reads; it
+is refused with `stored_auxiliary_differs` until then. A moving method accepts the stored
+choice 0-11 as it is ([auxiliary with moving methods](#auxiliary-choices-and-offsets-with-moving-methods)). A stored nonzero offset is refused
 with `stated_offset_required` unless the `offset` fact is stated; each home then states
 the offset it stages. With no qualification installed, `home` replies `qualification_required`.
 
@@ -690,9 +721,10 @@ either end. A failed home after a possible trigger ends uncertain, the human rep
 says the drive may still be moving, and the axis stays interlocked until a checked stop.
 
 Terminal/result JSON adds `qualification`,
-`qualification_revoked`, `inputs_observed` and `raw_inputs`, and since wired
+`qualification_revoked`, `inputs_observed` and `raw_inputs`, since wired
 bench 10 `offset`, `expected_position`, `end_known`, `end_position` and
-`prerequisites.offset_qualified`/`offset_order`; settled phase
+`prerequisites.offset_qualified`/`offset_order`, and since wired bench 12
+`expected_known`; settled phase
 evidence remains independent of cancellation status. Python validates both the
 legacy two-word core path and the application's three-word observation path.
 

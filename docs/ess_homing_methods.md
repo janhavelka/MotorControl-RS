@@ -83,8 +83,11 @@ and a direct positive low-speed exit at the falling edge. Their active branches
 are retained explicitly. The [positive-limit family paths](ess_homing.md#origin-plus-positive-limit-methods)
 separate all three starting locations for every method.
 
-The implemented subset is 1–14, 17, 19–30 and 33–35, with zero offset and auxiliary
-value 7. All 27 planned switch methods (3 + 8 + 8 + 8) have software paths. Their shared
+The implemented subset is 1–14, 17, 19–30 and 33–35. Method 35 takes auxiliary 7
+(zero offset) or 6 (stated offset); the moving methods take every auxiliary choice
+0-11 with a zero or stated offset (wired bench 12). All 27 planned switch methods
+(3 + 8 + 8 + 8) have software paths and ran on the bench with host-driven switches
+([below](#bench-disposition-wired-bench-12)). Their shared
 [admission and observation contract](ess_homing.md#planned-auxiliary-setting-and-switch-method-integration-not-implemented)
 keeps trajectories in the drive and sampled evidence in the host; it does not
 require a host reconstruction of every physical edge. Method 18
@@ -134,8 +137,9 @@ Auxiliary `0x0030` is a choice 0–11, not independently combinable bit flags:
 | 0–5 | Run offset | Offset; zero; negative offset; actual; actual + offset; actual − offset |
 | 6–11 | Keep position | Offset; zero; negative offset; actual; actual + offset; actual − offset |
 
-The implemented value 7 keeps position after reference acquisition and requests
-coordinate zero. It does not remove the limit-reference movement of 1/2/17 or index search of 33/34. An
+Value 7 keeps position after reference acquisition and requests
+coordinate zero; the end-coordinate rule of every choice is in the
+[homing guide](ess_homing.md#auxiliary-choices-and-offsets-with-moving-methods). It does not remove the limit-reference movement of 1/2/17 or index search of 33/34. An
 acknowledged write or an old homed flag establishes no new reference. Require
 correlated, fresh post-trigger completion evidence and checked zero feedback;
 missed completion transitions, stop, alarm, cancellation and uncertainty leave
@@ -173,3 +177,36 @@ results and explicit RTU/echo policy. Capacity alone does not implement or
 qualify a homing method; its selected motor module must explicitly support the
 operation and retain checked evidence. See the [handoff](fieldcore_handoff.md)
 for current consumer scope. No FieldCore types or edits are introduced here.
+
+## Bench disposition (wired bench 12)
+
+[Wired bench 12](reports/2026-11-19_wired_bench_12_switch_homing.md), 19 November
+2026, model `0x4EEA`, firmware `0x0029`, drive 1 (representatives on drives 2
+and 4), native words 16/12/100 at subdivision 1000, auxiliary 9 (7 for the zero
+contract), switches emulated by the host from polled positions: origin window
+1000 wide, 3000 ahead of the start (approaching), around it (active) or behind it
+with the family's limit 500 ahead (beyond); the limit 4000 beyond the window.
+Every branch is drive-reported (status, positions) and controller-timestamped
+(GPIO times, sample windows); none is independently observed.
+
+| Methods | Branches | Result |
+| --- | --- | --- |
+| 17, 1, 2 | inactive, active limit | PASS: phase order, HOMED completion, stop within dx of the limit release (17); 1 and 2 end on the first Z after it |
+| 19-22 | inactive, active origin | PASS |
+| 3-6 | inactive, active origin | PASS; final Z within one revolution plus dx of the edge |
+| 23-26, 7-10 | approaching, beyond, active | PASS (all 24) |
+| 27-30, 11-14 | approaching, beyond, active | PASS (all 24) |
+
+Measured on drive 1: the internal Z is at a fixed angle (end positions 347-352
+modulo 1000 in every indexed run). The direction sequence of every branch
+matched the method row above, including the caption conflicts of 10, 13, 14,
+26, 29 and 30 (the active drawings hold) and method 28's exchanged drawings
+(both spatial branches as tabulated). The emulated switch is not a mechanical
+switch: these results qualify the drive's sampled trajectory against ideal
+edges with a bounded position error, not a real sensor, its bounce or its
+electrical timing.
+
+Method 18 stays unresolved: the experiment record of prompt 12 item 4 (an
+exact-target admission for an unresolved descriptor) was not built and H11
+did not run. Collision methods −1..−4 stay unresolved for the reasons above;
+a run needs a mechanical stop and the vendor's negative encoding.

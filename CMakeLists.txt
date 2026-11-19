@@ -198,6 +198,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 ${CMAKE_CURRENT_SOURCE_DIR}/test/idf_config_test.py
                 ${CMAKE_CXX_COMPILER} ${CMAKE_CXX_COMPILER_ID})
             add_test(NAME bench_scenarios COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/bench_scenarios_test.py)
+            add_test(NAME bench_switch COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/bench_switch_test.py)
             add_test(NAME bench_records COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/bench_records_test.py)
             add_test(NAME bench_outputs COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/bench_outputs_test.py)
             add_test(NAME bench_stress COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/bench_stress_test.py)

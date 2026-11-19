@@ -1797,7 +1797,9 @@ bool homeReadiness(const App& a, ESS::HomePrerequisites& p, uint64_t now) {
         // without it the offset would be silently erased.
         parameters.rawAuxiliary != static_cast<uint16_t>(p.auxiliary) ||
         ((parameters.rawOffsetWords[0] || parameters.rawOffsetWords[1]) && !p.offsetQualified) ||
-        (p.offsetQualified && (!config.wordOrderKnown || config.wordOrder != p.offsetOrder)) ||
+        // Every choice except 7 decodes the end coordinate in the active order (wired bench 12).
+        ((p.offsetQualified || p.auxiliary != ESS::HomingAuxiliary::KEEP_POSITION_SET_ZERO) &&
+         (!config.wordOrderKnown || config.wordOrder != p.offsetOrder)) ||
         p.inputPolarity != config.raw.inputPolarity) return false;
     for (uint8_t i = 0; i < 4; ++i)
         if (!config.inputFunctionKnown[i] || p.inputFunctions[i] != config.raw.inputFunctions[i] ||
@@ -1867,16 +1869,20 @@ void cancelInvalidHomes(App& a, uint64_t now) {
         }
     }
 }
-// Nonzero home offset (wired bench 10 E1, drive 4, 0x4EEA/0x0029): method 35
-// with stored auxiliary 6 and 0x0019 known 0, stated with the home `offset`
-// fact; the offset is staged high word first, two's complement, and the end
-// coordinate must equal it. Auxiliary 3 and every other choice stay refused
-// (E2: auxiliary 3 keeps the running coordinate; prompt 12).
+// Home offset and auxiliary choices other than 7 (0x4EEA/0x0029, 0x0019 known 0).
+// Method 35 (wired bench 10 E1): stored auxiliary 6 with the home `offset` fact;
+// the offset is staged high word first, two's complement, and the end
+// coordinate must equal it; 3 ran the offset (E2) and stays refused with 35.
+// Moving methods (wired bench 12): every stored choice 0-11; a nonzero offset
+// needs the `offset` fact. The core applies the end rule of the choice.
 Probe::Action homeOffsetAdmission(const App& a, uint8_t address, const ESS::HomeRequest& r, const ESS::HomePrerequisites& p) {
     (void)address;
-    if (r.method != ESS::HomingMethod::METHOD_35 || p.auxiliary != ESS::HomingAuxiliary::KEEP_POSITION_SET_OFFSET ||
-        !p.offsetQualified || p.offsetOrder != ESS::WordOrder::HIGH_WORD_FIRST || !a.configuration.wordOrderKnown ||
-        a.configuration.wordOrder != ESS::WordOrder::HIGH_WORD_FIRST) return Probe::Action::UNRESOLVED;
+    const auto* method = ESS::homeMethod(r.method);
+    if (!method || p.offsetOrder != ESS::WordOrder::HIGH_WORD_FIRST || !a.configuration.wordOrderKnown ||
+        a.configuration.wordOrder != ESS::WordOrder::HIGH_WORD_FIRST || static_cast<uint16_t>(p.auxiliary) > 11 ||
+        (r.offset != 0 && !p.offsetQualified)) return Probe::Action::UNRESOLVED;
+    if (!method->moves && (p.auxiliary != ESS::HomingAuxiliary::KEEP_POSITION_SET_OFFSET || !p.offsetQualified))
+        return Probe::Action::UNRESOLVED;
     return Probe::Action::OK;
 }
 bool homeRatesWithinPolicy(const App& a, uint16_t search, uint16_t returning) {

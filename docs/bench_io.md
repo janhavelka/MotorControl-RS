@@ -404,7 +404,12 @@ this fixture unlocks.
    line starts only drive 4.
 5. **Home start and origin.** X0 = 11 with a method that does not need a
    sensor; then a switch method with X0 = 1 origin, asserting the origin from
-   the host at a chosen time or position.
+   the host at a chosen time or position. The switch methods ran in
+   [wired bench 12](reports/2026-11-19_wired_bench_12_switch_homing.md)
+   (`--scenario switch`, [bench scenarios](bench_scenarios.md#switch-homing-with-host-driven-switches-wired-bench-12)):
+   origin X0 (`mosfet1`) and the limits X1/X2 emulated from polled positions,
+   every branch of 1-14, 17 and 19-30 on drive 1. The home start input
+   (function 11) was not run: the armed `arm home` staging is not built.
 6. **Limits.** With the power-up X1/X2 limits, move towards a limit and assert
    it; check the over-limit stop setting's effect. Then a limit-based homing method.
    Run it as `bench_scenarios.py --scenario limits --cases L1 ... --image-level 11
@@ -413,7 +418,9 @@ this fixture unlocks.
    `S4`). Measured on 19 November ([wired bench 11](reports/2026-11-19_wired_bench_11_limits.md)): relay2 (X1)
    stops moves and velocity toward positive, relay1 (X2) toward negative, motion
    away runs on, no flag, alarm or recovery; `0x0017` = 0 decelerates, 1 stops
-   directly. Limit-based homing is prompt 12.
+   directly. Limit-based homing (methods 1, 2, 17 and the limit-assisted
+   families) ran in wired bench 12 with the relays as emulated limits; its L8
+   case asserted X1 during a method 20 search.
 7. **PT segments.** X0 = 12, X1-X3 = 14-16. Set PIN levels with relays and
    MOSFET2, wait more than 10 ms, pulse X0; read the reached position for
    several segments.

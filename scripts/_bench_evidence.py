@@ -1776,16 +1776,24 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
     require(uint(item.get("phase"), 3), "phase is invalid")
     words = item.get("staging_words")
     p = item.get("prerequisites")
-    # Wired bench 10: auxiliary 7 stages zero; 6 and 3 (method 35, offset
-    # facts) stage the stated offset in the active word order.
+    # Wired bench 10: method 35 stages zero with auxiliary 7 and the stated
+    # offset with 6 (offset facts). Wired bench 12: moving methods admit every
+    # choice 0-11; a nonzero offset needs the offset facts, and choices other
+    # than 7 decode the end coordinate in the active word order.
     offset = item.get("offset", 0)
-    require(isinstance(p, dict) and p.get("auxiliary") in (7, 6) and type(offset) is int and
-            abs(offset) <= 0x0FFFFFFF, "offset or auxiliary is invalid")
+    require(isinstance(p, dict) and type(p.get("auxiliary")) is int and 0 <= p["auxiliary"] <= 11 and
+            type(offset) is int and abs(offset) <= 0x0FFFFFFF, "offset or auxiliary is invalid")
     order = p.get("offset_order", 0)
     auxiliary = p["auxiliary"]
-    require(auxiliary == 7 or (item.get("method") == 35 and p.get("offset_qualified") is True and order in (0, 1)),
-            "offset auxiliary lacks its facts")
-    require(auxiliary != 7 or offset == 0, "auxiliary 7 stages only a zero offset")
+    if item.get("method") == 35:
+        require(auxiliary in (7, 6), "method 35 admits auxiliary 7 or 6 only")
+        require(auxiliary == 7 or (p.get("offset_qualified") is True and order in (0, 1)), "offset auxiliary lacks its facts")
+        require(auxiliary != 7 or offset == 0, "auxiliary 7 stages only a zero offset with method 35")
+    else:
+        require(offset == 0 or (p.get("offset_qualified") is True and order in (0, 1)), "nonzero offset lacks its facts")
+        require(auxiliary == 7 or order in (0, 1), "auxiliary end coordinate lacks a word order")
+    rule = ("offset", "zero", "negative", "observed", "observed", "observed")[auxiliary % 6]
+    require("expected_known" not in item or item["expected_known"] is (rule != "observed"), "expected coordinate kind differs")
     bits = offset & 0xFFFFFFFF
     staged = [bits >> 16, bits & 0xFFFF] if order == 0 else [bits & 0xFFFF, bits >> 16]
     require(isinstance(words, list) and len(words) == 6 and all(uint(w, 65535) for w in words) and
@@ -1811,7 +1819,11 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
         value = (raw_words[0] << 16 | raw_words[1]) if order == 0 else (raw_words[1] << 16 | raw_words[0])
         return value - (1 << 32) if value & 0x80000000 else value
     def end_ok(raw_words):
-        return raw_words == [0, 0] if auxiliary == 7 else end_words(raw_words) == offset
+        if rule == "zero":
+            return raw_words == [0, 0]
+        if rule == "observed":
+            return True
+        return end_words(raw_words) == (offset if rule == "offset" else -offset)
     qualified = p.get("qualified_parameters")
     require(isinstance(qualified, list) and len(qualified) == 4 and all(type(v) is int for v in qualified) and
             qualified == words[:4], "method/rate/ramp differs from exact qualified configuration")
@@ -1956,7 +1968,7 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
         require(len(zero_raw) == 9 and checked("zero_evidence", zero_raw[:-2]) and zero_raw[:3] == bytes((item["address"], 3, 4)) and
                 item["raw_position_words"] == [int.from_bytes(zero_raw[3:5], "big"), int.from_bytes(zero_raw[5:7], "big")] and
                 end_ok(item["raw_position_words"]) and
-                (auxiliary == 7 or (item.get("end_known") is True and item.get("end_position") == end_words(item["raw_position_words"]))) and
+                (rule == "zero" or (item.get("end_known") is True and item.get("end_position") == end_words(item["raw_position_words"]))) and
                 comp["delivered_us"] < evidence["zero_evidence"][0]["earliest_us"] and
                 item["started_us"] <= item["completion_observed_us"] <= comp["earliest_us"] and
                 evidence["zero_evidence"][0]["delivered_us"] == item["serviced_us"] and evidence["zero_evidence"][0]["latest_us"] <= item["deadline_us"], "zero/reference evidence is inconsistent")

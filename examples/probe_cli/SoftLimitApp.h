@@ -121,9 +121,14 @@ bool softLimitReadRebase(const App& a, const ESS::RawConfig& old, const ESS::Raw
 }
 // A home that published a reference: remember it for the enable route. The
 // `soft-limits` fact was stated in the home qualification that admitted it.
+// Method 35 (wired bench 11), or a moving method with auxiliary 7, so the
+// reference coordinate is zero as in 11's measurement (wired bench 12, H13).
 void noteSoftLimitHome(App& a, const App::Record& r) {
     a.softLimitHome = App::SoftLimitHome();
-    if (!r.homeSoftLimits || r.home.request.method != ESS::HomingMethod::METHOD_35) return;
+    const auto* method = ESS::homeMethod(r.home.request.method);
+    const bool zeroSwitchHome = method && method->moves && method->support == ESS::HomeSupport::IMPLEMENTED &&
+        r.home.prerequisites.auxiliary == ESS::HomingAuxiliary::KEEP_POSITION_SET_ZERO;
+    if (!r.homeSoftLimits || (r.home.request.method != ESS::HomingMethod::METHOD_35 && !zeroSwitchHome)) return;
     a.softLimitHome.target = a.axis.target; a.softLimitHome.operationId = r.operationId;
     a.softLimitHome.axisGeneration = a.axis.generation; a.softLimitHome.bindingGeneration = a.bindingGeneration;
     a.softLimitHome.stated = true;

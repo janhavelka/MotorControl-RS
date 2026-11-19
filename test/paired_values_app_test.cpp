@@ -55,11 +55,16 @@ void addDrive(uint8_t address) {
 }
 // Method 35 in the simulator: HOMED clears at the trigger and sets two polls
 // later; the coordinate is 0 (auxiliary 7) or the offset (6, 3) read in the
-// active 0x0019 order. Auxiliary 3 reports RUNNING meanwhile.
+// active 0x0019 order. Auxiliary 3 reports RUNNING meanwhile. A moving method
+// (wired bench 12) reports RUNNING and ends at the coordinate of its auxiliary
+// choice: offset, zero, -offset, or the drive's own 1234 for 3-5 and 9-11.
+constexpr uint32_t OWN_COORDINATE = 1234;
 void homeDone(Drive& d) {
     const bool low = d.regs[0x0019] != 0;
     const uint32_t offset = low ? (uint32_t(d.regs[0x0036]) << 16 | d.regs[0x0035]) : (uint32_t(d.regs[0x0035]) << 16 | d.regs[0x0036]);
-    const uint32_t position = d.regs[0x0030] == 7 ? 0 : offset;
+    const uint16_t choice = d.regs[0x0030] % 6;
+    const uint32_t position = d.regs[0x0031] == 35 ? (d.regs[0x0030] == 7 ? 0 : offset) :
+        choice == 0 ? offset : choice == 1 ? 0 : choice == 2 ? uint32_t(0) - offset : OWN_COORDINATE;
     d.regs[0x000A] = low ? static_cast<uint16_t>(position) : static_cast<uint16_t>(position >> 16);
     d.regs[0x000B] = low ? static_cast<uint16_t>(position >> 16) : static_cast<uint16_t>(position);
     d.regs[0x0007] = static_cast<uint16_t>((d.regs[0x0007] & ~4u) | 3u);
@@ -89,7 +94,8 @@ void serveBus() {
     } else if (frame[1] == 6) {
         if (d.dropNextWrite) { d.dropNextWrite = false; return; }
         if (first == 0x0027 && word(frame, 4) == 16) {
-            d.regs[0x0007] = static_cast<uint16_t>((d.regs[0x0007] & ~2u) | (d.regs[0x0030] == 3 ? 4u : 0u));
+            d.regs[0x0007] = static_cast<uint16_t>((d.regs[0x0007] & ~2u) |
+                (d.regs[0x0030] == 3 || d.regs[0x0031] != 35 ? 4u : 0u));
             d.homePolls = 2;
         } else if (first < 0x140) d.regs[first] = word(frame, 4);
         reply = frame;
@@ -336,6 +342,34 @@ void testHomeOffset() {
     assert(homeResult(id).homeContext->state == ActionState::SUCCEEDED && drives[1].regs[0x36] == 0xFE0C);
     releaseOperation(id);
 }
+// Wired bench 12: a moving method (33 here; the switch methods share the
+// rule) admits every stored auxiliary choice. 0/6 end at the offset, 1/7 at
+// zero, 2/8 at -offset; 3-5 and 9-11 publish the drive's coordinate. A nonzero
+// offset still needs the `offset` fact, and method 35 keeps 7 and 6 only.
+void qualifyMoving(const char* facts) {
+    consoleRead("@109 home read\n");
+    command(std::string("@110 home qualification install 33 60 30 100 mechanics rates ramp zero-offset auxiliary inputs index reference ") + facts + "\n");
+}
+void testMovingAuxiliaryChoices() {
+    boardStartup();
+    for (uint16_t choice = 0; choice <= 11; ++choice) for (const int offset : {0, 2000}) {
+        drives[4].regs[0x0030] = choice; drives[4].regs[0x0035] = drives[4].regs[0x0036] = 0;
+        selectAndRead(4); qualifyMoving(offset ? "offset" : ""); contains("\"ok\":true");
+        command("@111 home 33 60 30 100 " + (offset ? std::to_string(offset) : std::string("zero")) + "\n"); contains("\"ok\":true");
+        const auto id = replyOperation(); settle();
+        const auto v = homeResult(id);
+        const uint16_t rule = choice % 6;
+        const int32_t expected = rule == 0 ? offset : rule == 1 ? 0 : rule == 2 ? -offset : int32_t(OWN_COORDINATE);
+        assert(v.homeContext && v.homeContext->state == ActionState::SUCCEEDED && v.homeContext->endKnown &&
+               v.homeContext->endPosition == expected && v.homeContext->expectedKnown == (rule <= 2));
+        releaseOperation(id);
+    }
+    // A nonzero offset without the fact is unresolved before TX; 35 refuses stored 9.
+    drives[4].regs[0x0030] = 9; drives[4].regs[0x0035] = drives[4].regs[0x0036] = 0;
+    selectAndRead(4); qualifyMoving(""); contains("\"ok\":true");
+    refused("home 33 60 30 100 2000", "unresolved", 4);
+    qualifyHome(""); contains("stored_auxiliary_differs");
+}
 } // namespace
 
 int main() {
@@ -343,6 +377,7 @@ int main() {
     testSnapshotRestoreAndUncertainty();
     testSoftLimitSetter();
     testHomeOffset();
+    testMovingAuxiliaryChoices();
     std::puts("paired values app test passed");
     return 0;
 }

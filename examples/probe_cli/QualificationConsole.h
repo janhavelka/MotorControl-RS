@@ -112,12 +112,11 @@ inline const char* parseHomeQualification(const char* const* tokens, std::size_t
     named = "index";
     if (method->requiresIndex && !command.index) return "missing_fact";
     if (!method->requiresIndex && command.index) return "fact_not_applicable";
-    // The offset fact exists for method 35 only (wired bench 10 E1).
-    named = "offset";
-    if (command.offset && command.home.method != Ess::HomingMethod::METHOD_35) return "fact_not_applicable";
-    // soft-limits (wired bench 11): method 35 only, and the home must publish its reference.
-    named = "soft-limits";
-    if (command.softLimits && command.home.method != Ess::HomingMethod::METHOD_35) return "fact_not_applicable";
+    // The offset fact (wired bench 10 E1) applies to method 35 and, since wired
+    // bench 12, to every implemented moving method; the core applies the end rule
+    // of the stored auxiliary choice. soft-limits (wired bench 11): method 35 or a
+    // moving method (wired bench 12, H13); the application keeps the fact only for
+    // a home with auxiliary 7. The home must publish its reference.
     named = "reference";
     if (command.softLimits && !command.reference) return "missing_fact";
     named = nullptr;

@@ -32,6 +32,12 @@ struct HomeMethodDescriptor {
 };
 const HomeMethodDescriptor* homeMethod(HomingMethod) noexcept;
 const HomeMethodDescriptor* homeMethodAt(uint8_t index) noexcept;
+/** End coordinate that auxiliary choice 0x0030 sets (function manual p72):
+ * the offset (0, 6), zero (1, 7), the negated offset (2, 8) or the drive's own
+ * coordinate (3-5, 9-11: actual, actual plus or minus offset), which the home
+ * publishes as observed. Choices 0-5 also run the offset motion. */
+enum class HomeEndRule : uint8_t { OFFSET, ZERO, NEGATIVE_OFFSET, OBSERVED };
+HomeEndRule homeEndRule(HomingAuxiliary) noexcept;
 enum class HomeError : int32_t {
     INVALID_TARGET, INVALID_OPERATION, INVALID_DEADLINE, INVALID_OPTIONS,
     INVALID_METHOD, METHOD_UNIMPLEMENTED, METHOD_UNRESOLVED, STALE_CONFIGURATION,
@@ -46,10 +52,11 @@ enum class HomeError : int32_t {
 /** Native qualified parameter words; no physical-rate/ramp formula is inferred.
  * Method 35 establishes the current mechanical position as origin and performs
  * no sensor-search trajectory. offset is a native signed value within
- * +-0x0FFFFFFF. Zero is the only offset with auxiliary 7. A nonzero offset
- * needs method 35 with auxiliary 6 and the prerequisites' offset qualification;
- * it is staged in the 0x0031/6 window with encodeInt32 in the qualified active
- * word order (wired bench 10 measured order 0 on 0x4EEA/0x0029). */
+ * +-0x0FFFFFFF. A nonzero offset needs the prerequisites' offset qualification
+ * and is staged in the 0x0031/6 window with encodeInt32 in the qualified active
+ * word order (wired bench 10 measured order 0 on 0x4EEA/0x0029). Method 35
+ * admits it with auxiliary 6 only and keeps auxiliary 7 at zero; moving methods
+ * admit it with every auxiliary choice (wired bench 12). */
 struct HomeRequest {
     HomingMethod method = HomingMethod::METHOD_35;
     uint32_t configurationGeneration = 0;
@@ -63,14 +70,16 @@ struct HomeRequest {
  * Inputs
  * must already have qualified assignments/levels; unwired is not disabled.
  * auxiliaryQualified means the existing active 0x0030 choice in auxiliary was
- * qualified, never merely a matching stored read: 7 (zero offset only), or with
- * method 35 and offsetQualified 6 (end coordinate = offset, no offset motion).
- * Auxiliary 3 is refused: wired bench 10 E2 measured that it runs the offset
- * and keeps the running coordinate (end = start + offset). offsetQualified states that the
- * offset pair encoding at offsetOrder (the active 0x0019 of the same read
- * generation) and the chosen auxiliary's end coordinate are qualified for this
- * target; wired bench 10 measured them on 0x4EEA/0x0029. Every other choice is
- * refused. The operation never writes auxiliary or I/O settings.
+ * qualified, never merely a matching stored read. Method 35: 7 (zero offset
+ * only) or, with offsetQualified, 6 (end coordinate = offset, no offset motion);
+ * wired bench 10 E2 measured that 3 runs the offset (end = start + offset), so
+ * 35 refuses every other choice. Moving methods admit 0-11 with zeroOffsetQualified
+ * (zero offset) or offsetQualified; homeEndRule gives the end coordinate, and
+ * choices other than 7 decode it in offsetOrder (the active 0x0019 of the same
+ * read generation). offsetQualified states that the offset pair encoding at
+ * offsetOrder and the chosen auxiliary's end coordinate are qualified for this
+ * target; wired bench 10 measured the encoding on 0x4EEA/0x0029. The operation
+ * never writes auxiliary or I/O settings.
  * referenceSemanticsQualified establishes the homing-zero/current-position
  * relation to actual command coordinates; raw zero alone cannot establish it. */
 struct HomePrerequisites {
@@ -124,9 +133,10 @@ struct HomeContext {
     uint16_t rawInputs = 0;
     uint16_t words[6] = {}, rawAlarm = 0, rawMotion = 0;
     uint16_t rawPositionWords[2] = {}; ///< Qualified confirmed on-time zero-check frame only; zeroEvidence retains any other.
-    int32_t expectedPosition = 0; ///< End coordinate the auxiliary choice requires: 0 for 7, the offset for 6.
+    int32_t expectedPosition = 0; ///< End coordinate homeEndRule requires when expectedKnown (offset, 0 or -offset).
     int32_t endPosition = 0; ///< rawPositionWords decoded in offsetOrder when endKnown.
     bool endKnown = false;
+    bool expectedKnown = true; ///< False for auxiliary 3-5 and 9-11: the observed end coordinate is published.
     uint64_t startedUs = 0, deadlineUs = 0, servicedUs = 0, eligibleUs = 0;
     uint64_t completionObservedUs = 0; ///< Eligibility of the completing status read, not reply closure/delivery.
     uint64_t lowObservedUs = 0; ///< First post-trigger low status read eligibility; baseline-low method35 uses prerequisites instead.
@@ -170,8 +180,9 @@ Status nextHome(const HomeContext&, uint64_t nowUs, PreparedHome&) noexcept;
  * report during method35 fails with uncertain execution. Missed status
  * transitions remain unobserved (from a homed state the drive clears HOMED for
  * about 13 ms only, wired bench 06/10). Completion additionally needs a new
- * position pair equal to the expected end coordinate (zero for auxiliary 7, the
- * offset for 6), decoded in offsetOrder. Required limit activation is expected during the drive's trajectory;
+ * position pair equal to the expected end coordinate of homeEndRule (zero, the
+ * offset or its negation), decoded in offsetOrder; for auxiliary 3-5 and 9-11 a
+ * decodable pair, which is published. Required limit activation is expected during the drive's trajectory;
  * sampled inputs cannot prove each edge, reversal or internal Z passage. Missing
  * sampled input edges alone do not defeat qualified status/zero completion.
  * Unknown MOTION bits fail READINESS with raw evidence retained; known alarm/
@@ -185,8 +196,8 @@ Status nextHome(const HomeContext&, uint64_t nowUs, PreparedHome&) noexcept;
  * by pointer. Qualified final evidence may be delivered after its deadline. */
 Status advanceHome(HomeContext&, const ActionEvent&, uint64_t nowUs) noexcept;
 /** Acknowledged trigger, successful completion under the optional age policy and
- * qualified coordinate semantics publish the reported end coordinate (zero with
- * auxiliary 7) as the native reference. Does not change host origin or generation;
+ * qualified coordinate semantics publish the reported end coordinate (zero for
+ * the ZERO end rule) as the native reference. Does not change host origin or generation;
  * the application reconciles coordinate effects before retaining this witness.
  * maximumAgeUs=0 disables expiry, not the required post-trigger observations. */
 Status getHomeReference(const HomeContext&, uint64_t nowUs, uint64_t maximumAgeUs,

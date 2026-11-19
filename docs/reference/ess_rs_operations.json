@@ -1216,11 +1216,12 @@
         "state": "PASS",
         "evidence": [
           "docs/reports/2026-11-02_standalone_14_bench_regression.md",
-          "docs/reports/2026-11-16_hil_regression.md"
+          "docs/reports/2026-11-16_hil_regression.md",
+          "docs/reports/2026-11-19_wired_bench_12_switch_homing.md"
         ],
-        "reason": "Exact FC10 0x0031/6 staging for methods 33, 34, 35 only; no switch method on hardware."
+        "reason": "Exact FC10 0x0031/6 staging for methods 33, 34, 35 (earlier) and, wired bench 12 (19 November 2026, drive 1, emulated switches), for methods 1-14, 17 and 19-30 at native 16/12/100 with auxiliary 9; every starting branch completed. Emulated switches, no independent switch or shaft observation."
       },
-      "reason": "Qualified native-word staging supports methods1-14/17/19-30/33-35. Positive-limit-assisted7-10/23-26 require origin/function1 and positive-limit/function2; negative-limit-assisted11-14/27-30 require origin/function1 and negative-limit/function3 on every branch. Methods1-14 require internal Z. All switch methods require exact function/polarity/wiring/logical-level qualification. Whole candidate validates before exact0x0031/6 zero-offset staging; auxiliary7 is an active-policy prerequisite.",
+      "reason": "Qualified native-word staging supports methods1-14/17/19-30/33-35. Positive-limit-assisted7-10/23-26 require origin/function1 and positive-limit/function2; negative-limit-assisted11-14/27-30 require origin/function1 and negative-limit/function3 on every branch. Methods1-14 require internal Z. All switch methods require exact function/polarity/wiring/logical-level qualification. Whole candidate validates before exact 0x0031/6 staging; the stored auxiliary choice is an active-policy prerequisite (7 or 6 with method 35, 0-11 with moving methods, wired bench 12).",
       "choices": [
         "HomingMethod.METHOD_1",
         "HomingMethod.METHOD_2",
@@ -1329,11 +1330,12 @@
         "evidence": [
           "docs/reports/2026-11-02_standalone_14_bench_regression.md",
           "docs/reports/2026-11-16_hil_regression.md",
-          "docs/reports/2026-11-19_wired_bench_10_paired_value_encodings.md"
+          "docs/reports/2026-11-19_wired_bench_10_paired_value_encodings.md",
+          "docs/reports/2026-11-19_wired_bench_12_switch_homing.md"
         ],
-        "reason": "Zero words staged within 0x0031/6 and position read 0 after homing (method 35/33/34). Wired bench 10 E1 (drive 4): method 35 with auxiliary 6 staged +500 [0,500] and -500 [65535,65036] at 0x0019 = 0 and the coordinate read +500 and -500; R10 production regression on the production image."
+        "reason": "Zero words staged within 0x0031/6 and position read 0 after homing (method 35/33/34). Wired bench 10 E1 (drive 4): method 35 with auxiliary 6 staged +500 [0,500] and -500 [65535,65036] at 0x0019 = 0 and the coordinate read +500 and -500; R10 production regression on the production image. Wired bench 12 (drive 1, method 20, emulated origin): auxiliary 0-11 with offset 0 and +-2000 through the ordinary home route; end coordinates per choice in the report."
       },
-      "reason": "Zero offset with auxiliary 7, and (wired bench 10) a nonzero signed offset within +-0x0FFFFFFF with method 35 and stored auxiliary 6 at 0x0019 = 0 (the `offset` home fact), staged high word first in the exact 0x0031/6 window through the home route; completion needs the end coordinate equal to the offset. In progress: auxiliary 3 and the other choices, switch methods with offsets and order 1 remain for prompt 12. No standalone 0x0035/2 or split write."
+      "reason": "Zero offset, and a nonzero signed offset within +-0x0FFFFFFF under the `offset` home fact at 0x0019 = 0, staged high word first in the exact 0x0031/6 window through the home route. Method 35: auxiliary 7 (zero) or 6 (end = offset). Moving methods (wired bench 12): every auxiliary choice 0-11; 0/6 end at the offset, 1/7 at zero, 2/8 at -offset (checked), 3-5/9-11 publish the observed coordinate. In progress: order 1 (prompt 17) and the standalone 0x0035/2 form stay refused."
     },
     {
       "id": "homing_parameter_read",
@@ -1415,9 +1417,10 @@
         "evidence": [
           "docs/reports/2026-11-02_standalone_14_bench_regression.md",
           "docs/reports/2026-11-16_hil_regression.md",
-          "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md"
+          "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md",
+          "docs/reports/2026-11-19_wired_bench_12_switch_homing.md"
         ],
-        "reason": "Methods 33, 34 and 35 and stop during a method 34 search on a free shaft; switch methods NOT RUN. Wired bench 07 S4 (19 November 2026, drive 4): a 200 ms stop input during the method 33 and 34 search stopped it; no home reported HOMED (cancelled when a fresh read showed the input, QUALIFICATION_REVOKED)."
+        "reason": "Methods 33, 34 and 35 and stop during a method 34 search on a free shaft; switch methods 1-14, 17 and 19-30 on drive 1 with host-driven switches (wired bench 12): every branch completed through the ordinary home route; representatives on drives 2 and 4. Wired bench 07 S4 (19 November 2026, drive 4): a 200 ms stop input during the method 33 and 34 search stopped it; no home reported HOMED (cancelled when a fresh read showed the input, QUALIFICATION_REVOKED)."
       },
       "reason": "Ordinary submitHome/copyHomeResult and home route consume install/inspect/revoke qualification, from the public API or the typed console routes in host_routes, bound to checked CONFIG/MOTION/IO/HOMING_PARAMETERS. Explicit start after checked staging, qualified transitions and stopped/arrival plus zero. Copied revokeHome cancels before new reference publication while retaining settled zero/effects; stop uses existing urgent path. Methods1/2/17/33/34/35 use the same production path; sampled I/O does not establish every physical edge or internal Z passage.",
       "choices": [
@@ -3025,9 +3028,10 @@
           "docs/reports/2026-11-02_standalone_14_bench_regression.md",
           "docs/reports/2026-11-16_hil_regression.md",
           "docs/reports/2026-11-16_unattended_bench_tests.md",
-          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md",
+          "docs/reports/2026-11-19_wired_bench_12_switch_homing.md"
         ],
-        "reason": "All twelve choices 0..11 written and read back on drives 1, 2 and 4, ending at 0 (16 November 2026); 0 and 7 also in earlier runs. Only choices 0 and 7 have run a home; the coordinate behavior of the others is untested. Wired bench 03: with connected X0-X3 and CONFIGURE records, drives 1 and 4 0->7->0 acknowledged and read back; refused before TX without records. Stored-value evidence only."
+        "reason": "All twelve choices 0..11 written and read back on drives 1, 2 and 4, ending at 0 (16 November 2026); 0 and 7 also in earlier runs. Wired bench 12 ran a switch home (method 20, drive 1) with every choice 0-11 at offset 0 and +-2000; the end coordinate per choice is in the report. Wired bench 03: with connected X0-X3 and CONFIGURE records, drives 1 and 4 0->7->0 acknowledged and read back; refused before TX without records. Stored-value evidence only."
       },
       "reason": "All12 source-supported scalar choices through explicit reserved prior-read/FC06/readback session. Confirmed ACK required; no home trigger, staging, input reassignment, save, replay or rollback. Possible effects revoke dependent qualification; matching7 never qualifies activepolicy."
     }
@@ -3067,7 +3071,7 @@
       ],
       "owner": "14",
       "disposition": "PARTIAL",
-      "reason": "Thirty methods1-14/17/19-30/33-35 implemented, completing all27 planned switch methods. Method18 and four collision methods remain unresolved. N08 stays PARTIAL; software support does not qualify physical homing or resolve nonzero offset semantics.",
+      "reason": "Thirty methods 1-14/17/19-30/33-35 implemented; wired bench 12 ran 1-14, 17 and 19-30 on the bench with host-driven switches. Method 18 stays unresolved: its experiment record (prompt 12 item 4) was not built and H11 did not run. Collision methods -1..-4 stay unresolved: no trajectory, no negative wire form, no hard stop on a free shaft (G3) and no vendor encoding.",
       "choices": [
         "HomingMethod.COLLISION_MINUS_4",
         "HomingMethod.COLLISION_MINUS_3",
@@ -3086,7 +3090,7 @@
       ],
       "owner": "12",
       "disposition": "PARTIAL",
-      "reason": "Method 35 with auxiliary 6 at order 0 is implemented (wired bench 10 E1). Other auxiliary choices (3 kept the running coordinate in E2), switch methods with offsets, order 1 and the standalone 0x0035/2 form remain for prompt 12."
+      "reason": "Method 35 with auxiliary 6 (wired bench 10) and every moving method with auxiliary 0-11 (wired bench 12) at order 0 are implemented and ran on drive 1 (method 20). Order 1 and the standalone 0x0035/2 form remain refused (order 1 waits for prompt 17)."
     },
     {
       "id": "earlier_collision_access",
@@ -3423,6 +3427,7 @@
       "symbols": [
         "homeMethod",
         "homeMethodAt",
+        "homeEndRule",
         "checkHomeQualification"
       ],
       "classification": "METADATA",

@@ -140,6 +140,7 @@ def run_recorded(*, port, out=None, scenario, inputs, run, address=1, timeout_s=
                     connection = _Transcript(connection, transcript)
                 try:
                     console = Console(connection, on_event=emit)
+                    console.evidence_budget = evidence  # Read-only headroom for long motion runs (wired bench 12).
                     console.drain_startup(.5)
                     record['version'] = console.identify(timeout_s=timeout_s)
                     record['before'] = snapshot(console, address=address, refresh=refresh, timeout_s=timeout_s)

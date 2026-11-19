@@ -687,5 +687,9 @@ through `submitHomingAuxiliary`, with the normal retained result/cancel/release
 commands. Required stopped/configuration/input evidence is checked before traffic.
 Invalid/extra tokens reject without work. This does not start home, stage its
 parameters, change I/O or save. Readback7 is stored observation, never active
-policy qualification; home still requires independently qualified7/zero-offset
-and native parameter meanings. See [all twelve choices and API contract](ess_homing.md#explicit-auxiliary-setting).
+policy qualification; home still requires the stated `auxiliary` fact and
+native parameter meanings. Method 35 admits stored 7 (zero offset) or 6 (with
+the `offset` fact); a moving method admits every stored choice 0-11 (wired
+bench 12), and the home result says with `expected_known` whether the end
+coordinate is checked (0-2, 6-8) or published as observed (3-5, 9-11). See
+[all twelve choices and API contract](ess_homing.md#explicit-auxiliary-setting).
