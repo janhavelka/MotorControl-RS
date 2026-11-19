@@ -4,6 +4,25 @@
 
 ### Added
 
+- Wired bench 16: named position limits (D6/D12) in the standalone
+  application. `position limits [set RPM RATE RAMP case NAME | default]` (API
+  `installPositionLimits`, `inspectPositionLimits`, `revokePositionLimits`;
+  `PositionLimitsRoute.h`, `PositionLimitsApp.h`) installs host limits for the
+  selected axis within the wire ranges (rpm 1..3000, rate 1..2,560,000,
+  minimum ramp 0..2000), RAM only, bound to target, binding, configuration and
+  host serial generations. Selected-axis moves and staging use it, interrupts
+  keep their original's limits, group, input-started and home moves keep the
+  defaults. Move results add `position_limits`; `settings` reports the active
+  ceiling, the default ceiling and the source. Operation inventory host route
+  `position-limits`; native test `position_limits_app_test`.
+- Harness scenario `alarms-failures` (`scripts/bench_alarms.py`, cases G1,
+  A1-A5, F1-F4, R1-R3, N1): alarm 5 with the silence diagnostics and the
+  reporting rule (`classify_silence`: `alarm_after_silence`, `drive_silent`,
+  `no_alarm`), alarm-clear and starts after it, the HW-14 and Q05 reproduction
+  attempts through the named limits, the step 5 failed-stop decision and the
+  release after stop; `position-limits` grammar and reply checks in
+  `bench_probe`. Vendor bundle `docs/reports/2026-11-19_wired_bench_16_vendor_bundle.zip`.
+
 - Wired bench 15: control and tuning candidates. The core admits one listed
   current candidate (`DriverPrerequisites::listedCurrentQualified` and its
   field, value, algorithm word and source read) and the D7 exact restore
@@ -268,6 +287,16 @@
 
 ### Changed
 
+- Accepted alarm-clear bytes start the 1 s enable wait (HW-15), as an enable
+  does. Wired bench 16 A3 (drive 4, firmware `0x0029`): a start 0.59 s after
+  the clear's acknowledgement was ignored 3 of 3 times; starts from 0.91 s were
+  acted on. Advanced moves, staging, group moves, velocity, home and the
+  input-start arm answer `busy` during the window; `moveby`/`moveto` wait. The
+  input-start trigger now checks each member's wait as well (refusal
+  `enable_settling` before the port call). Native tests
+  `testAlarmClearStartsEnableWait` and the alarm-clear wait cases of
+  `move_app_test`, `velocity_app_test`, `group_app_test` and
+  `input_start_app_test`.
 - Control and tuning setters (wired bench 15) admit one field per request and
   only the field's candidate row or the exact restore of the pinned read. The
   deviation threshold admits 1..4000 from any stored value (lowering a stored

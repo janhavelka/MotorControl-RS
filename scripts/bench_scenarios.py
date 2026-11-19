@@ -25,6 +25,7 @@ import bench_switch as bench_sw
 import bench_pt
 import bench_velocity
 import bench_tuning
+import bench_alarms
 import bench_input_starts as bench_starts
 from bench_session import checked, run_recorded
 
@@ -84,6 +85,11 @@ FOLDER_SCENARIOS = {
                       'timing on drive 4, T3/T9 repeats on drive 2): the pinned reads, per candidate the restore proof '
                       '(tuning candidates check), the setter, reference move M (+2000 at 120 rpm, return), the setter '
                       'back and its readback; alarm 5 handling on drives 2 and 4; restoration from the baseline',
+    'alarms-failures': 'wired bench 16: alarms and failed stops (--cases G1, A1..A5, F1..F4, R1..R3, N1) on one drive '
+                       '(--address; alarm 5 on drives 2 and 4 only, Y0 timing on drive 4): lowered deviation threshold, '
+                       'the silence diagnostics and the Implement 3 classification, alarm-clear, the named position-limits '
+                       'install for the HW-14 and Q05 attempts, step 5 for every failed stop, the prepared stop fast on any '
+                       'harness failure; restoration from the baseline',
 }
 
 SCENARIOS = {
@@ -182,6 +188,7 @@ def arguments(argv=None):
     parser.add_argument('--c4-rpm', type=int, help='velocity-jog-pv C4: the highest passing C1 speed when C1 ran in an earlier run')
     parser.add_argument('--c1-rows', nargs='+', help='velocity-jog-pv C1: RAMP:SIGN rows to run (a resumed run), default all four')
     parser.add_argument('--fields', nargs='+', help='control-tuning T5/T6: only these gain fields (a resumed run)')
+    parser.add_argument('--delays', nargs='+', type=float, help='alarms-failures A3: starts after the alarm-clear ACK (s)')
     parser.add_argument('--terminals', nargs='+', choices=records.TERMINALS,
                         help='status-mapping: terminals in order (default x0 x1 x2 x3)')
     parser.add_argument('--filter-value', type=int, help='input-timing: input-filter coefficient for the run')
@@ -264,13 +271,14 @@ def arguments(argv=None):
                           (args.c4_rpm, ('velocity-jog-pv',)),
                           (args.c1_rows, ('velocity-jog-pv',)),
                           (args.fields, ('control-tuning',)),
+                          (args.delays, ('alarms-failures',)),
                           (args.terminals, ('status-mapping',)), (args.mapping_cases, ('status-mapping',)),
                           (args.filter_value, ('input-timing',)), (args.widths, ('input-timing', 'stop-inputs')),
                           (args.function, ('stop-inputs',)), (args.deceleration, ('stop-inputs',)),
                           (args.stimulus, ('stop-inputs',)), (args.sub, ('stop-inputs',)),
                           (args.leave_profile or None, ('stop-inputs', 'limits', *bench_starts.FAMILIES)),
                           (args.cases, (*bench_starts.FAMILIES, 'limits', 'switch', 'pt-segments', 'velocity-jog-pv',
-                                        'control-tuning')),
+                                        'control-tuning', 'alarms-failures')),
                           (args.methods, ('switch',)), (args.branches, ('switch',)), (args.search, ('switch',)),
                           (args.return_speed, ('switch',)), (args.auxiliary, ('switch',)), (args.choices, ('switch',)),
                           (args.budget_gap_ms, ('switch',)), (args.budget_decision_ms, ('switch',)),
@@ -278,7 +286,8 @@ def arguments(argv=None):
                           (args.compare_relay or None, ('input-timing',)),
                           (None if args.traffic == 'raw' else args.traffic, ('input-timing',)),
                           (args.reason, ('baseline-capture',)), (args.prompt, ('baseline-capture',)),
-                          (args.repetitions, ('outputs', 'stop-inputs', 'limits', 'switch', *bench_starts.FAMILIES))):
+                          (args.repetitions, ('outputs', 'stop-inputs', 'limits', 'switch', 'alarms-failures',
+                                              *bench_starts.FAMILIES))):
         if option is not None and args.scenario not in scopes:
             parser.error('scenario-specific arguments cannot enter another scenario')
     if args.scenario == 'settings' and args.input_facts == 'segment':
@@ -653,6 +662,22 @@ def _folder_arguments(parser, args):
             parser.error('control-tuning runs on drive 1, 2 or 4')
         if {'T3', 'T9'} & set(args.cases) and args.address not in bench_tuning.ALARM_DRIVES:
             parser.error('T3 and T9 run on drives 2 and 4 only (D15 safeguard for prompt 15)')
+    if args.scenario == 'alarms-failures':
+        if not args.cases or any(c not in bench_alarms.CASES for c in args.cases) or len(set(args.cases)) != len(args.cases):
+            parser.error('alarms-failures needs --cases from %s' % ', '.join(bench_alarms.CASES))
+        if args.image_level is None or int(args.image_level) < 16:
+            parser.error('alarms-failures needs --image-level 16 (the position-limits route)')
+        if args.case is not None:
+            parser.error('alarms-failures names its cases with --cases')
+        if args.address not in records.FIXTURE['input_drives']:
+            parser.error('alarms-failures runs on drive 1, 2 or 4')
+        alarm = {c for c in args.cases if bench_alarms.CASES[c]['kind'] in ('regression', 'alarm', 'clear-start', 'velocity-alarm')}
+        if alarm and args.address not in bench_alarms.ALARM_DRIVES:
+            parser.error('alarm 5 runs on drives 2 and 4 only (D15 safeguard for prompt 16)')
+        if args.repetitions is not None and not 1 <= args.repetitions <= 5:
+            parser.error('alarms-failures --repetitions sets the A1/A2 trials within 1..5')
+        if args.delays is not None and (len(args.delays) > 6 or any(not 0 <= d <= 2.0 for d in args.delays)):
+            parser.error('alarms-failures --delays takes at most six A3 delays within 0..2 s')
     if args.scenario in bench_starts.FAMILIES:
         family = bench_starts.FAMILIES[args.scenario]
         allowed = [c for c, case in bench_starts.CASES.items() if case['family'] == family]
@@ -716,7 +741,7 @@ def _facts(args):
         return bench_starts.facts()
     if args.scenario == 'pt-segments':
         return bench_pt.pt_facts()
-    if args.scenario in ('velocity-jog-pv', 'control-tuning'):
+    if args.scenario in ('velocity-jog-pv', 'control-tuning', 'alarms-failures'):
         return bench_velocity.facts()
     if args.scenario == 'switch':
         out = {str(args.address): {'configure': {}}}
@@ -801,14 +826,15 @@ def folder_plan(args, baseline):
                 refusal = None  # Written by the case's moves or velocity run, not by a setter.
             forward.append({'entry': entry, 'steps': steps, 'refusal': refusal})
         write_list_done = True
-    elif name in ('pt-segments', 'velocity-jog-pv', 'control-tuning'):
-        module = bench_pt if name == 'pt-segments' else bench_velocity if name == 'velocity-jog-pv' else bench_tuning
+    elif name in ('pt-segments', 'velocity-jog-pv', 'control-tuning', 'alarms-failures'):
+        module = bench_pt if name == 'pt-segments' else bench_velocity if name == 'velocity-jog-pv' else \
+            bench_tuning if name == 'control-tuning' else bench_alarms
         write_list, plan, cases, commands, bounds, expected, left = module.plan(args, baseline, facts)
         for entry in write_list:
             steps, refusal = records.plan_entry(baseline, entry, args.image_level, facts, restore=False)
             if refusal and entry['key'].startswith('profile.'):
                 refusal = None  # Written by the return moves, restored through the stage route.
-            if refusal and name == 'velocity-jog-pv' and records.snapshot_route(entry['key']) == 'velocity':
+            if refusal and name in ('velocity-jog-pv', 'alarms-failures') and records.snapshot_route(entry['key']) == 'velocity':
                 refusal = None  # Written by the JOG setter and velocity runs; restored by velocity restore.
             forward.append({'entry': entry, 'steps': steps, 'refusal': refusal})
         write_list_done = True
@@ -850,8 +876,8 @@ def folder_plan(args, baseline):
             forward.append({'entry': entry, 'steps': steps, 'refusal': refusal})
     if not write_list_done:
         cases, commands, bounds, expected = [], [], {}, {}
-    if name in ('outputs', 'stop-inputs', 'limits', 'switch', 'pt-segments', 'velocity-jog-pv', 'control-tuning') or \
-            name in bench_starts.FAMILIES:
+    if name in ('outputs', 'stop-inputs', 'limits', 'switch', 'pt-segments', 'velocity-jog-pv', 'control-tuning',
+                'alarms-failures') or name in bench_starts.FAMILIES:
         pass
     elif name == 'input-start':
         cases.append(_case(case, 'one owned MOSFET pulse on the armed terminal after the firmware isolation reads; the '
@@ -932,8 +958,8 @@ def folder_plan(args, baseline):
                     'every baseline read of drive A', 'restoration plan steps', 'every baseline read of drive A']
         expected = {'acknowledged': 'write terminals of the case write and the restoration',
                     'read back': 'group reads before, after the case write and after the restoration'}
-    if name in ('stop-inputs', 'limits', 'switch', 'pt-segments', 'velocity-jog-pv', 'control-tuning') or \
-            name in bench_starts.FAMILIES:
+    if name in ('stop-inputs', 'limits', 'switch', 'pt-segments', 'velocity-jog-pv', 'control-tuning',
+                'alarms-failures') or name in bench_starts.FAMILIES:
         drives = list(records.FIXTURE['input_drives'])
     record = {'drives': [{'address': a, 'required_enabled': True} for a in drives],
             'terminals': (['x0', 'x1', 'x2', 'x3'] if name == 'input-map' else ['y0'] if name in ('y0-map', 'outputs') else
@@ -941,7 +967,7 @@ def folder_plan(args, baseline):
                           ['x1', 'x2', 'y0'] if name == 'limits' else
                           ['x0', 'x1', 'x2'] if name == 'switch' else
                           list(records.TERMINALS) if name in ('pt-segments', 'velocity-jog-pv') else
-                          ['y0'] if name == 'control-tuning' else
+                          ['y0'] if name in ('control-tuning', 'alarms-failures') else
                           ['x0', 'x3', 'y0'] if name in bench_starts.FAMILIES else
                           [args.start_terminal] if name == 'input-start' else
                           (args.terminals or list(records.TERMINALS)) if name == 'status-mapping' else
@@ -3084,6 +3110,58 @@ def _tuning(console, args, record, run, baseline):
         bench_tuning.case_verdicts(run, cid, detail, error)
 
 
+def _alarms(console, args, record, run, baseline):
+    """Wired bench 16: alarms, failed stops and drive failures (bench_alarms.py)."""
+    timeout = args.timeout
+    scenario = run.scenario
+    _preflight(console, run, timeout)
+    declarations = records.check_declarations(console, timeout_s=timeout)
+    before = {a: records.read_drive(console, a, ('io', 'state', 'config'), select=False, timeout_s=timeout)
+              for a in records.FIXTURE['input_drives']}
+    diff = records.diff_fields(baseline, {a: records.raws_from(r) for a, r in before.items()}, ('io',))
+    run.folder.write_json('baseline_before.json', {'declarations': declarations,
+                                                   'drives': {str(a): {k: {x: e.get(x) for x in ('command', 'operation_id', 'raw', 'error')}
+                                                                       for k, e in r.items()} for a, r in before.items()},
+                                                   'diff': diff})
+    plan = scenario['restoration_plan']
+    if not plan['admissible']:
+        for case in scenario['cases']:
+            for level in case['required_levels']:
+                run.verdict(case['id'], level, 'NOT RUN', 'no admissible route before any write: ' +
+                            '; '.join(r['reason'] for r in plan['refused']))
+        return
+    if declarations['verdict'] != 'PASS' or any(d['status'] != 'equal' for d in diff):
+        raise probe.BenchError('I/O words differ from the baseline or declarations disagree; no write')
+    live = bench_alarms.Live(console, run, baseline, args, timeout)
+    detail = {'cases_requested': list(args.cases), 'declarations': declarations['verdict']}
+    error = None
+    try:
+        checked(console, 'bench', host_args=('clear',), timeout_s=timeout)
+        live.view()
+        detail.update(bench_alarms.run_cases(live, args, args.cases))
+    except (Exception, KeyboardInterrupt) as caught:
+        error = caught
+        run.deviations.append('alarms-failures run stopped: %s' % caught)
+        detail.setdefault('error', str(caught))
+        detail.setdefault('cases', getattr(live, 'partial', {}))
+    finally:
+        if console.synchronized:
+            try:
+                console.command('stop', stop_policy='fast', address=args.address, timeout_s=timeout)
+                console.command('position-limits', host_args=('default',), timeout_s=timeout)
+                detail['restoration'] = _stop_restore(console, live, run, plan, timeout, owner=args.address)
+            except (Exception, KeyboardInterrupt) as caught:
+                run.deviations.append('restoration stopped: %s' % caught)
+        a5 = (detail.get('cases') or {}).get('A5') or {}
+        if a5.get('window_us') and (run.folder / 'console.log').exists():
+            lines = (run.folder / 'console.log').read_text(encoding='utf-8', errors='replace').splitlines()
+            a5['stop_frames'] = bench_alarms.stop_frames(lines, *a5['window_us'])
+        detail.update(events=live.events, snapshots=live.snapshots, views=len(live.views), samples=live.samples)
+        run.folder.write_json('alarms.json', detail)
+    for cid in args.cases:
+        bench_alarms.case_verdicts(run, cid, detail, error)
+
+
 # --------------------------------------------------------------------------
 # Wired bench 08: input-start route (arm, one owned pulse, observe, disarm)
 
@@ -3327,7 +3405,8 @@ FOLDER_RUNNERS = {'input-start': _input_start, 'input-start-single': _input_star
                   'position-interrupt': _input_starts, 'input-map': _input_map, 'y0-map': _y0_map, 'baseline-compare': _baseline_compare,
                   'baseline-capture': _baseline_capture, 'restore': _restore, 'status-mapping': _status_mapping,
                   'input-timing': _input_timing, 'outputs': _outputs, 'stop-inputs': _stop_inputs, 'limits': _limits,
-                  'switch': _switch, 'pt-segments': _pt, 'velocity-jog-pv': _velocity, 'control-tuning': _tuning}
+                  'switch': _switch, 'pt-segments': _pt, 'velocity-jog-pv': _velocity, 'control-tuning': _tuning,
+                  'alarms-failures': _alarms}
 
 
 def run_folder(args, *, port_opener=None, check_board=None):
@@ -3368,7 +3447,7 @@ def run_folder(args, *, port_opener=None, check_board=None):
         run_recorded(port=args.port, scenario=args.scenario, inputs={'run': folder.name, 'case': args.case},
                      run=work, address=args.address, timeout_s=args.timeout,
                      debug='decoded' if args.scenario == 'outputs' else
-                     'raw' if args.scenario == 'y0-map' or (args.scenario == 'input-timing' and args.traffic == 'raw')
+                     'raw' if args.scenario in ('y0-map', 'alarms-failures') or (args.scenario == 'input-timing' and args.traffic == 'raw')
                      or (args.scenario == 'status-mapping' and args.mapping_cases == 'record') else None,
                      firmware=args.firmware,
                      port_opener=opener, max_records=args.evidence_records,

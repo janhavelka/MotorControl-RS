@@ -38,8 +38,11 @@ class Coverage(unittest.TestCase):
 
     def test_qualification_routes_are_real_producing_routes(self):
         routes = {route["wire_command"]: route for route in INVENTORY["host_routes"]}
-        self.assertEqual(len(routes), 10)
-        self.assertEqual(operations.check(INVENTORY, LEDGER)["summary"]["host_routes"], 10)
+        self.assertEqual(len(routes), 11)
+        self.assertEqual(operations.check(INVENTORY, LEDGER)["summary"]["host_routes"], 11)
+        # Wired bench 16: the named position-limits install calls its public API.
+        self.assertEqual(routes["position-limits"]["api"], "installPositionLimits")
+        self.rejected(lambda value: next(row for row in value["host_routes"] if row["wire_command"] == "position-limits").update(api="velocityLimits"))
         self.assertEqual(routes["home-qualification-install"]["api"], "installHomeQualification")
         self.assertEqual(routes["io-qualification-install"]["api"], "installIoQualification")
         self.assertEqual(routes["io-qualification-inspect"]["api"], "copyIoQualification")

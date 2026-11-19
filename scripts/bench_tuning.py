@@ -261,6 +261,7 @@ def recover_alarm(live) -> dict:
         live.read_state(live.address)
         live.read_state(live.address)
         out["alarm_clear"] = live.call("alarm-clear", address=live.address).get("outcome")
+        time.sleep(1.1)  # Wired bench 16: accepted alarm-clear bytes start the 1 s enable wait (HW-15).
         s = stops.sample(live.call("read-state", address=live.address))
         if s is None or s["alarm"] or s["motion"] & ALARM:
             prepared_stop(live)

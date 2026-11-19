@@ -211,7 +211,7 @@ active. Without either, a connected bench refuses before TX with
 | --- | --- | --- |
 | `input-filter` | `MEASURED_INPUT_FILTERS` = {0, 1, 2, 3, 5, 10, 20, 50} | Measured debounce (wired bench 05) |
 | `pulse-low-pass` | 1..1024 | Documented 0..1024; 0 is unmeasured |
-| `deviation-threshold` | 1..4000; above 4000 only the value of `tuning candidates threshold VALUE` (D6) | 4000 is the documented default, so the ordinary route only lowers the tolerance or restores it (D12); the caller of the call owns the reduced protection. This is the single production table; prompt 16 references it |
+| `deviation-threshold` | 1..4000; above 4000 only the value of `tuning candidates threshold VALUE` (D6) | 4000 is the documented default, so the ordinary route only lowers the tolerance or restores it (D12); the caller of the call owns the reduced protection. This is the single production table; wired bench 16 used its lowest value, 1, to provoke alarm 5 ([actions](ess_actions.md#alarm-5-on-firmware-0x0029)) |
 | `arrival-window` | 1..256 | Documented range |
 | `arrival-time` | 0..200 | Documented range |
 | `pulse-mean` | 1..512 | Documented 0..512, but a written 0 reads back 1 on firmware `0x0029` (twice, drive 4) |

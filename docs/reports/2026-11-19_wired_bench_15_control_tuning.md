@@ -438,4 +438,7 @@ Checks: `verify.py --mode quick --build-dir build/verify/wb15_fix` PASS (117/117
 
 The lead owns Git and CI. Nothing was committed, pushed or dispatched by this
 session; the four CI jobs are required on the recording commit (core,
-firmware, console and harness changed).
+firmware, console and harness changed). The lead committed the work, with the
+audit fixes, as `6592106`; CI run 44601059918 on that exact commit passed all
+four jobs (native gcc, native clang, Arduino, ESP-IDF). The independent audit
+was aud-20261119-192929-39603c.

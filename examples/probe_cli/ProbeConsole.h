@@ -19,6 +19,7 @@
 #include "ParameterWrite.h"
 #include "InputStartRoute.h"
 #include "VelocityLimits.h"
+#include "PositionLimitsRoute.h"
 #include "SettingCandidates.h"
 #include "MotorControlRS/profiles/ess_rs/Codec.h"
 #include "MotorControlRS/profiles/ess_rs/Reads.h"
@@ -437,6 +438,12 @@ struct Host {
     /** Velocity limits of the selected axis (wired bench 14): show, qualify one
      * cell, raise to the promoted table, reset. Local; never bus traffic. */
     Action (*velocityLimits)(void*, const VelocityLimitsCommand*, VelocityLimitsView&) = nullptr;
+    /** Position limits of the selected axis (wired bench 16): show, install one
+     * named case, return to the defaults. Local; never bus traffic. */
+    Action (*positionLimits)(void*, const PositionLimitsCommand*, PositionLimitsView&) = nullptr;
+    /** The position-limits case an admitted move was prepared with; "" for the
+     * core defaults or an unknown operation. Used by move results. */
+    const char* (*positionLimitsCase)(void*, uint32_t operationId) = nullptr;
     /** Control and tuning candidates (wired bench 15): show, check one field
      * through the ordinary admission without a frame, the deviation-threshold
      * D6 call, reset. Never bus traffic. */
@@ -532,6 +539,7 @@ private:
     void parameterRead(uint32_t id, MotorControlRS::ESS_RS::ReadKind, const char* address) noexcept;
     void parameterWrite(uint32_t id, const char* command, const ParameterWriteRequest* request) noexcept;
     void velocityLimitsReply(uint32_t id, const VelocityLimitsCommand& request) noexcept;
+    void positionLimitsReply(uint32_t id, const PositionLimitsCommand& request) noexcept;
     void candidatesReply(uint32_t id, const CandidatesCommand& request) noexcept;
     void inputStart(uint32_t id, const char* command, const InputStartCommand& request) noexcept;
     void qualificationRoute(uint32_t id, QualificationRoute, const char* const* tokens, std::size_t count) noexcept;

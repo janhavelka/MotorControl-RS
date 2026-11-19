@@ -149,6 +149,46 @@ wire/field contracts: they are low-level access, not policy-checked movement.
 A drive reset can invalidate volatile settings; applications still own
 configuration freshness, stop/recovery and no uncertain replay.
 
+### Named position limits in the standalone application (wired bench 16)
+
+The standalone application reaches limits other than the defaults only through
+one explicit, named call (decisions D6 and D12): `position limits set RPM RATE
+RAMP case NAME` on the console, `installPositionLimits` in the API
+(`ProbeApp.h`). Without it every move keeps the defaults above.
+
+- Wire ranges stay enforced: rpm 1..3000, rate 1..2,560,000 increments/s
+  (3000 rpm at subdivision 51,200), minimum ramp 0..2000 ms. The case name is
+  1..15 characters of `a-z`, `0-9`, `-` and `_`. A refusal sends nothing and
+  keeps the previous install.
+- The install is RAM only and binds the selected target, its binding
+  generation, the configuration generation and the host serial generation.
+  `recover`, `useaddr`, a configuration change (a settings write such as
+  subdivision, a wiring declaration, a release), a host tuple change,
+  `position limits default` (`revokePositionLimits`) and a restart end it.
+  Install after the subdivision write it depends on.
+- It applies to selected-axis finite moves (`move`, `moveby`, `moveto`, the
+  API) and staging. An interrupt keeps the limits of its original move. Group
+  moves, input-started moves and homing keep the defaults.
+- Each admitted `move` result echoes `position_limits` (`source`, `case`,
+  `max_rpm`, `max_rate`, `min_ramp`). `settings` reports the active ceiling at
+  the checked subdivision (`maximum_position_rpm`), the default ceiling and the
+  source. `position limits` alone shows the active limits and sends nothing.
+
+The install does not repair the firmware defects above the defaults. Wired
+bench 16 used it for the reproduction attempts and both reproduced on drive 4
+(model `0x4EEA`, firmware `0x0029`, 19 November 2026,
+[report](reports/2026-11-19_wired_bench_16_alarms_and_failures.md)):
+
+- Case `hw14` (2000 rpm, 133,334/s, 100): subdivision 4000, ramps 500/500,
+  +40,000 at 2000 rpm. The fifth `stop normal`, sent 371.1 ms after the start
+  frame, was echoed and then the drive kept RUNNING at speed word 0, creeping
+  about 60-80 increments/s, 3,361 increments past the target. The release
+  after the failed stop ended the creep.
+- Case `q05` (2000 rpm, 1,706,667/s, 100): subdivision 51,200, ramps 100/100,
+  +12,800. At 900 rpm RUNNING persisted 6 of 6 times (about 370 increments past
+  the target after 3 s, rising about 100 increments/s) until `stop fast`; at
+  2000 rpm 3 of 3 completed.
+
 ## Native commands and remembered intent
 
 `ESS_RS::PositionCommand` holds caller intent: endpoint/binding, word order,

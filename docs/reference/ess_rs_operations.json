@@ -637,9 +637,10 @@
         "evidence": [
           "docs/archive/reports/ess_release_23_2026-10-05.md",
           "docs/archive/reports/ess_release_23_2026-10-05.json",
-          "docs/reports/2026-11-18_wired_bench_01_baseline.md"
+          "docs/reports/2026-11-18_wired_bench_01_baseline.md",
+          "docs/reports/2026-11-19_wired_bench_16_alarms_and_failures.md"
         ],
-        "reason": "Explicit release command and fresh drive-state observation PASS in the recorded prompt23 preceding-image (994d20...) finite action campaign; final image 041232... repeated read-only checks only, with the same production motor path. Archived software outcomes report acknowledged execution and observed completion under the declared receiver topology; independent electrical response-source, winding-current, shaft and external-input precedence measurements remain absent."
+        "reason": "Explicit release command and fresh drive-state observation PASS in the recorded prompt23 preceding-image (994d20...) finite action campaign; final image 041232... repeated read-only checks only, with the same production motor path. Archived software outcomes report acknowledged execution and observed completion under the declared receiver topology; independent electrical response-source, winding-current, shaft and external-input precedence measurements remain absent. Wired bench 16 F2 (drive 4, subdivision 4000): the release after a genuinely failed transmitted stop (late stop normal, HW-14 creep, eligible and moving) was observed (motion word 16, RUNNING cleared) and the creep ended; enable and alarm-clear stayed refused axis_conflict until stop fast observed completion."
       },
       "reason": "Explicit one-shot command plus bounded checked state observation; acknowledgement is distinct from reported completion and physical effect."
     },
@@ -677,9 +678,10 @@
       "hardware": {
         "state": "PASS",
         "evidence": [
-          "docs/reports/2026-11-16_unattended_bench_tests.md"
+          "docs/reports/2026-11-16_unattended_bench_tests.md",
+          "docs/reports/2026-11-19_wired_bench_16_alarms_and_failures.md"
         ],
-        "reason": "Alarm 5 (position tolerance) latched five times by a lowered position-error threshold on drives 4 and 2 (image f7368a2, 16 November 2026). After an explicit stop reconciled the uncertain move, alarm-clear was acknowledged and observed, and state 0.2 s later showed alarm 0 and the drive enabled each time, although hardware p12 lists alarm 5 as re-power reset. Alarms 1-3 were not provoked; independent electrical/shaft qualification is separate."
+        "reason": "Alarm 5 (position tolerance) latched five times by a lowered position-error threshold on drives 4 and 2 (image f7368a2, 16 November 2026). After an explicit stop reconciled the uncertain move, alarm-clear was acknowledged and observed, and state 0.2 s later showed alarm 0 and the drive enabled each time, although hardware p12 lists alarm 5 as re-power reset. Alarms 1-3 were not provoked; independent electrical/shaft qualification is separate. Wired bench 16 (19 November 2026, image Q 38BDB490..., drives 4 and 2): alarm 5 latched by threshold 1 and cleared by alarm-clear 12 times (drive 4 Y0 alarm output off 5-8 ms after the request); after a mid-move alarm (motion word 28) alarm-clear was refused axis_conflict after one fresh read and admitted after two at speed 0 and the same position; after the HW-14 creep with no alarm it stayed refused axis_conflict. A start 0.59 s after the clear's acknowledgement was ignored 3 of 3 times, from 0.91 s acted on; accepted alarm-clear bytes now start the 1 s enable wait (HW-15)."
       },
       "reason": "Explicit one-shot command plus bounded checked state observation; acknowledgement is distinct from reported completion and physical effect."
     },
@@ -720,9 +722,10 @@
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json",
           "docs/reports/2026-11-18_wired_bench_01_baseline.md",
-          "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md"
+          "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md",
+          "docs/reports/2026-11-19_wired_bench_16_alarms_and_failures.md"
         ],
-        "reason": "Normal stop during a finite 250-increment move PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. Wired bench 07 S7/S8 (19 November 2026, drive 4, 3000-step moves at 60 rpm): Y0 running off 112-215 ms at 100 ms and 933-940 ms at 1000 ms deceleration after the stop admission; an assigned emergency-stop input during a 1000 ms normal stop ramp ended it about 23 ms after the input."
+        "reason": "Normal stop during a finite 250-increment move PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. Wired bench 07 S7/S8 (19 November 2026, drive 4, 3000-step moves at 60 rpm): Y0 running off 112-215 ms at 100 ms and 933-940 ms at 1000 ms deceleration after the stop admission; an assigned emergency-stop input during a 1000 ms normal stop ramp ended it about 23 ms after the input. Wired bench 16 F1 (drive 4, subdivision 4000, 2000 rpm, ramps 500, named limits case hw14): a stop normal sent 371.1 ms after the start frame was echoed and ended observation_limit while the drive crept past the target (HW-14 reproduced, 1 of 5 tries); the creep is a drive defect above the default 50,000 increments/s, not a pass of the stop."
       },
       "reason": "Explicit one-shot command plus bounded checked state observation; acknowledgement is distinct from reported completion and physical effect."
     },
@@ -763,9 +766,10 @@
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json",
           "docs/reports/2026-11-18_wired_bench_01_baseline.md",
-          "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md"
+          "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md",
+          "docs/reports/2026-11-19_wired_bench_16_alarms_and_failures.md"
         ],
-        "reason": "Direct stop during a finite 250-increment move PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. Wired bench 07 S7/S8 (19 November 2026, drive 4, 3000-step moves at 60 rpm): Y0 running off 23-143 ms at 100 ms and 23-28 ms at 1000 ms deceleration after the stop admission; an assigned emergency-stop input during a 1000 ms normal stop ramp ended it about 23 ms after the input."
+        "reason": "Direct stop during a finite 250-increment move PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. Wired bench 07 S7/S8 (19 November 2026, drive 4, 3000-step moves at 60 rpm): Y0 running off 23-143 ms at 100 ms and 23-28 ms at 1000 ms deceleration after the stop admission; an assigned emergency-stop input during a 1000 ms normal stop ramp ended it about 23 ms after the input. Wired bench 16: stop fast ended every persistent RUNNING (R2, Q05: 6 of 6) and reconciled every alarm-5 and failed-stop conflict on drives 2 and 4."
       },
       "reason": "Explicit one-shot command plus bounded checked state observation; acknowledgement is distinct from reported completion and physical effect."
     },
@@ -2350,9 +2354,10 @@
           "docs/reports/2026-11-16_unattended_bench_tests.md",
           "docs/reports/2026-11-18_wired_bench_03_connected_setters.md",
           "docs/reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md",
-          "docs/reports/2026-11-19_wired_bench_15_control_tuning.md"
+          "docs/reports/2026-11-19_wired_bench_15_control_tuning.md",
+          "docs/reports/2026-11-19_wired_bench_16_alarms_and_failures.md"
         ],
-        "reason": "Group NOT_RUN: four of six fields are unexercised and physical filter timing is unmeasured. Bench experiments only: input filter 2->3->2 (earlier runs) and position-error threshold 4000->1->4000 on drives 4 and 2, each acknowledged and read back (16 November 2026); threshold 1 latched alarm 5 on the next move every time. Wired bench 03: deviation threshold 4000->3999->4000 on drive 1 with connected X0-X3 and CONFIGURE records, acknowledged and read back; refused before TX without records. Stored-value evidence only; the group stays NOT_RUN. Wired bench 05 measured the input-filter field only (see tuning_input_filter_update); the group stays NOT_RUN. Wired bench 15 (drive 4, Y0 on aux1): arrival time 0/50/200 moves the arrival edge by about 1 ms per unit (T2); arrival window 1/50/256, pulse low-pass 1/1024 and pulse mean 1/256 change nothing on serial moves (T1, T4); a written pulse mean 0 reads back 1 (twice), so the row starts at 1; deviation threshold (T3, 2000-step moves): no alarm 5 down to 16/35 on drive 4 and 12/28 on drive 2 at 120/600 rpm, alarm at 12/32 and 8/24; 8000 and 65535 after the D6 call raised none; above 4000 refused with no frame without the call and after reset. Every change acknowledged, read back and restored. Pulse-input filter time constants unmeasured (no pulse source)."
+        "reason": "Group NOT_RUN: four of six fields are unexercised and physical filter timing is unmeasured. Bench experiments only: input filter 2->3->2 (earlier runs) and position-error threshold 4000->1->4000 on drives 4 and 2, each acknowledged and read back (16 November 2026); threshold 1 latched alarm 5 on the next move every time. Wired bench 03: deviation threshold 4000->3999->4000 on drive 1 with connected X0-X3 and CONFIGURE records, acknowledged and read back; refused before TX without records. Stored-value evidence only; the group stays NOT_RUN. Wired bench 05 measured the input-filter field only (see tuning_input_filter_update); the group stays NOT_RUN. Wired bench 15 (drive 4, Y0 on aux1): arrival time 0/50/200 moves the arrival edge by about 1 ms per unit (T2); arrival window 1/50/256, pulse low-pass 1/1024 and pulse mean 1/256 change nothing on serial moves (T1, T4); a written pulse mean 0 reads back 1 (twice), so the row starts at 1; deviation threshold (T3, 2000-step moves): no alarm 5 down to 16/35 on drive 4 and 12/28 on drive 2 at 120/600 rpm, alarm at 12/32 and 8/24; 8000 and 65535 after the D6 call raised none; above 4000 refused with no frame without the call and after reset. Every change acknowledged, read back and restored. Pulse-input filter time constants unmeasured (no pulse source). Wired bench 16: the deviation threshold 1 (lowest value of prompt 15's table) and 8 were written, read back and restored to 4000 on drives 4 and 2 for each alarm-5 case."
       },
       "reason": "Whole candidate, native range, exact target/model context, fresh stopped state and independently qualified effects validate before traffic; shared sequence retains partial progress and uncertainty without replay or rollback."
     },
@@ -3954,6 +3959,14 @@
       "api": "revokeIoQualification",
       "facts": [],
       "reason": "Clears future qualification and cancels unsent dependent work. In-flight evidence remains; this is not a motor stop."
+    },
+    {
+      "route": "position limits",
+      "wire_command": "position-limits",
+      "syntax": "position limits set RPM RATE RAMP case NAME",
+      "api": "installPositionLimits",
+      "facts": [],
+      "reason": "Wired bench 16 (D6/D12): the explicit, named install of host position limits for the selected axis (rpm 1..3000, rate 1..2,560,000 increments/s, minimum ramp 0..2000 ms). RAM only; recover, useaddr, a configuration or host tuple change, position limits default (revokePositionLimits) and a restart end it. Selected-axis finite moves and staging use it; interrupts keep their original move's limits; group moves, input-started moves and homing keep the defaults. Move results echo the case and values. No register is written and no frame is sent."
     }
   ]
 }

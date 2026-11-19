@@ -75,11 +75,15 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   19.8/50.6 ms with `debug raw` and 16.8/41.0 ms without
   ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md#group-start-spread-and-raw-traffic-copying)).
   Against `b7dd6fb` (16/38.5 ms), 0.8/2.5 ms remain unattributed.
-- [ ] Decide how applications report the alarm 5 silence: while latching alarm 5,
-  firmware `0x0029` does not answer Modbus for 1.0 to 1.9 s. The move then ends as
-  a transport error with completion unknown, and only a later read shows the
-  alarm. The current handling is safe; a caller needs a read after at least 2 s
-  to tell an alarm from a lost drive ([alarm 5](ess_actions.md#alarm-5-on-firmware-0x0029)).
+- [x] Decide how applications report the alarm 5 silence: while latching alarm 5,
+  firmware `0x0029` does not answer Modbus for 1.0 to 1.9 s. Decided in wired
+  bench 16 ([report](reports/2026-11-19_wired_bench_16_alarms_and_failures.md)): no new firmware state; the move or
+  velocity result keeps `transport_error` and names the failing poll
+  (`failure_evidence`, 0 RX, `polls`); the caller runs one `recover`, reads state
+  at least 2.0 s after the last acknowledged write and classifies
+  `alarm_after_silence`, `drive_silent` or `no_alarm`
+  ([rule](ess_actions.md#alarm-5-on-firmware-0x0029), `bench_alarms.classify_silence`).
+  Implementation and hardware: done (drives 4 and 2, 9 latches).
 - [x] Measure the paired-value encodings and promote what is measured
   ([wired bench 10](prompts/ess_wired_bench/10_paired_value_encodings.md)).
   Implementation: done.
@@ -201,6 +205,8 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
 
 - [ ] Resolve the [2 November persistent RUNNING failure](reports/2026-11-02_standalone_14_bench_regression.md#the-failure): once in four
   interrupted moves at 1,000 increments/s, far below earlier cases, clearing only with a power cycle. Capture supply voltage and continuous status on a rerun.
+  Wired bench 16 R1 (HW-01 x20) was deferred: owner away (D15 item 3); the
+  owner's return row in the wired bench README unlocks it.
 - [x] Close R-16's application home rate policy in 16. Physical rate qualification
   remains open. Stage 15's R-17 release contract permits no hidden release,
   enable or motion restart.
@@ -301,11 +307,16 @@ functional evidence; independent shaft calibration remains absent.
   built from the uncommitted prompt 02 tree on `5dbcaa1`. Named refusal reasons
   for connected-terminal setters followed in wired bench 03.
 - [ ] Distinguish supply transients from internal firmware failure in the
-  reproduced reset-like loss of volatile settings. Failure occurred both above
+  reproduced reset-like loss of volatile settings (Q04). Wired bench 16 R3 was
+  deferred (owner away, D15 item 3; it needs a power cycle and ideally a supply
+  instrument); the question is in the vendor bundle. Failure occurred both above
   and below 200,000 command increments/s; ramp comparisons narrow the case but
   do not identify its cause. [Boundary experiment](reports/2026-10-07_rate_boundary.md).
 - [ ] Resolve persistent RUNNING and normal-stop failure at the recorded high
-  speed/subdivision combinations. Obtain firmware mapping/update information
+  speed/subdivision combinations. Wired bench 16 R2 (drive 4, named limits case
+  `q05`) reproduced it: 51200/100/900/12800 persisted RUNNING 6 of 6 times
+  (Y0 running stayed on, arrival stayed off) until `stop fast`; 2000 rpm
+  completed 3 of 3 ([report](reports/2026-11-19_wired_bench_16_alarms_and_failures.md)). Obtain firmware mapping/update information
   and vendor clarification of the datasheet's 'MAX. INPUT FREQUENCY 200KHZ' row,
   which names no input, and its applicability to serial positioning. [Completion investigation](reports/2026-10-07_position_completion.md).
   The conservative [position defaults](reports/2026-10-07_position_limits.md)
@@ -313,8 +324,21 @@ functional evidence; independent shaft calibration remains absent.
 - [x] Keep position moves out of the late `stop normal` creep of firmware `0x0029`
   (HW-14): default rate ceiling 50,000 increments/s, rechecked on the bench.
   [Stop normal study](reports/2026-11-04_stop_normal_rate_ceiling.md).
+- [ ] Close three test and result gaps of the wired bench 16 audit
+  (aud-20261119-210004-f55a5f). Implementation: not done.
+  - F1: the typed move result (`copyMoveResult`, `MoveProgress`) should carry
+    the admission-time position-limits case; today only the record and the
+    console `move` line keep it.
+  - F3: the release-after-failed-stop negative tests should isolate stop
+    eligibility with valid facts, plus a positive control in the same fixture.
+  - F4: route-level position-limits tests for staging, group moves, input
+    starts and homing, and for moves above an installed ceiling.
 - [ ] Ask the vendor about that creep above about 60,000 increments/s and whether
-  newer firmware fixes it. Velocity mode (wired bench 14 C3, drive 2,
+  newer firmware fixes it. The question is prepared, not sent:
+  [vendor bundle](reports/2026-11-19_wired_bench_16_vendor_bundle.zip) (wired
+  bench 16 reproduced the creep on drive 4: subdivision 4000, 2000 rpm, a
+  `stop normal` 371.1 ms after the start frame; the release after the failed
+  stop ended it). Velocity mode (wired bench 14 C3, drive 2,
   subdivision 6000, 50,000-100,000 increments/s): 160 runs with `stop normal` at
   0.9 of a 500 ms ramp and at constant speed showed no creep and no alarm
   ([report](reports/2026-11-19_wired_bench_14_velocity_jog_pv.md)); the position
@@ -322,7 +346,10 @@ functional evidence; independent shaft calibration remains absent.
   late-stop matrix on the new firmware.
 - [ ] Measure the enable settling time (HW-15) beyond one drive's 0.6 s for
   position starts: home and velocity starts, other drives or firmware, an enable
-  sent to an enabled drive, and an alarm clear with an alarm latched. The 1 s
+  sent to an enabled drive. Alarm clear with an alarm latched: wired bench 16 A3
+  (drive 4) measured a start ignored at 0.59 s after the clear's
+  acknowledgement (3 of 3) and acted on from 0.91 s; accepted alarm-clear bytes
+  now start the same 1 s wait (implementation and hardware done for that case). The 1 s
   window is a margin over that one measurement ([console](console.md)).
 - [ ] Establish algorithm 3, feedback sign/source/scale, arrival precision and
   actual speed/ramp behavior using correlated independent shaft measurements.

@@ -41,7 +41,7 @@ MAX_INPUT = 98304
 MAX_TRAFFIC_INPUT = 1048576  # Independent finite diagnostic budget per command/drain.
 COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "health", "memory", "stats", "load",
                       "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "bench", "communication", "persistence", "motion-profile", "motion-profile-stage", "motion-profile-start-speed", "motion-profile-start-speed-relation", "home-auxiliary", "debug",
-                      "home-restore", "velocity-restore", "velocity-jog", "velocity-limits", "tuning-candidates", "driver-experiment",
+                      "home-restore", "velocity-restore", "velocity-jog", "velocity-limits", "position-limits", "tuning-candidates", "driver-experiment",
                       "home-qualification-install", "home-qualification-revoke", "velocity-qualification-install", "velocity-qualification-revoke",
                       "position-clear-qualification", "position-clear-qualification-install", "position-clear-qualification-revoke",
                       "io-qualification-install", "io-qualification-inspect", "io-qualification-revoke",
@@ -429,6 +429,39 @@ def tuning_candidates_arguments(tokens: tuple[str, ...]) -> dict:
             address = int(tokens[4])
         return {"request": "check", "group": group, "field": tokens[2], "value": value, "address": address}
     raise ValueError("tuning candidates requires check control|GROUP FIELD VALUE [address], threshold VALUE or reset")
+
+
+# Wired bench 16 (D6/D12): the named position-limits install of the selected axis.
+POSITION_LIMITS_DEFAULTS = {"max_rpm": 2000, "max_rate": 50000, "min_ramp": 100}
+POSITION_LIMITS_MAX_RATE = 2560000  # 3000 rpm at subdivision 51200.
+POSITION_LIMITS_SOURCES = ("default", "installed")
+POSITION_LIMITS_CASE = r"[a-z0-9][a-z0-9_-]{0,14}"
+
+
+def position_limits_arguments(tokens: tuple[str, ...]) -> dict:
+    """``position limits`` [set RPM RATE RAMP case NAME | default]."""
+    if not isinstance(tokens, tuple) or any(type(t) is not str for t in tokens):
+        raise ValueError("position limits requires a tuple of tokens")
+    if not tokens:
+        return {"request": "show"}
+    if tokens == ("default",):
+        return {"request": "default"}
+    number = r"(?:0|[1-9][0-9]{0,6})"
+    if (len(tokens) == 6 and tokens[0] == "set" and tokens[4] == "case" and
+            all(re.fullmatch(number, t) for t in tokens[1:4]) and re.fullmatch(POSITION_LIMITS_CASE, tokens[5])):
+        rpm, rate, ramp = (int(t) for t in tokens[1:4])
+        if not (1 <= rpm <= 3000 and 1 <= rate <= POSITION_LIMITS_MAX_RATE and ramp <= 2000):
+            raise ValueError("position limits set values are outside the wire ranges")
+        return {"request": "set", "limits": {"max_rpm": rpm, "max_rate": rate, "min_ramp": ramp}, "case": tokens[5]}
+    raise ValueError("position limits requires set RPM RATE RAMP case NAME or default")
+
+
+def position_speed_limit(subdivision: int, limits: dict) -> int:
+    """The core's positionSpeedLimit: min(max_rpm, floor(max_rate x 60 / subdivision)), 0 when invalid."""
+    if not 400 <= subdivision <= 51200 or not 1 <= limits["max_rpm"] <= 3000 or not limits["max_rate"] or \
+            limits["min_ramp"] > 2000:
+        return 0
+    return min(limits["max_rpm"], limits["max_rate"] * 60 // subdivision)
 
 
 def velocity_cell_rate(cell: dict) -> int:
@@ -2596,6 +2629,41 @@ class Console:
             require(item["pin_known"] and item["pin_word"] == request["value"], "exact restore without its pinned word")
 
     @staticmethod
+    def _check_position_limits(handle, item: dict) -> None:
+        """Wired bench 16: the active position limits after one local call."""
+        request = position_limits_arguments(handle.host_args or ())
+        def require(condition, message):
+            if not condition:
+                raise BenchError("position-limits: " + message)
+        def integer(value, low=0, high=0xFFFFFFFF):
+            return type(value) is int and low <= value <= high
+        require(item.get("result") == "done" if item["ok"] else item.get("result") in ADMISSION_FAILURES, "invalid disposition")
+        require(item.get("request") == request["request"] and item.get("bus_traffic") is False, "request or traffic claim differs")
+        require(type(item.get("reason")) is str and (item["reason"] == "none") == item["ok"], "reason does not name the refusal")
+        require(item.get("source") in POSITION_LIMITS_SOURCES and integer(item.get("address"), 0, 247), "invalid source")
+        require(item.get("defaults") == POSITION_LIMITS_DEFAULTS, "core defaults differ")
+        limits = {k: item.get(k) for k in POSITION_LIMITS_DEFAULTS}
+        require(all(integer(v) for v in limits.values()), "invalid limits")
+        case = item.get("case")
+        require(type(case) is str and (case == "") == (item["source"] == "default") and
+                (case == "" or re.fullmatch(POSITION_LIMITS_CASE, case)), "case does not match the source")
+        require(item["source"] == "installed" or limits == POSITION_LIMITS_DEFAULTS, "defaults reported with other values")
+        subdivision = item.get("subdivision")
+        require(integer(subdivision, 0, 51200) and integer(item.get("maximum_position_rpm"), 0, 3000) and
+                integer(item.get("default_maximum_position_rpm"), 0, 3000), "invalid ceilings")
+        require(item["maximum_position_rpm"] == (position_speed_limit(subdivision, limits) if subdivision else 0) and
+                item["default_maximum_position_rpm"] ==
+                (position_speed_limit(subdivision, POSITION_LIMITS_DEFAULTS) if subdivision else 0),
+                "ceilings differ from the limits and subdivision")
+        require(integer(item.get("install_binding")) and integer(item.get("install_configuration")) and
+                (item["install_binding"] == 0) == (item["source"] == "default"), "invalid install generations")
+        if item["ok"] and request["request"] == "set":
+            require(item["source"] == "installed" and limits == request["limits"] and case == request["case"],
+                    "installed limits differ from the request")
+        if item["ok"] and request["request"] == "default":
+            require(item["source"] == "default", "default left an install")
+
+    @staticmethod
     def _check_velocity_limits(handle, item: dict) -> None:
         """Wired bench 14: the active velocity limits after one local call."""
         request = velocity_limits_arguments(handle.host_args or ())
@@ -3659,6 +3727,8 @@ class Console:
             self._check_parameter_write(handle, item)
         if handle.command == "velocity-limits":
             self._check_velocity_limits(handle, item)
+        if handle.command == "position-limits":
+            self._check_position_limits(handle, item)
         if handle.command == "tuning-candidates":
             self._check_tuning_candidates(handle, item)
         if handle.command in INPUT_START_COMMANDS:
@@ -4103,6 +4173,9 @@ class Console:
         elif command == "velocity-limits":
             host_args = () if host_args is None else host_args
             velocity_limits_arguments(host_args)
+        elif command == "position-limits":
+            host_args = () if host_args is None else host_args
+            position_limits_arguments(host_args)
         elif command == "tuning-candidates":
             host_args = () if host_args is None else host_args
             tuning_candidates_arguments(host_args)
@@ -4274,6 +4347,7 @@ class Console:
             if command == "home-auxiliary": wire_command = "home auxiliary"
             if command in PARAMETER_WRITE_COMMANDS: wire_command = PARAMETER_WRITE_COMMANDS[command]
             if command == "velocity-limits": wire_command = "velocity limits"
+            if command == "position-limits": wire_command = "position limits"
             if command == "tuning-candidates": wire_command = "tuning candidates"
             if command in INPUT_START_COMMANDS: wire_command = INPUT_START_COMMANDS[command]
             if command == "position-interrupt": wire_command = "position interrupt"

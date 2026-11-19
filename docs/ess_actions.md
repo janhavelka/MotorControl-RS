@@ -65,8 +65,17 @@ acknowledged start.
 ## Standalone enable wait
 
 The standalone application holds each address for 1 s from the first service
-that sees accepted enable bytes. This is the existing host policy for HW-15,
-not a documented drive-ready signal. Possible or incomplete writes also hold
+that sees accepted enable or alarm-clear bytes. This is the existing host
+policy for HW-15, not a documented drive-ready signal. Alarm clear joined it
+in wired bench 16 (A3, drive 4, `0x4EEA`/`0x0029`, 19 November 2026): the
+drive re-enables itself on `alarm-clear`, and a start acknowledged 0.59 s
+after the clear's acknowledgement was ignored three times (no RUNNING, no
+position change, motion word 0), while starts at 0.91, 1.15 and 1.40 s were
+acted on. The 1 s window keeps about 0.1 s over the latest ignored-start
+bound; it is one drive's measurement, not a family bound. The wait starts at
+the first service that sees the accepted TX of the enable or alarm-clear write,
+not at its acknowledgement or its observed completion, so it covers the whole
+reply and observation. Possible or incomplete writes also hold
 the address; a lost ACK remains UNKNOWN. A cancelled enable with no accepted
 bytes leaves any earlier wait unchanged.
 
@@ -84,8 +93,12 @@ while the source address has an unexpired wait; its identity cannot be moved
 to an unproven endpoint. A new binding at the same address inherits the remaining
 hold, not the old readiness. At `now >= untilUs` the wait no longer blocks.
 
-Selected moves, selected staging, group moves, home and velocity use the same
-fact. Simple console moves wait; other submissions return BUSY before traffic.
+Selected moves, selected staging, group moves, home, velocity, the input-start
+arm and its trigger, the JOG setter and profile candidates use the same fact
+(native tests after an accepted alarm-clear: `move_app_test`,
+`velocity_app_test`, `group_app_test`, `input_start_app_test`; armed members
+are reserved, so the trigger's own check guards a state the routes cannot
+reach). Simple console moves wait; other submissions return BUSY before traffic.
 Stops, release and reads remain available. Host reset loses the table, and
 external enables or drive power-up are not observed. This correction does not
 qualify the duration for every drive/mode or close HW-15. See the
@@ -301,6 +314,35 @@ qualification time. Stale facts cancel unsent work; an in-flight frame settles.
 With an age limit, facts expire at the limit, including before queued TX.
 Active work, commissioning and transport faults still block release.
 
+Only an explicit stop record is eligible: a non-group ACTION stop on the
+selected target and tuple, full TX accepted, FAILED with execution UNKNOWN or
+ACKNOWLEDGED, completion NOT_OBSERVED, with the address conflict held. A
+velocity run's own end stop lives in its VELOCITY record and a held stop whose
+recovery failed ends `not_transmitted`; neither is eligible. After a failed
+velocity end stop, send one explicit stop first; if that stop fails
+transmitted, it is the eligible record. Native tests: `stop_path_app_test`
+(`settledZeroTxStopRecoveryFailure`), `velocity_app_test`
+(`lostOwnedStopNeverReplays`).
+
+After a failed transmitted stop, decide from a fresh state read (wired bench
+16 step 5); the retained stop record is never changed:
+
+- **Moving** (RUNNING with the position changing between two reads): an
+  eligible stop runs the release after stop, then `stop fast` and enable once
+  the stop reports standstill. An ineligible one gets one new explicit
+  `stop fast` at once (a first transmission).
+- **Stopped:** no release. Keep the execution uncertainty and reconcile the
+  conflict with one new explicit stop whose checked stopped report settles it;
+  then enable and a short move.
+- **Unavailable** (reads fail): end live work and keep the evidence.
+
+Measured on drive 4 (wired bench 16 F1/F2, subdivision 4000, 2000 rpm): the
+HW-14 creep after a late `stop normal` was eligible and moving. The release
+was observed (motion word 16: RELEASED, RUNNING cleared) and the position
+stopped changing; `enable` and `alarm-clear` were refused `axis_conflict`;
+`stop fast` then observed completion, `enable` was admitted and a +200 move
+completed with a drive-reported change of 199.
+
 Release removes winding drive. Its RELEASED observation does not prove
 standstill, reset the drive or clear the old motion conflict. Enable and alarm
 clear remain blocked while motion is unresolved. There is no automatic release,
@@ -327,6 +369,40 @@ Bench, 16 November 2026, drives 2 and 4 ([report](reports/2026-11-16_unattended_
 
 After no reply right after a start, read state again after at least 2 s before
 treating the drive as lost.
+
+**Reporting rule for API callers** (wired bench 16, decided: no new firmware
+state). The move or velocity result keeps `transport_error`, execution
+ACKNOWLEDGED, completion NOT_OBSERVED. It already identifies the failing poll:
+`failure_evidence` names its step with `received_length` 0 and accepted TX,
+`trigger_evidence` holds the confirmed start reply, and `polls` counts the
+answered polls (0 when the first poll failed). The caller then runs one
+explicit `recover`, waits until at least 2.0 s after the last acknowledged
+write, and reads state:
+
+| Read at >= 2.0 s | Class |
+| --- | --- |
+| Reply with alarm nonzero or the alarm flag | `alarm_after_silence` |
+| No reply | `drive_silent`: treat the drive as lost |
+| Reply without alarm | `no_alarm`: the silence had another cause |
+
+Nothing is resent; the conflict stays until a checked stop. The harness
+applies the rule in `bench_alarms.classify_silence` (tests: alarm found, no
+reply, reply without alarm, malformed terminal, read too early; each keeps the
+original result).
+
+Wired bench 16 measurements (19 November, threshold 1, +2000 at 60 rpm,
+[report](reports/2026-11-19_wired_bench_16_alarms_and_failures.md)): drive 4
+latched alarm 5 seven times (first poll 0 RX each time) and drive 2 twice
+(first poll once, second poll once); every read at >= 2.0 s classified
+`alarm_after_silence` with alarm 5, motion word 24. Drive 4's Y0 (function 1,
+alarm) switched on 1.108-1.112 s after the start acknowledgement, inside the
+no-reply interval; with output polarity 1 the edge inverted. The explicit
+recovery took 0.50 s, so the first answered read came 1.93-1.98 s after the
+acknowledgement; the end of the silence lies between the failing poll
+(+0.23 s) and that answer. Y0 switched off 5-8 ms after the `alarm-clear`
+request. A velocity run under alarm 5 (A5, 60 and 120 rpm) ended
+`transport_error`; its own end stop was held for one recovery and sent once
+(one `stop normal` frame in the raw traffic), ending UNKNOWN; no resend.
 
 Wired bench 15 (19 November, drive 4, [report](reports/2026-11-19_wired_bench_15_control_tuning.md)):
 alarm 5 latched **during** a move (threshold 8 at 120 rpm, after 258

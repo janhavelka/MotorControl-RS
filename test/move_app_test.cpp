@@ -1418,8 +1418,32 @@ void testSoftLimitEnableRoute() {
     noteSoftLimitWrite(*app, write);
     assert(!app->softLimitBinding.operationId && softLimitState(*app, nowUs()) == SoftLimitState::UNKNOWN);
 }
+// Wired bench 16 (audit): accepted alarm-clear bytes hold a selected-axis move
+// (and its staging) until the enable-wait deadline; from the deadline an
+// otherwise valid move proceeds. The wait starts at the first service that
+// sees the accepted TX.
+void testAlarmClearWaitHoldsMove() {
+    fresh(); qualify();
+    ActionRequest clear; clear.kind = ActionKind::CLEAR_ALARM;
+    uint32_t id = 0;
+    assert(host(app).startAction(app, 60, 1, clear, id) == Probe::Action::OK);
+    actionStep(id);
+    const auto until = app->enableWaits[1].untilUs;
+    assert(app->enableWaits[1].operationId == id && until > hardware.time);
+    actionStep(id, registers(1, {0, 1}));
+    assert(!view(id).pending && view(id).actionContext->completion == ActionCompletion::OBSERVED);
+    assert(app->enableWaits[1].untilUs == until && hardware.time < until - 1);
+    advanceHardware(until - 1); qualify();
+    const auto writes = hardware.writes; uint32_t move = 77;
+    assert(host(app).startMove(app, 61, 1, request(), move) == Probe::Action::BUSY && move == 77);
+    pump(); assert(hardware.writes == writes && !app->owner.pending() && !app->owner.active());
+    advanceHardware(std::max(hardware.time, until)); qualify();
+    move = admitMove(62);
+    waitTx(move); assert(hardware.writes == writes + 1);
+}
 int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--emit-stop-input-results") { emitStopInputResults(); return 0; }
+    testAlarmClearWaitHoldsMove();
     testQueuedPositionClearInvalidation(); testMonitorReferenceRefusal();
     testLimitInputsAndSoftLimitState(); testSoftLimitEnableRoute();
     testFailedPreparationAndCrossKindSlotReuse();

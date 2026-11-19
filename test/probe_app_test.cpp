@@ -545,6 +545,21 @@ void testActionGateAndSeparateAcknowledgement() {
     // HW-15: the transmitted enable holds off motion starts on its address.
     assert(app->enableWaits[1].target.address == 1 && app->enableWaits[1].untilUs > hardware.time);
 }
+void testAlarmClearStartsEnableWait() {
+    // Wired bench 16 A3 (drive 4, 0x4EEA/0x0029): alarm-clear re-enables the
+    // drive, and a start 0.6 s after its acknowledgement was ignored. Accepted
+    // alarm-clear bytes start the same 1 s wait as an enable.
+    using namespace MotorControlRS;
+    fresh(); timerCapture(); qualifyActions();
+    assert(!enableSettling(*app, 1, hardware.time));
+    const uint32_t operation = actionAdmission(ActionKind::CLEAR_ALARM);
+    actionStep(operation);
+    actionStep(operation, registerReply({0, 0}));
+    assert(view(operation).actionContext->completion == ActionCompletion::OBSERVED);
+    assert(app->enableWaits[1].operationId == operation && app->enableWaits[1].untilUs > hardware.time);
+    assert(enableSettling(*app, 1, hardware.time));
+    assert(app->enableWaits[1].execution == ActionExecution::ACKNOWLEDGED);
+}
 void testStopSupersedesOnlyAfterAdmissionAndSettlesInflight() {
     using namespace MotorControlRS;
     for (unsigned phase = 0; phase < 8; ++phase) {
@@ -1940,7 +1955,7 @@ int main() {
     testSegmentRoutesStoredSettlementAndNoImplicitTrigger(); testSegmentIndexCancellationAndTriggerPolicy();
     testSegmentRecoveryCancelsReadbackContinuation();
     testSuccessfulProbeAndReset(); testCheckedExceptionAndParserRejection();
-    testActionGateAndSeparateAcknowledgement(); testStopSupersedesOnlyAfterAdmissionAndSettlesInflight();
+    testActionGateAndSeparateAcknowledgement(); testAlarmClearStartsEnableWait(); testStopSupersedesOnlyAfterAdmissionAndSettlesInflight();
     testNormalStopObservesLegalRampWithoutReplay(); testDelayedReleaseIsObservedWithoutReplay();
     testStopUsesReservedCapacityAndFullAdmissionPreservesWork();
     testRepeatedStopPreservesEvidenceAndReservedCapacity();

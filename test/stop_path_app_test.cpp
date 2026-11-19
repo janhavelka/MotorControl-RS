@@ -338,6 +338,13 @@ void settledZeroTxStopRecoveryFailure() {
     assert(view(recovery).recoveryResult.outcome == Rtu::RecoveryOutcome::EXPIRED);
     assert(record->stopRecoveryResult.outcome == Rtu::RecoveryOutcome::EXPIRED);
     assert(record->stopBeforeRecoveryKnown && wire.empty());
+    // Wired bench 16: a held stop whose recovery fails ends not_transmitted and
+    // is never eligible for the release after a failed stop.
+    ReleaseAfterStopPrerequisites facts; facts.target.id = 999;
+    assert(!inspectReleaseAfterStop(stopping, facts) && facts.target.id == 999);
+    facts.mechanicsPermitRelease = facts.externalTriggersInhibited = true;
+    uint32_t unchanged = 777;
+    assert(!submitReleaseAfterStop(stopping, facts, unchanged) && unchanged == 777);
     noMoreFrames(3000);
     assert(app->recovery.operationId == recovery);
 }

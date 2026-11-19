@@ -188,6 +188,7 @@ struct App {
         bool triggerTxComplete = false; ///< Start write physical TX evidence, copied from the owner.
         uint64_t triggerTxEndUs = 0;
         uint32_t triggerTxUncertaintyUs = 0;
+        char positionLimitsCase[Probe::POSITION_LIMITS_CASE_CAPACITY] = {}; ///< Install a move was admitted under; empty for the defaults (wired bench 16).
     } records[RECORD_COUNT]; // Ordinary, monitor, stop, stop-escalation, group stop and group move reservations.
     Probe::StateCache stateCache;
     Probe::MonitorSnapshot monitorState;
@@ -302,6 +303,17 @@ struct App {
         uint8_t address = 0;
         uint32_t bindingGeneration = 0, serialGeneration = 0, consumedOperationId = 0;
     } velocityLimits;
+    // Position limits of the selected axis (PositionLimitsApp.h, wired bench 16):
+    // the named install, bound to target, binding, configuration and host serial
+    // generation. RAM only; the core defaults apply otherwise.
+    struct PositionLimitsState {
+        bool installed = false;
+        ESS::PositionLimits limits;
+        char caseName[Probe::POSITION_LIMITS_CASE_CAPACITY] = {};
+        uint32_t targetId = 0;
+        uint8_t address = 0;
+        uint32_t bindingGeneration = 0, configurationGeneration = 0, serialGeneration = 0;
+    } positionLimits;
     // Control and tuning candidates (SettingCandidatesApp.h, wired bench 15): the
     // first checked read of each group per drive and host serial session (the
     // D7 restore source and the base of the percent rows), the deviation-
@@ -1249,6 +1261,15 @@ Rtu::BusAdmission admitActionStep(App& a, App::Record& record, const ESS::Prepar
     return record.action.request.kind == MotorControlRS::ActionKind::STOP ?
         a.owner.admitUrgent(request, now, record.requestId) : a.owner.admit(request, now, record.requestId);
 }
+// HW-15: actions whose accepted bytes start the 1 s enable wait. Wired bench 16
+// A3 (drive 4, 0x4EEA/0x0029): alarm-clear re-enables the drive; starts sent
+// 0.59 s after the clear's acknowledgement were ignored 3 of 3 times (no
+// RUNNING, no position change), starts from 0.91 s were acted on.
+bool startsEnableWait(const App::Record& record) {
+    return record.kind == App::OperationKind::ACTION &&
+        (record.action.request.kind == MotorControlRS::ActionKind::ENABLE ||
+         record.action.request.kind == MotorControlRS::ActionKind::CLEAR_ALARM);
+}
 bool enableSettling(const App& a, uint8_t address, uint64_t now) {
     return ESS::isValidAddress(address) && now < a.enableWaits[address].untilUs;
 }
@@ -1263,6 +1284,7 @@ bool signedFeedback(uint32_t raw, int64_t& native) {
 #include "MotionReadinessApp.h"
 #include "MotionProfileApp.h"
 #include "VelocityLimitsApp.h"
+#include "PositionLimitsApp.h"
 #include "SettingCandidatesApp.h"
 void cancelSimplePreparation(App&, uint8_t, uint64_t);
 void cancelPositionStages(App&, uint8_t, uint64_t);
@@ -1645,6 +1667,7 @@ Probe::Action startMove(void* context, uint32_t commandId, uint8_t address,
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
     record->deadlineUs = deadline; record->kind = App::OperationKind::MOVE; record->axisReserved = true;
     record->ioQualificationMask = moveIoMask(a.ioQualifications);
+    notePositionLimitsCase(a, *record);
     captureStoredPosition(a, *record, now);
     operationId = a.latestOperationId = record->operationId;
     return Probe::Action::OK;
@@ -1677,6 +1700,7 @@ Probe::Action prepareSelectedMove(App& a, const MotorControlRS::MoveRequest& sup
         }
     }
     if (!prerequisites.commandUnitsVerified && !moveRequirements(a, supplied, now, prerequisites)) return Probe::Action::UNAVAILABLE;
+    applyPositionLimits(a, prerequisites); // Wired bench 16: the named install (D6), else the core defaults.
     prerequisites.stopInputMask = stops.mask; prerequisites.stopInputActiveLow = stops.activeLow;
     prerequisites.limitInputMask = limits.witness; prerequisites.limitInputActiveLow = limits.activeLow;
     const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
@@ -3459,7 +3483,7 @@ void advanceActions(App& a, uint64_t now) {
                     if (a.axis.target.address == record.address) invalidateAxis(a);
                     if (auto* member = groupMember(a, record.address)) invalidateMemberCoordinates(*member);
                 }
-                if (record.kind == App::OperationKind::ACTION && record.action.request.kind == MotorControlRS::ActionKind::ENABLE) {
+                if (startsEnableWait(record)) {
                     auto& wait = a.enableWaits[record.address];
                     wait = App::EnableWait();
                     wait.target = record.action.target; wait.serialTuple = record.serialTuple;
@@ -3501,8 +3525,8 @@ void advanceActions(App& a, uint64_t now) {
                 failed.txComplete = event.txComplete;
                 if (!advanceOperation(record, failed, now)) continue;
             }
-            if (record.kind == App::OperationKind::ACTION && record.action.request.kind == MotorControlRS::ActionKind::ENABLE &&
-                event.transport.step == 0 && a.enableWaits[record.address].operationId == record.operationId) {
+            if (startsEnableWait(record) && event.transport.step == 0 &&
+                a.enableWaits[record.address].operationId == record.operationId) {
                 auto& wait = a.enableWaits[record.address];
                 wait.write = record.action.writeEvidence;
                 wait.execution = record.action.execution;
@@ -4181,7 +4205,7 @@ Probe::Host host(App* a) {
     h.qualification = qualificationCommand;
     h.startPositionInterrupt = startPositionInterrupt;
     h.simpleMotion = simpleMotion;
-    h.monitor = monitor; h.motionProfile = motionProfileCommand; h.parameterWrite = parameterWriteCommand; h.velocityLimits = velocityLimitsCommand; h.candidates = candidatesCommand; h.inputStart = inputStartCommand; h.stageProfile = startProfileCandidate; h.debug = debugCommand;
+    h.monitor = monitor; h.motionProfile = motionProfileCommand; h.parameterWrite = parameterWriteCommand; h.velocityLimits = velocityLimitsCommand; h.positionLimits = positionLimitsCommand; h.positionLimitsCase = positionLimitsCaseOf; h.candidates = candidatesCommand; h.inputStart = inputStartCommand; h.stageProfile = startProfileCandidate; h.debug = debugCommand;
     h.axis = axisCommand; h.hostSerial = hostSerial; h.selectTarget = selectTarget;
     h.ioQualification = ioQualificationCommand;
     h.wiring = wiring;
@@ -4965,6 +4989,30 @@ MotorControlRS::Status velocityLimits(const Probe::VelocityLimitsCommand* comman
     if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
     const auto result = velocityLimitsCommand(app, command, output);
     if (result != Probe::Action::OK) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(result), output.reason);
+    return Ok();
+}
+MotorControlRS::Status installPositionLimits(const Probe::PositionLimitsCommand& command, Probe::PositionLimitsView& output) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    if (command.kind != Probe::PositionLimitsCommandKind::SET) {
+        positionLimitsWork(*app, nullptr, output); output.reason = "invalid_request";
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(Probe::Action::INVALID), "install needs a SET command");
+    }
+    const auto result = positionLimitsWork(*app, &command, output);
+    if (result != Probe::Action::OK) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(result), output.reason);
+    return Ok();
+}
+bool inspectPositionLimits(Probe::PositionLimitsView& output) {
+    if (!app) return false;
+    positionLimitsWork(*app, nullptr, output);
+    return true;
+}
+MotorControlRS::Status revokePositionLimits() {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    Probe::PositionLimitsCommand command; command.kind = Probe::PositionLimitsCommandKind::DEFAULT;
+    Probe::PositionLimitsView ignored;
+    positionLimitsWork(*app, &command, ignored);
     return Ok();
 }
 MotorControlRS::Status tuningCandidates(const Probe::CandidatesCommand& command, Probe::CandidatesView& output) {

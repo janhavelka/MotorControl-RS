@@ -1266,6 +1266,13 @@ Probe::Action triggerInputStartIn(App& a, uint32_t id, uint8_t output, uint32_t 
     if (heldOutputsAdmitted(v.kind) ? ownedOn : anyOutputActive(a.benchScratch))
         return refuseInputStart(a, Probe::Action::BUSY, "output_already_on");
     if (a.owner.needsRecovery() || uart.needsRecovery()) return refuseInputStart(a, Probe::Action::RECOVERY_REQUIRED, "recovery_required");
+    // HW-15: the start the pulse causes is a start like any other. Armed members
+    // are reserved, so no enable or alarm clear can begin a wait after the arm;
+    // the trigger still checks each member's wait itself before the port call.
+    const uint64_t now = uart.sample();
+    for (uint8_t i = 0; i < v.count; ++i)
+        if (enableSettling(a, s.members[i].address, now))
+            return refuseInputStart(a, Probe::Action::BUSY, "enable_settling", s.members[i].address);
     uint8_t pendingAddress = 0;
     if (foreignPending(a, pendingAddress)) {
         v.decided = true; v.admitted = false; v.rowCount = 0; v.decisionAddress = pendingAddress;

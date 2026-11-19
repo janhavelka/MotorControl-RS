@@ -75,7 +75,7 @@ const Entry COMMANDS[] = {
     {"stepsperturn", Command::STEPS_PER_TURN, "stepsperturn POSITIVE_NUMBER", "host_command_scale_only_no_motor_settings", false, "Declare command steps per motor turn for angle conversion."},
     {"discover", Command::DISCOVER, "discover [profile ess_rs|manufacturer stepperonline] [addresses FIRST LAST] [tuple BAUD FORMAT] [query-ms 1..5000] [overall-ms 1..60000] [requests 1..256] [results 1..8] [identity] | discover inspect|cancel|restore|finish; max4 distinct tuples,128bytes,20tokens; defaults selected endpoint/current tuple,query500ms,overall5000ms,requests16,results8,no identity,no retries", "bounded_nonchanging_queries_retained_findings_host_restoration", true, "Find responding drives within explicit address, serial and time limits."},
     {"debug", Command::DEBUG, "debug [off|raw|decoded]", "observe_regular_operations_and_cached_diagnostics", false, "Show diagnostics; select raw or decoded traffic while ordinary commands run."},
-    {"position", Command::POSITION, "position interrupt <original-id>", "qualified_stored_position_start_or_interrupt_ack_only", true, "Retrigger the exact stored native move. Acknowledgement does not prove interruption or arrival; use a checked stop to settle motion."},
+    {"position", Command::POSITION, "position interrupt <original-id> | position limits | position limits set RPM RATE RAMP case NAME | position limits default", "qualified_stored_position_start_or_interrupt_ack_only", true, "Retrigger the exact stored native move (acknowledgement does not prove interruption or arrival; use a checked stop to settle motion), or show, install or revoke the named position limits of the selected axis (local, no traffic)."},
     {"motion-profile", Command::MOTION_PROFILE, "motion-profile read|inspect|restore|forget | motion-profile stage ACC DEC RPM TARGET_W0 TARGET_W1 ORDER ADDRESS [model firmware] | motion-profile start-speed <native>", "snapshot_restore_or_explicit_native_start_speed_setting", true, "Read, inspect, stage or restore position parameters without starting; set native start speed separately."},
     {"help", Command::HELP, "help [command]", "show_callable_commands", false, "Show all commands once, or detailed syntax for one command."},
     {"version", Command::VERSION, "version", "show_build", false, "Show the firmware version and console protocol."},
@@ -563,7 +563,7 @@ const char* helpExample(Command command, const Host& host) {
     case Command::HELP: return "help moveby\n  @1 status  (machine-readable JSON)";
     case Command::MOVE_BY: return "moveby 100\n  moveby 36 deg";
     case Command::MOVE_TO: return "moveto 100 steps\n  moveto 36 deg";
-    case Command::POSITION: return "position interrupt 17  (active native move operation ID)";
+    case Command::POSITION: return "position interrupt 17  (active native move operation ID)\n  position limits\n  position limits set 2000 133334 100 case hw14\n  position limits default";
     case Command::SPEED: return "speed 60";
     case Command::ACCEL: return "accel 100";
     case Command::DECEL: return "decel 100";
@@ -1342,6 +1342,25 @@ void Console::velocityLimitsReply(uint32_t id, const VelocityLimitsCommand& requ
     if (fits && v.cellArmed) fits = velocityCellJson(output_, sizeof(output_), used, "cell", v.cell);
     fits = fits && append(output_, sizeof(output_), used, "}");
     if (!fits) { error(id, "velocity-limits", "output_full"); return; }
+    emit();
+}
+// Position limits (wired bench 16): local, never bus traffic; the reply shows
+// the active limits after the call, which a refusal leaves unchanged.
+void Console::positionLimitsReply(uint32_t id, const PositionLimitsCommand& request) noexcept {
+    PositionLimitsView v;
+    const Action result = host_.positionLimits(host_.context, &request, v);
+    const char* requestName = request.kind == PositionLimitsCommandKind::SET ? "set" :
+        request.kind == PositionLimitsCommandKind::DEFAULT ? "default" : "show";
+    const Core::ESS_RS::PositionLimits defaults;
+    std::size_t used = 0;
+    const bool fits = append(output_, sizeof(output_), used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"position-limits\",\"ok\":%s,\"result\":\"%s\",\"request\":\"%s\",\"reason\":\"%s\",\"bus_traffic\":false,\"source\":\"%s\",\"case\":\"%s\",\"address\":%u,\"max_rpm\":%u,\"max_rate\":%lu,\"min_ramp\":%u,\"subdivision\":%u,\"maximum_position_rpm\":%u,\"default_maximum_position_rpm\":%u,\"install_binding\":%lu,\"install_configuration\":%lu,\"defaults\":{\"max_rpm\":%u,\"max_rate\":%lu,\"min_ramp\":%u}}",
+        static_cast<unsigned long>(id), boolean(result == Action::OK), result == Action::OK ? "done" : actionName(result), requestName,
+        v.reason ? v.reason : "none", positionLimitsSourceName(v.source), v.caseName, v.address, v.limits.maximumRpm,
+        static_cast<unsigned long>(v.limits.maximumCommandRate), v.limits.minimumRampTime, v.subdivision, v.maximumRpm, v.defaultRpm,
+        static_cast<unsigned long>(v.installBinding), static_cast<unsigned long>(v.installConfiguration), defaults.maximumRpm,
+        static_cast<unsigned long>(defaults.maximumCommandRate), defaults.minimumRampTime);
+    if (!fits) { error(id, "position-limits", "output_full"); return; }
     emit();
 }
 // Control and tuning candidates (wired bench 15): local, never bus traffic. A
@@ -2420,6 +2439,29 @@ void Console::dispatch() noexcept {
                 boolean(view.accelerationKnown),boolean(view.decelerationKnown),view.setup == Core::MoveSetup::USE_STORED ? "stored" : "write");
             emit();
         }
+        return;
+    }
+    if (entry->command == Command::POSITION && count > first + 1 && std::strcmp(tokens[first + 1], "limits") == 0) {
+        // Wired bench 16 (D6): position limits [set RPM RATE RAMP case NAME | default].
+        if (outputPending()) { ++inputDropped_; return; }
+        if (!host_.positionLimits) { error(id, "position-limits", "unavailable"); return; }
+        PositionLimitsCommand request;
+        const char* verb = count > first + 2 ? tokens[first + 2] : "";
+        bool valid = true;
+        if (count == first + 2) request.kind = PositionLimitsCommandKind::SHOW;
+        else if (!std::strcmp(verb, "default")) { request.kind = PositionLimitsCommandKind::DEFAULT; valid = count == first + 3; }
+        else if (!std::strcmp(verb, "set") && count == first + 8 && !std::strcmp(tokens[first + 6], "case")) {
+            request.kind = PositionLimitsCommandKind::SET;
+            uint32_t rpm = 0, rate = 0, ramp = 0;
+            valid = number(tokens[first + 3], rpm) && rpm <= 0xFFFF && number(tokens[first + 4], rate) &&
+                number(tokens[first + 5], ramp) && ramp <= 0xFFFF && std::strlen(tokens[first + 7]) < POSITION_LIMITS_CASE_CAPACITY;
+            request.limits.maximumRpm = static_cast<uint16_t>(rpm);
+            request.limits.maximumCommandRate = rate;
+            request.limits.minimumRampTime = static_cast<uint16_t>(ramp);
+            if (valid) std::strcpy(request.caseName, tokens[first + 7]);
+        } else valid = false;
+        if (!valid) { error(id, "position-limits", "invalid_arguments"); return; }
+        positionLimitsReply(id, request);
         return;
     }
     if (entry->command == Command::POSITION) {
@@ -3684,8 +3726,14 @@ bool Console::formatSimpleMotion(uint32_t id, const SimpleMotionView& view, bool
         static_cast<unsigned long>(view.readOperationId));
     if (fits && view.settingsOnly) {
         --used;
-        fits = append(output_,sizeof(output_),used,",\"maximum_position_rpm\":%u}",
-            Core::ESS_RS::positionSpeedLimit(view.configKnown ? view.subdivision : 0));
+        // Wired bench 16: the active ceiling (the named install or the defaults) and its source.
+        PositionLimitsView limits;
+        if (host_.positionLimits) host_.positionLimits(host_.context, nullptr, limits);
+        const uint16_t subdivision = view.configKnown ? view.subdivision : 0;
+        fits = append(output_,sizeof(output_),used,",\"maximum_position_rpm\":%u,\"default_maximum_position_rpm\":%u,\"position_limits\":{\"source\":\"%s\",\"case\":\"%s\",\"max_rpm\":%u,\"max_rate\":%lu,\"min_ramp\":%u}}",
+            Core::ESS_RS::positionSpeedLimit(subdivision, limits.limits), Core::ESS_RS::positionSpeedLimit(subdivision),
+            positionLimitsSourceName(limits.source), limits.caseName, limits.limits.maximumRpm,
+            static_cast<unsigned long>(limits.limits.maximumCommandRate), limits.limits.minimumRampTime);
     }
     if (fits && !view.settingsOnly && !view.subdivisionOnly) {
         --used;
@@ -3820,6 +3868,16 @@ bool Console::formatMove(uint32_t id, uint32_t commandId, uint32_t operationId,
             append(output_, sizeof(output_), used, ",\"limit_inputs\":{\"mask\":%u,\"active_low\":%u,\"observed\":%s},\"limit_input_evidence\":",
                 c.prerequisites.limitInputMask, c.prerequisites.limitInputActiveLow, boolean(c.limitInputObserved)) &&
             actionEvidence(output_, sizeof(output_), used, c.limitInputEvidence) && append(output_, sizeof(output_), used, "}");
+    }
+    if (fits) {
+        // Wired bench 16: the position limits the move was admitted with and their install case.
+        const char* limitsCase = host_.positionLimitsCase ? host_.positionLimitsCase(host_.context, operationId) : "";
+        if (!limitsCase) limitsCase = "";
+        --used;
+        fits = append(output_, sizeof(output_), used,
+            ",\"position_limits\":{\"source\":\"%s\",\"case\":\"%s\",\"max_rpm\":%u,\"max_rate\":%lu,\"min_ramp\":%u}}",
+            *limitsCase ? "installed" : "default", limitsCase, c.prerequisites.limits.maximumRpm,
+            static_cast<unsigned long>(c.prerequisites.limits.maximumCommandRate), c.prerequisites.limits.minimumRampTime);
     }
     if (fits && relation.originalOperationId) {
         --used;

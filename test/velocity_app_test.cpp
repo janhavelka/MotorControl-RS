@@ -132,6 +132,25 @@ uint32_t admitStop(uint32_t commandId = 50) {
     uint32_t id = 0;
     assert(host(app).startAction(app, commandId, 1, stop, id) == Probe::Action::OK); return id;
 }
+// Wired bench 16 (audit): accepted alarm-clear bytes hold a serial velocity
+// start until the enable-wait deadline; from the deadline it proceeds.
+void alarmClearWaitHoldsVelocity() {
+    fresh(); qualify();
+    ActionRequest clear; clear.kind = ActionKind::CLEAR_ALARM;
+    uint32_t id = 0;
+    assert(host(app).startAction(app, 60, 1, clear, id) == Probe::Action::OK);
+    actionStep(id); actionStep(id, registers(1, {0, 1}));
+    assert(!view(id).pending && view(id).actionContext->completion == ActionCompletion::OBSERVED);
+    const auto until = app->enableWaits[1].untilUs;
+    assert(app->enableWaits[1].operationId == id && hardware.time < until - 1);
+    advanceHardware(until - 1); qualify();
+    const auto writes = hardware.writes; uint32_t run = 77;
+    assert(host(app).startVelocity(app, 61, 1, request(), run) == Probe::Action::BUSY && run == 77);
+    pump(); assert(hardware.writes == writes && !app->owner.pending() && !app->owner.active());
+    advanceHardware(std::max(hardware.time, until)); qualify();
+    run = admitVelocity(62);
+    waitTx(run); assert(hardware.writes == writes + 1);
+}
 void gatesAndParity() {
     fresh(); uint32_t untouched = 77;
     assert(host(app).startVelocity(app, 1, 1, request(), untouched) != Probe::Action::OK);
@@ -429,6 +448,13 @@ void lostOwnedStopNeverReplays() {
     assert(view(id).velocityContext->needsStop && axisReserved(*app,1));
     assert(app->owner.needsRecovery() && !app->recovery.operationId && hardware.writes == writes);
     pump(2000); assert(hardware.writes == writes);
+    // Wired bench 16: the run's own end stop lives in its VELOCITY record, so
+    // the release after a failed stop refuses it; one explicit stop comes first.
+    ReleaseAfterStopPrerequisites facts; facts.target.id = 999;
+    assert(!inspectReleaseAfterStop(id, facts) && facts.target.id == 999);
+    facts.mechanicsPermitRelease = facts.externalTriggersInhibited = true;
+    uint32_t unchanged = 777;
+    assert(!submitReleaseAfterStop(id, facts, unchanged) && unchanged == 777 && hardware.writes == writes);
 }
 std::string recoveryJson(const std::string& output) {
     const auto begin = output.find("\"stop_recovery\":");
@@ -1173,6 +1199,7 @@ int main(int argc, char** argv) {
         ownedStopBeforeTxRetainsSettlement(true); return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--emit-restore-replies") { emitRestoreReplies(); return 0; }
+    alarmClearWaitHoldsVelocity();
     parameterReadApplicationPath();
     parameterReadQualificationAndHistoricalResults();
     parameterReadConsoleAndCapacity();

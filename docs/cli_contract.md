@@ -61,6 +61,7 @@ guides define complete arguments and prerequisites.
 | `moveby`, `moveto`, `speed`, `accel`, `decel`, `motion`, `stepsperturn` | Simple finite positioning and host intent; [console guide](console.md) |
 | `axis config`, `axis origin`, `prepare` | Pure host coordinates and [target preview](axis_preparation.md) |
 | `move relative\|absolute\|angle` | Detailed [finite moves](ess_position.md) with explicit frame/setup/rounding |
+| `position limits [set RPM RATE RAMP case NAME\|default]` | Named position limits of the selected axis (wired bench 16, D6), local, [below](#position-limits-wired-bench-16) |
 | `velocity read [address]` | One checked native JOG-parameter read; canonical `velocity-read`, no writes or qualification |
 | `velocity restore SNAPSHOT_ID\|inspect [address]` | Writes back the three JOG words of an earlier checked `velocity read` (FC10 `0x001D/3`, no start) and reads them back; canonical `velocity-restore`; [velocity guide](ess_velocity.md) |
 | `velocity` | [Finite velocity](ess_velocity.md) with explicit duration and stop policy, inside the [velocity limits](#velocity-limits-jog-setter-and-input-velocity-wired-bench-14) |
@@ -819,6 +820,42 @@ selectors, a held dead-man) under the PT rules. Members add `layout`,
 `negative_pv_speed` `unsupported`, `input_start_kinds`
 `["position","segment","velocity","pv"]` and functions `[7,8,9,10,12,13]`;
 `external_jog` left `velocity_unsupported`.
+
+### Position limits (wired bench 16)
+
+Added by [wired bench 16](reports/2026-11-19_wired_bench_16_alarms_and_failures.md)
+(19 November 2026). The explicit, named opt-in of D6 for finite moves:
+
+```text
+position limits
+position limits set RPM RATE RAMP case NAME
+position limits default
+```
+
+The reply `position-limits` has `result` `done` or the refusal, `request`
+(`show`, `set`, `default`), `reason`, `bus_traffic` false, `source`
+(`default`, `installed`), `case` (empty for the defaults), `address`,
+`max_rpm`, `max_rate`, `min_ramp` (the active limits), `subdivision` (checked
+`0x0011`, 0 when unknown), `maximum_position_rpm` (the active ceiling there),
+`default_maximum_position_rpm`, `install_binding`, `install_configuration`
+(0 for the defaults) and `defaults` `{max_rpm 2000, max_rate 50000, min_ramp
+100}`. `set` refuses `invalid` with `outside_wire_ranges` (rpm outside
+1..3000, rate outside 1..2,560,000, ramp above 2000) or `invalid_case` (not
+1..15 characters of `a-z0-9_-` starting with a letter or digit), and
+`unavailable` with `target_unknown`; a refusal keeps the previous install.
+Malformed grammar (missing `case`, a 16-character name, extra tokens) is
+`invalid_arguments`. API: `installPositionLimits`, `inspectPositionLimits`,
+`revokePositionLimits`; operation inventory `host_routes` `position-limits`.
+
+The install binds the selected target, binding, configuration and host serial
+generations and ends with `recover`, `useaddr`, a configuration change, a host
+tuple change, `default` and a restart. Selected-axis moves and staging use it;
+interrupts keep their original's limits; group, input-started and home moves
+keep the defaults. Every `move` terminal adds `position_limits` `{source, case,
+max_rpm, max_rate, min_ramp}` (the limits it was admitted with); `settings`
+reports `maximum_position_rpm` for the active limits plus
+`default_maximum_position_rpm` and `position_limits` `{source, case, max_rpm,
+max_rate, min_ramp}`.
 
 ### Control and tuning candidates (wired bench 15)
 

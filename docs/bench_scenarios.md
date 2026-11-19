@@ -641,3 +641,27 @@ after 1 s of silence, then `stop fast`, `alarm-clear` and a reconciling stop.
 | T10, T12, T14 | NOT RUN with their reasons |
 
 Results: [wired bench 15](reports/2026-11-19_wired_bench_15_control_tuning.md).
+
+## Alarms and failed stops (wired bench 16)
+
+`--scenario alarms-failures --cases ID... --address A --image-level 16`
+(`scripts/bench_alarms.py`; alarm cases only with `--address 2` or `4`, D15;
+`--repetitions` sets the A1/A2 trials, 1..5; `--delays` the A3 starts after
+the clear's acknowledgement, at most six within 0..2 s). Use
+`--evidence-mib 48` or more: the run records raw traffic (`debug raw`) for the
+stop-frame count and the vendor bundle. The planner routes the deviation
+threshold, Y0, output polarity, subdivision, the profile window (one `motion-
+profile stage`) and, for A5, the JOG words; the host limits are dropped with
+`position limits default` before restoration. `alarms.json` keeps every trial.
+
+| Case | Work |
+| --- | --- |
+| G1 | Threshold 8, +2000 at 120 rpm: the narrowed `alarm-clear` rule (refused after one fresh read, admitted after two), enable and tuning refused until a checked `stop fast` |
+| A1, A2, A4 | Threshold 1, +2000 at 60 rpm: the silence reads at 1.4, 1.7 and 2.0 s after the start acknowledgement (each failed read followed by one recovery, at most three), `classify_silence`, Y0 = 1 edges on drive 4 (A4 with output polarity 1); `stop fast`, two reads, `alarm-clear`, a +200 check move |
+| A3 | Inside A1: `alarm-clear`, then a start at each delay; threshold 1 re-latches alarm 5 only when the drive acts on the start |
+| A5 | Velocity at the baseline JOG speed (a D6 cell above 60 rpm) under threshold 1; its end stop counted in the raw traffic |
+| F1, F2 | Subdivision 4000, ramps 500, `position limits set 2000 133334 100 case hw14`, +40000 at 2000 rpm, `stop normal` at a random delay targeting 0.362-0.392 s after the start frame, at most 30 tries; a failed stop gets two fresh reads and step 5; eligible and moving runs F2 (release after stop, refused enable and alarm clear, `stop fast`, enable, +200) |
+| R2 | Subdivision 51200, ramps 100, `position limits set 2000 1706667 100 case q05`: +12800 at 900 rpm x3 with Y0 = 2 and x3 with Y0 = 4, 2000 rpm x3; read state every 50 ms for 3 s, `stop fast` on persistent RUNNING |
+| F3, F4, R1, R3, N1 | NOT RUN with their reasons |
+
+Results: [wired bench 16](reports/2026-11-19_wired_bench_16_alarms_and_failures.md).

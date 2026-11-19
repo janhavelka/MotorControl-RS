@@ -882,6 +882,29 @@ void testEnableWaitSurvivesGroupChanges() {
         sameEnableWait(1, first); sameEnableWait(2, second);
     }
 }
+// Wired bench 16 (audit): accepted alarm-clear bytes on a member hold the group
+// start until that member's enable-wait deadline; from the deadline it proceeds.
+void testAlarmClearWaitHoldsGroupStart() {
+    fresh(); readyGroup({1, 2});
+    command("@11 alarm-clear 1\n"); contains("\"result\":\"accepted\"");
+    const uint32_t id = app->latestOperationId;
+    runUntil([&] { const auto* r = findRecord(*app, id); return r && terminal(*app, *r) && r->delivered; });
+    const auto wait = app->enableWaits[1];
+    assert(wait.operationId == id && wait.untilUs - wait.observedUs == ENABLE_SETTLE_US && wait.write.txAccepted == 8);
+    hardware.clockStep = 0; // Each clock read would otherwise advance the fake time.
+    assert(releaseOperation(id) && !enableSettling(*app, 2, hardware.time) && hardware.time < wait.untilUs - 1);
+    advanceHardware(wait.untilUs - 1);
+    const auto from = frames.size(); uint32_t move = 777;
+    const auto rejected = submitGroupMove(groupMove(Policy::LEAVE), move);
+    assert(!rejected && rejected.detail == static_cast<int32_t>(Probe::Action::BUSY) && move == 777);
+    pump(); assert(frames.size() == from && count(isAnyStart, from) == 0);
+    advanceHardware(std::max(hardware.time, wait.untilUs));
+    readGroupState(); // The clear's TX expired the member's cached state, as an enable does.
+    assert(submitGroupMove(groupMove(Policy::LEAVE), move));
+    runUntil([&] { return terminalGroup(move); }, 2000000);
+    assert(groupOp(move).result.ok);
+    assert(count([](const std::vector<uint8_t>& f) { return isStart(f, 1); }, from) == 1);
+}
 void readSelectedFacts() {
     for (const char* line : {"@31 read config\n", "@32 motion-profile read\n", "@33 read state\n"}) {
         command(line);
@@ -2009,6 +2032,7 @@ int main(int argc, char** argv) {
     testMemberConsoleCoordinates();
     testFullCapacityPlanLineFits();
     testEnableWaitSurvivesGroupChanges();
+    testAlarmClearWaitHoldsGroupStart();
     testCandidateRelationSurvivesGroupChanges();
     testUnchangedCandidateInvalidatesContradictedGroupProfile();
     testRemovedMemberSelectedWaitAndExpiry();

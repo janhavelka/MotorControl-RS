@@ -152,6 +152,25 @@ MotorControlRS::Status setJogParameters(int16_t speedRpm, uint16_t accelerationT
  * `useaddr`, recovery, a host tuple change and a restart also return to legacy.
  * Refusal detail is the Probe::Action; output.reason names it. */
 MotorControlRS::Status velocityLimits(const Probe::VelocityLimitsCommand* command, Probe::VelocityLimitsView& output);
+/** Install named position limits for the selected axis (wired bench 16, D6/D12),
+ * the console `position limits set RPM RATE RAMP case NAME`. command.kind must
+ * be SET; the values must lie within the wire ranges (rpm 1..3000, rate
+ * 1..2,560,000 increments/s, minimum ramp 0..2000 ms) and the case name follow
+ * positionLimitsCaseValid. The install replaces the core defaults for the
+ * selected axis's finite moves and staging until `recover`, `useaddr`, a
+ * configuration change, a host tuple change, revokePositionLimits or a restart;
+ * each admitted move result echoes the case and values. Interrupts keep their
+ * original move's limits; group moves, input-started moves and homing keep the
+ * defaults. Local, no traffic; a refusal keeps the previous install and output
+ * shows the active limits with the reason. Refusal detail is the Probe::Action. */
+MotorControlRS::Status installPositionLimits(const Probe::PositionLimitsCommand& command, Probe::PositionLimitsView& output);
+/** Copy the active position limits of the selected axis (`position limits`):
+ * the install while it is current, else the core defaults, with the speed
+ * ceilings at the checked subdivision. False only before the application starts. */
+bool inspectPositionLimits(Probe::PositionLimitsView& output);
+/** Return the selected axis to the core position defaults (`position limits
+ * default`). Admitted moves keep the limits they were admitted with. Local. */
+MotorControlRS::Status revokePositionLimits();
 /** Control and tuning candidates (wired bench 15, `tuning candidates`). SHOW
  * reports the deviation-threshold D6 call of the selected axis; THRESHOLD names
  * one value 4001..65535 for 0x010A, bound to the selected address, binding and

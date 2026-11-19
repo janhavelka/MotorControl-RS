@@ -220,16 +220,17 @@ transmitted effects remain recorded. Start speed is not written. See the
 [candidate contract](ess_position.md#candidate-profile-staging) and
 [Python archive commands](../scripts/README.md#position-profile-archives).
 
-`enable` holds motion starts on its address for 1 s. `moveby`/`moveto` wait it out;
+`enable` and `alarm-clear` hold motion starts on their address for 1 s. `moveby`/`moveto` wait it out;
 advanced `move`, staging, group moves, `velocity` and `home` answer `busy` without bus traffic. Firmware
-`0x0029` echoed and ignored starts sent up to 0.6 s after an enable, and no status bit
+`0x0029` echoed and ignored starts sent up to 0.6 s after an enable or an alarm clear
+(wired bench 16 A3: ignored at 0.59 s, acted on from 0.91 s), and no status bit
 shows when it is ready. Stops, releases, alarm clears and reads are not held. Limits:
 the 1 s is a margin over one drive's measurement for position starts; only enables
 this firmware sent are tracked; an MCU reset forgets the
 window; an enable from another master or a drive power-up is not seen.
 
 Each unicast address keeps its own wait from the first service that sees accepted
-enable bytes. Selection, group clear/redeclare, failed declarations, recovery
+enable or alarm-clear bytes. Selection, group clear/redeclare, failed declarations, recovery
 and host tuple changes preserve that time and write evidence. Fresh reads do not
 shorten it. A drive-address change is refused while that address's wait remains.
 See [enable wait lifetime](ess_actions.md#standalone-enable-wait).
@@ -555,6 +556,15 @@ lower. That is at most 50,000 command increments/s. A larger
 writes, with the reason shown. There is no silent slowdown. Use `speed 50`
 with subdivision 51200, or explicitly select a lower subdivision for higher rpm.
 Both ramps must be 100..2000 ms. See [shared policy and evidence](ess_position.md#default-position-operating-limits).
+
+A caller who owns the risk can name other limits for the selected axis:
+`position limits set 2000 133334 100 case hw14` (rpm, increments/s, minimum
+ramp, case name). `settings` then shows the active ceiling and its source,
+each `move` result echoes the case and values, and `position limits default`,
+`recover`, `useaddr` or a configuration change returns to the defaults. Group,
+input-started and home moves keep the defaults. See the
+[CLI contract](cli_contract.md#position-limits-wired-bench-16) and the
+[position guide](ess_position.md#named-position-limits-in-the-standalone-application-wired-bench-16).
 
 ## Native position start speed
 

@@ -108,6 +108,7 @@ Probe::Action admitPositionInterrupt(App& a, uint32_t commandId, uint32_t origin
     record->deadlineUs = deadline; record->axisReserved = record->interruptWaiting = true;
     record->moveRelation.originalOperationId = originalId;
     record->moveRelation.replacementOperationId = record->operationId;
+    copyPositionLimitsCase(record->positionLimitsCase, original->positionLimitsCase); // Keeps the original's limits (wired bench 16).
     original->moveRelation = record->moveRelation;
     // This frontend record reserves the entire terminal outcome across the
     // handoff. The owner must not dispatch new TX before we inspect old results.

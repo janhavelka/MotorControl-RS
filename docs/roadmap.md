@@ -76,7 +76,9 @@ the full standalone regression or qualify wired inputs and outputs.
    [01](reports/2026-11-18_wired_bench_01_baseline.md) ran the short regression
    on the wired fixture and recorded the restoration baseline; prompt 20 owns
    the full regression. The fault-specific 15/16 hardware cases remain open;
-   HW-01 reproduction is wired bench prompt 16.
+   wired bench 16 reproduced HW-14 and Q05 on drive 4 and deferred the HW-01
+   and Q04 reproductions to the owner's return
+   ([report](reports/2026-11-19_wired_bench_16_alarms_and_failures.md)).
    The [15 November review](reports/2026-11-15_standalone_audit_revalidation.md)
    gives each old finding a current verdict. Optional cleanup must preserve
    frames, deadlines, retained results and command syntax.

@@ -104,6 +104,35 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+On 19 November [wired bench 16](reports/2026-11-19_wired_bench_16_alarms_and_failures.md)
+flashed two Arduino `bench_s3_load_timer` images from `6592106` plus the
+uncommitted prompt 16 tree: P
+(`E83C14B50B106085F70920F8B55B8F47B0DCF0FE978444F641757BFCDFB4D0FF`, the named
+position limits) and the final Q
+(`38BDB4903A1918919B3BD0BEA42B9CDF43A40D37E9B6C095D68BDA62864D9EC0`, P plus the
+alarm-clear enable wait). Each followed `baseline-compare` (573/573 equal) and a
+passing `before_flash_check` (drives 1, 2, 4 stopped, alarm-free, I/O
+`[0,1,2,3,0,0,0,0,0]`), uploaded from PowerShell with `PYTHONIOENCODING=utf-8`,
+four regions hash-verified, post-flash checks PASS. The final tree after the
+audit (Q with two unreachable branches removed and the input-start trigger
+checking the enable wait) is Arduino S
+`F5F015FDBE8844B51728B57FC513FA4C3D9397D4FBECC822D0044802904BB6FB` and native
+IDF 5.5.5 `014A23B9827E0498483B926E00D28E728F4073FD4D66E618E62C7E35197B0B84`,
+built, not flashed. Ending state:
+
+- **Board:** image Q, outputs off, COM13 closed.
+- **Drives 1/2/4:** enabled, stopped, alarm-free, I/O `[0,1,2,3,0,0,0,0,0]`,
+  every other setting as after wired bench 15. Positions: drive 1 [0, 38825],
+  drive 2 [6, 43381], drive 4 [5, 6201]; none homed.
+- **Settings:** `baseline-compare` 573 of 573 fields equal
+  (`build/bench/2026-11-19_wb16_final_compare/`). RAM only, nothing saved; no
+  position-limits install or velocity cell is active.
+- **Relay wear:** none added (no bench output was switched).
+- **Measured on drive 4 (firmware `0x0029`):** HW-14 creep after a late `stop
+  normal` (subdivision 4000, 2000 rpm) and Q05 persistent RUNNING
+  (51200/100/900/12800, 6 of 6) both reproduced; the release after the failed
+  stop ended the creep. A start 0.59 s after `alarm-clear` was ignored.
+
 On 19 November [wired bench 15](reports/2026-11-19_wired_bench_15_control_tuning.md)
 flashed three Arduino `bench_s3_load_timer` images from `d750246` plus the
 uncommitted prompt 15 tree: J

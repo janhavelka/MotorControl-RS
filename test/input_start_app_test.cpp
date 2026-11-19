@@ -1189,8 +1189,37 @@ void testPvArms() {
 }
 } // namespace
 
+// Wired bench 16 (audit): accepted alarm-clear bytes hold an arm (no staging,
+// no output) until the member's enable-wait deadline; from it the arm and its
+// trigger proceed. Members are reserved while armed, so no wait can begin then;
+// a wait set directly shows that the trigger also refuses before the port call.
+void testAlarmClearWaitHoldsArmAndTrigger() {
+    fresh(); selectedFacts(1);
+    command("@50 alarm-clear 1\n"); contains("\"result\":\"accepted\"");
+    const auto clear = latest();
+    runUntil([&] { const auto* r = findRecord(*app, clear); return r && terminal(*app, *r); });
+    const auto until = app->enableWaits[1].untilUs;
+    assert(app->enableWaits[1].operationId == clear && until > hardware.time + 200000);
+    advanceHardware(until - 500000); // The fixture's fact reads take about 0.37 s of fake time.
+    selectedFacts(1); // The clear's TX expired the cached state, as an enable does.
+    assert(hardware.time < until - 5000 && enableSettling(*app, 1, hardware.time));
+    refusedBeforeTx("@51 arm position x3 relative 1000 60\n", "enable_settling");
+    advanceHardware(std::max(hardware.time, until));
+    selectedFacts(1);
+    const auto id = arm("x3 relative 1000 60");
+    app->enableWaits[1].untilUs = hardware.time + 50000; // Not reachable through the routes: see above.
+    const auto ons = bench.onCalls;
+    command("@52 arm trigger " + std::to_string(id) + " mosfet2 200\n"); contains("enable_settling");
+    assert(bench.onCalls == ons && session().phase == Phase::ARMED && !session().triggered);
+    advanceHardware(app->enableWaits[1].untilUs);
+    trigger(id);
+    assert(bench.onCalls == ons + 1);
+    done();
+    assert(result().outcome == Outcome::ATTRIBUTED && drives[1].starts == 1);
+}
 int main() {
     testSelectedRelativeStartIsAttributed();
+    testAlarmClearWaitHoldsArmAndTrigger();
     testArmRefusalsBeforeTx();
     testTriggerRefusals();
     testLineIsolationTruthTable();

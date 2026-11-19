@@ -70,7 +70,7 @@ the owner stays Partial and the next ready prompt starts.
 | 13 | Partial | W0b (sign witness: no drive-side stop on a free terminal under D15) and with it the signed claim, drive 2's −400·N table, the negative sentinels and P11; P2 absolute PT FAIL as measured (records run relative with `0x0050` = 1; arm refuses `absolute`; save-and-restart check deferred); P4 late PIN offsets, P6 retrigger during a run, P7 start-speed timing not run; CI on the recording commit (lead) | [2026-11-19](../../reports/2026-11-19_wired_bench_13_pt_segments.md) |
 | 14 | Partial | J4 (JOG precedence and a limit during JOG), PV2 (PIN change during a held run) and PV5 (p29 mixed method) need an interlock row for a second bench ON during an input-started run; PV4 (negative PV) needs an exact-target experiment route, so negative PV stays unsupported; PV6 needs a group PV arm; the first R5 no-start is unreproduced; promotion of the passing phase C cells is a separate change; CI on the recording commit (lead) | [2026-11-19](../../reports/2026-11-19_wired_bench_14_velocity_jog_pv.md) |
 | 15 | Partial | T10 and the forward algorithm transition of T11 (no qualified target-mode current tuple; algorithm writes stay refused); T12 deferred to the owner; T14 (D8 FC03 probe of `0x003B/2`) needs a ledger access field for experimental reads and a bounded read route; the deviation-threshold table for 16 is in `SettingCandidates.h`; CI on the recording commit (lead) | [2026-11-19](../../reports/2026-11-19_wired_bench_15_control_tuning.md) |
-| 16 | Pending | — | — |
+| 16 | Partial | F3 (input stop of the HW-14 creep: the shared-output interlock has no row for a drive moving with no pending operation); F4, R1, R3 and A2's drive 1 leg deferred (owner away); F2's +200 check move read 199 (open ±1 feedback row); CI on the recording commit (lead) | [2026-11-19](../../reports/2026-11-19_wired_bench_16_alarms_and_failures.md) |
 | 17 | Pending | — | — |
 | 18 | Pending | — | — |
 | 19 | Pending | — | — |
@@ -92,7 +92,7 @@ Executors add a row for each step that needs the owner and do not wait.
 | 13 | Free one input terminal for a drive-side stop (or provide another independent stop), then run W0b | W0b, the signed PT claim, drive 2's −400·N table, the negative sentinels, P11 |
 | 13 | With prompt 17's save and power cycle: `0x0050` = 1 saved, restart, repeat P2 | Whether PT honors absolute mode after a restart (P2) |
 | 15 | Supervise T12 (encoder resolution change) | T12 |
-| 16 | Cable pull, power cycle and instrument asks of step 6 | F4, R1, R3, A2 drive 1 leg |
+| 16 | Cable pull during a long drive 4 run (F4); a drive 4 power cycle after a reproduced HW-01 or Q04; a scope or min/max meter on drive 4's +DC/GND during R1 and R3 if available; alarm 5 on drive 1 (A2 drive 1 leg: it has never cleared alarm 5, so a restart may be needed) | F4, R1, R3, A2 drive 1 leg |
 | 17 | Power cycles, DIP switch checks and changes | P0, S1, S2, P2-P5, F1, F2, C1, C2, D1, D2, S3; 05 filter persistence; 10 `0x0019` = 1 after save and restart |
 | 18 | Link removal and restore | L1-L4, U1 |
 | 19 | Power the drives one at a time | B1-B4 |
