@@ -29,9 +29,12 @@ class Coverage(unittest.TestCase):
         for record in ("COLLISION_THRESHOLD_003B", "COLLISION_CURRENT_003C"):
             self.assertNotIn(record, reads)
             self.assertEqual(records[record]["obligations"]["write"], "UNRESOLVED_ACCESS")
+        # Wired bench 15 exercised every tuning update group on the bench (stored
+        # words, restores and the effects the bench can observe).
         for group in tuning:
             if "update" in group["id"] and group["id"] != "tuning_input_filter_update":
-                self.assertEqual(group["hardware"]["state"], "NOT_RUN")
+                self.assertEqual(group["hardware"]["state"], "PASS")
+                self.assertIn("docs/reports/2026-11-19_wired_bench_15_control_tuning.md", group["hardware"]["evidence"])
 
     def test_qualification_routes_are_real_producing_routes(self):
         routes = {route["wire_command"]: route for route in INVENTORY["host_routes"]}

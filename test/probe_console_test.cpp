@@ -2152,8 +2152,14 @@ void testTuningRoutes() {
     assert(f.drivers==4&&f.driverRequest.group==Ess::DriverGroup::LA&&f.driverRequest.fields==228&&f.driverRequest.tuningValues[7]==65535);
     send(c,"@88 tuning collision set threshold 200 current 20\n");
     assert(f.drivers==5&&f.driverRequest.group==Ess::DriverGroup::COLLISION&&f.driverRequest.fields==3&&f.driverRequest.tuningValues[1]==20);
-    for(const char* bad:{"tuning filters read extra extra","tuning bogus read","tuning filters set kp 1","tuning filters set arrival-time 1.0","tuning filters set arrival-time 1/1","tuning filters set arrival-time -1","tuning filters set arrival-time 201","tuning filters set arrival-window 0","tuning filters set pulse-low-pass 1025","tuning la set node1 65536","tuning collision set threshold 50","tuning collision set current 19","tuning collision set 0x003B 200","tuning filters set input-filter 1 input-filter 2"})send(c,std::string(bad)+"\n");
+    for(const char* bad:{"tuning filters read extra extra","tuning bogus read","tuning filters set kp 1","tuning filters set arrival-time 1.0","tuning filters set arrival-time 1/1","tuning filters set arrival-time -1","tuning la set node1 65536","tuning collision set 0x003B 200","tuning filters set input-filter 1 input-filter 2"})send(c,std::string(bad)+"\n");
     assert(f.drivers==5);
+    // Wired bench 15: a word outside the documented range reaches the host as
+    // given (only a D7 exact restore of a pinned read admits it there).
+    f.actionResult=Probe::Action::INVALID; // Refused by the host, so no outstanding slot is held.
+    for(const char* restore:{"tuning filters set arrival-time 201","tuning filters set arrival-window 0","tuning filters set pulse-low-pass 1025","tuning collision set threshold 50","tuning collision set current 19"})send(c,std::string(restore)+"\n");
+    assert(f.drivers==10&&f.driverRequest.group==Ess::DriverGroup::COLLISION&&f.driverRequest.fields==2&&f.driverRequest.tuningValues[1]==19);
+    f.actionResult=Probe::Action::OK;
     send(c,"@89 help tuning\n");f.contains("qualified_stopped_native_tuning_and_checked_readback");
     send(c,"@90 caps\n");f.contains("\"tuning\":true");f.contains("\"tuning_physical_scaling_known\":false");
     const Ess::DriverGroup groups[]={Ess::DriverGroup::FILTERS,Ess::DriverGroup::CURRENT_LOOP,Ess::DriverGroup::LA,Ess::DriverGroup::COLLISION};

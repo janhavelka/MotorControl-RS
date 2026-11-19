@@ -152,6 +152,16 @@ MotorControlRS::Status setJogParameters(int16_t speedRpm, uint16_t accelerationT
  * `useaddr`, recovery, a host tuple change and a restart also return to legacy.
  * Refusal detail is the Probe::Action; output.reason names it. */
 MotorControlRS::Status velocityLimits(const Probe::VelocityLimitsCommand* command, Probe::VelocityLimitsView& output);
+/** Control and tuning candidates (wired bench 15, `tuning candidates`). SHOW
+ * reports the deviation-threshold D6 call of the selected axis; THRESHOLD names
+ * one value 4001..65535 for 0x010A, bound to the selected address, binding and
+ * host serial generation (`useaddr`, recovery, a host tuple change, RESET and a
+ * restart drop it); CHECK runs the ordinary admission of one control or tuning
+ * field without any frame and reports the rule that admits it (row,
+ * listed_current or exact_restore) or the refusal reason, and the pinned read
+ * an exact restore would use. Updates themselves use the ordinary setters.
+ * Refusal detail is the Probe::Action. */
+MotorControlRS::Status tuningCandidates(const Probe::CandidatesCommand& command, Probe::CandidatesView& output);
 /// Copy the current or finished restore session; another ID preserves output.
 bool copyParameterWrite(uint32_t operationId, Probe::ParameterWriteView& output);
 /** Copy the input-facts cause of the settings or profile-stage refusal just

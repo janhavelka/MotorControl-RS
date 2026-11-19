@@ -265,6 +265,81 @@ void identifiedDriveAtAnotherAddress() {
         assert(unchanged == 99 && hardware.writes == writes);
     }
 }
+// Wired bench 15: a control read with chosen closed-loop maximum and lock words.
+uint32_t readControlWords(uint16_t algorithm, uint16_t closed, uint16_t lock) {
+    for (auto& r : app->records) if (r.operationId && terminal(*app, r)) clearRecord(r);
+    ESS::DriverRequest request; request.group = ESS::DriverGroup::CONTROL_SETTINGS;
+    uint32_t id = 0;
+    assert(host(app).startDriver(app,1,1,ESS::DriverKind::READ,request,id) == Probe::Action::OK);
+    reply(id,words({algorithm,4000,5600,closed})); reply(id,words({40,100,lock,200}));
+    assert(view(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS);
+    stationary(); return id;
+}
+ESS::DriverRequest control(uint8_t slot, uint16_t value) {
+    ESS::DriverRequest r; r.group = ESS::DriverGroup::CONTROL_SETTINGS;
+    r.fields = static_cast<uint32_t>(ESS::driverFieldAt(slot, r.group)); r.configurationGeneration = app->axis.generation;
+    switch (slot) {
+    case 0: r.controlAlgorithm = static_cast<ESS::ControlAlgorithm>(value); break;
+    case 1: r.encoderResolution = value; break;
+    case 3: r.closedMaximumPercent = value; break;
+    case 6: r.lockPercent = value; break;
+    default: r.lockDelayMs = value; break;
+    }
+    return r;
+}
+bool refusedBeforeTx(const ESS::DriverRequest& r) {
+    uint32_t id = 99; const auto writes = hardware.writes;
+    const bool refused = host(app).startDriver(app,3,1,ESS::DriverKind::UPDATE,r,id) != Probe::Action::OK;
+    for (unsigned i = 0; i < 100; ++i) step();
+    return refused && id == 99 && hardware.writes == writes;
+}
+uint32_t written(const ESS::DriverRequest& r, uint16_t reg, uint16_t value) {
+    const auto id = start(r); waitTx(id);
+    assert(hardware.tx[1] == 6 && ((hardware.tx[2] << 8) | hardware.tx[3]) == reg && ((hardware.tx[4] << 8) | hardware.tx[5]) == value);
+    reply(id,{}); reply(id,words({value}));
+    assert(view(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS); return id;
+}
+// Listed current rows (closed-loop maximum 50/25/10 % and lock current 50 % of
+// the pinned word, at algorithm 3), the D7 restore and every algorithm write.
+void listedCurrentAndRestore() {
+    fresh(); const auto first = readControlWords(3,100,40); readIdentity(); stationary();
+    for (const uint16_t value : {50, 25, 10}) {
+        const auto id = written(control(3,value), 0x0103, value);
+        const auto& p = view(id).driverContext->prerequisites;
+        assert(p.listedCurrentQualified && p.listedCurrentValue == value && !p.exactRestore);
+        readControlWords(3,value,40);
+        assert(refusedBeforeTx(control(3,static_cast<uint16_t>(value - 1)))); // Not listed.
+    }
+    // The pinned word goes back through the exact restore, bound to the first read.
+    auto id = written(control(3,100), 0x0103, 100);
+    assert(view(id).driverContext->prerequisites.exactRestore &&
+           view(id).driverContext->prerequisites.restoreSource.operationId == first);
+    readControlWords(3,100,40);
+    id = written(control(6,20), 0x0106, 20); readControlWords(3,100,20);
+    assert(refusedBeforeTx(control(6,10))); // Only 50 % is listed for the lock current.
+    written(control(6,40), 0x0106, 40); readControlWords(3,100,40);
+    // Two current fields in one request, another field and every forward algorithm write refuse.
+    auto two = control(3,50); two.fields |= static_cast<uint32_t>(ESS::DriverField::LOCK_CURRENT); two.lockPercent = 20;
+    assert(refusedBeforeTx(two));
+    for (const uint16_t algorithm : {1, 2}) assert(refusedBeforeTx(control(0,algorithm)));
+    assert(refusedBeforeTx(control(1,2000))); // Encoder change deferred (T12).
+    ESS::DriverRequest base; base.group = ESS::DriverGroup::CONTROL_SETTINGS; base.configurationGeneration = app->axis.generation;
+    base.fields = static_cast<uint32_t>(ESS::DriverField::CLOSED_BASE_CURRENT); base.closedBasePercent = 20;
+    assert(refusedBeforeTx(base));
+    // Audit F5: the algorithm is written back only as the baseline 3.
+    for (const uint16_t algorithm : {1, 2}) {
+        fresh(); readControlWords(algorithm,100,40); readIdentity(); stationary();
+        assert(refusedBeforeTx(control(0,algorithm)));
+    }
+    fresh(); readControlWords(3,100,40); readIdentity(); stationary();
+    written(control(0,3), 0x0100, 3);
+    // The same value under another algorithm word keeps the refusals.
+    fresh(); readControlWords(2,100,40); readIdentity(); stationary();
+    assert(refusedBeforeTx(control(3,50)));
+    // A pin read at algorithm 3 does not admit a prior read at another word.
+    fresh(); readControlWords(3,100,40); readIdentity(); readControlWords(1,100,40);
+    assert(refusedBeforeTx(control(3,50)));
+}
 } // namespace
 static void testDefaultAgeKeepsCheckedControlIdentity() {
     fresh(); readControl(); readIdentity(); stationary();
@@ -281,6 +356,6 @@ int main() {
     testDefaultAgeKeepsCheckedControlIdentity();
     safeDelayAndGuards(); modelAndStaleness(); changedScaleAndHistoricalContext(); uncertaintyAndCancel(); independentCachesAndPressure();
     recoveryWithActiveWriteAndFullResults(); failedRefreshInvalidatesChangedScale();
-    identifiedDriveAtAnotherAddress();
+    identifiedDriveAtAnotherAddress(); listedCurrentAndRestore();
     if (app) { app->~App(); std::free(app); app = nullptr; }
 }

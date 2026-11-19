@@ -394,3 +394,8 @@ The lead owns Git and CI. Nothing was committed, pushed or dispatched by this
 session; the four CI jobs are required on the recording commit (core,
 firmware, console and harness changed). The promotion of passing phase C
 cells, if the lead accepts it, belongs in its own commit with this evidence.
+The lead committed the work, with the audit fixes, as `d750246`; CI run
+44577211008 on that exact commit passed all four jobs (native gcc, native
+clang, Arduino, ESP-IDF). The independent audit was aud-20261119-171053-5db43c.
+No phase C cell is promoted yet: promotion waits for a later stage, together
+with the promoted-table reporting the audit asked for (backlog).

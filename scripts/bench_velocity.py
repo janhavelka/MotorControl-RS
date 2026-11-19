@@ -106,6 +106,12 @@ CASES = {
     "PV6": dict(kind="not-run", levels=["drive-reported"], uses=[], layout="baseline",
                 reason="the PV arm is delivered for the selected axis only (no group PV arm)",
                 assertion="one shared level run on drives 1, 2, 4"),
+    # G2: wired bench 15's first regression of the post-audit image (prompt 14 "For prompt 15").
+    "G2": dict(kind="regression15", levels=["sent", "drive-reported"],
+               uses=[("x0", "pv"), ("x1", "pin0"), ("x2", "pin1"), ("x3", "deadman")], layout="pv2-deadman",
+               assertion="pin3 with 0x0051 = 1: arm pv x0 1 pin3 refuses pv_edge_needs_deadman, no frame, no mosfet1 ON; "
+                         "velocity limits raise refuses no_promoted_cells; velocity jog set 61 refuses "
+                         "outside_velocity_limits; pv2-deadman edge arm of record 2 at 30 rpm ends at the lapse (R6)"),
     "C1": dict(kind="cells", levels=["drive-reported"], uses=[], layout="baseline",
                assertion="120..3000 rpm x ramps 100, 500 x signs, subdivision 1000, 2 s, 3 trials; abort rules per row"),
     "C2": dict(kind="duration", levels=["drive-reported"], uses=[], layout="baseline",
@@ -782,6 +788,34 @@ def case_r6(live, out_key="R6"):
     return {"trials": trials}
 
 
+def case_g2(live):
+    """Wired bench 15 regression: the three local refusals, then R6 on the post-audit image."""
+    out = {}
+    drv = live.checked("drv").get("operation_id")
+    ons = {o["name"]: o.get("ons") for o in live.view()["outputs"]}
+    raise_reply = live.call("velocity-limits", host_args=("raise",))
+    out["raise"] = {k: raise_reply.get(k) for k in ("ok", "result", "reason")}
+    out["jog61"] = jog_set(live, 61)
+    write_field(live, "drive.interruption", 1)
+    set_layout(live, "pin3")
+    try:
+        set_pv_record(live, 1, 30)
+        pv_reads(live, 1)
+        before = {o["name"]: o.get("ons") for o in live.view()["outputs"]}
+        refused = arm_trial(live, ("pv", "x0", "1", "pin3"), "mosfet1", 50)
+        after = {o["name"]: o.get("ons") for o in live.view()["outputs"]}
+        out["pin3_edge"] = {"refused": refused.get("refused"), "armed": "armed" in refused,
+                            "mosfet1_ons": [before.get("mosfet1"), after.get("mosfet1")]}
+    finally:
+        live.call("bench", host_args=("off",))
+        restore_layout(live)
+        write_field(live, "drive.interruption", 0)
+    out["latest_before"], out["latest_after"] = drv, live.checked("drv").get("operation_id")
+    out["ons_start"] = ons
+    out["r6"] = case_r6(live)
+    return out
+
+
 def case_v1(live):
     trials = []
     start_speed = records.baseline_field(live.baseline, live.address, "profile.start-speed")["value"]
@@ -1115,6 +1149,8 @@ def run_cases(live, args, cases):
                 detail["cases"][cid] = case_r5(live)
             elif kind == "deadman-pv":
                 detail["cases"][cid] = case_r6(live)
+            elif kind == "regression15":
+                detail["cases"][cid] = case_g2(live)
             elif kind == "ramps":
                 detail["cases"][cid] = case_v1(live)
             elif kind == "jog":
@@ -1171,6 +1207,22 @@ def case_verdicts(run, cid, detail, error):
     if case["kind"] == "not-run":
         for level in case["levels"]:
             run.verdict(cid, level, "NOT RUN", case["reason"], ev)
+        return
+    if case["kind"] == "regression15" and out and out.get("r6"):
+        pin3 = out.get("pin3_edge") or {}
+        ons = pin3.get("mosfet1_ons") or [None, None]
+        local = (out["raise"].get("ok") is False and out["raise"].get("reason") == "no_promoted_cells" and
+                 out["jog61"].get("admitted") is False and out["jog61"].get("reason") == "outside_velocity_limits" and
+                 not pin3.get("armed") and "pv_edge_needs_deadman" in str(pin3.get("refused")) and ons[0] == ons[1])
+        run.verdict(cid, "sent", "PASS" if local else "FAIL", "raise %s; jog 61 %s; pin3 edge %s, mosfet1 ons %s" % (
+            out["raise"].get("reason"), out["jog61"].get("reason"), pin3.get("refused"), ons), ev)
+        t = (out["r6"].get("trials") or [{}])[0]
+        r = t.get("result") or {}
+        ok = not t.get("refused") and r.get("completion") == "velocity_stopped" and \
+            not (t.get("settle") or {}).get("moving") and stopped_before_stop(t)
+        run.verdict(cid, "drive-reported", "PASS" if ok else "FAIL", "R6: %s; outcome %s completion %s change %s; prepared stop %s" % (
+            t.get("refused") or "armed", r.get("outcome"), r.get("completion"), r.get("position_change"),
+            (t.get("stop_sent") or {}).get("at_s")), ev)
         return
     if not out or (not out.get("trials") and case["kind"] not in ("refuse", "cell", "jog-setter", "cells", "creep")):
         for level in case["levels"]:
@@ -1337,7 +1389,7 @@ def plan(args, baseline, facts_):
         write_list.append({"drive": address, "key": "io.input-polarity", "index": None, "candidate": 8})
     for key in ("jog.speed", "jog.acceleration", "jog.deceleration"):
         write_list.append({"drive": address, "key": key, "index": None, "candidate": 30})
-    if {"R6", "PV1", "PV3"} & set(args.cases):
+    if {"R6", "PV1", "PV3", "G2"} & set(args.cases):
         write_list.append({"drive": address, "key": "drive.interruption", "index": None, "candidate": 1})
         for n in range(1, 9):
             write_list.append({"drive": address, "key": "records.speed.speed", "index": n, "candidate": pv_speed(n)})

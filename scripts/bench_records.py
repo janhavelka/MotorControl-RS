@@ -1714,8 +1714,8 @@ def route_purpose(key: str) -> str | None:
         return "assign"
     if key.startswith("records."):
         return "segment"
-    if key == "control.lock-delay":
-        return None
+    if key.startswith("control."):
+        return None  # Control settings need the exact identity, not input facts (wired bench 15).
     return "configure"
 
 
@@ -1895,6 +1895,31 @@ PT_TARGET_ROUTE = {"command": "segment position N set target VALUE A",
                    "readback": "segment position N read", "order": None, "requires": "13"}
 
 
+# Wired bench 15: every control and tuning field has the ordinary setter from
+# image level 15 on. A value is admitted by its candidate row
+# (SettingCandidates.h) or, when it equals the pinned word (the first checked
+# read of the group on that drive in the controller's host serial session), as
+# the D7 exact restore; the console terminal names that source read. The
+# committed 01 baseline still records the older refusals as dispositions.
+CANDIDATE_IMAGE_LEVEL = "15"
+
+
+def candidate_route(key: str) -> dict | None:
+    """The wired bench 15 route of one control or tuning baseline field, or None."""
+    group, _, name = key.partition(".")
+    if group == "control":
+        return {"command": "control set %s VALUE A" % name,
+                "facts": "fresh `read identity A` (exact 0x4EEA/0x0029), stopped; the candidate row or the D7 exact "
+                         "restore of the pinned control read",
+                "readback": "control", "order": None, "requires": CANDIDATE_IMAGE_LEVEL}
+    if group in TUNING_KEYS:
+        return {"command": "tuning %s set %s VALUE A" % (group, name),
+                "facts": "CONFIGURE facts on the connected inputs (prompt 03), stopped; the candidate row or the D7 "
+                         "exact restore of the pinned %s read" % group,
+                "readback": "tuning." + group, "order": None, "requires": CANDIDATE_IMAGE_LEVEL}
+    return None
+
+
 def plan_entry(baseline: dict, entry: dict, image_level: str, facts: dict, *, restore: bool,
                experiments=(), context=None) -> tuple[list, dict | None]:
     """Steps for one field, or a refusal. ``restore`` plans candidate ->
@@ -1911,7 +1936,8 @@ def plan_entry(baseline: dict, entry: dict, image_level: str, facts: dict, *, re
             "candidate": entry["candidate"], "target": new}
     route = field.get("restore") or (PAIR_ROUTES.get(field["key"]) if int(image_level) >= 10 else None) or \
         (PT_TARGET_ROUTE if field["key"] == "records.position.target" and int(image_level) >= 13 and
-         isinstance(new, list) and len(new) == 2 and pair_value(new) >= 0 else None)
+         isinstance(new, list) and len(new) == 2 and pair_value(new) >= 0 else None) or \
+        (candidate_route(field["key"]) if int(image_level) >= int(CANDIDATE_IMAGE_LEVEL) else None)
     snapshot = snapshot_route(field["key"]) if route is None else None
     if route is None and snapshot and restore and (context or {}).get("snapshots") is not None:
         if int(image_level) < int(SNAPSHOT_IMAGE_LEVEL):
@@ -2082,7 +2108,8 @@ def _prerequisites(console, step: dict, *, timeout_s: float, check=None) -> dict
     address, purpose = step["drive"], step["purpose"]
     out = {}
     group = step["read"]
-    if group in ("tuning.filters", "control", "driver") or group.startswith("segment."):
+    # Control and every tuning group need a fresh exact identity (validateModelAndEffects).
+    if group in ("control", "driver") or group.startswith(("tuning.", "segment.")):
         out["identity"] = _ok(console, "read-identity", address=address, timeout_s=timeout_s)
         out["config"] = _ok(console, "read-config", address=address, timeout_s=timeout_s)
     if group != "io":

@@ -2202,16 +2202,18 @@
           "test/control_app_test.cpp",
           "test/control_console_parity_test.py",
           "docs/archive/reports/ess_release_16_17_audit_2026-10-04.md",
-          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md"
+          "docs/archive/reports/ess_release_17_18_audit_2026-10-04.md",
+          "test/tuning_app_test.cpp"
         ],
         "reason": "Real core and SDK application tests, exact CLI grammar and23 actual core/formatter Python fixtures; full8field/16step capacity, cancel boundaries, current/model dependencies and immutable partial/uncertain results. Fresh audit adds closure-budget ACK/exception classification, full-result-pressure CLI recovery and strict Python evidence regressions. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
       "hardware": {
         "state": "NOT_RUN",
         "evidence": [
-          "docs/archive/reports/ess_release_17_2026-10-04.json"
+          "docs/archive/reports/ess_release_17_2026-10-04.json",
+          "docs/reports/2026-11-19_wired_bench_15_control_tuning.md"
         ],
-        "reason": "All algorithm/encoder/current updates rejected before TX through9 app gates; effective model ceiling and percent denominator unresolved. No feedback disable, mode switch or current increase performed. Physical effects remain NOT_RUN."
+        "reason": "All algorithm/encoder/current updates rejected before TX through9 app gates; effective model ceiling and percent denominator unresolved. No feedback disable, mode switch or current increase performed. Physical effects remain NOT_RUN. Wired bench 15: the listed rows ran (closed-loop maximum 50/25/10 % of the pinned word, M at 600 rpm on drives 4 and 2, every move complete with no alarm, T9; lock current 50 % on drive 4, T8), each change preceded by a D7 restore proof without a frame and restored by the exact restore of the pinned read. Algorithm 1/2 refused with no frame (T11); the encoder change deferred (T12, owner away); maximum, base and open-loop current refused. The record group stays NOT_RUN: five of seven records have no admitted change."
       },
       "reason": "Complete candidate validates native codes/ranges, exact target/model context, stopped state and independently qualified setting effects before TX. Current denominator/model effective-current ceiling remain caller-qualified; no universal rating, foreign-register alias or torque/current motion mode.",
       "choices": [
@@ -2254,9 +2256,10 @@
           "docs/archive/reports/ess_release_17_2026-10-04.json",
           "docs/archive/reports/ess_release_16_17_audit_2026-10-04.json",
           "docs/archive/reports/ess_release_17_18_audit_2026-10-04.json",
-          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md",
+          "docs/reports/2026-11-19_wired_bench_15_control_tuning.md"
         ],
-        "reason": "Only stopped-state stored-value path: native200ms-to201ms then explicit restoration200ms, confirmed separate FC03 readbacks. Every FC06 source/ACK remains unconfirmed/executionUNKNOWN; no active lock timing, torque or persistence effect qualification. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified. Wired bench 03: drive 1 lock delay 200->201->200 with connected X0-X3 and no input records (no input condition), acknowledged and read back. Stored-value evidence only."
+        "reason": "Only stopped-state stored-value path: native200ms-to201ms then explicit restoration200ms, confirmed separate FC03 readbacks. Every FC06 source/ACK remains unconfirmed/executionUNKNOWN; no active lock timing, torque or persistence effect qualification. Final audit image repeats this register path in104 frames with zero transport/capture errors; originals restored. Physical effects remain unqualified. Wired bench 03: drive 1 lock delay 200->201->200 with connected X0-X3 and no input records (no input condition), acknowledged and read back. Stored-value evidence only. Wired bench 15: 200 -> 1000 -> 200 and 200 -> 3000 -> 200 on drive 4 with Y0 = 5 (on after an enable): no brake-output change during M or within the lock time plus 1.5 s after the stop at 200, 1000 or 3000 (T7); the brake output follows enable and release, not the lock time. Lock transition and torque unmeasured."
       },
       "reason": "Explicit bounded millisecond setting uses the same whole-candidate validation and FC06/FC03 sequence. Model identity and stopped effects are independently qualified; current denominator is unrelated. Stored settlement is distinct from physical lock behavior."
     },
@@ -2342,13 +2345,14 @@
         "reason": "Current integrated verification passes: exact native ranges/group masks/selectors, complete bounded reads/updates, partial uncertainty/cancellation, actual application cross-group cache invalidation and failed-refresh preservation, all20 CLI fields and66 actual Console/Python terminal fixtures; installed header consumer compiles. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
       "hardware": {
-        "state": "NOT_RUN",
+        "state": "PASS",
         "evidence": [
           "docs/reports/2026-11-16_unattended_bench_tests.md",
           "docs/reports/2026-11-18_wired_bench_03_connected_setters.md",
-          "docs/reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md"
+          "docs/reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md",
+          "docs/reports/2026-11-19_wired_bench_15_control_tuning.md"
         ],
-        "reason": "Group NOT_RUN: four of six fields are unexercised and physical filter timing is unmeasured. Bench experiments only: input filter 2->3->2 (earlier runs) and position-error threshold 4000->1->4000 on drives 4 and 2, each acknowledged and read back (16 November 2026); threshold 1 latched alarm 5 on the next move every time. Wired bench 03: deviation threshold 4000->3999->4000 on drive 1 with connected X0-X3 and CONFIGURE records, acknowledged and read back; refused before TX without records. Stored-value evidence only; the group stays NOT_RUN. Wired bench 05 measured the input-filter field only (see tuning_input_filter_update); the group stays NOT_RUN."
+        "reason": "Group NOT_RUN: four of six fields are unexercised and physical filter timing is unmeasured. Bench experiments only: input filter 2->3->2 (earlier runs) and position-error threshold 4000->1->4000 on drives 4 and 2, each acknowledged and read back (16 November 2026); threshold 1 latched alarm 5 on the next move every time. Wired bench 03: deviation threshold 4000->3999->4000 on drive 1 with connected X0-X3 and CONFIGURE records, acknowledged and read back; refused before TX without records. Stored-value evidence only; the group stays NOT_RUN. Wired bench 05 measured the input-filter field only (see tuning_input_filter_update); the group stays NOT_RUN. Wired bench 15 (drive 4, Y0 on aux1): arrival time 0/50/200 moves the arrival edge by about 1 ms per unit (T2); arrival window 1/50/256, pulse low-pass 1/1024 and pulse mean 1/256 change nothing on serial moves (T1, T4); a written pulse mean 0 reads back 1 (twice), so the row starts at 1; deviation threshold (T3, 2000-step moves): no alarm 5 down to 16/35 on drive 4 and 12/28 on drive 2 at 120/600 rpm, alarm at 12/32 and 8/24; 8000 and 65535 after the D6 call raised none; above 4000 refused with no frame without the call and after reset. Every change acknowledged, read back and restored. Pulse-input filter time constants unmeasured (no pulse source)."
       },
       "reason": "Whole candidate, native range, exact target/model context, fresh stopped state and independently qualified effects validate before traffic; shared sequence retains partial progress and uncertainty without replay or rollback."
     },
@@ -2430,9 +2434,11 @@
         "reason": "Current integrated verification passes: exact native ranges/group masks/selectors, complete bounded reads/updates, partial uncertainty/cancellation, actual application cross-group cache invalidation and failed-refresh preservation, all20 CLI fields and66 actual Console/Python terminal fixtures; installed header consumer compiles. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
       "hardware": {
-        "state": "NOT_RUN",
-        "evidence": [],
-        "reason": "No gain/arrival/deviation/collision perturbation performed; physical effects unqualified."
+        "state": "PASS",
+        "evidence": [
+          "docs/reports/2026-11-19_wired_bench_15_control_tuning.md"
+        ],
+        "reason": "Wired bench 15 (T5, drive 4): each of the four gains at 75 % then 125 % of the pinned word, M x5 each: every move completed with no alarm and the running interval stayed inside the baseline spread (1102.0-1102.2 ms); each restored by the exact restore of the pinned read and read back. Bandwidth and current effects unmeasured (instrument)."
       },
       "reason": "Whole candidate, native range, exact target/model context, fresh stopped state and independently qualified effects validate before traffic; shared sequence retains partial progress and uncertainty without replay or rollback."
     },
@@ -2522,9 +2528,11 @@
         "reason": "Current integrated verification passes: exact native ranges/group masks/selectors, complete bounded reads/updates, partial uncertainty/cancellation, actual application cross-group cache invalidation and failed-refresh preservation, all20 CLI fields and66 actual Console/Python terminal fixtures; installed header consumer compiles. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
       "hardware": {
-        "state": "NOT_RUN",
-        "evidence": [],
-        "reason": "No gain/arrival/deviation/collision perturbation performed; physical effects unqualified."
+        "state": "PASS",
+        "evidence": [
+          "docs/reports/2026-11-19_wired_bench_15_control_tuning.md"
+        ],
+        "reason": "Wired bench 15 (T6, drive 4): each of the eight LA words at 75 % then 125 % of the pinned word (position Ki 2 then 3), M x5 each: every move completed with no alarm and the running interval stayed within 0.2 ms of the baseline (1101.9-1102.2 ms); each restored by the exact restore of the pinned read and read back. Gain effects short of a gross failure unmeasured (instrument)."
       },
       "reason": "Whole candidate, native range, exact target/model context, fresh stopped state and independently qualified effects validate before traffic; shared sequence retains partial progress and uncertainty without replay or rollback."
     },
@@ -2602,9 +2610,11 @@
         "reason": "Current integrated verification passes: exact native ranges/group masks/selectors, complete bounded reads/updates, partial uncertainty/cancellation, actual application cross-group cache invalidation and failed-refresh preservation, all20 CLI fields and66 actual Console/Python terminal fixtures; installed header consumer compiles. Fresh 17/18 audit validates every prior-settings freshness cap, copied transport envelopes, changed checked-prefix invalidation and actual core/formatter/Python parser-failure priority."
       },
       "hardware": {
-        "state": "NOT_RUN",
-        "evidence": [],
-        "reason": "No gain/arrival/deviation/collision perturbation performed; physical effects unqualified."
+        "state": "PASS",
+        "evidence": [
+          "docs/reports/2026-11-19_wired_bench_15_control_tuning.md"
+        ],
+        "reason": "Wired bench 15 (T13, drive 4): threshold 200 and current 50 written and read back, then 0/0 written back by the D7 exact restore of the pinned read (terminal names the source). Stored values only; collision behavior needs a mechanical stop."
       },
       "reason": "Whole candidate, native range, exact target/model context, fresh stopped state and independently qualified effects validate before traffic; shared sequence retains partial progress and uncertainty without replay or rollback."
     },
@@ -3117,7 +3127,7 @@
       ],
       "owner": "18",
       "disposition": "UNRESOLVED",
-      "reason": "Access unspecified; no invented permission or alias to0122/0123."
+      "reason": "Access unspecified; no invented permission or alias to0122/0123. Wired bench 15 T14 (D8 FC03 probe of 0x003B/2) not run: no route reaches a codec-refused register; it needs a ledger access field for experimental reads and a bounded read route."
     },
     {
       "id": "position_interrupt",

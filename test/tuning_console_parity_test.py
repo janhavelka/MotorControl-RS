@@ -155,4 +155,55 @@ for group in TUNING_FIELDS:
     assert [line.decode().split()[1] for line in port.writes] == ["version", "tuning", "result", "release"]
     parsed = bench_probe.arguments(["--port", "fake", "--log", "unused.jsonl", "tuning", slugs[group], "read"])
     assert parsed.mode == "tuning" and parsed.driver_args == (slugs[group], "read")
-print("PASS: 66 real tuning terminals, snapshot deadlines, all20 fields, fullLA16steps and retained transport")
+# Wired bench 15 (D7): an exact restore names its source read and may carry a
+# word outside the documented range (the bench's collision 0); without the
+# source the same word is refused, and a read never carries the fields.
+from bench_probe import tuning_candidates_arguments
+collision = next(json.loads(row)["record"] for row in rows
+                 if json.loads(row)["record"]["driver_group"] == "collision" and
+                 json.loads(row)["record"]["driver_kind"] == "update" and json.loads(row)["record"]["ok"])
+def framed(body: bytes) -> str:
+    crc = 0xFFFF
+    for byte in body:
+        crc ^= byte
+        for _ in range(8):
+            crc = (crc >> 1) ^ 0xA001 if crc & 1 else crc >> 1
+    return (body + bytes((crc & 0xFF, crc >> 8))).hex().upper()
+single = copy.deepcopy(collision)
+single["fields"], single["effects"] = 1, collision["effects"] & 1
+single["progress"] = [row for row in collision["progress"] if row[0] == 1]
+progress_columns = single["progress_columns"]
+single["progress"][0][progress_columns.index("requested")] = 0
+single["progress"][0][progress_columns.index("readback")] = 0
+single["completed_steps"] = 2
+single["evidence"] = collision["evidence"][:2]
+raw_column = single["evidence_columns"].index("raw_hex")
+single["evidence"][0][raw_column] = framed(bytes((1, 6, 0x01, 0x22, 0, 0)))
+single["evidence"][1][raw_column] = framed(bytes((1, 3, 2, 0, 0)))
+restore = dict(single, exact_restore_source=7, listed_current=False)
+for record, admitted in ((restore, True), (dict(single, exact_restore_source=0), False)):
+    try:
+        Console._check_driver(record, 1, ("collision", "set", "threshold", "0"), "tuning")
+    except BenchError:
+        assert not admitted
+    else:
+        assert admitted, "an out-of-range word accepted without its restore source"
+read = next(json.loads(row)["record"] for row in rows if json.loads(row)["record"]["driver_kind"] == "read")
+try:
+    Console._check_driver(dict(read, exact_restore_source=7), 1, None, "tuning")
+except BenchError:
+    pass
+else:
+    raise AssertionError("restore source on a read accepted")
+assert tuning_candidates_arguments(("check", "control", "closed-maximum-current", "50", "4")) == {
+    "request": "check", "group": "control_settings", "field": "closed-maximum-current", "value": 50, "address": 4}
+assert tuning_candidates_arguments(("threshold", "8000")) == {"request": "threshold", "value": 8000}
+for tokens in (("threshold", "4000"), ("threshold", "65536"), ("check", "filters", "kp", "1"), ("check", "bogus", "kp", "1"),
+               ("check", "la", "kp1", "1", "248"), ("raise",)):
+    try:
+        tuning_candidates_arguments(tokens)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(("invalid candidates grammar accepted", tokens))
+print("PASS: 66 real tuning terminals, snapshot deadlines, all20 fields, fullLA16steps, retained transport and the D7 restore record")

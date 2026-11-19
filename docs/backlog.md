@@ -155,6 +155,11 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
 - [ ] Resolve the earlier collision registers 0x003B/0x003C and later collision
   values 0/0 outside documented ranges on firmware 0x0029. Keep unknown values
   raw. [Tuning evidence](archive/reports/ess_release_18_2026-10-04.md).
+  Wired bench 15: `0x0122`/`0x0123` take 200 and 50 (read back) and return to
+  0/0 only through the D7 exact restore of the pinned read; their effect needs
+  a mechanical stop. The FC03 probe of `0x003B/2` (T14, D8) did not run: it
+  needs a ledger access field for experimental reads and a bounded read route
+  ([report](reports/2026-11-19_wired_bench_15_control_tuning.md)).
 
 ## Open re-audit findings
 
@@ -377,10 +382,23 @@ functional evidence; independent shaft calibration remains absent.
   deceleration-2000 stops all passed. Open: promoting the passing cells into
   the table (a separate change with its evidence).
   [Live-speed review](archive/reports/2026-10-06_rounding_and_live_speed.md).
+- [ ] Wired bench 15 audit (aud-20261119-192929-39603c) items left open: F6
+  bind the restore source by operation ID as well as target and group; F7 pins
+  for more than four drives per group; F8 a bus-owner-level test of an exact
+  restore after an uncertain write; F9 whether the input filter should again
+  need a starting value in its set
+  ([report](reports/2026-11-19_wired_bench_15_control_tuning.md#after-the-audit)).
 - [ ] Resolve effective-current limits/percentage denominator and qualify
   torque, encoder, lock, filtering, gains and collision effects. Peak current
   is not an effective-current conversion; no universal tuning default follows.
   [Control evidence](archive/reports/ess_release_17_2026-10-04.md).
+  Wired bench 15 ([report](reports/2026-11-19_wired_bench_15_control_tuning.md))
+  admitted listed `0x0103`/`0x0106` rows and the D7 exact restore, measured the
+  arrival time (about 1 ms per unit), found no serial-move effect of the arrival
+  window, pulse filters, current-loop and LA gains at +-25 %, and found that the
+  brake output does not follow the lock time. Still open: the percent base and
+  effective-current ceiling, algorithm changes (T10, T11), the encoder change
+  (T12, deferred to the owner), current, torque and bandwidth (instruments).
 
 ## Transport, endurance and platform qualification
 

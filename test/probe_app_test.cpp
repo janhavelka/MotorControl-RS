@@ -881,6 +881,55 @@ void testUnknownActionExceptionKeepsReservationAcrossReleaseAndRecovery() {
     assert(view(stopping).actionContext->completion == ActionCompletion::OBSERVED);
     assert(!axisReserved(*app, 1) && hardware.writes == 3);
 }
+// Wired bench 15: a latched alarm can keep RUNNING set, so no stop reconciles
+// the historical conflict. Only the witnessed state admits alarm-clear against
+// it: fresh reads after the conflict began with the alarm, RELEASED, speed 0 and
+// the same position in two consecutive feedback samples. Active work on the
+// address refuses it, other actions stay refused, the conflict stays.
+void testAlarmClearAgainstHistoricalConflict() {
+    using namespace MotorControlRS;
+    fresh(); timerCapture(); qualifyActions();
+    for (unsigned i = 0; i < 2000; ++i) step();
+    noteActionConflict(*app, 1);
+    const uint64_t since = app->actionConflictUs[1];
+    ActionRequest enable; uint32_t unchanged = 777;
+    assert(startAction(app, 3, 1, enable, unchanged) == Probe::Action::AXIS_CONFLICT && unchanged == 777);
+    ActionRequest clear; clear.kind = ActionKind::CLEAR_ALARM;
+    assert(startAction(app, 3, 1, clear, unchanged) == Probe::Action::AXIS_CONFLICT && unchanged == 777); // No reads.
+    const auto witness = [&](uint16_t motionWord, uint16_t speed, uint16_t earlierPosition, uint64_t earlierUs) {
+        const auto set = [&](Probe::StateCache::Block& block, uint64_t at, uint16_t position) {
+            block.valid = true; block.value.target = app->axis.target; block.invalidatedUs = 0;
+            block.value.rawAlarm = 5; block.value.rawMotion = motionWord; block.value.rawSpeed = speed;
+            block.value.rawPositionWords[0] = 0; block.value.rawPositionWords[1] = position;
+            block.observedEarliestUs = block.observedLatestUs = at;
+        };
+        set(app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)], since + 2000, 100);
+        set(app->stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::FEEDBACK)], since + 2000, 100);
+        set(app->previousFeedback, earlierUs, earlierPosition);
+        for (unsigned i = 0; i < 400; ++i) step(); // The reads lie before the admission time.
+    };
+    const auto writes = hardware.writes;
+    witness(28, 0, 100, since - 1000); // Stale zero-speed feedback from before the conflict.
+    assert(startAction(app, 3, 1, clear, unchanged) == Probe::Action::AXIS_CONFLICT);
+    witness(0x0C, 0, 100, since + 1000); // Alarm and RUNNING, not released.
+    assert(startAction(app, 3, 1, clear, unchanged) == Probe::Action::AXIS_CONFLICT);
+    witness(28, 0, 99, since + 1000); // Position changed between the two samples.
+    assert(startAction(app, 3, 1, clear, unchanged) == Probe::Action::AXIS_CONFLICT);
+    witness(28, 30, 100, since + 1000); // Speed not zero.
+    assert(startAction(app, 3, 1, clear, unchanged) == Probe::Action::AXIS_CONFLICT);
+    assert(unchanged == 777 && hardware.writes == writes);
+    witness(28, 0, 100, since + 1000); // The state seen on the bench.
+    const uint32_t clearing = actionAdmission(ActionKind::CLEAR_ALARM, 4);
+    ActionRequest again; again.kind = ActionKind::CLEAR_ALARM;
+    assert(startAction(app, 5, 1, again, unchanged) == Probe::Action::AXIS_CONFLICT && unchanged == 777); // Active work.
+    actionStep(clearing); actionStep(clearing, registerReply({0, 0}));
+    assert(view(clearing).actionContext->completion == ActionCompletion::OBSERVED);
+    assert(app->actionConflicts[0] & 2); // Alarm-clear does not reconcile: a checked stop still must.
+    assert(startAction(app, 6, 1, enable, unchanged) == Probe::Action::AXIS_CONFLICT && unchanged == 777);
+    const uint32_t stopping = actionAdmission(ActionKind::STOP, 7);
+    actionStep(stopping); actionStep(stopping, registerReply({0, 0}));
+    assert(view(stopping).actionContext->completion == ActionCompletion::OBSERVED && !axisReserved(*app, 1));
+}
 void testAcceptedStopRetainsBothResultsWhenInterruptedWriteLaterFails() {
     using namespace MotorControlRS;
     for (bool badReply : {false, true}) {
@@ -1901,6 +1950,7 @@ int main() {
     testUncertainStopSurvivesReleaseRecoveryAndCanBeStoppedAgain(); testBadActionReplyKeepsCodecEvidenceAndNoReplay();
     testRetainedUnknownWriteSurvivesInspectionResetAndRecovery();
     testUnknownActionExceptionKeepsReservationAcrossReleaseAndRecovery();
+    testAlarmClearAgainstHistoricalConflict();
     testAcceptedStopRetainsBothResultsWhenInterruptedWriteLaterFails();
     testStopKeepsKnownTargetAfterUnrelatedReadAndAction();
     for (const char* mode : {"off", "raw", "decoded"})

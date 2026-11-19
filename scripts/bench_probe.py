@@ -41,7 +41,7 @@ MAX_INPUT = 98304
 MAX_TRAFFIC_INPUT = 1048576  # Independent finite diagnostic budget per command/drain.
 COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "health", "memory", "stats", "load",
                       "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "bench", "communication", "persistence", "motion-profile", "motion-profile-stage", "motion-profile-start-speed", "motion-profile-start-speed-relation", "home-auxiliary", "debug",
-                      "home-restore", "velocity-restore", "velocity-jog", "velocity-limits", "driver-experiment",
+                      "home-restore", "velocity-restore", "velocity-jog", "velocity-limits", "tuning-candidates", "driver-experiment",
                       "home-qualification-install", "home-qualification-revoke", "velocity-qualification-install", "velocity-qualification-revoke",
                       "position-clear-qualification", "position-clear-qualification-install", "position-clear-qualification-revoke",
                       "io-qualification-install", "io-qualification-inspect", "io-qualification-revoke",
@@ -394,6 +394,41 @@ def velocity_limits_arguments(tokens: tuple[str, ...]) -> dict:
         return {"request": "qualify", "cell": {"rpm": rpm, "acceleration": acc, "deceleration": dec, "subdivision": sub,
                                                "duration_ms": ms, "stop": tokens[6]}}
     raise ValueError("velocity limits requires qualify RPM ACCEL DECEL SUBDIVISION DURATION_MS normal|fast, raise or reset")
+
+
+# Wired bench 15 (D6/D12/D7): `tuning candidates`. The deviation threshold is
+# ordinary up to 4000; above it only the value one call names for the session.
+DEVIATION_THRESHOLD_ORDINARY_MAX = 4000
+CANDIDATE_RULES = ("none", "row", "listed_current", "exact_restore")
+
+
+def tuning_candidates_arguments(tokens: tuple[str, ...]) -> dict:
+    """``tuning candidates`` [check control|GROUP FIELD VALUE [address] | threshold VALUE | reset]."""
+    if not isinstance(tokens, tuple) or any(type(t) is not str for t in tokens):
+        raise ValueError("tuning candidates requires a tuple of tokens")
+    if not tokens:
+        return {"request": "show"}
+    if tokens == ("reset",):
+        return {"request": "reset"}
+    number = r"(?:0|[1-9][0-9]{0,4})"
+    if len(tokens) == 2 and tokens[0] == "threshold" and re.fullmatch(number, tokens[1]):
+        value = int(tokens[1])
+        if not DEVIATION_THRESHOLD_ORDINARY_MAX < value <= 65535:
+            raise ValueError("tuning candidates threshold is 4001..65535")
+        return {"request": "threshold", "value": value}
+    if len(tokens) in (4, 5) and tokens[0] == "check" and re.fullmatch(number, tokens[3]):
+        group = "control_settings" if tokens[1] == "control" else TUNING_GROUPS.get(tokens[1])
+        names = CONTROL_FIELDS if group == "control_settings" else TUNING_FIELDS.get(group, ())
+        value = int(tokens[3])
+        if group is None or tokens[2] not in names or value > 65535:
+            raise ValueError("tuning candidates check needs control|GROUP FIELD VALUE")
+        address = None
+        if len(tokens) == 5:
+            if not re.fullmatch(number, tokens[4]) or not 1 <= int(tokens[4]) <= 247:
+                raise ValueError("tuning candidates check address is 1..247")
+            address = int(tokens[4])
+        return {"request": "check", "group": group, "field": tokens[2], "value": value, "address": address}
+    raise ValueError("tuning candidates requires check control|GROUP FIELD VALUE [address], threshold VALUE or reset")
 
 
 def velocity_cell_rate(cell: dict) -> int:
@@ -1339,8 +1374,18 @@ class Console:
         elif "settlement" in item:
             require(item["settlement"] == "checked_ack_readback", "drive settlement differs")
 
+        # Wired bench 15: a D7 exact restore names its source read and may carry
+        # any word; a listed current candidate is flagged. Both only on
+        # control/tuning updates.
+        restore_source = item.get("exact_restore_source", 0)
+        listed = item.get("listed_current", False)
+        require(type(restore_source) is int and 0 <= restore_source <= 0xFFFFFFFF and type(listed) is bool, "candidate fields differ")
+        require((not restore_source and not listed) or ((control or tuning) and item.get("driver_kind") == "update"),
+                "candidate fields on another group or a read")
+
         def legal(field, value):
             name = by_field[field][0]
+            if restore_source: return True  # The pinned word, whatever its documented range.
             if single: return value <= single_maximum
             if segment and name == "target": return True  # The high word of a non-negative target (checked below).
             if segment: return value <= (180 if name == "value" else 3000 if name == "speed" else 2000)
@@ -2515,6 +2560,42 @@ class Console:
                     "late samples without a spacing witness")
 
     @staticmethod
+    def _check_tuning_candidates(handle, item: dict) -> None:
+        """Wired bench 15: one local candidates call; a check sends no frame."""
+        request = tuning_candidates_arguments(handle.host_args or ())
+        def require(condition, message):
+            if not condition:
+                raise BenchError("tuning-candidates: " + message)
+        def integer(value, high=0xFFFFFFFF):
+            return type(value) is int and 0 <= value <= high
+        require(item.get("result") == "done" if item["ok"] else item.get("result") in ADMISSION_FAILURES, "invalid disposition")
+        require(item.get("request") == request["request"] and item.get("bus_traffic") is False, "request or traffic claim differs")
+        require(integer(item.get("address"), 247) and type(item.get("threshold_active")) is bool and
+                integer(item.get("threshold_value"), 65535) and
+                item.get("threshold_ordinary_max") == DEVIATION_THRESHOLD_ORDINARY_MAX, "invalid threshold state")
+        require(item["threshold_active"] == (item["threshold_value"] > DEVIATION_THRESHOLD_ORDINARY_MAX), "threshold flag differs")
+        if item["ok"] and request["request"] == "threshold":
+            require(item["threshold_active"] and item["threshold_value"] == request["value"], "call differs from the request")
+        if item["ok"] and request["request"] == "reset":
+            require(not item["threshold_active"], "reset left the call active")
+        if request["request"] != "check":
+            require("admitted" not in item, "check fields on another request")
+            return
+        require(item.get("group") == request["group"] and item.get("field") == request["field"] and
+                item.get("value") == request["value"], "checked field differs from the request")
+        require(integer(item.get("checked_address"), 247) and item["checked_address"] >= 1 and
+                (request["address"] is None or item["checked_address"] == request["address"]), "checked drive differs")
+        require(type(item.get("admitted")) is bool and item.get("rule") in CANDIDATE_RULES and
+                type(item.get("reason")) is str and type(item.get("pin_known")) is bool and
+                integer(item.get("pin_operation_id")) and integer(item.get("pin_word"), 65535) and
+                type(item.get("core_status")) is str and type(item.get("core_detail")) is int and
+                type(item.get("effect")) is str, "invalid check fields")
+        require(not item["admitted"] or (item["rule"] != "none" and item["core_status"] == "OK"), "admission without a rule")
+        require(item["pin_known"] == bool(item["pin_operation_id"]), "pin flag differs")
+        if item["admitted"] and item["rule"] == "exact_restore":
+            require(item["pin_known"] and item["pin_word"] == request["value"], "exact restore without its pinned word")
+
+    @staticmethod
     def _check_velocity_limits(handle, item: dict) -> None:
         """Wired bench 14: the active velocity limits after one local call."""
         request = velocity_limits_arguments(handle.host_args or ())
@@ -3578,6 +3659,8 @@ class Console:
             self._check_parameter_write(handle, item)
         if handle.command == "velocity-limits":
             self._check_velocity_limits(handle, item)
+        if handle.command == "tuning-candidates":
+            self._check_tuning_candidates(handle, item)
         if handle.command in INPUT_START_COMMANDS:
             self._check_input_start(handle, item)
         if handle.command == "useaddr":
@@ -4020,6 +4103,9 @@ class Console:
         elif command == "velocity-limits":
             host_args = () if host_args is None else host_args
             velocity_limits_arguments(host_args)
+        elif command == "tuning-candidates":
+            host_args = () if host_args is None else host_args
+            tuning_candidates_arguments(host_args)
         elif command == "motion-profile-stage":
             candidate = profile_stage_arguments(host_args)
             if address is not None and address != candidate["address"]:
@@ -4188,6 +4274,7 @@ class Console:
             if command == "home-auxiliary": wire_command = "home auxiliary"
             if command in PARAMETER_WRITE_COMMANDS: wire_command = PARAMETER_WRITE_COMMANDS[command]
             if command == "velocity-limits": wire_command = "velocity limits"
+            if command == "tuning-candidates": wire_command = "tuning candidates"
             if command in INPUT_START_COMMANDS: wire_command = INPUT_START_COMMANDS[command]
             if command == "position-interrupt": wire_command = "position interrupt"
             if command == "profile-list": wire_command = "profile list"

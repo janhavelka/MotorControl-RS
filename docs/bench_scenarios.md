@@ -595,6 +595,7 @@ earlier folder. One run folder runs the named cases in order on drive A.
 | PV1, PV3 | `pin3` records 1-8 (12..54 rpm, level mode); `pv2-deadman` edge mode with a prepared stop |
 | C1-C4 | Drive 2 cells: 120-3000 rpm x ramps 100/500 x signs (3 trials, 2 s); 300 rpm 10 s; subdivision 6000 creep runs; deceleration 2000 |
 | J4, PV2, PV4, PV5, PV6 | NOT RUN with their reasons |
+| G2 | Wired bench 15 regression of the post-audit image (`--image-level 15`): `pin3` edge arm refused, `raise` and JOG 61 refused, then R6 |
 
 Every case's terminal purposes pass the plan checker (`plan_problem`: one
 purpose per terminal) before any output turns on. A dead-man layout is set as
@@ -612,3 +613,31 @@ also admits a PV trigger (13). `velocity.json` keeps the cases, events and
 samples; restoration puts the layout back first, then the plan (velocity
 restore of the run's first read, PV records, `0x0051`, `0x0020`,
 subdivision). Results: [wired bench 14](reports/2026-11-19_wired_bench_14_velocity_jog_pv.md).
+
+## Control and tuning (wired bench 15)
+
+`--scenario control-tuning --cases ID... --address A --image-level 15`
+(`scripts/bench_tuning.py`; T3 and T9 only with `--address 2` or `4`, D15;
+`--fields` resumes T5/T6 with named gain fields). Use
+`--evidence-records 200000 --evidence-mib 64`. The run reads every control and
+tuning group of drive A first (the pinned D7 sources), then per candidate:
+`tuning candidates check` of the baseline word after the setter's fresh reads
+and facts (the restore proof, no frame), the setter, reference move M five
+times (+2000 steps at 120 rpm, or 600 rpm for T9, configured ramps, then the
+return), the setter back to the baseline word with readback, M twice. Y0
+intervals come from drive 4's `aux1` edges; alarm 5 (T3, T9) is recovered
+after 1 s of silence, then `stop fast`, `alarm-clear` and a reconciling stop.
+`tuning.json` keeps every trial; `result.json` and both run checks follow.
+
+| Case | Work |
+| --- | --- |
+| B | M x10 with Y0 = 2 and x10 with Y0 = 4; Y0 = 5 around release/enable and two stops |
+| T1, T2, T4 | Arrival window 1/50/256, arrival time 0/50/200, pulse low-pass 1/1024 and pulse mean 1/256 with Y0 = 4 or 2 |
+| T3 | Deviation-threshold bisection (12 steps) at 120 and 600 rpm, the threshold back before each return; 8000 and 65535 after the D6 call; refusals without it |
+| T5, T6 | Each current-loop and LA word at 75 % then 125 % of the pinned word |
+| T7, T8 | Lock time 1000/3000 and lock current 50 % with Y0 = 5 on after one release/enable cycle |
+| T9 | Closed-loop maximum 50/25/10 % at 600 rpm, restore proven before each |
+| T11, T13 | Algorithm 1/2 refused with no frame; collision 200/50 and the exact restore of 0/0 |
+| T10, T12, T14 | NOT RUN with their reasons |
+
+Results: [wired bench 15](reports/2026-11-19_wired_bench_15_control_tuning.md).

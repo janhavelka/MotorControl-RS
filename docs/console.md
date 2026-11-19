@@ -39,6 +39,7 @@ after success or a read-only preparation rejection. Actual enable, alarm, encodi
 | `home restore ID`, `velocity restore ID` | Write back the exact words of the checked `home read` or `velocity read` with operation ID `ID` (same drive and binding), no start, then read them back. `... restore inspect` shows the last restore. A lost reply is never resent. |
 | `velocity jog set 60 100 100` | JOG setter (wired bench 14): write the JOG speed and both ramp words (`0x001D/3`) after a `velocity read`, no start, then read them back; the speed stays within 60 rpm (raised limits are serial-only). |
 | `velocity limits` | Show the active velocity limits; `qualify RPM ACCEL DECEL SUBDIVISION MS normal\|fast` admits one exact run above +-60 rpm / 1000 ms, `raise` the promoted table, `reset` the legacy envelope. |
+| `tuning candidates check control closed-maximum-current 100` | Control and tuning candidates (wired bench 15): run the ordinary admission of one field without a frame and show the rule (`row`, `listed_current`, `exact_restore`) or the refusal, and the pinned read an exact restore uses. `tuning candidates threshold 8000` names one deviation threshold above 4000 for the session (D6); `reset` drops it. |
 | `settings` | Read actual drive settings; also show choices for the next move. |
 | `subdivision` | Read the drive's subdivision and related settings. |
 | `subdivision options` | Show the documented range and useful example values. |
@@ -668,9 +669,9 @@ io qualification inspect 1 x0 assign
 
 With connected terminals (the wired bench boots that way) settings writes need
 four records first: `configure` for `motion-profile start-speed`, `home
-auxiliary`, `motion-profile stage`, `driver set` and the two tuning experiments
-(input filter within `MEASURED_INPUT_FILTERS`, deviation threshold 1..4000),
-`segment` for `segment ... set`. After `read config` and `read state`, state each
+auxiliary`, `motion-profile stage`, `driver set` and `tuning ... set` (one field
+per request, within its candidate row or the exact restore of the pinned read;
+wired bench 15), `segment` for `segment ... set`. After `read config` and `read state`, state each
 input's current function and polarity:
 
 ```text

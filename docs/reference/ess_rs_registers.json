@@ -1157,7 +1157,7 @@
       "issues": [
         "SOURCE_CONFLICT"
       ],
-      "notes": "Prose references 0x2042 current register outside ESS map; do not create a 0x2042 alias or assume 0x0102 automatically.",
+      "notes": "Prose references 0x2042 current register outside ESS map; do not create a 0x2042 alias or assume 0x0102 automatically. Measured (wired bench 15, listed rows 50, 25, 10 of a stored 100 at algorithm 3): 2000-step moves at 600 rpm completed with no alarm on drives 4 and 2; drive 4's running output lasted 489 ms at 100 and 500, 324, 378 ms at 50, 25, 10. No current claim.",
       "choices": null
     },
     {
@@ -1231,7 +1231,7 @@
       "signedness": "UNSIGNED",
       "word_order": "SINGLE_REGISTER",
       "issues": [],
-      "notes": "Delay after movement stops before the motor enters the lock state, in ms. It is not a communication timeout or a guaranteed motion-completion delay.",
+      "notes": "Delay after movement stops before the motor enters the lock state, in ms. It is not a communication timeout or a guaranteed motion-completion delay. Measured (wired bench 15, drive 4): output function 5 did not change after a stop at 200, 1000 or 3000; the lock transition itself is unmeasured.",
       "choices": null
     },
     {
@@ -1284,7 +1284,7 @@
       "issues": [
         "UNIT_UNSPECIFIED"
       ],
-      "notes": "The source names a position-deviation threshold but supplies no count basis. Do not assume raw encoder counts or command subdivisions.",
+      "notes": "The source names a position-deviation threshold but supplies no count basis. Do not assume raw encoder counts or command subdivisions. Measured (wired bench 15): for a 2000-step move at subdivision 1000, alarm 5 at 12 and no alarm at 16 (120 rpm), alarm at 32 and none at 35 (600 rpm) on drive 4; on drive 2 alarm at 8, none at 12 (120 rpm), alarm at 24, none at 28 (600 rpm). 8000 and 65535 raised no alarm. A unit is not inferred.",
       "choices": null
     },
     {
@@ -1322,7 +1322,7 @@
       "issues": [
         "UNIT_UNSPECIFIED"
       ],
-      "notes": "The source names an arrival/end time but supplies no unit or timing rule. Do not infer milliseconds from neighboring registers.",
+      "notes": "The source names an arrival/end time but supplies no unit or timing rule. Do not infer milliseconds from neighboring registers. Measured (wired bench 15, model 0x4EEA, firmware 0x0029, drive 4): the arrival output (Y0 = 4) comes this many milliseconds, about 1 ms per unit, after the move ends (0, 50, 200 gave 1092.0, 1143.1, 1291.1 ms for a 2000-step move at 120 rpm against 1102.3 ms at 10).",
       "choices": null
     },
     {
@@ -1339,7 +1339,7 @@
       "signedness": "UNSIGNED",
       "word_order": "SINGLE_REGISTER",
       "issues": [],
-      "notes": "Mean filter coefficient; a larger value gives a stronger filtering effect. No coefficient-to-time formula is stated.",
+      "notes": "Mean filter coefficient; a larger value gives a stronger filtering effect. No coefficient-to-time formula is stated. Measured (wired bench 15, drive 4, twice): a written 0 reads back 1; the application row starts at 1.",
       "choices": null
     },
     {
@@ -1585,7 +1585,7 @@
         "DUPLICATE_MAPPING",
         "UNIT_UNSPECIFIED"
       ],
-      "notes": "Compare 0x003B lower bound 50 and absent access marker; retain separate entries.",
+      "notes": "Compare 0x003B lower bound 50 and absent access marker; retain separate entries. Wired bench 15: 200 written and read back on drive 4; the bench's 0 is written back only by the D7 exact restore.",
       "choices": null
     },
     {
@@ -1604,7 +1604,7 @@
       "issues": [
         "DUPLICATE_MAPPING"
       ],
-      "notes": "Compare 0x003C; relationship unestablished.",
+      "notes": "Compare 0x003C; relationship unestablished. Wired bench 15: 50 written and read back on drive 4; the bench's 0 is written back only by the D7 exact restore.",
       "choices": null
     }
   ],

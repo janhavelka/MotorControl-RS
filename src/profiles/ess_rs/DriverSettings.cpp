@@ -403,11 +403,50 @@ Status validateModelAndEffects(const ReadTarget& target, const DriverRequest& re
             return invalid(effectsError, "qualified setting values differ from candidate");
     return Ok();
 }
+// D7 exact restore: one field, equal to the same field of a complete checked
+// read of the same group and drive, whose raw words match its retained frames.
+Status validateExactRestore(const ReadTarget& target, const DriverRequest& request,
+                            const DriverPrerequisites& prerequisites) {
+    const DriverObservation& source = prerequisites.restoreSource;
+    const bool group = request.group == DriverGroup::CONTROL_SETTINGS || isTuningGroup(request.group);
+    uint8_t slot = DRIVER_FIELD_COUNT;
+    for (uint8_t i = 0; group && i < DRIVER_FIELD_COUNT; ++i)
+        if (request.fields == bit(i, request.group)) slot = i;
+    if (slot == DRIVER_FIELD_COUNT)
+        return invalid(DriverError::INVALID_CANDIDATE, "an exact restore writes one control or tuning field");
+    if (!source.operationId || source.group != request.group || source.target.id != target.id ||
+        source.target.address != target.address)
+        return invalid(DriverError::RESTORE_SOURCE_REQUIRED, "exact restore needs a checked read of the same group and drive");
+    DriverObservation checked;
+    if (!decode(source.provenance, source.target, source.group, checked) ||
+        std::memcmp(checked.raw, source.raw, sizeof(checked.raw)))
+        return invalid(DriverError::RESTORE_SOURCE_REQUIRED, "exact restore source disagrees with its checked frames");
+    if (requested(request, slot) != source.raw[slot])
+        return invalid(DriverError::RESTORE_SOURCE_REQUIRED, "exact restore value differs from its source read");
+    // A current word means something else in another control mode: restore it
+    // only while the live algorithm word equals the source read's.
+    if (request.group == DriverGroup::CONTROL_SETTINGS && slot >= 2 && slot <= 6 &&
+        prerequisites.previous.raw[0] != source.raw[0])
+        return invalid(DriverError::RESTORE_SOURCE_REQUIRED, "exact current restore needs the source read's algorithm word");
+    return Ok();
+}
+// The listed current candidates of wired bench 15: closed-loop maximum (slot 3)
+// or lock current (slot 6), at algorithm word 3 (the bench's read word), one
+// field at one value, bound to the prior read and its algorithm word.
+bool listedCurrent(const DriverRequest& request, const DriverPrerequisites& p) {
+    const uint8_t field = p.listedCurrentField;
+    return p.listedCurrentQualified && (field == 3 || field == 6) && p.listedCurrentAlgorithm == 3 &&
+        request.fields == bit(field, request.group) && requested(request, field) == p.listedCurrentValue &&
+        p.previous.operationId == p.listedCurrentSourceId && p.previous.raw[0] == p.listedCurrentAlgorithm;
+}
 Status validateIntermediateCurrentTuple(const DriverRequest& request,
                                        const DriverPrerequisites& prerequisites) {
     const DriverObservation& previous = prerequisites.previous;
     const uint32_t currentFields = bit(0, request.group) | bit(2, request.group) | bit(3, request.group) | bit(4, request.group) |
         bit(5, request.group) | bit(6, request.group);
+    // An exact restore was checked against its source; a listed candidate's
+    // intermediate tuple is the prior read with that one word changed.
+    if (prerequisites.exactRestore || listedCurrent(request, prerequisites)) return Ok();
     if (request.fields & currentFields) {
         if (!prerequisites.nativeCurrentLimitQualified || !prerequisites.maximumEffectiveLimitMa ||
             prerequisites.maximumEffectiveLimitMa > 5600)
@@ -705,15 +744,23 @@ Status prepareDriverSettings(DriverContext& output, const ReadTarget& target, ui
             if (!readback) return readback;
         }
     }
+    // D7: an exact restore is checked against its source first; its one word
+    // then skips the documented range (the source may hold any raw word).
+    const bool restoring = prerequisites.exactRestore;
+    if (restoring) {
+        const Status source = validateExactRestore(target, request, prerequisites);
+        if (!source) return source;
+    }
     for (uint8_t i = 0; i < DRIVER_FIELD_COUNT; ++i) {
         if (!(request.fields & bit(i, request.group))) continue;
         if (!segment && !control && !tuning && !single && (i == 13 || i == 14) && requested(request, i) == 11)
             return Status(Err::UNSUPPORTED, static_cast<int32_t>(DriverError::OUTPUT_FUNCTION_UNRESOLVED), "custom output 2 has no resolved ESS terminal mapping");
         TuningParameterInfo tuningInfo;
         if (tuning && (!tuningParameterInfo(tuningParameter(request.group,i),tuningInfo) || !tuningInfo.accessReviewed ||
-            requested(request,i) < tuningInfo.minimum || requested(request,i) > tuningInfo.maximum))
+            (!restoring && (requested(request,i) < tuningInfo.minimum || requested(request,i) > tuningInfo.maximum))))
             return invalid(DriverError::INVALID_CANDIDATE, "tuning native value out of range");
-        if ((!segment && !control && !tuning && !single && !legal(i, requested(request, i))) || (control && !legalControl(i, requested(request, i))))
+        if ((!segment && !control && !tuning && !single && !legal(i, requested(request, i))) ||
+            (control && !restoring && !legalControl(i, requested(request, i))))
             return invalid(DriverError::INVALID_CANDIDATE, "illegal driver-setting enum or native range");
         const Status wire = validateWriteSingleRegisterRequest(target.address, fieldRegister(request, i), requested(request, i));
         if (!wire) return wire;

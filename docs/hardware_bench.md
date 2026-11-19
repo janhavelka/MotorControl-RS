@@ -104,6 +104,40 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+On 19 November [wired bench 15](reports/2026-11-19_wired_bench_15_control_tuning.md)
+flashed three Arduino `bench_s3_load_timer` images from `d750246` plus the
+uncommitted prompt 15 tree: J
+(`096A4F9441C3E22814B330EC215D2F35FDF67991538C7CC25FD1E069ED7BA0ED`), K
+(`219D5B97872980826F671F778D82E50240F1209EC99DF86785904E206717A5F1`) and the
+final M (`7CF07BF531A6017235B898B37D20CD9C9FD373FF8667961AD51BBB583E37A161`).
+J and M followed `baseline-compare` (573/573 equal) and a passing
+`before_flash_check`. K was flashed with a failing check: drive 4 held alarm
+5 with RUNNING set after a mid-move alarm and the application refused its
+`alarm-clear` (report deviation 7); no drive had an input function 7-17 and
+drive 4 was released and not moving. All uploads ran from PowerShell with
+`PYTHONIOENCODING=utf-8`, four regions hash-verified, post-flash checks PASS.
+The native IDF 5.5.5 image of the final tree
+(`AA307B885786470F65462AEC82C017EB20A12605C21A66CE4E1F8F8ACAAD6988`) was built,
+not flashed. Ending state:
+
+- **Board:** image M, outputs off, COM13 closed.
+- **Drives 1/2/4:** enabled, stopped, alarm-free. I/O `[0,1,2,3,0,0,0,0,0]`,
+  control `[3, 4000, 5600, 100, 40, 100, 40, 200]`, filters
+  `2, 5, 4000, 5, 10, 512`, current loop `6553, 1024, 102, 409`, LA
+  `2560, 256, 20, 2560, 128, 100, 10, 2`, collision `0, 0`. Positions: drive 1
+  [0, 38825], drive 2 [6, 43167], drive 4 [0, 11559]; **none homed** (alarm 5
+  cleared HOMED on drives 2 and 4).
+- **Settings:** `baseline-compare`: 573 of 573 fields equal
+  (`build/bench/2026-11-19_wb15_final_compare_m/`). RAM only, nothing saved.
+- **Relay wear:** relay2 1 ON added (with its release).
+- **Candidates:** the pinned control and tuning reads are the first reads after
+  the M flash (at the baseline); no deviation-threshold call is active.
+- **After the audit:** the fixed tree (narrowed `alarm-clear`, API bounds,
+  listed rows at algorithm 3 only) is Arduino image N
+  `795852434BCAF642BCC0180E2B4DF89517FA4A01FD842C7FC15A9CDA9474DD85` and native
+  IDF `9ACB787E0D4003EBDEB60F057FA9C96723F8CD180850C624329C073B07762A27`, built,
+  not flashed; prompt 16's first regression checks the narrowed rule.
+
 On 19 November [wired bench 14](reports/2026-11-19_wired_bench_14_velocity_jog_pv.md)
 flashed Arduino `bench_s3_load_timer` image G,
 `B8531E8D161BEBE8D1DD2A2200F9E3F2505AC0B9A93AEE5C975505E86C1B2AEB`, built from

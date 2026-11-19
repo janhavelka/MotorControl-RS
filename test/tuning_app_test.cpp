@@ -5,6 +5,7 @@
 #include "../examples/probe_cli/ArduinoPlatform.cpp"
 #include "../examples/probe_cli/main.cpp"
 #include <cassert>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -59,7 +60,9 @@ void identity() {
 void ioBaseline() {
     ESS::DriverRequest request; request.group = ESS::DriverGroup::IO;
     uint32_t id = 0;
-    assert(host(app).startDriver(app, 3, 1, ESS::DriverKind::READ, request, id) == Probe::Action::OK);
+    const auto started = host(app).startDriver(app, 3, 1, ESS::DriverKind::READ, request, id);
+    if (started != Probe::Action::OK) std::fprintf(stderr, "ioBaseline start %d\n", static_cast<int>(started));
+    assert(started == Probe::Action::OK);
     reply(id, words({0, 1, 2, 3, 0})); reply(id, words({0, 0, 0})); reply(id, words({0}));
     assert(view(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS);
 }
@@ -152,7 +155,7 @@ ESS::DriverRequest threshold(uint16_t value) {
     request.configurationGeneration = app->axis.generation; return request;
 }
 void alarmThresholdExperiment() {
-    // Only the threshold, only within 1..4000, only from a checked value in that range.
+    // The deviation-threshold row (wired bench 15, D12): 1..4000 alone, from any stored value.
     baseline(); const auto writes = hardware.writes; uint32_t id = 99;
     auto request = threshold(4001);
     assert(host(app).startDriver(app, 10, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK);
@@ -172,11 +175,172 @@ void alarmThresholdExperiment() {
     assert(host(app).startDriver(app, 13, 1, ESS::DriverKind::UPDATE, request, id) == Probe::Action::OK);
     reply(id, {}); reply(id, words({4000}));
     assert(view(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS);
-    // A stored value above the default is outside it, even for a lower candidate.
+    // Lowering a stored value above 4000 to the default is the ordinary route.
     fresh(); read(ESS::DriverGroup::FILTERS, {2, 5, 5000, 5, 10, 512}); identity(); ioBaseline(); stationary();
-    const auto before = hardware.writes; request = threshold(4000); id = 99;
-    assert(host(app).startDriver(app, 14, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK);
-    assert(id == 99 && hardware.writes == before);
+    request = threshold(4000); id = 99;
+    assert(host(app).startDriver(app, 14, 1, ESS::DriverKind::UPDATE, request, id) == Probe::Action::OK);
+}
+Probe::CandidatesView candidates(const char* line) {
+    Serial.output.clear(); Serial.input = line;
+    for (unsigned i = 0; i < 100 && !Serial.input.empty(); ++i) step();
+    for (unsigned i = 0; i < 20; ++i) step();
+    Probe::CandidatesView view; Probe::CandidatesCommand show; candidatesCommand(app, show, view); return view;
+}
+// D6: above 4000 only the value one call names, for the selected axis, binding
+// and host session; refused without it and after reset or useaddr.
+void thresholdCall() {
+    baseline(); const auto writes = hardware.writes; uint32_t id = 99;
+    auto request = threshold(8000);
+    assert(host(app).startDriver(app, 30, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK && id == 99);
+    assert(candidates("@31 tuning candidates threshold 4000\n").thresholdValue == 0); // Not above the ordinary range.
+    assert(Serial.output.find("invalid_arguments") != std::string::npos);
+    auto shown = candidates("@32 tuning candidates threshold 8000\n");
+    assert(shown.thresholdActive && shown.thresholdValue == 8000 && hardware.writes == writes);
+    assert(Serial.output.find("\"command\":\"tuning-candidates\"") != std::string::npos &&
+           Serial.output.find("\"bus_traffic\":false") != std::string::npos);
+    request = threshold(8001);
+    assert(host(app).startDriver(app, 33, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK && id == 99);
+    request = threshold(8000);
+    assert(host(app).startDriver(app, 34, 1, ESS::DriverKind::UPDATE, request, id) == Probe::Action::OK);
+    reply(id, {}); reply(id, words({8000}));
+    assert(view(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS && hardware.writes == writes + 2);
+    // The call names one value for the session: a reset drops it.
+    for (auto& r : app->records) if (r.operationId && terminal(*app, r)) clearRecord(r);
+    read(ESS::DriverGroup::FILTERS, {2, 5, 8000, 5, 10, 512}); identity(); ioBaseline(); stationary();
+    candidates("@35 tuning candidates reset\n");
+    request = threshold(8000); id = 99;
+    assert(host(app).startDriver(app, 36, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK && id == 99);
+    // Back to 4000: the ordinary row from the raised stored value.
+    request = threshold(4000);
+    assert(host(app).startDriver(app, 37, 1, ESS::DriverKind::UPDATE, request, id) == Probe::Action::OK);
+    reply(id, {}); reply(id, words({4000}));
+    // useaddr ends the session too.
+    baseline(); candidates("@38 tuning candidates threshold 65535\n");
+    Serial.input = "@39 useaddr 2\n"; for (unsigned i = 0; i < 50; ++i) step();
+    Serial.input = "@40 useaddr 1\n"; for (unsigned i = 0; i < 50; ++i) step();
+    assert(!candidates("@41 tuning candidates\n").thresholdActive);
+}
+// Percent rows (current loop, LA): 75 and 125 % of the pinned first read; the
+// pinned word itself is the D7 exact restore; anything else refuses.
+void gainRowsAndExactRestore() {
+    fresh(); const auto first = read(ESS::DriverGroup::CURRENT_LOOP, {6553, 1024, 102, 409}); identity(); ioBaseline(); stationary();
+    const auto writes = hardware.writes;
+    unsigned reads = 0;
+    for (const uint16_t value : {768, 1280, 1024}) {
+        ESS::DriverRequest request;
+        assert(ESS::prepareTuningValue(request, ESS::TuningParameter::CURRENT_LOOP_KP, value));
+        request.configurationGeneration = app->axis.generation; uint32_t id = 0;
+        assert(host(app).startDriver(app, 50, 1, ESS::DriverKind::UPDATE, request, id) == Probe::Action::OK);
+        reply(id, {}); reply(id, words({value}));
+        const auto& c = *view(id).driverContext;
+        assert(c.outcome == ESS::DriverOutcome::SUCCESS && c.prerequisites.exactRestore == (value == 1024));
+        if (value == 1024) assert(c.prerequisites.restoreSource.operationId == first);
+        // The next candidate needs a fresh read; the pin stays the first one.
+        for (auto& r : app->records) if (r.operationId && terminal(*app, r)) clearRecord(r);
+        read(ESS::DriverGroup::CURRENT_LOOP, {6553, value, 102, 409}); ioBaseline(); stationary(); reads += 4;
+    }
+    assert(hardware.writes == writes + 6 + reads);
+    for (const uint16_t value : {767, 769, 1279, 2048, 0}) {
+        ESS::DriverRequest request;
+        assert(ESS::prepareTuningValue(request, ESS::TuningParameter::CURRENT_LOOP_KP, value));
+        request.configurationGeneration = app->axis.generation; uint32_t id = 99;
+        assert(host(app).startDriver(app, 51, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK && id == 99);
+    }
+    // Two fields in one request refuse, even two admitted values.
+    ESS::DriverRequest two;
+    assert(ESS::prepareTuningValue(two, ESS::TuningParameter::CURRENT_LOOP_KP, 768));
+    assert(ESS::prepareTuningValue(two, ESS::TuningParameter::CURRENT_LOOP_KI, 77));
+    two.configurationGeneration = app->axis.generation; uint32_t id = 99;
+    assert(host(app).startDriver(app, 52, 1, ESS::DriverKind::UPDATE, two, id) != Probe::Action::OK && id == 99);
+    // The check reports the decision and sends nothing.
+    const auto before = hardware.writes;
+    candidates("@53 tuning candidates check current-loop kp 768\n");
+    assert(Serial.output.find("\"admitted\":true") != std::string::npos && Serial.output.find("\"rule\":\"row\"") != std::string::npos);
+    candidates("@54 tuning candidates check current-loop kp 1024\n");
+    assert(Serial.output.find("\"rule\":\"exact_restore\"") != std::string::npos &&
+           Serial.output.find("\"pin_operation_id\":" + std::to_string(first)) != std::string::npos);
+    candidates("@55 tuning candidates check current-loop kp 769\n");
+    assert(Serial.output.find("\"admitted\":false") != std::string::npos &&
+           Serial.output.find("\"reason\":\"outside_candidates\"") != std::string::npos);
+    assert(hardware.writes == before);
+}
+// Audit F1: the API checks kind, group and the group's own slot range before
+// any indexing, with no traffic.
+void candidatesBounds() {
+    baseline(); const auto writes = hardware.writes;
+    const auto invalid = [](Probe::CandidatesCommandKind kind, ESS::DriverGroup group, uint8_t slot) {
+        Probe::CandidatesCommand command; command.kind = kind; command.group = group; command.slot = slot; command.value = 1;
+        Probe::CandidatesView out;
+        const auto status = tuningCandidates(command, out);
+        return !status && status.detail == static_cast<int32_t>(Probe::Action::INVALID);
+    };
+    using K = Probe::CandidatesCommandKind; using G = ESS::DriverGroup;
+    assert(invalid(K::CHECK, G::FILTERS, 255) && invalid(K::CHECK, G::FILTERS, 6) && invalid(K::CHECK, G::CURRENT_LOOP, 4));
+    assert(invalid(K::CHECK, G::LA, 8) && invalid(K::CHECK, G::COLLISION, 2) && invalid(K::CHECK, G::CONTROL_SETTINGS, 8));
+    assert(invalid(K::CHECK, G::DRIVE, 0) && invalid(K::CHECK, G::IO, 0) && invalid(static_cast<K>(9), G::FILTERS, 0));
+    Probe::CandidatesCommand last; last.kind = K::CHECK; last.group = G::COLLISION; last.slot = 1; last.value = 50;
+    Probe::CandidatesView out; tuningCandidates(last, out);
+    assert(out.checkedAddress == 1 && out.address == 1);
+    for (unsigned i = 0; i < 50; ++i) step();
+    assert(hardware.writes == writes);
+}
+// Audit F4: an exact restore above 4000 still needs the D6 call.
+void thresholdRestoreNeedsCall() {
+    fresh(); read(ESS::DriverGroup::FILTERS, {2, 5, 5000, 5, 10, 512}); identity(); ioBaseline(); stationary();
+    auto request = threshold(4000); uint32_t id = 0;
+    assert(host(app).startDriver(app, 80, 1, ESS::DriverKind::UPDATE, request, id) == Probe::Action::OK);
+    reply(id, {}); reply(id, words({4000}));
+    for (auto& r : app->records) if (r.operationId && terminal(*app, r)) clearRecord(r);
+    read(ESS::DriverGroup::FILTERS, {2, 5, 4000, 5, 10, 512}); ioBaseline(); stationary();
+    candidates("@81 tuning candidates reset\n");
+    const auto writes = hardware.writes; request = threshold(5000); id = 99;
+    assert(host(app).startDriver(app, 82, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK && id == 99);
+    candidates("@83 tuning candidates check filters deviation-threshold 5000\n");
+    assert(Serial.output.find("\"reason\":\"threshold_needs_call\"") != std::string::npos);
+    for (unsigned i = 0; i < 50; ++i) step();
+    assert(hardware.writes == writes);
+    candidates("@84 tuning candidates threshold 5000\n");
+    request = threshold(5000);
+    assert(host(app).startDriver(app, 85, 1, ESS::DriverKind::UPDATE, request, id) == Probe::Action::OK); // The call admits it.
+}
+// Wired bench 15: pulse mean 0 is documented but read back 1 on drive 4 (twice),
+// so its row starts at 1; pulse low-pass 0 is unmeasured and refused too.
+void pulseFilterRows() {
+    for (const auto parameter : {ESS::TuningParameter::PULSE_MEAN_FILTER, ESS::TuningParameter::PULSE_LOW_PASS_FILTER}) {
+        baseline(); const auto writes = hardware.writes; uint32_t id = 99;
+        ESS::DriverRequest request; assert(ESS::prepareTuningValue(request, parameter, 0));
+        request.configurationGeneration = app->axis.generation;
+        assert(host(app).startDriver(app, 70, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK && id == 99);
+        for (unsigned i = 0; i < 50; ++i) step();
+        assert(hardware.writes == writes);
+        request = ESS::DriverRequest(); assert(ESS::prepareTuningValue(request, parameter, 1));
+        request.configurationGeneration = app->axis.generation;
+        assert(host(app).startDriver(app, 71, 1, ESS::DriverKind::UPDATE, request, id) == Probe::Action::OK);
+    }
+}
+// Collision: 200/50 only; the bench's 0/0 (outside 200..4000 and 20..100) is
+// written back only as the exact restore of the pinned read.
+void collisionRows() {
+    fresh(); const auto first = read(ESS::DriverGroup::COLLISION, {0, 0}); identity(); ioBaseline(); stationary();
+    ESS::DriverRequest request; request.group = ESS::DriverGroup::COLLISION; request.fields = 1;
+    request.tuningValues[0] = 200; request.configurationGeneration = app->axis.generation; uint32_t id = 0;
+    assert(host(app).startDriver(app, 60, 1, ESS::DriverKind::UPDATE, request, id) == Probe::Action::OK);
+    reply(id, {}); reply(id, words({200}));
+    for (auto& r : app->records) if (r.operationId && terminal(*app, r)) clearRecord(r);
+    read(ESS::DriverGroup::COLLISION, {200, 0}); ioBaseline(); stationary();
+    // The console route: the terminal names the source read of the restore.
+    Serial.output.clear(); Serial.input = "@61 tuning collision set threshold 0\n";
+    for (unsigned i = 0; i < 100 && !Serial.input.empty(); ++i) step();
+    id = app->latestOperationId;
+    waitTx(id); assert(hardware.tx[2] == 0x01 && hardware.tx[3] == 0x22 && hardware.tx[4] == 0 && hardware.tx[5] == 0);
+    reply(id, {}); reply(id, words({0}));
+    assert(view(id).driverContext->prerequisites.restoreSource.operationId == first);
+    for (unsigned i = 0; i < 100; ++i) step();
+    assert(Serial.output.find("\"exact_restore_source\":" + std::to_string(first)) != std::string::npos);
+    for (auto& r : app->records) if (r.operationId && terminal(*app, r)) clearRecord(r);
+    read(ESS::DriverGroup::COLLISION, {0, 0}); ioBaseline(); stationary();
+    request.tuningValues[0] = 201; request.configurationGeneration = app->axis.generation; id = 99;
+    assert(host(app).startDriver(app, 62, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK && id == 99);
 }
 // Wired bench 05: the input-filter experiment admits MEASURED_INPUT_FILTERS
 // only, from and to any value in the set; one FC06 to 0x0108 and its readback.
@@ -202,11 +366,10 @@ void measuredFilterSet() {
         assert(host(app).startDriver(app, 21, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK);
         for (unsigned i = 0; i < 100; ++i) step();
         assert(id == 99 && hardware.writes == writes); // Refused before TX.
-        // A stored value outside the set is not a starting point either.
+        // From a stored value outside the set, a set value is admitted (wired bench 15 row).
         fresh(); read(ESS::DriverGroup::FILTERS, {excluded, 5, 4000, 5, 10, 512}); identity(); ioBaseline(); stationary();
-        const auto before = hardware.writes; request = filter(2);
-        assert(host(app).startDriver(app, 22, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK);
-        assert(id == 99 && hardware.writes == before);
+        request = filter(2);
+        assert(host(app).startDriver(app, 22, 1, ESS::DriverKind::UPDATE, request, id) == Probe::Action::OK);
     }
     // A lost acknowledgement leaves the value uncertain; nothing is replayed.
     const uint16_t largest = MEASURED_INPUT_FILTERS[sizeof(MEASURED_INPUT_FILTERS) / sizeof(MEASURED_INPUT_FILTERS[0]) - 1];
@@ -242,6 +405,6 @@ void failedRefreshPreservesBaseline() {
 } // namespace
 int main() {
     readsAndChangedCompletion(); safeFilterAndGuards(); failuresAndRecovery(); alarmThresholdExperiment();
-    failedRefreshPreservesBaseline(); measuredFilterSet();
+    failedRefreshPreservesBaseline(); measuredFilterSet(); thresholdCall(); gainRowsAndExactRestore(); collisionRows(); pulseFilterRows(); candidatesBounds(); thresholdRestoreNeedsCall();
     if (app) { app->~App(); std::free(app); app = nullptr; }
 }

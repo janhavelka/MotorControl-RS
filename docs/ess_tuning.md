@@ -146,7 +146,8 @@ The existing console and Python transport call the same public preparations:
 
 ```text
 tuning filters|current-loop|la|collision read [address]
-tuning GROUP set FIELD INTEGER [FIELD INTEGER ...] [address]
+tuning GROUP set FIELD INTEGER [address]
+tuning candidates [check control|GROUP FIELD INTEGER [address] | threshold VALUE | reset]
 ```
 
 | Group | Fields |
@@ -156,11 +157,14 @@ tuning GROUP set FIELD INTEGER [FIELD INTEGER ...] [address]
 | `la` | `kp1`, `kv1`, `node1`, `kp2`, `kv2`, `node2`, `kvf`, `position-ki` |
 | `collision` | `threshold`, `current` |
 
-Values use strict native integer parsing. Duplicate fields, mixed groups,
-unsupported parameters and out-of-range values fail before admission. There is
-no bare-address tuning setter. The 128-byte input limit includes the terminator
-and the 22-token limit includes an optional `@ID`; the direct API can prepare
-a complete eight-field candidate.
+Values use strict native integer parsing. Duplicate fields, mixed groups and
+unsupported parameters fail in the console; a word outside the documented range
+reaches the application as given, where only the D7 exact restore admits it.
+The standalone application admits one field per request (wired bench 15
+candidate rows); the core API can still prepare a complete eight-field
+candidate for a caller that qualifies it. There is no bare-address tuning
+setter. The 128-byte input limit includes the terminator and the 22-token limit
+includes an optional `@ID`.
 The transport keeps command correlation distinct from retained operation IDs,
 supports interleaved accepted/terminal records and never splits or retries an
 oversized or failed write automatically.
@@ -190,30 +194,67 @@ qualify the read path, not these fields' physical meaning on firmware `0x0029`.
 They were not changed, aliased to earlier rows or converted to documented
 defaults.
 
-The standalone application permits two finite experiments, each alone in its
-request, with fresh stopped state and exact bench identity, and one of two input
-policies: known unconnected inputs with passive assignments and no asserted
-input, or (since [wired bench 03](reports/2026-11-18_wired_bench_03_connected_setters.md))
-four current `configure` records stated with `io qualification install` and no
-assigned limit, stop or control input active. Without either, a connected
-bench refuses before TX with `qualification_required` and a
-[named reason](cli_contract.md#settings-input-facts). The experiments are:
+## Admitted candidates (wired bench 15)
 
-- the input filter within `MEASURED_INPUT_FILTERS` = {0, 1, 2, 3, 5, 10, 20, 50}
-  (`examples/probe_cli/IoStatusRecord.h`), from and to any value in the set
-  (before wired bench 05: `2` or `3` only);
-- the position-error alarm threshold (`deviation-threshold`, `0x010A`) within
-  `1..4000`, from a checked value in that range. 4000 is the documented default,
-  so the threshold can be lowered or restored but never widened. A lowered value
-  can latch alarm 5 in a later move; the owner asked for this on 16 November
-  2026 to test `alarm-clear` with a latched alarm.
+[Wired bench 15](reports/2026-11-19_wired_bench_15_control_tuning.md) replaced
+the two finite experiments (input filter, deviation threshold) with one row per
+field (`examples/probe_cli/SettingCandidates.h`). `tuning GROUP set` and the
+API admit one field per request, with fresh stopped state, exact bench identity
+and one of two input policies: known unconnected inputs with passive
+assignments and no asserted input, or (since
+[wired bench 03](reports/2026-11-18_wired_bench_03_connected_setters.md)) four
+current `configure` records with no assigned limit, stop or control input
+active. Without either, a connected bench refuses before TX with
+`qualification_required` and a [named reason](cli_contract.md#settings-input-facts).
 
-Neither experiment qualifies the field's physical effect. The finite `2 → 3 → 2` experiment passes stored readback and
-restoration. Both FC06-shaped observations remain source-unconfirmed:
-acknowledgement is false and execution unknown. Separate confirmed FC03
-readbacks establish the stored codes. Readback alone qualifies no filter delay,
-active behavior or persistent save; the status-bit delay measured in wired
-bench 05 (connected terminals, confirmed replies) is below.
+| Field | Row | Reason |
+| --- | --- | --- |
+| `input-filter` | `MEASURED_INPUT_FILTERS` = {0, 1, 2, 3, 5, 10, 20, 50} | Measured debounce (wired bench 05) |
+| `pulse-low-pass` | 1..1024 | Documented 0..1024; 0 is unmeasured |
+| `deviation-threshold` | 1..4000; above 4000 only the value of `tuning candidates threshold VALUE` (D6) | 4000 is the documented default, so the ordinary route only lowers the tolerance or restores it (D12); the caller of the call owns the reduced protection. This is the single production table; prompt 16 references it |
+| `arrival-window` | 1..256 | Documented range |
+| `arrival-time` | 0..200 | Documented range |
+| `pulse-mean` | 1..512 | Documented 0..512, but a written 0 reads back 1 on firmware `0x0029` (twice, drive 4) |
+| current loop (4), LA (8) | 75 % and 125 % of the pinned word | Bounded perturbation; no gain claim |
+| `collision threshold`, `current` | 200 and 50 | Stored only: no mechanical stop on the bench |
+
+Every row also admits the D7 exact restore: the same field's word of the pinned
+read, the first complete checked read of that group on that drive in this host
+serial session, whatever its range (the bench's collision 0/0); a deviation
+threshold above 4000 still needs the D6 call. The core
+checks the source (`DriverPrerequisites::exactRestore`, `restoreSource`); the
+update terminal names it (`exact_restore_source`). `tuning candidates check
+GROUP FIELD VALUE` runs the admission without a frame.
+
+Stored readback qualifies the stored word only. All FC06-shaped observations
+of the experiments before wired bench 15 remain source-unconfirmed; on the
+wired bench, with confirmed replies, the writes are acknowledged and read back.
+The measured effects are in the next section; the status-bit delay of the input
+filter measured in wired bench 05 follows it.
+
+### Measured effects (wired bench 15)
+
+Model `0x4EEA`, firmware `0x0029`, 19 November 2026, drive 4 unless stated.
+Reference move M: +2000 native steps at 120 rpm, ramps 100 ms, subdivision
+1000, then the return; five moves per candidate against five baseline moves of
+the same run. Times are Y0 intervals on the controller clock (`aux1`, inverted):
+function 2 from on to off, function 4 from off (left the position) to on.
+
+| Field | Values | Result |
+| --- | --- | --- |
+| Arrival time `0x010C` | 0, 50, 200 (stored 10) | **Measured: about 1 ms per unit.** Function 4 interval 1092.0, 1143.1, 1291.1 ms (spread 0.2 ms each) against 1102.3 ms at 10: the arrival edge comes the arrival time after the move ends (p78 gives no unit) |
+| Arrival window `0x010B` | 1, 50, 256 (stored 5) | No change on these serial moves: 1102.3 ms for each, inside the baseline spread |
+| Pulse low-pass `0x0109` | 1, 1024 (stored 5) | No change on serial moves (1102.3 ms); the pulse input is not wired |
+| Pulse mean `0x010D` | 1, 256 (stored 512) | No change on serial moves (1102.3 ms). A written 0 reads back 1 (twice): the row starts at 1 |
+| Current loop `0x010E`-`0x0111` | 75 % then 125 % of `6553, 1024, 102, 409` | Every M completed with no alarm; function 2 interval 1102.0-1102.2 ms, inside the run's baseline spread for all eight candidates. Bandwidth needs an instrument |
+| LA `0x0112`-`0x0119` | 75 % then 125 % of `2560, 256, 20, 2560, 128, 100, 10, 2` (position Ki 2 then 3: 75 % of 2 rounds to 2) | Every M completed with no alarm; function 2 interval 1101.9-1102.2 ms, within 0.2 ms of the run's baseline for all sixteen candidates. LA gain effects short of a gross failure need an instrument |
+| Deviation threshold `0x010A` | bisection, 12 steps per speed; 8000 and 65535 after the D6 call (stored 4000) | For M (2000 steps, subdivision 1000): drive 4 no alarm 5 at 16 and alarm at 12 (120 rpm), none at 35 and alarm at 32 (600 rpm); drive 2 none at 12, alarm at 8 (120 rpm), none at 28, alarm at 24 (600 rpm). The tolerance needed grows with speed; no count unit is inferred. 8000 and 65535 raised no alarm; above 4000 refused with no frame without the call and after `reset`. Every alarm was cleared by `alarm-clear` (drives 2 and 4 only, D15) |
+| Collision `0x0122`, `0x0123` | 200, 50 (stored 0, 0) | Each written and read back, then the D7 exact restore of 0 from the pinned read (T13); the effect needs a mechanical stop |
+
+Not observable on this bench: filter time constants on a pulse input (no
+pulse source), current, torque, current-loop bandwidth and LA gain effects
+short of a gross failure, collision sensitivity (no mechanical stop). These
+stay with [standalone 08](prompts/standalone/README.md) and its instruments.
 
 ### Input filter: measured delay and pulse width
 

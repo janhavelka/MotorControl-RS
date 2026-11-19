@@ -308,6 +308,91 @@ void lifecycle() {
     auto p=prerequisites(request());p.maxAgeUs=130;p.controlEarliestUs=90;p.controlLatestUs=100;
     assert(E::prepareControlSettings(c,target(),12,request(),p,200,9000));assert(work(c).deadlineUs==210); // Older identity eligibility bounds write budget.
 }
+// Wired bench 15: a control read with its own operation ID and generation.
+E::DriverObservation readAs(uint32_t id,uint32_t generation,uint16_t algorithm,uint16_t closed,uint16_t lock=40) {
+    E::DriverContext c; assert(E::prepareControlRead(c,target(),id,generation,100,10000));
+    supply(c,reply({algorithm,4000,5600,closed})); supply(c,reply({40,100,lock,200}));
+    E::DriverObservation o; assert(E::getDriver(c,o)); return o;
+}
+// Listed current candidates (A2-F12): one field, one value, alone, bound to the
+// prior read and the algorithm word; no ceiling or percent base needed.
+void listedCurrentCandidates() {
+    const auto listed=[](E::DriverPrerequisites& p,uint8_t field,uint16_t value) {
+        p.nativeCurrentLimitQualified=false; p.currentPercentBaseQualified=false; p.maximumEffectiveLimitMa=0;
+        p.listedCurrentQualified=true; p.listedCurrentField=field; p.listedCurrentValue=value;
+        p.listedCurrentAlgorithm=3; p.listedCurrentSourceId=p.previous.operationId;
+    };
+    for (const auto row : {std::pair<uint8_t,uint16_t>{3,50},{3,25},{3,10},{6,20}}) {
+        auto r=request(row.first); set(r,row.first,row.second); auto p=prerequisites(r);
+        p.previous=readAs(11,17,3,100); listed(p,row.first,row.second);
+        E::DriverContext c; assert(E::prepareControlSettings(c,target(),12,r,p,200,9000));
+        const auto w=work(c); assert(w.write&&w.reg==0x100+row.first&&w.value==row.second&&c.fieldCount==1);
+        // The same value under another algorithm word keeps today's refusals.
+        for (const uint16_t algorithm : {1,2}) { p.previous=readAs(11,17,algorithm,100); reject(r,p,Err::UNSUPPORTED); }
+        p.previous=readAs(11,17,3,100);
+        auto other=p; other.listedCurrentSourceId=12; reject(r,other,Err::UNSUPPORTED); // A stale read identity.
+        auto value=r; set(value,row.first,static_cast<uint16_t>(row.second+1)); auto q=p; q.qualifiedControl=value;
+        reject(value,q,Err::UNSUPPORTED); // A value that is not listed.
+        auto two=r; two.fields|=bit(row.first==3?6:3); q=p; q.qualifiedControl=two; q.controlEffectsQualifiedFields=two.fields;
+        reject(two,q,Err::UNSUPPORTED); // Two current fields in one request.
+    }
+    // Audit F2: only slots 3 and 6 at algorithm 3 are listed, even when the
+    // qualification data matches the request exactly.
+    for (const uint8_t field : {2, 4, 5}) {
+        auto r=request(field); set(r,field,10); auto p=prerequisites(r); p.previous=readAs(11,17,3,100);
+        listed(p,field,10); reject(r,p,Err::UNSUPPORTED);
+    }
+    for (const uint16_t algorithm : {1,2}) {
+        auto r=request(3); set(r,3,50); auto p=prerequisites(r); p.previous=readAs(11,17,algorithm,100);
+        listed(p,3,50); p.listedCurrentAlgorithm=algorithm; reject(r,p,Err::UNSUPPORTED);
+    }
+    // Every algorithm write refuses, even with a listed row (the algorithm is never listed).
+    for (const uint16_t algorithm : {1,2,3}) {
+        auto r=request(0); set(r,0,algorithm); auto p=prerequisites(r); p.previous=readAs(11,17,3,100);
+        listed(p,0,algorithm); reject(r,p,algorithm==3?Err::INVALID_CONFIG:Err::UNSUPPORTED);
+        listed(p,3,50); reject(r,p,algorithm==3?Err::INVALID_CONFIG:Err::UNSUPPORTED);
+    }
+}
+// D7 exact restore: any raw word of a checked read of the same drive and group.
+void exactRestore() {
+    const auto restoreOf=[](uint8_t field,uint16_t value,const E::DriverObservation& source,const E::DriverObservation& previous) {
+        auto r=request(field); set(r,field,value); auto p=prerequisites(r);
+        p.previous=previous; p.nativeCurrentLimitQualified=false; p.currentPercentBaseQualified=false;
+        p.exactRestore=true; p.restoreSource=source; return std::make_pair(r,p);
+    };
+    const auto baseline=readAs(11,17,3,100);
+    // After an uncertain write reconciled by a fresh read of a later generation.
+    const auto lowered=readAs(13,17,3,10,20);
+    for (const auto row : {std::pair<uint8_t,uint16_t>{3,100},{6,40},{0,3}}) {
+        auto rp=restoreOf(row.first,row.second,baseline,lowered);
+        E::DriverContext c; assert(E::prepareControlSettings(c,target(),12,rp.first,rp.second,200,9000));
+        const auto w=work(c); assert(w.write&&w.reg==0x100+row.first&&w.value==row.second);
+        auto stale=rp; stale.second.restoreSource.target.address=2; reject(stale.first,stale.second); // Foreign drive.
+        stale=rp; stale.second.restoreSource.operationId=0; reject(stale.first,stale.second);
+        stale=rp; stale.second.restoreSource.raw[row.first]^=1; reject(stale.first,stale.second); // Not its frames.
+        stale=rp; stale.second.restoreSource.group=E::DriverGroup::FILTERS; reject(stale.first,stale.second);
+        auto other=restoreOf(row.first,static_cast<uint16_t>(row.second+1),baseline,lowered);
+        reject(other.first,other.second); // A value the source does not hold.
+        auto two=rp; two.first.fields|=bit(7); two.second.qualifiedControl=two.first;
+        two.second.controlEffectsQualifiedFields=two.first.fields; reject(two.first,two.second);
+        auto unqualified=rp; unqualified.second.controlEffectsQualifiedFields=0;
+        reject(unqualified.first,unqualified.second,Err::UNSUPPORTED); // Effects still required.
+        auto moving=rp; moving.second.rawAlarm=1; reject(moving.first,moving.second); // Stopped state still required.
+    }
+    // Audit F5: a current word is restored only at the source read's algorithm
+    // word; a non-current word (lock delay) is not mode-dependent.
+    auto mode=restoreOf(3,100,baseline,readAs(15,17,2,10)); reject(mode.first,mode.second);
+    mode=restoreOf(6,40,baseline,readAs(15,17,1,100,20)); reject(mode.first,mode.second);
+    auto delayRestore=restoreOf(7,200,baseline,readAs(15,17,2,100));
+    { E::DriverContext d; assert(E::prepareControlSettings(d,target(),12,delayRestore.first,delayRestore.second,200,9000)); }
+    // The source's binding generation may differ (a host recovery between the
+    // read and the restore); the prior read of a later configuration generation binds.
+    auto rp=restoreOf(3,100,baseline,readAs(14,18,3,10));
+    rp.first.configurationGeneration=18; rp.second.configurationGeneration=18;
+    rp.second.qualifiedControl=rp.first; rp.second.restoreSource.target.generation=6;
+    E::DriverContext c; assert(E::prepareControlSettings(c,target(),12,rp.first,rp.second,200,9000));
+    assert(work(c).value==100);
+}
 }
 static void testOptionalAgePolicy() {
     const auto r = request(); auto p = prerequisites(r); p.maxAgeUs = 0;
@@ -325,4 +410,4 @@ static void testOptionalAgePolicy() {
     assert(!E::prepareControlSettings(c, target(), 12, r, p, 100000, 110000)); saved.check(c);
 }
 int main(){
-    testOptionalAgePolicy();admissionPrecedence();readAndPreservation();rangesAndWholeCandidate();identityEffectsAndBounds();fullCapacity();deadlineEvidence();previousSettingsBudget();previousSettingsEnvelope();lifecycle();}
+    testOptionalAgePolicy();admissionPrecedence();readAndPreservation();rangesAndWholeCandidate();identityEffectsAndBounds();fullCapacity();deadlineEvidence();previousSettingsBudget();previousSettingsEnvelope();lifecycle();listedCurrentCandidates();exactRestore();}

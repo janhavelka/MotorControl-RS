@@ -96,8 +96,8 @@ const Entry COMMANDS[] = {
     {"driver", Command::DRIVER, "driver read [address] | driver set field integer [field integer ...] [address]", "typed_drive_settings_with_checked_readback", true, "Read or update supported drive settings and check their readback."},
     {"io", Command::IO, "io read [address] | io set input-polarity|x0|x1|x2|x3|output-polarity|y0|y1|custom value [field value ...] [address]; none assigns function 0", "explicit_typed_terminal_settings_and_readback", true, "Read or update terminal functions and polarity; none selects function zero."},
     {"segment", Command::SEGMENT, "segment position|speed|start INDEX read [address] | segment position|speed|start INDEX set FIELD INTEGER [FIELD INTEGER ...] [address]", "indexed_stored_records_only_external_execution", true, "Read or update stored segment settings; this does not execute a segment."},
-    {"control", Command::CONTROL, "control read [address] | control set algorithm|encoder-resolution|maximum-effective-current|closed-maximum-current|closed-base-current|open-maximum-current|lock-current|lock-delay INTEGER [field integer ...] [address]; algorithm open-loop|algorithm-1", "stopped_native_control_settings_and_checked_readback", true, "Read or update supported control settings while the drive is stopped."},
-    {"tuning", Command::TUNING, "tuning filters|current-loop|la|collision read [address] | tuning GROUP set FIELD INTEGER [FIELD INTEGER ...] [address]; filters: input-filter pulse-low-pass deviation-threshold arrival-window arrival-time pulse-mean; current-loop: multiplier kp ki kc; la: kp1 kv1 node1 kp2 kv2 node2 kvf position-ki; collision: threshold current", "qualified_stopped_native_tuning_and_checked_readback", true, "Read or update named filter, current-loop, LA or collision parameters."},
+    {"control", Command::CONTROL, "control read [address] | control set algorithm|encoder-resolution|maximum-effective-current|closed-maximum-current|closed-base-current|open-maximum-current|lock-current|lock-delay INTEGER [address] (one field per request); algorithm open-loop|algorithm-1", "stopped_native_control_settings_and_checked_readback", true, "Read or update supported control settings while the drive is stopped."},
+    {"tuning", Command::TUNING, "tuning filters|current-loop|la|collision read [address] | tuning GROUP set FIELD INTEGER [address] (one field per request) | tuning candidates [check control|GROUP FIELD INTEGER [address] | threshold 4001..65535 | reset]; filters: input-filter pulse-low-pass deviation-threshold arrival-window arrival-time pulse-mean; current-loop: multiplier kp ki kc; la: kp1 kv1 node1 kp2 kv2 node2 kvf position-ki; collision: threshold current", "qualified_stopped_native_tuning_and_checked_readback", true, "Read or update named filter, current-loop, LA or collision parameters."},
     {"home", Command::HOME, "home methods | home read [address] | home restore SNAPSHOT_ID|inspect | home auxiliary <0..11> | home method search_native return_native ramp_native zero|OFFSET [address]", "checked_parameter_read_auxiliary_setting_or_qualified_homing", true, "Read homing parameters, select auxiliary configuration, list methods or request qualified homing."},
     {"enable", Command::ENABLE, "enable [address]", "request_enable_then_observe_flags", true, "Request motor enable and observe the resulting flags."},
     {"motor-release", Command::MOTOR_RELEASE, "motor-release [address] | motor-release after-stop ID mechanics-permit-release triggers-inhibited", "request_release_then_observe_flags", true, "Request motor release; after-stop requires explicit mechanical and trigger facts."},
@@ -1344,6 +1344,31 @@ void Console::velocityLimitsReply(uint32_t id, const VelocityLimitsCommand& requ
     if (!fits) { error(id, "velocity-limits", "output_full"); return; }
     emit();
 }
+// Control and tuning candidates (wired bench 15): local, never bus traffic. A
+// check reports the decision of the ordinary admission for one field.
+void Console::candidatesReply(uint32_t id, const CandidatesCommand& request) noexcept {
+    CandidatesView v;
+    const Action result = host_.candidates(host_.context, request, v);
+    const char* requestName = request.kind == CandidatesCommandKind::CHECK ? "check" :
+        request.kind == CandidatesCommandKind::THRESHOLD ? "threshold" : request.kind == CandidatesCommandKind::RESET ? "reset" : "show";
+    std::size_t used = 0;
+    bool fits = append(output_, sizeof(output_), used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"tuning-candidates\",\"ok\":%s,\"result\":\"%s\",\"request\":\"%s\",\"bus_traffic\":false,\"address\":%u,\"threshold_active\":%s,\"threshold_value\":%u,\"threshold_ordinary_max\":%u",
+        static_cast<unsigned long>(id), boolean(result == Action::OK), result == Action::OK ? "done" : actionName(result), requestName,
+        v.address, boolean(v.thresholdActive), v.thresholdValue, DEVIATION_THRESHOLD_ORDINARY_MAX);
+    if (fits && request.kind == CandidatesCommandKind::CHECK) {
+        const bool control = request.group == Ess::DriverGroup::CONTROL_SETTINGS;
+        const Probe::CandidateRow* row = candidateRow(request.group, request.slot);
+        fits = append(output_, sizeof(output_), used,
+            ",\"checked_address\":%u,\"group\":\"%s\",\"field\":\"%s\",\"value\":%u,\"admitted\":%s,\"rule\":\"%s\",\"reason\":\"%s\",\"pin_known\":%s,\"pin_operation_id\":%lu,\"pin_word\":%u,\"core_status\":\"%s\",\"core_detail\":%ld,\"effect\":\"%s\"",
+            v.checkedAddress, control ? "control_settings" : tuningName(request.group), row ? row->name : "unknown", request.value,
+            boolean(v.admitted), v.rule, v.reason, boolean(v.pinKnown), static_cast<unsigned long>(v.pinOperationId), v.pinWord,
+            Core::errToString(static_cast<Core::Err>(v.coreCode)), static_cast<long>(v.coreDetail), row ? row->effect : "none");
+    }
+    fits = fits && append(output_, sizeof(output_), used, "}");
+    if (!fits) { error(id, "tuning-candidates", "output_full"); return; }
+    emit();
+}
 namespace {
 const char* inputActionState(Core::ActionState state) {
     switch (state) {
@@ -1968,6 +1993,44 @@ void Console::dispatch() noexcept {
         velocityLimitsReply(id, request);
         return;
     }
+    if (entry->command == Command::TUNING && count > first + 1 && std::strcmp(tokens[first + 1], "candidates") == 0) {
+        // Wired bench 15: tuning candidates [check control|GROUP FIELD VALUE [address] | threshold VALUE | reset].
+        if (outputPending()) { ++inputDropped_; return; }
+        if (!host_.candidates) { error(id, "tuning-candidates", "unavailable"); return; }
+        CandidatesCommand request;
+        const char* verb = count > first + 2 ? tokens[first + 2] : "";
+        bool valid = true;
+        uint32_t value = 0;
+        if (count == first + 2) request.kind = CandidatesCommandKind::SHOW;
+        else if (!std::strcmp(verb, "reset")) { request.kind = CandidatesCommandKind::RESET; valid = count == first + 3; }
+        else if (!std::strcmp(verb, "threshold") && count == first + 4) {
+            request.kind = CandidatesCommandKind::THRESHOLD;
+            valid = number(tokens[first + 3], value) && value > DEVIATION_THRESHOLD_ORDINARY_MAX && value <= 0xFFFF;
+            request.value = static_cast<uint16_t>(value);
+        } else if (!std::strcmp(verb, "check") && (count == first + 6 || count == first + 7)) {
+            request.kind = CandidatesCommandKind::CHECK;
+            const bool control = !std::strcmp(tokens[first + 3], "control");
+            if (control) request.group = Ess::DriverGroup::CONTROL_SETTINGS;
+            valid = control || tuningGroup(tokens[first + 3], request.group);
+            const uint8_t fields = control ? 8 : Ess::tuningFieldCount(request.group);
+            uint8_t slot = 0;
+            while (valid && slot < fields) {
+                const Probe::CandidateRow* row = candidateRow(request.group, slot);
+                if (row && !std::strcmp(row->name, tokens[first + 4])) break;
+                ++slot;
+            }
+            valid = valid && slot < fields && number(tokens[first + 5], value) && value <= 0xFFFF;
+            request.slot = slot; request.value = static_cast<uint16_t>(value);
+            uint32_t address = 0;
+            if (valid && count == first + 7) {
+                valid = number(tokens[first + 6], address) && address >= 1 && address <= 247;
+                request.address = static_cast<uint8_t>(address);
+            }
+        } else valid = false;
+        if (!valid) { error(id, "tuning-candidates", "invalid_arguments"); return; }
+        candidatesReply(id, request);
+        return;
+    }
     if ((entry->command == Command::HOME || entry->command == Command::VELOCITY) &&
         count > first + 1 && std::strcmp(tokens[first + 1], "restore") == 0) {
         // home restore SNAPSHOT_ID | home restore inspect (velocity the same):
@@ -2160,7 +2223,12 @@ void Console::dispatch() noexcept {
             }
             const uint16_t word = static_cast<uint16_t>(value.numerator);
             if (nativeTuning) {
-                if (!Ess::prepareTuningValue(request,Ess::tuningParameter(request.group,static_cast<uint8_t>(field)),word)) { error(id,command,"invalid_value");return; }
+                // A word outside the documented range is selected as given: only a
+                // D7 exact restore of a pinned read admits it (wired bench 15); the
+                // application and the core refuse every other one before TX.
+                if (!Ess::prepareTuningValue(request,Ess::tuningParameter(request.group,static_cast<uint8_t>(field)),word)) {
+                    request.fields |= 1UL << field; request.tuningValues[field] = word;
+                }
                 continue;
             }
             request.fields |= mask;
@@ -3451,6 +3519,14 @@ bool Console::formatDriver(uint32_t id, uint32_t commandId, uint32_t operationId
     }
     if (!append(output_, sizeof(output_), used, ",\"driver_group\":\"%s\",\"echo_readback_policy\":%s,\"settlement\":\"%s\"}",
         auxiliary ? "homing_auxiliary" : position ? "position_start_speed" : tuning ? tuningName(c.group) : control ? "control_settings" : segment ? (c.group == Ess::DriverGroup::POSITION_SEGMENT ? "position_segment" : c.group == Ess::DriverGroup::SPEED_SEGMENT ? "speed_segment" : "segment_start_speed") : io ? "io" : "drive", boolean(c.prerequisites.allowEchoReadback), io || segment || control || tuning ? "stored_readback" : "checked_ack_readback")) return false;
+    // Wired bench 15: the source read of a D7 exact restore (0 for none) and a
+    // listed current candidate, from the retained update context.
+    if ((control || tuning) && c.kind == Ess::DriverKind::UPDATE) {
+        used -= 1;
+        if (!append(output_, sizeof(output_), used, ",\"exact_restore_source\":%lu,\"listed_current\":%s}",
+            static_cast<unsigned long>(c.prerequisites.exactRestore ? c.prerequisites.restoreSource.operationId : 0),
+            boolean(c.prerequisites.listedCurrentQualified))) return false;
+    }
     // Index belongs to the retained request context, separately from host correlation.
     if (segment) {
         used -= 1;

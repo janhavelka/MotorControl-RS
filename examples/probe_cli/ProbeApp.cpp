@@ -302,11 +302,33 @@ struct App {
         uint8_t address = 0;
         uint32_t bindingGeneration = 0, serialGeneration = 0, consumedOperationId = 0;
     } velocityLimits;
+    // Control and tuning candidates (SettingCandidatesApp.h, wired bench 15): the
+    // first checked read of each group per drive and host serial session (the
+    // D7 restore source and the base of the percent rows), the deviation-
+    // threshold D6 call and the decision of the latest control/tuning update.
+    struct SettingPin {
+        uint32_t serialGeneration = 0;
+        ESS::DriverObservation observation;
+    } settingPins[5][Probe::SETTING_PIN_SLOTS];
+    struct ThresholdCall {
+        uint16_t value = 0;
+        uint8_t address = 0;
+        uint32_t bindingGeneration = 0, serialGeneration = 0;
+    } thresholdCall;
+    struct CandidateDecision {
+        bool admitted = false, listed = false, restore = false;
+        const char* rule = "none";
+        const char* reason = "none";
+        const ESS::DriverObservation* pin = nullptr;
+    } candidateDecision;
+    MotorControlRS::Status candidateCheckStatus;
     const Probe::VelocityCell* velocityPromoted = Probe::VELOCITY_PROMOTED; ///< Native fixtures may install another table.
     std::size_t velocityPromotedCount = Probe::VELOCITY_PROMOTED_COUNT;
     ESS::HomingParametersObservation homingParameters; // Raw observation is separate from home qualification.
     uint32_t bindingGeneration = 1;
     uint8_t actionConflicts[32] = {}; ///< Physical address conflicts survive result release and host recovery.
+    uint64_t actionConflictUs[256] = {}; ///< When each address's conflict was last set (alarm-clear witness, wired bench 15).
+    Probe::StateCache::Block previousFeedback; ///< The selected axis's feedback sample before the latest one.
     uint8_t knownTargets[32] = {}; ///< Checked physical addresses, independent of the latest passive observation.
     uint8_t startSpeedRelationRevoked[32] = {}; ///< Per-address relation revocation survives group replacement (RAM only).
     MotorControlRS::ReadTarget communicationTarget;
@@ -1241,6 +1263,7 @@ bool signedFeedback(uint32_t raw, int64_t& native) {
 #include "MotionReadinessApp.h"
 #include "MotionProfileApp.h"
 #include "VelocityLimitsApp.h"
+#include "SettingCandidatesApp.h"
 void cancelSimplePreparation(App&, uint8_t, uint64_t);
 void cancelPositionStages(App&, uint8_t, uint64_t);
 void cancelParameterWrite(App&, uint8_t, uint64_t);
@@ -1319,6 +1342,27 @@ bool positionClearReadiness(const App& a, uint8_t address, uint64_t now) {
         !motion.value.running && !motion.value.released && !motion.value.rawAlarm && !motion.value.alarmFlag;
 }
 MotionFacts memberFacts(const App&, const App::GroupMember&, const MotorControlRS::AxisReference*); // GroupApp.h
+void noteActionConflict(App& a, uint8_t address) {
+    a.actionConflicts[address / 8] |= static_cast<uint8_t>(1U << (address % 8));
+    a.actionConflictUs[address] = uart.sample();
+}
+// The state wired bench 15 saw after alarm 5 latched mid-move, on the selected
+// axis, entirely after the conflict was set: a fresh motion block with the
+// alarm and RELEASED, a fresh feedback sample at speed 0 and the previous
+// feedback sample (also after the conflict, also fresh) at the same position.
+bool alarmClearWitness(const App& a, uint8_t address, uint64_t now) {
+    if (address != a.axis.target.address) return false;
+    const uint64_t since = a.actionConflictUs[address], maxAge = a.observationAgeUs();
+    const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+    const auto& feedback = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::FEEDBACK)];
+    const auto& earlier = a.previousFeedback;
+    return Probe::fresh(motion, a.axis.target, now, maxAge) && Probe::fresh(feedback, a.axis.target, now, maxAge) &&
+        Probe::fresh(earlier, a.axis.target, now, maxAge) && motion.observedEarliestUs > since &&
+        earlier.observedEarliestUs > since && earlier.observedEarliestUs < feedback.observedEarliestUs &&
+        (motion.value.rawAlarm || motion.value.alarmFlag) && (motion.value.rawMotion & 0x10) &&
+        !feedback.value.rawSpeed && feedback.value.rawPositionWords[0] == earlier.value.rawPositionWords[0] &&
+        feedback.value.rawPositionWords[1] == earlier.value.rawPositionWords[1];
+}
 // A declared group member is a stop target even when its readiness facts are stale.
 Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
                             const MotorControlRS::ActionRequest& request, uint32_t& operationId, bool groupStop,
@@ -1404,7 +1448,15 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
     const bool selectedStop = stop && !scanStop && (address == a.axis.target.address || groupStop);
     if (!(a.knownTargets[address / 8] & (1U << (address % 8))) && !selectedStop &&
         !(scanStop && a.discoveryOriginalKnown)) return Probe::Action::UNAVAILABLE;
-    if (!stop && axisReserved(a, address, releaseFacts == nullptr)) return Probe::Action::AXIS_CONFLICT;
+    // Wired bench 15: alarm 5 latched during a move left motion word 28 (RUNNING,
+    // ALARM, RELEASED; speed 0, position constant). No stop observes completion
+    // while RUNNING stays set, so the address conflict could never reconcile and
+    // alarm-clear was refused until a controller restart. Only that witnessed
+    // state admits alarm-clear against the historical conflict
+    // (alarmClearWitness); active work on the address still refuses it, and the
+    // conflict and any failed-stop result stay until a checked stop reconciles.
+    const bool clearAlarm = request.kind == ActionKind::CLEAR_ALARM && !groupStop && alarmClearWitness(a, address, now);
+    if (!stop && axisReserved(a, address, releaseFacts == nullptr && !clearAlarm)) return Probe::Action::AXIS_CONFLICT;
     App::Record* record = nullptr;
     if (stop) record = stopRecord(a, groupStop, address, request.stop.behavior);
     else for (std::size_t i = 0; i < REQUEST_CAPACITY; ++i)
@@ -2323,11 +2375,15 @@ void continueSingleSetting(App& a, App::Record& record, uint64_t now) {
         c.status = status;
     }
 }
-Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ESS::DriverKind kind,
-                         const ESS::DriverRequest& supplied, uint32_t& operationId) {
+// checkOnly (wired bench 15, `tuning candidates check`): run the whole admission
+// of one control or tuning update and keep its result in candidateCheckStatus;
+// the prepared record is cleared before any frame.
+Probe::Action startDriverFor(App& a, uint32_t commandId, uint8_t address, ESS::DriverKind kind,
+                             const ESS::DriverRequest& supplied, uint32_t& operationId, bool checkOnly) {
     using namespace MotorControlRS;
-    App& a = *static_cast<App*>(context);
     a.settingsRefusal = Probe::SettingsRefusal();
+    if (checkOnly && (kind != ESS::DriverKind::UPDATE || (supplied.group != ESS::DriverGroup::CONTROL_SETTINGS &&
+                      !ESS::isTuningGroup(supplied.group)))) return Probe::Action::INVALID;
     if (groupSequencing(a)) return Probe::Action::BUSY;
     if (singleSettingGroup(supplied.group))
         return startSingleSetting(a, commandId, address, kind, supplied, operationId);
@@ -2382,7 +2438,7 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
         ESS::DriverRequest request = supplied;
         if (!request.configurationGeneration) request.configurationGeneration = generation;
         // Wired bench 11: the soft-limit enable route (SoftLimitApp.h).
-        a.softLimitPending = App::SoftLimitBinding();
+        if (!checkOnly) a.softLimitPending = App::SoftLimitBinding();
         if (request.group == ESS::DriverGroup::DRIVE &&
             (request.fields & static_cast<uint32_t>(ESS::DriverField::SOFT_LIMIT_ENABLE)) &&
             request.softLimitEnable == ESS::SoftLimitEnable::AFTER_HOMING)
@@ -2435,19 +2491,21 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
             prerequisites.exactModelQualified = a.identity.rawModel == 0x4EEA && a.identity.rawVersion == 0x0029;
             prerequisites.modelSourceId = 20261113; // Owner-confirmed ESS23-RS20 drives and preserved datasheet.
             prerequisites.qualifiedModelCode = 0x4EEA; prerequisites.qualifiedFirmwareCode = 0x0029;
+            // Wired bench 15: one admitted-candidate row per field
+            // (SettingCandidates.h), then the D7 exact restore of the pinned
+            // word. Stored readback only; no physical effect is qualified here.
+            a.candidateDecision = decideCandidate(a, request, prerequisites.previous, address);
+            const auto& decision = a.candidateDecision;
+            applyCandidateDecision(prerequisites, decision, request);
             if (request.group == ESS::DriverGroup::CONTROL_SETTINGS) {
                 prerequisites.qualifiedControl = request;
                 prerequisites.controlEarliestUs = a.identity.provenance.attemptedUs;
                 prerequisites.controlLatestUs = a.identity.provenance.latestUs;
-                // Delay changes leave mode, encoder and current codes untouched.
-                // Other effects/rating/base semantics remain unavailable here.
-                prerequisites.controlEffectsQualifiedFields = request.fields & static_cast<uint32_t>(ESS::DriverField::LOCK_DELAY);
+                prerequisites.controlEffectsQualifiedFields = decision.admitted ? request.fields : 0;
             } else {
-                // The finite standalone experiment permits only the input-filter
-                // coefficients of MEASURED_INPUT_FILTERS (wired bench 05), from and
-                // to a value in that set, on fresh passive, unconnected inputs, or
-                // with four current CONFIGURE records (wired bench 03). It
-                // qualifies stored readback, not filter delay or active effects.
+                // Tuning candidates need one of two input policies: fresh passive,
+                // unconnected inputs, or four current CONFIGURE records (wired
+                // bench 03) with no assigned limit, stop or control input active.
                 const auto& io = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
                 bool passive = Probe::fresh(io, target, now, prerequisites.maxAgeUs) && !io.value.rawInputs &&
                     a.ioSettings.operationId && a.ioSettings.group == ESS::DriverGroup::IO && Probe::sameTarget(a.ioSettings.target, target) &&
@@ -2464,22 +2522,8 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
                     if (evidence.attemptedUs < earliest) earliest = evidence.attemptedUs;
                     if (evidence.latestUs > latest) latest = evidence.latestUs;
                 }
-                const auto& cached = tuningCache(a, request.group);
-                const bool filterExperiment = request.group == ESS::DriverGroup::FILTERS && request.fields == 1 &&
-                    measuredInputFilter(request.tuningValues[0]) && measuredInputFilter(cached.raw[0]);
-                // Alarm-clear experiment, owner request of 16 November 2026: the
-                // position-error alarm threshold alone may move within 1..4000, the
-                // documented default, from a checked value in that range. A lower
-                // value can latch alarm 5 in a later move; it never widens the
-                // drive's tolerance. Stored readback only, as above.
-                ESS::TuningParameterInfo info;
-                const bool known = ESS::tuningParameterInfo(ESS::TuningParameter::POSITION_ERROR_ALARM_THRESHOLD, info);
-                const uint16_t requested = request.tuningValues[info.slot], stored = cached.raw[info.slot];
-                const bool thresholdExperiment = known && request.group == info.group && request.fields == (1u << info.slot) &&
-                    requested >= 1 && requested <= 4000 && stored >= 1 && stored <= 4000;
-                const bool experiment = filterExperiment || thresholdExperiment;
                 bool permitted = passive;
-                if (!passive && experiment) {
+                if (!passive && decision.admitted) {
                     const auto check = settingsInputFacts(a, IoPurpose::CONFIGURE, prerequisites, now);
                     permitted = check.result == SettingsInputs::PERMITTED;
                     if (permitted) { earliest = prerequisites.ioEarliestUs; latest = prerequisites.ioLatestUs; }
@@ -2487,7 +2531,7 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
                         noteSettingsRefusal(a, check, IoPurpose::CONFIGURE);
                 }
                 prerequisites.qualifiedTuning = request;
-                prerequisites.tuningEffectsQualifiedFields = permitted && experiment ? request.fields : 0;
+                prerequisites.tuningEffectsQualifiedFields = permitted && decision.admitted ? request.fields : 0;
                 prerequisites.tuningEarliestUs = earliest;
                 prerequisites.tuningLatestUs = latest;
             }
@@ -2540,6 +2584,7 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
             ESS::prepareTuningSettings(record->driver, target, a.nextOperationId, request, prerequisites, now, now + 3000000) :
             ESS::prepareDriverSettings(record->driver, target, a.nextOperationId, request, prerequisites, now, now + 3000000);
     } else return Probe::Action::INVALID;
+    if (checkOnly) { a.candidateCheckStatus = checked; clearRecord(*record); return Probe::Action::OK; }
     if (!checked) {
         if (a.simple.admitting) a.simple.view.status = checked;
         // The input facts decided only when the core refused on the policy they feed.
@@ -2562,6 +2607,64 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
     record->kind = App::OperationKind::DRIVER; record->axisReserved = kind == ESS::DriverKind::UPDATE;
     if (kind == ESS::DriverKind::UPDATE && a.softLimitPending.target.id) a.softLimitPending.operationId = record->operationId;
     operationId = a.latestOperationId = record->operationId; return Probe::Action::OK;
+}
+Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ESS::DriverKind kind,
+                         const ESS::DriverRequest& supplied, uint32_t& operationId) {
+    return startDriverFor(*static_cast<App*>(context), commandId, address, kind, supplied, operationId, false);
+}
+// `tuning candidates` (wired bench 15): local; a check admits nothing to the bus.
+Probe::Action candidatesCommand(void* context, const Probe::CandidatesCommand& command, Probe::CandidatesView& out) {
+    App& a = *static_cast<App*>(context);
+    out = Probe::CandidatesView();
+    Probe::Action result = Probe::Action::OK;
+    if (command.kind > Probe::CandidatesCommandKind::RESET) return Probe::Action::INVALID;
+    if (command.kind == Probe::CandidatesCommandKind::THRESHOLD) {
+        if (command.value <= Probe::DEVIATION_THRESHOLD_ORDINARY_MAX) result = Probe::Action::INVALID;
+        else {
+            auto& t = a.thresholdCall;
+            t.value = command.value; t.address = a.axis.target.address;
+            t.bindingGeneration = a.bindingGeneration; t.serialGeneration = a.serial.generation;
+        }
+    } else if (command.kind == Probe::CandidatesCommandKind::RESET) {
+        a.thresholdCall = App::ThresholdCall();
+    } else if (command.kind == Probe::CandidatesCommandKind::CHECK) {
+        // The group and its own slot range are checked before any indexing.
+        const bool control = command.group == ESS::DriverGroup::CONTROL_SETTINGS;
+        const uint8_t fields = control ? 8 : ESS::isTuningGroup(command.group) ? ESS::tuningFieldCount(command.group) : 0;
+        if (command.slot >= fields) return Probe::Action::INVALID;
+        const uint8_t address = command.address ? command.address : a.axis.target.address;
+        out.checkedAddress = address;
+        ESS::DriverRequest request; request.group = command.group;
+        request.fields = static_cast<uint32_t>(ESS::driverFieldAt(command.slot, command.group));
+        if (command.group == ESS::DriverGroup::CONTROL_SETTINGS) {
+            switch (command.slot) {
+            case 0: request.controlAlgorithm = static_cast<ESS::ControlAlgorithm>(command.value); break;
+            case 1: request.encoderResolution = command.value; break;
+            case 2: request.maximumEffectiveCurrentMa = command.value; break;
+            case 3: request.closedMaximumPercent = command.value; break;
+            case 4: request.closedBasePercent = command.value; break;
+            case 5: request.openMaximumPercent = command.value; break;
+            case 6: request.lockPercent = command.value; break;
+            default: request.lockDelayMs = command.value; break;
+            }
+        } else request.tuningValues[command.slot] = command.value;
+        a.candidateDecision = App::CandidateDecision();
+        a.candidateCheckStatus = MotorControlRS::Status(MotorControlRS::Err::INVALID_CONFIG, 0, "not checked");
+        uint32_t unused = 0;
+        result = startDriverFor(a, 0, address, ESS::DriverKind::UPDATE, request, unused, true);
+        const auto& d = a.candidateDecision;
+        out.admitted = result == Probe::Action::OK && d.admitted && a.candidateCheckStatus.isOk();
+        out.rule = d.rule;
+        out.reason = d.admitted && !a.candidateCheckStatus.isOk() ? "admission_refused" : d.reason;
+        out.coreCode = static_cast<int32_t>(a.candidateCheckStatus.code); out.coreDetail = a.candidateCheckStatus.detail;
+        if (const auto* pin = settingPin(a, command.group, address)) {
+            out.pinKnown = true; out.pinOperationId = pin->operationId; out.pinWord = pin->raw[command.slot];
+        }
+    }
+    out.address = a.axis.target.address;
+    out.thresholdActive = thresholdCallCurrent(a);
+    out.thresholdValue = out.thresholdActive ? a.thresholdCall.value : 0;
+    return result;
 }
 bool settingsRefusalCommand(void* context, Probe::SettingsRefusal& output) {
     const App& a = *static_cast<const App*>(context);
@@ -2945,7 +3048,10 @@ void advanceReads(App& a, uint64_t sampled) {
                     (!reference.nativeKnown || previous.observedLatestUs >= reference.observedUs);
                 const auto previousPosition = previous.value.rawPosition;
                 const auto previousSuccess = previous.observedLatestUs;
+                const auto before = previous;
                 Probe::stateResult(a.stateCache, record.read, block, result->transport.startedUs);
+                if (block == static_cast<uint8_t>(ESS::StateBlock::FEEDBACK) &&
+                    a.stateCache.blocks[block].observedEarliestUs != before.observedEarliestUs) a.previousFeedback = before;
                 const auto& current = a.stateCache.blocks[static_cast<uint8_t>(block)];
                 // Homing's correlated zero replaces older feedback as the baseline.
                 // Zero/nonzero is order/sign neutral; no unresolved pair conversion
@@ -2996,7 +3102,7 @@ void updateActionReservation(App& a, App::Record& record) {
     case App::OperationKind::HOME: {
         record.axisReserved = false;
         if (record.home.uncertain)
-            a.actionConflicts[record.address / 8] |= static_cast<uint8_t>(1U << (record.address % 8));
+            noteActionConflict(a, record.address);
         if (!record.cancelContinuation && a.axis.generation && record.address == a.axis.target.address &&
             record.configurationGeneration == a.axis.generation && record.home.target.generation == a.bindingGeneration) {
             MotorControlRS::AxisReference reference;
@@ -3016,6 +3122,9 @@ void updateActionReservation(App& a, App::Record& record) {
         if (record.singleSettingSession) return; // Single-field history is not a DRIVE cache or motion profile.
         const bool segment = segmentGroup(record.driver.group);
         const bool tuning = ESS::isTuningGroup(record.driver.group);
+        // Wired bench 15: the first checked read per drive and host session is pinned.
+        if (record.driver.kind == ESS::DriverKind::READ && (tuning || record.driver.group == ESS::DriverGroup::CONTROL_SETTINGS) &&
+            ESS::getDriver(record.driver, a.driverObserved)) pinSettingRead(a, a.driverObserved);
         auto& cache = tuning ? tuningCache(a, record.driver.group) : segment ? a.segmentSettings : record.driver.group == ESS::DriverGroup::IO ? a.ioSettings : record.driver.group == ESS::DriverGroup::CONTROL_SETTINGS ? a.controlSettings : a.driverSettings;
         // Wired bench 08: a DRIVE read of a group member records its 0x0050 and
         // 0x0051 for the input-start arm; the member's other caches are unchanged.
@@ -3107,7 +3216,7 @@ void updateActionReservation(App& a, App::Record& record) {
     case App::OperationKind::EMPTY: case App::OperationKind::TRANSACTION: case App::OperationKind::TYPED_READ:
     case App::OperationKind::HOME: case App::OperationKind::DRIVER: break; // Handled above.
     }
-    if (conflict) a.actionConflicts[record.address / 8] |= mask;
+    if (conflict) noteActionConflict(a, record.address);
     if (stopped) {
         // A new checked stopped-state report reconciles conflicts; historical
         // interrupted outcomes and their execution uncertainty stay unchanged.
@@ -4072,7 +4181,7 @@ Probe::Host host(App* a) {
     h.qualification = qualificationCommand;
     h.startPositionInterrupt = startPositionInterrupt;
     h.simpleMotion = simpleMotion;
-    h.monitor = monitor; h.motionProfile = motionProfileCommand; h.parameterWrite = parameterWriteCommand; h.velocityLimits = velocityLimitsCommand; h.inputStart = inputStartCommand; h.stageProfile = startProfileCandidate; h.debug = debugCommand;
+    h.monitor = monitor; h.motionProfile = motionProfileCommand; h.parameterWrite = parameterWriteCommand; h.velocityLimits = velocityLimitsCommand; h.candidates = candidatesCommand; h.inputStart = inputStartCommand; h.stageProfile = startProfileCandidate; h.debug = debugCommand;
     h.axis = axisCommand; h.hostSerial = hostSerial; h.selectTarget = selectTarget;
     h.ioQualification = ioQualificationCommand;
     h.wiring = wiring;
@@ -4855,6 +4964,13 @@ MotorControlRS::Status velocityLimits(const Probe::VelocityLimitsCommand* comman
     using namespace MotorControlRS;
     if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
     const auto result = velocityLimitsCommand(app, command, output);
+    if (result != Probe::Action::OK) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(result), output.reason);
+    return Ok();
+}
+MotorControlRS::Status tuningCandidates(const Probe::CandidatesCommand& command, Probe::CandidatesView& output) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    const auto result = candidatesCommand(app, command, output);
     if (result != Probe::Action::OK) return Status(Err::INVALID_CONFIG, static_cast<int32_t>(result), output.reason);
     return Ok();
 }

@@ -52,7 +52,8 @@ enum class DriverError : int32_t {
     SEGMENT_INDEX, SEGMENT_SIGN_UNRESOLVED, TRIGGER_POLICY_REQUIRED,
     MODEL_REQUIRED, CONTROL_EFFECTS_REQUIRED, CURRENT_LIMIT_UNRESOLVED,
     CURRENT_BASE_UNRESOLVED, CURRENT_DEPENDENCY, ZERO_ENCODER_SCALE,
-    TUNING_EFFECTS_REQUIRED, TUNING_ACCESS_UNRESOLVED
+    TUNING_EFFECTS_REQUIRED, TUNING_ACCESS_UNRESOLVED,
+    RESTORE_SOURCE_REQUIRED ///< Exact restore without a matching checked source read (wired bench 15).
 };
 /** Select fields explicitly; values in unselected fields are ignored.
  * POSITIVE_LIMIT/NEGATIVE_LIMIT (DRIVE group) are signed native limits written
@@ -231,6 +232,19 @@ struct DriverPrerequisites {
     /** Independent exact-firmware evidence must establish that current
      * percentages use 0x0102. The manual's 0x2042 reference establishes no alias. */
     bool currentPercentBaseQualified = false;
+    /** One listed current candidate (wired bench 15, audit A2-F12), in place of
+     * the ceiling and percent-base qualifications above for one write only.
+     * Only the two rows prompt 15 lists qualify: control slot 3 (0x0103,
+     * closed-loop maximum) or slot 6 (0x0106, lock current) with
+     * listedCurrentAlgorithm 3. Admitted when the request selects exactly that
+     * slot at listedCurrentValue, the prior read is operation
+     * listedCurrentSourceId and its algorithm word is 3. The intermediate tuple
+     * is then that prior read with this one word changed. The values are the
+     * application's; no lower effective current or safety property is stated. */
+    bool listedCurrentQualified = false;
+    uint8_t listedCurrentField = 0;
+    uint16_t listedCurrentValue = 0, listedCurrentAlgorithm = 0;
+    uint32_t listedCurrentSourceId = 0;
     uint32_t controlEffectsQualifiedFields = 0;
     DriverRequest qualifiedControl;
     uint64_t controlEarliestUs = 0, controlLatestUs = 0;
@@ -240,6 +254,21 @@ struct DriverPrerequisites {
     uint32_t tuningEffectsQualifiedFields = 0;
     DriverRequest qualifiedTuning;
     uint64_t tuningEarliestUs = 0, tuningLatestUs = 0;
+    /** Exact restore (decision D7, wired bench 15): write back one raw word of
+     * restoreSource, an earlier complete checked read of the same control or
+     * tuning group and the same drive (target id and address; the binding
+     * generation may differ, for example after a host recovery). Exactly one
+     * field is selected and its value equals the source word, whatever its
+     * documented range (collision 0/0, a lowered current word). The range check
+     * and the current-tuple rules do not apply to that word. Still required:
+     * fresh stopped state, the checked prior read, the exact identity and the
+     * effects qualification; a nonzero encoder word; and, for a current word
+     * (control slots 2..6), a prior-read algorithm word equal to the source's.
+     * The source's raw words must match its retained frames. Which values an
+     * application restores (for example only algorithm 3, a deviation
+     * threshold above 4000 only after its opt-in call) is its own policy. */
+    bool exactRestore = false;
+    DriverObservation restoreSource;
 };
 /** Each selected field's exact progress. Active/persistence remain unknown:
  * checked echo and matching readback do not document activation or rollback. */

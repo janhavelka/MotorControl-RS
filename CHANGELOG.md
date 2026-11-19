@@ -4,6 +4,23 @@
 
 ### Added
 
+- Wired bench 15: control and tuning candidates. The core admits one listed
+  current candidate (`DriverPrerequisites::listedCurrentQualified` and its
+  field, value, algorithm word and source read) and the D7 exact restore
+  (`exactRestore`, `restoreSource`: one field written back to the word of an
+  earlier complete checked read of the same group and drive, whatever its
+  range, a current word only at the source's algorithm word;
+  `DriverError::RESTORE_SOURCE_REQUIRED`). The listed rows are 0x0103 and
+  0x0106 at algorithm 3 only. The standalone application
+  replaces the lock-delay-only rule and the two tuning experiments with one
+  candidate row per field (`SettingCandidates.h`), one field per request,
+  pinned first reads per drive and host session as restore sources, the
+  deviation-threshold D6 call and `tuning candidates [check ... | threshold
+  VALUE | reset]` (API `tuningCandidates`); update terminals add
+  `exact_restore_source` and `listed_current`. The harness adds the
+  `control-tuning` scenario (`scripts/bench_tuning.py`) and the velocity
+  regression case G2.
+
 - Velocity limits record and D6 calls (wired bench 14, `VelocityLimits.h`,
   `VelocityLimitsApp.h`). Serial velocity keeps the legacy envelope (|rpm| <=
   60, 1..1000 ms) without a call. `velocity limits qualify RPM ACCEL DECEL
@@ -251,6 +268,15 @@
 
 ### Changed
 
+- Control and tuning setters (wired bench 15) admit one field per request and
+  only the field's candidate row or the exact restore of the pinned read. The
+  deviation threshold admits 1..4000 from any stored value (lowering a stored
+  value above 4000 included); above 4000 only after the D6 call. The input
+  filter admits a measured value from any stored value. Pulse mean starts at 1
+  (a written 0 read back 1) and pulse low-pass at 1. The console passes a
+  tuning word outside its documented range to the application as given (only
+  the exact restore admits it). The planner routes every control and tuning
+  field through its setter from image level 15.
 - Serial velocity with a speed, JOG or PV input (8-10, 13) on a connected
   terminal needs a FINITE_MOVE record with triggers inhibited and the input
   inactive (`triggers_inhibited_required`, `input_active`); FINITE_MOVE records
@@ -316,6 +342,14 @@
 
 ### Fixed
 
+- `alarm-clear` is admitted against an address's historical conflict only in
+  the state wired bench 15 saw (selected axis; fresh reads after the conflict
+  began with the alarm, RELEASED, speed 0 and the same position in two
+  consecutive feedback samples). Alarm 5 latched during a move left RUNNING
+  set with speed 0, so no stop observed completion, the conflict never
+  reconciled and the alarm could only be cleared after a controller restart.
+  Otherwise, and while work is active on the address, it still refuses; the
+  conflict and a failed-stop result stay until a checked stop.
 - Input-start sessions no longer turn INDETERMINATE once the never-drained
   32-edge `aux1` ring has wrapped: only `aux1` edges recorded since arming that
   the ring no longer retains (or a `bench clear`) count as lost witnesses.

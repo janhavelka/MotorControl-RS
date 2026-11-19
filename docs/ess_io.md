@@ -102,6 +102,15 @@ electrical timing.
 | 10 custom 1 | follows `0x004F` bit 1 on Y0 (D9 experiment) | | none |
 | 11 custom 2 | follows `0x004F` bit 2 on Y0 (D9 experiment; bit 2 is reserved on p74) | | none |
 
+- Wired bench 15 (drive 4, 2000-step moves at 120 rpm, ramps 100 ms,
+  subdivision 1000): function 2 stays on 1102.3-1102.5 ms per move and
+  function 4 is off 1102.3-1102.5 ms, so at the stored arrival time 10 the
+  arrival edge and the running-off edge coincide within 0.2 ms. The arrival
+  edge follows the arrival time `0x010C` at about 1 ms per unit (0: 1092.0 ms,
+  50: 1143.1 ms, 200: 1291.1 ms); the arrival window `0x010B` (1, 50, 256)
+  did not move it. Function 5 did not change after a stop for lock times 200,
+  1000 and 3000 ms (the brake output follows enable and release, p28); see the
+  [tuning guide](ess_tuning.md#measured-effects-wired-bench-15).
 - Function 0 leaves Y0 off at polarity 0 and at polarity 1, so polarity does
   not invert an unassigned output.
 - Polarity 1 inverts functions 9 and 2.

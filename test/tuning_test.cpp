@@ -275,6 +275,24 @@ void previousSettingsEnvelope() {
         }
     }
 }
+// Wired bench 15 (D7): the later collision words read 0/0 on the bench, below
+// their documented 200-4000 and 20-100; only an exact restore writes them back.
+E::DriverObservation collisionRead(uint32_t id,uint16_t threshold,uint16_t current) {
+    E::DriverContext c; assert(E::prepareTuningRead(c,target(),id,17,100,10000,E::DriverGroup::COLLISION));
+    supply(c,reply({threshold,current})); E::DriverObservation o; assert(E::getDriver(c,o)); return o;
+}
+void collisionExactRestore() {
+    const auto baseline=collisionRead(11,0,0), changed=collisionRead(13,200,0);
+    E::DriverRequest r; r.group=E::DriverGroup::COLLISION; r.configurationGeneration=17; r.fields=1; r.tuningValues[0]=0;
+    auto p=prerequisites(r); p.previous=changed;
+    reject(r,p); // Outside 200..4000 without the restore.
+    p.exactRestore=true; p.restoreSource=baseline;
+    E::DriverContext c; assert(E::prepareTuningSettings(c,target(),12,r,p,200,9000));
+    assert(work(c).reg==E::Registers::COLLISION_THRESHOLD_0122&&work(c).value==0);
+    auto q=p; q.restoreSource=collisionRead(14,200,0); reject(r,q); // A source holding another word.
+    q=p; q.restoreSource=snapshot(E::DriverGroup::FILTERS); reject(r,q); // Another group.
+    auto two=r; two.fields=3; q=p; q.qualifiedTuning=two; q.tuningEffectsQualifiedFields=3; reject(two,q);
+}
 } // namespace
 static void testOptionalAgePolicy() {
     const auto r = request(E::DriverGroup::FILTERS); auto p = prerequisites(r); p.maxAgeUs = 0;
@@ -292,4 +310,5 @@ int main() {
     admissionPrecedence();
     metadataAndAllNativeRanges(); readsAndUnknownValues(); wholeCandidateQualifications(); fullSequencesAndPartialFailures();
     lostTransportAndEffectsBudget(); previousSettingsBudget(); previousSettingsEnvelope();
+    collisionExactRestore();
 }

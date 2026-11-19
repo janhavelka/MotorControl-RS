@@ -434,7 +434,7 @@ with `result` `done` on success. A refusal is named:
 | `stated_offset_required` | | A stored nonzero offset needs the `offset` fact, so that each home states the offset it stages instead of silently erasing it (replaced `stored_offset_nonzero` in wired bench 10) |
 | `stored_ramp_out_of_range`, `stored_word_differs` | | The velocity ramp words exceed 2000, or the start-speed word differs from the fresh profile read |
 | `drive_not_ready` | `read_first` | Fresh state shows an alarm, motion or release |
-| `axis_conflict`, `busy` | | Unresolved motion needs a checked stop, or work is still running |
+| `axis_conflict`, `busy` | | Unresolved motion needs a checked stop, or work is still running; `alarm-clear` is admitted against the historical conflict only on the selected axis with fresh reads after the conflict began showing the alarm, RELEASED, speed 0 and the same position in two consecutive feedback samples (wired bench 15) |
 
 Stated facts have no age: a setting or configuration change, a contradictory read,
 a rebind or a revoke removes them. Live checks are unchanged: fresh checked
@@ -819,6 +819,57 @@ selectors, a held dead-man) under the PT rules. Members add `layout`,
 `negative_pv_speed` `unsupported`, `input_start_kinds`
 `["position","segment","velocity","pv"]` and functions `[7,8,9,10,12,13]`;
 `external_jog` left `velocity_unsupported`.
+
+### Control and tuning candidates (wired bench 15)
+
+Added by [wired bench 15](reports/2026-11-19_wired_bench_15_control_tuning.md)
+(19 November 2026, model `0x4EEA`, firmware `0x0029`).
+
+```text
+control set FIELD INTEGER [address]
+tuning GROUP set FIELD INTEGER [address]
+tuning candidates
+tuning candidates check control|filters|current-loop|la|collision FIELD INTEGER [address]
+tuning candidates threshold 4001..65535
+tuning candidates reset
+```
+
+`control set` and `tuning GROUP set` admit one field per request (`help` says so; the parser still
+reads several pairs and the application refuses them). The value
+must match the field's candidate row (the
+[control](ess_control_settings.md#admitted-candidates-wired-bench-15) and
+[tuning](ess_tuning.md#admitted-candidates-wired-bench-15) guides) or, as the
+D7 exact restore, equal the same field of the pinned read: the first complete
+checked read of that group on that drive in this host serial session. Anything
+else refuses `invalid` before any frame. Two application limits apply to the
+exact restore too: a deviation threshold above 4000 needs the D6 call
+(`threshold_needs_call`), and the algorithm word is written back only as 3
+(`algorithm_refused`). A tuning refusal on connected inputs
+without CONFIGURE records stays `qualification_required`). The console passes a
+tuning word outside its documented range to the application as given, so a
+pinned out-of-range word (collision 0/0) can be written back; the application
+and the core refuse every other one. Control and tuning update terminals add
+`exact_restore_source` (the pinned read's operation ID, 0 when the update was
+not a restore) and `listed_current` (a listed current row).
+
+`tuning candidates` answers `tuning-candidates` with `result` `done` or the
+refusal, `request` (`show`, `check`, `threshold`, `reset`), `bus_traffic`
+false, `address` (selected axis), `threshold_active`, `threshold_value` and
+`threshold_ordinary_max` 4000. `threshold VALUE` is the D6 call for
+`0x010A`: it names one value 4001..65535 for the selected address, binding and
+host serial generation; only that value is then admitted above 4000.
+`useaddr`, `recover`, a host tuple change, `reset` and a restart drop it.
+`check` runs the ordinary admission of one field after the caller's fresh
+reads and facts, prepares nothing for the bus and sends no frame; it adds
+`checked_address` (the drive checked; `address` stays the selected axis),
+`group`, `field`, `value`, `admitted`, `rule` (`row`, `listed_current`,
+`exact_restore`, `none`), `reason` (`algorithm_refused`,
+`encoder_change_deferred`, `current_ceiling_unresolved`, `current_not_listed`,
+`outside_candidates`, `threshold_needs_call`, `pin_required`,
+`one_field_per_request`, `admission_refused` when the row admits but the core
+refuses), `pin_known`, `pin_operation_id`, `pin_word`, `core_status`,
+`core_detail` and the row's `effect`. Wired bench 15 runs a check of the
+baseline word before every listed change (the restore proof).
 
 ### Paired values (wired bench 10)
 

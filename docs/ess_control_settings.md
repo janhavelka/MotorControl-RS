@@ -111,13 +111,69 @@ a new setting. Later reads detecting an external change use the same invalidatio
 path. A fresh observation alone does not retroactively qualify an earlier write.
 
 The standalone application owns exact-model evidence and the bench-specific
-policy. Its ordinary read route preserves raw algorithm 3. Current and encoder
-writes remain guarded until their independent prerequisites are available. Its
-bounded stopped-state lock-delay policy may use an unconfirmed but checked,
-on-time FC06-shaped frame followed by confirmed FC03 readback. Matching readback
-settles only the observed stored word: acknowledgement remains false, the original
-write execution remains unknown and activation/persistence remain unproved.
-Failure does not trigger a second write.
+policy. Its ordinary read route preserves raw algorithm 3. Since wired bench 15
+it admits one field per request through the candidate table below; current and
+encoder writes outside it stay refused. Its stopped-state policy may use an
+unconfirmed but checked, on-time FC06-shaped frame followed by confirmed FC03
+readback. Matching readback settles only the observed stored word:
+acknowledgement remains false, the original write execution remains unknown and
+activation/persistence remain unproved. Failure does not trigger a second write.
+
+## Admitted candidates (wired bench 15)
+
+[Wired bench 15](reports/2026-11-19_wired_bench_15_control_tuning.md) replaced
+the lock-delay-only rule with one row per field
+(`examples/probe_cli/SettingCandidates.h`). `control set` and the API admit one
+field per request, after the same identity, stopped-state and effects checks as
+before:
+
+| Field | Row | Reason | Bench effect |
+| --- | --- | --- | --- |
+| `algorithm` | refused | No current tuple is qualified for algorithm 1 or 2: the percent base and the effective-current ceiling are unresolved and open loop drives its set current continuously | T10, T11 NOT RUN; `control set algorithm 1` and `2` refuse with no frame |
+| `encoder-resolution` | refused | A feedback-scale change waits for the owner's supervision (D15) | T12 deferred |
+| `maximum-effective-current`, `closed-base-current`, `open-maximum-current` | refused | Effective-current ceiling and percent base unresolved; open loop only applies under algorithm 1 | Current needs an instrument (standalone 08) |
+| `closed-maximum-current` | listed: 50, 25, 10 % of the pinned word, alone, pin and prior read at algorithm 3 | Core `listedCurrent*` qualification (A2-F12): one field, one value, bound to the prior read and the algorithm word; no lower-current claim | T9 |
+| `lock-current` | listed: 50 % of the pinned word, as above | As above | T8 |
+| `lock-delay` | 0..20000 ms | Documented range; no current change | T7 |
+
+The core's listed-current qualification
+(`DriverPrerequisites::listedCurrentQualified`, `listedCurrentField`,
+`listedCurrentValue`, `listedCurrentAlgorithm`, `listedCurrentSourceId`)
+replaces the ceiling and percent-base requirements for that one write only,
+and only for slot 3 or 6 at algorithm word 3. Every other current candidate
+keeps the refusals above.
+
+**D7 exact restore.** Every row also admits the same field's word of the pinned
+read: the first complete checked control read of that drive in this host serial
+session. A recovery or `useaddr` does not replace the pin; a host tuple change
+or a restart does. The core checks it (`DriverPrerequisites::exactRestore`,
+`restoreSource`): one field, a complete checked read of the same group and
+drive whose words match its frames, the value equal to the source word,
+whatever its range (a lowered current word). Stopped state, the prior read,
+identity, effects and a nonzero encoder word are still required, and a current
+word (slots 2..6) is restored only while the live algorithm word equals the
+source read's. The application writes the algorithm word back only as the
+bench's 3. The update terminal names
+the source (`exact_restore_source`). `tuning candidates check control FIELD
+VALUE` runs the same admission without a frame; wired bench 15 ran it with the
+baseline word before every listed change.
+
+### Measured effects (wired bench 15)
+
+Model `0x4EEA`, firmware `0x0029`, 19 November 2026, drive 4 with Y0 on the
+board input `aux1` (read inverted), reference move M (+2000 native steps at
+120 rpm, ramps 100 ms, then the return).
+
+| Field | Values | Result |
+| --- | --- | --- |
+| `lock-delay` | 1000, 3000 (stored 200) | Brake output (Y0 = 5, on after an enable) did not change during M or within the lock time plus 1.5 s after the stop, at 200, 1000 and 3000: function 5 follows enable and release (p28), not the lock time. Lock transition and holding torque need an instrument |
+| `lock-current` | 20 (50 % of 40), listed row | Stored word only: M completed as at 40 (in-position sample 1136-1144 ms after the move request); holding torque needs an instrument |
+| `closed-maximum-current` | 50, 25, 10 (of 100), listed rows, restore proven before each | M at 600 rpm, ramp 100: every move reached +2000 with no alarm on drives 4 and 2, so 10 is the lowest word tried and it passed. Drive 4's running output lasted 489 ms at 100 and 500, 324 and 378 ms at 50, 25 and 10 (spread under 3 ms each); this is not a current measurement and the cause is not established |
+| `algorithm` | 1, 2 | Refused before any frame (T11); the open-loop maximum (T10) and the `0x000A` meaning per mode were not exercised |
+| `encoder-resolution` | 2000 | Deferred: owner away (T12) |
+
+None of these is a current or torque measurement; the percent base stays
+unresolved.
 
 The native profile route uses the same public candidate and sequence:
 
@@ -137,8 +193,9 @@ The console allows 128 input bytes including the terminator and 22 tokens
 including an optional `@ID`; long field names
 can limit a single CLI candidate before the public API's eight-field capacity.
 Split explicit commands are separate non-atomic updates, each with its own fresh
-baseline, qualifications and retained result. The API still supports all eight
-fields as one validated candidate within fixed storage.
+baseline, qualifications and retained result. The core API still supports all
+eight fields as one validated candidate within fixed storage; the standalone
+application admits one field per request (wired bench 15).
 Every field is individually reachable through the CLI. Python rejects an
 oversized candidate before writing a console line; it never splits or retries
 one automatically. Full sixteen-step formatter fixtures test retained output

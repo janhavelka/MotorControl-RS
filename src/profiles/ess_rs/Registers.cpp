@@ -1089,7 +1089,7 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000100u, 77,
      "CLOSED_LOOP_CURRENT_PERCENT", "percent",
      "0-150", "100", "RW/S",
-     "Prose references 0x2042 current register outside ESS map; do not create a 0x2042 alias or assume 0x0102 automatically."},
+     "Prose references 0x2042 current register outside ESS map; do not create a 0x2042 alias or assume 0x0102 automatically. Measured (wired bench 15, listed rows 50, 25, 10 of a stored 100 at algorithm 3): 2000-step moves at 600 rpm completed with no alarm on drives 4 and 2; drive 4's running output lasted 489 ms at 100 and 500, 324, 378 ms at 50, 25, 10. No current claim."},
     // Function PDF pages 78.
     {0x0104, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000100u, 78,
@@ -1113,7 +1113,7 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 78,
      "LOCK_TIME", "ms",
      "0-20000", "4000", "RW/S",
-     "Delay after movement stops before the motor enters the lock state, in ms. It is not a communication timeout or a guaranteed motion-completion delay."},
+     "Delay after movement stops before the motor enters the lock state, in ms. It is not a communication timeout or a guaranteed motion-completion delay. Measured (wired bench 15, drive 4): output function 5 did not change after a stop at 200, 1000 or 3000; the lock transition itself is unmeasured."},
     // Function PDF pages 78.
     {0x0108, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 78,
@@ -1131,7 +1131,7 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000200u, 78,
      "POSITION_ERROR_ALARM_THRESHOLD", "unspecified",
      "1-65535", "4000", "RW/S",
-     "The source names a position-deviation threshold but supplies no count basis. Do not assume raw encoder counts or command subdivisions."},
+     "The source names a position-deviation threshold but supplies no count basis. Do not assume raw encoder counts or command subdivisions. Measured (wired bench 15): for a 2000-step move at subdivision 1000, alarm 5 at 12 and no alarm at 16 (120 rpm), alarm at 32 and none at 35 (600 rpm) on drive 4; on drive 2 alarm at 8, none at 12 (120 rpm), alarm at 24, none at 28 (600 rpm). 8000 and 65535 raised no alarm. A unit is not inferred."},
     // Function PDF pages 78.
     {0x010B, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000200u, 78,
@@ -1143,13 +1143,13 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000200u, 78,
      "ARRIVAL_TIME", "unspecified",
      "0-200", "10", "RW/S",
-     "The source names an arrival/end time but supplies no unit or timing rule. Do not infer milliseconds from neighboring registers."},
+     "The source names an arrival/end time but supplies no unit or timing rule. Do not infer milliseconds from neighboring registers. Measured (wired bench 15, model 0x4EEA, firmware 0x0029, drive 4): the arrival output (Y0 = 4) comes this many milliseconds, about 1 ms per unit, after the move ends (0, 50, 200 gave 1092.0, 1143.1, 1291.1 ms for a 2000-step move at 120 rpm against 1102.3 ms at 10)."},
     // Function PDF pages 78.
     {0x010D, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 78,
      "PULSE_MEAN_FILTER", "coefficient",
      "0-512", "512", "RW/S",
-     "Mean filter coefficient; a larger value gives a stronger filtering effect. No coefficient-to-time formula is stated."},
+     "Mean filter coefficient; a larger value gives a stronger filtering effect. No coefficient-to-time formula is stated. Measured (wired bench 15, drive 4, twice): a written 0 reads back 1; the application row starts at 1."},
     // Function PDF pages 78.
     {0x010E, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 78,
@@ -1227,13 +1227,13 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000220u, 79,
      "COLLISION_THRESHOLD_0122", "position error; unit unspecified",
      "200-4000", "200", "RW/S",
-     "Compare 0x003B lower bound 50 and absent access marker; retain separate entries."},
+     "Compare 0x003B lower bound 50 and absent access marker; retain separate entries. Wired bench 15: 200 written and read back on drive 4; the bench's 0 is written back only by the D7 exact restore."},
     // Function PDF pages 79.
     {0x0123, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000020u, 79,
      "COLLISION_CURRENT_0123", "percent",
      "20-100", "50", "RW/S",
-     "Compare 0x003C; relationship unestablished."},
+     "Compare 0x003C; relationship unestablished. Wired bench 15: 50 written and read back on drive 4; the bench's 0 is written back only by the D7 exact restore."},
     // Function PDF pages 77.
     {0x0130, 1, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000008u, 77,

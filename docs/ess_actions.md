@@ -328,6 +328,22 @@ Bench, 16 November 2026, drives 2 and 4 ([report](reports/2026-11-16_unattended_
 After no reply right after a start, read state again after at least 2 s before
 treating the drive as lost.
 
+Wired bench 15 (19 November, drive 4, [report](reports/2026-11-19_wired_bench_15_control_tuning.md)):
+alarm 5 latched **during** a move (threshold 8 at 120 rpm, after 258
+increments) left motion word 28: RUNNING, alarm and released, speed 0 and a
+constant position. RUNNING stayed set, so no `stop fast` observed completion
+(`observation_limit`), the address conflict could not reconcile and the
+application refused `alarm-clear` with `axis_conflict` until a controller
+restart. Since then `alarm-clear` is admitted against the historical conflict
+only in that witnessed state, on the selected axis: a fresh motion read taken
+after the conflict began shows the alarm and RELEASED, a fresh feedback read
+shows speed 0, and the feedback read before it (also after the conflict began)
+shows the same position. Otherwise, and while work is active on the address,
+the conflict refuses it as before; a failed stop with no alarm keeps the old
+rule. After it the drive read motion word 0 and alarm 0; the conflict and any
+failed-stop result stay until a following `stop fast` observes completion and
+reconciles them. Other actions still refuse while the conflict is held.
+
 Application API inventory: independent stop and qualified release now have public
 submission and copied results. Ordinary velocity start, enable, unqualified
 release, alarm clear, position clear and host recovery still use internal console
