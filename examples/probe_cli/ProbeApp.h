@@ -69,6 +69,14 @@ MotorControlRS::Status installIoQualification(const IoQualification&);
 bool copyIoQualification(uint8_t address, uint8_t terminal, IoPurpose, IoQualification& output, bool& valid, bool member = false);
 /** Revoke future use and cancel unsent dependent work. Local revocation is not a stop. */
 MotorControlRS::Status revokeIoQualification(uint8_t address, uint8_t terminal, IoPurpose, bool member = false);
+/** The recorded input status mapping (IoStatusRecord.h, wired bench 05) of
+ * input terminal 0..3 of the selected axis or a group member. True only when
+ * that exact target and binding has a fresh checked identity read whose model
+ * and firmware a record names; output is unchanged otherwise. Console token
+ * `recorded`; installIoQualification refuses a stated mapping that contradicts
+ * an applicable record. No bus traffic. */
+bool copyRecordedInputMapping(uint8_t address, uint8_t terminal, MotorControlRS::ESS_RS::IoStatusMapping& output,
+                              bool member = false);
 /** Read one typed settings group through the ordinary owner. Segment groups
  * require index 1..16. Copy results with copySettingsResult; release explicitly.
  * Calls run in the service task and preserve operationId on rejection. */

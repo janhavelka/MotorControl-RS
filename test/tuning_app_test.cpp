@@ -178,6 +178,47 @@ void alarmThresholdExperiment() {
     assert(host(app).startDriver(app, 14, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK);
     assert(id == 99 && hardware.writes == before);
 }
+// Wired bench 05: the input-filter experiment admits MEASURED_INPUT_FILTERS
+// only, from and to any value in the set; one FC06 to 0x0108 and its readback.
+void measuredFilterSet() {
+    for (const uint16_t from : MEASURED_INPUT_FILTERS)
+        for (const uint16_t to : MEASURED_INPUT_FILTERS) {
+            fresh(); read(ESS::DriverGroup::FILTERS, {from, 5, 4000, 5, 10, 512}); identity(); ioBaseline(); stationary();
+            const auto writes = hardware.writes; auto request = filter(to); uint32_t id = 0;
+            assert(host(app).startDriver(app, 20, 1, ESS::DriverKind::UPDATE, request, id) == Probe::Action::OK);
+            waitTx(id);
+            const auto sent = hardware.tx; // Only the filter word: neighbouring fields are not addressed.
+            assert(sent.size() == 8 && sent[1] == 6 && sent[2] == 0x01 && sent[3] == 0x08 &&
+                   ((sent[4] << 8) | sent[5]) == to);
+            reply(id, {}); reply(id, words({to}));
+            assert(view(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS && hardware.writes == writes + 2);
+        }
+    // Outside the set: never-candidates and every prompt 05 candidate the measurement dropped.
+    std::vector<uint16_t> excludedValues = {4, 6, 101, 1000, 65535};
+    for (const uint16_t candidate : {0, 1, 2, 3, 5, 10, 20, 50, 100})
+        if (!measuredInputFilter(candidate)) excludedValues.push_back(candidate);
+    for (const uint16_t excluded : excludedValues) {
+        baseline(); const auto writes = hardware.writes; uint32_t id = 99; auto request = filter(excluded);
+        assert(host(app).startDriver(app, 21, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK);
+        for (unsigned i = 0; i < 100; ++i) step();
+        assert(id == 99 && hardware.writes == writes); // Refused before TX.
+        // A stored value outside the set is not a starting point either.
+        fresh(); read(ESS::DriverGroup::FILTERS, {excluded, 5, 4000, 5, 10, 512}); identity(); ioBaseline(); stationary();
+        const auto before = hardware.writes; request = filter(2);
+        assert(host(app).startDriver(app, 22, 1, ESS::DriverKind::UPDATE, request, id) != Probe::Action::OK);
+        assert(id == 99 && hardware.writes == before);
+    }
+    // A lost acknowledgement leaves the value uncertain; nothing is replayed.
+    const uint16_t largest = MEASURED_INPUT_FILTERS[sizeof(MEASURED_INPUT_FILTERS) / sizeof(MEASURED_INPUT_FILTERS[0]) - 1];
+    baseline(); auto request = filter(largest); uint32_t id = 0;
+    assert(host(app).startDriver(app, 23, 1, ESS::DriverKind::UPDATE, request, id) == Probe::Action::OK);
+    waitTx(id); const auto sent = hardware.writes;
+    for (unsigned i = 0; i < 20000 && view(id).pending; ++i) { advanceHardware(hardware.time + 1000); loop(); }
+    const auto& lost = *view(id).driverContext;
+    assert(!view(id).pending && lost.uncertain && lost.progress[0].execution == ActionExecution::UNKNOWN && !lost.progress[0].readbackKnown);
+    for (unsigned i = 0; i < 1000; ++i) { advanceHardware(hardware.time + 1000); loop(); }
+    assert(hardware.writes == sent);
+}
 void failedRefreshPreservesBaseline() {
     fresh(); const auto old = read(ESS::DriverGroup::FILTERS, {2, 5, 4000, 5, 10, 512});
     const auto cached = tuningCache(*app, ESS::DriverGroup::FILTERS);
@@ -201,6 +242,6 @@ void failedRefreshPreservesBaseline() {
 } // namespace
 int main() {
     readsAndChangedCompletion(); safeFilterAndGuards(); failuresAndRecovery(); alarmThresholdExperiment();
-    failedRefreshPreservesBaseline();
+    failedRefreshPreservesBaseline(); measuredFilterSet();
     if (app) { app->~App(); std::free(app); app = nullptr; }
 }

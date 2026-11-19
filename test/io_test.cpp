@@ -383,6 +383,77 @@ void testPolarityReplySource() {
         assert(c.progress[index].execution == ActionExecution::UNKNOWN);
     }
 }
+// Wired bench 05: with UNKNOWN mapping a connected no-function terminal may be
+// inverted with supplied facts; any nonzero function before or after, absent
+// facts or a candidate that also assigns a function stay refused.
+E::DriverContext readInputs(uint16_t polarity, const uint16_t (&functions)[4]) {
+    E::DriverContext c; assert(E::prepareDriverRead(c, target(), 11, 17, 100, 10000, E::DriverGroup::IO));
+    const std::vector<uint8_t> replies[] = {reply({polarity, functions[0], functions[1], functions[2], functions[3]}),
+                                            reply({0, 0, 0}), reply({0})};
+    for (const auto& r : replies) supply(c, r);
+    assert(c.state == ReadState::SUCCEEDED); return c;
+}
+E::DriverPrerequisites noFunction(const E::DriverRequest& r, uint16_t polarity, uint8_t terminal,
+                                  uint16_t stored = 0, InputWiring wiring = InputWiring::CONNECTED) {
+    uint16_t functions[4] = {}; functions[terminal] = stored; // Only terminal t's bit changes.
+    auto p = prerequisites(r, readInputs(polarity, functions));
+    for (auto& w : p.inputWiring) w = wiring;
+    for (auto& f : p.inputFacts) {
+        f.statusMapping = E::IoStatusMapping::UNKNOWN; f.protectionRemovalQualified = false;
+        f.externalTriggersInhibited = false;
+    }
+    return p;
+}
+void testConnectedNoFunctionInversion() {
+    for (uint8_t terminal = 0; terminal < 4; ++terminal) {
+        const uint16_t bitMask = uint16_t(1) << terminal;
+        for (uint16_t from : {uint16_t(0), bitMask}) {
+            auto r = request(7); r.inputPolarity = from ^ bitMask;
+            auto p = noFunction(r, from, terminal);
+            // After the forward inversion the status bit reads 1 (AFTER) or 0 (BEFORE);
+            // the inverse write is admitted for both outcomes.
+            for (uint16_t level : {uint16_t(0), bitMask}) {
+                p.actualInputs = from ? level : 0;
+                E::DriverContext c; assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+                const auto w = work(c); assert(w.write && w.reg == 0x40 && w.value == (from ^ bitMask));
+                ack(c); supply(c, reply({uint16_t(from ^ bitMask)}));
+                assert(c.state == ReadState::SUCCEEDED && !c.uncertain);
+            }
+            auto q = p; q.inputFacts[terminal].supplied = false; rejected(r, q); // Connected: facts required.
+            q = p; q.allowEchoReadback = true; rejected(r, q);                 // Connected: confirmed reply only.
+            q = p; q.inputWiring[terminal] = InputWiring::UNKNOWN; rejected(r, q);
+            for (uint16_t function : {1, 2, 7, 14}) {
+                // A stored nonzero function refuses the inversion, connected or not.
+                auto pf = noFunction(r, from, terminal, function);
+                for (auto& f : pf.inputFacts) { f.protectionRemovalQualified = true; f.externalTriggersInhibited = true; }
+                rejected(r, pf);
+                for (auto& w : pf.inputWiring) w = InputWiring::UNCONNECTED;
+                rejected(r, pf);
+                // A nonzero final function in the same candidate refuses it too.
+                auto rc = r; rc.fields |= mask(8 + terminal);
+                rc.inputFunctions[terminal] = static_cast<E::InputFunction>(function);
+                auto pc = noFunction(rc, from, terminal);
+                for (auto& f : pc.inputFacts) f.externalTriggersInhibited = true;
+                rejected(rc, pc);
+                for (auto& w : pc.inputWiring) w = InputWiring::UNCONNECTED;
+                rejected(rc, pc);
+                if (function == 14) {
+                    // With a known mapping the PIN selector inversion is admitted (14-17 are passive).
+                    for (auto& w : pc.inputWiring) w = InputWiring::CONNECTED;
+                    for (auto& f : pc.inputFacts) f.statusMapping = E::IoStatusMapping::AFTER_INVERSION;
+                    E::DriverContext c; assert(E::prepareDriverSettings(c, target(), 12, rc, pc, 200, 9000));
+                }
+            }
+        }
+    }
+    // Unconnected behavior unchanged: the legacy no-function inversion with and
+    // without facts is admitted; a stored function under UNKNOWN mapping is refused.
+    auto r = request(7); r.inputPolarity = 1;
+    auto p = noFunction(r, 0, 0, 0, InputWiring::UNCONNECTED);
+    E::DriverContext c; assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+    p.inputFacts[0] = E::IoInputFacts(); assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+    p = noFunction(r, 0, 0, 1, InputWiring::UNCONNECTED); rejected(r, p);
+}
 } // namespace
 static void testOptionalAgePolicy() {
     const auto r = request(); auto p = prerequisites(r); p.maxAgeUs = 0;
@@ -417,7 +488,7 @@ static void testSuppliedUncertaintyNeedsReadbackPolicy() {
 }
 int main() {
     testInputCommissioningMatrix(); testInputPolarityOrder(); testOutputLoadsAndOrder(); testCommissioningAge();
-    testPolarityReplySource();
+    testPolarityReplySource(); testConnectedNoFunctionInversion();
     testSuppliedUncertaintyNeedsReadbackPolicy();
     testOptionalAgePolicy();
     testAdmissionPrecedence();

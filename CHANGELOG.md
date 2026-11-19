@@ -44,9 +44,30 @@
   `bench_scenarios.py` scenarios `input-map`, `y0-map`, `baseline-compare`,
   `baseline-capture` and `restore` with `--run-dir`; `run_recorded` takes the
   folder layout and writes a console transcript.
+- Recorded input status mapping (wired bench 05): `RECORDED_INPUT_MAPPINGS` in
+  `examples/probe_cli/IoStatusRecord.h` (model `0x4EEA`, firmware `0x0029`,
+  after inversion on X0-X3, measured on drives 1, 2, 4), the console mapping
+  token `recorded` for input installs, refusals `mapping_not_recorded` (with
+  `read_first` `read identity` without a fresh identity) and
+  `mapping_contradicts_record`, and `copyRecordedInputMapping`;
+  `installIoQualification` refuses a stated mapping against an applicable
+  record. Harness: `status-mapping` (M01-M04, `--mapping-cases record` for
+  M05/N01) and `input-timing` scenarios, `bench_records.status_bit`,
+  `classify_mapping`, `timing_trial`, the interlock option `read_last`,
+  `apply_write(check=...)`, input-polarity restoration with per-terminal
+  mappings, install mapping `recorded`.
 
 ### Changed
 
+- Input polarity with UNKNOWN status mapping (wired bench 05): the core and the
+  application admit a change on any terminal, connected included, whose
+  previous and final function are both 0; the core now takes the final function
+  from the request, so one candidate that inverts a terminal and assigns it a
+  function is refused without a mapping on unconnected terminals too (the
+  application already refused it).
+- The input-filter tuning experiment admits `MEASURED_INPUT_FILTERS`
+  {0, 1, 2, 3, 5, 10, 20, 50} from and to any value in the set (was 2/3);
+  100 left the candidate set because it suppressed 200 ms pulses.
 - `bench_probe.py bench on` runs the shared-output interlock before the ON
   (`io read` then `read state` per drive as the last bus traffic, no other
   pending operation, a 1000 ms read-age backstop per decision D14;

@@ -490,7 +490,7 @@ Output11 and unsupported output codes reject before admission.
 | Token | Values and meaning |
 | --- | --- |
 | `PURPOSE` | `assign`, `configure`, `finite-move`, `segment`; install each purpose separately |
-| `MAPPING` | `unknown`, `before`, `after`: independently established status location relative to inversion |
+| `MAPPING` | `unknown`, `before`, `after`: independently established status location relative to inversion; inputs also `recorded` (below) |
 | `triggers-inhibited` | External triggering remains inhibited during the operation; an inactive sample alone does not establish this |
 | `protection-removal` | Removal or polarity change of a connected protection assignment; allowed only for `assign` |
 | `LOAD` | `none`, `indicator`, `control`: the declared attached output load |
@@ -498,7 +498,31 @@ Output11 and unsupported output codes reject before admission.
 
 The install path captures the exact checked settings/state baseline and passes
 the stated facts and candidate to `installIoQualification`. `unknown` mapping
-does not authorize a polarity interpretation. Missing evidence names the needed
+does not authorize a polarity interpretation, with one exception (wired bench
+05): a polarity change on a terminal whose previous and final function are both
+0, connected or not. Its level has no drive effect; a connected terminal still
+needs the record and a confirmed FC06 reply.
+
+`recorded` (inputs only) takes the mapping from the application record
+`RECORDED_INPUT_MAPPINGS` (`examples/probe_cli/IoStatusRecord.h`). Since
+[wired bench 05](reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md)
+it holds one entry: model `0x4EEA`, firmware `0x0029`, `after` on X0-X3,
+measured on drives 1, 2 and 4. The record applies only when the target (the
+selected axis, or the member's own join identity) has a fresh checked
+`read identity` of that exact target and binding whose model and firmware match
+an entry, as the control-settings model gate requires. Refusals, local and
+without traffic:
+
+| `result` | When | `read_first` |
+| --- | --- | --- |
+| `mapping_not_recorded` | `recorded` without a fresh identity of this target and binding (none, another address, or `useaddr`/`recover` since) | `read identity` |
+| `mapping_not_recorded` | `recorded` with a fresh identity of a model or firmware no entry names | none |
+| `mapping_contradicts_record` | an explicit `before`/`after` that differs from an applicable record | none |
+
+`unknown` stays allowed with a record. The programmatic API is
+`copyRecordedInputMapping(address, terminal, mapping, member)`;
+`installIoQualification` refuses a stated mapping that contradicts an
+applicable record. The inspected record shows the resolved mapping. Missing evidence names the needed
 read. No command supplies omitted facts or qualifies motion from assignment intent.
 Setting writes remain explicit `io set` or `driver set` operations. Accepted
 changes invalidate dependent facts; neither reads nor local recovery reinstall them.
@@ -531,7 +555,7 @@ the current assignment, and no assigned limit, stop or control input (functions
 | --- | --- |
 | `motion-profile start-speed`, `home auxiliary`, `motion-profile stage` | `configure` |
 | `driver set` (every DRIVE field; subdivision alone also passive) | `configure` |
-| `tuning filters set input-filter` 2/3, `tuning filters set deviation-threshold` 1..4000 | `configure` |
+| `tuning filters set input-filter` in `MEASURED_INPUT_FILTERS` (wired bench 05), `tuning filters set deviation-threshold` 1..4000 | `configure` |
 | `segment position\|speed\|start N set` | `segment` |
 | `control set lock-delay`, `io set` | no change: no input condition, or `assign` facts per terminal |
 

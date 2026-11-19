@@ -39,7 +39,11 @@ The 8-pin I/O connector: 1 X0, 2 X1, 3 X2, 4 X3, 5 XCOM, 6 Y0, 7 Y1, 8 YCOM.
   may flow either way, so NPN (sinking, XCOM at +24 V) and PNP (sourcing, XCOM
   at 0 V) wiring both work, but all four inputs share the one XCOM and therefore
   one orientation. Rated signal 24 V, at least 10 mA (10-50 mA). A level must
-  last more than 10 ms. The internal resistor value is not documented.
+  last more than 10 ms (documented). The input filter `0x0108` adds a debounce
+  of about 2.5-2.6 ms per unit, about 5 ms at the default 2 (measured in
+  [wired bench 05](reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md));
+  status polling cannot confirm the 10 ms rule itself. The internal resistor
+  value is not documented.
 - **Outputs.** Each of Y0-Y1 is drawn as an opto-driven MOSFET switch between
   Yn and YCOM, and the text claims NPN and PNP wiring. No voltage, current or
   leakage rating is documented. On the bench the output is used sinking (YCOM
@@ -349,10 +353,13 @@ this fixture unlocks.
    `bench on NAME 2000`, `read state` on drives 1, 2 and 4, and confirm the same
    single X status bit on all three; `bench off`. Run it as
    `bench_scenarios.py --scenario input-map` ([guide](bench_scenarios.md#wired-bench-scenarios-and-run-folders)):
-   it adds the interlock, the declaration check and a run folder. Then repeat on drive 1 with
-   input polarity inverted on that terminal (with its `io qualification` facts,
-   including protection removal for a limit), which settles whether the status
-   bits are read before or after inversion (`IoStatusMapping`). Restore it.
+   it adds the interlock, the declaration check and a run folder. Then the
+   inversion on every terminal and drive (`bench_scenarios.py --scenario
+   status-mapping --image-level 05`): polarity 1 at function 0 and at the PIN
+   selector, status off and on, inverse write, power-up function. Measured on
+   19 November ([wired bench 05](reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md)):
+   the status bit is the level after inversion on X0-X3 of drives 1, 2 and 4
+   (`AFTER_INVERSION`, recorded for model `0x4EEA`, firmware `0x0029`).
 2. **Y0 to aux1.** On drive 4 assign Y0 = 9 (custom 0) with the output facts,
    write the custom bit on and off, and check the `aux1` edges and the output
    status bits (`bench_scenarios.py --scenario y0-map --address 4`). Repeat with

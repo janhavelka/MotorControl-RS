@@ -178,6 +178,23 @@ functional evidence; independent shaft calibration remains absent.
   earlier 300 ms default was measured unreachable at 419-424 ms). Prompt 08's
   trigger applies the same rule and bound. Bench evidence of L3 (named running
   member) belongs to prompt 07.
+- [x] Measure the input status mapping and the input filter
+  ([wired bench 05](prompts/ess_wired_bench/05_status_mapping_and_input_timing.md)).
+  Implementation: done. Core and application admit a polarity change with
+  UNKNOWN mapping on any terminal whose previous and final function are 0
+  (connected terminals still need facts and confirmed replies); the application
+  record `RECORDED_INPUT_MAPPINGS` (`IoStatusRecord.h`, console token
+  `recorded`, `copyRecordedInputMapping`, refusals `mapping_not_recorded` and
+  `mapping_contradicts_record`); the input-filter experiment admits
+  `MEASURED_INPUT_FILTERS` {0, 1, 2, 3, 5, 10, 20, 50}; harness scenarios
+  `status-mapping` and `input-timing`. Hardware: 19 November
+  ([report](reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md)): the status bit is the
+  level after inversion on X0-X3 of drives 1, 2, 4 at function 0 and PIN
+  (24/24, model `0x4EEA`, firmware `0x0029`); the filter is a debounce of about
+  2.5-2.6 ms per unit (100 suppressed 200 ms pulses and left the set); M05/N01
+  pass on the record image; all 573 baseline fields equal at the end. Output
+  status mapping stays with 06; the 10 ms rule needs a latched input function
+  (07, 09); filter persistence 17.
 - [x] Declare the fixture wiring at boot ([wired bench 02](prompts/ess_wired_bench/02_fixture_wiring_declarations.md)).
   Implementation: done. A validated board table (`BoardPins.h`, menuconfig)
   applies at boot, after `useaddr` and to new group members, with visible
@@ -385,6 +402,9 @@ more drives (now addresses 1, 2 and 4, star wiring).
 - [ ] Qualify wired input effects, connected output loads, status/polarity
   mapping and restart persistence. The startup wording and stored assignment
   defaults remain an ambiguity. No wired fixture or drive restart was used in 04.
+  Input status mapping: measured in wired bench 05 (after inversion, recorded
+  for model `0x4EEA`, firmware `0x0029`); output mapping, input function
+  effects and persistence remain.
   These physical checks moved from [multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md)
   to the [wired bench set](prompts/ess_wired_bench/README.md) (05, 06, 17).
 - [x] Wire the [bench I/O fixture](bench_io.md): X inputs of drives 1, 2 and 4 in

@@ -129,12 +129,29 @@ them into `DriverPrerequisites`.
 
 `IoStatusMapping` is UNKNOWN, BEFORE_INVERSION or AFTER_INVERSION. Pages 68-69
 call the status bits invalid/valid; pages 73-74 describe default/inverted
-polarity. They do not state the ordering. `Reads.cpp` publishes the status bits
-unchanged. A non-default mapping therefore needs source or fixture evidence.
-Unknown mapping permits control admission only with unchanged default polarity.
-The older unconnected passive 0-3 assignment route remains available; polarity
-changes without mapping require an unconnected terminal with previous and
-candidate no-function.
+polarity. They do not state the ordering (documented: unknown). `Reads.cpp`
+publishes the status bits unchanged. A non-default mapping therefore needs
+source or fixture evidence. Unknown mapping permits control admission only with
+unchanged default polarity. The older unconnected passive 0-3 assignment route
+remains available. Since wired bench 05 a polarity change without a mapping is
+admitted on any terminal, connected or not, whose previous function and the
+candidate's final function are both 0 (the core takes the final function from
+the request, because at the polarity write the function word is still the old
+one). A connected terminal still needs supplied ASSIGN facts and a confirmed
+reply. A candidate that inverts a terminal and assigns it a function is refused
+without a mapping, connected or not.
+
+Measured on 19 November 2026 ([wired bench 05](reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md)),
+model `0x4EEA`, firmware `0x0029`, drives 1, 2 and 4, X0-X3, function 0 and the
+PIN selector 14+t: with polarity 1 the status bit read 1 with the source off and
+0 with it on, on all 24 cases. The status bit is the level after inversion
+(AFTER_INVERSION). With polarity 0 every terminal, function 0 included, reports
+the source. This is an application record (`RECORDED_INPUT_MAPPINGS` in
+`examples/probe_cli/IoStatusRecord.h`, console mapping token `recorded`), bound
+to that model and firmware and used only with a fresh checked identity read of
+the exact target and binding. It is not a family default, says nothing about
+output status (`0x0009`, prompt 06) and does not qualify any input function's
+drive effect.
 
 The core simulates actual FC06 order: input polarity, X0-X3 functions, output
 polarity, Y0-Y1 functions, custom bits. It rejects an active control or an
@@ -214,6 +231,11 @@ table state. A declaration is a caller fact: it changes no assignment, is not
 inferred from observed levels, unconnected never disables a function and
 connected observes no level. The JSON keys are in the
 [CLI contract](cli_contract.md#terminal-wiring-declarations).
+
+The hardware manual's X0-X3 timing figure (physical page 9) shows one level
+pulse marked "10ms or more" and nothing else: no filter, no polarity, no
+detection delay. The input filter (`0x0108`) and the detection delay the bench
+measured are in [ESS tuning](ess_tuning.md#input-filter-measured-delay-and-pulse-width).
 
 Hardware page 9 says startup inputs are unspecified/invalid. Function pages
 73-74 give stored defaults 1/2/3/0, also read on the

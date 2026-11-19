@@ -17,7 +17,7 @@ timing. No pair write, gain sweep or settings initialization is implied.
 
 | Group | Ledger records | Native bounds and interpretation |
 | --- | --- | --- |
-| Filters/tracking | `INPUT_FILTER` | 0–65535; terminal-filter coefficient, no time formula |
+| Filters/tracking | `INPUT_FILTER` | 0–65535; terminal-filter coefficient, no documented time formula; measured as a debounce of about 2.5-2.6 ms per unit on firmware `0x0029` ([below](#input-filter-measured-delay-and-pulse-width)) |
 | Filters/tracking | `PULSE_LOW_PASS_FILTER` | 0–1024; smaller coefficients strengthen filtering, no time formula |
 | Filters/tracking | `POSITION_ERROR_ALARM_THRESHOLD` | 1–65535; position-deviation code, count basis unspecified |
 | Filters/tracking | `POSITION_ARRIVAL_WINDOW` | 1–256; positioning-error code, count basis unspecified |
@@ -199,8 +199,9 @@ assigned limit, stop or control input active. Without either, a connected
 bench refuses before TX with `qualification_required` and a
 [named reason](cli_contract.md#settings-input-facts). The experiments are:
 
-- the input-filter candidate `2` or `3`, from a previously checked `2`/`3`
-  baseline;
+- the input filter within `MEASURED_INPUT_FILTERS` = {0, 1, 2, 3, 5, 10, 20, 50}
+  (`examples/probe_cli/IoStatusRecord.h`), from and to any value in the set
+  (before wired bench 05: `2` or `3` only);
 - the position-error alarm threshold (`deviation-threshold`, `0x010A`) within
   `1..4000`, from a checked value in that range. 4000 is the documented default,
   so the threshold can be lowered or restored but never widened. A lowered value
@@ -210,8 +211,51 @@ bench refuses before TX with `qualification_required` and a
 Neither experiment qualifies the field's physical effect. The finite `2 → 3 → 2` experiment passes stored readback and
 restoration. Both FC06-shaped observations remain source-unconfirmed:
 acknowledgement is false and execution unknown. Separate confirmed FC03
-readbacks establish the stored codes. No physical filter delay, active behavior
-or persistent-save qualification follows.
+readbacks establish the stored codes. Readback alone qualifies no filter delay,
+active behavior or persistent save; the status-bit delay measured in wired
+bench 05 (connected terminals, confirmed replies) is below.
+
+### Input filter: measured delay and pulse width
+
+[Wired bench 05](reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md)
+characterized `0x0108` on drive 1 (model `0x4EEA`, firmware `0x0029`), with
+spot checks on drives 2 and 4, through the input status bit X3 driven by the
+bench MOSFET. Documented (function manual p78): "Terminal filter coefficient",
+0-65535, default 2, `RW/S`, no unit or formula. Hardware manual p9: a level must
+last more than 10 ms; its figure shows one pulse marked "10ms or more" and
+nothing about filtering or delay.
+
+Measured (19 November 2026), as intervals on the controller clock between the
+GPIO edge and the status bit. The first sample after an ON comes 25-33 ms after
+the edge (console round trip), then about every 77 ms, so delays below ~25 ms
+have upper bounds only. Bracket = [largest lower bound, smallest upper bound]
+over 20 trials, valid if the delay is constant:
+
+| Filter | On delay (ms) | Off delay (ms) | Widths 1-50 ms seen (of 10) |
+| --- | --- | --- | --- |
+| 0 | <= 32.4 | -2.8..22.4 | 30: 7, 50: 10 |
+| 1 | <= 32.5 | -14.2..21.4 | 30: 10, 50: 10 |
+| 2 | <= 32.4 | -0.1..19.5 | 20: 1, 30: 10, 50: 10 |
+| 3 | <= 32.5 | 1.7..13.4 | 20: 5, 30: 10, 50: 10 |
+| 5 | <= 32.5 | 9.8..18.4 | 20: 10, 30: 10, 50: 10 |
+| 10 | 24.9..33.4 | 23.8..35.4 | 30: 9, 50: 8 |
+| 20 | 30.4..113.5 | 48.4..68.5 | none |
+| 50 | 114.9..135.5 | 124.8..138.4 | none |
+| 100 | 236.9..261.5 (300-1000 ms pulses) | 242.8..268.4 | 200 ms pulses: 0 of 20 |
+
+Widths below 20 ms were never seen at any value; they are indeterminate, not
+missed, because no sample came that early. The data fit a debounce: the bit
+changes only after the new level has lasted about 2.5-2.6 ms per unit
+(inferred from the 10, 20, 50 and 100 brackets), and a shorter level is not
+reported at all (200 ms at 100, up to 50 ms at 20). At the default 2 this is
+about 5 ms. The 10 ms rule is neither confirmed nor contradicted: status
+polling cannot see a level shorter than its first-sample latency, and the
+effect of a short pulse on an input function needs a latched function
+(prompts 07 and 09). The filter is one coefficient for X0-X3, so it delays
+limit and stop inputs the same way. Relay and MOSFET edges gave the same
+bounds at filter 2 (off: relay2 2.0..15.4 ms, mosfet1 -1.1..11.5 ms); the
+3 ms relay operate time is below this resolution. Persistence of the value is
+not measured (prompt 17).
 
 Register readback is the baseline. An experiment must name a small candidate,
 why it is appropriate for the actual stopped fixture, its finite duration and

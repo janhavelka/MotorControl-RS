@@ -116,12 +116,22 @@ struct DriverObservation {
     uint32_t positiveBits = 0, negativeBits = 0;
     DriverEvidence provenance[DRIVER_READ_STEPS];
 };
-/** The manuals do not locate status bits relative to polarity inversion.
- * A non-UNKNOWN value is an independently qualified source/fixture fact. */
+/** Where the reported status bit (0x0008/0x0009) sits relative to the polarity
+ * inversion (0x0040/0x004B). The manuals do not say. BEFORE_INVERSION: the bit
+ * is the physical level and the effective level is bit XOR polarity.
+ * AFTER_INVERSION: the bit is the effective level. A non-UNKNOWN value is an
+ * independently qualified source or measurement fact for one exact model and
+ * firmware, never a family default; the core only applies it.
+ * With UNKNOWN only unchanged default polarity has a known level, and an input
+ * polarity change is admitted only when the terminal's previous function and
+ * the candidate's final function are both 0 (no drive effect), connected or not. */
 enum class IoStatusMapping : uint8_t { UNKNOWN, BEFORE_INVERSION, AFTER_INVERSION };
+/** Caller-stated facts for one input terminal. A connected terminal needs
+ * supplied facts for every change, including a no-function inversion, and a
+ * confirmed FC06 reply (no echo-readback). */
 struct IoInputFacts {
     bool supplied = false;
-    IoStatusMapping statusMapping = IoStatusMapping::UNKNOWN;
+    IoStatusMapping statusMapping = IoStatusMapping::UNKNOWN; ///< Stated or recorded for this exact model/firmware.
     bool externalTriggersInhibited = false; ///< Continuing inhibition, not one inactive sample.
     bool protectionRemovalQualified = false; ///< Connected limit/release/stop removal or polarity change.
 };

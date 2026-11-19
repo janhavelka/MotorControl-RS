@@ -457,7 +457,7 @@ Status validateIoEvidence(const ReadTarget& target, const DriverRequest& request
     return Ok();
 }
 Status validateInputChange(uint8_t terminal, uint8_t index, const uint16_t* state,
-                           const DriverPrerequisites& p) {
+                           uint16_t finalFunction, const DriverPrerequisites& p) {
     const uint16_t mask = uint16_t(1) << terminal;
     const uint16_t oldFunction = p.previous.raw[8 + terminal], function = state[8 + terminal];
     const bool connected = p.inputWiring[terminal] == InputWiring::CONNECTED;
@@ -475,8 +475,13 @@ Status validateInputChange(uint8_t terminal, uint8_t index, const uint16_t* stat
         return invalid(DriverError::IO_EFFECTS_REQUIRED, "connected protection removal requires an explicit fact");
     if ((oldFunction >= 4 || function >= 4) && !facts.externalTriggersInhibited)
         return invalid(DriverError::TRIGGER_POLICY_REQUIRED, "external triggers must remain inhibited during input configuration");
+    // Without a status mapping only a no-function terminal may be inverted: its
+    // previous function and the candidate's final function are both 0, so the
+    // inversion has no drive effect (wired bench 05). At index 7 state[8 + t]
+    // still holds the previous function; the final one comes from the request.
+    // Connected terminals still need supplied facts and confirmed replies.
     if (index == 7 && polarityChanged && facts.statusMapping == IoStatusMapping::UNKNOWN &&
-        (connected || oldFunction || function))
+        (oldFunction || finalFunction))
         return invalid(DriverError::IO_EFFECTS_REQUIRED, "input polarity mapping is unresolved");
     bool level = false;
     if (function >= 4 && function <= 13 &&
@@ -534,7 +539,8 @@ Status validateIoOrder(const DriverRequest& request, const DriverPrerequisites& 
         state[index] = requested(request, index);
         for (uint8_t i = 0; i < 4; ++i) {
             if (index != 8 + i && !(index == 7 && (changed & (1u << i)))) continue;
-            const Status checked = validateInputChange(i, index, state, p);
+            const uint16_t finalFunction = (request.fields & bit(8 + i)) ? requested(request, 8 + i) : p.previous.raw[8 + i];
+            const Status checked = validateInputChange(i, index, state, finalFunction, p);
             if (!checked) return checked;
         }
         for (uint8_t i = 0; i < 2; ++i) {

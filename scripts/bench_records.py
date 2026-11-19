@@ -420,7 +420,9 @@ def interlock(console, output: str, scenario: dict, *, timeout_s=5.0) -> dict:
     input agreement (``check_input_agreement``, run once and kept in
     ``scenario``) must pass; an output already on refuses. ``scenario``
     supplies ``max_age_ms`` (default 300) and ``running_members``; the
-    decision entry is returned, never cached. Sends no ``bench on``.
+    decision entry is returned, never cached. ``read_last`` (an address)
+    reads that participant last, so its state sample is the newest before the
+    ON (wired bench 05 timing). Sends no ``bench on``.
     """
     if output not in FIXTURE["outputs"]:
         raise ValueError("unknown bench output")
@@ -438,6 +440,9 @@ def interlock(console, output: str, scenario: dict, *, timeout_s=5.0) -> dict:
         entry.update(row="L1", reason="declaration agreement failed: " + "; ".join(declarations["problems"]))
         return entry
     participants = [row["address"] for row in declarations["rows"] if (row.get("board") or {}).get("inputs", [0] * 4)[index] == CONNECTED]
+    last = scenario.get("read_last")
+    if last in participants:  # The observed drive's sample is then the newest before the ON.
+        participants = [a for a in participants if a != last] + [last]
     agreement = scenario.get("input_agreement")
     if agreement is None:
         agreement = scenario["input_agreement"] = check_input_agreement(console, timeout_s=timeout_s)
@@ -1559,7 +1564,7 @@ def plan_entry(baseline: dict, entry: dict, image_level: str, facts: dict, *, re
             return [], {**ident, "reason": "%s %s needs stated %s" % (verb, name, ", ".join(missing))}
         step_facts = {name: have}
     elif purpose == "assign":
-        terminals = [] if name == "input-polarity" else ["y0", "y1"] if name in ("custom", "output-polarity") else [name]
+        terminals = list(TERMINALS) if name == "input-polarity" else ["y0", "y1"] if name in ("custom", "output-polarity") else [name]
         step_facts = {t: list(step_facts[t]) for t in terminals if t in step_facts}
         if name in ("y0", "y1") and name not in step_facts:
             return [], {**ident, "reason": "%s %s needs stated load and levels" % (verb, name)}
@@ -1665,8 +1670,15 @@ def _uncertain(result: dict) -> bool:
     return not admission
 
 
-def _prerequisites(console, step: dict, *, timeout_s: float) -> dict:
-    """Fresh reads and stated facts one ordinary write needs, in the documented order."""
+def _prerequisites(console, step: dict, *, timeout_s: float, check=None) -> dict:
+    """Fresh reads and stated facts one ordinary write needs, in the documented order.
+
+    ``check(out)``, when given, sees the fresh reads before any record is
+    installed and raises to stop the write. ASSIGN records use the status
+    mapping ``step["mappings"][terminal]`` (default ``unknown``); an input
+    polarity write installs one record per changed input bit, carrying that
+    terminal's current function.
+    """
     address, purpose = step["drive"], step["purpose"]
     out = {}
     group = step["read"]
@@ -1679,24 +1691,35 @@ def _prerequisites(console, step: dict, *, timeout_s: float) -> dict:
             out["group"] = _ok(console, name, address=address, timeout_s=timeout_s, **kwargs)
     out["io"] = _ok(console, "io", driver_args=("read",), address=address, timeout_s=timeout_s)
     if purpose in ("configure", "segment"):
+        if check is not None:
+            check(out)
         out["facts"] = probe.install_input_facts(console, address, purpose,
                                                  facts={t: tuple(v) for t, v in step["facts"].items()},
                                                  timeout_s=timeout_s)
         return out
     out["config"] = _ok(console, "read-config", address=address, timeout_s=timeout_s)
     out["state"] = probe.observe_stopped(console, address=address, timeout_s=timeout_s)
+    if check is not None:
+        check(out)
     if purpose != "assign":
         return out
     words = list(out["io"]["observation"]["raw"])
     name = step["key"][3:]
     after = list(words)
     after[probe.IO_FIELDS.index(name)] = step["target"]
+    mappings = step.get("mappings") or {}
     installs = []
     if name in TERMINALS:
         index = TERMINALS.index(name)
-        tokens = (str(address), name, str(step["target"]), str((words[0] >> index) & 1), "assign", "unknown",
-                  *step["facts"].get(name, []))
+        tokens = (str(address), name, str(step["target"]), str((words[0] >> index) & 1), "assign",
+                  mappings.get(name, "unknown"), *step["facts"].get(name, []))
         installs.append(tokens)
+    elif name == "input-polarity":
+        for index, terminal in enumerate(TERMINALS):
+            if not ((words[0] ^ step["target"]) >> index) & 1:
+                continue
+            installs.append((str(address), terminal, str(words[1 + index]), str((step["target"] >> index) & 1),
+                             "assign", mappings.get(terminal, "unknown"), *step["facts"].get(terminal, [])))
     else:
         terminals = [name] if name in ("y0", "y1") else \
             [t for i, t in enumerate(("y0", "y1")) if ((words[probe.IO_FIELDS.index(name)] ^ step["target"]) >> i) & 1 or
@@ -1715,11 +1738,12 @@ def _prerequisites(console, step: dict, *, timeout_s: float) -> dict:
     return out
 
 
-def apply_write(console, step: dict, *, timeout_s=5.0) -> dict:
+def apply_write(console, step: dict, *, timeout_s=5.0, check=None) -> dict:
     """One ordinary write of the step's target after its fresh prerequisites
-    and stated facts. Returns the outcome; never retries."""
+    and stated facts (``check`` as in ``_prerequisites``). Returns the
+    outcome; never retries."""
     outcome = {"text": step["write"]["text"], "target": step["target"]}
-    outcome["prerequisites"] = _summary(_prerequisites(console, step, timeout_s=timeout_s))
+    outcome["prerequisites"] = _summary(_prerequisites(console, step, timeout_s=timeout_s, check=check))
     result = call(console, step["write"], timeout_s=timeout_s)
     outcome["result"] = {k: result.get(k) for k in ("ok", "result", "outcome", "state", "operation_id",
                                                     "uncertain", "status", "detail", "reason")}
@@ -1826,6 +1850,34 @@ def _experiment_read(console, step: dict, timeout_s: float):
 
 
 # --------------------------------------------------------------------------
+# Input status mapping (wired bench 05)
+
+MAPPINGS = ("after", "before")
+
+
+def status_bit(mapping: str, polarity_bit: int, source_on: bool) -> int:
+    """Status bit (0x0008) one terminal reports under a mapping hypothesis.
+
+    ``after``: the bit is the level after the 0x0040 inversion; ``before``:
+    the physical level. At polarity 0 both report the source.
+    """
+    if mapping not in MAPPINGS or polarity_bit not in (0, 1):
+        raise ValueError("mapping is after or before and the polarity bit 0 or 1")
+    return int(bool(source_on)) ^ (polarity_bit if mapping == "after" else 0)
+
+
+def classify_mapping(off_bit, on_bit) -> str:
+    """Class from the status bit at polarity 1 with the source off and on:
+    off 1 / on 0 is ``after``, off 0 / on 1 is ``before``, anything else a
+    ``contradiction``."""
+    if (off_bit, on_bit) == (1, 0):
+        return "after"
+    if (off_bit, on_bit) == (0, 1):
+        return "before"
+    return "contradiction"
+
+
+# --------------------------------------------------------------------------
 # Correlation (COMMON Timing): intervals on the controller clock
 
 def io_sample(address: int, state: dict) -> dict | None:
@@ -1863,6 +1915,61 @@ def output_interval(gpio_us: int, samples: list, bit: int, new_level: bool) -> d
     return {"status": "measured", "earliest_us": earliest, "latest_us": latest,
             "relative_us": [earliest - gpio_us, latest - gpio_us],
             "old_operation_id": last_old["operation_id"], "new_operation_id": new["operation_id"]}
+
+
+def _instant_gaps(samples: list, start_us: int, end_us: int) -> list:
+    """Upper bounds of the gaps between consecutive sample instants that cover
+    ``start_us..end_us``: a sample's instant lies between its request start and
+    reply end, so two neighbours are at most ``reply_end[i+1] - request_start[i]``
+    apart; ``start_us`` itself bounds the first gap (nothing is reported before
+    the edge). Empty when the samples do not reach ``end_us``."""
+    after = sorted((s for s in samples if s and s["reply_end_us"] >= start_us), key=lambda s: s["request_start_us"])
+    if not after or after[-1]["request_start_us"] < end_us:
+        return []
+    gaps = [after[0]["reply_end_us"] - start_us]
+    for before, nxt in zip(after, after[1:]):
+        if before["request_start_us"] > end_us:
+            break
+        gaps.append(nxt["reply_end_us"] - before["request_start_us"])
+    return gaps
+
+
+def timing_trial(samples: list, *, on_us: int, off_us: int, bit: int, window_end_us: int | None = None) -> dict:
+    """One bench pulse against the input-status samples of one drive (wired bench 05).
+
+    On and off intervals as ``output_interval`` gives them; nominal poll
+    spacing (request start to request start) after the ON; ``observed`` when a
+    sample after the ON shows the bit. ``missed`` needs no sample with the
+    bit, every instant gap over ``on_us..window_end_us`` below the actual
+    pulse width (``off_us - on_us``) and samples past the window end;
+    otherwise ``indeterminate`` with the reason.
+    """
+    samples = sorted((s for s in samples if s), key=lambda s: s["request_start_us"])
+    width_us = off_us - on_us
+    after = [s for s in samples if s["reply_end_us"] >= on_us]
+    starts = [s["request_start_us"] for s in after]
+    spacing = [b - a for a, b in zip(starts, starts[1:])]
+    observed = any(s["raw_inputs"] & bit for s in after)
+    out = {"on_us": on_us, "off_us": off_us, "width_us": width_us, "samples": len(after),
+           "on": output_interval(on_us, samples, bit, True), "off": output_interval(off_us, samples, bit, False),
+           "spacing_us": {"min": min(spacing), "max": max(spacing), "median": sorted(spacing)[len(spacing) // 2]}
+           if spacing else None, "observed": observed}
+    if observed:
+        out["class"] = "observed"
+        return out
+    if window_end_us is None:
+        out.update({"class": "indeterminate", "reason": "no off-delay bound for this filter value"})
+        return out
+    gaps = _instant_gaps(samples, on_us, window_end_us)
+    out["max_instant_gap_us"] = max(gaps) if gaps else None
+    if not gaps:
+        out.update({"class": "indeterminate", "reason": "samples do not reach the window end"})
+    elif max(gaps) >= width_us:
+        out.update({"class": "indeterminate", "reason": "an instant gap of %d us is not below the %d us pulse"
+                    % (max(gaps), width_us)})
+    else:
+        out["class"] = "missed"
+    return out
 
 
 def _fc06(record: dict, owner: int):

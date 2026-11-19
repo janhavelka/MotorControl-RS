@@ -45,7 +45,7 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 68,
      "INPUT_STATUS", "bitfield",
      "unspecified", "unspecified", "RO",
-     "X0-X3 bits 0-3, bits 4-15 reserved; 0 invalid, 1 valid."},
+     "X0-X3 bits 0-3, bits 4-15 reserved; 0 invalid, 1 valid. Documented: the order against the 0x0040 inversion is not stated. Measured 2026-11-19 (wired bench 05; model 0x4EEA, firmware 0x0029, drives 1/2/4, X0-X3, function 0 and PIN 14-17): the bit is the level after inversion; at polarity 0 a function-0 terminal reports its source."},
     // Function PDF pages 69.
     {0x0009, 1, RegisterAccess::READ_ONLY, RegisterSignedness::BITFIELD,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 69,
@@ -1119,7 +1119,7 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 78,
      "INPUT_FILTER", "coefficient",
      "0-65535", "2", "RW/S",
-     "Terminal filter coefficient only; the source supplies no time unit or coefficient-to-delay formula."},
+     "Terminal filter coefficient only; the source supplies no time unit or coefficient-to-delay formula. Measured 2026-11-19 (wired bench 05; model 0x4EEA, firmware 0x0029, drive 1, X3 status bit): values 0-50 delay the reported level and a level shorter than the delay is not reported (a debounce of about 2.5-2.6 ms per unit, inferred from 10-100); 100 suppressed 200 ms pulses. Storage class of a write (RW/S) not measured."},
     // Function PDF pages 78.
     {0x0109, 1, RegisterAccess::READ_WRITE, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 78,

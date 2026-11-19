@@ -260,4 +260,6 @@ CHANGELOG, operation inventory (hardware evidence for `io_settings_write` and
 
 ## Commits and CI
 
-The lead owns Git and CI; none dispatched by this session.
+The lead owns Git and CI; none dispatched by this session. The lead committed
+the work as `852ea51`; CI run 44423910942 on that exact commit passed all four
+jobs (native gcc, native clang, Arduino, ESP-IDF). No firmware changed.

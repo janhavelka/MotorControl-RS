@@ -114,8 +114,11 @@ stage. Refusals the records decide carry `reason`, `purpose`, `read_first` and
 
 ### Wired-bench run folders
 
-`bench_scenarios.py` has five wired-bench scenarios (prompt 04): `input-map`,
-`y0-map`, `baseline-compare`, `baseline-capture` and `restore`. Each needs
+`bench_scenarios.py` has seven wired-bench scenarios: `input-map`, `y0-map`,
+`baseline-compare`, `baseline-capture` and `restore` (prompt 04), and
+`status-mapping` and `input-timing` (prompt 05,
+[guide](../docs/bench_scenarios.md#status-mapping-and-input-timing-wired-bench-05)).
+Each needs
 `--run-dir build/bench/YYYY-MM-DD_wbNN_slug` (created exclusively; an existing
 folder fails before the port opens) and `--firmware IMAGE`; scenarios that
 write also need `--image-level NN`, the prompt whose routes the flashed image

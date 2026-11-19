@@ -16,6 +16,7 @@
 #include "ProbeConsole.h"
 #include "DebugSession.h"
 #include "StateCache.h"
+#include "IoStatusRecord.h"
 #include <MotorControlRS/profiles/ess_rs/Actions.h>
 #include <MotorControlRS/profiles/ess_rs/Position.h>
 #include <MotorControlRS/profiles/ess_rs/Velocity.h>
@@ -2172,10 +2173,11 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
                 // Other effects/rating/base semantics remain unavailable here.
                 prerequisites.controlEffectsQualifiedFields = request.fields & static_cast<uint32_t>(ESS::DriverField::LOCK_DELAY);
             } else {
-                // The finite standalone experiment permits only input-filter
-                // coefficients 2/3 on fresh passive, unconnected inputs, or with
-                // four current CONFIGURE records (wired bench 03). It qualifies
-                // stored readback, not filter delay or active effects.
+                // The finite standalone experiment permits only the input-filter
+                // coefficients of MEASURED_INPUT_FILTERS (wired bench 05), from and
+                // to a value in that set, on fresh passive, unconnected inputs, or
+                // with four current CONFIGURE records (wired bench 03). It
+                // qualifies stored readback, not filter delay or active effects.
                 const auto& io = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
                 bool passive = Probe::fresh(io, target, now, prerequisites.maxAgeUs) && !io.value.rawInputs &&
                     a.ioSettings.operationId && a.ioSettings.group == ESS::DriverGroup::IO && Probe::sameTarget(a.ioSettings.target, target) &&
@@ -2194,8 +2196,7 @@ Probe::Action startDriver(void* context, uint32_t commandId, uint8_t address, ES
                 }
                 const auto& cached = tuningCache(a, request.group);
                 const bool filterExperiment = request.group == ESS::DriverGroup::FILTERS && request.fields == 1 &&
-                    (request.tuningValues[0] == 2 || request.tuningValues[0] == 3) &&
-                    (cached.raw[0] == 2 || cached.raw[0] == 3);
+                    measuredInputFilter(request.tuningValues[0]) && measuredInputFilter(cached.raw[0]);
                 // Alarm-clear experiment, owner request of 16 November 2026: the
                 // position-error alarm threshold alone may move within 1..4000, the
                 // documented default, from a checked value in that range. A lower
@@ -4208,7 +4209,17 @@ MotorControlRS::Status installIoQualification(const IoQualification& supplied) {
     auto* retained = retainedIo(*app, supplied.target.address, supplied.terminal, supplied.member);
     if (!retained || !ioQualificationCurrent(*app, supplied, uart.sample(), true))
         return Status(Err::INVALID_CONFIG, 0, "exact terminal facts and checked baseline required");
+    ESS::IoStatusMapping recorded = ESS::IoStatusMapping::UNKNOWN;
+    if (supplied.terminal < 4 && supplied.input.statusMapping != ESS::IoStatusMapping::UNKNOWN &&
+        recordedInput(*app, supplied.target.address, supplied.terminal, supplied.member, uart.sample(), recorded) ==
+            RecordLookup::FOUND && recorded != supplied.input.statusMapping)
+        return Status(Err::INVALID_CONFIG, 0, "stated status mapping contradicts the recorded mapping");
     *retained = supplied; return Ok();
+}
+bool copyRecordedInputMapping(uint8_t address, uint8_t terminal, ESS::IoStatusMapping& output, bool member) {
+    ESS::IoStatusMapping found = ESS::IoStatusMapping::UNKNOWN;
+    if (!app || recordedInput(*app, address, terminal, member, uart.sample(), found) != RecordLookup::FOUND) return false;
+    output = found; return true;
 }
 bool copyIoQualification(uint8_t address, uint8_t terminal, IoPurpose purpose, IoQualification& output, bool& valid, bool member) {
     if (!app) return false;

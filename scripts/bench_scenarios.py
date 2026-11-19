@@ -11,6 +11,7 @@ import argparse
 from contextlib import contextmanager
 import json
 from pathlib import Path
+import random
 import re
 import time
 
@@ -30,6 +31,12 @@ FOLDER_SCENARIOS = {
     'baseline-capture': 'fresh baseline (01 schema) and the re-baselined candidate, written to the run folder only',
     'restore': 'optional explicit case write (--change), then every differing planned field restored from the '
                'committed baseline through its ordinary setter with stated facts, each read back',
+    'status-mapping': 'wired bench 05: per terminal on drives 1, 2, 4 status with polarity 0, the inversion at '
+                      'function 0 (mapping unknown) and at PIN 14+t (mapping stated), inverse writes, power-up '
+                      'functions; --mapping-cases record: M05/N01 against the built-in record',
+    'input-timing': 'wired bench 05: one input-filter value on one drive (CONFIGURE path, read back), interlocked '
+                    'mosfet2 pulses with back-to-back read state: delay intervals, width table, optional relay '
+                    'against MOSFET; the filter restored from the baseline',
 }
 
 SCENARIOS = {
@@ -89,6 +96,23 @@ def arguments(argv=None):
                         help='input-map/restore: ASSIGN facts for one terminal of the change drive: '
                              'xN [triggers-inhibited] [protection-removal] or yN LOAD LEVELS')
     parser.add_argument('--drives', nargs='+', type=int, help='baseline-compare/capture: drives (default 1 2 4)')
+    parser.add_argument('--terminals', nargs='+', choices=records.TERMINALS,
+                        help='status-mapping: terminals in order (default x0 x1 x2 x3)')
+    parser.add_argument('--filter-value', type=int, help='input-timing: input-filter coefficient for the run')
+    parser.add_argument('--delay-trials', type=int, default=20, help='input-timing: 200 ms delay trials (1..40)')
+    parser.add_argument('--width-trials', type=int, default=10, help='input-timing: trials per width (0..20; 0 skips)')
+    parser.add_argument('--widths', nargs='+', type=int, help='input-timing: pulse widths in ms '
+                        '(default 1 2 3 5 7 10 12 15 20 30 50)')
+    parser.add_argument('--compare-relay', action='store_true',
+                        help='input-timing: also relay2 (X1) and mosfet1 (X0) 200 ms trials (filter 2 only)')
+    parser.add_argument('--poll-depth', type=int, default=2, help='input-timing: outstanding read state requests (1..3)')
+    parser.add_argument('--phase-seed', type=int, default=5,
+                        help='input-timing: seed of the per-trial random pause after the first sample')
+    parser.add_argument('--traffic', choices=('raw', 'off'), default='raw',
+                        help='input-timing: debug mode during the run (raw: traffic records; off: console bandwidth '
+                             'for the polls, the step times of every read stay in its reply)')
+    parser.add_argument('--mapping-cases', choices=('map', 'record'),
+                        help='status-mapping: map (M01-M04, default) or record (M05, N01 on the record image)')
     parser.add_argument('--reason', help='baseline-capture: reason for the re-baselined candidate')
     parser.add_argument('--prompt', help='baseline-capture: two-digit prompt that intends the re-baselining')
     parser.add_argument('--scenario', choices=SCENARIOS, default='quick')
@@ -151,6 +175,10 @@ def arguments(argv=None):
                           (args.outputs, ('input-map',)), (args.expect_refusal or None, ('input-map',)),
                           (args.change, ('input-map', 'restore')), (args.assign_facts, ('input-map', 'restore')),
                           (args.drives, ('baseline-compare', 'baseline-capture')),
+                          (args.terminals, ('status-mapping',)), (args.mapping_cases, ('status-mapping',)),
+                          (args.filter_value, ('input-timing',)), (args.widths, ('input-timing',)),
+                          (args.compare_relay or None, ('input-timing',)),
+                          (None if args.traffic == 'raw' else args.traffic, ('input-timing',)),
                           (args.reason, ('baseline-capture',)), (args.prompt, ('baseline-capture',))):
         if option is not None and args.scenario not in scopes:
             parser.error('scenario-specific arguments cannot enter another scenario')
@@ -371,7 +399,8 @@ def _folder_arguments(parser, args):
         parser.error('wired-bench scenarios use the board declarations and choose their own debug mode')
     if args.image_level is not None and not re.fullmatch(r'[0-9]{2}', args.image_level):
         parser.error('--image-level needs a two-digit prompt')
-    if args.scenario in ('restore', 'y0-map') or (args.scenario == 'input-map' and args.change):
+    if args.scenario in ('restore', 'y0-map', 'status-mapping', 'input-timing') or \
+            (args.scenario == 'input-map' and args.change):
         if args.image_level is None:
             parser.error('a scenario that writes needs --image-level (the prompt whose routes the image has)')
     if args.case is not None and not re.fullmatch(r'[A-Za-z0-9_-]{1,24}', args.case):
@@ -404,6 +433,26 @@ def _folder_arguments(parser, args):
     if args.scenario == 'baseline-capture':
         if not args.reason or not args.reason.strip() or not args.prompt or not re.fullmatch(r'[0-9]{2}', args.prompt):
             parser.error('baseline-capture needs --reason TEXT and a two-digit --prompt')
+    if args.scenario == 'status-mapping':
+        if args.image_level is None or int(args.image_level) < 5:
+            parser.error('status-mapping needs --image-level 05 or later (the polarity route of prompt 05)')
+        if args.terminals is not None and len(set(args.terminals)) != len(args.terminals):
+            parser.error('--terminals names distinct terminals')
+        args.mapping_cases = args.mapping_cases or 'map'
+    if args.scenario == 'input-timing':
+        args.widths = list(args.widths or TIMING_WIDTHS_MS)
+        if args.image_level is None or int(args.image_level) < 5:
+            parser.error('input-timing needs --image-level 05 or later (the widened filter experiment)')
+        if args.filter_value not in TIMING_CANDIDATES:
+            parser.error('--filter-value is one of the prompt 05 candidate set %s' % (TIMING_CANDIDATES,))
+        if args.address not in records.FIXTURE['input_drives']:
+            parser.error('input-timing runs on drive 1, 2 or 4')
+        if not 1 <= args.delay_trials <= 40 or not 0 <= args.width_trials <= 20 or not 1 <= args.poll_depth <= 3:
+            parser.error('input-timing needs 1..40 delay trials, 0..20 width trials and a poll depth of 1..3')
+        if len(set(args.widths)) != len(args.widths) or any(not 1 <= w <= 2000 for w in args.widths):
+            parser.error('--widths are distinct, 1..2000 ms')
+        if args.compare_relay and args.filter_value != 2:
+            parser.error('--compare-relay runs at filter 2 only')
 
 
 def _assign_facts(parser, groups):
@@ -427,6 +476,13 @@ def _assign_facts(parser, groups):
 
 def _facts(args):
     """The facts the scenario record states, per drive and purpose."""
+    if args.scenario == 'status-mapping':
+        if args.mapping_cases == 'record':
+            return {'1': {'assign': {'x3': ['triggers-inhibited']}, 'configure': {}}}
+        return {str(a): {'assign': {t: list(f) for t, f in MAPPING_FACTS.items()}}
+                for a in records.FIXTURE['input_drives']}
+    if args.scenario == 'input-timing':
+        return {str(args.address): {'configure': {}}}
     if args.scenario == 'y0-map':
         return {str(records.FIXTURE['y0_owner']): {'assign': {'y0': ['indicator', 'either']}}}
     if args.change is None:
@@ -454,7 +510,7 @@ def folder_plan(args, baseline):
     name, case = args.scenario, args.case or args.scenario
     facts = _facts(args)
     write_list, left = [], []
-    drives = sorted(set(records.FIXTURE['input_drives'] if name == 'input-map' else
+    drives = sorted(set(records.FIXTURE['input_drives'] if name in ('input-map', 'status-mapping', 'input-timing') else
                         args.drives or records.FIXTURE['input_drives'] if name.startswith('baseline') else
                         [args.address]) | ({args.change['drive']} if args.change else set()))
     plan = {'admissible': True, 'steps': [], 'refused': []}
@@ -465,6 +521,10 @@ def folder_plan(args, baseline):
         owner = records.FIXTURE['y0_owner']
         write_list = [{'drive': owner, 'key': 'io.y0', 'index': None, 'candidate': 9},
                       {'drive': owner, 'key': 'io.custom', 'index': None, 'candidate': 1}]
+    if name == 'status-mapping':
+        write_list = _mapping_write_list(args)
+    if name == 'input-timing' and args.filter_value != 2:
+        write_list = [{'drive': args.address, 'key': 'filters.input-filter', 'index': None, 'candidate': args.filter_value}]
     if write_list:
         plan = records.restoration_plan(baseline, write_list, args.image_level, facts)
         for entry in write_list:
@@ -508,6 +568,10 @@ def folder_plan(args, baseline):
         bounds = {'cycles': args.cycles, 'phase_s': args.phase_s, 'writes': 2 + 2 * args.cycles}
         expected = {'controller-timestamped': 'aux1 edge times against the FC06 request start and reply end',
                     'drive-reported': 'output status bit 0 after each custom write'}
+    elif name == 'status-mapping':
+        cases, commands, bounds, expected = _mapping_plan(args)
+    elif name == 'input-timing':
+        cases, commands, bounds, expected = _timing_plan(args)
     elif name == 'baseline-compare':
         cases.append(_case(case, 'every committed baseline field of the scenario drives read fresh; each '
                            'difference listed per field; no unknown field', ['read back']))
@@ -530,7 +594,9 @@ def folder_plan(args, baseline):
         expected = {'acknowledged': 'write terminals of the case write and the restoration',
                     'read back': 'group reads before, after the case write and after the restoration'}
     return {'drives': [{'address': a, 'required_enabled': True} for a in drives],
-            'terminals': (['x0', 'x1', 'x2', 'x3'] if name == 'input-map' else ['y0'] if name == 'y0-map' else []),
+            'terminals': (['x0', 'x1', 'x2', 'x3'] if name == 'input-map' else ['y0'] if name == 'y0-map' else
+                          (args.terminals or list(records.TERMINALS)) if name == 'status-mapping' else
+                          ['x3'] + (['x0', 'x1'] if args.compare_relay else []) if name == 'input-timing' else []),
             'commands': commands, 'cases': cases,
             'running_members': [], 'write_list': write_list, 'bounds': bounds, 'prepared_stop': PREPARED_STOP,
             'restoration_plan': plan, 'case_writes': forward, 'left_changed': left,
@@ -1029,8 +1095,787 @@ def _restore(console, args, record, run, baseline):
         run.folder.write_json('restore.json', detail)
 
 
+# --------------------------------------------------------------------------
+# Wired bench 05: input status mapping (0x0008 against 0x0040)
+
+TERMINAL_OUTPUT = {terminal: output for output, terminal in records.FIXTURE['outputs'].items()}
+MAPPING_FACTS = {'x0': ['triggers-inhibited'], 'x1': ['protection-removal', 'triggers-inhibited'],
+                 'x2': ['protection-removal', 'triggers-inhibited'], 'x3': ['triggers-inhibited']}
+MAPPING_HOLD_MS = 2000
+
+
+def _mapping_write_list(args):
+    """Every I/O field the status-mapping run writes, per drive (furthest candidate)."""
+    if args.mapping_cases == 'record':
+        return [{'drive': 1, 'key': 'io.input-polarity', 'index': None, 'candidate': 8},
+                {'drive': 1, 'key': 'io.x3', 'index': None, 'candidate': 17}]
+    out = []
+    for a in records.FIXTURE['input_drives']:
+        out.append({'drive': a, 'key': 'io.input-polarity', 'index': None, 'candidate': 15})
+        out += [{'drive': a, 'key': 'io.' + t, 'index': None, 'candidate': 14 + i}
+                for i, t in enumerate(records.TERMINALS) if t in (args.terminals or records.TERMINALS)]
+    return out
+
+
+def _mapping_plan(args):
+    """Cases, commands, bounds and expected evidence of the status-mapping scenario."""
+    if args.mapping_cases == 'record':
+        cases = [_case('M05', 'drive 1 X3 = 17: polarity 8 refused before TX with mapping unknown, admitted and read '
+                       'back with mapping recorded; polarity 0 and X3 0 restored', ['sent', 'read back']),
+                 _case('N01', 'refused before TX: input filter outside the kept set, recorded without a fresh '
+                       'identity, an explicit mapping against the record', ['sent'])]
+        commands = ['useaddr 1; io read 1; read config 1; read state 1; io qualification install 1 x3 17 0 assign '
+                    'unknown triggers-inhibited; io set x3 17 1', 'io qualification install 1 x3 17 1 assign unknown '
+                    'triggers-inhibited (refused); io set input-polarity 8 1 (refused, 0 frames)',
+                    'read identity 1; io qualification install 1 x3 17 1 assign recorded triggers-inhibited; '
+                    'io set input-polarity 8 1; io read 1', 'restore polarity 0 (recorded) and X3 0',
+                    'N01: tuning filters set input-filter 4 1 with CONFIGURE records; useaddr 2/1, io read 1, read '
+                    'state 1, install recorded (no fresh identity); read identity 1, install with the opposite mapping']
+        bounds = {'drive': 1, 'terminal': 'x3', 'no bench output': True}
+        expected = {'sent': 'debug raw observed frame count unchanged across each refusal; operation ID 0',
+                    'read back': 'io read words after each admitted write'}
+        return cases, commands, bounds, expected
+    cases = [_case('M01', 'status bit t follows its output at polarity 0 on drives 1, 2, 4; other bits 0',
+                   ['drive-reported', 'controller-timestamped']),
+             _case('M02', 'inversion at function 0: one class (after or before) on every terminal and drive',
+                   ['drive-reported']),
+             _case('M03', 'inversion at PIN function 14+t: the same class as M02', ['drive-reported']),
+             _case('M04', 'I/O words of drives 1, 2, 4 equal the baseline at the end', ['read back'])]
+    commands = ['session: wiring of 1, 2, 4; io read and read config of 1, 2, 4',
+                'per terminal t: step 1 io set xt 0 A (power-up function not 0) with ASSIGN facts',
+                'step 2: read state 1, 2, 4; interlock; bench on OUTPUT %d; read state 1, 2, 4; bench off OUTPUT; '
+                'read state 1, 2, 4' % MAPPING_HOLD_MS,
+                'step 3: io set input-polarity (bit t = 1) A with ASSIGN xt 0 1 unknown; step 2 reads; '
+                'io set input-polarity (bit t = 0) A with ASSIGN xt 0 0 unknown; read state 1, 2, 4',
+                'step 4: io set xt 14+t A (triggers-inhibited); polarity bit t = 1 and back with mapping stated '
+                'as measured; io set xt POWER-UP A',
+                'every write: useaddr A; io read A; read config A; read state A; bench view; preconditions; '
+                'install; write; read config A; io read A']
+    bounds = {'hold_ms': MAPPING_HOLD_MS, 'terminals': args.terminals or list(records.TERMINALS),
+              'writes_per_terminal_and_drive': 'at most 7', 'no motion': True}
+    expected = {'drive-reported': 'raw input status (0x0008) of every drive off, on and off again per phase',
+                'controller-timestamped': 'GPIO on/off times of each ON',
+                'read back': 'io read words after every write and at the end'}
+    return cases, commands, bounds, expected
+
+
+class _Ambiguous(probe.BenchError):
+    """An uncertain I/O write or a readback that is neither the old nor the requested value."""
+
+
+def _io_step(baseline, address, key, target, facts, mappings=None):
+    """One scenario-owned ordinary I/O write (``io set``), planned like 04's steps."""
+    field = records.baseline_field(baseline, address, key)
+    command, kwargs, text = records.write_call(field, target, address)
+    return {'drive': address, 'key': key, 'index': None, 'register': field['register'], 'read': 'io',
+            'baseline': field['value'], 'candidate': target, 'target': target, 'route': 'ordinary',
+            'purpose': 'assign', 'facts': facts, 'mappings': dict(mappings or {}),
+            'write': {'command': command, 'kwargs': kwargs, 'text': text}}
+
+
+class _MappingState:
+    """Latest checked I/O words per drive and the measured class per drive and terminal."""
+
+    def __init__(self, drives):
+        self.words = {a: None for a in drives}
+        self.classes = {}
+        self.rows = []
+        self.writes = []
+
+    def predicted(self, address, terminal, polarity_bit, source_on):
+        """Status bit the current hypothesis predicts; None while it is not measured."""
+        if not polarity_bit:
+            return int(source_on)
+        mapping = self.classes.get((address, terminal))
+        return None if mapping is None else records.status_bit(mapping, polarity_bit, source_on)
+
+
+def _check_quiet(state, address, words, status, terminal, view, polarity_bit):
+    """Every-write preconditions of prompt 05 (Bench procedure): a list of problems."""
+    problems = []
+    on = [o['name'] for o in view.get('outputs', []) if o.get('active')]
+    if on:
+        problems.append('bench outputs on: ' + ', '.join(on))
+    for drive, known in state.words.items():
+        current = words if drive == address else known
+        if current is None or any(7 <= f <= 13 for f in current[1:5]):
+            problems.append('drive %d holds function 7-13 or its I/O words are unknown: %s' % (drive, current))
+    raw = status.get('raw_inputs')
+    index = records.TERMINALS.index(terminal)
+    if type(raw) is not int:
+        problems.append('input status unknown')
+    else:
+        if raw & ~(1 << index):
+            problems.append('an input other than %s reads active with its output off: raw %d' % (terminal, raw))
+        expected = state.predicted(address, terminal, polarity_bit, False)
+        if expected is not None and ((raw >> index) & 1) != expected:
+            problems.append('%s reads %d, the hypothesis predicts %d' % (terminal, (raw >> index) & 1, expected))
+    return problems
+
+
+def _mapping_write(console, run, state, baseline, address, key, target, facts, terminal, mappings, timeout):
+    """One write after the prompt's preconditions, then its readback; never replayed."""
+    records.use_drive(console, address, timeout_s=timeout)
+    step = _io_step(baseline, address, key, target, facts, mappings)
+    seen = {}
+
+    def check(out):
+        words = list(out['io']['observation']['raw'])
+        status = _state_summary(out['state'])
+        view = checked(console, 'bench', host_args=(), timeout_s=timeout)
+        index = records.TERMINALS.index(terminal)
+        seen.update(words=words, raw_inputs=status['raw_inputs'])
+        problems = _check_quiet(state, address, words, status, terminal, view, (words[0] >> index) & 1)
+        if problems:
+            raise probe.BenchError('precondition before %s: %s' % (step['write']['text'], '; '.join(problems)))
+    before = (state.words.get(address) or [None] * 9)[probe.IO_FIELDS.index(key[3:])]
+    outcome = records.apply_write(console, step, timeout_s=timeout, check=check)
+    ending, entry = records.readback(console, step, timeout_s=timeout)
+    if entry.get('raw') is not None:
+        state.words[address] = list(entry['raw'])
+    row = {'drive': address, 'write': step['write']['text'], 'facts': facts, 'mappings': step['mappings'],
+           'before_words': seen.get('words'), 'before_inputs': seen.get('raw_inputs'), 'readback': ending,
+           'operation_id': outcome['result'].get('operation_id'), 'written': outcome['written'],
+           'uncertain': outcome['uncertain'], 'result': outcome['result'].get('result')}
+    state.writes.append(row)
+    ident = {'drive': address, 'key': key, 'index': None}
+    run.field(ident, baseline=step['baseline'], ending=ending,
+              restored=ending == step['baseline'], reason=None)
+    if outcome['uncertain'] or ending not in (before, target):
+        again, _ = records.readback(console, step, timeout_s=timeout)
+        row['read_again'] = again
+        run.field(ident, ending=again, uncertain=True, restored=False,
+                  reason='ambiguous write or readback (%s -> %s, read %s then %s); not replayed'
+                         % (before, target, ending, again))
+        raise _Ambiguous('%s: read %s then %s' % (step['write']['text'], ending, again))
+    if not outcome['written'] or ending != target:
+        raise probe.BenchError('%s refused or not read back: %s, read %s'
+                               % (step['write']['text'], outcome['result'].get('result'), ending))
+    return row
+
+
+def _status_reads(console, drives, timeout):
+    return {a: console.command('read-state', address=a, timeout_s=timeout) for a in drives}
+
+
+def _status_check(states, terminal, expected):
+    """Status rows of every drive and the problems. ``expected[a]`` is a bit or None."""
+    index = records.TERMINALS.index(terminal)
+    rows, problems = {}, []
+    for a, reply in states.items():
+        s = _state_summary(reply)
+        raw = s['raw_inputs']
+        rows[str(a)] = {'raw_inputs': raw, 'operation_id': s['operation_id'], 'running': s['running'],
+                        'raw_alarm': s['raw_alarm']}
+        if not s['ok'] or s['running'] is not False or s['raw_alarm'] or s['alarm_flag'] is not False:
+            problems.append('drive %d: ok=%s running=%s alarm=%s' % (a, s['ok'], s['running'], s['raw_alarm']))
+            continue
+        if type(raw) is not int:
+            problems.append('drive %d: input status unknown' % a)
+            continue
+        if raw & ~(1 << index):
+            problems.append('drive %d: input other than %s active (raw %d)' % (a, terminal, raw))
+        bit = (raw >> index) & 1
+        rows[str(a)]['bit'] = bit
+        if expected.get(a) is not None and bit != expected[a]:
+            problems.append('drive %d: %s reads %d, expected %d' % (a, terminal, bit, expected[a]))
+    return rows, problems
+
+
+def _switched(console, ctx, output, drives, timeout):
+    """Interlocked ON for MAPPING_HOLD_MS, status of every drive, OFF, status again."""
+    records.bench_on(console, output, MAPPING_HOLD_MS, ctx, timeout_s=timeout)
+    entry = ctx['interlock'][-1]
+    on = _status_reads(console, drives, timeout)
+    off = checked(console, 'bench', host_args=('off', output), timeout_s=timeout)
+    view = next(o for o in off['outputs'] if o['name'] == output)
+    after = _status_reads(console, drives, timeout)
+    return {'on': on, 'after': after, 'on_us': entry['on']['outputs'][output]['on_us'], 'off_us': view['off_us'],
+            'off_reason': view['off_reason'], 'interlock': {k: entry.get(k) for k in ('decision', 'row', 'reason')}}
+
+
+def _phase(console, ctx, state, output, terminal, drives, phase, timeout):
+    """Status with the source off, on and off again; the class where polarity is 1."""
+    index = records.TERMINALS.index(terminal)
+    polarity = {a: (state.words[a][0] >> index) & 1 for a in drives}
+    row = {'terminal': terminal, 'output': output, 'phase': phase, 'polarity': polarity,
+           'functions': {a: state.words[a][1 + index] for a in drives}}
+    state.rows.append(row)
+    off = _status_reads(console, drives, timeout)
+    row['off'], problems = _status_check(off, terminal,
+                                         {a: state.predicted(a, terminal, polarity[a], False) for a in drives})
+    if problems:
+        row['problems'] = problems
+        raise probe.BenchError('%s %s, source off: %s' % (terminal, phase, '; '.join(problems)))
+    switched = _switched(console, ctx, output, drives, timeout)
+    row['on'], on_problems = _status_check(switched['on'], terminal,
+                                           {a: state.predicted(a, terminal, polarity[a], True) for a in drives})
+    row['after'], after_problems = _status_check(switched['after'], terminal,
+                                                 {a: state.predicted(a, terminal, polarity[a], False) for a in drives})
+    row.update({k: switched[k] for k in ('on_us', 'off_us', 'off_reason', 'interlock')})
+    problems = on_problems + after_problems
+    for a in drives:
+        if polarity[a]:
+            off_bit, after_bit = row['off'][str(a)].get('bit'), row['after'][str(a)].get('bit')
+            row.setdefault('classes', {})[str(a)] = records.classify_mapping(
+                off_bit, row['on'][str(a)].get('bit')) if off_bit == after_bit else 'contradiction'
+            if off_bit != after_bit:
+                problems.append('drive %d: %s reads %s before and %s after the ON' % (a, terminal, off_bit, after_bit))
+    if switched['off_reason'] != 'request':
+        problems.append('off reason %s' % switched['off_reason'])
+    if problems:
+        row['problems'] = problems
+        raise probe.BenchError('%s %s: %s' % (terminal, phase, '; '.join(problems)))
+    return row
+
+
+def _mapping_terminal(console, run, ctx, state, baseline, terminal, drives, timeout):
+    """Steps 1-4 of prompt 05 for one terminal on every drive."""
+    index = records.TERMINALS.index(terminal)
+    output = TERMINAL_OUTPUT[terminal]
+    bit = 1 << index
+    power_up = {a: records.baseline_field(baseline, a, 'io.' + terminal)['value'] for a in drives}
+    for a in drives:  # Step 1: function 0 where the power-up function is not 0.
+        old = state.words[a][1 + index]
+        if old:
+            _mapping_write(console, run, state, baseline, a, 'io.' + terminal, 0,
+                           {terminal: records._input_assign_facts(old, 0)}, terminal, None, timeout)
+    _phase(console, ctx, state, output, terminal, drives, 'polarity0', timeout)  # Step 2.
+    for a in drives:  # Step 3: inversion at function 0, mapping unknown.
+        _mapping_write(console, run, state, baseline, a, 'io.input-polarity', state.words[a][0] | bit,
+                       {terminal: []}, terminal, {terminal: 'unknown'}, timeout)
+    row = _phase(console, ctx, state, output, terminal, drives, 'function0', timeout)
+    classes = row.get('classes', {})
+    for a in drives:
+        if classes.get(str(a)) in ('after', 'before'):
+            state.classes[(a, terminal)] = classes[str(a)]
+    for a in drives:  # Inverse write, admitted for either outcome.
+        _mapping_write(console, run, state, baseline, a, 'io.input-polarity', state.words[a][0] & ~bit,
+                       {terminal: []}, terminal, {terminal: 'unknown'}, timeout)
+    contradictions = [a for a in drives if (a, terminal) not in state.classes]
+    if contradictions:
+        raise probe.BenchError('%s at function 0: drives %s give neither class' % (terminal, contradictions))
+    _, problems = _status_check(_status_reads(console, drives, timeout), terminal, {a: 0 for a in drives})
+    if problems:
+        raise probe.BenchError('%s after the inverse write: %s' % (terminal, '; '.join(problems)))
+    pin = 14 + index  # Step 4: the PIN selector, the same inversion with the class stated.
+    for a in drives:
+        _mapping_write(console, run, state, baseline, a, 'io.' + terminal, pin,
+                       {terminal: records._input_assign_facts(0, pin)}, terminal, None, timeout)
+    for a in drives:
+        _mapping_write(console, run, state, baseline, a, 'io.input-polarity', state.words[a][0] | bit,
+                       {terminal: ['triggers-inhibited']}, terminal, {terminal: state.classes[(a, terminal)]}, timeout)
+    row = _phase(console, ctx, state, output, terminal, drives, 'pin', timeout)
+    for a in drives:
+        _mapping_write(console, run, state, baseline, a, 'io.input-polarity', state.words[a][0] & ~bit,
+                       {terminal: ['triggers-inhibited']}, terminal, {terminal: state.classes[(a, terminal)]}, timeout)
+    for a in drives:
+        _mapping_write(console, run, state, baseline, a, 'io.' + terminal, power_up[a],
+                       {terminal: records._input_assign_facts(pin, power_up[a])}, terminal, None, timeout)
+    differing = [a for a in drives if row.get('classes', {}).get(str(a)) != state.classes[(a, terminal)]]
+    if differing:
+        raise probe.BenchError('%s at PIN %d: drives %s differ from the function-0 class' % (terminal, pin, differing))
+
+
+def _frames(console, timeout):
+    """Owner frame count (debug ``observed``) and the latest admitted operation ID."""
+    debug = checked(console, 'debug', host_args=(), timeout_s=timeout)
+    drv = checked(console, 'drv', timeout_s=timeout)
+    return {'observed': debug.get('observed'), 'operation_id': drv.get('operation_id'), 'mode': debug.get('mode')}
+
+
+def _refused_before_tx(console, run, label, call, expect, timeout):
+    """One command expected to be refused locally: its reply and the frame counts around it."""
+    before = _frames(console, timeout)
+    reply = call()
+    after = _frames(console, timeout)
+    row = {'case': label, 'result': reply.get('result'), 'ok': reply.get('ok'), 'read_first': reply.get('read_first'),
+           'operation_id': reply.get('operation_id'), 'frames_before': before, 'frames_after': after}
+    row['frames_sent'] = (after['observed'] - before['observed']) if type(before['observed']) is int and \
+        type(after['observed']) is int else None
+    row['pass'] = (reply.get('ok') is False and row['frames_sent'] == 0 and
+                   before['operation_id'] == after['operation_id'] and
+                   (expect is None or reply.get('result') == expect[0]) and
+                   (expect is None or expect[1] is None or reply.get('read_first') == expect[1]))
+    return row
+
+
+def _install(console, tokens, timeout):
+    probe.io_qualification_arguments('io-qualification-install', tokens)
+    return console.command('io-qualification-install', host_args=tokens, timeout_s=timeout)
+
+
+def _record_cases(console, args, record, run, baseline):
+    """M05 and N01 on drive 1 against the built-in record (image with IoStatusRecord.h entry)."""
+    timeout = args.timeout
+    scenario = run.scenario
+    address = 1
+    view = _preflight(console, run, timeout)
+    before = {address: records.read_drive(console, address, ('io', 'config', 'state', 'tuning.filters'), timeout_s=timeout)}
+    diff = records.diff_fields(baseline, {address: records.raws_from(before[address])}, ('io', 'config', 'tuning.filters'))
+    run.folder.write_json('baseline_before.json', {'bench': records._bench_view(view), 'drives': _compact(before),
+                                                   'diff': [d for d in diff if d['status'] != 'equal'],
+                                                   'compared': len(diff)})
+    state = _MappingState(list(records.FIXTURE['input_drives']))
+    for a in state.words:
+        reply = records.read_group(console, a, 'io', timeout_s=timeout)
+        state.words[a] = list(reply['raw']) if reply.get('raw') else None
+    state.classes[(address, 'x3')] = 'after'  # The record under test; checked by every precondition read.
+    plan = scenario['restoration_plan']
+    detail = {'m05': [], 'n01': [], 'writes': state.writes}
+    try:
+        if any(d['status'] != 'equal' for d in diff) or not plan['admissible']:
+            raise probe.BenchError('drive 1 differs from the baseline or the restoration plan is not admissible')
+        frames = _frames(console, timeout)
+        if frames['mode'] != 'raw' or type(frames['observed']) is not int:
+            raise probe.BenchError('debug raw frame counter unavailable; no case')
+        _mapping_write(console, run, state, baseline, address, 'io.x3', 17, {'x3': ['triggers-inhibited']}, 'x3',
+                       None, timeout)
+        records.use_drive(console, address, timeout_s=timeout)
+        checked(console, 'io', driver_args=('read',), address=address, timeout_s=timeout)
+        checked(console, 'read-state', address=address, timeout_s=timeout)
+        unknown = _install(console, ('1', 'x3', '17', '1', 'assign', 'unknown', 'triggers-inhibited'), timeout)
+        detail['m05'].append({'case': 'install unknown', 'result': unknown.get('result'), 'ok': unknown.get('ok')})
+        detail['m05'].append(_refused_before_tx(console, run, 'io set input-polarity 8 1 after unknown', lambda: console.command(
+            'io', driver_args=('set', 'input-polarity', '8'), address=address, timeout_s=timeout), None, timeout))
+        checked(console, 'read-identity', address=address, timeout_s=timeout)
+        recorded = _mapping_write(console, run, state, baseline, address, 'io.input-polarity', 8,
+                                  {'x3': ['triggers-inhibited']}, 'x3', {'x3': 'recorded'}, timeout)
+        detail['m05'].append({'case': 'io set input-polarity 8 1 with recorded', 'readback': recorded['readback'],
+                              'written': recorded['written']})
+        inverse = _mapping_write(console, run, state, baseline, address, 'io.input-polarity', 0,
+                                 {'x3': ['triggers-inhibited']}, 'x3', {'x3': 'recorded'}, timeout)
+        detail['m05'].append({'case': 'io set input-polarity 0 1 with recorded', 'readback': inverse['readback'],
+                              'written': inverse['written']})
+        _mapping_write(console, run, state, baseline, address, 'io.x3', 0, {'x3': ['triggers-inhibited']}, 'x3',
+                       None, timeout)
+        m05_sent = unknown.get('ok') is False and detail['m05'][1]['pass']
+        m05_read = recorded['readback'] == 8 and inverse['readback'] == 0
+        run.verdict('M05', 'sent', 'PASS' if m05_sent else 'FAIL',
+                    None if m05_sent else 'the unknown-mapping path was not refused before TX', ['status_record.json'])
+        run.verdict('M05', 'read back', 'PASS' if m05_read else 'FAIL',
+                    None if m05_read else 'recorded-path readback %s/%s' % (recorded['readback'], inverse['readback']),
+                    ['status_record.json'])
+        # N01: input filters outside the kept set (never a candidate; a candidate the measurement dropped).
+        for value in (4, 100):
+            step = _filter_step(baseline, address, value)
+            records.use_drive(console, address, timeout_s=timeout)
+            checked(console, 'read-identity', address=address, timeout_s=timeout)
+            checked(console, 'read-config', address=address, timeout_s=timeout)
+            checked(console, 'tuning', driver_args=('filters', 'read'), address=address, timeout_s=timeout)
+            checked(console, 'io', driver_args=('read',), address=address, timeout_s=timeout)
+            probe.install_input_facts(console, address, 'configure', timeout_s=timeout)
+            detail['n01'].append(_refused_before_tx(console, run, 'tuning filters set input-filter %d 1' % value,
+                                                    lambda: call_write(console, step, timeout), None, timeout))
+        # N01: recorded without a fresh identity (a binding change since the identity read).
+        records.use_drive(console, 2, timeout_s=timeout)
+        records.use_drive(console, address, timeout_s=timeout)
+        checked(console, 'io', driver_args=('read',), address=address, timeout_s=timeout)
+        checked(console, 'read-state', address=address, timeout_s=timeout)
+        detail['n01'].append(_refused_before_tx(console, run, 'install recorded without a fresh identity', lambda: _install(
+            console, ('1', 'x3', '0', '1', 'assign', 'recorded'), timeout), ('mapping_not_recorded', 'read identity'),
+            timeout))
+        # N01: an explicit mapping against the record.
+        checked(console, 'read-identity', address=address, timeout_s=timeout)
+        checked(console, 'io', driver_args=('read',), address=address, timeout_s=timeout)
+        checked(console, 'read-state', address=address, timeout_s=timeout)
+        detail['n01'].append(_refused_before_tx(console, run, 'install before against the record', lambda: _install(
+            console, ('1', 'x3', '0', '1', 'assign', 'before'), timeout), ('mapping_contradicts_record', None), timeout))
+        ok = all(row['pass'] for row in detail['n01'])
+        run.verdict('N01', 'sent', 'PASS' if ok else 'FAIL',
+                    None if ok else 'a refusal sent frames or named another reason', ['status_record.json'])
+    finally:
+        if console.synchronized:
+            detail['outputs_off'] = records.outputs_off(console, timeout_s=timeout)
+            for step in plan['steps']:
+                if step['key'] == 'io.input-polarity':
+                    step['mappings'] = {'x3': 'recorded'}
+            records.use_drive(console, address, timeout_s=timeout)  # The identity below must be of this binding.
+            checked(console, 'read-identity', address=address, timeout_s=timeout)
+            detail['restoration'] = _restore_written(console, run, plan, timeout)
+            final = records.read_drive(console, address, ('io', 'tuning.filters'), timeout_s=timeout)
+            detail['final'] = {k: v.get('raw') for k, v in final.items()}
+        run.folder.write_json('status_record.json', detail)
+
+
+def call_write(console, step, timeout):
+    return records.call(console, step['write'], timeout_s=timeout)
+
+
+def _status_mapping(console, args, record, run, baseline):
+    if args.mapping_cases == 'record':
+        return _record_cases(console, args, record, run, baseline)
+    timeout = args.timeout
+    scenario = run.scenario
+    cid = args.case or 'M'
+    drives = list(records.FIXTURE['input_drives'])
+    view = _preflight(console, run, timeout)
+    ctx = {'max_age_ms': scenario['max_age_ms'], 'running_members': [], 'interlock': []}
+    ctx['declarations'] = records.check_declarations(console, timeout_s=timeout)
+    ctx['input_agreement'] = records.check_input_agreement(console, timeout_s=timeout)
+    before = {a: records.read_drive(console, a, ('io', 'config', 'state'), select=False, timeout_s=timeout)
+              for a in drives}
+    diff = records.diff_fields(baseline, {a: records.raws_from(r) for a, r in before.items()}, ('io', 'config'))
+    run.folder.write_json('baseline_before.json', {'bench': records._bench_view(view), 'drives': _compact(before),
+                                                   'diff': [d for d in diff if d['status'] != 'equal'],
+                                                   'compared': len(diff)})
+    state = _MappingState(drives)
+    for a in drives:
+        state.words[a] = list(before[a]['io']['raw']) if before[a]['io'].get('raw') else None
+    detail = {'declarations': ctx['declarations'], 'input_agreement': ctx['input_agreement'], 'rows': state.rows,
+              'writes': state.writes, 'interlock': ctx['interlock']}
+    plan = scenario['restoration_plan']
+    ambiguous = None
+    terminals = args.terminals or list(records.TERMINALS)
+    try:
+        if ctx['declarations']['verdict'] != 'PASS' or ctx['input_agreement']['verdict'] != 'PASS':
+            raise probe.BenchError('declaration or input agreement failed; no write and no bench output')
+        if any(d['status'] != 'equal' for d in diff) or not plan['admissible']:
+            raise probe.BenchError('drives differ from the baseline or the restoration plan is not admissible; no write')
+        for terminal in terminals:
+            _mapping_terminal(console, run, ctx, state, baseline, terminal, drives, timeout)
+    except _Ambiguous as error:
+        ambiguous = str(error)
+        run.deviations.append('ambiguous write: every source off, no further stimulus or write; ' + ambiguous)
+        raise
+    finally:
+        if console.synchronized:
+            detail['outputs_off'] = records.outputs_off(console, timeout_s=timeout)
+            if ambiguous is None and plan['admissible']:
+                # Polarity first; at a nonzero function it needs the class measured in step 3.
+                for step in plan['steps']:
+                    if step['key'] == 'io.input-polarity':
+                        step['mappings'] = {t: state.classes[(step['drive'], t)] for t in records.TERMINALS
+                                            if (step['drive'], t) in state.classes}
+                detail['restoration'] = _restore_written(console, run, plan, timeout)
+            final = {a: records.read_group(console, a, 'io', timeout_s=timeout) for a in drives}
+            detail['final_io'] = {str(a): r.get('raw') for a, r in final.items()}
+            detail['classes'] = {'%s/%d' % (t, a): c for (a, t), c in sorted(state.classes.items())}
+        run.folder.write_json('status_mapping.json', detail)
+    _mapping_verdicts(run, cid, state, terminals, detail, baseline, drives)
+
+
+def _mapping_verdicts(run, cid, state, terminals, detail, baseline, drives):
+    rows = {(r['terminal'], r['phase']): r for r in state.rows}
+    m01 = [rows.get((t, 'polarity0')) for t in terminals]
+    ok = all(r and not r.get('problems') and r.get('on') for r in m01)
+    reason = None if ok else 'status did not follow the output at polarity 0 on every drive'
+    run.verdict(cid + '01', 'drive-reported', 'PASS' if ok else 'FAIL', reason, ['status_mapping.json'])
+    run.verdict(cid + '01', 'controller-timestamped', 'PASS' if ok else 'FAIL', reason, ['status_mapping.json'])
+    for case, phase in (('02', 'function0'), ('03', 'pin')):
+        found = [(t, a, (rows.get((t, phase)) or {}).get('classes', {}).get(str(a))) for t in terminals for a in drives]
+        classes = {c for _, _, c in found}
+        complete = all(c in ('after', 'before') for _, _, c in found)
+        verdict = 'PASS' if complete and len(classes) == 1 else 'FAIL'
+        run.verdict(cid + case, 'drive-reported', verdict,
+                    None if verdict == 'PASS' else 'classes %s: no record' % found, ['status_mapping.json'])
+    expected = {a: [records.baseline_field(baseline, a, 'io.' + n)['value'] for n in probe.IO_FIELDS] for a in drives}
+    final = detail.get('final_io') or {}
+    ok = all(final.get(str(a)) == expected[a] for a in drives)
+    run.verdict(cid + '04', 'read back', 'PASS' if ok else 'FAIL',
+                None if ok else 'I/O words %s, baseline %s' % (final, expected), ['status_mapping.json'])
+
+
+# --------------------------------------------------------------------------
+# Wired bench 05: input filter (0x0108) delay and pulse width
+
+TIMING_WIDTHS_MS = (1, 2, 3, 5, 7, 10, 12, 15, 20, 30, 50)
+TIMING_CANDIDATES = (0, 1, 2, 3, 5, 10, 20, 50, 100)  # Prompt 05 candidate set (IoStatusRecord.h)
+TIMING_DELAY_HOLD_MS = 200
+TIMING_POST_MS = 300   # Polling continues at least this long after the expected OFF.
+TIMING_CAP_MS = 1300   # ... and at most this long when the pulse is not seen back at 0.
+# After the first sample of a trial the polls pause a random 0..TIMING_PHASE_MS
+# (seeded per run, recorded per trial). Without it every trial samples the
+# same instants after the ON and the OFF, and the brackets cannot narrow.
+TIMING_PHASE_MS = 80
+
+
+def _timing_plan(args):
+    """Cases, commands, bounds and expected evidence of one input-timing run."""
+    value, address = args.filter_value, args.address
+    cases = []
+    if value != 2:
+        cases.append(_case('F01', 'filter %d written through the CONFIGURE path and read back equal' % value,
+                           ['read back']))
+    cases.append(_case('F02', '%d x mosfet2 %d ms on drive %d at filter %d: on and off intervals and poll spacing'
+                       % (args.delay_trials, TIMING_DELAY_HOLD_MS, address, value),
+                       ['controller-timestamped', 'drive-reported']))
+    if args.width_trials:
+        cases.append(_case('F03', 'mosfet2 W ms for W in %s, %d trials each: observed, missed or indeterminate'
+                           % (list(args.widths), args.width_trials), ['controller-timestamped', 'drive-reported']))
+    if args.compare_relay:
+        cases.append(_case('F04', '%d x relay2 (X1) and %d x mosfet1 (X0), %d ms: delay difference'
+                           % (args.delay_trials, args.delay_trials, TIMING_DELAY_HOLD_MS), ['controller-timestamped']))
+    commands = ['session: wiring of 1, 2, 4; io read and read config of 1, 2, 4; debug raw',
+                'useaddr %d; read identity, config, tuning filters, io, state of %d' % (address, address)]
+    if value != 2:
+        commands.append('tuning filters set input-filter %d %d with four CONFIGURE records (read config, read state, '
+                        'io qualification install %d xN F P configure unknown); read config; tuning filters read %d'
+                        % (value, address, address, address))
+    commands += ['per trial: interlock of the output (drive %d read last); bench on OUTPUT HOLD; back-to-back '
+                 'read state %d (%d outstanding) to at least %d ms after the expected OFF; bench'
+                 % (address, address, args.poll_depth, TIMING_POST_MS),
+                 'restoration plan steps; debug off']
+    bounds = {'drive': address, 'filter': value, 'delay_trials': args.delay_trials, 'debug': args.traffic,
+              'phase_pause_ms': [0, TIMING_PHASE_MS], 'phase_seed': args.phase_seed,
+              'delay_hold_ms': TIMING_DELAY_HOLD_MS, 'widths_ms': list(args.widths) if args.width_trials else [],
+              'width_trials': args.width_trials, 'compare_relay': args.compare_relay, 'poll_depth': args.poll_depth,
+              'post_ms': TIMING_POST_MS, 'cap_ms': TIMING_CAP_MS, 'relay_min_hold_ms': 20, 'no motion': True}
+    expected = {'read back': 'tuning filters read after the write and after the restoration',
+                'controller-timestamped': 'GPIO on/off times; per sample the 0x0008 request start and reply end',
+                'drive-reported': 'raw input status of every sample'}
+    return cases, commands, bounds, expected
+
+
+def _filter_step(baseline, address, value):
+    field = records.baseline_field(baseline, address, 'filters.input-filter')
+    command, kwargs, text = records.write_call(field, value, address)
+    return {'drive': address, 'key': 'filters.input-filter', 'index': None, 'register': field['register'],
+            'read': 'tuning.filters', 'baseline': field['value'], 'candidate': value, 'target': value,
+            'route': 'ordinary', 'purpose': 'configure', 'facts': {},
+            'write': {'command': command, 'kwargs': kwargs, 'text': text}}
+
+
+def _poll(console, address, depth, timeout, done, replies, pause_s=0.0):
+    """Back-to-back ``read state`` of one drive with ``depth`` requests outstanding,
+    appended to ``replies``, until ``done(latest_serviced_us)``; one host pause
+    of ``pause_s`` after the first reply. A failed poll ends the trial; it is
+    reported, never retried."""
+    handles, latest = [], 0
+    while True:
+        while len(handles) < depth and not done(latest):
+            handles.append(console.begin('read-state', address=address, timeout_s=timeout))
+        if not handles:
+            return
+        reply = console.wait(handles.pop(0), release=True)
+        replies.append(reply)
+        if len(replies) == 1 and pause_s > 0 and not handles:
+            console.sleep(pause_s)
+        if reply.get('ok') and type(reply.get('serviced_us')) is int:
+            latest = max(latest, reply['serviced_us'])
+        else:
+            latest = 1 << 62
+
+
+def _timing_trial(console, ctx, address, output, hold_ms, depth, timeout, rng=None):
+    """One interlocked pulse and its samples; problems list alarms, RUNNING and foreign inputs."""
+    terminal = records.FIXTURE['outputs'][output]
+    bit = 1 << records.TERMINALS.index(terminal)
+    records.bench_on(console, output, hold_ms, ctx, timeout_s=timeout)
+    entry = ctx['interlock'][-1]
+    on_us = entry['on']['outputs'][output]['on_us']
+    expected_off = on_us + hold_ms * 1000
+    replies, seen = [], {'checked': 0, 'on': False, 'back': False}
+
+    def done(latest):
+        for reply in replies[seen['checked']:]:
+            sample = records.io_sample(address, reply)
+            if sample is not None and sample['reply_end_us'] >= on_us:
+                if sample['raw_inputs'] & bit:
+                    seen['on'] = True
+                elif seen['on']:
+                    seen['back'] = True
+        seen['checked'] = len(replies)
+        if latest < expected_off + TIMING_POST_MS * 1000:
+            return False
+        return (seen['on'] and seen['back']) or latest >= expected_off + TIMING_CAP_MS * 1000
+    pause_ms = round(rng.uniform(0, TIMING_PHASE_MS), 3) if rng is not None else 0.0
+    _poll(console, address, depth, timeout, done, replies, pause_ms / 1000.0)
+    view = checked(console, 'bench', host_args=(), timeout_s=timeout)
+    o = next(x for x in view['outputs'] if x['name'] == output)
+    row = {'output': output, 'hold_ms': hold_ms, 'on_us': on_us, 'off_us': o['off_us'], 'off_reason': o['off_reason'],
+           'active_after': o['active'], 'interlock_row': entry['row'], 'pause_ms': pause_ms,
+           'pre_sample': entry['samples'].get(address), 'samples': [], 'failed_polls': 0}
+    problems = []
+    for reply in replies:
+        sample = records.io_sample(address, reply)
+        s = _state_summary(reply)
+        if sample is None:
+            row['failed_polls'] += 1
+            problems.append('poll %s failed: %s' % (reply.get('operation_id'), reply.get('result', reply.get('outcome'))))
+            continue
+        row['samples'].append(sample)
+        if s['running'] is not False or s['raw_alarm'] or s['alarm_flag'] is not False:
+            problems.append('alarm or RUNNING in operation %s' % s['operation_id'])
+        if sample['raw_inputs'] & ~bit:
+            problems.append('input other than %s active (raw %d)' % (terminal, sample['raw_inputs']))
+    if o['active'] or o['off_reason'] not in ('hold_elapsed', 'hold_elapsed_late'):
+        problems.append('%s active=%s off reason %s after the trial' % (output, o['active'], o['off_reason']))
+    row['problems'] = problems
+    return row, bit
+
+
+def _analyse_trials(rows, bit, window_end_us=None):
+    """Per trial ``records.timing_trial``; ``window_end_us`` is relative to the OFF (None: unknown)."""
+    out = []
+    for row in rows:
+        samples = ([row['pre_sample']] if row.get('pre_sample') else []) + row['samples']
+        end = None if window_end_us is None else row['off_us'] + window_end_us
+        result = records.timing_trial(samples, on_us=row['on_us'], off_us=row['off_us'], bit=bit, window_end_us=end)
+        result.update(output=row['output'], hold_ms=row['hold_ms'], off_reason=row['off_reason'],
+                      problems=row['problems'], failed_polls=row['failed_polls'])
+        out.append(result)
+    return out
+
+
+def _delay_summary(trials):
+    """Interval bounds (ms, relative to the edge) and spacing over a set of trials."""
+    def stats(values):
+        values = sorted(values)
+        return {'min': values[0], 'median': values[len(values) // 2], 'max': values[-1]} if values else None
+    summary = {'trials': len(trials)}
+    for edge in ('on', 'off'):
+        measured = [t[edge] for t in trials if t[edge]['status'] == 'measured']
+        summary[edge] = {'measured': len(measured),
+                         'lower_ms': stats([m['relative_us'][0] / 1000.0 for m in measured]),
+                         'upper_ms': stats([m['relative_us'][1] / 1000.0 for m in measured])}
+        if measured:  # Valid only if the delay is the same in every trial: [largest lower, smallest upper].
+            summary[edge]['bracket_if_constant_ms'] = [summary[edge]['lower_ms']['max'], summary[edge]['upper_ms']['min']]
+    spacing = [t['spacing_us'] for t in trials if t.get('spacing_us')]
+    summary['spacing_ms'] = {'median': stats([s['median'] / 1000.0 for s in spacing]),
+                             'max': stats([s['max'] / 1000.0 for s in spacing])}
+    summary['width_ms'] = stats([t['width_us'] / 1000.0 for t in trials])
+    summary['observed'] = sum(1 for t in trials if t['observed'])
+    return summary
+
+
+def _input_timing(console, args, record, run, baseline):
+    timeout = args.timeout
+    scenario = run.scenario
+    address, value, depth = args.address, args.filter_value, args.poll_depth
+    view = _preflight(console, run, timeout)
+    ctx = {'max_age_ms': scenario['max_age_ms'], 'running_members': [], 'interlock': [], 'read_last': address}
+    ctx['declarations'] = records.check_declarations(console, timeout_s=timeout)
+    ctx['input_agreement'] = records.check_input_agreement(console, timeout_s=timeout)
+    records.use_drive(console, address, timeout_s=timeout)
+    keys = ('io', 'config', 'tuning.filters')
+    before = {a: records.read_drive(console, a, keys, select=False, timeout_s=timeout)
+              for a in records.FIXTURE['input_drives']}
+    diff = records.diff_fields(baseline, {a: records.raws_from(r) for a, r in before.items()}, keys)
+    run.folder.write_json('baseline_before.json', {'bench': records._bench_view(view), 'drives': _compact(before),
+                                                   'diff': [d for d in diff if d['status'] != 'equal'],
+                                                   'compared': len(diff)})
+    traffic, emit = [], console.emit
+
+    def tap(event, **fields):
+        if event == 'traffic' and len(traffic) < 150000:
+            traffic.append(fields['response'])
+        emit(event, **fields)
+    console.emit = tap
+    detail = {'drive': address, 'filter': value, 'poll_depth': depth, 'declarations': ctx['declarations'],
+              'input_agreement': ctx['input_agreement'], 'interlock_rows': [], 'delay': [], 'widths': {}, 'relay': {}}
+    plan = scenario['restoration_plan']
+    stage = 'start'
+    rng = random.Random(args.phase_seed)
+    detail['phase'] = {'seed': args.phase_seed, 'max_ms': TIMING_PHASE_MS}
+    try:
+        if ctx['declarations']['verdict'] != 'PASS' or ctx['input_agreement']['verdict'] != 'PASS':
+            raise probe.BenchError('declaration or input agreement failed; no write and no bench output')
+        if any(d['status'] != 'equal' for d in diff) or not plan['admissible']:
+            raise probe.BenchError('drives differ from the baseline or the restoration plan is not admissible; no write')
+        detail['debug_before'] = {k: v for k, v in checked(console, 'debug', host_args=(), timeout_s=timeout).items()
+                                  if k in ('mode', 'observed', 'emitted', 'dropped', 'missed', 'overwritten')}
+        if value != 2:
+            stage = 'filter write'
+            records.use_drive(console, address, timeout_s=timeout)
+            step = _filter_step(baseline, address, value)
+
+            def check(out):
+                bench = checked(console, 'bench', host_args=(), timeout_s=timeout)
+                on = [o['name'] for o in bench['outputs'] if o['active']]
+                if on:
+                    raise probe.BenchError('bench output on before the filter write: ' + ', '.join(on))
+            outcome = records.apply_write(console, step, timeout_s=timeout, check=check)
+            ending, _ = records.readback(console, step, timeout_s=timeout)
+            run.field(step, baseline=step['baseline'], ending=ending, restored=ending == step['baseline'])
+            detail['filter_write'] = {'result': outcome['result'], 'readback': ending, 'uncertain': outcome['uncertain']}
+            if outcome['uncertain']:
+                run.field(step, uncertain=True, reason='filter write uncertain; not replayed')
+                raise probe.BenchError('filter write uncertain; no replay')
+            run.verdict('F01', 'read back', 'PASS' if outcome['written'] and ending == value else 'FAIL',
+                        None if ending == value else 'read back %s, requested %d' % (ending, value), ['input_timing.json'])
+            if ending != value:
+                raise probe.BenchError('filter write read back %s, requested %d' % (ending, value))
+        stage = 'delay'
+        rows = []
+        for _ in range(args.delay_trials):
+            row, bit = _timing_trial(console, ctx, address, 'mosfet2', TIMING_DELAY_HOLD_MS, depth, timeout, rng)
+            rows.append(row)
+            if row['problems']:
+                raise probe.BenchError('delay trial: ' + '; '.join(row['problems']))
+        detail['delay_rows'] = rows
+        detail['delay'] = _analyse_trials(rows, 8)
+        detail['delay_summary'] = _delay_summary(detail['delay'])
+        on_up, off_up = detail['delay_summary']['on']['upper_ms'], detail['delay_summary']['off']['upper_ms']
+        window = None
+        if on_up and off_up and detail['delay_summary']['on']['measured'] == len(rows) and \
+                detail['delay_summary']['off']['measured'] == len(rows):
+            window = int(max(on_up['max'], off_up['max']) * 1000)
+        detail['window_after_off_us'] = window
+        if args.width_trials:
+            stage = 'width'
+            for width in args.widths:
+                wrows = []
+                for _ in range(args.width_trials):
+                    row, bit = _timing_trial(console, ctx, address, 'mosfet2', width, depth, timeout, rng)
+                    wrows.append(row)
+                    if row['problems']:
+                        raise probe.BenchError('width trial %d ms: %s' % (width, '; '.join(row['problems'])))
+                trials = _analyse_trials(wrows, 8, window)
+                detail['widths'][str(width)] = {'rows': wrows, 'trials': trials, 'counts': {
+                    c: sum(1 for t in trials if t['class'] == c) for c in ('observed', 'missed', 'indeterminate')},
+                    'actual_width_ms': _delay_summary(trials)['width_ms'],
+                    'max_instant_gap_ms': max((t.get('max_instant_gap_us') or 0 for t in trials), default=0) / 1000.0}
+        if args.compare_relay:
+            stage = 'relay'
+            for output in ('relay2', 'mosfet1'):
+                crows = []
+                for _ in range(args.delay_trials):
+                    row, bit = _timing_trial(console, ctx, address, output, TIMING_DELAY_HOLD_MS, depth, timeout, rng)
+                    crows.append(row)
+                    if row['problems']:
+                        raise probe.BenchError('%s trial: %s' % (output, '; '.join(row['problems'])))
+                trials = _analyse_trials(crows, bit)
+                detail['relay'][output] = {'rows': crows, 'trials': trials, 'summary': _delay_summary(trials)}
+        stage = 'done'
+        detail['debug_after'] = {k: v for k, v in checked(console, 'debug', host_args=(), timeout_s=timeout).items()
+                                 if k in ('mode', 'observed', 'emitted', 'dropped', 'missed', 'overwritten')}
+    finally:
+        console.emit = emit
+        detail['stage'] = stage
+        if console.synchronized:
+            detail['outputs_off'] = records.outputs_off(console, timeout_s=timeout)
+            if plan['admissible'] and plan['steps']:
+                detail['restoration'] = _restore_written(console, run, plan, timeout)
+        detail['interlock_rows'] = [{k: e.get(k) for k in ('output', 'decision', 'row', 'reason', 'age_at_on_ms')}
+                                    for e in ctx['interlock']]
+        detail['traffic_records'] = len(traffic)
+        run.folder.write_json('input_timing.json', detail)
+        run.folder.write_json('traffic.json', traffic)
+    _timing_verdicts(run, args, detail)
+
+
+def _timing_verdicts(run, args, detail):
+    summary = detail.get('delay_summary')
+    if summary:
+        complete = summary['on']['measured'] == summary['trials'] == summary['off']['measured']
+        level = 'PASS' if complete else 'indeterminate'
+        reason = None if complete else '%d/%d on and %d/%d off intervals measured' % (
+            summary['on']['measured'], summary['trials'], summary['off']['measured'], summary['trials'])
+        run.verdict('F02', 'controller-timestamped', level, reason, ['input_timing.json'])
+        run.verdict('F02', 'drive-reported', 'PASS' if summary['observed'] == summary['trials'] else 'indeterminate',
+                    None if summary['observed'] == summary['trials'] else '%d of %d pulses observed'
+                    % (summary['observed'], summary['trials']), ['input_timing.json'])
+    if args.width_trials and len(detail['widths']) == len(args.widths):
+        for level in ('controller-timestamped', 'drive-reported'):
+            run.verdict('F03', level, 'PASS', None, ['input_timing.json'])
+    if args.compare_relay and len(detail['relay']) == 2:
+        run.verdict('F04', 'controller-timestamped', 'PASS', None, ['input_timing.json'])
+
+
 FOLDER_RUNNERS = {'input-map': _input_map, 'y0-map': _y0_map, 'baseline-compare': _baseline_compare,
-                  'baseline-capture': _baseline_capture, 'restore': _restore}
+                  'baseline-capture': _baseline_capture, 'restore': _restore, 'status-mapping': _status_mapping,
+                  'input-timing': _input_timing}
 
 
 def run_folder(args, *, port_opener=None, check_board=None):
@@ -1070,7 +1915,9 @@ def run_folder(args, *, port_opener=None, check_board=None):
     try:
         run_recorded(port=args.port, scenario=args.scenario, inputs={'run': folder.name, 'case': args.case},
                      run=work, address=args.address, timeout_s=args.timeout,
-                     debug='raw' if args.scenario == 'y0-map' else None, firmware=args.firmware,
+                     debug='raw' if args.scenario == 'y0-map' or (args.scenario == 'input-timing' and args.traffic == 'raw')
+                     or (args.scenario == 'status-mapping' and args.mapping_cases == 'record') else None,
+                     firmware=args.firmware,
                      port_opener=opener, max_records=args.evidence_records,
                      max_bytes=args.evidence_mib * 1024 * 1024,
                      paths=dict(summary=folder / 'summary.json', jsonl=folder / 'session.jsonl',

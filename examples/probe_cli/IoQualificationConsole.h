@@ -92,7 +92,10 @@ inline const char* parse(const char* const* tokens, std::size_t count, IoQualifi
     if (count < (input ? 6U : 9U) || !word(tokens[2], input ? 17 : 11, request.function) ||
         !word(tokens[3], 1, request.polarity)) return "invalid_arguments";
     if (input) {
-        if (!purpose(tokens[4], request.purpose) || !mapping(tokens[5], request.input.statusMapping) ||
+        // `recorded` defers the mapping to the application record (wired bench 05).
+        request.recordedMapping = !std::strcmp(tokens[5], "recorded");
+        if (!purpose(tokens[4], request.purpose) ||
+            (!request.recordedMapping && !mapping(tokens[5], request.input.statusMapping)) ||
             (request.member && request.purpose != IoPurpose::FINITE_MOVE)) return "invalid_arguments";
         request.input.supplied = true;
         for (std::size_t i = 6; i < count; ++i) {

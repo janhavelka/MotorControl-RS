@@ -104,6 +104,33 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+On 19 November [wired bench 05](reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md)
+flashed three Arduino `bench_s3_load_timer` images built from base `852ea51` plus
+the uncommitted prompt 05 tree, each after a passing `before_flash_check`, four
+regions hash-verified: the measurement image
+`874A1E442659B538B8D543E31A0C713908392C26FE948D22DFA96F4477E22F4F` (candidate
+filter set, no record; firmware diff SHA-256 `D85C0E0C...4849B` plus
+`IoStatusRecord.h`), then the record image
+`FBA6F1BE8FFE347978F8E29DCCB3142ADBCEB0272A1890592ED06FACD0E26837` (record and
+committed filter set; firmware diff SHA-256
+`F6D1E47BDDD461B73DB530FF159DA12045B5202078F1BA7DCDA52B9D1A55C179`,
+`IoStatusRecord.h` `2548D970...5C146D`), and last the final image
+`4C67FABA697EFFB38E0A0A97860DDFD8469239EC05900D2C9AC937AB7C05D006` (firmware
+diff `F70FBE8C53D09144DC9AF93E0BD5C59D5DF3C2CAB882D329BDB3E9D46D87D6ED`, the
+same header; only the regenerated `INPUT_FILTER` ledger note differs from the
+record image). The final tree's native ESP-IDF 5.5.5 image
+(`3B96064A75C9711D7EA53D1AB37EE40DE4420A78CF93020ECA568B18612DE8BA`) was built,
+not flashed. Ending state:
+
+- **Board:** prompt 05 final image, all bench outputs off, `aux1` active,
+  drive 1 selected with board declarations, group empty, debug off, COM13
+  closed.
+- **Drives 1/2/4:** enabled, stopped, alarm-free, raw positions
+  7,750/7,524/7,513 (unchanged), I/O `[0,1,2,3,0,0,0,0,0]`, input filter 2.
+- **Settings:** `baseline-compare` after the last write: 573 of 573 fields equal
+  the committed baseline. Every written polarity, function and filter word was
+  restored and read back; nothing was saved, no drive restarted.
+
 On 19 November [wired bench 04](reports/2026-11-19_wired_bench_04_harness.md)
 flashed nothing and reset nothing: the board still runs the prompt 03 Arduino
 image below (`FC96A712...BE51CD43`), whose firmware sources equal commit

@@ -14,6 +14,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <cstdio>
+#include <string>
 #include <vector>
 
 namespace {
@@ -247,6 +248,140 @@ void polarityAndInhibition() {
     assert(update(input(7),id));
     assert(result(id).driverContext->prerequisites.actualInputs == 1);
     until([&] { return !result(id).pending; }); assert(result(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS);
+}
+ESS::DriverRequest polarityOnly(uint16_t mask) {
+    ESS::DriverRequest request; request.group = ESS::DriverGroup::IO;
+    request.configurationGeneration = app->axis.generation;
+    request.fields = static_cast<uint32_t>(ESS::DriverField::INPUT_POLARITY); request.inputPolarity = mask;
+    return request;
+}
+// Wired bench 05: a connected no-function terminal may be inverted with stated
+// facts and UNKNOWN mapping, both ways and for both status outcomes. A function
+// on either side, absent facts or a combined assignment stay refused.
+void connectedNoFunctionInversion() {
+    for (uint8_t terminal = 0; terminal < 4; ++terminal)
+        for (uint16_t from : {uint16_t(0),uint16_t(1)})
+            for (uint16_t level : {uint16_t(0),uint16_t(1)}) {
+                if (!from && level) continue; // Default polarity, source off: the bit reads 0.
+                fresh(); wiring(terminal,InputWiring::CONNECTED);
+                registers[1][0x40] = static_cast<uint16_t>(from << terminal);
+                registers[1][8] = static_cast<uint16_t>(level << terminal); ioBaseline();
+                const auto request = polarityOnly(static_cast<uint16_t>((from ^ 1) << terminal));
+                refused(request); // Connected: no facts, no write.
+                auto q = facts(terminal); q.function = 0; q.polarity = from ^ 1;
+                q.input.statusMapping = ESS::IoStatusMapping::UNKNOWN; q.input.externalTriggersInhibited = false;
+                assert(installIoQualification(q));
+                uint32_t id = 0; assert(update(request,id));
+                until([&] { return !result(id).pending; });
+                const auto& context = *result(id).driverContext;
+                assert(context.outcome == ESS::DriverOutcome::SUCCESS && context.progress[7].acknowledged);
+                assert(registers[1][0x40] == ((from ^ 1) << terminal));
+            }
+    for (uint16_t function : {uint16_t(1),uint16_t(2),uint16_t(7),uint16_t(14)}) {
+        // A stored function: the polarity record and the write are refused.
+        fresh(); wiring(0,InputWiring::CONNECTED); registers[1][0x41] = function; ioBaseline();
+        auto q = facts(0); q.function = function; q.polarity = 1;
+        q.input.statusMapping = ESS::IoStatusMapping::UNKNOWN; q.input.protectionRemovalQualified = function == 2;
+        assert(!installIoQualification(q)); refused(polarityOnly(1));
+        // One candidate that inverts and assigns the function: refused by the
+        // application here and by the core (io_test).
+        fresh(); wiring(0,InputWiring::CONNECTED); ioBaseline();
+        q = facts(0); q.function = function; q.polarity = 1; q.input.statusMapping = ESS::IoStatusMapping::UNKNOWN;
+        assert(!installIoQualification(q)); refused(input(function,1,true));
+        if (function == 14) { // The same with a stated mapping is admitted: 14-17 are passive selectors.
+            q.input.statusMapping = ESS::IoStatusMapping::AFTER_INVERSION; assert(installIoQualification(q));
+            uint32_t id = 0; assert(update(input(function,1,true),id));
+            until([&] { return !result(id).pending; });
+            assert(result(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS);
+        }
+    }
+    // Unconnected: the passive no-function inversion still needs no facts.
+    fresh(); wiring(0,InputWiring::UNCONNECTED); ioBaseline();
+    uint32_t id = 0; assert(update(polarityOnly(1),id));
+    until([&] { return !result(id).pending; });
+    assert(result(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS);
+}
+std::string consoleReply(const std::string& line) {
+    Serial.output.clear(); Serial.input = line + "\n";
+    until([] { return Serial.input.empty() && Serial.output.find("\"type\":\"reply\"") != std::string::npos &&
+                      Serial.output.find('\n') != std::string::npos; });
+    for (unsigned i = 0; i < 50; ++i) step();
+    return Serial.output;
+}
+// Wired bench 05: the application record of the measured status mapping.
+void recordedMapping() {
+    const auto& record = RECORDED_INPUT_MAPPINGS[0];
+    assert(sizeof(RECORDED_INPUT_MAPPINGS) / sizeof(RECORDED_INPUT_MAPPINGS[0]) == 1);
+    assert(record.model == 0x4EEA && record.firmware == 0x0029 && record.sourceId == 20261119);
+    for (const auto mapping : record.inputs) assert(mapping == ESS::IoStatusMapping::AFTER_INVERSION);
+    fresh(); wiring(3,InputWiring::CONNECTED); registers[1][0x44] = 17; ioBaseline();
+    auto mapping = ESS::IoStatusMapping::UNKNOWN;
+    assert(!copyRecordedInputMapping(1,3,mapping) && mapping == ESS::IoStatusMapping::UNKNOWN); // No identity read.
+    auto before = frames.size();
+    auto text = consoleReply("@60 io qualification install 1 x3 17 1 assign recorded triggers-inhibited");
+    assert(text.find("\"result\":\"mapping_not_recorded\"") != std::string::npos &&
+           text.find("\"read_first\":\"read identity\"") != std::string::npos);
+    assert(!valid(3) && frames.size() == before);
+    refused(polarityOnly(8));
+    read(ESS::ReadKind::IDENTITY);
+    assert(copyRecordedInputMapping(1,3,mapping) && mapping == ESS::IoStatusMapping::AFTER_INVERSION);
+    assert(!copyRecordedInputMapping(1,4,mapping) && !copyRecordedInputMapping(2,3,mapping)); // Outputs; another target.
+    // M05: mapping unknown is refused for the PIN inversion, recorded is admitted.
+    text = consoleReply("@61 io qualification install 1 x3 17 1 assign unknown triggers-inhibited");
+    assert(text.find("\"ok\":false") != std::string::npos && !valid(3));
+    refused(polarityOnly(8));
+    text = consoleReply("@62 io qualification install 1 x3 17 1 assign recorded triggers-inhibited");
+    assert(text.find("\"result\":\"done\"") != std::string::npos && valid(3));
+    IoQualification installed; bool current = false;
+    assert(copyIoQualification(1,3,IoPurpose::ASSIGN,installed,current) && current &&
+           installed.input.statusMapping == ESS::IoStatusMapping::AFTER_INVERSION);
+    uint32_t id = 0; assert(update(polarityOnly(8),id));
+    until([&] { return !result(id).pending; });
+    assert(result(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS && registers[1][0x40] == 8);
+    // The inverse write with the record, then without facts: refused.
+    fresh(); wiring(3,InputWiring::CONNECTED); registers[1][0x44] = 17; registers[1][0x40] = 8; registers[1][8] = 8;
+    ioBaseline(); read(ESS::ReadKind::IDENTITY);
+    refused(polarityOnly(0));
+    text = consoleReply("@63 io qualification install 1 x3 17 0 assign recorded triggers-inhibited");
+    assert(text.find("\"result\":\"done\"") != std::string::npos);
+    assert(update(polarityOnly(0),id)); until([&] { return !result(id).pending; });
+    assert(result(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS && registers[1][0x40] == 0);
+    // An explicit mapping against the record is refused by the console and the API.
+    fresh(); wiring(3,InputWiring::CONNECTED); registers[1][0x44] = 17; ioBaseline(); read(ESS::ReadKind::IDENTITY);
+    auto q = facts(3); q.function = 17; q.polarity = 1; q.input.statusMapping = ESS::IoStatusMapping::BEFORE_INVERSION;
+    assert(!installIoQualification(q) && !valid(3));
+    text = consoleReply("@64 io qualification install 1 x3 17 1 assign before triggers-inhibited");
+    assert(text.find("\"result\":\"mapping_contradicts_record\"") != std::string::npos && !valid(3));
+    q.input.statusMapping = ESS::IoStatusMapping::AFTER_INVERSION; assert(installIoQualification(q));
+    q.input.statusMapping = ESS::IoStatusMapping::UNKNOWN; q.polarity = 0; assert(installIoQualification(q)); // unknown stays allowed
+    // A binding change makes the identity stale.
+    fresh(); wiring(3,InputWiring::CONNECTED); registers[1][0x44] = 17; read(ESS::ReadKind::IDENTITY);
+    assert(copyRecordedInputMapping(1,3,mapping));
+    assert(host(app).selectTarget(app,2) == Probe::Action::OK && host(app).selectTarget(app,1) == Probe::Action::OK);
+    wiring(3,InputWiring::CONNECTED); ioBaseline();
+    mapping = ESS::IoStatusMapping::UNKNOWN; assert(!copyRecordedInputMapping(1,3,mapping));
+    text = consoleReply("@65 io qualification install 1 x3 17 1 assign recorded triggers-inhibited");
+    assert(text.find("\"read_first\":\"read identity\"") != std::string::npos);
+    q = facts(3); q.function = 17; q.polarity = 1; q.input.statusMapping = ESS::IoStatusMapping::BEFORE_INVERSION;
+    assert(installIoQualification(q)); // Without a fresh identity no record applies; the statement stands alone.
+    // Another firmware has no record: refused without a read-first hint.
+    fresh(); wiring(3,InputWiring::CONNECTED); registers[1][1] = 0x2A; registers[1][0x44] = 17; ioBaseline();
+    read(ESS::ReadKind::IDENTITY);
+    assert(!copyRecordedInputMapping(1,3,mapping));
+    text = consoleReply("@66 io qualification install 1 x3 17 1 assign recorded triggers-inhibited");
+    assert(text.find("\"result\":\"mapping_not_recorded\"") != std::string::npos && text.find("read_first") == std::string::npos);
+    // Group member path: the member's own checked identity from its join.
+    fresh(); registers[2][0x41] = 7;
+    const uint8_t address = 2; assert(declareGroup(&address,1,id));
+    until([&] { Probe::GroupResult r; return copyGroupResult(id,r) && !r.pending; }); idle();
+    mapping = ESS::IoStatusMapping::UNKNOWN;
+    assert(copyRecordedInputMapping(2,0,mapping,true) && mapping == ESS::IoStatusMapping::AFTER_INVERSION);
+    assert(!copyRecordedInputMapping(2,0,mapping,false)); // Not the selected axis.
+    assert(declareGroupWiring(2,0,InputWiring::CONNECTED)); assert(submitGroupStateRead(id));
+    until([&] { Probe::GroupResult r; return copyGroupResult(id,r) && !r.pending; }); idle();
+    text = consoleReply("@67 io qualification install member 2 x0 7 0 finite-move recorded triggers-inhibited");
+    assert(text.find("\"result\":\"done\"") != std::string::npos && valid(0,IoPurpose::FINITE_MOVE,2));
+    assert(clearGroup()); assert(!copyRecordedInputMapping(2,0,mapping,true));
 }
 void connectedOutputsAndReplySource() {
     for (bool confirmed : {false,true}) {
@@ -517,9 +652,10 @@ void finiteMoveMatrix() {
 } // namespace
 int main() {
     assignmentMatrix(); publicDriverRoutes(); exactFactsAndProtection(); polarityAndInhibition();
-    assignmentInspectionUsesExactReads(); connectedOutputsAndReplySource(); unchangedPolarityReplySource();
+    assignmentInspectionUsesExactReads(); connectedNoFunctionInversion(); connectedOutputsAndReplySource();
+    unchangedPolarityReplySource();
     lifetimeAndUncertainty(); revokeAfterFirstWrite();
     queuedStageExpiry(); settingsPurposePolicies(); independentQualificationAges();
-    groupQualificationLifetime(); finiteMoveMatrix();
+    groupQualificationLifetime(); finiteMoveMatrix(); recordedMapping();
     if (app) { app->~App(); std::free(app); app = nullptr; }
 }

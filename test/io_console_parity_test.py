@@ -54,9 +54,30 @@ print(f"PASS: {len(seen)} actual core/console IO terminals accepted by Python")
 
 output = subprocess.check_output([sys.argv[1], "--io-qualification-fixtures"], text=True, timeout=10)
 seen = set()
+refusals = set()
 for line in output.splitlines():
     fixture = json.loads(line, object_pairs_hook=unique_object)
     name, record = fixture["case"], fixture["record"]
+    if name in ("not_recorded", "contradicts"):
+        # Wired bench 05: record refusals are exact local dispositions without traffic.
+        handle = SimpleNamespace(command="io-qualification-install",
+                                 host_args=("1", "x3", "17", "1", "assign", "recorded" if name == "not_recorded" else "before",
+                                            "triggers-inhibited"))
+        Console._check_io_qualification(handle, record)
+        assert record["ok"] is False and record["result"] == {"not_recorded": "mapping_not_recorded",
+                                                              "contradicts": "mapping_contradicts_record"}[name]
+        assert (record.get("read_first") == "read identity") == (name == "not_recorded")
+        for mutate in (lambda r: r.update(result="mapping_guessed"), lambda r: r.update(operation_id=7),
+                       lambda r: r.update(bus_traffic=True), lambda r: r.update(fact="x")):
+            broken = copy.deepcopy(record); mutate(broken)
+            try:
+                Console._check_io_qualification(handle, broken)
+            except BenchError:
+                pass
+            else:
+                raise AssertionError((name, "invalid record refusal accepted"))
+        refusals.add(name)
+        continue
     assert name in ("absent", "member", "output") and name not in seen
     tokens = {"absent": ("1", "x0", "assign"), "member": ("member", "2", "x0", "finite-move"), "output": ("1", "y1", "assign")}[name]
     handle = SimpleNamespace(command="io-qualification-inspect", host_args=tokens)
@@ -84,4 +105,5 @@ for line in output.splitlines():
             raise AssertionError((name, "invalid I/O qualification accepted"))
     seen.add(name)
 assert seen == {"absent", "member", "output"}
-print("PASS: actual I/O qualification inspection accepted by Python")
+assert refusals == {"not_recorded", "contradicts"}, refusals
+print("PASS: actual I/O qualification inspection and record refusals accepted by Python")

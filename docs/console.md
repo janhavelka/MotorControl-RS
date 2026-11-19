@@ -599,7 +599,27 @@ again. `assign`, `configure`, `finite-move` and `segment` facts are independent;
 stating assignment facts cannot authorize a later move. Inputs accept explicit
 trigger inhibition and protection removal facts. Outputs require a declared load
 and permitted levels. Before/after status mapping is a supplied source or fixture
-fact; choosing `unknown` does not establish it.
+fact; choosing `unknown` does not establish it. `unknown` still admits a
+polarity change on a no-function terminal (previous and final function 0),
+connected or not.
+
+`recorded` takes the input mapping from the application record measured in
+[wired bench 05](reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md)
+(model `0x4EEA`, firmware `0x0029`: `after` on X0-X3). It needs a fresh
+`read identity` of the selected axis after the last `useaddr`. An inverted PIN
+selector on drive 1 X3, for example:
+
+```text
+read identity 1
+io read 1
+read state 1
+io qualification install 1 x3 17 1 assign recorded triggers-inhibited
+io set input-polarity 8 1
+```
+
+Without the identity the install replies `mapping_not_recorded` with
+`read_first` `read identity`; an explicit `before` against the record replies
+`mapping_contradicts_record`. Both send nothing.
 
 Inspect a selected-axis input without traffic:
 
@@ -609,7 +629,8 @@ io qualification inspect 1 x0 assign
 
 With connected terminals (the wired bench boots that way) settings writes need
 four records first: `configure` for `motion-profile start-speed`, `home
-auxiliary`, `motion-profile stage`, `driver set` and the two tuning experiments,
+auxiliary`, `motion-profile stage`, `driver set` and the two tuning experiments
+(input filter within `MEASURED_INPUT_FILTERS`, deviation threshold 1..4000),
 `segment` for `segment ... set`. After `read config` and `read state`, state each
 input's current function and polarity:
 

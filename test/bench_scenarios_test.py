@@ -695,8 +695,8 @@ class FakePort:
         self.closed = True
 
 
-class FolderScenarioTest(unittest.TestCase):
-    """The five wired-bench scenarios end to end against the bench fake."""
+class FolderBase(unittest.TestCase):
+    """Run one wired-bench folder scenario against a bench fake."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -734,6 +734,10 @@ class FolderScenarioTest(unittest.TestCase):
     @staticmethod
     def sets(bench):
         return [(name, kw) for name, kw in bench.calls if kw.get('driver_args') and 'set' in kw['driver_args']]
+
+
+class FolderScenarioTest(FolderBase):
+    """The five wired-bench scenarios end to end against the bench fake."""
 
     def test_input_map_passes_both_checks(self):
         code, folder, result, bench = self.run_scenario(['--scenario', 'input-map', '--case', 'H01'])
@@ -876,6 +880,290 @@ class FolderScenarioTest(unittest.TestCase):
             with self.subTest(argv=argv), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 scenarios.arguments(argv)
 
+
+class MappingBench(fakes.FakeBench):
+    """Status bits after (default) or before the 0x0040 inversion, per drive."""
+
+    classes = {}
+
+    def __init__(self, on_event, **kwargs):
+        super().__init__(on_event, **kwargs)
+        self.installs = []
+
+    def _inputs(self, address):
+        physical = super()._inputs(address)
+        mapping = self.classes.get(address, 'after')
+        return physical ^ (self.io(address)[0] & 0xF) if mapping == 'after' else physical
+
+    def _command(self, name, address, host, driver, kwargs):
+        if name == 'io-qualification-install':
+            self.installs.append(host)
+        return super()._command(name, address, host, driver, kwargs)
+
+
+def mapping_bench(classes=None, **attributes):
+    def factory(on_event):
+        bench = MappingBench(on_event)
+        bench.classes = dict(classes or {})
+        for key, value in attributes.items():
+            setattr(bench, key, value)
+        return bench
+    return factory
+
+
+class StatusMappingScenarioTest(FolderBase):
+    """Prompt 05 status-mapping scenario against the bench fake."""
+
+    ARGS = ['--scenario', 'status-mapping', '--image-level', '05']
+
+    def polarity_writes(self, bench, address):
+        return [kw['driver_args'][2] for name, kw in bench.calls
+                if name == 'io' and kw.get('address') == address and kw['driver_args'][:2] == ('set', 'input-polarity')]
+
+    def test_after_class_on_every_terminal_and_drive(self):
+        code, folder, result, bench = self.run_scenario(self.ARGS, mapping_bench())
+        self.assertEqual(code, 0, result)
+        self.assertEqual(self.verdicts(result), {'M01': {'drive-reported': 'PASS', 'controller-timestamped': 'PASS'},
+                                                 'M02': {'drive-reported': 'PASS'}, 'M03': {'drive-reported': 'PASS'},
+                                                 'M04': {'read back': 'PASS'}})
+        detail = json.loads((folder / 'status_mapping.json').read_text())
+        self.assertEqual(set(detail['classes'].values()), {'after'})
+        self.assertEqual(len(detail['classes']), 12)
+        for a in (1, 2, 4):
+            self.assertEqual(bench.io(a), fakes.POWER_UP)
+            self.assertEqual(self.polarity_writes(bench, a), ['1', '0', '1', '0', '2', '0', '2', '0', '4', '0', '4', '0',
+                                                              '8', '0', '8', '0'])
+        # Function 0 inversions state mapping unknown and no fact; PIN inversions the measured class.
+        x1 = [h for h in bench.installs if h[1] == 'x1' and h[0] == '2']
+        self.assertEqual(x1, [('2', 'x1', '0', '0', 'assign', 'unknown', 'protection-removal'),
+                              ('2', 'x1', '0', '1', 'assign', 'unknown'), ('2', 'x1', '0', '0', 'assign', 'unknown'),
+                              ('2', 'x1', '15', '0', 'assign', 'unknown', 'triggers-inhibited'),
+                              ('2', 'x1', '15', '1', 'assign', 'after', 'triggers-inhibited'),
+                              ('2', 'x1', '15', '0', 'assign', 'after', 'triggers-inhibited'),
+                              ('2', 'x1', '2', '0', 'assign', 'unknown', 'triggers-inhibited')])
+        ons = [kw['host_args'] for name, kw in bench.calls if name == 'bench' and (kw['host_args'] or ())[:1] == ('on',)]
+        self.assertEqual(len(ons), 12)
+        self.assertTrue(all(h[2] == '2000' for h in ons))
+
+    def test_before_class_is_recorded_as_before(self):
+        code, folder, result, _ = self.run_scenario(self.ARGS + ['--terminals', 'x3'],
+                                                    mapping_bench({1: 'before', 2: 'before', 4: 'before'}))
+        self.assertEqual(code, 0, result)
+        detail = json.loads((folder / 'status_mapping.json').read_text())
+        self.assertEqual(detail['classes'], {'x3/1': 'before', 'x3/2': 'before', 'x3/4': 'before'})
+
+    def test_contradiction_keeps_no_record_and_restores(self):
+        code, folder, result, bench = self.run_scenario(self.ARGS + ['--terminals', 'x3', 'x0'],
+                                                        mapping_bench({2: 'before'}))
+        self.assertEqual(code, 2)
+        verdicts = self.verdicts(result)
+        self.assertEqual(verdicts['M02']['drive-reported'], 'FAIL')
+        self.assertEqual(verdicts['M04']['read back'], 'PASS')
+        for a in (1, 2, 4):
+            self.assertEqual(bench.io(a), fakes.POWER_UP)
+
+    def test_uncertain_polarity_write_ends_without_further_writes(self):
+        code, folder, result, bench = self.run_scenario(self.ARGS + ['--terminals', 'x3'],
+                                                        mapping_bench(fail_write=('io', 0, 8)))
+        self.assertEqual(code, 2)
+        self.assertEqual([kw['driver_args'] for _, kw in self.sets(bench)], [('set', 'input-polarity', '8')])
+        self.assertTrue(any('ambiguous' in d for d in result['deviations']), result['deviations'])
+        field = next(f for f in result['restoration']['fields'] if f['key'] == 'io.input-polarity' and f['drive'] == 1)
+        self.assertTrue(field['uncertain'])
+        self.assertFalse(any(o['active'] for o in bench.outputs.values()))
+
+    def test_an_active_other_input_aborts_before_the_write(self):
+        class Stuck(MappingBench):
+            def _inputs(self, address):
+                return super()._inputs(address) | (2 if address == 4 else 0)
+        code, folder, result, bench = self.run_scenario(self.ARGS + ['--terminals', 'x3'], Stuck)
+        self.assertEqual(code, 2)
+        self.assertEqual(self.sets(bench), [])
+
+    def test_status_mapping_arguments(self):
+        for argv in (['--scenario', 'status-mapping', '--run-dir', 'build/bench/2026-11-19_wb05_a', '--firmware', 'f'],
+                     ['--scenario', 'status-mapping', '--image-level', '04', '--run-dir', 'build/bench/2026-11-19_wb05_a',
+                      '--firmware', 'f'],
+                     ['--scenario', 'input-map', '--terminals', 'x3', '--run-dir', 'build/bench/2026-11-19_wb05_a',
+                      '--firmware', 'f']):
+            with self.subTest(argv=argv), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                scenarios.arguments(argv)
+
+
+class MappingHelpersTest(unittest.TestCase):
+    def test_status_bit_and_class(self):
+        self.assertEqual([records.status_bit(m, p, on) for m in ('after', 'before') for p in (0, 1) for on in (False, True)],
+                         [0, 1, 1, 0, 0, 1, 0, 1])
+        self.assertEqual([records.classify_mapping(o, n) for o, n in ((1, 0), (0, 1), (0, 0), (1, 1), (None, 1))],
+                         ['after', 'before', 'contradiction', 'contradiction', 'contradiction'])
+        with self.assertRaises(ValueError):
+            records.status_bit('unknown', 1, True)
+
+class TimingBench(MappingBench):
+    """Outputs end by their hold timer; the drive reports each input ``delay_ms`` late."""
+
+    delay_ms = 3
+
+    def __init__(self, on_event, **kwargs):
+        super().__init__(on_event, **kwargs)
+        self.history = []  # (output, on_us, off_us)
+
+    def _tick(self):
+        super()._tick()
+        for name, o in self.outputs.items():
+            if o['active'] and o['due_us'] and self.now_us >= o['due_us']:
+                o.update(active=False, off_us=o['due_us'], due_us=0, off_reason='hold_elapsed')
+
+    def _inputs(self, address):
+        bits, at = 0, self.now_us - 7000 - self.delay_ms * 1000  # The fake samples 0x0008 7 ms before the reply.
+        for name, o in self.outputs.items():
+            started = o['on_us'] if o['ons'] else None
+            ended = o['off_us'] if not o['active'] else None
+            if started is not None and started <= at and (ended is None or ended > at or ended < started):
+                bits |= 1 << self.mapping[name]
+        return bits ^ (self.io(address)[0] & 0xF)
+
+    def begin(self, name, **kwargs):
+        return {'reply': self.command(name, **kwargs)}
+
+    def wait(self, handle, release=False):
+        return handle['reply']
+
+
+class InputTimingScenarioTest(FolderBase):
+    ARGS = ['--scenario', 'input-timing', '--image-level', '05', '--address', '1']
+
+    def test_filter_value_run_writes_measures_and_restores(self):
+        code, folder, result, bench = self.run_scenario(
+            self.ARGS + ['--filter-value', '3', '--delay-trials', '3', '--width-trials', '2', '--widths', '5', '50'],
+            TimingBench)
+        self.assertEqual(code, 0, result)
+        self.assertEqual(self.verdicts(result), {'F01': {'read back': 'PASS'},
+                                                 'F02': {'controller-timestamped': 'PASS', 'drive-reported': 'PASS'},
+                                                 'F03': {'controller-timestamped': 'PASS', 'drive-reported': 'PASS'}})
+        self.assertEqual([kw['driver_args'] for _, kw in self.sets(bench)],
+                         [('filters', 'set', 'input-filter', '3'), ('filters', 'set', 'input-filter', '2')])
+        self.assertEqual(bench.settings[1]['tuning.filters'][0], 2)
+        detail = json.loads((folder / 'input_timing.json').read_text())
+        self.assertEqual(detail['delay_summary']['on']['measured'], 3)
+        self.assertEqual(set(detail['widths']), {'5', '50'})
+        self.assertEqual(detail['widths']['50']['counts']['observed'], 2)
+        # The observed drive is read last by every interlock.
+        for entry in detail['interlock_rows']:
+            self.assertEqual(entry['decision'], 'admit')
+        self.assertEqual(bench.debug_mode, 'off')
+        ons = [kw['host_args'] for name, kw in bench.calls if name == 'bench' and (kw['host_args'] or ())[:1] == ('on',)]
+        self.assertEqual([h[2] for h in ons], ['200'] * 3 + ['5', '5', '50', '50'])
+
+    def test_relay_compare_at_filter_2_writes_nothing(self):
+        code, folder, result, bench = self.run_scenario(
+            self.ARGS + ['--filter-value', '2', '--delay-trials', '2', '--width-trials', '0', '--compare-relay'],
+            TimingBench)
+        self.assertEqual(code, 0, result)
+        self.assertEqual(self.sets(bench), [])
+        detail = json.loads((folder / 'input_timing.json').read_text())
+        self.assertEqual(set(detail['relay']), {'relay2', 'mosfet1'})
+        self.assertEqual(detail['relay']['relay2']['summary']['observed'], 2)
+        self.assertEqual(self.verdicts(result)['F04'], {'controller-timestamped': 'PASS'})
+
+    def test_timing_arguments(self):
+        base = ['--scenario', 'input-timing', '--run-dir', 'build/bench/2026-11-19_wb05_a', '--firmware', 'f',
+                '--image-level', '05']
+        for extra in (['--filter-value', '4'], ['--filter-value', '1000'], ['--filter-value', '3', '--compare-relay'],
+                      ['--filter-value', '2', '--poll-depth', '4'], ['--filter-value', '2', '--widths', '0'],
+                      ['--filter-value', '2', '--address', '3']):
+            with self.subTest(extra=extra), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                scenarios.arguments(base + extra)
+
+
+class TimingAnalysisTest(unittest.TestCase):
+    @staticmethod
+    def sample(start, raw):
+        return {'address': 1, 'operation_id': start, 'request_start_us': start, 'reply_end_us': start + 8000,
+                'uncertainty_us': 0, 'raw_inputs': raw}
+
+    def test_observed_missed_and_indeterminate(self):
+        pre = self.sample(0, 0)
+        polls = [self.sample(t, 0) for t in range(100500, 200000, 6000)]
+        missed = records.timing_trial([pre] + polls, on_us=100000, off_us=130000, bit=8, window_end_us=150000)
+        self.assertEqual(missed['class'], 'missed')
+        self.assertLess(missed['max_instant_gap_us'], 30000)
+        short = records.timing_trial([pre] + polls, on_us=100000, off_us=110000, bit=8, window_end_us=150000)
+        self.assertEqual(short['class'], 'indeterminate')  # 14 ms instant gaps are not below a 10 ms pulse.
+        polls[1] = self.sample(polls[1]["request_start_us"], 8)
+        seen = records.timing_trial([pre] + polls, on_us=100000, off_us=110000, bit=8, window_end_us=150000)
+        self.assertEqual(seen['class'], 'observed')
+        self.assertEqual(seen['on']['status'], 'measured')
+        self.assertEqual(seen['off']['status'], 'measured')
+        unknown = records.timing_trial([pre, self.sample(100500, 0), self.sample(106500, 0)], on_us=100000, off_us=130000, bit=8, window_end_us=150000)
+        self.assertEqual(unknown['class'], 'indeterminate')
+
+class RecordBench(MappingBench):
+    """Record image fake: installs follow the record rules, refusals send no frame."""
+
+    BUS = ('read-state', 'read-identity', 'read-config', 'io', 'tuning', 'segment', 'driver', 'control')
+
+    def __init__(self, on_event, **kwargs):
+        super().__init__(on_event, **kwargs)
+        self.frames, self.identity_fresh, self.valid = 0, False, {}
+        self.debug_mode = 'off'
+
+    def _command(self, name, address, host, driver, kwargs):
+        if name == 'useaddr' and address != self.selected:
+            self.identity_fresh = False
+        if name == 'debug':
+            reply = super()._command(name, address, host, driver, kwargs)
+            reply['observed'] = self.frames
+            return reply
+        if name == 'read-identity':
+            self.identity_fresh = True
+        if name == 'io-qualification-install':
+            self.installs.append(host)
+            terminal, function, polarity, mapping = host[1], int(host[2]), int(host[3]), host[5]
+            index = records.TERMINALS.index(terminal) if terminal in records.TERMINALS else None
+            current = (self.io(self.selected)[0] >> index) & 1 if index is not None else 0
+            if mapping == 'recorded' and not self.identity_fresh:
+                return dict(ok=False, result='mapping_not_recorded', read_first='read identity')
+            if mapping in ('before',) and self.identity_fresh:
+                return dict(ok=False, result='mapping_contradicts_record')
+            if mapping == 'unknown' and function and polarity != current:
+                return dict(ok=False, result='qualification_required')
+            self.valid[terminal] = (function, polarity)
+            return dict(ok=True, result='done')
+        if name == 'io' and driver[:2] == ('set', 'input-polarity'):
+            value = int(driver[2])
+            changed = [t for i, t in enumerate(records.TERMINALS) if ((self.io(address)[0] ^ value) >> i) & 1]
+            if any(self.valid.get(t) != (self.io(address)[1 + records.TERMINALS.index(t)],
+                                          (value >> records.TERMINALS.index(t)) & 1) for t in changed):
+                return dict(ok=False, result='qualification_required', operation_id=0)
+        if name == 'tuning' and driver[:3] == ('filters', 'set', 'input-filter') and int(driver[3]) not in \
+                (0, 1, 2, 3, 5, 10, 20, 50):  # The committed MEASURED_INPUT_FILTERS.
+            return dict(ok=False, result='invalid', operation_id=0)
+        if name in self.BUS:
+            self.frames += 1
+        reply = super()._command(name, address, host, driver, kwargs)
+        if name == 'io' and driver[:1] == ('set',):
+            self.valid = {}
+        return reply
+
+
+class RecordCasesScenarioTest(FolderBase):
+    ARGS = ['--scenario', 'status-mapping', '--image-level', '05', '--mapping-cases', 'record']
+
+    def test_m05_and_n01_against_the_record(self):
+        code, folder, result, bench = self.run_scenario(self.ARGS, RecordBench)
+        self.assertEqual(code, 0, result)
+        self.assertEqual(self.verdicts(result), {'M05': {'sent': 'PASS', 'read back': 'PASS'}, 'N01': {'sent': 'PASS'}})
+        detail = json.loads((folder / 'status_record.json').read_text())
+        self.assertEqual([r['result'] for r in detail['n01']], ['invalid', 'invalid', 'mapping_not_recorded',
+                                                                 'mapping_contradicts_record'])
+        self.assertEqual([kw['driver_args'] for _, kw in self.sets(bench)],
+                         [('set', 'x3', '17'), ('set', 'input-polarity', '8'), ('set', 'input-polarity', '8'),
+                          ('set', 'input-polarity', '0'), ('set', 'x3', '0'), ('filters', 'set', 'input-filter', '4'),
+                          ('filters', 'set', 'input-filter', '100')])
+        self.assertEqual(bench.io(1), fakes.POWER_UP)
+        self.assertIn(('1', 'x3', '17', '1', 'assign', 'recorded', 'triggers-inhibited'), bench.installs)
+        self.assertEqual(bench.debug_mode, 'off')
 
 if __name__ == '__main__':
     unittest.main()

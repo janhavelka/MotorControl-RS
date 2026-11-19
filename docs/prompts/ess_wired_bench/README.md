@@ -59,7 +59,7 @@ the owner stays Partial and the next ready prompt starts.
 | 02 | Complete | 03: named refusal reasons (W05 reply carries only the result code) | [2026-11-18](../../reports/2026-11-18_wired_bench_02_fixture_wiring.md) |
 | 03 | Complete | — | [2026-11-18](../../reports/2026-11-18_wired_bench_03_connected_setters.md) |
 | 04 | Complete | — (D14 interlock freshness applies to 08's trigger) | [2026-11-19](../../reports/2026-11-19_wired_bench_04_harness.md) |
-| 05 | Pending | — | — |
+| 05 | Complete | — (output mapping: 06; 10 ms rule via latched inputs: 07/09; filter persistence: 17) | [2026-11-19](../../reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md) |
 | 06 | Pending | — | — |
 | 07 | Pending | — | — |
 | 08 | Pending | — | — |

@@ -2382,12 +2382,18 @@ void testIoQualificationRoutes(bool fixtures = false) {
         Probe::IoQualificationCommand last;
         IoQualification stored;
         bool valid = false;
+        const char* refuse = nullptr;
+        const char* readFirst = nullptr;
     } local;
     Probe::Host hook;
     hook.context = &local;
     hook.emitLine = [](void* c, const char* line, std::size_t length) { return Fake::emit(&static_cast<Local*>(c)->fake, line, length); };
     hook.ioQualification = [](void* c, const Probe::IoQualificationCommand& request, IoQualification& out, bool& valid) {
         auto& s = *static_cast<Local*>(c); ++s.calls; s.last = request;
+        if (s.refuse) {
+            Probe::QualificationReply reply(Probe::Action::QUALIFICATION_REQUIRED);
+            reply.reason = s.refuse; reply.readFirst = s.readFirst; return reply;
+        }
         out = s.stored; valid = s.valid; return Probe::QualificationReply(Probe::Action::OK);
     };
     Probe::Console console(hook, Probe::Format::JSON);
@@ -2400,7 +2406,24 @@ void testIoQualificationRoutes(bool fixtures = false) {
     for (const char* mapping : {"unknown", "before", "after"}) {
         send(console, std::string("io qualification install member 2 x0 7 0 finite-move ") + mapping + " triggers-inhibited\n");
         assert(local.last.member && local.last.address == 2 && local.last.purpose == IoPurpose::FINITE_MOVE && !local.last.input.protectionRemovalQualified);
+        assert(!local.last.recordedMapping);
     }
+    // Wired bench 05: `recorded` defers the input mapping to the application record.
+    send(console, "@2 io qualification install 1 x3 17 1 assign recorded triggers-inhibited\n");
+    assert(local.last.recordedMapping && local.last.input.supplied &&
+        local.last.input.statusMapping == Ess::IoStatusMapping::UNKNOWN && local.last.terminal == 3);
+    send(console, "io qualification install member 2 x0 7 0 finite-move recorded\n");
+    assert(local.last.recordedMapping && local.last.member);
+    local.refuse = "mapping_not_recorded"; local.readFirst = "read identity";
+    send(console, "@3 io qualification install 1 x3 17 1 assign recorded triggers-inhibited\n");
+    local.fake.contains("\"result\":\"mapping_not_recorded\""); local.fake.contains("\"read_first\":\"read identity\"");
+    if (fixtures) std::printf("{\"case\":\"not_recorded\",\"record\":%s}\n", local.fake.lines.back().c_str());
+    local.refuse = "mapping_contradicts_record"; local.readFirst = nullptr;
+    send(console, "@4 io qualification install 1 x3 17 1 assign before triggers-inhibited\n");
+    local.fake.contains("\"result\":\"mapping_contradicts_record\"");
+    assert(local.fake.lines.back().find("read_first") == std::string::npos);
+    if (fixtures) std::printf("{\"case\":\"contradicts\",\"record\":%s}\n", local.fake.lines.back().c_str());
+    local.refuse = nullptr;
     for (const auto purpose : {"configure", "finite-move", "segment"}) {
         send(console, std::string("io qualification install 1 x1 0 0 ") + purpose + " unknown\n");
         assert(local.last.input.supplied && !local.last.input.externalTriggersInhibited && !local.last.input.protectionRemovalQualified);
@@ -2422,6 +2445,7 @@ void testIoQualificationRoutes(bool fixtures = false) {
         "install 1 y0 9 0 0 configure unknown none either", "install 1 y0 9 0 0 assign unknown guessed either",
         "install 1 y0 9 0 0 assign unknown none guessed", "install member 2 y0 0 0 0 assign unknown none either",
         "install 1 y0 9 0 0 assign unknown none either extra", "inspect 1 x0", "inspect 1 x0 assign extra",
+        "install 1 y0 9 0 0 assign recorded none either", "install 1 x0 0 0 assign recorded extra",
         "inspect member 2 x0 configure", "revoke 1 y0 finite-move", "revoke 1 x0 assign extra", "install member"}) {
         const auto calls = local.calls;
         send(console, std::string("io qualification ") + invalid + "\n");

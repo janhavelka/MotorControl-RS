@@ -33,6 +33,32 @@ bool effectiveInput(uint16_t reported, uint8_t terminal, uint16_t oldPolarity,
     return true;
 }
 bool protectionFunction(uint16_t function) { return function >= 2 && function <= 6; }
+// A checked identity read of this exact target and binding, within the
+// observation age, as the control-settings model gate requires.
+bool identityFresh(const App& a, const ESS::IdentityObservation& id, const MotorControlRS::ReadTarget& target, uint64_t now) {
+    return id.operationId && Probe::sameTarget(id.target, target) && id.provenance.qualified && id.provenance.status &&
+        id.provenance.latestUs <= now && MotorControlRS::evidenceAgeValid(id.provenance.attemptedUs, now, a.observationAgeUs());
+}
+enum class RecordLookup : uint8_t { FOUND, IDENTITY_REQUIRED, NOT_RECORDED };
+// The recorded status mapping (IoStatusRecord.h) of one input of the selected
+// axis or a group member. Only a fresh checked identity of that exact target
+// selects a record; another model or firmware has none.
+RecordLookup recordedInput(const App& a, uint8_t address, uint8_t terminal, bool member, uint64_t now,
+                           ESS::IoStatusMapping& output) {
+    if (terminal >= 4) return RecordLookup::NOT_RECORDED;
+    const auto* m = member ? groupMember(const_cast<App&>(a), address) : nullptr;
+    if (member ? !m : address != a.axis.target.address) return RecordLookup::IDENTITY_REQUIRED;
+    const auto& target = m ? m->axis.target : a.axis.target;
+    const ESS::IdentityObservation* identity = identityFresh(a, a.identity, target, now) ? &a.identity :
+        m && identityFresh(a, m->identity, target, now) ? &m->identity : nullptr;
+    if (!identity) return RecordLookup::IDENTITY_REQUIRED;
+    for (const auto& record : RECORDED_INPUT_MAPPINGS)
+        if (record.model == identity->rawModel && record.firmware == identity->rawVersion &&
+            record.inputs[terminal] != ESS::IoStatusMapping::UNKNOWN) {
+            output = record.inputs[terminal]; return RecordLookup::FOUND;
+        }
+    return RecordLookup::NOT_RECORDED;
+}
 bool ioFactsValid(const IoQualification& q, uint64_t now) {
     using namespace MotorControlRS;
     if (!q.target.id || !q.configurationGeneration || q.purpose > IoPurpose::SEGMENT || q.terminal >= 6 ||
@@ -54,8 +80,10 @@ bool ioFactsValid(const IoQualification& q, uint64_t now) {
     if (q.purpose == IoPurpose::ASSIGN && q.wiring == InputWiring::CONNECTED && protectionFunction(q.previousFunction) &&
         (q.function != q.previousFunction || q.polarity != q.previousPolarity) && !q.input.protectionRemovalQualified) return false;
     bool active = false;
-    // A no-function terminal may be inverted explicitly without a status mapping.
-    if (!(q.function == 0 && q.previousFunction == 0 && q.wiring == InputWiring::UNCONNECTED) &&
+    // A no-function terminal may be inverted explicitly without a status mapping,
+    // connected or not (wired bench 05): previous and final function are both 0,
+    // so the level has no drive effect. Facts stay required and are checked here.
+    if (!(q.function == 0 && q.previousFunction == 0) &&
         !effectiveInput(q.reportedInputs, q.terminal, q.previousPolarity, q.polarity, q.input.statusMapping, active)) return false;
     if (q.purpose == IoPurpose::ASSIGN) {
         if (q.function >= 4 && q.function <= 13 && active) return false;
@@ -245,6 +273,23 @@ Probe::QualificationReply ioQualificationCommand(void*, const Probe::IoQualifica
     }
     q.function = command.function; q.polarity = command.polarity; q.custom = command.custom;
     q.input = command.input; q.output = command.output;
+    if (command.terminal < 4 && (command.recordedMapping || q.input.statusMapping != ESS::IoStatusMapping::UNKNOWN)) {
+        ESS::IoStatusMapping recorded = ESS::IoStatusMapping::UNKNOWN;
+        const auto found = app ? recordedInput(*app, command.address, command.terminal, command.member, uart.sample(), recorded) :
+            RecordLookup::IDENTITY_REQUIRED;
+        if (command.recordedMapping && found != RecordLookup::FOUND) {
+            Probe::QualificationReply result(Action::QUALIFICATION_REQUIRED);
+            result.reason = "mapping_not_recorded";
+            if (found == RecordLookup::IDENTITY_REQUIRED) result.readFirst = "read identity";
+            return result;
+        }
+        if (!command.recordedMapping && found == RecordLookup::FOUND && recorded != q.input.statusMapping) {
+            Probe::QualificationReply result(Action::QUALIFICATION_REQUIRED);
+            result.reason = "mapping_contradicts_record";
+            return result;
+        }
+        if (command.recordedMapping) q.input.statusMapping = recorded;
+    }
     const auto result = installIoQualification(q);
     return Probe::QualificationReply(result ? Action::OK :
         result.detail == static_cast<int32_t>(Action::BUSY) ? Action::BUSY : Action::QUALIFICATION_REQUIRED);

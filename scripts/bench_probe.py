@@ -97,6 +97,9 @@ IO_QUALIFICATION_ROUTES = {"io-qualification-" + action: "io qualification " + a
                            for action in ("install", "inspect", "revoke")}
 IO_PURPOSES = ("assign", "configure", "finite-move", "segment")
 IO_MAPPINGS = ("unknown", "before", "after")
+# Input installs may defer the mapping to the application record (wired bench 05);
+# inspection always reports the resolved mapping.
+IO_INSTALL_MAPPINGS = (*IO_MAPPINGS, "recorded")
 INPUT_TERMINALS = ("x0", "x1", "x2", "x3")
 # Settings routes whose input policy uses stated selected-axis records (wired bench 03).
 SETTINGS_INPUT_PURPOSES = ("configure", "segment")
@@ -106,6 +109,7 @@ UPDATE_NOT_ADMITTED_REASONS = (*SETTINGS_REFUSAL_REASONS, "binding_changed", "pr
 QUALIFICATION_FACT_REFUSALS = frozenset({"missing_fact", "unknown_fact", "duplicate_fact", "fact_not_applicable"})
 QUALIFICATION_REFUSALS = QUALIFICATION_FACT_REFUSALS | frozenset({
     "reads_required", "stored_auxiliary_differs", "stored_offset_nonzero", "drive_not_ready",
+    "mapping_not_recorded", "mapping_contradicts_record",
     "stored_ramp_out_of_range", "stored_word_differs", "axis_configuration_unknown", "qualification_rejected", "qualification_required",
     "busy", "axis_conflict", "unavailable", "invalid", "unresolved", "unimplemented", "invalid_arguments", "invalid_address", "failed"})
 SWITCH_HOME_METHODS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30)
@@ -172,7 +176,7 @@ def io_qualification_arguments(command: str, tokens: tuple[str, ...]) -> dict:
             raise ValueError("output qualification function, load or levels are unsupported")
     if (result["purpose"] not in IO_PURPOSES or (not input_terminal and result["purpose"] != "assign") or
             (member and (not input_terminal or result["purpose"] != "finite-move")) or
-            ("mapping" in result and result["mapping"] not in IO_MAPPINGS)):
+            ("mapping" in result and result["mapping"] not in (IO_INSTALL_MAPPINGS if input_terminal else IO_MAPPINGS))):
         raise ValueError("I/O qualification purpose or status mapping is unsupported")
     return result
 
@@ -192,7 +196,7 @@ def install_input_facts(console, address: int, purpose: str, mapping: str = "unk
     """
     if type(address) is not int or not 1 <= address <= 247:
         raise ValueError("ESS address must be an integer within 1..247")
-    if purpose not in SETTINGS_INPUT_PURPOSES or mapping not in IO_MAPPINGS:
+    if purpose not in SETTINGS_INPUT_PURPOSES or mapping not in IO_INSTALL_MAPPINGS:
         raise ValueError("input facts need purpose configure or segment and a known status mapping")
     facts = dict(facts or {})
     for terminal, names in facts.items():

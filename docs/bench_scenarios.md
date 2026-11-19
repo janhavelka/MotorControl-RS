@@ -285,6 +285,23 @@ nearest FC06 to `0x004B`-`0x004F` on drive 4. A debug-record sequence gap or
 an `aux1` overwrite inside a pairing window makes it indeterminate; an edge
 before the reply end is a measured relationship, not a fault.
 
+### Status mapping and input timing (wired bench 05)
+
+[Prompt 05](prompts/ess_wired_bench/05_status_mapping_and_input_timing.md)
+added two folder scenarios. Both need `--image-level 05`.
+
+| Scenario | Work | Verdicts |
+| --- | --- | --- |
+| `status-mapping` | Per terminal (`--terminals`, default X0-X3) on drives 1, 2, 4: function 0 where the power-up function is not 0; status off, interlocked `bench on` 2000 ms, on, off again at polarity 0; polarity bit 1 at function 0 (mapping `unknown`), the same reads, the inverse write; PIN function 14+t, polarity 1 with the measured class stated, the reads, the inverse write; the power-up function. Before every write: `useaddr`, `io read`, `read config`, `read state`, a `bench` view and the prompt's preconditions (outputs off, no function 7-13 on any drive, other inputs 0, terminal t at its predicted bit). An uncertain or ambiguous write stops all stimulus and writes, reads once more and reports the field uncertain. `--mapping-cases record` runs M05 and N01 against the built-in record instead | M01 status follows the output at polarity 0; M02/M03 one class (`after`, `before`) on every terminal and drive at function 0 and PIN; M04 I/O words equal the baseline. `status_mapping.json` keeps every raw status word |
+| `input-timing` | One `--filter-value` (prompt 05 candidates) on `--address` (default 1): the filter written through the CONFIGURE path and read back; `--delay-trials` (default 20) interlocked `mosfet2` 200 ms pulses; `--width-trials` (default 10) per `--widths` (default 1-50 ms); `--compare-relay` adds `relay2` (X1) against `mosfet1` (X0) at filter 2. Each trial reads the observed drive last in the interlock, then polls `read state` back to back (`--poll-depth`, default 2; 05 used 1) until 300 ms after the expected OFF (at most 1300 ms when the pulse is not back at 0), with one random pause of 0-80 ms after the first sample (`--phase-seed`). `--traffic off` turns `debug raw` off. The filter is restored from the baseline | F01 filter read back; F02 on/off intervals of every trial (indeterminate when one is missing); F03 per width observed, missed (instant gaps below the pulse width over the pulse and the measured off delay) or indeterminate; F04 relay against MOSFET. `input_timing.json` keeps every sample |
+
+The input-status sample of a `read state` is its `0x0008` step: request start
+(`attempted_us`) and reply closure (`latest_us`) from the operation reply, on
+the controller clock. These are the same times the traffic records carry, and
+every poll's reply is complete, so a dropped `debug raw` display record does
+not remove a sample. `bench_records.timing_trial` gives the intervals, the
+poll spacing and the width class.
+
 ## Stress tool
 
 `scripts/bench_stress.py` runs randomized finite cases on the recorded ESS bench.
