@@ -32,9 +32,24 @@ The position target preserves both raw words and an unsigned assembled value
 only when the retained word order is established. Signed meaning and physical
 command scale remain separate qualifications. Every stored target pair has
 an unavailable typed-write disposition: the [pair policy](ess_pair_writes.md)
-establishes no admissible FC10 window for those pairs, a five-word subset or a
+establishes no production FC10 window for those pairs, a five-word subset or a
 whole record. Two FC06 writes are not a substitute. A candidate combining an
 unsupported pair with otherwise legal scalar changes fails before any write.
+
+[Wired bench 10](reports/2026-11-19_wired_bench_10_paired_value_encodings.md)
+(19 November 2026) has storage evidence only. On drive 4 all sixteen pulse
+pairs were written [n, `0x1000`+n] and segment 1 also -500 [65535,65036] at
+`0x0019` = 0; every write was acknowledged and read back by the session and by
+an independent `segment position N read`, then restored to [0,5000]. Segment 1
+[1,4097] stored and read back the same way on drives 1 and 2, and at
+`0x0019` = 1 on drive 4. Storage
+does not show how the drive reads the words when it executes a segment, and
+the p75 example is not a measurement. These writes went through the ledger's
+[experiment windows](ess_pair_writes.md#experiment-windows) and the
+`driver experiment` route, which exist only on an experimental image built with
+`MOTORCONTROLRS_WB10_EXPERIMENT`; production images refuse that route
+`unsupported` before TX, and caps keep `segment_pulse_writes` false. Prompt 13's
+W0 witness decides promotion.
 
 PT positioning speed is documented as 0–3000 r/min and native ramp words as
 0–2000 ms. The PV page describes signed speed, while its appendix range is

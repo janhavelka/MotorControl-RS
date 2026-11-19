@@ -381,4 +381,5 @@ image B `_b1`, `_b23`, `_a12`, `_a3`, `_a3b`, `_a45`, `_a6d`; image C
 ## Commits and CI
 
 The lead owns Git and CI; nothing was committed, pushed or dispatched by this
-session.
+session. The lead committed the work as `bae5048`; CI run 44480494465 on that
+exact commit passed all four jobs (native gcc, native clang, Arduino, ESP-IDF).

@@ -322,6 +322,17 @@ struct App {
         uint8_t phase = 0; ///< 0 none, 1 write, 2 FC03 readback.
         uint8_t tx[32] = {};
     } parameterWrite;
+#if MOTORCONTROLRS_WB10_EXPERIMENT
+    // Experimental image only (PairExperimentApp.h): PT pulse words of checked
+    // segment reads per window, the first read of the binding pinned plus three
+    // recent ones (prompt 13's W0 witness).
+    struct PairSnapshot {
+        uint32_t operationId = 0, serialGeneration = 0;
+        MotorControlRS::ReadTarget target;
+        uint16_t words[2] = {};
+    } pairSnapshots[16][4]; ///< Per PT window: [0] first read of the binding, [1..3] the latest reads, rotating.
+    uint8_t pairNext[16] = {};
+#endif
     ESS::MoveContext stagePrepared; ///< Scratch for the selected-axis stage words; no stack copy.
     // Bench output -> drive terminal map (wired bench 08); validated once.
     int8_t benchOutputTerminals[FIXTURE_BENCH_OUTPUTS] = {FIXTURE_OUTPUT_NONE, FIXTURE_OUTPUT_NONE,
@@ -1210,6 +1221,9 @@ void cancelParameterWrite(App&, uint8_t, uint64_t);
 void rememberParameterSnapshot(App&, bool home, uint32_t operationId, const MotorControlRS::ReadTarget&,
                                uint32_t serialGeneration, const uint16_t* words, uint8_t count);
 void settleParameterWrite(App&, Probe::ParameterWriteKind, uint8_t address, uint64_t attemptedUs);
+#if MOTORCONTROLRS_WB10_EXPERIMENT
+void notePairRead(App&, const App::Record&);
+#endif
 
 bool confirmedStop(const App::Record& record) {
     using namespace MotorControlRS;
@@ -1729,11 +1743,13 @@ bool homeReadiness(const App& a, ESS::HomePrerequisites& p, uint64_t now) {
         !Probe::sameTarget(config.target, p.target) || config.unknownPolarityBits ||
         !parameters.operationId || parameters.configurationGeneration != p.configurationGeneration ||
         !Probe::sameTarget(parameters.target, p.target) ||
-        // Staging overwrites stored method, rates and ramp before the trigger, so their
-        // prior values do not matter. It never writes auxiliary, and would silently erase
-        // a stored offset whose interpretation is unresolved.
+        // Staging overwrites stored method, rates, ramp and offset before the trigger.
+        // It never writes auxiliary. A stored nonzero offset is replaced only by a
+        // stated offset under the measured encoding (offset fact, wired bench 10);
+        // without it the offset would be silently erased.
         parameters.rawAuxiliary != static_cast<uint16_t>(p.auxiliary) ||
-        parameters.rawOffsetWords[0] || parameters.rawOffsetWords[1] ||
+        ((parameters.rawOffsetWords[0] || parameters.rawOffsetWords[1]) && !p.offsetQualified) ||
+        (p.offsetQualified && (!config.wordOrderKnown || config.wordOrder != p.offsetOrder)) ||
         p.inputPolarity != config.raw.inputPolarity) return false;
     for (uint8_t i = 0; i < 4; ++i)
         if (!config.inputFunctionKnown[i] || p.inputFunctions[i] != config.raw.inputFunctions[i] ||
@@ -1803,6 +1819,18 @@ void cancelInvalidHomes(App& a, uint64_t now) {
         }
     }
 }
+// Nonzero home offset (wired bench 10 E1, drive 4, 0x4EEA/0x0029): method 35
+// with stored auxiliary 6 and 0x0019 known 0, stated with the home `offset`
+// fact; the offset is staged high word first, two's complement, and the end
+// coordinate must equal it. Auxiliary 3 and every other choice stay refused
+// (E2: auxiliary 3 keeps the running coordinate; prompt 12).
+Probe::Action homeOffsetAdmission(const App& a, uint8_t address, const ESS::HomeRequest& r, const ESS::HomePrerequisites& p) {
+    (void)address;
+    if (r.method != ESS::HomingMethod::METHOD_35 || p.auxiliary != ESS::HomingAuxiliary::KEEP_POSITION_SET_OFFSET ||
+        !p.offsetQualified || p.offsetOrder != ESS::WordOrder::HIGH_WORD_FIRST || !a.configuration.wordOrderKnown ||
+        a.configuration.wordOrder != ESS::WordOrder::HIGH_WORD_FIRST) return Probe::Action::UNRESOLVED;
+    return Probe::Action::OK;
+}
 bool homeRatesWithinPolicy(const App& a, uint16_t search, uint16_t returning) {
     const auto subdivision = a.configuration.raw.subdivision;
     return a.configuration.operationId && Probe::sameTarget(a.configuration.target, a.axis.target) &&
@@ -1823,7 +1851,8 @@ Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
     if (!method) return Probe::Action::INVALID;
     if (method->support == ESS::HomeSupport::UNRESOLVED) return Probe::Action::UNRESOLVED;
     if (method->support == ESS::HomeSupport::UNIMPLEMENTED) return Probe::Action::UNIMPLEMENTED;
-    if (supplied.offset != 0) return Probe::Action::UNRESOLVED;
+    // A nonzero offset needs the stated offset facts (wired bench 10); without them it stays unresolved.
+    if (supplied.offset != 0 && !a.homePrerequisites.offsetQualified) return Probe::Action::UNRESOLVED;
     if (!a.nextOperationId) return Probe::Action::IDS_EXHAUSTED;
     if (a.owner.needsRecovery() || uart.needsRecovery()) return Probe::Action::RECOVERY_REQUIRED;
     if (axisReserved(a, address)) return Probe::Action::AXIS_CONFLICT;
@@ -1845,6 +1874,12 @@ Probe::Action startHome(void* context, uint32_t commandId, uint8_t address,
         noteStopInputRefusal(a, stops); return Probe::Action::UNAVAILABLE;
     }
     if (!homeReadiness(a, prerequisites, now)) return Probe::Action::UNAVAILABLE;
+    // Nonzero offset (wired bench 10): only the measured subset, decided by
+    // homeOffsetAdmission; the core checks the qualified encoding and auxiliary.
+    if (supplied.offset != 0 || prerequisites.auxiliary != ESS::HomingAuxiliary::KEEP_POSITION_SET_ZERO) {
+        const auto offset = homeOffsetAdmission(a, address, supplied, prerequisites);
+        if (offset != Probe::Action::OK) return offset;
+    }
     if (a.configuration.raw.subdivision < 400 || a.configuration.raw.subdivision > 51200) return Probe::Action::UNAVAILABLE;
     if (!homeRatesWithinPolicy(a, supplied.searchSpeed, supplied.returnSpeed)) return Probe::Action::OPERATING_LIMIT;
     ESS::HomeRequest request = supplied;
@@ -2031,7 +2066,9 @@ Probe::Action admitDriverStep(App& a, App::Record& record, const ESS::PreparedDr
     request.wire.replyLength = work.write ? ESS::WRITE_RESPONSE_LEN : ESS::expectedReadRegistersLen(work.count);
     request.wire.responseTimeoutUs = a.serial.timing.responseTimeoutUs; request.wire.replyGapUs = a.serial.timing.replyGapUs;
     request.wire.deadlineUs = work.deadlineUs;
-    request.expected.address = work.target.address; request.expected.function = work.write ? 6 : 3;
+    // A soft-limit pair is one FC10 of two words (wired bench 10); every other field FC06.
+    request.expected.address = work.target.address;
+    request.expected.function = work.function ? work.function : work.write ? 6 : 3;
     request.expected.target = work.target.id; request.expected.targetGeneration = work.target.generation;
     request.expected.first = work.reg; request.expected.count = work.count;
     request.expected.value = work.value; request.validator = Rtu::essValidator();
@@ -2860,6 +2897,9 @@ void updateActionReservation(App& a, App::Record& record) {
         driverEffects(a, record, record.driver.effects, nowUs());
         record.axisReserved = false;
         if (record.singleSettingSession) return; // Single-field history is not a DRIVE cache or motion profile.
+#if MOTORCONTROLRS_WB10_EXPERIMENT
+        notePairRead(a, record);
+#endif
         const bool segment = segmentGroup(record.driver.group);
         const bool tuning = ESS::isTuningGroup(record.driver.group);
         auto& cache = tuning ? tuningCache(a, record.driver.group) : segment ? a.segmentSettings : record.driver.group == ESS::DriverGroup::IO ? a.ioSettings : record.driver.group == ESS::DriverGroup::CONTROL_SETTINGS ? a.controlSettings : a.driverSettings;
@@ -3415,6 +3455,9 @@ bool groupBusy(const App& a);
 #include "GroupCoordinatesApp.h"
 #include "GroupApp.h"
 #include "ProfileCandidateApp.h"
+#if MOTORCONTROLRS_WB10_EXPERIMENT
+#include "PairExperimentApp.h"
+#endif
 #include "ParameterWriteApp.h"
 #include "InputStartApp.h"
 

@@ -45,7 +45,7 @@ The first release is 1.0.0. Implemented code includes exact units/targets,
 checked ESS codecs, typed reads/settings and bounded motion/action/discovery
 sequences. Arduino and native ESP-IDF share the standalone owner and console.
 Scope and qualification are in `docs/releases/1.0.0.md`; four named native-family
-gaps and 18 guarded paired setters remain. Do not infer full native coverage
+gaps and 16 guarded paired setters (the stored PT targets) remain. Do not infer full native coverage
 or physical qualification from the register catalogue or a successful build.
 New implementation remains authorized in small tested blocks, without placeholder
 APIs. Keep the core framework-independent and ESS-first; Leadshine and CANopen
@@ -275,14 +275,16 @@ native coverage, all motion modes or electrical timing qualification.
 - Establish supported register widths, signedness, scaling, word order,
   request limits, and exception behavior from the relevant vendor pages.
 - ESS FC03 permits at most 16 reviewed readable words; FC06 excludes paired
-  halves. FC10 admits the four documented start/count windows: 0x0024/2,
-  0x0021/5, 0x001D/3 and 0x0031/6, not a claimed device-wide maximum.
+  halves. FC10 admits six start/count windows: the four documented ones
+  0x0024/2, 0x0021/5, 0x001D/3 and 0x0031/6, and the soft-limit pairs
+  0x0037/2 and 0x0039/2 promoted by wired bench 10 (D10, measured order 0 on
+  0x4EEA/0x0029); not a claimed device-wide maximum.
   Probe reads model register 0x0000/one word. Experimental exception
   (2026-11-18, under the owner's authorization): wired-bench prompt 10 may
   send FC10 writes and FC03 reads to the paired soft-limit, PT-target and
   home-offset windows it lists, and prompt 13 to the PT-target windows for
   its W0 witness, on their recorded experimental images only, with the exact
-  restoration writes they name; production admission and the four windows
+  restoration writes they name; production admission and the six windows
   above change only by a D10 promotion. Generate compact codec access
   policy from the same register ledger; basic codec use must not require
   linking the descriptive catalogue strings.

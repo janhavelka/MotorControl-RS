@@ -18,28 +18,29 @@ work immediately, including when the grouped refresh later fails. Historical
 complete values remain inspectable with invalidated applicability; no stale
 snapshot authorizes a move, and explicit stop remains available.
 Raw unknown codes remain observable. Limit pairs assemble unsigned bits only
-when the observed word order is legal; signed encoding and native units remain
-unresolved. Historical raw words are never decoded using a newer order.
+when the observed word order is legal. Signed limits are decoded only for the
+claim wired bench 10 promoted: with `0x0019` known 0 in the same read,
+`limitsDecoded` is set and `positiveLimit`/`negativeLimit` hold the high-word-first
+two's-complement values in native position increments (the `0x000A` unit). At
+order 1 they stay undecoded. Historical raw words are never decoded using a newer order.
 
 `prepareDriverSettings` validates the whole `DriverRequest` and copied
-`DriverPrerequisites` before yielding any work. Seven single-word fields are
-implemented:
+`DriverPrerequisites` before yielding any work. Seven single-word fields and
+the two [soft-limit pairs](#soft-limit-pairs) are implemented:
 
 | Field | Legal candidate | Important meaning |
 | --- | --- | --- |
 | Direction | NORMAL/REVERSED | No automatic host-polarity inversion |
 | Subdivision | 400 through 51200 inclusive | Command increments per revolution remain a separate qualified scale |
 | Word order | HIGH_WORD_FIRST/LOW_WORD_FIRST | Changes paired words, not Modbus byte order |
-| Soft-limit enable | LIMITS_OFF/AFTER_HOMING | Enabling needs qualified existing limits and device homing |
+| Soft-limit enable | LIMITS_OFF/AFTER_HOMING | Enabling needs qualified existing limits and device homing; the standalone has no route that supplies them (prompt 11) |
 | Over-limit stop | FREE_PARKING/EMERGENCY_STOP | Value zero's exact torque/deceleration behavior remains unresolved |
 | Interruption | LEVEL/RISING_EDGE | External PV trigger policy; not serial positioning interrupt bit 3 |
 | Position mode | RELATIVE/ABSOLUTE | External positioning policy; not serial command bit 2 |
 
-Positive/negative limit candidates are explicit typed fields, but preparations
-containing either reject with `PAIR_WRITE_UNSUPPORTED` before *all* traffic.
-Their reads are implemented. The [pair policy](ess_pair_writes.md) admits
-neither separate FC06 halves nor a new FC10 limit window. No settings request
-implicitly reassigns an input, changes communications or saves the drive.
+The positive/negative limit pairs have their own admission rules, described in
+[soft-limit pairs](#soft-limit-pairs). No settings request implicitly reassigns
+an input, changes communications or saves the drive.
 
 Updates require a fresh, checked previous `DriverObservation`, exact target,
 transport and configuration generations, qualified stationary evidence and an
@@ -61,7 +62,7 @@ separate source or fixture fact. Fresh reads do not renew caller qualification.
 
 These records admit the input-effects part of direction, word-order,
 soft-limit, over-limit and external PT/PV setting changes. They do not supply
-missing limit-pair encoding, a homed reference or permission for motion.
+limit semantics, a homed reference or permission for motion.
 Subdivision-only updates retain their existing passive-input path; they need
 checked stopped feedback and known unconnected inputs with functions 0 through 3.
 With board-declared connected terminals every DRIVE field, subdivision
@@ -82,7 +83,8 @@ bounds. The library compares those words with the checked previous observation;
 a cast, guessed signed representation or host origin does not establish that
 mapping. The current standalone has no qualification route for this assertion.
 
-Each selected field yields one FC06 and one exact FC03 readback, at most fourteen
+Each selected single-word field yields one FC06 and one exact FC03 readback, and
+each limit pair one FC10 and one two-word FC03; at most fourteen
 transactions. The context retains prior/requested values, checked ACK, readback,
 execution disposition, possible-change effects, raw evidence and uncertainty.
 No later failure erases completed progress. An ACK without matching readback,
@@ -139,9 +141,18 @@ driver set FIELD INTEGER [FIELD INTEGER ...] [address]
 Fields are `direction`, `subdivision`, `word-order`, `soft-limit`, `over-limit`,
 `interruption`, `position-mode`, `positive-limit`, `negative-limit`. Enum fields
 use their documented zero/one codes. Values use strict integer parsing; duplicate
-fields and incomplete pairs reject. The 128-byte line limit includes the
+fields and incomplete pairs reject. `positive-limit` and `negative-limit` take
+a signed decimal native value and are set alone, for example
+`driver set positive-limit 300 negative-limit -300 [address]`. The 128-byte line limit includes the
 terminator; the 22-token limit includes an optional `@ID`. These bounds limit
 CLI group size; the direct API accepts all seven single-word fields.
+
+A driver result adds `pair_words`: one row per selected limit pair,
+`[field, previous0, previous1, requested0, requested1, readback0, readback1]`.
+A DRIVE read observation adds `limits_decoded`, `positive_limit` and
+`negative_limit`; `signed_limits` is `measured_order_0` and `native_scale`
+`position_increments` when the limits are decoded, otherwise both are
+`unresolved`. Raw `positive_words`/`negative_words` stay in every read.
 Host `axis` configuration remains distinct. Operations use ordinary retained
 capacity (eight frontend records), existing command correlation, explicit result
 inspection/release, cancellation and the reserved stop/recovery paths. Compact
@@ -162,13 +173,16 @@ interruption and external position mode were each changed and restored on
 drive 1, and over-limit stop on drives 2 and 4. Every write was acknowledged and
 read back ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md#driver-settings-image-a)).
 Soft-limit enable was not attempted, and no field's external effect was measured.
-Software-limit movement still needs resolved pair encoding, homing/reference
-semantics and a suitable fixture; raw zero limits are no proof.
+Wired bench 10 (19 November) measured the limit pairs (drives 1, 2, 4) and a
+soft-limit stop (drive 4) and ran the limit setter on the production image
+([soft-limit pairs](#soft-limit-pairs)). Production soft-limit enable still needs
+limit semantics and a homed-reference route (prompt 11); raw zero limits are no proof.
 
 
 The same sequencer supports `DriverGroup::IO`, separate stored I/O
 observations, typed function setters and checked polarity/custom masks. The
-DRIVE group retains its four read windows and seven writable fields; I/O has
+DRIVE group retains its four read windows, seven writable single-word fields
+and the two limit pairs; I/O has
 three gap-safe read windows and at most nine writes plus nine readbacks.
 Field/effect masks are 32 bits; the DRIVE and I/O groups use logical raw indices
 0..15, and copied reply capacity is 15 bytes. See [I/O API/lifetime and effects](ess_io.md).
@@ -182,3 +196,40 @@ it rejects the optional unconfirmed-echo/readback policy.
 `DriverGroup::HOMING_AUXILIARY` likewise uses local bit0 and single-word
 prior/update/readback; [homing auxiliary](ess_homing.md#explicit-auxiliary-setting)
 documents all twelve scalar choices and its independent active-policy boundary.
+
+## Soft-limit pairs
+
+`DriverField::POSITIVE_LIMIT` and `NEGATIVE_LIMIT` (DRIVE group) write the
+software limits. [Wired bench 10](reports/2026-11-19_wired_bench_10_paired_value_encodings.md)
+promoted them under decision D10 for model `0x4EEA`, firmware `0x0029`: FC10
+`0x0037/2` and `0x0039/2` at `0x0019` = 0, high word at the lower address,
+two's complement, native position increments ([pair policy](ess_pair_writes.md)).
+Admission, checked before any traffic:
+
+| Rule | Refusal |
+| --- | --- |
+| Limits are written alone: one or both, no other DRIVE field | `LIMIT_DEPENDENCY` |
+| Each value within ±`0x0FFFFFFF` (`DRIVER_LIMIT_MAGNITUDE`) | `INVALID_CANDIDATE` |
+| The prior DRIVE read shows `0x0019` known 0; order 1 stores words but their meaning is unmeasured | `UNSUPPORTED`, `PAIR_WRITE_UNSUPPORTED` |
+| The prior DRIVE read shows `0x0018` known 0 | `LIMIT_DEPENDENCY` |
+
+The ordinary prior-evidence, stationary and input-policy checks of every DRIVE
+field also apply. Each selected limit yields one FC10 of two words, encoded with
+`encodeInt32` high word first (13-byte request, `DRIVER_MAX_REQUEST_BYTES`;
+`PreparedDriver::function` 16), then one two-word FC03 readback whose both words
+must match. `DriverProgress` adds `pair`, `previousWords`, `requestedWords` and
+`readbackWords`; its scalar fields repeat the first (high) word. There are no
+split FC06 halves, rollback or replay.
+
+R10 on the production image (drive 4) wrote +300 and -300 through
+`driver set positive-limit`/`negative-limit` (one FC10 and a two-word FC03 each),
+read them decoded as +300/-300 and restored [0,0].
+
+Enabling the limits (`0x0018` = 1) stays refused in production: the standalone
+supplies no `limitSemanticsQualified`. Prompt 11 owns it. Measured on drive 4
+on an experimental image (E3): after home 35 with auxiliary 7 to 0, limits
++300/-300 and `0x0018` = 1, a 30 rpm velocity run stopped at +332 with `0x0007`
+bit 5 and at -332 with bit 6. Bits 5/6 stay set through `stop fast` and
+`alarm-clear`. A motor release clears them and HOMED; after `enable`,
+`driver set soft-limit 0` and the limit words restore normally, with no power
+cycle. Recovery away from a limit is unmeasured.

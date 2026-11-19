@@ -4,6 +4,35 @@
 
 ### Added
 
+- Paired-value encodings (wired bench 10). The register ledger gains an
+  `experiment_windows` list (decision D4; now the sixteen PT target pairs),
+  which the generator checks like reviewed windows (plus decision, prompt,
+  date, family, one writable pair, never also reviewed) and emits as
+  `Detail::canWriteExperiment` and a catalogue table. The codec adds the
+  separate `validateExperimentWriteRequest`, `buildExperimentWrite`,
+  `parseExperimentWrite` and `isExperimentWindow`, which production validation
+  refuses; `Rtu::essExperimentValidator()` serves an experimental image. The
+  soft-limit pairs are promoted (D10): reviewed FC10 `0x0037/2` and `0x0039/2`
+  at `0x0019` = 0, two's complement, native position increments, and `driver
+  set positive-limit|negative-limit` writes one FC10 and one two-word readback
+  per limit, alone, at `0x0019` and `0x0018` known 0 (order 1 `unsupported`).
+  `DriverProgress` adds the pair words, `PreparedDriver` the function and a
+  13-byte request, `DriverObservation` decoded limits at order 0. Homing admits
+  a nonzero offset within ±`0x0FFFFFFF` for method 35 with stored auxiliary 6
+  (`HomePrerequisites::offsetQualified`/`offsetOrder`); completion needs the
+  end coordinate equal to the offset; auxiliary 3 is refused. Console: `home
+  ... zero|OFFSET`, the home `offset` fact (method 35), driver `pair_words`,
+  decoded DRIVE limits, caps `limit_pair_writes` true, `limit_pair_word_order`
+  0 and `home_offset`. Experimental images only (`MOTORCONTROLRS_WB10_EXPERIMENT`):
+  `driver experiment` for the PT windows, kept for prompt 13. Harness:
+  `scripts/bench_pairs.py` (`paired-values`: P1-P4, P3D, E1, E2, E3P, E3N,
+  R10, restorations RB/E3X/E2R) and the soft-limit restoration route from
+  image level 10. Measured on drives 1, 2, 4 (`0x4EEA`/`0x0029`): limit and
+  offset words high word first at order 0; limits +300/-300 stop at +332/-332
+  with `0x0007` bits 5/6; PT pairs store and read back; order 1 changed no
+  interpretation within a power cycle; auxiliary 3 keeps the running
+  coordinate.
+
 - Wired bench 09 harness: `scripts/bench_input_starts.py` and the folder
   scenarios `input-start-single` (A1-A11), `input-start-shared` (B1-B3, short
   regression R) and `position-interrupt` (I1-I4, serial endpoint diagnostic E1)
@@ -131,6 +160,13 @@
   against the validators.
 
 ### Changed
+
+- Soft-limit candidates no longer reject with `PAIR_WRITE_UNSUPPORTED` at word
+  order 0 (wired bench 10); order 1 still does. The home qualification refusal
+  `stored_offset_nonzero` is now `stated_offset_required`: a stored nonzero
+  offset needs the `offset` fact, and each home then states the offset it
+  stages. `home methods` reports `offset` `zero_or_method_35_auxiliary_6` and
+  `auxiliary` `[7,6]`.
 
 - Input polarity with UNKNOWN status mapping (wired bench 05): the core and the
   application admit a change on any terminal, connected included, whose

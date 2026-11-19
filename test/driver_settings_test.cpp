@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include <MotorControlRS/profiles/ess_rs/DriverSettings.h>
 #include <MotorControlRS/profiles/ess_rs/Registers.h>
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <limits>
@@ -128,7 +129,7 @@ void testWholeCandidateAndPrerequisites() {
         assert(Ess::prepareDriverSettings(c, target(), 3, r, p, 200, 1000) && work(c).value == native);
     }
     r = request(1 | 128 | 256); r.positiveLimit = std::numeric_limits<int64_t>::max();
-    r.negativeLimit = std::numeric_limits<int64_t>::min(); checkUnchangedReject(r, p, Err::UNSUPPORTED);
+    r.negativeLimit = std::numeric_limits<int64_t>::min(); checkUnchangedReject(r, p); // Pairs are written alone.
     r = request(); p.previous.target.address = 2; checkUnchangedReject(r, p);
     p = prerequisites(); p.previous.configurationGeneration++; checkUnchangedReject(r, p);
     p = prerequisites(); p.configurationGeneration++; checkUnchangedReject(r, p);
@@ -174,7 +175,7 @@ void testAdmissionPrecedenceAndAliasing() {
     r = request(1 | 128); r.direction = static_cast<Ess::DefaultDirection>(2);
     refuse(Err::INVALID_CONFIG, Ess::DriverError::INVALID_CANDIDATE, "echo/readback policy requires IO or inhibited segment settings");
     p.allowEchoReadback = false;
-    refuse(Err::UNSUPPORTED, Ess::DriverError::PAIR_WRITE_UNSUPPORTED, "software-limit pair has no reviewed FC10 window; split writes are unavailable");
+    refuse(Err::INVALID_CONFIG, Ess::DriverError::LIMIT_DEPENDENCY, "soft-limit pairs are written alone, without geometry or other drive fields");
     r.fields = 1; p.previous.configurationGeneration++;
     refuse(Err::INVALID_CONFIG, Ess::DriverError::INVALID_CANDIDATE, "illegal driver-setting enum or native range");
     r = request(); p.previous.provenance[0].txComplete = false; p.previous.raw[0]++;
@@ -229,6 +230,75 @@ void testLimitDependencies() {
     p.positiveLimit = 100; p.negativeLimit = -0x10000000; checkUnchangedReject(r, p);
     p.negativeLimit = -100; p.referenceTarget.generation++; checkUnchangedReject(r, p);
     p.referenceTarget = target(); r.fields |= 2; checkUnchangedReject(r, p);
+}
+// Wired bench 10 (D10): soft-limit pairs as one FC10 of two words each and a
+// two-word FC03 readback, at 0x0019 known 0 and 0x0018 known 0; order 1, an
+// enabled limit, other fields, out-of-range values and split forms refused.
+std::vector<uint8_t> pairAck(uint16_t reg) { std::vector<uint8_t> b = {1, 0x10, 0, static_cast<uint8_t>(reg), 0, 2}; crc(b); return b; }
+ActionEvent pairFrame(const Ess::DriverContext& c, const std::vector<uint8_t>& bytes, uint64_t at) {
+    ActionEvent e = frame(c, bytes.data(), bytes.size(), at);
+    if (c.step % 2 == 0) e.transport.txAccepted = 13;
+    return e;
+}
+void supplyPair(Ess::DriverContext& c, const std::vector<uint8_t>& bytes) {
+    const uint64_t at = c.servicedUs + 2;
+    assert(Ess::advanceDriver(c, pairFrame(c, bytes, at), at + 2));
+}
+void testSoftLimitPairs() {
+    // Reads decode only the promoted claim (order 0); order 1 keeps raw words.
+    const auto order0 = snapshot();
+    assert(order0.limitsDecoded && order0.positiveLimit == 0x12345678 && order0.negativeLimit == static_cast<int32_t>(0x9ABCDEF0u));
+    assert(!snapshot(1).limitsDecoded);
+    auto r = request(128 | 256); r.positiveLimit = 0x00010002; r.negativeLimit = -500;
+    auto p = prerequisites();
+    Ess::DriverContext c; assert(Ess::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+    assert(c.fieldCount == 2 && c.progress[7].pair && c.progress[8].pair);
+    assert(c.progress[8].requestedWords[0] == 0xFFFF && c.progress[8].requestedWords[1] == 0xFE0C);
+    auto w = work(c);
+    std::vector<uint8_t> expected = {1, 0x10, 0, 0x37, 0, 2, 4, 0, 1, 0, 2}; crc(expected);
+    assert(w.write && w.function == 16 && w.count == 2 && w.length == 13 && std::equal(expected.begin(), expected.end(), w.bytes));
+    supplyPair(c, pairAck(0x37));
+    w = work(c); assert(!w.write && w.function == 3 && w.reg == 0x37 && w.count == 2);
+    supplyPair(c, reply({1, 2}));
+    w = work(c); expected = {1, 0x10, 0, 0x39, 0, 2, 4, 0xFF, 0xFF, 0xFE, 0x0C}; crc(expected);
+    assert(w.write && std::equal(expected.begin(), expected.end(), w.bytes));
+    supplyPair(c, pairAck(0x39)); supplyPair(c, reply({0xFFFF, 0xFE0C}));
+    assert(c.state == ReadState::SUCCEEDED && !c.uncertain && c.progress[8].readbackWords[1] == 0xFE0C &&
+           c.effects == (128u | 256u));
+    // Readback mismatch of the second word: reported, nothing more, no rollback.
+    assert(Ess::prepareDriverSettings(c, target(), 13, r, p, 200, 9000));
+    supplyPair(c, pairAck(0x37)); supplyPair(c, reply({1, 3}));
+    assert(c.outcome == Ess::DriverOutcome::READBACK_MISMATCH && c.uncertain && c.progress[7].readbackWords[1] == 3);
+    Ess::PreparedDriver done; assert(Ess::nextDriver(c, c.servicedUs, done) && done.kind == Ess::ActionWork::DONE);
+    // First limit written and the second failed: per-field report, no rollback.
+    assert(Ess::prepareDriverSettings(c, target(), 14, r, p, 200, 9000));
+    supplyPair(c, pairAck(0x37)); supplyPair(c, reply({1, 2}));
+    { auto e = local(c, ReadEventKind::TRANSPORT_FAILURE); e.transport.txAccepted = 13; e.txComplete = true;
+      assert(Ess::advanceDriver(c, e, c.servicedUs + 5)); }
+    assert(c.outcome == Ess::DriverOutcome::TRANSPORT_ERROR && c.progress[7].acknowledged && c.progress[7].readbackKnown &&
+           c.progress[8].execution == ActionExecution::UNKNOWN && c.uncertain && (c.effects & 256u));
+    // Lost acknowledgement: unknown, the sequence ends, nothing is resent.
+    assert(Ess::prepareDriverSettings(c, target(), 15, r, p, 200, 9000));
+    { auto e = local(c, ReadEventKind::DEADLINE); e.transport.txAccepted = 13; e.txComplete = true;
+      assert(Ess::advanceDriver(c, e, 9000)); }
+    assert(c.state == ReadState::FAILED && c.uncertain && c.progress[7].execution == ActionExecution::UNKNOWN);
+    // Refused before any output change.
+    r = request(128); r.positiveLimit = 0x10000000; checkUnchangedReject(r, p);
+    r.positiveLimit = -0x10000000; checkUnchangedReject(r, p);
+    r.positiveLimit = 300; checkUnchangedReject(r, prerequisites(1)); // 0x0018 known 1.
+    { auto order1 = prerequisites(); order1.previous = snapshot(1);
+      Ess::DriverContext d; d.operationId = 999; const Saved<Ess::DriverContext> saved(d);
+      const Status s = Ess::prepareDriverSettings(d, target(), 12, r, order1, 200, 9000);
+      assert(s.code == Err::UNSUPPORTED && s.detail == static_cast<int32_t>(Ess::DriverError::PAIR_WRITE_UNSUPPORTED)); saved.check(d); }
+    r = request(128 | 2); r.positiveLimit = 300; checkUnchangedReject(r, p);  // Pair plus geometry.
+    r = request(128 | 8); r.softLimitEnable = Ess::SoftLimitEnable::LIMITS_OFF; checkUnchangedReject(r, p);
+    // Exact admitted window: 0x0037/2 and 0x0039/2 only; FC06 on either half stays refused.
+    uint8_t bytes[16];
+    assert(!Ess::buildWriteSingleRegister(1, 0x37, 1, bytes, sizeof(bytes)) && !Ess::buildWriteSingleRegister(1, 0x3A, 1, bytes, sizeof(bytes)));
+    const uint16_t four[4] = {0, 1, 0, 2};
+    assert(!Ess::buildWriteMultipleRegisters(1, 0x37, four, 4, bytes, sizeof(bytes)));
+    assert(!Ess::buildWriteMultipleRegisters(1, 0x35, four, 2, bytes, sizeof(bytes)));
+    assert(Ess::buildWriteMultipleRegisters(1, 0x39, four, 2, bytes, sizeof(bytes)) == 13);
 }
 void testProgressNoRollbackAndCopiedStorage() {
     auto p = prerequisites(); auto r = request(127); r.wordOrder = Ess::WordOrder::LOW_WORD_FIRST;
@@ -767,7 +837,7 @@ int main() {
     testWriteClosureBoundaries();
     testOptionalAgePolicy();
     testAdmissionPrecedenceAndAliasing();
-    testReadAndPairOrder(); testWholeCandidateAndPrerequisites(); testLimitDependencies();
+    testReadAndPairOrder(); testWholeCandidateAndPrerequisites(); testLimitDependencies(); testSoftLimitPairs();
     testProgressNoRollbackAndCopiedStorage(); testFaultsCancellationAndExpiry();
     testUnconfirmedReadEvidence();
     testPositionStartSpeedSelectionAndAdmission();

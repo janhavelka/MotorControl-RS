@@ -3,8 +3,12 @@
 This policy covers all **20 writable pairs** in the ESS ledger: the active
 position target, homing offset, two software limits and sixteen stored position
 targets. The twenty-first pair, current position `0x000A/2`, is read-only and
-has no direct write form. This review establishes no new admissible write
-window or physical qualification. Source facts remain in
+has no direct write form. The source review alone established no new write
+window. [Wired bench 10](reports/2026-11-19_wired_bench_10_paired_value_encodings.md)
+(19 November 2026, model `0x4EEA`, firmware `0x0029`) then measured the pairs
+and, under decision D10, promoted the two soft-limit pairs to reviewed FC10
+windows and admitted a nonzero home offset for method 35 with auxiliary 6. The
+sixteen stored targets remain the 16 guarded pair setters. Source facts remain in
 [the register ledger](reference/ess_rs_registers.json); operational availability
 remains in [the operation inventory](reference/ess_rs_operations.json).
 
@@ -20,10 +24,13 @@ visually checked for this review. DM-PR pages 80 onward supply no ESS aliases.
 | `0x0021/5` | Position acceleration, deceleration, speed and target pair | p16 |
 | `0x001D/3` | Jog/speed parameters; no pair | p18 |
 | `0x0031/6` | Homing method, two speeds, ramp and offset pair | p20 |
+| `0x0037/2` | Positive software limit pair | p73; measured at `0x0019=0` (wired bench 10 P1, P4, E3, decision D10) |
+| `0x0039/2` | Negative software limit pair | p73; measured at `0x0019=0` (wired bench 10 P1, P4, E3, decision D10) |
 
 These are exact reviewed transactions, not a device-wide maximum or permission
-for their subsets. In particular `0x0035/2`, `0x0037/2`, `0x0039/2`, a combined
-limit span and stored-record writes remain unreviewed. FC06 rejects either
+for their subsets. In particular `0x0035/2`, a combined four-word limit span
+and stored-record writes remain unreviewed. The sixteen stored target pairs
+are [experiment windows](#experiment-windows) only. FC06 rejects either
 half of every pair as library policy against unqualified split updates; this
 is not a claim that firmware necessarily rejects FC06. Generic Modbus limits
 cannot establish ESS acceptance. The malformed p16 request has an extra
@@ -31,6 +38,31 @@ payload byte despite its five-word count; use the independently checked frame
 described in [the implementation reference](reference/01_implementation_reference.md),
 not the printed bytes. The conflicting diagram/prose CRCs on p8 likewise do
 not change the reviewed start/count.
+
+### Experiment windows
+
+The ledger's `experiment_windows` list (wired bench decision D4) holds windows
+that only a named experiment may write. Since the wired bench 10 promotion it
+holds the sixteen stored target pairs `0x0060 + 6(n-1)/2`, family `pt_target`;
+the soft-limit entries were removed when those pairs became reviewed windows.
+The generator checks each entry with the same structural rules as a reviewed
+window, plus its decision, prompt, date and family, exactly one writable pair
+of that family, and never also a reviewed window. It emits
+`Detail::canWriteExperiment` in `Access.h` and an experiment table in the
+[register catalogue](reference/05_ess_register_catalog.md).
+
+`Codec.h` has a separate builder and parser for these windows:
+`validateExperimentWriteRequest`, `buildExperimentWrite`, `parseExperimentWrite`
+and `isExperimentWindow`. They accept only the experiment table, and the
+production builders, validators and typed setters refuse every experiment
+window. `Rtu::essExperimentValidator()` in
+[EssRtuValidator.h](../examples/common/EssRtuValidator.h) checks frames of an
+experimental image. Only an image built with `MOTORCONTROLRS_WB10_EXPERIMENT`
+admits `driver experiment ...`
+([PairExperimentApp.h](../examples/probe_cli/PairExperimentApp.h)); production
+images refuse it `unsupported` before TX. The windows, builder and route stay
+for prompt 13's W0 witness. An acknowledgement or matching readback through
+them proves storage, not the drive's interpretation, atomicity or persistence.
 
 ## Documented word layout and pulse unit
 
@@ -51,32 +83,64 @@ is documented by inference: p30 "0: high position first", the high/low labels
 ("High position at the back") has no worked example. Target units are pulses
 (p16, p22, p70, p75). This does not calibrate pulses to shaft motion.
 
-These pages do not establish further FC10 acceptance, and every guard below
-stays. Negative active-position targets and feedback were later verified as
-two's complement on firmware `0x0029` (HW-13 in the
+These pages do not establish further FC10 acceptance. Negative active-position
+targets and feedback were later verified as two's complement on firmware
+`0x0029` (HW-13 in the
 [November bench audit](reports/2026-11-02_standalone_promptset_audit.md)).
-That evidence does not qualify negative stored targets, limits or homing offsets.
-Their encoding, soft-limit and offset units, and FC10 acceptance and atomicity
-for limit and stored pairs remain unresolved. Homing offset: offset access
-(RW, p73) and high/low labels are printed;
+That evidence did not qualify negative stored targets, limits or homing offsets.
+Homing offset: offset access (RW, p73) and high/low labels are printed;
 word order is not documented: it is absent from p30 although p29 calls that table
 all high and low parameters, and its only frame has zero words (p20).
+
+### Measured on wired bench 10
+
+Measured on drives 1, 2 and 4 (model `0x4EEA`, firmware `0x0029`) on
+19 November 2026 ([report](reports/2026-11-19_wired_bench_10_paired_value_encodings.md)):
+
+- Soft limits at `0x0019=0`: FC10 `0x0037/2` [`0x0001`,`0x0002`] and
+  `0x0039/2` [`0xFFFF`,`0xFE0C`] (-500) were acknowledged and read back
+  exactly on drive 4 (P1) and on drives 1 and 2 (P4). With limits +300/-300 and
+  `0x0018=1`, a 30 rpm velocity run stopped at +332 with `0x0007` bit 5 and at
+  -332 with bit 6 (E3). Swapped words would have put the limit at `0x012C0000`.
+  So the high word is at the lower address, the value is two's complement and
+  the unit is the `0x000A` position increment (32 increments of overshoot at
+  30 rpm with the 100 ms ramp).
+- Home offset at `0x0019=0`: method 35 with auxiliary 6 staged +500 [0,500] and
+  -500 [65535,65036] and the coordinate read +500 and -500 (E1): high word at
+  the lower address, two's complement, native position increments.
+- Stored targets at `0x0019=0`: all sixteen pairs [n, `0x1000`+n] and segment 1
+  at -500 were acknowledged and read back on drive 4, segment 1 [1,4097] also
+  on drives 1 and 2 (P2, P4). This is storage only.
+- `0x0019=1` (P3, P3D, E1): limit and segment words store and read back, but
+  neither the position words `0x000A/0B` nor the active target `0x0024/25`
+  changed their words within the same power cycle. A +500 home offset staged
+  low word first [500,0] ended with the coordinate [500,0], which is
+  `0x01F40000` read high first: the offset does not follow `0x0019`. Whether order 1 takes effect
+  after a save and restart is unmeasured (prompt 17). Order 1 is refused for
+  every pair write.
+
+Atomicity, rollback and partial-failure behavior of every FC10 window remain
+undocumented and unmeasured.
 
 ## Per-pair disposition
 
 | Field | Pair addresses | Source range and signed meaning | Word order | Admissible write / remaining proof |
 | --- | --- | --- | --- | --- |
 | Active position target | `0x0024–0x0025` | Unit pulses (p16, p70). p70 prints malformed `-0xFFFFFFF` to `0xFFFFFFFF`; typed paths use the conservative magnitude bound `0x0FFFFFFF`. Negative two's-complement targets are verified on firmware `0x0029` (HW-13); other firmware remains conditional. | Configurable by `0x0019`, p30; high word at the lower address at `0x0019=0` by inference, p8/p30/p70 | `0x0024/2` or containing `0x0021/5`; the typed move sequence selects a reviewed window under its setup policy. |
-| Homing offset | `0x0035–0x0036` | p73: `-0xFFFFFFF` to `0xFFFFFFF`; negative encoding and native scale unresolved. | High/low labels on p19/p73; word order not documented (absent from p30) | Only containing `0x0031/6` is reviewed. Standalone offset write and a typed homing setter remain unavailable. |
-| Positive software limit | `0x0037–0x0038` | p73: `-0xFFFFFFF` to `0xFFFFFFF`; negative encoding and native scale unresolved. | Configurable, p30 | No established admissible write window. Applies only after homing, p29/p73. |
-| Negative software limit | `0x0039–0x003A` | Same p73 range and uncertainties | Configurable, p30 | No established admissible write window. Applies only after homing, p29/p73. |
+| Homing offset | `0x0035–0x0036` | p73: `-0xFFFFFFF` to `0xFFFFFFF`. Measured at `0x0019=0` (E1): two's complement, native position increments. | High/low labels on p19/p73; word order not documented (absent from p30). Measured high word first at `0x0019=0`; the offset does not follow `0x0019=1` (E1) | Only containing `0x0031/6` is reviewed. Production nonzero offset: method 35 with stored auxiliary 6 at `0x0019=0`, through the home route and its `offset` fact ([homing](ess_homing.md#nonzero-home-offset)). Auxiliary 3, other choices and switch methods with an offset stay refused (prompt 12), and so does order 1 (prompt 17). No standalone offset write. |
+| Positive software limit | `0x0037–0x0038` | p73: `-0xFFFFFFF` to `0xFFFFFFF`. Measured at `0x0019=0` (P1, E3): two's complement, the `0x000A` position increment. | Configurable, p30. Measured high word first at `0x0019=0`; storage only at `0x0019=1` (P3) | Reviewed FC10 `0x0037/2` at `0x0019=0` (D10); typed setter `driver set positive-limit` ([driver settings](ess_driver_settings.md#soft-limit-pairs)). Order 1 refused. Applies only after homing, p29/p73; enable `0x0018=1` stays refused (prompt 11). |
+| Negative software limit | `0x0039–0x003A` | Same p73 range; measured as the positive limit (P1, E3) | As the positive limit | Reviewed FC10 `0x0039/2` at `0x0019=0` (D10); typed setter `driver set negative-limit`. Order 1 refused. Applies only after homing, p29/p73; enable stays refused (prompt 11). |
 
 All sixteen stored target pairs below share the p22 pulse unit and
-signed-direction semantics, p75 range `-0xFFFFFFF` to `0xFFFFFFF`, unresolved
-negative wire encoding, and p30 configurable word order with the p75 worked
-example at `0x0019=0`. **None has an established
-admissible FC10 window.** A two-word pair, five-word parameter subset or
-six-word record cannot be inferred from its readable/writable catalogue entry.
+signed-direction semantics, p75 range `-0xFFFFFFF` to `0xFFFFFFF`, and p30
+configurable word order with the p75 worked example at `0x0019=0`. The p75
+example (100000 = `0x0001`/`0x86A0`) documents order 0 but is not a
+measurement. Wired bench 10 wrote every pair through its experiment window
+and read it back (P2-P4); that is storage evidence, not the drive's
+interpretation of the words. **None has a production FC10 window.** Prompt
+13's W0 witness decides their promotion. A two-word pair, five-word parameter
+subset or six-word record cannot be inferred from its readable/writable
+catalogue entry.
 
 | Segment | Target pair | Reserved record word | Appendix evidence |
 | --- | --- | --- | --- |
@@ -106,10 +170,12 @@ The homing omission remains substantive: p29 calls the following table a list
 of all high/low parameters, but p30 includes feedback, active target, both
 limits and stored targets while omitting `0x0035/0x0036`. The p20 homing example
 writes two zero offset words, which cannot distinguish either order. Generic
-word-order prose and default high/low labels cannot resolve this omission.
-An authoritative clarification or a separately designed interpretation
-experiment is still needed; even successful raw readback alone cannot prove
-which word the homing engine interprets as high.
+word-order prose and default high/low labels cannot resolve this omission,
+and raw readback alone cannot prove which word the homing engine interprets
+as high. Wired bench 10's E1 was the separately designed interpretation
+experiment: the end coordinate of method 35 with auxiliary 6 equals the
+offset read high word first at `0x0019=0`. It qualifies that firmware and
+auxiliary choice only; the vendor omission itself is unchanged.
 
 Keep conflicting addresses separate: p73's collision fields `0x003B/0x003C`
 have unspecified access, while p79's `0x0122/0x0123` have RW/S and a different
@@ -141,9 +207,13 @@ these public operations. Keep their readiness, axis reservation, uncertainty
 and physical-write gates; do not add duplicate pair writers or unavailable
 setter stubs. Exact CLI grammar is in [the positioning guide](ess_position.md).
 
-Settings preparations retain the above field-specific unavailable reasons.
-Homing's containing window does not resolve its offset interpretation; software
-limits and stored targets need wire-form evidence before typed setters.
+The soft limits have a typed setter: `DriverField::POSITIVE_LIMIT` and
+`NEGATIVE_LIMIT` in the DRIVE group write one FC10 of two words each, then a
+two-word FC03 readback ([driver settings](ess_driver_settings.md#soft-limit-pairs)).
+A nonzero home offset uses `HomeRequest.offset` with
+`HomePrerequisites.offsetQualified` and `offsetOrder` inside the reviewed
+`0x0031/6` staging ([homing](ess_homing.md#nonzero-home-offset)). Stored
+targets keep the unsupported `SEGMENT_PULSE_TARGET` candidate until prompt 13.
 Single-word parameters have independent typed settings preparations,
 without implying that a complete pair-bearing record can be written.
 
@@ -157,9 +227,16 @@ motor-compatibility claim accompanies this review.
 
 The [repeat-motion comparison](archive/reports/2026-10-05_repeat_motion_timing.md)
 records a successful `0x0024/2` selective-update case. That does not qualify the
-unexpanded paired-write families, negative encoding or atomicity.
-The unexpanded families remain **NOT RUN** where admissible wire forms or
-operation prerequisites are unresolved. An analyzer is not an admission
+other paired-write families, negative encoding or atomicity. Wired bench 10
+measured the soft limits, home offset and stored-target storage (above). Its
+production regression R10 on the production image wrote +300/-300 through
+`driver set positive-limit`/`negative-limit` (one FC10 and a two-word FC03
+each), read them decoded and restored [0,0], ran home 35 with auxiliary 6 and
+offsets +500 and -500 to the offset, and saw `driver experiment` refused
+`unsupported` before TX. Still open: soft-limit enable in production
+(prompt 11), auxiliary choices other than 6 and 7 with an offset (prompt 12),
+order 1 after a save and restart (prompt 17) and the stored-target
+interpretation (prompt 13). An analyzer is not an admission
 requirement. A separate parameter-only experiment may examine the already
 reviewed `0x0024/2` parameter on the
 identified firmware, with exclusive bus ownership, checked software TX/RX/DE timing
@@ -186,6 +263,12 @@ would qualify only that firmware/window/value case: no negative encoding,
 atomicity, home-offset interpretation or other window is proved. No sweep of
 unknown addresses/counts is justified.
 
-Owner decision D4 separately authorizes one fixture-only experiment under
+Owner decision D4 of the standalone set authorized one fixture-only experiment under
 [standalone stage 04](prompts/standalone/04_paired_values.md): FC10 start
-`0x0060`, count 2. It has not run and admits no write window.
+`0x0060`, count 2. Wired bench decision D4
+([decisions](prompts/ess_wired_bench/README.md#decisions)) replaced it with
+bench experiments on the paired values, and wired bench 10 ran them on
+19 November 2026 on three experimental images (A, A2, A3), with R10 on the
+production image ([report](reports/2026-11-19_wired_bench_10_paired_value_encodings.md)).
+D10 then promoted the soft-limit windows. The stored-target experiment windows
+still admit no production write.

@@ -770,6 +770,31 @@ CONTEXT = {"image_sha256": "AB" * 32, "prompt": "10",
 PAIR = [{"drive": 1, "key": "drive.positive-limit", "index": None, "candidate": [0, 100], "case": "E1"}]
 
 
+class PairRouteTest(unittest.TestCase):
+    """Wired bench 10 (D10): the promoted soft-limit pairs restore through the
+    typed setter from image level 10 on; earlier images keep the old refusal."""
+
+    def test_pair_route_from_image_level_10(self):
+        entry = [{"drive": 4, "key": "drive.negative-limit", "index": None, "candidate": [65535, 65236]}]
+        plan = records.restoration_plan(BASELINE, entry, "10", {"4": {"configure": {}}})
+        self.assertTrue(plan["admissible"], plan["refused"])
+        step = plan["steps"][0]
+        self.assertEqual(step["route"], "ordinary")
+        self.assertEqual(step["write"]["text"], "driver set negative-limit 0 4")
+        self.assertEqual(step["write"]["kwargs"]["driver_args"], ("set", "negative-limit", "0"))
+        refused = records.restoration_plan(BASELINE, entry, "09", {"4": {"configure": {}}})
+        self.assertFalse(refused["admissible"])
+
+    def test_pair_value_and_write_text(self):
+        self.assertEqual(records.pair_value([0xFFFF, 0xFED4]), -300)
+        self.assertEqual(records.pair_value([0x0001, 0x0002]), 0x00010002)
+        command, kwargs, text = records.write_call({"key": "drive.positive-limit", "index": None}, [0, 300], 4)
+        self.assertEqual((command, kwargs["driver_args"], text), ("driver", ("set", "positive-limit", "300"),
+                                                                  "driver set positive-limit 300 4"))
+        with self.assertRaises(records.RecordError):
+            records.write_call({"key": "drive.positive-limit", "index": None}, 300, 4)
+
+
 class PlanTest(unittest.TestCase):
     def test_planning_sends_nothing(self):
         bench = FakeBench()

@@ -1528,6 +1528,26 @@ void homeRestoreRoutes() {
     const auto status = restoreHomingParameters(homeInput, id);
     assert(!status && status.detail == static_cast<int32_t>(Probe::Action::QUALIFICATION_REQUIRED) && id == 77 && sentCount() == 0);
 }
+// Wired bench 10: the production image has no experiment admission. The pair
+// experiment route and a nonzero home offset without the
+// offset facts refuse before TX; stated offset facts with auxiliary 7 stay zero-only.
+void productionRefusesPairExperiments() {
+    fresh(); qualify(); baselineWrites = hardware.writes;
+    for (const char* line : {"@140 driver experiment pair 55 1 2\n", "@141 driver experiment pair 96 1 4097\n",
+                             "@142 driver experiment pair 55 0 300\n", "@143 driver experiment pair 55 restore 9\n"}) {
+        Serial.input = line; Serial.output.clear(); pump();
+        assert(Serial.output.find("\"command\":\"driver-experiment\",\"ok\":false,\"result\":\"unsupported\"") != std::string::npos);
+    }
+    Probe::ParameterWriteRequest r; r.kind = Probe::ParameterWriteKind::PAIR_EXPERIMENT; r.first = 0x37; r.words[1] = 2;
+    uint32_t id = 77; assert(startParameterWrite(*app, r, id) == Probe::Action::UNSUPPORTED && id == 77);
+    Serial.input = "@144 home 35 60 30 100 500\n"; Serial.output.clear(); pump();
+    assert(Serial.output.find("\"result\":\"unresolved\"") != std::string::npos);
+    Serial.input = "@145 home 35 60 30 100 -500 1\n"; Serial.output.clear(); pump();
+    assert(Serial.output.find("\"result\":\"unresolved\"") != std::string::npos);
+    Serial.input = "@146 home 35 60 30 100 0\n"; Serial.output.clear(); pump();
+    assert(Serial.output.find("invalid_arguments") != std::string::npos); // Zero is stated as `zero`.
+    assert(!sentCount() && !axisReserved(*app, 1));
+}
 // Actual replies from the restore route, for the host parser's parity check.
 void emitRestoreReplies() {
     const auto emit = [](const std::string& line) {
@@ -1628,4 +1648,5 @@ int main(int argc, char** argv) {
     stopAtBoundariesAndUnsentExpiry(); orderedSharedMotionCachePreservesNewHomeReference();
     feedbackAfterHomeUsesTheNewZeroWitness();
     homeRestoreRoutes();
+    productionRefusesPairExperiments();
 }

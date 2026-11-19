@@ -73,6 +73,8 @@ guides define complete arguments and prerequisites.
 | `home restore SNAPSHOT_ID\|inspect [address]` | Writes back the six words of an earlier checked `home read` (FC10 `0x0031/6`, raw offset included, no start) and reads them back; canonical `home-restore`; [restoring the homing words](ess_homing.md#restoring-the-homing-words) |
 | `home methods`, `home qualification`, `home ...` | Method inventory, passive qualification inspection and qualified [homing](ess_homing.md); home acceptance replies `accepted`, then one terminal `home` line |
 | `driver`, `io`, `segment`, `control`, `tuning` | Typed reads/whole-candidate updates; [driver](ess_driver_settings.md), [I/O](ess_io.md), [segments](ess_segments.md), [control](ess_control_settings.md), [tuning](ess_tuning.md) |
+| `driver set positive-limit VALUE [negative-limit VALUE] [address]` | Soft-limit pairs, set alone: one FC10 `0x0037/2` or `0x0039/2` and a two-word FC03 readback each, at `0x0019` and `0x0018` known 0 ([paired values](#paired-values-wired-bench-10)) |
+| `driver experiment pair FIRST W0 W1\|pair FIRST restore SNAPSHOT_ID\|inspect` | Experimental image only: one stored-target experiment window write and readback; production images refuse a write `unsupported` before TX ([paired values](#paired-values-wired-bench-10)) |
 | `motion-profile read\|inspect\|restore\|forget` / `motion-profile start-speed NATIVE` | Retained position-parameter snapshot and explicit restoration |
 | `motion-profile stage ACC DEC RPM TARGET_W0 TARGET_W1 ORDER ADDRESS [model firmware]` | [Candidate staging](ess_position.md#candidate-profile-staging), five words only, no start/save; one retained result slot |
 | `communication ...`, `persistence ...` | Explicit [drive communication](ess_communication.md) and [save/restore](ess_persistence.md) workflows |
@@ -166,7 +168,8 @@ new-event completion checks still apply.
 Typed settings validate the complete candidate before writes and retain ACK,
 readback, partial progress and uncertain effects separately. Matching stored
 readback does not manufacture a missing acknowledgement or establish physical
-activation. Unsupported native pair setters reject. I/O `none` means documented
+activation. Unsupported native pair setters (the stored PT targets) reject; the
+soft-limit pairs have a typed setter since wired bench 10. I/O `none` means documented
 function zero; unconnected wiring never implicitly disables an input, limit or
 stop. Settings do not invent torque/current modes or external triggers.
 
@@ -347,7 +350,7 @@ none of these support lists imply physical qualification.
 | 04 | `motion-profile start-speed <native>` | `submitPositionStartSpeed` -> bounded prior-read/settings update |
 | 05 | `home auxiliary <0..11>` | `submitHomingAuxiliary` -> bounded prior-read/settings update |
 | 07 | `position interrupt <original-id>` | `submitPositionInterrupt` -> exact retained native stored-profile start-or-interrupt |
-| 08-12 | Existing `home <method> ... zero` | Public `submitHome` -> current owner, using qualification from the [console route](#qualification-routes) or API |
+| 08-12 | Existing `home <method> ... zero\|OFFSET` | Public `submitHome` -> current owner, using qualification from the [console route](#qualification-routes) or API |
 
 These initial new read/setting routes use the selected axis. They do not accept
 an address that would silently acquire the selected axis's configuration
@@ -408,10 +411,11 @@ Missing facts leave the operation refused with `qualification_required`.
 | `home qualification install METHOD SEARCH RETURN RAMP` | `mechanics` | Method trajectory, direction and travel suit this installation |
 | | `rates`, `ramp` | The exact native search/return and ramp words |
 | | `zero-offset` | Zero offset is the intended reference offset |
-| | `auxiliary` | Stored auxiliary 7 is the active policy |
+| | `auxiliary` | Stored auxiliary 7 is the active policy, or auxiliary 6 with `offset` |
 | | `inputs` | Terminal assignments and levels suit this method |
 | | `index` | Internal Z is usable; required only by methods 1-14, 33, 34, refused elsewhere |
 | | `reference` | Optional: homing zero maps to command coordinates. Without it no reference is published |
+| | `offset` | Optional, method 35 only (else `fact_not_applicable`): the measured offset encoding and auxiliary 6 end coordinate hold for this drive (wired bench 10). Needs `read config` with a known word order. Without it a nonzero offset is `unresolved` |
 | `velocity qualification install` | `rpm`, `ramp`, `inputs` | Native signed rpm, the stored ramp words, serial inputs permit motion |
 | | `negative` | Optional: two's-complement negative speed. Without it negative speeds are refused |
 | `position-clear qualification install` | `clear-semantics` | The zero-only clear's effect is understood for this axis |
@@ -424,8 +428,8 @@ with `result` `done` on success. A refusal is named:
 | --- | --- | --- |
 | `missing_fact`, `unknown_fact`, `duplicate_fact`, `fact_not_applicable` | `fact` | The offending fact, or `unprintable` for an unsafe token |
 | `reads_required` | `read_first` | Run this command first: `read config`, `read state`, `home read`, `velocity read` or `motion-profile read` |
-| `stored_auxiliary_differs` | | Home needs stored auxiliary 7, which it never writes; use `home auxiliary 7`, then read again |
-| `stored_offset_nonzero` | | Staging would erase a stored offset whose interpretation is unresolved |
+| `stored_auxiliary_differs` | | Home needs stored auxiliary 7 (or 6 with the `offset` fact), which it never writes; use `home auxiliary 7`, then read again |
+| `stated_offset_required` | | A stored nonzero offset needs the `offset` fact, so that each home states the offset it stages instead of silently erasing it (replaced `stored_offset_nonzero` in wired bench 10) |
 | `stored_ramp_out_of_range`, `stored_word_differs` | | The velocity ramp words exceed 2000, or the start-speed word differs from the fresh profile read |
 | `drive_not_ready` | `read_first` | Fresh state shows an alarm, motion or release |
 | `axis_conflict`, `busy` | | Unresolved motion needs a checked stop, or work is still running |
@@ -665,6 +669,46 @@ on drive 4 a 10 ms pulse started every trial and 5 ms none, so 20 ms keeps a
 arming that the 32-edge ring no longer retains, not the ring's own wrap-around
 count. A member result reaches completion only at a reported standstill
 (RUNNING clear and speed word 0).
+
+### Paired values (wired bench 10)
+
+Added by [wired bench 10](reports/2026-11-19_wired_bench_10_paired_value_encodings.md)
+(19 November 2026, model `0x4EEA`, firmware `0x0029`).
+
+```text
+driver set positive-limit VALUE [negative-limit VALUE] [address]
+home METHOD SEARCH RETURN RAMP zero|OFFSET [address]
+driver experiment pair FIRST W0 W1 | pair FIRST restore SNAPSHOT_ID | inspect
+```
+
+- `driver set positive-limit|negative-limit` takes a signed decimal native
+  value within ±`0x0FFFFFFF` and admits no other DRIVE field in the same
+  candidate. The prior DRIVE read must show `0x0019` known 0 (else
+  `unsupported`, order 1 is unmeasured) and `0x0018` known 0. Each limit is one
+  FC10 of two words and one two-word FC03 readback
+  ([soft-limit pairs](ess_driver_settings.md#soft-limit-pairs)). Enabling the
+  limits (`soft-limit 1`) stays refused (prompt 11).
+- The driver result adds `pair_words`, rows
+  `[field, previous0, previous1, requested0, requested1, readback0, readback1]`.
+  A DRIVE read observation adds `limits_decoded`, `positive_limit` and
+  `negative_limit`, with `signed_limits` `measured_order_0` and `native_scale`
+  `position_increments` when decoded (order 0), otherwise `unresolved`.
+- `home ... OFFSET` is a signed decimal native offset, nonzero, within
+  ±`0x0FFFFFFF`; zero is stated as `zero`. The application admits a nonzero
+  offset only with method 35, stored auxiliary 6, the `offset` qualification
+  fact and `0x0019` known 0, otherwise `unresolved`
+  ([nonzero home offset](ess_homing.md#nonzero-home-offset)). The home result
+  adds `offset`, `expected_position`, `end_known`, `end_position` and
+  `prerequisites.offset_qualified`/`offset_order`. `home methods` reports
+  `offset` `zero_or_method_35_auxiliary_6` and `auxiliary` `[7,6]`.
+- `caps` reports `limit_pair_writes` true, `limit_pair_word_order` 0 and
+  `home_offset` `method_35_auxiliary_6_order_0`; `segment_pulse_writes` stays false.
+- `driver experiment` (command `driver-experiment`) exists for the stored PT
+  target experiment windows on an image built with
+  `MOTORCONTROLRS_WB10_EXPERIMENT` only
+  ([experiment windows](ess_pair_writes.md#experiment-windows)). A production
+  image refuses a write `unsupported` before TX. It shares the parameter-write
+  session (`kind` `pair_experiment`) and is kept for prompt 13.
 
 ## Verification and qualification
 

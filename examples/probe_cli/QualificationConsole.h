@@ -24,6 +24,7 @@ struct QualificationCommand {
     MotorControlRS::ESS_RS::HomeRequest home; ///< Home: method and native words.
     bool mechanics = false, rates = false, ramp = false, zeroOffset = false;
     bool auxiliary = false, inputs = false, index = false, reference = false; ///< Home facts; ramp and inputs are shared with velocity.
+    bool offset = false; ///< Home: measured nonzero offset encoding with auxiliary 6 (wired bench 10).
     bool rpm = false, negative = false; ///< Velocity facts.
     bool clearSemantics = false; ///< Position-clear fact.
     uint16_t rawStartSpeed = 0, minimumRpm = 0; ///< Start-speed relation.
@@ -55,6 +56,7 @@ const Fact HOME[] = {
     {"inputs", &QualificationCommand::inputs, true},
     {"index", &QualificationCommand::index, false},
     {"reference", &QualificationCommand::reference, false},
+    {"offset", &QualificationCommand::offset, false},
 };
 const Fact VELOCITY[] = {
     {"rpm", &QualificationCommand::rpm, true},
@@ -106,6 +108,9 @@ inline const char* parseHomeQualification(const char* const* tokens, std::size_t
     named = "index";
     if (method->requiresIndex && !command.index) return "missing_fact";
     if (!method->requiresIndex && command.index) return "fact_not_applicable";
+    // The offset fact exists for method 35 only (wired bench 10 E1).
+    named = "offset";
+    if (command.offset && command.home.method != Ess::HomingMethod::METHOD_35) return "fact_not_applicable";
     named = nullptr;
     return nullptr;
 }

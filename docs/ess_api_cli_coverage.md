@@ -41,8 +41,9 @@ is explicitly no-operation metadata, not a missing command to implement.
 
 The checked inventory retains 221 records/242 words, 135 choices, 55 producing
 operation rows and four named gaps. It accounts for 201 implemented reads and
-zero missing readable-record implementations; 172 implemented writes, zero missing writes, three partial
-write registers and 18 guarded pair writes. Sixteen reserved records and two
+zero missing readable-record implementations; 174 implemented writes, zero missing writes, three partial
+write registers and 16 guarded pair writes (the stored PT targets; wired bench 10 promoted the two
+soft-limit pairs). Sixteen reserved records and two
 unspecified-access records remain visible. Choice totals are 121 implemented
 (including twelve decoders), 12 unimplemented/unresolved, one unsupported and
 one no-operation value. These counts are implementation accounting, not full

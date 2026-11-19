@@ -1140,29 +1140,36 @@
       "api": {
         "header": "include/MotorControlRS/profiles/ess_rs/DriverSettings.h",
         "symbols": [
-          "prepareDriverSettings"
+          "prepareDriverSettings",
+          "nextDriver",
+          "advanceDriver",
+          "getDriver"
         ]
       },
-      "cli_commands": [],
-      "implementation": "UNSUPPORTED",
-      "cli": "NOT_REACHABLE",
+      "cli_commands": [
+        "driver set"
+      ],
+      "implementation": "IMPLEMENTED",
+      "cli": "REACHABLE",
       "native": {
         "state": "PASS",
         "evidence": [
           "test/driver_settings_test.cpp",
           "test/driver_app_test.cpp",
           "test/driver_console_parity_test.py",
+          "test/paired_values_app_test.cpp",
+          "test/codec_test.cpp",
           "test/installed_consumer/main.cpp"
         ]
       },
       "hardware": {
-        "state": "NOT_RUN",
+        "state": "PASS",
         "evidence": [
-          "docs/archive/reports/ess_release_13_2026-10-04.md"
+          "docs/reports/2026-11-19_wired_bench_10_paired_value_encodings.md"
         ],
-        "reason": "Physical settings writes/restore and soft-limit movement remain gated by source/timing/reference evidence."
+        "reason": "Wired bench 10 (19 November 2026, 0x4EEA/0x0029): P1/P4 FC10 storage exact on drives 1, 2 and 4 at 0x0019 = 0 ([1,2], [65535,65036]); E3 order and sign witnesses on drive 4 (limits +300/-300 with 0x0018 = 1 after home 35 stopped +30 rpm at +332 with bit 5 and -30 rpm at -332 with bit 6); R10 production setter +300/-300 and back to [0,0] read back with decoded values. Order 1 stores words (P3) but is refused. Soft-limit enable stays refused (prompt 11)."
       },
-      "reason": "Typed candidate fields reject before all traffic: no reviewed FC10 pair window or resolved signed/native unit policy. CLI syntax reports unsupported and grants no setter reachability credit."
+      "reason": "Promoted (D10): one FC10 0x0037/2 or 0x0039/2 and one two-word FC03 readback per limit in the DRIVE update sequence, words from encodeInt32 at 0x0019 = 0 only, signed within +-0x0FFFFFFF, written alone (no geometry or other drive field) while 0x0018 is known 0; readback mismatch reported, an uncertain write ends the sequence, no replay or rollback. DRIVE reads decode the signed limits only at order 0. No split FC06, no 0x0037/4 span."
     },
     {
       "id": "home_parameters",
@@ -1305,18 +1312,21 @@
           "test/home_app_test.cpp",
           "test/probe_console_test.cpp",
           "test/bench_probe_test.py",
-          "test/installed_consumer/main.cpp"
+          "test/installed_consumer/main.cpp",
+          "test/paired_values_app_test.cpp",
+          "test/home_console_parity_test.py"
         ]
       },
       "hardware": {
         "state": "PASS",
         "evidence": [
           "docs/reports/2026-11-02_standalone_14_bench_regression.md",
-          "docs/reports/2026-11-16_hil_regression.md"
+          "docs/reports/2026-11-16_hil_regression.md",
+          "docs/reports/2026-11-19_wired_bench_10_paired_value_encodings.md"
         ],
-        "reason": "Zero words staged within 0x0031/6 and position read 0 after homing; no nonzero offset."
+        "reason": "Zero words staged within 0x0031/6 and position read 0 after homing (method 35/33/34). Wired bench 10 E1 (drive 4): method 35 with auxiliary 6 staged +500 [0,500] and -500 [65535,65036] at 0x0019 = 0 and the coordinate read +500 and -500; R10 production regression on the production image."
       },
-      "reason": "Only zero pair in exact reviewed0x0031/6 staging is implemented; nonzero offset signedness/order/scale remain unresolved. No standalone/split/pair setter is exposed."
+      "reason": "Zero offset with auxiliary 7, and (wired bench 10) a nonzero signed offset within +-0x0FFFFFFF with method 35 and stored auxiliary 6 at 0x0019 = 0 (the `offset` home fact), staged high word first in the exact 0x0031/6 window through the home route; completion needs the end coordinate equal to the offset. In progress: auxiliary 3 and the other choices, switch methods with offsets and order 1 remain for prompt 12. No standalone 0x0035/2 or split write."
     },
     {
       "id": "homing_parameter_read",
@@ -1804,10 +1814,12 @@
       },
       "hardware": {
         "state": "NOT_RUN",
-        "evidence": [],
-        "reason": "All16 stored target-pair writes remain unavailable: no reviewed FC10 window, no split FC06 or reserved-bearing span permitted."
+        "evidence": [
+          "docs/reports/2026-11-19_wired_bench_10_paired_value_encodings.md"
+        ],
+        "reason": "Production route still unavailable. Storage only, through the wired bench 10 experiment windows (D4): FC10 of two words acknowledged and read back exactly for all sixteen records on drive 4 ([n, 0x1000+n]) and segment 1 -500 [65535,65036] at 0x0019 = 0, segment 1 on drives 1 and 2, and on drive 4 at 0x0019 = 1. Order and sign meaning need prompt 13's W0 witness (D10); p75 documents 100000 = 0x0001/0x86A0."
       },
-      "reason": "Every stored target pair lacks a reviewed FC10 window. Complete candidate rejects before scalar TX; no split FC06, five-word subset or whole reserved-bearing record write."
+      "reason": "Every stored target pair stays an experiment window until prompt 13's W0 witness promotes it (D10). Complete candidate rejects before scalar TX; no split FC06, five-word subset or whole reserved-bearing record write."
     },
     {
       "id": "stored_speed_read",
@@ -3064,9 +3076,9 @@
       "kinds": [
         "WRITE"
       ],
-      "owner": "12/14",
-      "disposition": "UNRESOLVED",
-      "reason": "0031/6 admits qualified zero only. Nonzero sign/order/units and0035/2 write form remain unresolved."
+      "owner": "12",
+      "disposition": "PARTIAL",
+      "reason": "Method 35 with auxiliary 6 at order 0 is implemented (wired bench 10 E1). Other auxiliary choices (3 kept the running coordinate in E2), switch methods with offsets, order 1 and the standalone 0x0035/2 form remain for prompt 12."
     },
     {
       "id": "earlier_collision_access",
@@ -3214,6 +3226,7 @@
     {
       "header": "include/MotorControlRS/profiles/ess_rs/Codec.h",
       "symbols": [
+        "buildExperimentWrite",
         "buildProbe",
         "buildReadRegisters",
         "buildWriteMultipleRegisters",
@@ -3226,20 +3239,23 @@
         "expectedReadRegistersLen",
         "expectedWriteMultipleRegistersLen",
         "expectedWriteSingleRegisterLen",
+        "isExperimentWindow",
         "isReadRangeValid",
         "isValidAddress",
+        "parseExperimentWrite",
         "parseProbe",
         "parseRegister",
         "parseRegisters",
         "parseWriteMultipleRegisters",
         "parseWriteSingleRegister",
+        "validateExperimentWriteRequest",
         "validateReadRegistersRequest",
         "validateReadResponseExpected",
         "validateWriteMultipleRegistersRequest",
         "validateWriteSingleRegisterRequest"
       ],
       "classification": "CODEC",
-      "reason": "Checked raw wire/access helpers; neither typed semantic coverage nor unrestricted register CLI.",
+      "reason": "Checked raw wire/access helpers; neither typed semantic coverage nor unrestricted register CLI. The experiment builder admits only the ledger's experiment windows (D4).",
       "cli_topics": []
     },
     {
@@ -3809,7 +3825,7 @@
     {
       "route": "home qualification install",
       "wire_command": "home-qualification-install",
-      "syntax": "home qualification install METHOD SEARCH RETURN RAMP mechanics rates ramp zero-offset auxiliary inputs [index] [reference]",
+      "syntax": "home qualification install METHOD SEARCH RETURN RAMP mechanics rates ramp zero-offset auxiliary inputs [index] [reference] [offset]",
       "api": "installHomeQualification",
       "facts": [
         "mechanics",
@@ -3819,7 +3835,8 @@
         "auxiliary",
         "inputs",
         "index",
-        "reference"
+        "reference",
+        "offset"
       ],
       "reason": "Each fact is stated by name and copied into HomePrerequisites; live checks stay in homeReadiness. Stored auxiliary must be 7 and the offset zero; stored method, rates and ramp may differ because home staging overwrites them."
     },

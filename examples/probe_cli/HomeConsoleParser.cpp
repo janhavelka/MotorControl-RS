@@ -24,13 +24,30 @@ bool parseWords(const char* const* args, MotorControlRS::ESS_RS::HomeRequest& re
     request.rampTime = static_cast<uint16_t>(ramp);
     return true;
 }
+// `zero` or a signed decimal native offset within +-0x0FFFFFFF (p73 range).
+// Admission of a nonzero offset belongs to the application and core.
+bool parseOffset(const char* text, int64_t& offset) noexcept {
+    if (!std::strcmp(text, "zero")) { offset = 0; return true; }
+    const char* digit = text; if (*digit == '-') ++digit;
+    if (!*digit || std::strlen(digit) > 9) return false;
+    int64_t value = 0;
+    for (const char* p = digit; *p; ++p) {
+        if (*p < '0' || *p > '9') return false;
+        value = value * 10 + (*p - '0');
+    }
+    if (value > 0x0FFFFFFF || value == 0) return false; // Zero is stated as `zero`.
+    offset = digit == text ? value : -value;
+    return true;
+}
 const char* parse(const char* const* args, std::size_t count,
                   MotorControlRS::ESS_RS::HomeRequest& request,
                   uint8_t& address, bool& explicitAddress) noexcept {
-    if ((count != 5 && count != 6) || std::strcmp(args[4], "zero"))
+    int64_t offset = 0;
+    if ((count != 5 && count != 6) || !parseOffset(args[4], offset))
         return "invalid_arguments";
     MotorControlRS::ESS_RS::HomeRequest parsed = request;
     if (!parseWords(args, parsed)) return "invalid_arguments";
+    parsed.offset = offset;
     uint32_t selectedAddress = 0;
     if (count == 6 && (!ConsoleNumbers::number(args[5], selectedAddress) ||
                       selectedAddress < 1 || selectedAddress > 247))

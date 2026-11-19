@@ -53,10 +53,16 @@ Probe::QualificationReply installHomeFacts(const App& a, const Probe::Qualificat
     if (const char* read = homeFirstRead(a, now)) return needRead(read);
     const auto& parameters = a.homingParameters;
     // homeReadiness refuses these; name them, because no read will change them.
-    if (parameters.rawAuxiliary != static_cast<uint16_t>(ESS::HomingAuxiliary::KEEP_POSITION_SET_ZERO))
+    // Auxiliary 7 always; 6 with the offset fact (wired bench 10, method 35).
+    // A stored nonzero offset needs the offset fact: each home then states the
+    // offset it stages (zero included) instead of silently erasing it.
+    const auto stored = static_cast<ESS::HomingAuxiliary>(parameters.rawAuxiliary);
+    if (stored != ESS::HomingAuxiliary::KEEP_POSITION_SET_ZERO &&
+        !(stored == ESS::HomingAuxiliary::KEEP_POSITION_SET_OFFSET && c.offset))
         return refusal(Probe::Action::UNAVAILABLE, "stored_auxiliary_differs");
-    if (parameters.rawOffsetWords[0] || parameters.rawOffsetWords[1])
-        return refusal(Probe::Action::UNAVAILABLE, "stored_offset_nonzero");
+    if ((parameters.rawOffsetWords[0] || parameters.rawOffsetWords[1]) && !c.offset)
+        return refusal(Probe::Action::UNAVAILABLE, "stated_offset_required");
+    if (c.offset && !a.configuration.wordOrderKnown) return needRead("read config");
     const auto& motion = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
     if (motion.value.rawAlarm || (motion.value.rawMotion & 0x7C))
         return refusal(Probe::Action::UNAVAILABLE, "drive_not_ready", "read state");
@@ -67,6 +73,9 @@ Probe::QualificationReply installHomeFacts(const App& a, const Probe::Qualificat
     p.methodQualified = c.mechanics; p.nativeRatesQualified = c.rates; p.nativeRampQualified = c.ramp;
     p.zeroOffsetQualified = c.zeroOffset; p.auxiliaryQualified = c.auxiliary; p.inputsQualified = c.inputs;
     p.indexQualified = c.index; p.referenceSemanticsQualified = c.reference;
+    p.auxiliary = stored;
+    p.offsetQualified = c.offset;
+    p.offsetOrder = a.configuration.wordOrder;
     p.readinessQualified = true; // Stands until invalidated; live reads decide each admission.
     p.qualifiedUs = now; p.qualificationMaximumAgeUs = 0; // Stated facts have no age; changes revoke them.
     p.maximumAgeUs = a.observationAgeUs();

@@ -1285,8 +1285,88 @@ static void testWriteClosureBoundaries() {
         if (offset > 0) assert(c.outcome == ActionOutcome::DEADLINE);
     }
 }
+// Wired bench 10: nonzero offset with method 35 and auxiliary 6 (no offset
+// motion, end coordinate = offset) needs offsetQualified; the offset is staged
+// with encodeInt32 in offsetOrder; the zero check compares the decoded position
+// with the offset exactly. Auxiliary 3 is refused (E2: it runs the offset and
+// keeps the running coordinate).
+static std::vector<uint8_t> positionReply(uint16_t first, uint16_t second) {
+    std::vector<uint8_t> b = {1, 3, 4, static_cast<uint8_t>(first >> 8), static_cast<uint8_t>(first),
+                              static_cast<uint8_t>(second >> 8), static_cast<uint8_t>(second)};
+    crc(b); return b;
+}
+static Ess::HomePrerequisites offsetPrerequisites(Ess::WordOrder order) {
+    auto p = prerequisites(); p.auxiliary = Ess::HomingAuxiliary::KEEP_POSITION_SET_OFFSET; p.offsetQualified = true;
+    p.offsetOrder = order; return p;
+}
+static void finishOffset(Ess::HomeContext& c, uint16_t first, uint16_t second) {
+    consume(c); consume(c); // Staging and trigger acknowledged.
+    consume(c, 0); consume(c, 3); assert(c.phase == Ess::HomePhase::ZERO_CHECK); // HOMED low, then high.
+    const auto b = positionReply(first, second); const auto at = c.eligibleUs + 20;
+    assert(Ess::advanceHome(c, frame(c, b, at), at + 20));
+}
+static void testNonzeroOffset() {
+    using Aux = Ess::HomingAuxiliary;
+    using Order = Ess::WordOrder;
+    struct Case { int64_t offset; Order order; uint16_t staged[2]; };
+    const Case cases[] = {{500, Order::HIGH_WORD_FIRST, {0x0000, 0x01F4}}, {-500, Order::HIGH_WORD_FIRST, {0xFFFF, 0xFE0C}},
+                          {500, Order::LOW_WORD_FIRST, {0x01F4, 0x0000}}, {0x0FFFFFFF, Order::HIGH_WORD_FIRST, {0x0FFF, 0xFFFF}},
+                          {-0x0FFFFFFF, Order::HIGH_WORD_FIRST, {0xF000, 0x0001}}, {0, Order::HIGH_WORD_FIRST, {0, 0}}};
+    for (const auto& k : cases) {
+        auto p = offsetPrerequisites(k.order); auto r = request(); r.offset = k.offset;
+        Ess::HomeContext c; assert(Ess::prepareHome(c, axis(), 12, r, p, 100, 10000, options()));
+        assert(c.words[4] == k.staged[0] && c.words[5] == k.staged[1] && c.expectedPosition == k.offset);
+        Ess::PreparedHome work; assert(Ess::nextHome(c, 100, work) && work.length == 21);
+        assert(work.bytes[15] == (k.staged[0] >> 8) && work.bytes[16] == (k.staged[0] & 0xFF) &&
+               work.bytes[17] == (k.staged[1] >> 8) && work.bytes[18] == (k.staged[1] & 0xFF));
+        finishOffset(c, k.staged[0], k.staged[1]);
+        assert(c.outcome == ActionOutcome::OBSERVED && c.endKnown && c.endPosition == k.offset);
+        AxisReference reference; assert(Ess::getHomeReference(c, c.servicedUs, 0, reference) && reference.nativePosition == k.offset);
+    }
+    // A coordinate one increment off, or the words swapped, fails the home.
+    for (const auto& reported : {std::vector<uint16_t>{0x0000, 0x01F5}, std::vector<uint16_t>{0x01F4, 0x0000}}) {
+        auto p = offsetPrerequisites(Order::HIGH_WORD_FIRST); auto r = request(); r.offset = 500;
+        Ess::HomeContext c; assert(Ess::prepareHome(c, axis(), 12, r, p, 100, 10000, options()));
+        finishOffset(c, reported[0], reported[1]);
+        assert(c.outcome == ActionOutcome::REPLY_ERROR && c.status.detail == static_cast<int32_t>(Ess::HomeError::ZERO_NOT_OBSERVED));
+        AxisReference reference; assert(!Ess::getHomeReference(c, c.servicedUs, 0, reference));
+    }
+    // Auxiliary 6 forbids RUNNING (no offset motion).
+    {
+        auto p = offsetPrerequisites(Order::HIGH_WORD_FIRST); auto r = request(); r.offset = 500;
+        Ess::HomeContext c; assert(Ess::prepareHome(c, axis(), 12, r, p, 100, 10000, options()));
+        consume(c); consume(c); consume(c, 4);
+        assert(c.outcome == ActionOutcome::REPLY_ERROR && c.status.detail == static_cast<int32_t>(Ess::HomeError::UNEXPECTED_ACTIVITY));
+    }
+    // Refusals before any output change.
+    auto c = home();
+    struct Refusal { Aux auxiliary; bool offset; int64_t value; Ess::HomingMethod method; Ess::HomeError reason; Err code; };
+    const Refusal refusals[] = {
+        {Aux::KEEP_POSITION_SET_ZERO, true, 500, Ess::HomingMethod::METHOD_35, Ess::HomeError::UNRESOLVED_OFFSET, Err::UNSUPPORTED},
+        {Aux::KEEP_POSITION_SET_OFFSET, false, 500, Ess::HomingMethod::METHOD_35, Ess::HomeError::UNRESOLVED_OFFSET, Err::UNSUPPORTED},
+        {Aux::KEEP_POSITION_SET_OFFSET, true, 0x10000000, Ess::HomingMethod::METHOD_35, Ess::HomeError::UNRESOLVED_OFFSET, Err::UNSUPPORTED},
+        {Aux::KEEP_POSITION_SET_OFFSET, true, -0x10000000, Ess::HomingMethod::METHOD_35, Ess::HomeError::UNRESOLVED_OFFSET, Err::UNSUPPORTED},
+        {Aux::KEEP_POSITION_SET_OFFSET, true, 500, Ess::HomingMethod::METHOD_33, Ess::HomeError::AUXILIARY_REQUIRED, Err::INVALID_CONFIG},
+        {Aux::MOVE_OFFSET_KEEP_ACTUAL, true, 500, Ess::HomingMethod::METHOD_35, Ess::HomeError::AUXILIARY_REQUIRED, Err::INVALID_CONFIG},
+        {Aux::MOVE_OFFSET_SET_OFFSET, true, 500, Ess::HomingMethod::METHOD_35, Ess::HomeError::AUXILIARY_REQUIRED, Err::INVALID_CONFIG},
+        {Aux::KEEP_POSITION_KEEP_ACTUAL, true, 500, Ess::HomingMethod::METHOD_35, Ess::HomeError::AUXILIARY_REQUIRED, Err::INVALID_CONFIG},
+    };
+    for (const auto& k : refusals) {
+        auto p = prerequisites(k.method); p.auxiliary = k.auxiliary; p.offsetQualified = k.offset; p.indexQualified = true;
+        auto r = request(k.method); r.offset = k.value;
+        const Saved<Ess::HomeContext> saved(c);
+        const auto status = Ess::prepareHome(c, axis(), 12, r, p, 100, 10000, options());
+        assert(!status && status.code == k.code && status.detail == static_cast<int32_t>(k.reason)); saved.check(c);
+    }
+    auto p = offsetPrerequisites(static_cast<Order>(2)); auto r = request(); r.offset = 500;
+    const Saved<Ess::HomeContext> saved(c);
+    assert(!Ess::prepareHome(c, axis(), 12, r, p, 100, 10000, options())); saved.check(c);
+    p.auxiliaryQualified = false; p.offsetOrder = Order::HIGH_WORD_FIRST;
+    assert(Ess::checkHomeQualification(p, 100).detail == static_cast<int32_t>(Ess::HomeError::AUXILIARY_REQUIRED));
+}
 int main() {
     testWriteClosureBoundaries();
+    testNonzeroOffset();
     // Independent fixture age cannot be renewed by fresh motion observations.
     auto p = prerequisites(); p.qualifiedUs = 50; p.qualificationMaximumAgeUs = 100;
     p.observeInputs = true; p.ioObservedUs = 75; p.readbackObservedUs = 60;

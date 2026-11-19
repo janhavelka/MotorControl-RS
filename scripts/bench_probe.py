@@ -41,7 +41,7 @@ MAX_INPUT = 98304
 MAX_TRAFFIC_INPUT = 1048576  # Independent finite diagnostic budget per command/drain.
 COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "health", "memory", "stats", "load",
                       "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "bench", "communication", "persistence", "motion-profile", "motion-profile-stage", "motion-profile-start-speed", "motion-profile-start-speed-relation", "home-auxiliary", "debug",
-                      "home-restore", "velocity-restore",
+                      "home-restore", "velocity-restore", "driver-experiment",
                       "home-qualification-install", "home-qualification-revoke", "velocity-qualification-install", "velocity-qualification-revoke",
                       "position-clear-qualification", "position-clear-qualification-install", "position-clear-qualification-revoke",
                       "io-qualification-install", "io-qualification-inspect", "io-qualification-revoke",
@@ -85,7 +85,7 @@ ADMISSION_FAILURES = frozenset({"busy", "recovery_required", "unavailable", "fai
 
 
 # The operator states each commissioning fact by name; this harness never supplies one.
-HOME_FACTS = ("mechanics", "rates", "ramp", "zero-offset", "auxiliary", "inputs", "index", "reference")
+HOME_FACTS = ("mechanics", "rates", "ramp", "zero-offset", "auxiliary", "inputs", "index", "reference", "offset")
 VELOCITY_FACTS = ("rpm", "ramp", "inputs", "negative")
 POSITION_CLEAR_FACTS = ("clear-semantics",)
 QUALIFICATION_ROUTES = {"home-qualification-install": "home qualification install",
@@ -113,7 +113,7 @@ MOTION_REFUSAL_COMMANDS = ("move-relative", "move-absolute", "move-angle", "velo
 UPDATE_NOT_ADMITTED_REASONS = (*SETTINGS_REFUSAL_REASONS, "binding_changed", "prerequisites_expired", "update_refused")
 QUALIFICATION_FACT_REFUSALS = frozenset({"missing_fact", "unknown_fact", "duplicate_fact", "fact_not_applicable"})
 QUALIFICATION_REFUSALS = QUALIFICATION_FACT_REFUSALS | frozenset({
-    "reads_required", "stored_auxiliary_differs", "stored_offset_nonzero", "drive_not_ready",
+    "reads_required", "stored_auxiliary_differs", "stated_offset_required", "drive_not_ready",
     "mapping_not_recorded", "mapping_contradicts_record",
     "stored_ramp_out_of_range", "stored_word_differs", "axis_configuration_unknown", "qualification_rejected", "qualification_required",
     "busy", "axis_conflict", "unavailable", "invalid", "unresolved", "unimplemented", "invalid_arguments", "invalid_address", "failed"})
@@ -357,9 +357,14 @@ def debug_session(console, mode: str | None, timeout_s: float):
 
 # Wired bench 06: snapshot restores, one session each (synchronous admission,
 # `... inspect` until it is not pending).
-PARAMETER_WRITE_COMMANDS = {"home-restore": "home restore", "velocity-restore": "velocity restore"}
+PARAMETER_WRITE_COMMANDS = {"home-restore": "home restore", "velocity-restore": "velocity restore",
+                            "driver-experiment": "driver experiment"}
 PARAMETER_WRITE_KINDS = {"home-restore": "home_restore", "velocity-restore": "velocity_restore"}
 PARAMETER_WRITE_WINDOWS = {"home_restore": (0x31, 6), "velocity_restore": (0x1D, 3)}
+# Wired bench 10 (D4): the PT pair experiment windows of an experimental image
+# only; the production image refuses the route `unsupported` before TX.
+EXPERIMENT_KINDS = ("pair_experiment",)
+EXPERIMENT_WINDOWS = tuple(0x60 + 6 * n for n in range(16))
 PARAMETER_WRITE_ERRORS = ("none", "cancelled", "readback_mismatch", "readback_failed", "write_rejected",
                           "write_not_transmitted", "write_unknown", "deadline", "readback_admission")
 # Wired bench 08: input-start route. Every reply is synchronous: the call's
@@ -428,12 +433,25 @@ def input_start_arguments(command: str, tokens: tuple[str, ...]) -> dict:
 
 
 def parameter_write_arguments(command: str, tokens: tuple[str, ...]) -> dict:
-    """``home restore SNAPSHOT_ID``, ``velocity restore SNAPSHOT_ID`` or ``... inspect``."""
+    """``home restore SNAPSHOT_ID``, ``velocity restore SNAPSHOT_ID`` or ``... inspect``;
+    ``driver experiment pair FIRST W0 W1 | pair FIRST restore SNAPSHOT_ID |
+    inspect`` (PT pair windows of an experimental image, wired bench 10)."""
     if command not in PARAMETER_WRITE_COMMANDS or not isinstance(tokens, tuple) or \
             any(type(t) is not str for t in tokens):
         raise ValueError("parameter write requires a tuple of tokens")
     if tokens == ("inspect",):
         return {"action": "inspect"}
+    if command == "driver-experiment":
+        number = r"(?:0|[1-9][0-9]{0,4})"
+        if len(tokens) == 4 and tokens[0] == "pair" and re.fullmatch(number, tokens[1]) and \
+                int(tokens[1]) in EXPERIMENT_WINDOWS:
+            if tokens[2] == "restore" and re.fullmatch(r"[1-9][0-9]{0,9}", tokens[3]) and int(tokens[3]) <= 0xFFFFFFFF:
+                return {"action": "write", "kind": "pair_experiment", "first": int(tokens[1]), "snapshot_id": int(tokens[3])}
+            if re.fullmatch(number, tokens[2]) and re.fullmatch(number, tokens[3]) and \
+                    int(tokens[2]) <= 0xFFFF and int(tokens[3]) <= 0xFFFF:
+                return {"action": "write", "kind": "pair_experiment", "first": int(tokens[1]), "snapshot_id": 0,
+                        "words": [int(tokens[2]), int(tokens[3])]}
+        raise ValueError("driver experiment requires pair FIRST W0 W1, pair FIRST restore ID or inspect")
     if len(tokens) != 1 or not re.fullmatch(r"[1-9][0-9]{0,9}", tokens[0]) or int(tokens[0]) > 0xFFFFFFFF:
         raise ValueError("restore requires the operation ID of an earlier checked read")
     return {"action": "write", "snapshot_id": int(tokens[0])}
@@ -692,6 +710,7 @@ def position_interrupt_arguments(tokens: tuple[str, ...]) -> int:
     return int(tokens[0])
 DRIVER_FIELDS = ("direction", "subdivision", "word-order", "soft-limit", "over-limit", "interruption", "position-mode", "positive-limit", "negative-limit")
 DRIVER_REGISTERS = (0x10, 0x11, 0x19, 0x18, 0x17, 0x51, 0x50)
+PAIR_FIELDS = (128, 256)  # Soft-limit pairs 0x0037/2 and 0x0039/2 (wired bench 10, D10).
 IO_FIELDS = ("input-polarity", "x0", "x1", "x2", "x3", "output-polarity", "y0", "y1", "custom")
 IO_REGISTERS = (0x40, 0x41, 0x42, 0x43, 0x44, 0x4B, 0x4C, 0x4D, 0x4F)
 CONTROL_FIELDS = ("algorithm", "encoder-resolution", "maximum-effective-current", "closed-maximum-current", "closed-base-current", "open-maximum-current", "lock-current", "lock-delay")
@@ -1216,8 +1235,10 @@ class Console:
         io = group == "io"
         control = group == "control_settings"
         stored = io or segment or control or tuning
-        names = TUNING_FIELDS[group] if tuning else CONTROL_FIELDS if control else IO_FIELDS if io else DRIVER_FIELDS[:7]
-        registers = TUNING_REGISTERS[group] if tuning else CONTROL_REGISTERS if control else IO_REGISTERS if io else DRIVER_REGISTERS
+        # The soft-limit pairs (masks 128, 256; 0x0037/0x0039) were promoted by wired bench 10.
+        names = TUNING_FIELDS[group] if tuning else CONTROL_FIELDS if control else IO_FIELDS if io else DRIVER_FIELDS
+        registers = (TUNING_REGISTERS[group] if tuning else CONTROL_REGISTERS if control else IO_REGISTERS if io else
+                     DRIVER_REGISTERS + (0x37, 0x39))
         masks = tuple(1 << (index + (23 if control else 9 if io else 0)) for index in range(len(names)))
         windows = TUNING_WINDOWS[group] if tuning else CONTROL_WINDOWS if control else IO_WINDOWS if io else ((0x10, 2), (0x17, 3), (0x37, 4), (0x50, 2))
         if single:
@@ -1260,6 +1281,7 @@ class Console:
                 if name.startswith("x"): return value <= 17
                 if name.startswith("y"): return value in (*range(6), 9, 10)
                 return value <= (15 if name == "input-polarity" else 3)
+            if group == "drive" and field in PAIR_FIELDS: return True  # The high word of a signed limit.
             return 400 <= value <= 51200 if field == 2 else value <= 1
 
         require(item.get("driver") is True and item.get("driver_kind") in ("read", "update") and
@@ -1312,14 +1334,30 @@ class Console:
                     all(type(p[k]) is bool for k in ("acknowledged", "readback_known", "active_known")) and
                     p["active_known"] is False and p["execution"] in ("not_transmitted", "acknowledged", "rejected", "unknown"), "progress values are invalid")
             require(legal(field, p["requested"]), "candidate is outside reviewed range")
-            if parsed is not None: require(p["requested"] == parsed[by_field[field][0]], "requested value changed")
+            if parsed is not None and not (group == "drive" and field in PAIR_FIELDS):
+                require(p["requested"] == parsed[by_field[field][0]], "requested value changed")
             fields[field] = p
         require(sum(fields) == item["fields"], "selected field progress is missing")
+        # Soft-limit pairs: both words per selected pair (wired bench 10).
+        pair_rows = item.get("pair_words", [])
+        require(isinstance(pair_rows, list) and all(isinstance(r, list) and len(r) == 7 and all(integer(w, 65535) for w in r[1:])
+                                                    for r in pair_rows), "pair words are invalid")
+        pairs = {r[0]: {"previous": r[1:3], "requested": r[3:5], "readback": r[5:7]} for r in pair_rows}
+        require(set(pairs) == ({f for f in fields if f in PAIR_FIELDS} if group == "drive" else set()), "pair rows differ from the selected pairs")
+        for field, words in pairs.items():
+            p = fields[field]
+            require(words["requested"][0] == p["requested"] and words["previous"][0] == p["previous"] and
+                    (not p["readback_known"] or words["readback"][0] == p["readback"]), "pair words differ from progress")
+            if parsed is not None:
+                value = parsed[by_field[field][0]] & 0xFFFFFFFF
+                require(words["requested"] == [value >> 16, value & 0xFFFF], "pair candidate differs from command")
         steps = []
         for index, row in enumerate(evidence):
             require(isinstance(row, list) and len(row) == len(DRIVER_EVIDENCE_COLUMNS), "evidence row is invalid")
             e = dict(zip(DRIVER_EVIDENCE_COLUMNS, row))
-            require(e["step"] == index and all(integer(e[k], limit) for k, limit in (("register", 65535), ("count", 5 if io or segment else 4), ("event", 3), ("received_length", 2**32 - 1), ("tx_accepted", 8), ("frame_error", 255))) and e["count"] >= 1 and
+            pair_step = item["driver_kind"] == "update" and e.get("register") in (0x37, 0x39) and group == "drive"
+            request_length = 13 if pair_step and e.get("write") else 8
+            require(e["step"] == index and all(integer(e[k], limit) for k, limit in (("register", 65535), ("count", 5 if io or segment else 4), ("event", 3), ("received_length", 2**32 - 1), ("tx_accepted", request_length), ("frame_error", 255))) and e["count"] >= 1 and
                     all(type(e[k]) is bool for k in ("write", "tx_complete", "response_confirmed", "qualified", "execution_unknown")) and
                     all(integer(e[k]) for k in ("earliest_us", "latest_us", "delivered_us", "attempted_us")) and
                     all(type(e[k]) is int and -2**31 <= e[k] < 2**31 for k in ("detail", "transport_detail")) and
@@ -1327,7 +1365,7 @@ class Console:
             require(isinstance(e["raw_hex"], str) and re.fullmatch(r"(?:[0-9a-fA-F]{2}){0," + str(raw_limit) + r"}", e["raw_hex"]) is not None, "raw frame is malformed")
             raw = bytes.fromhex(e["raw_hex"])
             require(len(raw) == min(e["received_length"], raw_limit) and item["started_us"] <= e["attempted_us"] <= e["delivered_us"] <= item["serviced_us"] and
-                    (not e["tx_complete"] or e["tx_accepted"] == 8) and (e["event"] == 0 or not e["response_confirmed"]), "transport evidence differs")
+                    (not e["tx_complete"] or e["tx_accepted"] == request_length) and (e["event"] == 0 or not e["response_confirmed"]), "transport evidence differs")
             require((e["qualified"] and e["event"] == 0 and e["attempted_us"] <= e["earliest_us"] <= e["latest_us"] <= e["delivered_us"]) or
                     (not e["qualified"] and e["earliest_us"] == e["latest_us"] == 0), "closure bounds differ")
             if item["driver_kind"] == "read":
@@ -1336,16 +1374,17 @@ class Console:
                 selected = sorted(fields.values(), key=lambda p: p["field"])
                 if group == "drive" and 8 in fields and fields[8]["requested"] == 0:
                     selected = [fields[8]] + [p for p in selected if p["field"] != 8]
-                require(index // 2 < len(selected) and e["register"] == selected[index // 2]["register"] and e["count"] == 1 and
+                require(index // 2 < len(selected) and e["register"] == selected[index // 2]["register"] and
+                        e["count"] == (2 if group == "drive" and selected[index // 2]["field"] in PAIR_FIELDS else 1) and
                         e["write"] == (index % 2 == 0), "update sequence differs")
             if e["event"] == 0:
-                require(e["tx_complete"] and e["tx_accepted"] == 8, "frame lacks completed request")
+                require(e["tx_complete"] and e["tx_accepted"] == request_length, "frame lacks completed request")
                 echo = None
                 if e["write"]:
                     p = next(p for p in fields.values() if p["register"] == e["register"])
-                    echo = (e["register"], p["requested"])
+                    echo = (e["register"], 2) if pair_step else (e["register"], p["requested"])
                 expected = _reply_status(raw, e["received_length"], item["address"],
-                                         6 if e["write"] else 3, 8 if e["write"] else 5 + 2 * e["count"], echo)
+                                         (16 if pair_step else 6) if e["write"] else 3, 8 if e["write"] else 5 + 2 * e["count"], echo)
                 require((e["status"], e["detail"], e["frame_error"]) == expected,
                         "codec evidence differs from retained reply")
             else:
@@ -1361,6 +1400,11 @@ class Console:
             readbacks = [(e, raw) for e, raw in rows if not e["write"] and e["event"] == 0 and e["status"] == "OK" and e["qualified"] and e["response_confirmed"] and e["latest_us"] <= item["deadline_us"]]
             require(p["acknowledged"] == acknowledged and p["readback_known"] == bool(readbacks), "acknowledgement/readback provenance differs")
             if readbacks: require(p["readback"] == int.from_bytes(readbacks[-1][1][3:5], "big"), "readback value differs")
+            if readbacks and p["field"] in pairs:
+                require(pairs[p["field"]]["readback"] == [int.from_bytes(readbacks[-1][1][3:5], "big"),
+                                                          int.from_bytes(readbacks[-1][1][5:7], "big")], "pair readback differs")
+            matches = p["readback"] == p["requested"] and (p["field"] not in pairs or
+                                                           pairs[p["field"]]["readback"] == pairs[p["field"]]["requested"])
             writes = [e for e, raw in rows if e["write"]]
             execution = "not_transmitted"
             for e in writes:
@@ -1368,8 +1412,8 @@ class Console:
                     effects |= p["field"]; execution = "unknown"
                 execution = _evidence.write_execution(e, item["stationary_valid_until_us"])
             require(p["execution"] == execution, "execution differs from write evidence")
-            stored_settled = stored and echo_policy and p["readback_known"] and p["readback"] == p["requested"]
-            uncertain |= (execution == "unknown" and not stored_settled) or (execution == "acknowledged" and (not p["readback_known"] or p["readback"] != p["requested"]))
+            stored_settled = stored and echo_policy and p["readback_known"] and matches
+            uncertain |= (execution == "unknown" and not stored_settled) or (execution == "acknowledged" and (not p["readback_known"] or not matches))
         require(item["effects"] == effects and item["uncertain"] == uncertain, "changed-setting mask or uncertainty differs")
         total = read_steps if item["driver_kind"] == "read" else 2 * len(fields)
         successful_steps = 0
@@ -1380,6 +1424,8 @@ class Console:
             if good and item["driver_kind"] == "update" and not e["write"]:
                 p = next(p for p in fields.values() if p["register"] == e["register"])
                 good = int.from_bytes(raw[3:5], "big") == p["requested"]
+                if p["field"] in pairs:
+                    good = good and int.from_bytes(raw[5:7], "big") == pairs[p["field"]]["requested"][1]
             if index + 1 < len(steps):
                 require(good and e["delivered_us"] <= steps[index + 1][0]["attempted_us"] and
                         e["delivered_us"] < item["deadline_us"], "sequence continued after failure or without causal budget")
@@ -1394,7 +1440,8 @@ class Console:
         if item["ok"]:
             require(not item["uncertain"] and item["detail"] == 0 and item["completed_steps"] == len(steps) == (read_steps if item["driver_kind"] == "read" else 2 * len(fields)) and
                     all(e["qualified"] and (e["response_confirmed"] or (stored and echo_policy and e["write"])) and e["status"] == "OK" and e["latest_us"] <= item["deadline_us"] for e, raw in steps), "success lacks complete checked evidence")
-            require(all(p["readback_known"] and p["requested"] == p["readback"] and ((p["acknowledged"] and p["execution"] == "acknowledged") or (stored and echo_policy and not p["acknowledged"] and p["execution"] == "unknown")) for p in fields.values()), "success lacks matching readback")
+            require(all(p["readback_known"] and p["requested"] == p["readback"] and
+                        (p["field"] not in pairs or pairs[p["field"]]["readback"] == pairs[p["field"]]["requested"]) and ((p["acknowledged"] and p["execution"] == "acknowledged") or (stored and echo_policy and not p["acknowledged"] and p["execution"] == "unknown")) for p in fields.values()), "success lacks matching readback")
         if item["driver_kind"] == "read" and item["ok"]:
             require(all(not e["execution_unknown"] for e, raw in steps),
                     "successful read retains execution uncertainty")
@@ -1431,8 +1478,16 @@ class Console:
                 require(v.get("raw") == values and v.get("known_fields") == sum(mask for mask, value in zip(masks, values) if legal(mask, value)), "record raw observation differs")
                 require(v.get("paired_write_supported") is False and v.get("signed_encoding") == "unresolved" and v.get("active_settings_known") is False, "record semantics fabricated")
             else:
-                require(v.get("signed_limits") == "unresolved" and v.get("native_scale") == "unresolved", "limit resolution was fabricated")
                 values = [words[0][0], words[0][1], words[1][2], words[1][1], words[1][0], words[3][1], words[3][0]]
+                # Signed limits only for the promoted claim: order 0 (wired bench 10 E3).
+                # Images before wired bench 10 report no decoded fields.
+                decoded = values[2] == 0 and "limits_decoded" in v
+                signed = lambda w: (w[0] << 16 | w[1]) - (1 << 32 if w[0] & 0x8000 else 0)
+                require(v.get("signed_limits") == ("measured_order_0" if decoded else "unresolved") and
+                        v.get("native_scale") == ("position_increments" if decoded else "unresolved") and
+                        v.get("limits_decoded", False) is decoded and
+                        (not decoded or (v.get("positive_limit") == signed(words[2][:2]) and
+                                         v.get("negative_limit") == signed(words[2][2:]))), "limit resolution was fabricated")
             if not stored and not single:
                 require(v.get("raw") == values and v.get("positive_words") == words[2][:2] and v.get("negative_words") == words[2][2:], "observation differs from raw replies")
                 known = sum(1 << i for i, value in enumerate(values) if (400 <= value <= 51200 if i == 1 else value <= 1))
@@ -2364,7 +2419,7 @@ class Console:
                 "invalid command disposition")
         require(item.get("request") == request["action"], "request differs")
         kind = item.get("kind")
-        require(kind in ("none", *PARAMETER_WRITE_KINDS.values()), "unknown session kind")
+        require(kind in ("none", *PARAMETER_WRITE_KINDS.values(), *EXPERIMENT_KINDS), "unknown session kind")
         for key in ("operation_id", "snapshot_id", "target_generation", "configuration_generation", "serial_generation",
                     "started_us", "deadline_us", "finished_us"):
             require(integer(item.get(key)), "invalid " + key)
@@ -2393,11 +2448,18 @@ class Console:
             require(not item["ok"] or request["action"] == "inspect", "an admitted write left no session")
             return
         require(item["operation_id"] > 0 and 1 <= item["address"] <= 247 and item["count"] >= 1, "session lacks identity")
-        require((item["first"], item["count"]) == PARAMETER_WRITE_WINDOWS[kind] and item["snapshot_id"] > 0,
-                "restore window or source differs")
+        if kind == "pair_experiment":
+            require(item["first"] in EXPERIMENT_WINDOWS and item["count"] == 2, "experiment window differs")
+        else:
+            require((item["first"], item["count"]) == PARAMETER_WRITE_WINDOWS[kind] and item["snapshot_id"] > 0,
+                    "restore window or source differs")
         if request["action"] == "write" and item["ok"]:
-            require(kind == PARAMETER_WRITE_KINDS[handle.command] and item["pending"], "admitted write is not this session")
+            expected_kind = request.get("kind") or PARAMETER_WRITE_KINDS[handle.command]
+            require(kind == expected_kind and item["pending"], "admitted write is not this session")
             require(item["snapshot_id"] == request["snapshot_id"], "snapshot differs from the request")
+            if kind == "pair_experiment":
+                require(item["first"] == request["first"] and
+                        ("words" not in request or item["words"] == request["words"]), "experiment words differ from the request")
         if item["pending"]:
             require(not item["session_ok"] and not item["unsettled"] and item["error"] == "none", "pending session has a result")
             return

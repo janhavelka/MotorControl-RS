@@ -201,7 +201,7 @@ void homeFromFactoryWords() {
 
     // Staging would erase a stored offset, and never writes auxiliary: both still refuse.
     fresh(); readConfig(); readState(); readHome(24, 120, 60, 50, 7, 5);
-    command(installHome(35, HOME_FACTS)); saying("\"result\":\"stored_offset_nonzero\""); noNewFrames();
+    command(installHome(35, HOME_FACTS)); saying("\"result\":\"stated_offset_required\""); noNewFrames();
     command("@6 home 35 60 30 100 zero"); saying("\"result\":\"qualification_required\""); noNewFrames();
     // After install, a read showing either contradiction revokes without any traffic of its own.
     for (const bool offset : {false, true}) {

@@ -61,6 +61,9 @@ FOLDER_SCENARIOS = {
 }
 
 SCENARIOS = {
+    'paired-values': 'wired bench 10 (bench_pairs.py): --case P1..P4, P3D, E1, E2, E3P, E3N (experimental images), '
+                     'R10 (production regression of the promoted soft-limit setter and home offset), restorations; '
+                     'own run folder, scenario record and both run checks',
     'quick': 'ten probes by default; typed baseline and passive health; no motor writes',
     'observations': 'finite explicit health refreshes with per-field freshness checks',
     'load': 'finite read-only probes with explicitly selected host workload and measured execution',
@@ -2871,6 +2874,13 @@ def run_folder(args, *, port_opener=None, check_board=None):
 
 
 def main(argv=None):
+    # Wired bench 10: the paired-values scenario (bench_pairs.py) has its own
+    # argument set and run folder handling; delegate before parsing.
+    tokens = list(__import__('sys').argv[1:] if argv is None else argv)
+    if '--scenario' in tokens and tokens[tokens.index('--scenario') + 1:tokens.index('--scenario') + 2] == ['paired-values']:
+        import bench_pairs
+        index = tokens.index('--scenario')
+        return bench_pairs.main(tokens[:index] + tokens[index + 2:])
     try:
         args = arguments(argv)
         if args.list:

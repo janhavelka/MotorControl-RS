@@ -1616,10 +1616,23 @@ def route_purpose(key: str) -> str | None:
     return "configure"
 
 
+def pair_value(words) -> int:
+    """Signed value of a soft-limit pair at word order 0 (wired bench 10: high word
+    at the lower address, two's complement)."""
+    bits = (int(words[0]) << 16) | int(words[1])
+    return bits - (1 << 32) if bits & 0x80000000 else bits
+
+
 def write_call(field: dict, value, address: int, profile_words=None) -> tuple[str, dict, str]:
     """(console command, kwargs, console text) of one ordinary setter."""
     key = field["key"]
     group, _, name = key.partition(".")
+    if key in PAIR_ROUTES:
+        if not (isinstance(value, list) and len(value) == 2 and all(type(w) is int and 0 <= w <= 0xFFFF for w in value)):
+            raise RecordError(key + " needs its two raw words")
+        signed = pair_value(value)
+        return "driver", {"driver_args": ("set", name, str(signed)), "address": address}, \
+            "driver set %s %d %d" % (name, signed, address)
     if group == "io":
         return "io", {"driver_args": ("set", name, str(value)), "address": address}, "io set %s %s %d" % (name, value, address)
     if group == "drive":
@@ -1757,6 +1770,16 @@ def baseline_field(baseline: dict, address: int, key: str, index=None) -> dict |
     return next((f for f in drive.get("fields", []) if f["key"] == key and f["index"] == index), None)
 
 
+# Wired bench 10 (D10) promoted the soft-limit pairs: an ordinary typed route
+# (`driver set positive-limit|negative-limit VALUE`, one FC10 and a two-word
+# readback, order 0, 0x0018 known 0) from image level 10 on. The committed 01
+# baseline still records the earlier refusal as the field's disposition.
+PAIR_ROUTES = {key: {"command": "driver set %s VALUE A" % key.split(".")[1],
+                     "facts": "CONFIGURE facts on X0-X3, fresh reads, stopped, 0x0019 and 0x0018 known 0 (wired bench 10)",
+                     "readback": "driver read", "order": None, "requires": "10"}
+               for key in ("drive.positive-limit", "drive.negative-limit")}
+
+
 def plan_entry(baseline: dict, entry: dict, image_level: str, facts: dict, *, restore: bool,
                experiments=(), context=None) -> tuple[list, dict | None]:
     """Steps for one field, or a refusal. ``restore`` plans candidate ->
@@ -1771,7 +1794,7 @@ def plan_entry(baseline: dict, entry: dict, image_level: str, facts: dict, *, re
     old, new = (entry["candidate"], field["value"]) if restore else (field["value"], entry["candidate"])
     step = {**ident, "register": field["register"], "read": field["read"], "baseline": field["value"],
             "candidate": entry["candidate"], "target": new}
-    route = field.get("restore")
+    route = field.get("restore") or (PAIR_ROUTES.get(field["key"]) if int(image_level) >= 10 else None)
     snapshot = snapshot_route(field["key"]) if route is None else None
     if route is None and snapshot and restore and (context or {}).get("snapshots") is not None:
         if int(image_level) < int(SNAPSHOT_IMAGE_LEVEL):

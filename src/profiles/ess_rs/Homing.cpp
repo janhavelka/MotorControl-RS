@@ -64,6 +64,27 @@ Status failed(HomeError reason, const char* message) {
 bool sameTarget(const ReadTarget& a, const ReadTarget& b) {
     return a.id == b.id && a.address == b.address && a.generation == b.generation;
 }
+constexpr int64_t OFFSET_LIMIT = 0x0FFFFFFF; // p73 range -0xFFFFFFF..0xFFFFFFF.
+// Auxiliary/offset admission (wired bench 10). 7 keeps the zero-offset-only
+// policy. 6 needs method 35 and the measured offset qualification at a valid
+// active word order. 3 ran the offset and kept the running coordinate (E2):
+// refused with every other choice (prompt 12).
+Status offsetPolicy(const HomePrerequisites& p) {
+    if (!p.auxiliaryQualified)
+        return invalid(HomeError::AUXILIARY_REQUIRED, "existing active home auxiliary must be qualified");
+    switch (p.auxiliary) {
+    case HomingAuxiliary::KEEP_POSITION_SET_ZERO:
+        return p.zeroOffsetQualified ? Ok() : invalid(HomeError::UNRESOLVED_OFFSET, "zero offset must be qualified");
+    case HomingAuxiliary::KEEP_POSITION_SET_OFFSET:
+        if (p.qualifiedMethod != HomingMethod::METHOD_35)
+            return invalid(HomeError::AUXILIARY_REQUIRED, "auxiliary 6 is qualified for method 35 only");
+        if (!p.offsetQualified || (p.offsetOrder != WordOrder::HIGH_WORD_FIRST && p.offsetOrder != WordOrder::LOW_WORD_FIRST))
+            return invalid(HomeError::UNRESOLVED_OFFSET, "offset encoding and end coordinate must be qualified");
+        return Ok();
+    default:
+        return invalid(HomeError::AUXILIARY_REQUIRED, "existing active home auxiliary 7 or 6 must be qualified");
+    }
+}
 Status inputReadiness(const HomePrerequisites& p, uint16_t inputs) {
     if (p.inputPolarity & ~uint16_t(15) || inputs & ~uint16_t(15))
         return invalid(HomeError::INPUT_REQUIRED, "unknown input polarity or logical level bits");
@@ -145,9 +166,8 @@ Status checkHomeQualification(const HomePrerequisites& p, uint64_t nowUs) noexce
     if (!method) return invalid(HomeError::INVALID_METHOD, "undocumented home method");
     if (method->support == HomeSupport::UNRESOLVED)
         return Status(Err::UNSUPPORTED, static_cast<int32_t>(HomeError::METHOD_UNRESOLVED), method->reason);
-    if (!p.zeroOffsetQualified) return invalid(HomeError::UNRESOLVED_OFFSET, "zero offset must be qualified");
-    if (!p.auxiliaryQualified || p.auxiliary != HomingAuxiliary::KEEP_POSITION_SET_ZERO)
-        return invalid(HomeError::AUXILIARY_REQUIRED, "existing active auxiliary 7 must be qualified");
+    const Status offset = offsetPolicy(p);
+    if (!offset) return offset;
     if (p.qualifiedSearchSpeed < 5 || p.qualifiedSearchSpeed > 3000 || p.qualifiedReturnSpeed < 5 ||
         p.qualifiedReturnSpeed > 300 || p.qualifiedRampTime < 30 || p.qualifiedRampTime > 2000)
         return invalid(HomeError::INVALID_PARAMETERS, "qualified native words exceed admitted bounds");
@@ -187,11 +207,13 @@ Status prepareHome(HomeContext& output, const AxisConfig& axis, uint32_t id,
     if (!axis.generation || !sameTarget(axis.target, p.target) || axis.generation != p.configurationGeneration ||
         request.configurationGeneration != axis.generation)
         return invalid(HomeError::STALE_CONFIGURATION, "home target/configuration binding mismatch");
-    if (request.offset != 0 || !p.zeroOffsetQualified)
+    const bool zeroOnly = p.auxiliary == HomingAuxiliary::KEEP_POSITION_SET_ZERO;
+    if (request.offset < -OFFSET_LIMIT || request.offset > OFFSET_LIMIT ||
+        (zeroOnly && (request.offset != 0 || !p.zeroOffsetQualified)) || (!zeroOnly && !p.offsetQualified))
         return Status(Err::UNSUPPORTED, static_cast<int32_t>(HomeError::UNRESOLVED_OFFSET),
-            "only qualified zero offset is implemented; nonzero order, sign and scale remain unresolved");
-    if (!p.auxiliaryQualified || p.auxiliary != HomingAuxiliary::KEEP_POSITION_SET_ZERO)
-        return invalid(HomeError::AUXILIARY_REQUIRED, "existing active home auxiliary 7 must be qualified");
+            "nonzero offset needs method 35 with qualified auxiliary 6 or 3 and the measured offset encoding");
+    const Status offset = offsetPolicy(p);
+    if (!offset) return offset;
     if (request.searchSpeed < 5 || request.searchSpeed > 3000 || request.returnSpeed < 5 || request.returnSpeed > 300 ||
         request.rampTime < 30 || request.rampTime > 2000)
         return invalid(HomeError::INVALID_PARAMETERS, "home parameters exceed the conservative admitted raw subset");
@@ -212,7 +234,12 @@ Status prepareHome(HomeContext& output, const AxisConfig& axis, uint32_t id,
     c.startedUs = c.servicedUs = c.eligibleUs = nowUs; c.deadlineUs = deadlineUs;
     c.words[0] = static_cast<uint16_t>(request.method); c.words[1] = request.searchSpeed;
     c.words[2] = request.returnSpeed; c.words[3] = request.rampTime;
-    // Zero in both words requires neither unresolved offset order nor sign encoding.
+    // Zero in both words is order independent; a nonzero offset uses the
+    // qualified active order (wired bench 10: high word first at order 0).
+    if (zeroOnly) c.words[4] = c.words[5] = 0;
+    else if (!encodeInt32(static_cast<int32_t>(request.offset), p.offsetOrder, c.words + 4, 2))
+        return invalid(HomeError::UNRESOLVED_OFFSET, "invalid offset word order");
+    c.expectedPosition = static_cast<int32_t>(request.offset);
     c.homedLowObserved = !method->moves && !(p.rawMotion & HOMED);
     const Status access = validateWriteMultipleRegistersRequest(c.target.address, Registers::HOMING_METHOD, c.words, 6);
     if (!access) return access;
@@ -286,6 +313,9 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
         if (event.kind == ReadEventKind::FRAME && evidence.status && event.qualified && supplied.responseConfirmed &&
             event.latestUs <= stepDeadline(c)) {
             c.rawPositionWords[0] = words[0]; c.rawPositionWords[1] = words[1];
+            const WordOrder order = c.prerequisites.auxiliary == HomingAuxiliary::KEEP_POSITION_SET_ZERO ?
+                WordOrder::HIGH_WORD_FIRST : c.prerequisites.offsetOrder;
+            c.endKnown = decodeInt32(words, 2, order, c.endPosition).isOk();
         }
     } else if (c.qualificationRevoked) {
         c.lastObservation = evidence;
@@ -317,8 +347,10 @@ Status advanceHome(HomeContext& c, const ActionEvent& supplied, uint64_t nowUs) 
             c.phase = HomePhase::OBSERVING; wait(c, nowUs);
         }
     } else if (c.phase == HomePhase::ZERO_CHECK) {
-        if (words[0] || words[1]) finish(c, ActionOutcome::REPLY_ERROR,
-            failed(HomeError::ZERO_NOT_OBSERVED, "fresh position pair does not report zero"));
+        const bool expected = c.prerequisites.auxiliary == HomingAuxiliary::KEEP_POSITION_SET_ZERO ? !words[0] && !words[1] :
+            c.endKnown && c.endPosition == c.expectedPosition;
+        if (!expected) finish(c, ActionOutcome::REPLY_ERROR,
+            failed(HomeError::ZERO_NOT_OBSERVED, "fresh position pair does not report the expected end coordinate"));
         else {
             c.completion = ActionCompletion::OBSERVED;
             if (c.execution == ActionExecution::ACKNOWLEDGED) finish(c, ActionOutcome::OBSERVED, Ok());
@@ -386,7 +418,8 @@ Status getHomeReference(const HomeContext& c, uint64_t nowUs, uint64_t maximumAg
     AxisReference reference;
     reference.target = c.target; reference.configurationGeneration = c.request.configurationGeneration;
     reference.idle = reference.stationary = reference.nativeKnown = true;
-    reference.nativePosition = 0; reference.basis = RelativeBasis::ACTUAL; reference.source = ScaleSource::QUALIFIED;
+    reference.nativePosition = c.prerequisites.auxiliary == HomingAuxiliary::KEEP_POSITION_SET_ZERO ? 0 : c.endPosition;
+    reference.basis = RelativeBasis::ACTUAL; reference.source = ScaleSource::QUALIFIED;
     reference.observedUs = observedUs; reference.nowUs = nowUs; reference.maximumAgeUs = maximumAgeUs;
     output = reference; return Ok();
 }

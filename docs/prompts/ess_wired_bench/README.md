@@ -64,7 +64,7 @@ the owner stays Partial and the next ready prompt starts.
 | 07 | Complete | 06's drive 4 power cycle and `baseline-compare` (homing words 35/60/30 in RAM); home whose own polls miss a stop input: 12; release delay with brake function 5 (R2a): 16 | [2026-11-19](../../reports/2026-11-19_wired_bench_07_stop_release_inputs.md) |
 | 08 | Complete | 09: first bench use of the route (one and three drives, held level, stops, width floor from its sweep, memory and spacing with three armed members) | [2026-11-19](../../reports/2026-11-19_wired_bench_08_input_start_software.md) |
 | 09 | Partial | Owner power cycle of drive 4, then `baseline-compare` (06's homing words and 09's velocity word `0x001D` = 30 in RAM, baseline 120); N05 remainder: staging isolation while moving, a replacement completion witness, refusing an interrupt after an observed arrival (I3) | [2026-11-19](../../reports/2026-11-19_wired_bench_09_input_and_serial_starts.md) |
-| 10 | Pending | — | — |
+| 10 | Complete | Production soft-limit enable and recovery at a limit: 11; auxiliary 3 and other auxiliary choices, offsets with switch methods, method 35 completion from a homed state: 12; PT target promotion (W0): 13; 0x0019 = 1 after save and restart: 17; 06/09's drive 4 power cycle still open | [2026-11-19](../../reports/2026-11-19_wired_bench_10_paired_value_encodings.md) |
 | 11 | Pending | — | — |
 | 12 | Pending | — | — |
 | 13 | Pending | — | — |

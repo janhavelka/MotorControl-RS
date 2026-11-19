@@ -303,15 +303,20 @@ Status decode(const DriverEvidence* evidence, const ReadTarget& target, DriverGr
         out.positiveBits = (static_cast<uint32_t>(out.positiveWords[high]) << 16) | out.positiveWords[1 - high];
         out.negativeBits = (static_cast<uint32_t>(out.negativeWords[high]) << 16) | out.negativeWords[1 - high];
     }
+    // Only the promoted claim decodes: order 0 (wired bench 10 E3 witnesses).
+    out.limitsDecoded = out.pairKnown && out.raw[2] == 0 &&
+        decodeInt32(out.positiveWords, 2, WordOrder::HIGH_WORD_FIRST, out.positiveLimit).isOk() &&
+        decodeInt32(out.negativeWords, 2, WordOrder::HIGH_WORD_FIRST, out.negativeLimit).isOk();
     return Ok();
 }
 bool unresolvedWrite(const DriverContext& c) {
     for (uint8_t i = 0; i < DRIVER_FIELD_COUNT; ++i) {
         const DriverProgress& p = c.progress[i];
-        const bool storedSettled = allowsEchoReadback(c) && p.readbackKnown && p.readback == p.requested;
+        const bool matches = p.pair ? p.readbackWords[0] == p.requestedWords[0] && p.readbackWords[1] == p.requestedWords[1] :
+            p.readback == p.requested;
+        const bool storedSettled = allowsEchoReadback(c) && p.readbackKnown && matches;
         if (p.selected && ((p.execution == ActionExecution::UNKNOWN && !storedSettled) ||
-            (p.execution == ActionExecution::ACKNOWLEDGED &&
-             (!p.readbackKnown || p.readback != p.requested)))) return true;
+            (p.execution == ActionExecution::ACKNOWLEDGED && (!p.readbackKnown || !matches)))) return true;
     }
     return false;
 }
@@ -662,10 +667,25 @@ Status prepareDriverSettings(DriverContext& output, const ReadTarget& target, ui
             ((request.fields & (1u << 20)) && request.segmentDeceleration > 2000))
             return invalid(DriverError::INVALID_CANDIDATE, "segment native value out of range");
     }
-    // Reject the entire candidate before producing even an otherwise legal single write.
-    if (request.group == DriverGroup::DRIVE && (request.fields & PAIR_MASK))
-        return Status(Err::UNSUPPORTED, static_cast<int32_t>(DriverError::PAIR_WRITE_UNSUPPORTED),
-            "software-limit pair has no reviewed FC10 window; split writes are unavailable");
+    // Soft-limit pairs (wired bench 10, D10): alone, in range, one FC10 each.
+    const bool pairs = request.group == DriverGroup::DRIVE && (request.fields & PAIR_MASK);
+    if (pairs) {
+        if (request.fields & ~PAIR_MASK)
+            return invalid(DriverError::LIMIT_DEPENDENCY, "soft-limit pairs are written alone, without geometry or other drive fields");
+        for (uint8_t i = 0; i < 2; ++i) {
+            if (!(request.fields & (128u << i))) continue;
+            const int64_t value = i ? request.negativeLimit : request.positiveLimit;
+            if (value < -DRIVER_LIMIT_MAGNITUDE || value > DRIVER_LIMIT_MAGNITUDE)
+                return invalid(DriverError::INVALID_CANDIDATE, "soft limit outside +-0x0FFFFFFF");
+            uint16_t words[2] = {};
+            encodeInt32(static_cast<int32_t>(value), WordOrder::HIGH_WORD_FIRST, words, 2);
+            const uint16_t reg = i ? Registers::NEGATIVE_SOFT_LIMIT : Registers::POSITIVE_SOFT_LIMIT;
+            const Status wire = validateWriteMultipleRegistersRequest(target.address, reg, words, 2);
+            if (!wire) return wire;
+            const Status readback = validateReadRegistersRequest(target.address, reg, 2);
+            if (!readback) return readback;
+        }
+    }
     for (uint8_t i = 0; i < DRIVER_FIELD_COUNT; ++i) {
         if (!(request.fields & bit(i, request.group))) continue;
         if (!segment && !control && !tuning && !single && (i == 13 || i == 14) && requested(request, i) == 11)
@@ -686,6 +706,15 @@ Status prepareDriverSettings(DriverContext& output, const ReadTarget& target, ui
     // Preserve admission precedence: common evidence, then each group's policy.
     const Status prior = validatePriorSettingsAndStandstill(target, request, prerequisites, nowUs);
     if (!prior) return prior;
+    if (pairs) {
+        const DriverObservation& known = prerequisites.previous;
+        // Order 1 stores words (P3) but its interpretation is unmeasured: refused.
+        if (!(known.knownFields & bit(2)) || known.raw[2] != 0)
+            return Status(Err::UNSUPPORTED, static_cast<int32_t>(DriverError::PAIR_WRITE_UNSUPPORTED),
+                "soft-limit pairs are measured at word order 0 only");
+        if (!(known.knownFields & bit(3)) || known.raw[3] != 0)
+            return invalid(DriverError::LIMIT_DEPENDENCY, "soft-limit pairs require 0x0018 known 0");
+    }
     if (single && (!prerequisites.externalTriggerInhibitedQualified ||
         !sameTarget(prerequisites.triggerTarget, target) ||
         prerequisites.triggerConfigurationGeneration != request.configurationGeneration ||
@@ -741,6 +770,21 @@ Status prepareDriverSettings(DriverContext& output, const ReadTarget& target, ui
         progress.previous = previous.raw[i]; progress.requested = requested(request, i);
         progress.selected = (request.fields & bit(i, request.group)) != 0;
     }
+    // A pair-only DRIVE request uses the free DRIVE slots 7 and 8 (IO indices
+    // belong to the IO group): positive, then negative limit.
+    for (uint8_t i = 0; pairs && i < 2; ++i) {
+        DriverProgress& progress = output.progress[7 + i];
+        progress = DriverProgress();
+        progress.field = i ? DriverField::NEGATIVE_LIMIT : DriverField::POSITIVE_LIMIT;
+        progress.reg = i ? Registers::NEGATIVE_SOFT_LIMIT : Registers::POSITIVE_SOFT_LIMIT;
+        progress.pair = true;
+        progress.selected = (request.fields & (128u << i)) != 0;
+        const uint16_t* before = i ? previous.negativeWords : previous.positiveWords;
+        progress.previousWords[0] = before[0]; progress.previousWords[1] = before[1];
+        encodeInt32(static_cast<int32_t>(i ? request.negativeLimit : request.positiveLimit), WordOrder::HIGH_WORD_FIRST,
+                    progress.requestedWords, 2);
+        progress.previous = progress.previousWords[0]; progress.requested = progress.requestedWords[0];
+    }
     // Only an explicit OFF request can precede dependent changes. Never invent one.
     if (disabling) output.order[output.fieldCount++] = 3;
     for (uint8_t i = 0; i < DRIVER_FIELD_COUNT; ++i)
@@ -763,7 +807,7 @@ Status nextDriver(const DriverContext& c, uint64_t nowUs, PreparedDriver& output
     if (c.kind == DriverKind::READ) readWindow(c.group, c.step, next.reg, next.count, c.request.segmentIndex);
     else {
         const DriverProgress& progress = c.progress[c.order[c.step / 2]];
-        next.reg = progress.reg; next.value = progress.requested; next.count = 1;
+        next.reg = progress.reg; next.value = progress.requested; next.count = progress.pair ? 2 : 1;
         next.write = (c.step % 2) == 0;
         if (next.write) {
             next.deadlineUs = driverWriteDeadline(c);
@@ -772,7 +816,11 @@ Status nextDriver(const DriverContext& c, uint64_t nowUs, PreparedDriver& output
         }
     }
     next.kind = ActionWork::TRANSACTION;
-    next.length = next.write ? buildWriteSingleRegister(c.target.address, next.reg, next.value, next.bytes, sizeof(next.bytes)) :
+    const bool pairWrite = next.write && next.count == 2;
+    next.function = !next.write ? 3 : pairWrite ? 16 : 6;
+    next.length = pairWrite ? buildWriteMultipleRegisters(c.target.address, next.reg,
+            c.progress[c.order[c.step / 2]].requestedWords, 2, next.bytes, sizeof(next.bytes)) :
+        next.write ? buildWriteSingleRegister(c.target.address, next.reg, next.value, next.bytes, sizeof(next.bytes)) :
         buildReadRegisters(c.target.address, next.reg, next.count, next.bytes, sizeof(next.bytes));
     if (!next.length) return invalid(DriverError::INVALID_STATE, "invalid driver-settings request");
     output = next; return Ok();
@@ -785,12 +833,14 @@ Status advanceDriver(DriverContext& c, const ActionEvent& supplied, uint64_t now
         return invalid(DriverError::WRONG_CORRELATION, "driver event correlation mismatch");
     if (nowUs < c.servicedUs) return invalid(DriverError::CLOCK_ERROR, "driver-settings clock moved backwards");
     const bool currentWrite = c.kind == DriverKind::UPDATE && (c.step % 2) == 0;
+    const bool currentPair = c.kind == DriverKind::UPDATE && c.progress[c.order[c.step / 2]].pair;
+    const std::size_t requestLength = currentWrite && currentPair ? DRIVER_MAX_REQUEST_BYTES : READ_REQUEST_LEN;
     const uint64_t transactionDeadline = currentWrite ? driverWriteDeadline(c) : c.deadlineUs;
-    if (event.kind > ReadEventKind::DEADLINE || event.txAccepted > READ_REQUEST_LEN ||
-        (supplied.txComplete && event.txAccepted != READ_REQUEST_LEN))
+    if (event.kind > ReadEventKind::DEADLINE || event.txAccepted > requestLength ||
+        (supplied.txComplete && event.txAccepted != requestLength))
         return invalid(DriverError::INVALID_EVENT, "invalid driver transport envelope");
     if (event.kind == ReadEventKind::FRAME) {
-        if (!event.frame || event.txAccepted != READ_REQUEST_LEN || !supplied.txComplete ||
+        if (!event.frame || event.txAccepted != requestLength || !supplied.txComplete ||
             (event.qualified && (event.earliestUs < c.eligibleUs || event.earliestUs > event.latestUs || event.latestUs > nowUs)) ||
             (!event.qualified && (event.earliestUs || event.latestUs)))
             return invalid(DriverError::INVALID_EVENT, "invalid driver frame envelope");
@@ -810,12 +860,14 @@ Status advanceDriver(DriverContext& c, const ActionEvent& supplied, uint64_t now
     if (c.kind == DriverKind::READ) readWindow(c.group, c.step, evidence.reg, evidence.count, c.request.segmentIndex);
     else {
         progress = &c.progress[c.order[c.step / 2]]; evidence.reg = progress->reg;
-        evidence.count = 1; evidence.write = (c.step % 2) == 0;
+        evidence.count = progress->pair ? 2 : 1; evidence.write = (c.step % 2) == 0;
     }
     uint16_t words[5] = {}; std::size_t count = 0;
     if (event.kind == ReadEventKind::FRAME)
-        evidence.status = evidence.write ? parseWriteSingleRegister(event.frame, event.length, c.target.address,
-            evidence.reg, progress->requested, &evidence.frameError) :
+        evidence.status = evidence.write ? (progress->pair ?
+            parseWriteMultipleRegisters(event.frame, event.length, c.target.address, evidence.reg, 2, &evidence.frameError) :
+            parseWriteSingleRegister(event.frame, event.length, c.target.address,
+            evidence.reg, progress->requested, &evidence.frameError)) :
             parseRegisters(event.frame, event.length, c.target.address, evidence.count, words, 5, count, &evidence.frameError);
     else if (event.kind == ReadEventKind::TRANSPORT_FAILURE)
         evidence.status = failure(DriverError::TRANSPORT_FAILURE, "driver transport failed");
@@ -842,7 +894,8 @@ Status advanceDriver(DriverContext& c, const ActionEvent& supplied, uint64_t now
     else {
         if (progress && !evidence.write) {
             progress->readbackKnown = true; progress->readback = words[0];
-            if (words[0] != progress->requested) {
+            if (progress->pair) { progress->readbackWords[0] = words[0]; progress->readbackWords[1] = words[1]; }
+            if (words[0] != progress->requested || (progress->pair && words[1] != progress->requestedWords[1])) {
                 finish(c, DriverOutcome::READBACK_MISMATCH,
                     failure(DriverError::READBACK_MISMATCH, "settings readback disagrees with requested value"));
             }

@@ -577,12 +577,16 @@ def check_cached_state(item: dict) -> None:
 
 
 def home_arguments(arguments: tuple[str, ...]) -> tuple[int, int, int, int]:
-    """Explicit native words and zero offset; unavailable methods reach API gates."""
-    if (not isinstance(arguments, tuple) or len(arguments) != 5 or arguments[4] != "zero" or
+    """Explicit native words and a stated offset (`zero` or a signed native value
+    within +-0x0FFFFFFF, wired bench 10); unavailable methods and offsets reach
+    the API gates."""
+    if (not isinstance(arguments, tuple) or len(arguments) != 5 or
             any(type(token) is not str for token in arguments) or
+            not (arguments[4] == "zero" or (re.fullmatch(r"-?[1-9][0-9]{0,8}", arguments[4]) and
+                                            abs(int(arguments[4])) <= 0x0FFFFFFF)) or
             not re.fullmatch(r"-?[0-9]+", arguments[0]) or
             any(not re.fullmatch(r"[0-9]+", token) for token in arguments[1:4])):
-        raise ValueError("home requires method search_native return_native ramp_native zero")
+        raise ValueError("home requires method search_native return_native ramp_native zero|OFFSET")
     values = tuple(int(token) for token in arguments[:4])
     if not (-32768 <= values[0] <= 32767 and 5 <= values[1] <= 3000 and
             5 <= values[2] <= 300 and 30 <= values[3] <= 2000):
@@ -1712,10 +1716,25 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
                        17: 4, 19: 1, 20: 1, 21: 1, 22: 1, 23: 3, 24: 3, 25: 3, 26: 3, 27: 5, 28: 5, 29: 5, 30: 5}.get(item["method"], 0)
     require(uint(item.get("phase"), 3), "phase is invalid")
     words = item.get("staging_words")
+    p = item.get("prerequisites")
+    # Wired bench 10: auxiliary 7 stages zero; 6 and 3 (method 35, offset
+    # facts) stage the stated offset in the active word order.
+    offset = item.get("offset", 0)
+    require(isinstance(p, dict) and p.get("auxiliary") in (7, 6) and type(offset) is int and
+            abs(offset) <= 0x0FFFFFFF, "offset or auxiliary is invalid")
+    order = p.get("offset_order", 0)
+    auxiliary = p["auxiliary"]
+    require(auxiliary == 7 or (item.get("method") == 35 and p.get("offset_qualified") is True and order in (0, 1)),
+            "offset auxiliary lacks its facts")
+    require(auxiliary != 7 or offset == 0, "auxiliary 7 stages only a zero offset")
+    bits = offset & 0xFFFFFFFF
+    staged = [bits >> 16, bits & 0xFFFF] if order == 0 else [bits & 0xFFFF, bits >> 16]
     require(isinstance(words, list) and len(words) == 6 and all(uint(w, 65535) for w in words) and
             words[0] == item["method"] and 5 <= words[1] <= 3000 and 5 <= words[2] <= 300 and
-            30 <= words[3] <= 2000 and words[4:] == [0, 0], "staging differs from reviewed zero-offset window")
-    if arguments is not None: require(tuple(words[:4]) == home_arguments(arguments), "request differs from command")
+            30 <= words[3] <= 2000 and words[4:] == staged, "staging differs from the reviewed window and stated offset")
+    if arguments is not None:
+        require(tuple(words[:4]) == home_arguments(arguments) and
+                offset == (0 if arguments[4] == "zero" else int(arguments[4])), "request differs from command")
     require(type(item.get("ok")) is bool and item.get("state") == ("succeeded" if item["ok"] else "failed") and
             item.get("completion") in ("observed", "not_observed") and
             (not item["ok"] or item["completion"] == "observed"), "state/completion is inconsistent")
@@ -1723,12 +1742,17 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
             {"reply_error", "transport_error", "cancelled", "deadline", "timing_unqualified", "unconfirmed_response", "observation_limit"}), "outcome is inconsistent")
     for flag in ("staging_applied", "uncertain", "running_observed", "homed_low_observed", "observation_known", "interrupted_by_stop"):
         require(type(item.get(flag)) is bool, flag + " is invalid")
-    p = item.get("prerequisites")
-    require(isinstance(p, dict) and uint(p.get("observed_us")) and uint(p.get("maximum_age_us")) and
+    require(uint(p.get("observed_us")) and uint(p.get("maximum_age_us")) and
             evidence_age_valid(p["observed_us"], item["started_us"], p["maximum_age_us"]) and
             uint(p.get("raw_motion"), 65535) and not p["raw_motion"] & 0xFFFC and
-            p.get("auxiliary") == 7 and type(p.get("reference_semantics_qualified")) is bool,
+            type(p.get("reference_semantics_qualified")) is bool,
             "immutable prerequisites are invalid")
+    def end_words(raw_words):
+        """Decoded position of a two-word pair in the stated order (signed)."""
+        value = (raw_words[0] << 16 | raw_words[1]) if order == 0 else (raw_words[1] << 16 | raw_words[0])
+        return value - (1 << 32) if value & 0x80000000 else value
+    def end_ok(raw_words):
+        return raw_words == [0, 0] if auxiliary == 7 else end_words(raw_words) == offset
     qualified = p.get("qualified_parameters")
     require(isinstance(qualified, list) and len(qualified) == 4 and all(type(v) is int for v in qualified) and
             qualified == words[:4], "method/rate/ramp differs from exact qualified configuration")
@@ -1869,7 +1893,11 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
         if observe_inputs:
             require(item["inputs_observed"] and item["raw_inputs"] == int.from_bytes(raw[7:9], "big") and inputs_permit(raw),
                     "completion logical inputs contradict qualification")
-        require(checked("zero_evidence", bytes((item["address"], 3, 4, 0, 0, 0, 0))) and item["raw_position_words"] == [0, 0] and
+        zero_raw = evidence["zero_evidence"][1]
+        require(len(zero_raw) == 9 and checked("zero_evidence", zero_raw[:-2]) and zero_raw[:3] == bytes((item["address"], 3, 4)) and
+                item["raw_position_words"] == [int.from_bytes(zero_raw[3:5], "big"), int.from_bytes(zero_raw[5:7], "big")] and
+                end_ok(item["raw_position_words"]) and
+                (auxiliary == 7 or (item.get("end_known") is True and item.get("end_position") == end_words(item["raw_position_words"]))) and
                 comp["delivered_us"] < evidence["zero_evidence"][0]["earliest_us"] and
                 item["started_us"] <= item["completion_observed_us"] <= comp["earliest_us"] and
                 evidence["zero_evidence"][0]["delivered_us"] == item["serviced_us"] and evidence["zero_evidence"][0]["latest_us"] <= item["deadline_us"], "zero/reference evidence is inconsistent")
@@ -1946,7 +1974,7 @@ def check_home(item: dict, address: int | None, arguments: tuple[str, ...] | Non
                 require((item["detail"] == 13 and not first and not second & 0xFFF8 and not inputs_permit(raw)) or
                         (item["detail"] == 25 and (first or second & 0x78)) or
                         (item["detail"] == 15 and not first and not second & 0x78 and second & 0xFF80) or
-                        (item["detail"] == 27 and (first or second) and item["failure_evidence"] == item["zero_evidence"]) or
+                        (item["detail"] == 27 and not end_ok([first, second]) and item["failure_evidence"] == item["zero_evidence"]) or
                         (item["detail"] == 31 and item["method"] == 35 and not first and not second & 0xFFF8 and
                             second & 4 and inputs_permit(raw)),
                         "decoded failure reason differs from frame")

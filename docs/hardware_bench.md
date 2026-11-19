@@ -104,6 +104,39 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+On 19 November [wired bench 10](reports/2026-11-19_wired_bench_10_paired_value_encodings.md)
+ran four controller images built from `bae5048` plus the uncommitted working
+tree. Three were experimental images with the
+`MOTORCONTROLRS_WB10_EXPERIMENT` flag:
+
+- A, `ADD8DCC43995BE3A1670AC6061C8CC734A8993FD4ABD43D218AD436F6D222E5C`: P1
+  first run.
+- A2, `57E3C5352CC66B3B80B245E20ADFE690A097BFC23D314777530BE7CEB15CE28D`: RB, P1
+  rerun, P2, P3, P3D, P4, E1.
+- A3, `A631A6F30AEB442AFCAF80922A0A84DCB980F5132931C31642A65601085C9515`: E3P,
+  E3X, E3P rerun, E3N, E2, E2R.
+- Last, the production image B of the final tree,
+  `0D13EAA78539754CC52390EA20AF291B415EF470E45AEA6DD2DE8992B282F2B9`: R10. It
+  is on the board. Memory on B: internal free 341,484 bytes (minimum 336,336),
+  PSRAM free 7,108,140, loop stack free lowest 5,812 bytes.
+
+The final tree's native ESP-IDF image
+(`04D7C416E34B6C9879FF5263235D432B1538BA111902CEFFF3613867267AB373`) was built,
+not flashed. Ending state:
+
+- **Board:** image B, outputs off.
+- **Drives 1/2/4:** enabled, stopped, alarm-free. I/O `[0,1,2,3,0,0,0,0,0]`,
+  input filter 2, deviation threshold 4000, `0x0018` = 0, `0x0019` = 0,
+  limits [0,0]/[0,0] on all, PT pulse words [0,5000].
+- **Drive 4:** homing words 35/60/30/100/0/0 (inherited, RAM; baseline
+  24/120/60), jog speed 30 (inherited, RAM; baseline 120), auxiliary 0, HOMED
+  set, position words [65535,65036] (-500, live).
+- **Settings:** `baseline-compare`: 573 fields, 4 differences (the inherited
+  drive 4 words above), 0 unknown.
+- **Owner action pending (06, 09):** power-cycle drive 4, then run
+  `baseline-compare`. Prompt 10 adds no owner action. Until then read the
+  homing and velocity words before relying on them.
+
 On 19 November [wired bench 09](reports/2026-11-19_wired_bench_09_input_and_serial_starts.md)
 flashed four Arduino `bench_s3_load_timer` images: `dd2fb1c` (A,
 `695A6D7571610F78509D96CE3740187C78471F6626BE59CB9BF85E6B2BF65DA2`), then

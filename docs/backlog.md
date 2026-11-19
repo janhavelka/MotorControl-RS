@@ -29,8 +29,8 @@ review. These are future refactors, not unfinished prompts from the completed se
 
 ## Native ESS coverage
 
-The inventory still has **four named native-family gaps and 18 guarded paired
-setters**. Their exact membership and source restrictions are maintained in
+The inventory still has **four named native-family gaps and 16 guarded paired
+setters** (the stored PT targets; wired bench 10 promoted the two soft limits). Their exact membership and source restrictions are maintained in
 [API coverage](ess_api_cli_coverage.md) and [paired writes](ess_pair_writes.md);
 the register catalogue alone is not semantic command coverage.
 
@@ -79,8 +79,44 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   a transport error with completion unknown, and only a later read shows the
   alarm. The current handling is safe; a caller needs a read after at least 2 s
   to tell an alarm from a lost drive ([alarm 5](ess_actions.md#alarm-5-on-firmware-0x0029)).
-- [ ] Resolve signed stored-target encoding, admissible limit/stored-target
-  write forms, and home-offset order/sign/scale before exposing their setters.
+- [x] Measure the paired-value encodings and promote what is measured
+  ([wired bench 10](prompts/ess_wired_bench/10_paired_value_encodings.md)).
+  Implementation: done.
+  - Ledger `experiment_windows` (D4) with generator checks,
+    `Detail::canWriteExperiment` and a separate codec experiment builder and
+    parser; `Rtu::essExperimentValidator()`.
+  - Soft limits promoted (D10): reviewed FC10 `0x0037/2` and `0x0039/2` at
+    `0x0019` = 0, typed setter `driver set positive-limit|negative-limit`,
+    decoded DRIVE reads, caps `limit_pair_writes`.
+  - Nonzero home offset for method 35 with stored auxiliary 6 at `0x0019` = 0
+    (`home ... zero|OFFSET`, home `offset` fact); `stated_offset_required`
+    replaces `stored_offset_nonzero`; auxiliary 3 refused.
+  - Experimental image only: `driver experiment` for the PT experiment
+    windows. Harness: `bench_pairs.py` (`paired-values`) and the soft-limit
+    restoration route from image level 10.
+
+  Hardware, 19 November ([report](reports/2026-11-19_wired_bench_10_paired_value_encodings.md)):
+  P1, P2 and P4 PASS (acknowledged and read back on drives 1, 2, 4; storage
+  only for the PT pairs). P3 FAIL against the expected swap at order 1: words
+  store, but position and active-target words did not change within the power
+  cycle (P3D). E1 unambiguous at order 0. E2: auxiliary 3 keeps the running
+  coordinate, contradicting end = offset. E3: limits stop at +332/-332 with
+  `0x0007` bits 5/6. R10 PASS on the production image.
+  Handed on: soft-limit enable (11); auxiliary 3 and other choices, switch
+  methods with an offset, method 35 completion from a homed state (12); PT
+  target promotion through W0 (13); order 1 after a save and restart (17).
+- [ ] Promote the sixteen stored PT target pairs. Storage is measured (wired
+  bench 10 P2-P4); the drive's interpretation of the words needs prompt 13's W0
+  witness. Implementation: experiment windows, builder and route kept;
+  production write refused. Hardware: storage only.
+- [ ] Admit soft-limit enable (`0x0018` = 1) in production (prompt 11).
+  Implementation: refused (no `limitSemanticsQualified` route). Hardware: E3
+  measured the stop, the flags and the motor-release exit on drive 4; recovery
+  away from a limit is unmeasured.
+- [ ] Establish whether `0x0019` = 1 takes effect after a save and restart
+  (prompt 17). Within one power cycle it changed no position, target or offset
+  interpretation (wired bench 10 P3, P3D, E1). Order 1 stays refused for every
+  pair write.
 - [ ] Resolve method 18's conflicting signal captions and collision methods
   -4..-1's missing trajectory/encoding. The 30 implemented methods keep their
   qualification guards. See [method dispositions](ess_homing_methods.md).
@@ -268,7 +304,8 @@ functional evidence; independent shaft calibration remains absent.
 - [ ] Qualify physical angle/travel equivalence, origins/device clear
   and loaded mechanisms separately from pure conversions. Direct-positioning
   negative targets and signed feedback are bench-verified on firmware `0x0029`
-  (3 November 2026); stored segment targets and home offsets stay open above.
+  (3 November 2026); stored segment targets stay open above, and home offsets
+  are measured only for method 35 with auxiliary 6 at order 0 (wired bench 10).
   Linear travel needs an actual configured mechanism.
 - [ ] Qualify switch homing on actual fixtures, dynamic stop latency and external
   input/output activation/precedence. Methods 33/34/35 and stop during a search
@@ -282,9 +319,11 @@ functional evidence; independent shaft calibration remains absent.
   deadline (not exercised; prompt 12), and the switch methods stay with 11/12.
 - [ ] Qualify position start-speed scaling, activation timing and persistence.
   Write/readback, restoration and the relation latch passed on 2 November.
-- [ ] Qualify the homing behavior of auxiliary choices other than 0 and 7. All
-  twelve choices are written and read back on drives 1, 2 and 4
-  ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md)); only 0 and 7 have run a home.
+- [ ] Qualify the homing behavior of auxiliary choices other than 0, 6 and 7
+  (prompt 12). All twelve choices are written and read back on drives 1, 2 and 4
+  ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md)); 0 and
+  7 have run a home. Wired bench 10 admitted 6 with method 35 (end coordinate =
+  offset) and ran 3 once (E2: the coordinate kept start plus offset; refused).
 - [x] Record separate hardware evidence for velocity and position-clear
   qualification routes: finite +60 rpm velocity with both stop endings and the
   qualified zero clear on drives 1, 2 and 4 ([HIL regression](reports/2026-11-16_hil_regression.md)).
@@ -320,7 +359,8 @@ functional evidence; independent shaft calibration remains absent.
   the production capture CPU budget. Cache-off capture remains unsupported.
   [Timing contract](runner.md), [capture review](archive/reports/ess_release_04_2026-10-04.md).
 - [ ] Complete physical frame/timing qualification for five-byte exception replies
-  and FC10 windows 0x0024/2, 0x001D/3 and 0x0031/6 (13, 15 and 21 TX bytes).
+  and FC10 windows 0x0024/2, 0x001D/3 and 0x0031/6 (13, 15 and 21 TX bytes),
+  and the soft-limit windows 0x0037/2 and 0x0039/2 (13 bytes, wired bench 10).
   Keep each operation's normal prerequisites and fixture requirements; raw
   writes are not a substitute. The later
   [0x0024/2 selective-update functional pass](archive/reports/2026-10-05_repeat_motion_timing.md)

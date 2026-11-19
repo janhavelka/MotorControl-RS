@@ -42,11 +42,34 @@ inline bool canWriteMultiple(uint16_t start, uint16_t count) noexcept {
     return (start == 0x0024 && count == 2) ||
            (start == 0x0021 && count == 5) ||
            (start == 0x001D && count == 3) ||
-           (start == 0x0031 && count == 6);
+           (start == 0x0031 && count == 6) ||
+           (start == 0x0037 && count == 2) ||
+           (start == 0x0039 && count == 2);
 }
 
 inline bool hasWriteMultipleCount(uint16_t count) noexcept {
     return count == 2 || count == 3 || count == 5 || count == 6;
+}
+
+// Experiment FC10 windows (decision D4): only the separate experiment
+// builder admits them; production validation never does.
+inline bool canWriteExperiment(uint16_t start, uint16_t count) noexcept {
+    return (start == 0x0060 && count == 2) ||
+           (start == 0x0066 && count == 2) ||
+           (start == 0x006C && count == 2) ||
+           (start == 0x0072 && count == 2) ||
+           (start == 0x0078 && count == 2) ||
+           (start == 0x007E && count == 2) ||
+           (start == 0x0084 && count == 2) ||
+           (start == 0x008A && count == 2) ||
+           (start == 0x0090 && count == 2) ||
+           (start == 0x0096 && count == 2) ||
+           (start == 0x009C && count == 2) ||
+           (start == 0x00A2 && count == 2) ||
+           (start == 0x00A8 && count == 2) ||
+           (start == 0x00AE && count == 2) ||
+           (start == 0x00B4 && count == 2) ||
+           (start == 0x00BA && count == 2);
 }
 
 } // namespace Detail

@@ -14,12 +14,21 @@ namespace MotorControlRSExample { namespace Probe {
  * windows) with the words of an earlier checked `home read` / `velocity read`
  * of the same drive and binding (snapshotId; D7 exact raw words, a nonzero
  * offset included). */
-enum class ParameterWriteKind : uint8_t { NONE, HOME_RESTORE, VELOCITY_RESTORE };
+enum class ParameterWriteKind : uint8_t { NONE, HOME_RESTORE, VELOCITY_RESTORE, PAIR_EXPERIMENT };
+/** PAIR_EXPERIMENT (wired bench 10, decision D4) is admitted only by an image
+ * built with MOTORCONTROLRS_WB10_EXPERIMENT; every other image refuses it
+ * UNSUPPORTED before TX. It writes one ledger experiment window (a PT target
+ * pair: first, two words) through the separate experiment builder: candidate
+ * words from the image's fixed list, or (snapshotId) the exact words of an
+ * earlier checked read of that window on the same drive and binding (D7
+ * restoration), then reads the window back once; nothing is resent. */
 
 /** Request for one session: the kind and the operation ID of the checked source read. */
 struct ParameterWriteRequest {
     ParameterWriteKind kind = ParameterWriteKind::NONE;
     uint32_t snapshotId = 0;
+    uint16_t first = 0;      ///< PAIR_EXPERIMENT window start.
+    uint16_t words[2] = {};  ///< PAIR_EXPERIMENT candidate words (snapshotId 0).
 };
 
 /** Copied session state. pending covers the write and its readback. ok means

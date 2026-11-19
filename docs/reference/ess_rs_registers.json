@@ -213,7 +213,7 @@
       "signedness": "BITFIELD",
       "word_order": "SINGLE_REGISTER",
       "issues": [],
-      "notes": "Bit 4 set means released, clear means enabled. Bits 7-15 undocumented; retain raw values.",
+      "notes": "Bit 4 set means released, clear means enabled. Bits 7-15 undocumented; retain raw values. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029), drive 4: soft-limit bits 5/6 set at the E3 stop; stop fast and alarm-clear leave them set; motor-release clears them and bit 1 (HOMED); position clear does not clear HOMED.",
       "choices": "MotionStatusBit"
     },
     {
@@ -418,7 +418,7 @@
       "issues": [
         "SOURCE_CONFLICT"
       ],
-      "notes": "Enabled limits take effect only after homing. Prose p28 says 0x0019; table p29 and appendix say 0x0018.",
+      "notes": "Enabled limits take effect only after homing. Prose p28 says 0x0019; table p29 and appendix say 0x0018. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029), drive 4, E3: 1 written and read back after home 35; limits then stop velocity at the limit with 0x0007 bit 5 or 6. Production enable stays refused (prompt 11).",
       "choices": "SoftLimitEnable"
     },
     {
@@ -436,7 +436,7 @@
       "signedness": "ENUMERATED",
       "word_order": "SINGLE_REGISTER",
       "issues": [],
-      "notes": "Order of paired 16-bit words, not byte order within a Modbus register.",
+      "notes": "Order of paired 16-bit words, not byte order within a Modbus register. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029), drive 4, P3/P3D: 0x0019 = 1 was acknowledged and read back, yet 0x000A/0B and 0x0024/25 reads kept the order 0 words and a home offset staged low-first was read high-first, within the same power cycle. Whether 1 takes effect after a restart is unmeasured (prompt 17). The library keeps paired writes at order 0.",
       "choices": "WordOrder"
     },
     {
@@ -673,7 +673,7 @@
       "signedness": "ENUMERATED",
       "word_order": "SINGLE_REGISTER",
       "issues": [],
-      "notes": "",
+      "notes": "Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029), drive 4: method 35 with 6 sets the coordinate to the offset without motion (E1); with 3 the drive runs the offset and keeps the running coordinate (E2, one trial).",
       "choices": "HomingAuxiliary"
     },
     {
@@ -780,9 +780,9 @@
         "SCALE_UNRESOLVED",
         "WORD_ORDER_UNRESOLVED"
       ],
-      "notes": "High/low pair documented; omitted from p30 list of configurable-order pairs. Do not silently assume applies.",
+      "notes": "High/low pair documented; omitted from p30 list of configurable-order pairs. Do not silently assume applies. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029): E1 as stated in the write constraint. Auxiliary 3 (E2, one trial) ran the offset (+500 from coordinate -500, RUNNING) and ended at coordinate 0 = start + offset: the coordinate is not reset; not admitted (prompt 12).",
       "choices": null,
-      "write_constraint": "Only complete 0x0031/6 reviewed; 0x0035/2 and split FC06 unavailable. Page30 omits this pair and page20 writes zero, so configurable order remains unresolved; negative encoding and scale are also unresolved."
+      "write_constraint": "Only complete 0x0031/6; 0x0035/2 and split FC06 unavailable. Wired bench 10 E1 (method 35, auxiliary 6): +500 staged [0,500] and -500 staged [65535,65036] at 0x0019 = 0 gave coordinates +500 and -500 (high word at the lower address, two's complement, native position increments). At 0x0019 = 1 the low-first words [500,0] gave coordinate words [500,0] = 0x01F40000: the offset does not follow 0x0019 within the power cycle (P3D). Production: nonzero offset for method 35 with auxiliary 6 at order 0 only."
     },
     {
       "address": "0x0037",
@@ -803,9 +803,9 @@
         "SIGNED_ENCODING_UNRESOLVED",
         "SCALE_UNRESOLVED"
       ],
-      "notes": "Limit applies only after homing completes.",
+      "notes": "Limit applies only after homing completes. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029): P1/P4 storage exact on drives 1, 2, 4 ([1,2], [65535,65036]); E3 with 0x0018 = 1 after home 35: velocity +30 rpm stopped at +332 (bit 5) against +300, -30 rpm at -332 (bit 6) against -300 (stopping overshoot 32 increments at 30 rpm, 100 ms ramp). The flag survives stop and alarm-clear; motor-release clears it and HOMED.",
       "choices": null,
-      "write_constraint": "No reviewed FC10 window for 0x0037/2; split FC06 unavailable. Configurable word order is documented, but signed encoding, scale and partial application remain unresolved."
+      "write_constraint": "Reviewed FC10 0x0037/2 (wired bench 10 promotion, D10) at 0x0019 = 0 only: high word at the lower address, two's complement, native position increments of 0x000A; one FC10 then a two-word FC03 readback, never split FC06 halves; written only while 0x0018 is known 0. Order 1 stores the words (P3) but its interpretation is unmeasured and refused. Partial application unspecified."
     },
     {
       "address": "0x0039",
@@ -826,9 +826,9 @@
         "SIGNED_ENCODING_UNRESOLVED",
         "SCALE_UNRESOLVED"
       ],
-      "notes": "Limit applies only after homing completes.",
+      "notes": "Limit applies only after homing completes. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029): P1/P4 storage exact on drives 1, 2, 4 ([1,2], [65535,65036]); E3 with 0x0018 = 1 after home 35: velocity +30 rpm stopped at +332 (bit 5) against +300, -30 rpm at -332 (bit 6) against -300 (stopping overshoot 32 increments at 30 rpm, 100 ms ramp). The flag survives stop and alarm-clear; motor-release clears it and HOMED.",
       "choices": null,
-      "write_constraint": "No reviewed FC10 window for 0x0039/2; split FC06 unavailable. Configurable word order is documented, but signed encoding, scale and partial application remain unresolved."
+      "write_constraint": "Reviewed FC10 0x0039/2 (wired bench 10 promotion, D10) at 0x0019 = 0 only: high word at the lower address, two's complement, native position increments of 0x000A; one FC10 then a two-word FC03 readback, never split FC06 halves; written only while 0x0018 is known 0. Order 1 stores the words (P3) but its interpretation is unmeasured and refused. Partial application unspecified."
     },
     {
       "address": "0x003B",
@@ -1733,7 +1733,7 @@
           ],
           "notes": "Defaults explicitly listed for first segment only; later instance defaults not independently stated. Unit pulse (p22, p75). p75 worked example: 100000 pulses is high 0x0001, low 0x86A0, with the high word at the lower address at 0x0019=0 (p30).",
           "choices": null,
-          "write_constraint": "No exact FC10 window is documented for this stored pulse pair or whole position record; split FC06 and spans over the reserved record word are unavailable. Configurable order and the pulse unit are documented (p22, p30, p75); signed encoding and partial application remain unresolved."
+          "write_constraint": "No production FC10 window: the sixteen pulse pairs stay experiment windows (decision D4) until prompt 13's W0 witness measures order and sign (D10). Wired bench 10 storage: FC10 of two words acknowledged and read back exactly for all sixteen records on drive 4 ([n, 0x1000+n]) and segment 1 -500 [65535,65036] at 0x0019 = 0 (P2), segment 1 on drives 1 and 2 (P4) and on drive 4 at 0x0019 = 1 (P3, storage only). Split FC06 and record spans over the reserved word stay unavailable. p75 documents 100000 = 0x0001/0x86A0 at 0x0060/61."
         },
         {
           "offset": 2,
@@ -4009,6 +4009,270 @@
         20
       ],
       "evidence": "Homing method, speed/ramp words and zero offset pair example; does not prove a two-word subset or offset order.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x0037",
+      "count": 2,
+      "pages": [
+        29,
+        30,
+        73
+      ],
+      "evidence": "POSITIVE_SOFT_LIMIT pair alone; promoted by wired bench 10 (D10): FC10 acknowledged and read back exactly on drives 1, 2 and 4 at 0x0019 = 0 (P1, P4); order and sign witnessed by E3 (+300 stopped velocity +30 rpm at +332 with 0x0007 bit 5; swapped words would be 0x012C0000). Order 0 only; docs/reports/2026-11-19_wired_bench_10_paired_value_encodings.md",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x0039",
+      "count": 2,
+      "pages": [
+        29,
+        30,
+        73
+      ],
+      "evidence": "NEGATIVE_SOFT_LIMIT pair alone; promoted by wired bench 10 (D10): FC10 acknowledged and read back exactly on drives 1, 2 and 4 at 0x0019 = 0 (P1, P4); order and sign witnessed by E3 (-300 stopped velocity -30 rpm at -332 with 0x0007 bit 6; swapped words would be 0x012C0000). Order 0 only; docs/reports/2026-11-19_wired_bench_10_paired_value_encodings.md",
+      "partial_application": "UNSPECIFIED"
+    }
+  ],
+  "experiment_windows": [
+    {
+      "start": "0x0060",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        75
+      ],
+      "evidence": "POSITION_SEGMENT_01_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x0066",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        75
+      ],
+      "evidence": "POSITION_SEGMENT_02_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x006C",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        75
+      ],
+      "evidence": "POSITION_SEGMENT_03_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x0072",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        75
+      ],
+      "evidence": "POSITION_SEGMENT_04_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x0078",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        75
+      ],
+      "evidence": "POSITION_SEGMENT_05_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x007E",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        75
+      ],
+      "evidence": "POSITION_SEGMENT_06_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x0084",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        75
+      ],
+      "evidence": "POSITION_SEGMENT_07_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x008A",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        75
+      ],
+      "evidence": "POSITION_SEGMENT_08_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x0090",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        76
+      ],
+      "evidence": "POSITION_SEGMENT_09_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x0096",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        76
+      ],
+      "evidence": "POSITION_SEGMENT_10_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x009C",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        76
+      ],
+      "evidence": "POSITION_SEGMENT_11_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x00A2",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        76
+      ],
+      "evidence": "POSITION_SEGMENT_12_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x00A8",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        76
+      ],
+      "evidence": "POSITION_SEGMENT_13_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x00AE",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        76
+      ],
+      "evidence": "POSITION_SEGMENT_14_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x00B4",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        76
+      ],
+      "evidence": "POSITION_SEGMENT_15_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
+      "partial_application": "UNSPECIFIED"
+    },
+    {
+      "start": "0x00BA",
+      "count": 2,
+      "family": "pt_target",
+      "decision": "D4",
+      "prompt": "wired bench 10; wired bench 13 W0",
+      "date": "2026-11-19",
+      "pages": [
+        22,
+        30,
+        76
+      ],
+      "evidence": "POSITION_SEGMENT_16_PULSES pair alone (p22 unit, p30 order list, p75 worked example). Not a documented FC10 example: storage experiments here, promotion only by prompt 13's W0 witness.",
       "partial_application": "UNSPECIFIED"
     }
   ]

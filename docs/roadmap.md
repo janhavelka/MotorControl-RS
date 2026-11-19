@@ -12,7 +12,7 @@ retain successful and failed experiments.
 | Area | Current implementation | Evidence boundary |
 | --- | --- | --- |
 | Portable core | Exact units/coordinates, typed targets, register ledger, checked ESS FC03/06/10 codecs | No framework, transport, clock, heap or retry ownership |
-| Bounded operations | Typed reads/settings, actions, relative/absolute/wrapped position, finite velocity, homing 1-14/17/19-30/33-35, discovery and explicit communication/persistence sequences | Unsupported and unresolved operations fail explicitly; four native-family gaps and 18 guarded paired setters remain |
+| Bounded operations | Typed reads/settings, actions, relative/absolute/wrapped position, finite velocity, homing 1-14/17/19-30/33-35, discovery and explicit communication/persistence sequences | Unsupported and unresolved operations fail explicitly; four native-family gaps and 16 guarded paired setters (stored PT targets) remain |
 | Application reference | Cooperative owner, retained results, immutable deadlines, urgent stop, runner/capture, ordinary API/console and passive traffic observation | Software timing observations do not establish exact wire timing; no uncertain write replay |
 | Groups and terminal commissioning | Up to 15 independent member requests, checked staging, per-terminal I/O facts and shared finite-move rules | Three-drive unicast and unconnected-register evidence; wired effects, independent start timing and restart persistence remain open |
 | Consumers and tooling | Shared Arduino/native ESP-IDF S3 application, S2 compile-only fixtures, strict host tools, source/install packages and CI | S3 functional evidence belongs to the exact tested image, motor and fixture; S2 hardware is unqualified |

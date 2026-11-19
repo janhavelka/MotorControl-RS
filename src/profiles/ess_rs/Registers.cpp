@@ -39,7 +39,7 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 68,
      "MOTION_STATUS", "bitfield",
      "unspecified", "unspecified", "RO",
-     "Bit 4 set means released, clear means enabled. Bits 7-15 undocumented; retain raw values."},
+     "Bit 4 set means released, clear means enabled. Bits 7-15 undocumented; retain raw values. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029), drive 4: soft-limit bits 5/6 set at the E3 stop; stop fast and alarm-clear leave them set; motor-release clears them and bit 1 (HOMED); position clear does not clear HOMED."},
     // Function PDF pages 68, 69.
     {0x0008, 1, RegisterAccess::READ_ONLY, RegisterSignedness::BITFIELD,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 68,
@@ -105,13 +105,13 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000100u, 70,
      "SOFT_LIMIT_ENABLE", "unspecified",
      "0-1", "0", "RW",
-     "Enabled limits take effect only after homing. Prose p28 says 0x0019; table p29 and appendix say 0x0018."},
+     "Enabled limits take effect only after homing. Prose p28 says 0x0019; table p29 and appendix say 0x0018. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029), drive 4, E3: 1 written and read back after home 35; limits then stop velocity at the limit with 0x0007 bit 5 or 6. Production enable stays refused (prompt 11)."},
     // Function PDF pages 70, 30.
     {0x0019, 1, RegisterAccess::READ_WRITE, RegisterSignedness::ENUMERATED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 70,
      "WORD_ORDER", "unspecified",
      "0-1", "0", "RW",
-     "Order of paired 16-bit words, not byte order within a Modbus register."},
+     "Order of paired 16-bit words, not byte order within a Modbus register. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029), drive 4, P3/P3D: 0x0019 = 1 was acknowledged and read back, yet 0x000A/0B and 0x0024/25 reads kept the order 0 words and a home offset staged low-first was read high-first, within the same power cycle. Whether 1 takes effect after a restart is unmeasured (prompt 17). The library keeps paired writes at order 0."},
     // Function PDF pages 70, 17, 18, 19.
     {0x001D, 1, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
      RegisterWordOrder::SINGLE_REGISTER, 0x0000010Fu, 70,
@@ -177,7 +177,7 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 72,
      "HOMING_AUXILIARY", "unspecified",
      "0-11", "0", "RW",
-     ""},
+     "Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029), drive 4: method 35 with 6 sets the coordinate to the offset without motion (E1); with 3 the drive runs the offset and keeps the running coordinate (E2, one trial)."},
     // Function PDF pages 72, 19.
     {0x0031, 1, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000108u, 72,
@@ -207,19 +207,19 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::UNRESOLVED, 0x0000008Cu, 73,
      "HOMING_OFFSET", "native position; scale unresolved",
      "-0xFFFFFFF to 0xFFFFFFF", "0 (combined pair)", "RW",
-     "High/low pair documented; omitted from p30 list of configurable-order pairs. Do not silently assume applies."},
+     "High/low pair documented; omitted from p30 list of configurable-order pairs. Do not silently assume applies. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029): E1 as stated in the write constraint. Auxiliary 3 (E2, one trial) ran the offset (+500 from coordinate -500, RUNNING) and ended at coordinate 0 = start + offset: the coordinate is not reset; not admitted (prompt 12)."},
     // Function PDF pages 73, 29, 30.
     {0x0037, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
      RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 73,
      "POSITIVE_SOFT_LIMIT", "native position; scale unresolved",
      "-0xFFFFFFF to 0xFFFFFFF", "0 (combined pair)", "RW",
-     "Limit applies only after homing completes."},
+     "Limit applies only after homing completes. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029): P1/P4 storage exact on drives 1, 2, 4 ([1,2], [65535,65036]); E3 with 0x0018 = 1 after home 35: velocity +30 rpm stopped at +332 (bit 5) against +300, -30 rpm at -332 (bit 6) against -300 (stopping overshoot 32 increments at 30 rpm, 100 ms ramp). The flag survives stop and alarm-clear; motor-release clears it and HOMED."},
     // Function PDF pages 73, 29, 30.
     {0x0039, 2, RegisterAccess::READ_WRITE, RegisterSignedness::SIGNED_ENCODING_UNRESOLVED,
      RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 73,
      "NEGATIVE_SOFT_LIMIT", "native position; scale unresolved",
      "-0xFFFFFFF to 0xFFFFFFF", "0 (combined pair)", "RW",
-     "Limit applies only after homing completes."},
+     "Limit applies only after homing completes. Measured 2026-11-19 (wired bench 10; model 0x4EEA, firmware 0x0029): P1/P4 storage exact on drives 1, 2, 4 ([1,2], [65535,65036]); E3 with 0x0018 = 1 after home 35: velocity +30 rpm stopped at +332 (bit 5) against +300, -30 rpm at -332 (bit 6) against -300 (stopping overshoot 32 increments at 30 rpm, 100 ms ramp). The flag survives stop and alarm-clear; motor-release clears it and HOMED."},
     // Function PDF pages 73.
     {0x003B, 1, RegisterAccess::UNSPECIFIED, RegisterSignedness::UNSIGNED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000230u, 73,

@@ -189,7 +189,8 @@ def driver_terminal(request_id, update=False):
                  evidence_columns=bench.DRIVER_EVIDENCE_COLUMNS, evidence=evidence,
                  observation=None if update else dict(raw=[0, 1600, 0, 0, 0, 1, 0], known_fields=127,
                      positive_words=[1, 2], negative_words=[3, 4], pair_known=True,
-                     positive_bits=65538, negative_bits=196612, signed_limits="unresolved", native_scale="unresolved"))
+                     positive_bits=65538, negative_bits=196612, signed_limits="measured_order_0",
+                     native_scale="position_increments", limits_decoded=True, positive_limit=65538, negative_limit=196612))
 
 
 def position_start_speed_terminal(request_id):
@@ -1332,7 +1333,8 @@ class Framing(unittest.TestCase):
         console = self.session()
         for tokens in (("3.5", *self.HOME_ARGS[1:]), ("35", "4", "30", "100", "zero"),
                        ("35", "60", "301", "100", "zero"), ("35", "60", "30", "29", "zero"),
-                       (*self.HOME_ARGS[:4], "1"), (*self.HOME_ARGS, "extra")):
+                       (*self.HOME_ARGS[:4], "0"), (*self.HOME_ARGS[:4], "268435456"), (*self.HOME_ARGS[:4], "+5"),
+                       (*self.HOME_ARGS, "extra")):
             with self.assertRaises(ValueError): console.begin("home", home_args=tokens)
         self.assertEqual(len(self.port.writes), 1)
         parsed = bench.arguments(["--port", "FAKE", "--log", "unused", "home", *self.HOME_ARGS, "--cleanup-stop", "normal"])
@@ -1415,7 +1417,7 @@ class Framing(unittest.TestCase):
 
     def test_refused_install_names_its_reason_and_sends_no_home(self):
         for fields in (dict(result="missing_fact", fact="index"), dict(result="reads_required", read_first="home read"),
-                       dict(result="stored_offset_nonzero")):
+                       dict(result="stated_offset_required")):
             console = self.home_console(lambda i: reply(i, "home-qualification-install", ok=False, **fields))
             with self.subTest(fields=fields), self.assertRaises(bench.BenchError) as raised:
                 bench.home_campaign(console, home_args=self.HOME_ARGS, facts=self.FACTS, wiring=(),

@@ -126,7 +126,8 @@ void gatesAndReadContext() {
     uint32_t untouched = 99;
     auto request = update(); request.fields |= static_cast<uint16_t>(ESS::DriverField::POSITIVE_LIMIT);
     const auto writes = hardware.writes;
-    assert(host(app).startDriver(app,2,1,ESS::DriverKind::UPDATE,request,untouched) == Probe::Action::UNSUPPORTED);
+    // A soft-limit pair is written alone (wired bench 10): with geometry it is refused before TX.
+    assert(host(app).startDriver(app,2,1,ESS::DriverKind::UPDATE,request,untouched) == Probe::Action::INVALID);
     assert(untouched == 99 && hardware.writes == writes);
     qualify(); const auto qualifiedWrites = hardware.writes; request = update(); request.subdivision = 399;
     assert(host(app).startDriver(app,2,1,ESS::DriverKind::UPDATE,request,untouched) == Probe::Action::INVALID);

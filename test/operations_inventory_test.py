@@ -62,12 +62,16 @@ class Coverage(unittest.TestCase):
         self.assertEqual(home["pair_write_policy"]["reviewed_windows"],
                          [dict(start="0x0031", count=6, pages=[20])])
         self.assertEqual(home["obligations"]["write"], "IN_PROGRESS")
+        # Wired bench 10 (D10) promoted the two soft-limit pairs; the PT targets stay unsupported.
+        for name, start in (("POSITIVE_SOFT_LIMIT", "0x0037"), ("NEGATIVE_SOFT_LIMIT", "0x0039")):
+            self.assertEqual([w["start"] for w in records[name]["pair_write_policy"]["reviewed_windows"]], [start])
+            self.assertEqual(records[name]["obligations"]["write"], "IMPLEMENTED")
         for row in pairs:
             policy = row["pair_write_policy"]
             self.assertTrue(policy["reason"])
             self.assertEqual(policy["partial_application"], "UNSPECIFIED")
             self.assertEqual(policy["split_fc06"], "UNAVAILABLE")
-            if row["id"] not in ("POSITION_PULSES", "HOMING_OFFSET"):
+            if row["id"] not in ("POSITION_PULSES", "HOMING_OFFSET", "POSITIVE_SOFT_LIMIT", "NEGATIVE_SOFT_LIMIT"):
                 self.assertEqual(policy["reviewed_windows"], [])
                 self.assertEqual(row["obligations"]["write"], "UNSUPPORTED")
 
@@ -84,7 +88,7 @@ class Coverage(unittest.TestCase):
                          (221, 16, 2, 135))
         self.assertEqual(sum(count for state, count in summary["read"].items() if state in operations.IMPLEMENTATION), 201)
         self.assertEqual(summary["write"].get("NOT_IMPLEMENTED", 0), 0)
-        self.assertEqual(summary["write"]["UNSUPPORTED"], 18)
+        self.assertEqual(summary["write"]["UNSUPPORTED"], 16)  # The sixteen PT target pairs (soft limits promoted, wired bench 10).
         self.assertEqual(summary["action"]["IN_PROGRESS"], 2)
         linked = {record for group in INVENTORY["operations"] for record in group["records"]}
         self.assertEqual(len(linked), 203)

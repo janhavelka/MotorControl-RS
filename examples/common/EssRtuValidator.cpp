@@ -53,6 +53,28 @@ MotorControlRS::Status checkReply(const Expectation& expected, const uint8_t* by
         return MotorControlRS::Status(MotorControlRS::Err::UNSUPPORTED, 0, "unsupported ESS transaction");
     }
 }
+// Experiment FC10 (wired bench 10, D4): two words to one ledger experiment
+// window, built and parsed by the separate experiment codec only.
+bool checkExperimentRequest(const Expectation& expected, const Request& request) noexcept {
+    if (expected.function != 0x10) return checkRequest(expected, request);
+    if (!request.bytes || request.length != 13 || expected.count != 2 ||
+        !Ess::isExperimentWindow(expected.first, expected.count)) return false;
+    uint8_t built[13];
+    const uint16_t words[2] = {readWord(request.bytes + 7), readWord(request.bytes + 9)};
+    const std::size_t length = Ess::buildExperimentWrite(expected.address, expected.first, words, 2, built, sizeof(built));
+    return length == request.length && request.replyLength == Ess::WRITE_RESPONSE_LEN &&
+           std::memcmp(built, request.bytes, length) == 0;
+}
+MotorControlRS::Status checkExperimentReply(const Expectation& expected, const uint8_t* bytes, std::size_t length) noexcept {
+    if (expected.function != 0x10) return checkReply(expected, bytes, length);
+    return Ess::parseExperimentWrite(bytes, length, expected.address, expected.first, expected.count);
+}
+}
+Validator essExperimentValidator() noexcept {
+    Validator validator;
+    validator.checkRequest = checkExperimentRequest;
+    validator.checkReply = checkExperimentReply;
+    return validator;
 }
 Validator essValidator() noexcept {
     Validator validator;

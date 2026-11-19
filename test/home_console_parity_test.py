@@ -238,7 +238,7 @@ for executable in sys.argv[2:]:
     records = [r for r in records if r.get("id", 0) >= 800]
     assert [r["id"] for r in records] == list(range(800, 816))
     assert [r["result"] for r in records] == ["qualification_required"] * 3 + ["reads_required", "reads_required", "reads_required",
-        "missing_fact", "unknown_fact", "duplicate_fact", "fact_not_applicable", "stored_offset_nonzero", "done", "done", "done", "done", "done"]
+        "missing_fact", "unknown_fact", "duplicate_fact", "fact_not_applicable", "stated_offset_required", "done", "done", "done", "done", "done"]
     for record in records[:3]:
         assert record["result"] in ADMISSION_FAILURES and record["operation_id"] == 0 and record["ok"] is False
     for record in records[3:]:

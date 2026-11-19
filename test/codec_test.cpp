@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
 #include <limits>
 
 using MotorControlRS::Err;
@@ -142,10 +143,13 @@ void testWritePolicyBoundaries() {
     const uint16_t words[6] = {0x1234, 0x5678, 3, 4, 5, 6};
     for (uint32_t start = 0; start <= 0xFFFF; ++start) {
         for (uint16_t count : counts) {
+            // Wired bench 10 promoted the two soft-limit pairs (D10).
             const bool permitted = (start == 0x0024 && count == 2) ||
                 (start == 0x0021 && count == 5) ||
                 (start == 0x001D && count == 3) ||
-                (start == 0x0031 && count == 6);
+                (start == 0x0031 && count == 6) ||
+                (start == 0x0037 && count == 2) ||
+                (start == 0x0039 && count == 2);
             const Status status = validateWriteMultipleRegistersRequest(1,
                 static_cast<uint16_t>(start), words, count);
             assert(status.isOk() == permitted);
@@ -174,7 +178,7 @@ void testWritePolicyBoundaries() {
             assert(error == FrameError::ARGUMENT);
             filled(output, uint8_t(0xA5));
         }
-        if (start == 0x0024) continue; // The only reviewed standalone pair write.
+        if (start == 0x0024 || start == 0x0037 || start == 0x0039) continue; // Reviewed standalone pair writes.
         assert(buildWriteMultipleRegisters(1, start, words, 2, output, sizeof(output)) == 0);
         uint8_t echo[] = {1, 0x10, static_cast<uint8_t>(start >> 8),
             static_cast<uint8_t>(start), 0, 2, 0, 0};
@@ -624,9 +628,90 @@ void testWordConversion() {
     assert(raw == 123 && signedValue == 123);
 }
 
+// Wired bench 10: the separate experiment builder admits exactly the ledger's
+// experiment windows (the sixteen PT target pairs, two words each, decision D4)
+// and nothing else; the production builder and parser refuse all of them. The
+// soft-limit pairs 0x0037/2 and 0x0039/2 were promoted (D10) and are production
+// windows now. Independent oracle, not the generated table.
+void testExperimentWindows() {
+    const uint16_t words[6] = {0x0001, 0x0002, 3, 4, 5, 6};
+    for (uint32_t start = 0; start <= 0x0140; ++start) {
+        for (uint16_t count : {uint16_t(0), uint16_t(1), uint16_t(2), uint16_t(3), uint16_t(4), uint16_t(6)}) {
+            bool expected = count == 2 && start >= 0x0060 && start <= 0x00BA && (start - 0x0060) % 6 == 0;
+            assert(isExperimentWindow(static_cast<uint16_t>(start), count) == expected);
+            const Status status = validateExperimentWriteRequest(1, static_cast<uint16_t>(start), words, count);
+            assert(status.isOk() == expected);
+            if (!expected) assert(status.code == Err::UNSUPPORTED);
+            if (expected) assert(validateWriteMultipleRegistersRequest(1, static_cast<uint16_t>(start), words, count).code == Err::UNSUPPORTED);
+        }
+    }
+    assert(!validateExperimentWriteRequest(1, 0x0024, words, 2));
+    assert(!validateExperimentWriteRequest(1, 0x0037, words, 2)); // Promoted: production only.
+    assert(!validateExperimentWriteRequest(1, 0x0039, words, 2));
+    assert(!validateExperimentWriteRequest(1, 0x0035, words, 2));
+    assert(!validateExperimentWriteRequest(0, 0x0060, words, 2));
+    assert(!validateExperimentWriteRequest(1, 0x0060, nullptr, 2));
+    // Byte-exact frames: P1 limits through the production builder, standalone 04's PT request through the experiment builder.
+    const uint8_t positive[] = {4, 0x10, 0, 0x37, 0, 2, 4, 0, 1, 0, 2, 0x70, 0x90};
+    const uint8_t negative[] = {4, 0x10, 0, 0x39, 0, 2, 4, 0xFF, 0xFF, 0xFE, 0x0C, 0x61, 0x5C};
+    const uint8_t segment[] = {1, 0x10, 0, 0x60, 0, 2, 4, 0, 1, 0, 2, 0x25, 0x86};
+    assert(fixtureCrc(positive, sizeof(positive)) == 0 && fixtureCrc(negative, sizeof(negative)) == 0 &&
+           fixtureCrc(segment, sizeof(segment)) == 0);
+    uint8_t output[16];
+    std::memset(output, 0xA5, sizeof(output));
+    for (std::size_t capacity = 0; capacity < sizeof(segment); ++capacity) {
+        assert(buildExperimentWrite(1, 0x0060, words, 2, output, capacity) == 0);
+        filled(output, uint8_t(0xA5));
+    }
+    assert(buildExperimentWrite(1, 0x0060, words, 2, output, sizeof(output)) == sizeof(segment));
+    assert(std::memcmp(output, segment, sizeof(segment)) == 0 && output[sizeof(segment)] == 0xA5);
+    const uint16_t minus500[2] = {0xFFFF, 0xFE0C};
+    uint16_t encoded[2] = {};
+    assert(encodeInt32(-500, WordOrder::HIGH_WORD_FIRST, encoded, 2) && encoded[0] == 0xFFFF && encoded[1] == 0xFE0C);
+    assert(encodeInt32(-500, WordOrder::LOW_WORD_FIRST, encoded, 2) && encoded[0] == 0xFE0C && encoded[1] == 0xFFFF);
+    assert(buildWriteMultipleRegisters(4, 0x0037, words, 2, output, sizeof(output)) == sizeof(positive));
+    assert(std::memcmp(output, positive, sizeof(positive)) == 0);
+    assert(buildWriteMultipleRegisters(4, 0x0039, minus500, 2, output, sizeof(output)) == sizeof(negative));
+    assert(std::memcmp(output, negative, sizeof(negative)) == 0);
+    std::memset(output, 0xA5, sizeof(output));
+    assert(buildExperimentWrite(4, 0x0037, words, 2, output, sizeof(output)) == 0);
+    assert(buildWriteMultipleRegisters(1, 0x0060, words, 2, output, sizeof(output)) == 0);
+    assert(buildExperimentWrite(1, 0x0024, words, 2, output, sizeof(output)) == 0);
+    filled(output, uint8_t(0xA5));
+    // Checked replies: the experiment parser for PT pairs, the production parser for the limits.
+    uint8_t ack[] = {1, 0x10, 0, 0x60, 0, 2, 0, 0};
+    seal(ack, sizeof(ack));
+    assert(parseExperimentWrite(ack, sizeof(ack), 1, 0x0060, 2));
+    FrameError error = FrameError::NONE;
+    assert(parseWriteMultipleRegisters(ack, sizeof(ack), 1, 0x0060, 2, &error).code == Err::UNSUPPORTED &&
+           error == FrameError::ARGUMENT);
+    uint8_t limitAck[] = {4, 0x10, 0, 0x37, 0, 2, 0, 0};
+    seal(limitAck, sizeof(limitAck));
+    assert(parseWriteMultipleRegisters(limitAck, sizeof(limitAck), 4, 0x0037, 2));
+    assert(parseExperimentWrite(limitAck, sizeof(limitAck), 4, 0x0037, 2, &error).code == Err::UNSUPPORTED &&
+           error == FrameError::ARGUMENT);
+    for (unsigned changed = 0; changed < 8; ++changed) {
+        uint8_t damaged[8];
+        std::memcpy(damaged, ack, sizeof(damaged));
+        damaged[changed] ^= 1;
+        if (changed < 6) seal(damaged, sizeof(damaged));
+        assert(!parseExperimentWrite(damaged, sizeof(damaged), 1, 0x0060, 2, &error));
+        assert(error == (changed == 0 ? FrameError::ADDRESS : changed == 1 ? FrameError::FUNCTION :
+                         changed < 6 ? FrameError::ECHO : FrameError::CRC));
+    }
+    uint8_t exception[] = {1, 0x90, 2, 0, 0};
+    seal(exception, sizeof(exception));
+    const Status rejected = parseExperimentWrite(exception, sizeof(exception), 1, 0x0060, 2, &error);
+    assert(rejected.code == Err::EXCEPTION && rejected.detail == 2 && error == FrameError::EXCEPTION);
+    // FC06 stays refused on either half of every pair, promoted or experimental.
+    for (uint16_t reg : {uint16_t(0x0037), uint16_t(0x0038), uint16_t(0x0039), uint16_t(0x003A), uint16_t(0x0060), uint16_t(0x00BB)})
+        assert(validateWriteSingleRegisterRequest(4, reg, 1).code == Err::UNSUPPORTED);
+}
+
 } // namespace
 
 int main() {
+    testExperimentWindows();
     testCrcAndSizes();
     testRequestPolicy();
     testWritePolicyBoundaries();

@@ -402,6 +402,36 @@ pre-start `io read`) for A11, and *session members* (the firmware trigger's
 because an armed drive refuses its own `io read`. `input_starts.json` keeps
 every trial, the session views, edges, samples and the restoration.
 
+### Paired values (wired bench 10)
+
+[Prompt 10](prompts/ess_wired_bench/10_paired_value_encodings.md) added the
+`paired-values` scenario (`scripts/bench_pairs.py`, also
+`bench_scenarios.py --scenario paired-values`). It runs one `--case` per run
+folder, which must be a `wb10` folder (`build/bench/YYYY-MM-DD_wb10_slug`), and
+takes `--firmware IMAGE` and `--commit TEXT` instead of `--image-level`.
+`--home-snapshot ID` names the binding's pinned home read for E2R.
+
+| Case | Image | Work |
+| --- | --- | --- |
+| P1 | Experimental | Drive 4 at `0x0019` = 0: positive limit `0x00010002`, negative -500, read back, restored |
+| P2 | Experimental | Drive 4: the sixteen PT pairs [n, `0x1000`+n] and segment 1 -500, read back, restored |
+| P3, P3D | Experimental | Drive 4 at `0x0019` = 1: position words, P1's positive limit and P2's segment 1 (storage); P3D three spaced state reads and a profile read per order |
+| P4 | Experimental | Drives 1 and 2 at order 0: P1 limits and P2 segment 1 |
+| E1 | Experimental | Drive 4, method 35 with auxiliary 6: offsets +500 and -500 at order 0, +500 at order 1 |
+| E2 | Experimental | Drive 4, method 35 with auxiliary 3, only after an unambiguous E1 |
+| E3P, E3N | Experimental | Drive 4: home 35/auxiliary 7 to 0, limits +300/-300, `0x0018` = 1, 30 rpm velocity for 1000 ms in each direction |
+| RB, E3X, E2R | Experimental | Restorations: PT and limit pairs back to the 01 baseline words; the soft-limit flag exit of an interrupted E3 trial; the interrupted E2 run |
+| R10 | Production | Drive 4: `driver set positive-limit`/`negative-limit` +300/-300 and back to [0,0], decoded reads, home 35 with auxiliary 6 and offsets +500 and -500 from a HOMED-low start, `driver experiment` refused before TX |
+
+Experiment writes go through the experimental image's named admission
+(`driver experiment`, decision D4). Restoration uses the exact words of a
+checked read of the same drive taken before the first write (D7) or the
+ordinary routes; from image level 10 the restoration planner also uses
+`driver set positive-limit|negative-limit VALUE` for the limit fields. An
+uncertain write ends the case and nothing is replayed. `pairs.json` keeps the
+case data; `result.json` and both run checks follow as for the other folder
+scenarios.
+
 ## Stress tool
 
 `scripts/bench_stress.py` runs randomized finite cases on the recorded ESS bench.

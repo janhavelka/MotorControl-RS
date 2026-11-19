@@ -12,6 +12,12 @@ constexpr uint8_t DRIVER_FIELD_COUNT = 16;
 constexpr uint8_t DRIVER_READ_STEPS = 4;
 constexpr uint8_t DRIVER_MAX_STEPS = 18;
 constexpr std::size_t DRIVER_MAX_REPLY_BYTES = 15;
+constexpr std::size_t DRIVER_MAX_REQUEST_BYTES = 13; ///< FC10 of one soft-limit pair (two words).
+/** Soft-limit pair claims promoted by wired bench 10 (decision D10), model
+ * 0x4EEA firmware 0x0029: FC10 0x0037/2 and 0x0039/2 at 0x0019 = 0, high word
+ * at the lower address, two's complement, native position increments (the
+ * 0x000A unit). Order 1 is not admitted. */
+constexpr int32_t DRIVER_LIMIT_MAGNITUDE = 0x0FFFFFFF;
 enum class DriverGroup : uint8_t { DRIVE, IO, POSITION_SEGMENT, SPEED_SEGMENT, SEGMENT_START_SPEED, CONTROL_SETTINGS,
     FILTERS, CURRENT_LOOP, LA, COLLISION, POSITION_START_SPEED, HOMING_AUXILIARY };
 enum class DriverField : uint32_t {
@@ -48,8 +54,12 @@ enum class DriverError : int32_t {
     CURRENT_BASE_UNRESOLVED, CURRENT_DEPENDENCY, ZERO_ENCODER_SCALE,
     TUNING_EFFECTS_REQUIRED, TUNING_ACCESS_UNRESOLVED
 };
-/** Select fields explicitly; values in unselected fields are ignored. Pair
- * candidates are present for explicit unavailable reporting, never split writes.
+/** Select fields explicitly; values in unselected fields are ignored.
+ * POSITIVE_LIMIT/NEGATIVE_LIMIT (DRIVE group) are signed native limits written
+ * as one FC10 of two words each (0x0037/2, 0x0039/2), never split FC06 halves.
+ * They are admitted alone (one or both), within +-DRIVER_LIMIT_MAGNITUDE, at
+ * 0x0019 known 0 and 0x0018 known 0 in the prior DRIVE read (wired bench 10).
+ * segmentPulseTarget stays an explicit unsupported candidate (prompt 13).
  * interruption selects the external PV trigger level/edge, not serial bit 3. */
 struct DriverRequest {
     DriverGroup group = DriverGroup::DRIVE;
@@ -114,6 +124,10 @@ struct DriverObservation {
     uint16_t positiveWords[2] = {}, negativeWords[2] = {};
     bool pairKnown = false;
     uint32_t positiveBits = 0, negativeBits = 0;
+    /** Signed limits decoded only for the promoted claim: DRIVE read with
+     * 0x0019 known 0 (high word first, two's complement; wired bench 10). */
+    bool limitsDecoded = false;
+    int32_t positiveLimit = 0, negativeLimit = 0;
     DriverEvidence provenance[DRIVER_READ_STEPS];
 };
 /** Where the reported status bit (0x0008/0x0009) sits relative to the polarity
@@ -224,6 +238,10 @@ struct DriverPrerequisites {
 struct DriverProgress {
     DriverField field = DriverField::DIRECTION;
     uint16_t reg = 0, previous = 0, requested = 0, readback = 0;
+    /** Soft-limit pair: both words in address order; previous/requested/
+     * readback above repeat the first (high) word. */
+    bool pair = false;
+    uint16_t previousWords[2] = {}, requestedWords[2] = {}, readbackWords[2] = {};
     bool selected = false, acknowledged = false, readbackKnown = false;
     bool activeKnown = false;
     uint16_t active = 0;
@@ -257,8 +275,9 @@ struct PreparedDriver {
     uint32_t operationId = 0;
     uint8_t step = 0;
     bool write = false;
+    uint8_t function = 0; ///< 3, 6 or 16 (soft-limit pair write).
     uint16_t reg = 0, value = 0, count = 0;
-    uint8_t bytes[READ_REQUEST_LEN] = {};
+    uint8_t bytes[DRIVER_MAX_REQUEST_BYTES] = {};
     std::size_t length = 0;
     uint64_t deadlineUs = 0;
 };
