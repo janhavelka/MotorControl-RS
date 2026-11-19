@@ -111,9 +111,11 @@ inline const char* parse(const char* const* tokens, std::size_t count, IoQualifi
     } else {
         if (request.function == 11) return "unresolved";
         if (request.function > 5 && request.function < 9) return "invalid_arguments";
+        // `recorded` defers the mapping to the application record (wired bench 06).
+        request.recordedMapping = count == 9 && !std::strcmp(tokens[6], "recorded");
         if (request.member || count != 9 || !word(tokens[4], 1, request.custom) ||
             !purpose(tokens[5], request.purpose) || request.purpose != IoPurpose::ASSIGN ||
-            !mapping(tokens[6], request.output.statusMapping)) return "invalid_arguments";
+            (!request.recordedMapping && !mapping(tokens[6], request.output.statusMapping))) return "invalid_arguments";
         request.output.supplied = true;
         if (!std::strcmp(tokens[7], "none")) request.output.load = Ess::IoOutputLoad::NO_LOAD;
         else if (!std::strcmp(tokens[7], "indicator")) request.output.load = Ess::IoOutputLoad::INDICATOR;

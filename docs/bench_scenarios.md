@@ -302,6 +302,38 @@ every poll's reply is complete, so a dropped `debug raw` display record does
 not remove a sample. `bench_records.timing_trial` gives the intervals, the
 poll spacing and the width class.
 
+### Outputs (wired bench 06)
+
+[Prompt 06](prompts/ess_wired_bench/06_outputs.md) added the `outputs`
+scenario (`scripts/bench_outputs.py`). It needs `--image-level 06` and runs one
+case per folder: `--case O1`..`O9`, with `--repetitions` overriding the case's
+default count. O10 and O11 were the D9 experiment. They ran on the experiment
+image only and are refused before the port opens on later images.
+
+| Case | Stimulus on drive 4 | Verdicts |
+| --- | --- | --- |
+| O1, O2 | Y0 = 9 (and polarity 1 for O2); custom bit 0 on/off per cycle | One `aux1` edge per write in the stated direction; `0x0009` bit 0 class (`after`, `before`) |
+| O3 | Y0 = 0; reads at polarity 0 and 1 | Level recorded |
+| O4, O5 | Y0 = 2 (O5 polarity 1); ±1000/±3000-step moves at 60 rpm, O4 adds a `stop fast` 0.8 s into a +3000 move | ON at start, OFF at completion or stop; no missing or extra edge |
+| O6 | Y0 = 4; moves, a `stop fast` short of target, `position-clear` | Set/clear events against `0x0007` bit 0 |
+| O7 | `home auxiliary 7`, Y0 = 3; `home 35` only when HOMED is clear, then repetitions of a ±200 move and `home 33` | Set/clear events against bit 1; the homing words are restored by `home restore` from the pre-run read |
+| O8 | Y0 = 5; one setup release/enable cycle, then `motor-release`/`enable` with 1 s waits | Edges against the action writes and bit 4 |
+| O9 | Threshold 1 by the CONFIGURE route, Y0 = 1; 2000-step move (alarm 5), 2 s wait, `recover` when required, `stop fast`, `alarm-clear` | Edge inside the no-reply interval; OFF edge at `alarm-clear`; never resends the move |
+
+Every run reads I/O and state and writes Y0 through the ordinary route with the
+stated facts (`indicator either`). It keeps `debug decoded` on and records
+setup and restoration writes as their own rows, so their edges are not counted
+against a stimulus row. Each edge is reported against three times: the
+matching write's TX request start, its reply end (both from the debug copy,
+which drops records), and the closure bound from the operation's own evidence.
+The drive's transition bracket is [request start of the last sample with the
+old value, reply end of the first sample with the new value] relative to the
+edge, and overlap is reported as a relationship. `outputs.json` keeps the
+edges, writes, samples, rows and analysis; O10/O11 wrote
+`experiment_class.json`. Restoration follows the run's plan, homing and JOG
+words included (snapshot routes `home restore` and `velocity restore`), with
+the prepared `stop fast` sent first.
+
 ## Stress tool
 
 `scripts/bench_stress.py` runs randomized finite cases on the recorded ESS bench.

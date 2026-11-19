@@ -41,6 +41,7 @@ MAX_INPUT = 98304
 MAX_TRAFFIC_INPUT = 1048576  # Independent finite diagnostic budget per command/drain.
 COMMANDS = frozenset({"version", "config", "probe", "capture-read", "status", "health", "memory", "stats", "load",
                       "drv", "result", "release", "cancel", "recover", "caps", "host", "useaddr", "wiring", "bench", "communication", "persistence", "motion-profile", "motion-profile-stage", "motion-profile-start-speed", "motion-profile-start-speed-relation", "home-auxiliary", "debug",
+                      "home-restore", "velocity-restore",
                       "home-qualification-install", "home-qualification-revoke", "velocity-qualification-install", "velocity-qualification-revoke",
                       "position-clear-qualification", "position-clear-qualification-install", "position-clear-qualification-revoke",
                       "io-qualification-install", "io-qualification-inspect", "io-qualification-revoke",
@@ -97,8 +98,8 @@ IO_QUALIFICATION_ROUTES = {"io-qualification-" + action: "io qualification " + a
                            for action in ("install", "inspect", "revoke")}
 IO_PURPOSES = ("assign", "configure", "finite-move", "segment")
 IO_MAPPINGS = ("unknown", "before", "after")
-# Input installs may defer the mapping to the application record (wired bench 05);
-# inspection always reports the resolved mapping.
+# Installs may defer the mapping to the application record (inputs: wired bench
+# 05; outputs: wired bench 06); inspection always reports the resolved mapping.
 IO_INSTALL_MAPPINGS = (*IO_MAPPINGS, "recorded")
 INPUT_TERMINALS = ("x0", "x1", "x2", "x3")
 # Settings routes whose input policy uses stated selected-axis records (wired bench 03).
@@ -176,7 +177,7 @@ def io_qualification_arguments(command: str, tokens: tuple[str, ...]) -> dict:
             raise ValueError("output qualification function, load or levels are unsupported")
     if (result["purpose"] not in IO_PURPOSES or (not input_terminal and result["purpose"] != "assign") or
             (member and (not input_terminal or result["purpose"] != "finite-move")) or
-            ("mapping" in result and result["mapping"] not in (IO_INSTALL_MAPPINGS if input_terminal else IO_MAPPINGS))):
+            ("mapping" in result and result["mapping"] not in IO_INSTALL_MAPPINGS)):
         raise ValueError("I/O qualification purpose or status mapping is unsupported")
     return result
 
@@ -348,6 +349,25 @@ def debug_session(console, mode: str | None, timeout_s: float):
                 cleanup_error = error
         if cleanup_error is not None and not failed:
             raise cleanup_error
+
+
+# Wired bench 06: snapshot restores, one session each (synchronous admission,
+# `... inspect` until it is not pending).
+PARAMETER_WRITE_COMMANDS = {"home-restore": "home restore", "velocity-restore": "velocity restore"}
+PARAMETER_WRITE_KINDS = {"home-restore": "home_restore", "velocity-restore": "velocity_restore"}
+PARAMETER_WRITE_WINDOWS = {"home_restore": (0x31, 6), "velocity_restore": (0x1D, 3)}
+PARAMETER_WRITE_ERRORS = ("none", "cancelled", "readback_mismatch", "readback_failed", "write_rejected",
+                          "write_not_transmitted", "write_unknown", "deadline", "readback_admission")
+def parameter_write_arguments(command: str, tokens: tuple[str, ...]) -> dict:
+    """``home restore SNAPSHOT_ID``, ``velocity restore SNAPSHOT_ID`` or ``... inspect``."""
+    if command not in PARAMETER_WRITE_COMMANDS or not isinstance(tokens, tuple) or \
+            any(type(t) is not str for t in tokens):
+        raise ValueError("parameter write requires a tuple of tokens")
+    if tokens == ("inspect",):
+        return {"action": "inspect"}
+    if len(tokens) != 1 or not re.fullmatch(r"[1-9][0-9]{0,9}", tokens[0]) or int(tokens[0]) > 0xFFFFFFFF:
+        raise ValueError("restore requires the operation ID of an earlier checked read")
+    return {"action": "write", "snapshot_id": int(tokens[0])}
 
 
 def motion_profile_arguments(tokens: tuple[str, ...]) -> str:
@@ -2112,6 +2132,70 @@ class Console:
         self.traffic_sequence = item["sequence"]
         self.emit("traffic", response=item)
 
+    @staticmethod
+    def _check_parameter_write(handle, item: dict) -> None:
+        """One restore or D9 session reply: admission result and the current session."""
+        request = parameter_write_arguments(handle.command, handle.host_args)
+        def require(condition, message):
+            if not condition:
+                raise BenchError(handle.command + ": " + message)
+        def integer(value, low=0, high=0xFFFFFFFFFFFFFFFF):
+            return type(value) is int and low <= value <= high
+        if "kind" not in item:
+            require(not item["ok"] and item.get("result") in ADMISSION_FAILURES, "reply omitted the session without a refusal")
+            return
+        require(item.get("result") == "accepted" if item["ok"] else item.get("result") in ADMISSION_FAILURES,
+                "invalid command disposition")
+        require(item.get("request") == request["action"], "request differs")
+        kind = item.get("kind")
+        require(kind in ("none", *PARAMETER_WRITE_KINDS.values()), "unknown session kind")
+        for key in ("operation_id", "snapshot_id", "target_generation", "configuration_generation", "serial_generation",
+                    "started_us", "deadline_us", "finished_us"):
+            require(integer(item.get(key)), "invalid " + key)
+        require(integer(item.get("address"), 0, 247) and integer(item.get("first"), 0, 0xFFFF) and
+                integer(item.get("count"), 0, 6), "invalid address or window")
+        for key in ("pending", "session_ok", "readback_known", "cancelled", "unsettled"):
+            require(type(item.get(key)) is bool, "invalid " + key)
+        require(item.get("execution") in EXECUTIONS and item.get("error") in PARAMETER_WRITE_ERRORS,
+                "invalid execution or error")
+        words, readback = item.get("words"), item.get("readback")
+        require(isinstance(words, list) and len(words) == item["count"] and all(integer(w, 0, 0xFFFF) for w in words),
+                "words differ from the window")
+        require(isinstance(readback, list) and len(readback) == (item["count"] if item["readback_known"] else 0) and
+                all(integer(w, 0, 0xFFFF) for w in readback), "readback differs from the window")
+        for name in ("write_evidence", "read_evidence"):
+            e = item.get(name)
+            require(isinstance(e, dict) and integer(e.get("event"), 0, 3) and integer(e.get("tx_accepted"), 0, 256) and
+                    all(type(e.get(k)) is bool for k in ("tx_complete", "qualified", "response_confirmed", "execution_unknown")) and
+                    all(integer(e.get(k)) for k in ("earliest_us", "latest_us", "delivered_us")) and
+                    isinstance(e.get("status"), str) and type(e.get("detail")) is int and
+                    isinstance(e.get("rx_hex"), str) and re.fullmatch(r"(?:[0-9A-F]{2})*", e["rx_hex"]),
+                    "invalid " + name)
+        if kind == "none":
+            require(item["operation_id"] == 0 and not item["pending"] and not item["unsettled"] and item["count"] == 0,
+                    "an empty session carries state")
+            require(not item["ok"] or request["action"] == "inspect", "an admitted write left no session")
+            return
+        require(item["operation_id"] > 0 and 1 <= item["address"] <= 247 and item["count"] >= 1, "session lacks identity")
+        require((item["first"], item["count"]) == PARAMETER_WRITE_WINDOWS[kind] and item["snapshot_id"] > 0,
+                "restore window or source differs")
+        if request["action"] == "write" and item["ok"]:
+            require(kind == PARAMETER_WRITE_KINDS[handle.command] and item["pending"], "admitted write is not this session")
+            require(item["snapshot_id"] == request["snapshot_id"], "snapshot differs from the request")
+        if item["pending"]:
+            require(not item["session_ok"] and not item["unsettled"] and item["error"] == "none", "pending session has a result")
+            return
+        require(item["finished_us"] >= item["started_us"], "terminal session lacks its finish time")
+        if item["session_ok"]:
+            require(item["error"] == "none" and item["execution"] == "acknowledged" and item["readback_known"] and
+                    readback == words and not item["unsettled"], "session success without its checked readback")
+        else:
+            require(item["error"] != "none", "failed session without an error")
+        require(item["unsettled"] == (item["execution"] == "unknown" and not item["readback_known"]),
+                "unsettled differs from the write evidence")
+        if item["error"] == "readback_mismatch":
+            require(item["readback_known"] and readback != words, "mismatch without differing words")
+
     def _check_motion_profile(self, handle: Command, item: dict) -> None:
         """Check the position-parameter snapshot and its explicit checked restoration."""
         action = motion_profile_arguments(handle.host_args)
@@ -3039,6 +3123,8 @@ class Console:
             self._check_debug(handle, item)
         if handle.command == "motion-profile":
             self._check_motion_profile(handle, item)
+        if handle.command in PARAMETER_WRITE_COMMANDS:
+            self._check_parameter_write(handle, item)
         if handle.command == "useaddr":
             self._check_useaddr(handle, item)
         if handle.command == "wiring":
@@ -3474,6 +3560,8 @@ class Console:
             debug_arguments(host_args)
         elif command == "motion-profile":
             motion_profile_arguments(host_args)
+        elif command in PARAMETER_WRITE_COMMANDS:
+            parameter_write_arguments(command, host_args)
         elif command == "motion-profile-stage":
             candidate = profile_stage_arguments(host_args)
             if address is not None and address != candidate["address"]:
@@ -3637,6 +3725,7 @@ class Console:
             if command in IO_QUALIFICATION_ROUTES: wire_command = IO_QUALIFICATION_ROUTES[command]
             if command == "position-clear-qualification": wire_command = "position-clear qualification"
             if command == "home-auxiliary": wire_command = "home auxiliary"
+            if command in PARAMETER_WRITE_COMMANDS: wire_command = PARAMETER_WRITE_COMMANDS[command]
             if command == "position-interrupt": wire_command = "position interrupt"
             if command == "profile-list": wire_command = "profile list"
             if command in MOVE_COMMANDS: wire_command = "move " + command[5:]

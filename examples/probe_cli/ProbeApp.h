@@ -10,6 +10,7 @@
 #include "ProfileCandidate.h"
 #include "QualificationConsole.h"
 #include "IoQualification.h"
+#include "ParameterWrite.h"
 #include <MotorControlRS/profiles/ess_rs/Position.h>
 #include <MotorControlRS/profiles/ess_rs/Reads.h>
 #include <MotorControlRS/profiles/ess_rs/Velocity.h>
@@ -77,6 +78,12 @@ MotorControlRS::Status revokeIoQualification(uint8_t address, uint8_t terminal, 
  * an applicable record. No bus traffic. */
 bool copyRecordedInputMapping(uint8_t address, uint8_t terminal, MotorControlRS::ESS_RS::IoStatusMapping& output,
                               bool member = false);
+/** The recorded output status mapping (IoStatusRecord.h, wired bench 06) of
+ * output 0 (Y0) or 1 (Y1) of the selected axis, under the same identity rule.
+ * The record has Y0 after inversion for 0x4EEA/0x0029; Y1 has none. Console
+ * token `recorded` in an output install; a stated mapping that contradicts it is
+ * refused (mapping_contradicts_record). No bus traffic. */
+bool copyRecordedOutputMapping(uint8_t address, uint8_t output, MotorControlRS::ESS_RS::IoStatusMapping& mapping);
 /** Read one typed settings group through the ordinary owner. Segment groups
  * require index 1..16. Copy results with copySettingsResult; release explicitly.
  * Calls run in the service task and preserve operationId on rejection. */
@@ -93,6 +100,28 @@ MotorControlRS::Status submitDriverRead(uint8_t address, MotorControlRS::ESS_RS:
  * (input_facts_required, input_facts_stale or input_active; copySettingsRefusal)
  * and sends no frame. */
 MotorControlRS::Status submitDriverSettings(uint8_t address, const MotorControlRS::ESS_RS::DriverRequest&, uint32_t& operationId);
+/** Restore the six homing words 0x0031..0x0036 (method, search and return
+ * rates, ramp, raw offset pair) of the selected axis from an earlier checked
+ * home read of the same drive and binding (snapshotId = that read's operation
+ * ID; the first checked read of the binding and the seven most recent are
+ * kept, so the state before the first write survives the restoration's own
+ * reads): one FC10 to the reviewed 0x0031/6 window
+ * with the exact words (D7, a nonzero offset included), no start, then one FC03
+ * readback. Needs fresh stopped, alarm-free state with zero speed, a fresh
+ * checked configuration and no input with function 11 unless a current
+ * CONFIGURE record states triggers inhibited. The axis stays reserved until the
+ * readback; a write with unknown execution keeps it reserved and refuses the
+ * next write until a checked home read settles it. Nothing is resent. A
+ * possible write expires home qualification and prepared work, as a stored
+ * homing policy does; the position counter is untouched. Copy the session with
+ * copyParameterWrite. Refusal detail is the Probe::Action and sends nothing. */
+MotorControlRS::Status restoreHomingParameters(uint32_t snapshotId, uint32_t& operationId);
+/** The same for the three velocity (JOG) words 0x001D..0x001F from an earlier
+ * checked velocity read (0x001D/3 window); inputs with functions 8-10 refuse
+ * unless inhibited; a velocity read settles an unknown write. */
+MotorControlRS::Status restoreVelocityParameters(uint32_t snapshotId, uint32_t& operationId);
+/// Copy the current or finished restore session; another ID preserves output.
+bool copyParameterWrite(uint32_t operationId, Probe::ParameterWriteView& output);
 /** Copy the input-facts cause of the settings or profile-stage refusal just
  * returned by a submit call or console command: reason, read_first, purpose and
  * terminal. Valid until the next serviceApplication turn or admission attempt.

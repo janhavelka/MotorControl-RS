@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import time
 from datetime import date as _date
 import hashlib
 import json
@@ -1490,6 +1491,33 @@ def _experiment_problem(record: dict, field: dict, entry: dict, context: dict) -
 
 
 ORDER_RANK = {"drive.word-order": 0}
+# Wired bench 06: the homing words 0x0031-0x0036 and the JOG words 0x001D-0x001F
+# have no static route in the 01 baseline; `home restore` / `velocity restore`
+# write back the exact words of a checked read of this run taken before the
+# case's first write (the snapshot), then read them back. One restore covers
+# every field of its window.
+SNAPSHOT_ROUTES = {"home": {"command": "home-restore", "keys": ("homing.method", "homing.search-speed",
+                                                                   "homing.return-speed", "homing.ramp", "homing.offset"),
+                            "read_command": "home-read", "window": (0x31, 6)},
+                   "velocity": {"command": "velocity-restore", "keys": ("jog.speed", "jog.acceleration", "jog.deceleration"),
+                                "read_command": "velocity-read", "window": (0x1D, 3)}}
+SNAPSHOT_IMAGE_LEVEL = "06"
+
+
+def snapshot_route(key: str) -> str | None:
+    """Snapshot route name (home or velocity) of a baseline field, or None."""
+    return next((name for name, route in SNAPSHOT_ROUTES.items() if key in route["keys"]), None)
+
+
+def snapshot_words(baseline: dict, address: int, name: str) -> list | None:
+    """The baseline words of one snapshot window in register order, or None."""
+    words = []
+    for key in SNAPSHOT_ROUTES[name]["keys"]:
+        field = baseline_field(baseline, address, key)
+        if field is None or field["value"] is None:
+            return None
+        words.extend(field["value"] if isinstance(field["value"], list) else [field["value"]])
+    return words
 
 
 def _rank(key: str, candidate) -> int:
@@ -1530,6 +1558,21 @@ def plan_entry(baseline: dict, entry: dict, image_level: str, facts: dict, *, re
     step = {**ident, "register": field["register"], "read": field["read"], "baseline": field["value"],
             "candidate": entry["candidate"], "target": new}
     route = field.get("restore")
+    snapshot = snapshot_route(field["key"]) if route is None else None
+    if route is None and snapshot and restore and (context or {}).get("snapshots") is not None:
+        if int(image_level) < int(SNAPSHOT_IMAGE_LEVEL):
+            return [], {**ident, "reason": "snapshot route requires prompt %s; image level %s" % (SNAPSHOT_IMAGE_LEVEL, image_level)}
+        if snapshot not in context["snapshots"]:
+            return [], {**ident, "reason": "no %s snapshot read stated before the first write" % snapshot}
+        r = SNAPSHOT_ROUTES[snapshot]
+        words = snapshot_words(baseline, address, snapshot)
+        if words is None:
+            return [], {**ident, "reason": "baseline %s words incomplete" % snapshot}
+        return [{**step, "route": "snapshot", "snapshot": snapshot, "words": words, "purpose": None, "facts": {},
+                 "write": {"command": r["command"], "snapshot": snapshot,
+                           "text": "%s SNAPSHOT_ID (%s read of drive %d before the first write)" %
+                                   (r["command"].replace("-", " "), snapshot, address)},
+                 "readback": r["read_command"].replace("-read", ""), "rank": 5}], None
     if route is None:
         if not restore:
             return [], {**ident, "reason": "no ordinary setter: " + str(field.get("none_reason"))}
@@ -1612,6 +1655,9 @@ def restoration_plan(baseline: dict, write_list: list, image_level: str, facts: 
                 s["drive"] == entry["drive"] and s["key"].startswith("profile.") and s["route"] == "ordinary" and
                 s["key"] != "profile.start-speed" for s in steps):
             continue  # One stage command restores 0x0021-0x0025 together.
+        name = snapshot_route(entry["key"])
+        if name and any(s["drive"] == entry["drive"] and s.get("snapshot") == name for s in steps):
+            continue  # One restore writes the whole window.
         new, refusal = plan_entry(baseline, entry, image_level, facts, restore=True,
                                   experiments=experiments, context=context)
         if refusal:
@@ -1696,6 +1742,12 @@ def _prerequisites(console, step: dict, *, timeout_s: float, check=None) -> dict
         out["facts"] = probe.install_input_facts(console, address, purpose,
                                                  facts={t: tuple(v) for t, v in step["facts"].items()},
                                                  timeout_s=timeout_s)
+        if stage_step(step):
+            # The stage writes against a live profile session of this binding;
+            # a readback's read-and-forget leaves none.
+            import bench_motion as motion
+            out["profile"] = {k: v for k, v in motion.profile_snapshot(console, "read", timeout_s=timeout_s).items()
+                              if k in ("original", "current", "session_ok")}
         return out
     out["config"] = _ok(console, "read-config", address=address, timeout_s=timeout_s)
     out["state"] = probe.observe_stopped(console, address=address, timeout_s=timeout_s)
@@ -1761,18 +1813,79 @@ def _summary(value):
     return value
 
 
+def stage_step(step: dict) -> bool:
+    """A `motion-profile stage` step: it writes 0x0021-0x0025 together."""
+    return (step.get("write") or {}).get("command") == "motion-profile-stage"
+
+
 def readback(console, step: dict, *, timeout_s=5.0):
-    """Fresh config read, then the field's group read; returns (value, entry)."""
+    """Fresh config read, then the field's group read; returns (value, entry).
+    A profile stage step compares the whole 0x0021-0x0025 window (its five
+    words), not only the field the planner keyed it on."""
     address = step["drive"]
+    if stage_step(step):
+        # A stage leaves its profile session open; the read must start a fresh one.
+        console.command("motion-profile", host_args=("forget",), timeout_s=timeout_s)
     console.command("read-config", address=address, timeout_s=timeout_s)
     entry = read_group(console, address, step["read"], timeout_s=timeout_s)
+    if stage_step(step):
+        raw = entry.get("raw")
+        return (list(raw[1:6]) if isinstance(raw, list) and len(raw) == 6 else None), entry
     return field_value({"key": step["key"], "read": step["read"], "index": step["index"]}, entry.get("raw")), entry
 
 
-def restore(console, plan: dict, *, timeout_s=5.0) -> list:
+def _target(step: dict):
+    """The value restore compares with: the five baseline stage words of a stage step."""
+    if stage_step(step):
+        return [int(w) for w in step["write"]["kwargs"]["host_args"][:5]]
+    return step["baseline"]
+
+
+def snapshot_restore(console, step: dict, snapshots: dict, *, timeout_s=5.0) -> dict:
+    """One `home restore` / `velocity restore` of the run's snapshot, polled to
+    its end. Never resent; an unknown write stays unknown until a read."""
+    name = step["snapshot"]
+    source = (snapshots or {}).get(name) or {}
+    if type(source.get("operation_id")) is not int or source.get("address") != step["drive"]:
+        raise BenchError("no %s snapshot of drive %d for the restore" % (name, step["drive"]))
+    command = SNAPSHOT_ROUTES[name]["command"]
+    # The restore needs fresh stopped state and configuration of the selected drive.
+    console.command("read-config", address=step["drive"], timeout_s=timeout_s)
+    console.command("read-state", address=step["drive"], timeout_s=timeout_s)
+    reply = console.command(command, host_args=(str(source["operation_id"]),), timeout_s=timeout_s)
+    out = {"admission": reply, "written": False, "uncertain": False}
+    if not reply.get("ok"):
+        return out
+    deadline = time.monotonic() + timeout_s
+    while reply.get("pending") and time.monotonic() < deadline:
+        time.sleep(.02)
+        reply = console.command(command, host_args=("inspect",), timeout_s=timeout_s)
+    out.update(final=reply, written=reply.get("execution") != "not_transmitted",
+               uncertain=bool(reply.get("pending") or reply.get("unsettled") or reply.get("execution") == "unknown"),
+               ok=bool(reply.get("session_ok")), error=reply.get("error"))
+    return out
+
+
+def _snapshot_read(console, step: dict, timeout_s: float):
+    """Current words of the step's window from a fresh read of the selected drive."""
+    name = step["snapshot"]
+    console.command("read-config", address=step["drive"], timeout_s=timeout_s)
+    entry = read_group(console, step["drive"], SNAPSHOT_ROUTES[name]["read_command"].replace("-read", ""),
+                       timeout_s=timeout_s)
+    raw = entry.get("raw")
+    if raw is None:
+        return None, entry
+    if name == "home":
+        return [raw["raw_method"], raw["raw_search_speed"], raw["raw_return_speed"], raw["raw_ramp_time"],
+                *raw["raw_offset_words"]], entry
+    return [raw["raw_speed"], raw["raw_acceleration_time"], raw["raw_deceleration_time"]], entry
+
+
+def restore(console, plan: dict, *, timeout_s=5.0, snapshots=None) -> list:
     """Restore every planned field whose fresh value differs from the baseline.
 
-    Writes only through the planned ordinary route (or bound experiment),
+    Writes only through the planned ordinary route (or bound experiment, or
+    the run's snapshot restore, ``snapshots`` {name: {operation_id, address}}),
     each followed by a readback. A field equal to the captured value or
     whose current value is unknown is never written. An uncertain write or a
     readback mismatch leaves the field uncertain and ends the restoration;
@@ -1797,14 +1910,49 @@ def restore(console, plan: dict, *, timeout_s=5.0) -> list:
                          storage="RAM")
             continue
         use_drive(console, step["drive"], timeout_s=timeout_s)
+        if step["route"] == "snapshot":
+            current, _ = _snapshot_read(console, step, timeout_s)
+            entry.update(key="%s.window" % step["snapshot"], baseline=step.get("words"), before=current)
+            if current is None:
+                entry["reason"] = "current words unknown; no write"
+                continue
+            if current == step.get("words"):
+                entry.update(ending=current, restored=True, reason="already equal to the captured words; no write")
+                continue
+            source_words = ((snapshots or {}).get(step["snapshot"]) or {}).get("words")
+            outcome = snapshot_restore(console, step, snapshots, timeout_s=timeout_s)
+            entry["written"] = outcome["written"]
+            entry["snapshot_words"] = source_words
+            entry["write"] = {k: v for k, v in outcome.items() if k not in ("admission", "final")}
+            entry["write"]["final"] = {k: (outcome.get("final") or {}).get(k) for k in
+                                       ("operation_id", "snapshot_id", "words", "readback", "execution", "error")}
+            ending, _ = _snapshot_read(console, step, timeout_s)
+            entry["ending"] = ending
+            if outcome["uncertain"]:
+                entry.update(uncertain=True, reason="uncertain restore write; read back once, not replayed")
+                stop = True
+            elif not outcome["written"]:
+                entry["reason"] = "restore refused before transmission: %s" % (outcome["admission"].get("result"))
+            elif source_words is not None and source_words != step.get("words") and ending == source_words:
+                # The run started away from the baseline: its own changes are undone,
+                # the baseline words are not reachable through this route.
+                entry["reason"] = ("pre-run snapshot words %s restored and read back; the baseline words %s "
+                                   "differ and stay changed" % (source_words, step.get("words")))
+            elif ending != step.get("words"):
+                entry.update(uncertain=True, reason="readback differs from the captured words")
+                stop = True
+            else:
+                entry["restored"] = True
+            continue
         current, before = (readback(console, step, timeout_s=timeout_s) if step["route"] == "ordinary"
                            else _experiment_read(console, step, timeout_s))
         entry["before"] = current
         if current is None:
             entry["reason"] = "current value unknown; no write"
             continue
-        if current == step["baseline"]:
-            entry.update(ending=current, restored=True, reason="already equal to the captured value; no write")
+        if current == _target(step):
+            entry.update(ending=current if not stage_step(step) else step["baseline"], restored=True,
+                         reason="already equal to the captured value; no write")
             continue
         if step["route"] == "experiment":
             reply = call(console, step["write"], timeout_s=timeout_s)
@@ -1825,11 +1973,14 @@ def restore(console, plan: dict, *, timeout_s=5.0) -> list:
             stop = True
         elif not outcome["written"]:
             entry["reason"] = "restoration write refused before transmission"
-        elif ending != step["baseline"]:
+        elif ending != _target(step):
             entry.update(uncertain=True, reason="readback differs from the captured value")
             stop = True
         else:
             entry["restored"] = True
+            if stage_step(step):
+                entry["ending"] = step["baseline"]
+                entry["window"] = ending
     return results
 
 

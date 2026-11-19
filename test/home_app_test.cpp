@@ -1414,6 +1414,144 @@ void parameterReadHumanTerminal() {
         assert(releaseOperation(id));
     }
 }
+// Wired bench 06 Implement 4: `home restore` writes the exact six words
+// 0x0031..0x0036 of an earlier checked home read of the same drive and binding
+// (a raw nonzero offset included, D7) with no start, then reads them back.
+uint32_t homeSnapshot(std::initializer_list<uint16_t> seven) {
+    uint32_t id = 0; assert(submitHomingParameterRead(id));
+    readReply(id, words(seven)); pump(64);
+    assert(app->homingParameters.operationId == id && releaseOperation(id)); return id;
+}
+Probe::ParameterWriteView restoreView(uint32_t id) { Probe::ParameterWriteView v; assert(copyParameterWrite(id, v)); return v; }
+// Answer the session's current frame, then service until its phase changes or it ends.
+void serveRestore(uint32_t id, const std::vector<uint8_t>& response) {
+    const uint8_t phase = app->parameterWrite.phase;
+    for (unsigned i = 0; i < 25000 && !app->owner.txAccepted(app->parameterWrite.request); ++i) step();
+    assert(app->owner.txAccepted(app->parameterWrite.request));
+    scheduleReply(std::max(hardware.writeStarted + hardware.tx.size()*87 + 1000, hardware.time + 1000), response);
+    for (unsigned i = 0; i < 25000 && restoreView(id).pending && app->parameterWrite.phase == phase; ++i) step();
+}
+void restoreState(uint16_t motion = 1, uint16_t speed = 0) {
+    command("@91 read state\n"); const uint32_t state = app->latestOperationId;
+    readReply(state, words({0, motion})); readReply(state, words({0, 0})); readReply(state, words({0, 0, speed})); pump(64);
+    assert(releaseOperation(state));
+}
+const std::vector<uint8_t> HOME_RESTORE_WRITE = crc({1,16,0,0x31,0,6,12,0,24,0,120,0,60,0,100,0,1,0,2});
+void homeRestoreRoutes() {
+    fresh(); checkedBaseline();
+    const auto snapshot = homeSnapshot({7,24,120,60,100,1,2});
+    const auto later = homeSnapshot({7,35,60,30,100,0,0}); // As home staging leaves them.
+    assert(later != snapshot);
+    baselineWrites = hardware.writes;
+    uint32_t id = 77;
+    // Stale or foreign sources refuse before TX and keep the output.
+    assert(!restoreHomingParameters(0, id) && id == 77);
+    assert(!restoreHomingParameters(later + 100, id) && id == 77);
+    assert(!restoreVelocityParameters(snapshot, id) && id == 77); // Wrong kind of source.
+    assert(sentCount() == 0);
+    assert(restoreHomingParameters(snapshot, id) && id != 77);
+    assert(axisReserved(*app, 1) && restoreView(id).pending && restoreView(id).kind == Probe::ParameterWriteKind::HOME_RESTORE);
+    uint32_t second = 0; assert(!restoreHomingParameters(snapshot, second) && !second); // One session.
+    serveRestore(id, crc({1,16,0,0x31,0,6}));
+    assert(sentCount() == 1 && app->parameterWrite.phase == 2);
+    assert(!app->homingParameters.operationId && !app->homePrerequisites.target.id); // Expired by the possible write.
+    serveRestore(id, words({24,120,60,100,1,2}));
+    assert(hardware.tx == crc({1,3,0,0x31,0,6}));
+    auto v = restoreView(id);
+    assert(!v.pending && v.ok && v.readbackKnown && !v.unsettled && v.execution == ActionExecution::ACKNOWLEDGED);
+    assert(v.snapshotId == snapshot && v.first == 0x31 && v.count == 6 && v.words[4] == 1 && v.words[5] == 2);
+    assert(!std::strcmp(v.error, "none") && sentCount() == 2 && !axisReserved(*app, 1));
+    // Readback mismatch: reported, never repaired by another write.
+    checkedBaseline(); const auto again = homeSnapshot({7,24,120,60,100,1,2});
+    baselineWrites = hardware.writes;
+    assert(restoreHomingParameters(again, id));
+    serveRestore(id, crc({1,16,0,0x31,0,6})); serveRestore(id, words({24,120,60,100,1,3}));
+    v = restoreView(id);
+    assert(!v.ok && !std::strcmp(v.error, "readback_mismatch") && !v.unsettled && sentCount() == 2);
+    pump(2000); assert(sentCount() == 2);
+    // A lost acknowledgement: uncertain, no replay, the next write refused until a home read.
+    checkedBaseline(); const auto lost = homeSnapshot({7,24,120,60,100,1,2});
+    baselineWrites = hardware.writes;
+    assert(restoreHomingParameters(lost, id));
+    for (unsigned i = 0; i < 25000 && !app->owner.txAccepted(app->parameterWrite.request); ++i) step();
+    for (unsigned i = 0; i < 200000 && restoreView(id).pending; ++i) step();
+    v = restoreView(id);
+    assert(!v.pending && !v.ok && v.unsettled && v.execution == ActionExecution::UNKNOWN && !std::strcmp(v.error, "write_unknown"));
+    assert(sentCount() == 1 && hardware.tx == HOME_RESTORE_WRITE && !axisReserved(*app, 1));
+    uint32_t refused = 0; assert(!restoreHomingParameters(lost, refused) && !refused);
+    pump(5000); assert(sentCount() == 1); // Nothing is resent.
+    uint32_t recovery = 0; assert(recover(app, 0, recovery) == Probe::Action::OK);
+    for (unsigned i = 0; i < 25000 && view(recovery).pending; ++i) step();
+    assert(view(recovery).recoveryResult.outcome == Rtu::RecoveryOutcome::RECOVERED);
+    assert(app->parameterWrite.view.unsettled); // Recovery is not a readback.
+    assert(!restoreHomingParameters(lost, refused) && !refused);
+    checkedBaseline(); // Refreshed config and state; the home read inside settles it.
+    assert(!app->parameterWrite.view.unsettled && !axisReserved(*app, 1));
+    const auto settled = app->homingParameters.operationId;
+    baselineWrites = hardware.writes;
+    assert(restoreHomingParameters(settled, id)); // Admitted again only after the checked read.
+    serveRestore(id, crc({1,16,0,0x31,0,6})); serveRestore(id, words({35,60,30,100,0,0}));
+    assert(restoreView(id).ok);
+    // Moving or fast feedback, another drive, a rebinding: refused before TX.
+    checkedBaseline(); const auto moving = homeSnapshot({7,24,120,60,100,1,2});
+    restoreState(1 | 4); baselineWrites = hardware.writes; id = 77;
+    assert(!restoreHomingParameters(moving, id) && id == 77);
+    restoreState(1, 5); assert(!restoreHomingParameters(moving, id) && id == 77);
+    restoreState(1, 0); baselineWrites = hardware.writes;
+    assert(restoreHomingParameters(moving, id)); // Stopped again: admitted.
+    serveRestore(id, crc({1,16,0,0x31,0,6})); serveRestore(id, words({24,120,60,100,1,2}));
+    assert(restoreView(id).ok && sentCount() == 2);
+    checkedBaseline(); const auto other = homeSnapshot({7,24,120,60,100,1,2});
+    command("@95 useaddr 2\n"); baselineWrites = hardware.writes; id = 77;
+    assert(!restoreHomingParameters(other, id) && id == 77 && sentCount() == 0);
+    command("@96 useaddr 1\n");
+    assert(!restoreHomingParameters(other, id) && id == 77 && sentCount() == 0); // Older binding of drive 1.
+    // Wired bench 06 O7: the first checked read of the binding stays available
+    // after many later reads (six evicted it from the old four-entry ring).
+    fresh(); checkedBaseline(); // Its home read is the first of this binding.
+    const auto first = app->homingParameters.operationId;
+    for (unsigned i = 0; i < 12; ++i) homeSnapshot({7,35,60,30,100,0,0});
+    baselineWrites = hardware.writes;
+    assert(restoreHomingParameters(first, id) && restoreView(id).words[0] == 35);
+    serveRestore(id, crc({1,16,0,0x31,0,6})); serveRestore(id, words({35,60,30,100,0,0}));
+    assert(restoreView(id).ok && sentCount() == 2);
+    checkedBaseline(); // A later read is a rotating entry; the pinned first read is unchanged.
+    uint32_t pinned = 0; assert(restoreHomingParameters(first, pinned));
+    serveRestore(pinned, crc({1,16,0,0x31,0,6})); serveRestore(pinned, words({35,60,30,100,0,0}));
+    command("@97 useaddr 2\n"); command("@98 useaddr 1\n"); checkedBaseline();
+    id = 77; assert(!restoreHomingParameters(first, id) && id == 77); // A new binding pins its own first read.
+    assert(app->homeSnapshots[0].operationId == app->homingParameters.operationId);
+    // An input with function 11 (home enable) refuses without a CONFIGURE record.
+    fresh(); checkedBaseline(35, false, 0, 11);
+    const auto homeInput = homeSnapshot({7,24,120,60,100,0,0});
+    baselineWrites = hardware.writes; id = 77;
+    const auto status = restoreHomingParameters(homeInput, id);
+    assert(!status && status.detail == static_cast<int32_t>(Probe::Action::QUALIFICATION_REQUIRED) && id == 77 && sentCount() == 0);
+}
+// Actual replies from the restore route, for the host parser's parity check.
+void emitRestoreReplies() {
+    const auto emit = [](const std::string& line) {
+        command(line + "\n"); pump(64); std::fwrite(Serial.output.data(),1,Serial.output.size(),stdout);
+    };
+    fresh(); checkedBaseline();
+    emit("@860 home restore inspect");
+    emit("@861 home restore 999");
+    const auto snapshot = homeSnapshot({7,24,120,60,100,1,2});
+    emit("@862 home restore " + std::to_string(snapshot));
+    const auto id = app->parameterWrite.view.operationId;
+    serveRestore(id, crc({1,16,0,0x31,0,6})); serveRestore(id, words({24,120,60,100,1,2}));
+    emit("@863 home restore inspect");
+    checkedBaseline(); const auto mismatch = homeSnapshot({7,24,120,60,100,1,2});
+    emit("@864 home restore " + std::to_string(mismatch));
+    const auto bad = app->parameterWrite.view.operationId;
+    serveRestore(bad, crc({1,16,0,0x31,0,6})); serveRestore(bad, words({24,120,60,100,1,3}));
+    emit("@865 home restore inspect");
+    checkedBaseline(); const auto lost = homeSnapshot({7,24,120,60,100,1,2});
+    emit("@866 home restore " + std::to_string(lost));
+    for (unsigned i = 0; i < 200000 && app->parameterWrite.view.pending; ++i) step();
+    emit("@867 home restore inspect");
+    emit("@868 home restore " + std::to_string(lost));
+}
 // Actual replies from every qualification route, for the host parser's parity check.
 void emitQualificationReplies() {
     const auto emit = [](const std::string& line) {
@@ -1470,6 +1608,7 @@ int main(int argc, char** argv) {
     if (argc == 2 && !std::strcmp(argv[1],"--emit-uncertain-home-results")) { unconfirmedHomeObservation(true); return 0; }
     if (argc == 2 && !std::strcmp(argv[1],"--emit-console-results")) { emitConsoleResults(); return 0; }
     if (argc == 2 && !std::strcmp(argv[1],"--emit-qualification-replies")) { emitQualificationReplies(); return 0; }
+    if (argc == 2 && !std::strcmp(argv[1],"--emit-restore-replies")) { emitRestoreReplies(); return 0; }
     if (argc == 2 && !std::strcmp(argv[1],"--emit-integration-results")) {
         settingsAndDelayedParameterReads(true); lostSettingAckAcrossRecoveryAndNewAdmission(true); oldReadAfterRebind(true); return 0;
     }
@@ -1488,4 +1627,5 @@ int main(int argc, char** argv) {
     productionAndFixtureGates(); completeAndInvalidateReference(); oldFlagsAndPartialSetup(); unconfirmedHomeObservation();
     stopAtBoundariesAndUnsentExpiry(); orderedSharedMotionCachePreservesNewHomeReference();
     feedbackAfterHomeUsesTheNewZeroWitness();
+    homeRestoreRoutes();
 }

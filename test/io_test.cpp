@@ -323,7 +323,10 @@ void testOutputLoadsAndOrder() {
     rejected(r, p); // Final inactive does not excuse the earlier inverted active custom output.
     p.outputFacts[0].allowedLevels = 3; E::DriverContext c;
     assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
-    p.outputFacts[0].statusMapping = E::IoStatusMapping::UNKNOWN; rejected(r, p);
+    // Wired bench 06: an either-level load needs no level prediction.
+    p.outputFacts[0].statusMapping = E::IoStatusMapping::UNKNOWN;
+    assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+    for (uint8_t levels : {uint8_t(1), uint8_t(2)}) { p.outputFacts[0].allowedLevels = levels; rejected(r, p); }
     r = request(12); r.outputPolarity = 1;
     p = prerequisites(r, read(0, 0, 1, 1, 9)); p.outputWiring[0] = InputWiring::CONNECTED;
     p.outputFacts[0].load = E::IoOutputLoad::CONTROL; p.outputFacts[0].allowedLevels = 1;
@@ -454,6 +457,63 @@ void testConnectedNoFunctionInversion() {
     p.inputFacts[0] = E::IoInputFacts(); assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
     p = noFunction(r, 0, 0, 1, InputWiring::UNCONNECTED); rejected(r, p);
 }
+// Wired bench 06 Implement 1: with UNKNOWN mapping an output polarity change is
+// admitted only for an either-level load; inactive-only and active-only loads
+// keep the refusal. Each FC06 of a mixed candidate is checked in order and
+// reserved stored mask bits still block.
+E::DriverPrerequisites eitherOutput(const E::DriverRequest& r, const E::DriverContext& baseline, uint8_t levels) {
+    auto p = prerequisites(r, baseline); p.outputWiring[0] = InputWiring::CONNECTED;
+    for (auto& f : p.outputFacts) f.statusMapping = E::IoStatusMapping::UNKNOWN;
+    p.outputFacts[0].load = E::IoOutputLoad::INDICATOR; p.outputFacts[0].allowedLevels = levels;
+    return p;
+}
+void testEitherLevelOutputPolarity() {
+    for (uint16_t function : {0, 2, 9}) for (uint16_t from : {0, 1}) {
+        auto r = request(12); r.outputPolarity = from ^ 1;
+        const auto baseline = read(0, from, 0, 1, function);
+        auto p = eitherOutput(r, baseline, 3);
+        for (uint16_t observed : {0, 1}) {
+            p.actualOutputs = observed; // Either fresh level: nothing is predicted.
+            E::DriverContext c; assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+            const auto w = work(c); assert(w.write && w.reg == 0x4B && w.value == (from ^ 1));
+            ack(c); supply(c, reply({uint16_t(from ^ 1)}));
+            assert(c.state == ReadState::SUCCEEDED && !c.uncertain);
+        }
+        for (uint8_t levels : {uint8_t(1), uint8_t(2)}) rejected(r, eitherOutput(r, baseline, levels));
+        auto q = p; q.outputFacts[0].supplied = false; rejected(r, q);      // Connected: facts required.
+        q = p; q.allowEchoReadback = true; rejected(r, q);                  // Connected: confirmed reply only.
+        q = p; q.outputFacts[0].load = E::IoOutputLoad::NO_LOAD; rejected(r, q);
+        q = p; q.outputWiring[0] = InputWiring::UNKNOWN; rejected(r, q);
+        // A lost acknowledgement leaves the write uncertain; nothing is resent.
+        E::DriverContext c; assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+        const auto w = work(c); assert(w.write);
+        auto lost = local(c, ReadEventKind::TRANSPORT_FAILURE); lost.transport.txAccepted = 8; lost.txComplete = true;
+        assert(E::advanceDriver(c, lost, c.servicedUs + 3));
+        assert(c.state == ReadState::FAILED && c.uncertain && !c.progress[12].acknowledged);
+        assert(work(c).kind == E::ActionWork::DONE);
+    }
+    // Intermediate FC06 states: polarity (12), Y0 function (13), custom (15), in that order.
+    auto r = request(12); r.fields |= mask(13) | mask(15);
+    r.outputPolarity = 1; r.outputFunctions[0] = E::OutputFunction::CUSTOM_0; r.customOutput = 1;
+    auto p = eitherOutput(r, read(), 3);
+    E::DriverContext c; assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+    const uint16_t regs[] = {0x4B, 0x4C, 0x4F}, values[] = {1, 9, 1};
+    for (uint8_t i = 0; i < 3; ++i) {
+        const auto w = work(c); assert(w.write && w.reg == regs[i] && w.value == values[i]);
+        ack(c); supply(c, reply({values[i]}));
+    }
+    assert(c.state == ReadState::SUCCEEDED);
+    // Y1's bit in the same polarity word: an inactive-only Y1 refuses the whole candidate.
+    r = request(12); r.outputPolarity = 3;
+    p = eitherOutput(r, read(), 3); p.outputWiring[1] = InputWiring::CONNECTED;
+    p.outputFacts[1].load = E::IoOutputLoad::CONTROL; p.outputFacts[1].allowedLevels = 1; rejected(r, p);
+    p.outputFacts[1].allowedLevels = 3; assert(E::prepareDriverSettings(c, target(), 12, r, p, 200, 9000));
+    // Reserved stored bits block the polarity and custom words.
+    r = request(12); r.outputPolarity = 1;
+    rejected(r, eitherOutput(r, read(0, 4), 3));
+    r = request(15); r.customOutput = 0;
+    rejected(r, eitherOutput(r, read(0, 0, 4, 1, 9), 3));
+}
 } // namespace
 static void testOptionalAgePolicy() {
     const auto r = request(); auto p = prerequisites(r); p.maxAgeUs = 0;
@@ -488,7 +548,7 @@ static void testSuppliedUncertaintyNeedsReadbackPolicy() {
 }
 int main() {
     testInputCommissioningMatrix(); testInputPolarityOrder(); testOutputLoadsAndOrder(); testCommissioningAge();
-    testPolarityReplySource(); testConnectedNoFunctionInversion();
+    testPolarityReplySource(); testConnectedNoFunctionInversion(); testEitherLevelOutputPolarity();
     testSuppliedUncertaintyNeedsReadbackPolicy();
     testOptionalAgePolicy();
     testAdmissionPrecedence();

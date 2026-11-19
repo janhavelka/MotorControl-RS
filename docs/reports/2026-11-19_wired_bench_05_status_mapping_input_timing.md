@@ -341,7 +341,9 @@ summaries (`2026-11-19_wb05_timing_batch*.py/json/stdout`,
 
 ## Commits and CI
 
-The lead owns Git and CI; none dispatched by this session. Before committing,
+The lead owns Git and CI; none dispatched by this session. The lead committed
+the work as `05c02d4`; CI run 44435944251 on that exact commit passed all four
+jobs (native gcc, native clang, Arduino, ESP-IDF). Before committing,
 the lead corrected one comment in `IoStatusRecord.h` (the per-unit delay range
 now reads 2.5-2.6 ms, inferred from 10-100, as in this report). No code
 changed, so the committed file's hash differs from the one recorded for

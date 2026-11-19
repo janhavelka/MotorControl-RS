@@ -58,9 +58,9 @@ the serial interruption bit in `MOTION_COMMAND`.
 
 Output functions 0-5 and 9-10 are available: none, alarm, running, homing
 complete, in-position, brake and the two resolved custom selections. Values
-6-8 lack descriptions and reject. The listed `CUSTOM_2` value 11 retains its
-unresolved mapping to two ESS outputs and rejects before traffic; reads retain
-it raw. A custom-output candidate requires a corresponding resolved custom
+6-8 lack descriptions and reject. The listed `CUSTOM_2` value 11 rejects
+before traffic, and reads keep it raw. Its mapping was measured on Y0 of one
+model and firmware only (it follows `0x004F` bit 2), which does not admit it. A custom-output candidate requires a corresponding resolved custom
 function in the full candidate configuration. The bounded implemented control
 subset uses Y0/CUSTOM_0 and Y1/CUSTOM_1. Assignments 9 and 10 remain legal on
 either documented terminal, but cross-mapped custom actuation is guarded: the
@@ -78,9 +78,44 @@ make another output terminal exist.
 | 9 custom 0 | Controlled by `0x004F` | Canonical control uses Y0. Check every intermediate polarity/function/custom state against the declared allowed levels. |
 | 10 custom 1 | Controlled by `0x004F` | Canonical control uses Y1; same checks as 9. |
 
-Custom output changes retain the stopped-motor requirement. No reviewed source
+Custom output changes keep the stopped-motor requirement. No reviewed source
 establishes a safe moving-load operation. Function 11 and cross-mapped custom
-actuation remain the separate standalone 06 work.
+actuation stay refused in production; the measured mapping is a ledger record
+(below), not admission.
+
+### Measured output behavior (wired bench 06)
+
+Measured on 19 November 2026 ([wired bench 06](reports/2026-11-19_wired_bench_06_outputs.md)):
+model `0x4EEA`, firmware `0x0029`, drive 4, Y0 wired sinking to the board input
+`aux1`. The times are intervals on the controller clock: from the write's
+request start (TX), or from the start of the operation's request. They are not
+electrical timing.
+
+| Function | Y0 on | Y0 off | `0x0007` |
+| --- | --- | --- | --- |
+| 1 alarm | when alarm 5 latches, about 1.1 s into the move, inside the drive's no-reply interval | 9-12 ms after the `alarm-clear` TX | alarm 5, bit 3 |
+| 2 running | 3-5 ms after the start reply closure | at completion; 16-17 ms after a `stop fast` TX | bit 2 |
+| 3 homing complete | at home completion | 27-33 ms after a home request; moves leave it on | bit 1 |
+| 4 arrival | at arrival; at rest in position (also when assigned) | 29-32 ms after a move request; not set again after a stop short of target; `position-clear` leaves it on | bit 0 |
+| 5 brake | about 205 ms after the enable TX, only after an enable (assigned while enabled it stays off) | 4-6 ms after the release TX | bit 4 |
+| 9 custom 0 | `0x004F` bit 0 = 1, 4-6 ms after the TX | bit 0 = 0 | none |
+| 10 custom 1 | follows `0x004F` bit 1 on Y0 (D9 experiment) | | none |
+| 11 custom 2 | follows `0x004F` bit 2 on Y0 (D9 experiment; bit 2 is reserved on p74) | | none |
+
+- Function 0 leaves Y0 off at polarity 0 and at polarity 1, so polarity does
+  not invert an unassigned output.
+- Polarity 1 inverts functions 9 and 2.
+- `OUTPUT_STATUS` (`0x0009`) bit 0 is the output level after inversion. It
+  matched Y0 in all 912 samples taken away from an edge, for every function
+  above.
+- With function 5 assigned, the drive reports RELEASED in `0x0007` only
+  1.33-1.34 s after the release reply; without it, at the first poll. The
+  application observes a release as long as a configured stop.
+
+Y1, other models and other firmware are not measured. The custom value selects
+a `0x004F` bit; it does not select the terminal. Production keeps function 11,
+custom bits other than the terminal's canonical one, and `0x004F` bits 2-15
+refused.
 
 `InputFunction::UNDEFINED` and `OutputFunction::UNDEFINED` are the documented
 value zero, meaning the terminal has no function. The API and CLI use the same
@@ -149,9 +184,18 @@ PIN selector 14+t: with polarity 1 the status bit read 1 with the source off and
 the source. This is an application record (`RECORDED_INPUT_MAPPINGS` in
 `examples/probe_cli/IoStatusRecord.h`, console mapping token `recorded`), bound
 to that model and firmware and used only with a fresh checked identity read of
-the exact target and binding. It is not a family default, says nothing about
-output status (`0x0009`, prompt 06) and does not qualify any input function's
-drive effect.
+the exact target and binding. It is not a family default and does not qualify
+any input function's drive effect.
+
+Outputs follow the same pattern. With mapping UNKNOWN, an output polarity
+change is admitted only when the declared load accepts either level
+(`allowedLevels` 3); no level prediction is needed then. Inactive-only and
+active-only loads are still refused. Wired bench 06 measured `0x0009` as the
+level after inversion on Y0 (20 of 20 writes at polarity 1).
+`RECORDED_OUTPUT_MAPPINGS` records `{AFTER_INVERSION, UNKNOWN}` for Y0/Y1 of
+`0x4EEA`/`0x0029`. Output facts accept `recorded` under the input rules
+(`mapping_not_recorded` with `read identity`, `mapping_contradicts_record`).
+Y1 has no record.
 
 The core simulates actual FC06 order: input polarity, X0-X3 functions, output
 polarity, Y0-Y1 functions, custom bits. It rejects an active control or an

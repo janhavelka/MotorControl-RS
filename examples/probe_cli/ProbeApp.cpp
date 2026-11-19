@@ -17,6 +17,7 @@
 #include "DebugSession.h"
 #include "StateCache.h"
 #include "IoStatusRecord.h"
+#include "ParameterWrite.h"
 #include <MotorControlRS/profiles/ess_rs/Actions.h>
 #include <MotorControlRS/profiles/ess_rs/Position.h>
 #include <MotorControlRS/profiles/ess_rs/Velocity.h>
@@ -56,6 +57,7 @@ constexpr uint32_t ENABLE_SETTLE_US = 1000000;
 constexpr std::size_t ENABLE_WAIT_SLOTS = 248; // Unicast 1..247; slot 0 is unused.
 constexpr std::size_t REQUEST_CAPACITY = 8, ORDINARY_PENDING = 4, STOP_RECORDS = 2, OUTPUT_LINES = 8;
 constexpr std::size_t STOP_ESCALATIONS = 2;
+constexpr uint8_t PARAMETER_SNAPSHOTS = 8; // Per kind: the first read of the binding, then seven recent reads.
 // Drive-group pools, sized from Probe::GROUP_CAPACITY. One move record per
 // member, beside the ordinary results, so every member holds its move while
 // ordinary reads keep their eight. One stop and one escalation per member, beside
@@ -305,6 +307,21 @@ struct App {
         const char* error = "none";
     } profileCandidate;
     Probe::ProfileCandidateResult candidateOutput; ///< Reused copy/format scratch, not another retained session.
+    // Words of recent checked home and velocity reads of the selected axis, by
+    // operation ID: the sources of `home restore` and `velocity restore`.
+    struct ParameterSnapshot {
+        uint32_t operationId = 0, serialGeneration = 0;
+        MotorControlRS::ReadTarget target;
+        uint16_t words[6] = {};
+    } homeSnapshots[PARAMETER_SNAPSHOTS], velocitySnapshots[PARAMETER_SNAPSHOTS];
+    uint8_t homeSnapshotNext = 0, velocitySnapshotNext = 0;
+    // One restore or D9 experiment session (ParameterWriteApp.h).
+    struct ParameterWriteSession {
+        Probe::ParameterWriteView view;
+        Rtu::RequestId request;
+        uint8_t phase = 0; ///< 0 none, 1 write, 2 FC03 readback.
+        uint8_t tx[32] = {};
+    } parameterWrite;
     ESS::MoveContext stagePrepared; ///< Scratch for the selected-axis stage words; no stack copy.
     // Drive group (multi-drive 02). A host selection only: each member keeps its
     // own facts, separate from the selected axis, and never changes the drive.
@@ -564,6 +581,10 @@ bool axisReserved(const App& a, uint8_t address = 0, bool includeHistory = true)
         if (a.group.members[i].stage.view.pending && (!address || a.group.members[i].address == address)) return true;
     if ((a.motionProfile.view.pending || a.motionProfile.view.restoreUnsettled) &&
         (!address || a.motionProfile.view.address == address)) return true;
+    // A restore or D9 write owns its drive until its readback. An unknown write
+    // refuses the next restore or experiment step until a checked read of its
+    // window; its effects already expired every cache a dependent write needs.
+    if (a.parameterWrite.view.pending && (!address || a.parameterWrite.view.target.address == address)) return true;
     // Recovery changes correlation generation, not the physical target's uncertainty.
     if (includeHistory && address) {
         if (a.actionConflicts[address / 8] & (1U << (address % 8))) return true;
@@ -573,7 +594,7 @@ bool axisReserved(const App& a, uint8_t address = 0, bool includeHistory = true)
     return false;
 }
 bool acting(const App& a) {
-    if (a.profileCandidate.view.pending) return true;
+    if (a.profileCandidate.view.pending || a.parameterWrite.view.pending) return true;
     if (a.simple.view.pending && !a.simple.admitting) return true;
     if (a.stage.view.pending) return true;
     for (const auto& record : a.records)
@@ -1125,6 +1146,10 @@ bool signedFeedback(uint32_t raw, int64_t& native) {
 #include "MotionProfileApp.h"
 void cancelSimplePreparation(App&, uint8_t, uint64_t);
 void cancelPositionStages(App&, uint8_t, uint64_t);
+void cancelParameterWrite(App&, uint8_t, uint64_t);
+void rememberParameterSnapshot(App&, bool home, uint32_t operationId, const MotorControlRS::ReadTarget&,
+                               uint32_t serialGeneration, const uint16_t* words, uint8_t count);
+void settleParameterWrite(App&, Probe::ParameterWriteKind, uint8_t address, uint64_t attemptedUs);
 
 bool confirmedStop(const App::Record& record) {
     using namespace MotorControlRS;
@@ -1233,6 +1258,16 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
         actionOptions.pollIntervalUs = NORMAL_STOP_POLL_US;
         actionOptions.maxPolls = ESS::ACTION_MAX_POLLS;
     }
+    if (request.kind == ActionKind::RELEASE) {
+        // Wired bench 06 (O8): with output function 5 (brake) assigned, drive 4
+        // (0x4EEA/0x0029) reported RELEASED 1.33-1.34 s after an acknowledged
+        // release, and at the first poll without it. Observe a release as long
+        // as a configured stop. This bounds observation only; the release write
+        // is never delayed or repeated.
+        deadline = now + NORMAL_STOP_US;
+        actionOptions.pollIntervalUs = NORMAL_STOP_POLL_US;
+        actionOptions.maxPolls = ESS::ACTION_MAX_POLLS;
+    }
     if (request.kind == ActionKind::CLEAR_POSITION) {
         if (request.devicePosition != 0) return Probe::Action::UNSUPPORTED;
         if (!positionClearQualificationValid(a)) return Probe::Action::QUALIFICATION_REQUIRED;
@@ -1313,6 +1348,7 @@ Probe::Action startActionIn(App& a, uint32_t commandId, uint8_t address,
         // This includes an older stop: its unsent write and later polls end here.
         cancelSimplePreparation(a, address, now);
         cancelPositionStages(a, address, now);
+        cancelParameterWrite(a, address, now);
         for (auto& interrupted : a.records) {
             if (&interrupted == record || !sequenced(interrupted) || interrupted.address != address ||
                 terminal(a, interrupted)) continue;
@@ -2535,6 +2571,10 @@ void reconcileVelocityParameters(App& a, const App::Record& record) {
             if (rampChanged || (same && prior.rawSpeed != observed.rawSpeed))
                 qualification.readinessQualified = false;
             a.velocityParameters = observed;
+            const uint16_t words[] = {observed.rawSpeed, observed.rawAccelerationTime, observed.rawDecelerationTime};
+            rememberParameterSnapshot(a, false, record.operationId, observed.target, record.serialGeneration, words, 3);
+            settleParameterWrite(a, Probe::ParameterWriteKind::VELOCITY_RESTORE, observed.target.address,
+                                 observed.provenance.attemptedUs);
         }
     }
 }
@@ -2576,6 +2616,10 @@ void reconcileHomingParameters(App& a, const App::Record& record) {
         }
     }
     a.homingParameters = observed;
+    const uint16_t words[] = {observed.rawMethod, observed.rawSearchSpeed, observed.rawReturnSpeed, observed.rawRampTime,
+                              observed.rawOffsetWords[0], observed.rawOffsetWords[1]};
+    rememberParameterSnapshot(a, true, record.operationId, observed.target, record.serialGeneration, words, 6);
+    settleParameterWrite(a, Probe::ParameterWriteKind::HOME_RESTORE, observed.target.address, observed.provenance.attemptedUs);
 }
 // Consume one retained transaction per operation per loop. Intermediate evidence
 // is copied into the public context before its owner slot is explicitly released.
@@ -3264,6 +3308,7 @@ bool groupBusy(const App& a);
 #include "GroupCoordinatesApp.h"
 #include "GroupApp.h"
 #include "ProfileCandidateApp.h"
+#include "ParameterWriteApp.h"
 
 bool lookup(void* context, uint32_t operationId, Probe::ResultView& out) {
     App& a = *static_cast<App*>(context); if (!operationId) operationId = a.latestOperationId;
@@ -3741,7 +3786,7 @@ Probe::Host host(App* a) {
     h.qualification = qualificationCommand;
     h.startPositionInterrupt = startPositionInterrupt;
     h.simpleMotion = simpleMotion;
-    h.monitor = monitor; h.motionProfile = motionProfileCommand; h.stageProfile = startProfileCandidate; h.debug = debugCommand;
+    h.monitor = monitor; h.motionProfile = motionProfileCommand; h.parameterWrite = parameterWriteCommand; h.stageProfile = startProfileCandidate; h.debug = debugCommand;
     h.axis = axisCommand; h.hostSerial = hostSerial; h.selectTarget = selectTarget;
     h.ioQualification = ioQualificationCommand;
     h.wiring = wiring;
@@ -4210,9 +4255,10 @@ MotorControlRS::Status installIoQualification(const IoQualification& supplied) {
     if (!retained || !ioQualificationCurrent(*app, supplied, uart.sample(), true))
         return Status(Err::INVALID_CONFIG, 0, "exact terminal facts and checked baseline required");
     ESS::IoStatusMapping recorded = ESS::IoStatusMapping::UNKNOWN;
-    if (supplied.terminal < 4 && supplied.input.statusMapping != ESS::IoStatusMapping::UNKNOWN &&
-        recordedInput(*app, supplied.target.address, supplied.terminal, supplied.member, uart.sample(), recorded) ==
-            RecordLookup::FOUND && recorded != supplied.input.statusMapping)
+    const auto stated = supplied.terminal < 4 ? supplied.input.statusMapping : supplied.output.statusMapping;
+    if (stated != ESS::IoStatusMapping::UNKNOWN &&
+        recordedMapping(*app, supplied.target.address, supplied.terminal, supplied.member, uart.sample(), recorded) ==
+            RecordLookup::FOUND && recorded != stated)
         return Status(Err::INVALID_CONFIG, 0, "stated status mapping contradicts the recorded mapping");
     *retained = supplied; return Ok();
 }
@@ -4220,6 +4266,11 @@ bool copyRecordedInputMapping(uint8_t address, uint8_t terminal, ESS::IoStatusMa
     ESS::IoStatusMapping found = ESS::IoStatusMapping::UNKNOWN;
     if (!app || recordedInput(*app, address, terminal, member, uart.sample(), found) != RecordLookup::FOUND) return false;
     output = found; return true;
+}
+bool copyRecordedOutputMapping(uint8_t address, uint8_t output, ESS::IoStatusMapping& mapping) {
+    ESS::IoStatusMapping found = ESS::IoStatusMapping::UNKNOWN;
+    if (!app || recordedOutput(*app, address, output, uart.sample(), found) != RecordLookup::FOUND) return false;
+    mapping = found; return true;
 }
 bool copyIoQualification(uint8_t address, uint8_t terminal, IoPurpose purpose, IoQualification& output, bool& valid, bool member) {
     if (!app) return false;
@@ -4482,6 +4533,29 @@ MotorControlRS::Status submitProfileCandidate(const Probe::ProfileCandidate& can
             app->settingsRefusal.reason ? app->settingsRefusal.reason : "candidate not admitted");
     app->profileCandidate.programmatic = true; return Ok();
 }
+MotorControlRS::Status submitParameterWrite(const Probe::ParameterWriteRequest& request, uint32_t& operationId) {
+    using namespace MotorControlRS;
+    if (!app) return Status(Err::INVALID_CONFIG, 0, "application is not started");
+    uint32_t id = 0;
+    const auto admitted = startParameterWrite(*app, request, id);
+    if (admitted != Probe::Action::OK)
+        return Status(Err::INVALID_CONFIG, static_cast<int32_t>(admitted), "parameter write not admitted");
+    operationId = id; return Ok();
+}
+MotorControlRS::Status restoreHomingParameters(uint32_t snapshotId, uint32_t& operationId) {
+    Probe::ParameterWriteRequest request;
+    request.kind = Probe::ParameterWriteKind::HOME_RESTORE; request.snapshotId = snapshotId;
+    return submitParameterWrite(request, operationId);
+}
+MotorControlRS::Status restoreVelocityParameters(uint32_t snapshotId, uint32_t& operationId) {
+    Probe::ParameterWriteRequest request;
+    request.kind = Probe::ParameterWriteKind::VELOCITY_RESTORE; request.snapshotId = snapshotId;
+    return submitParameterWrite(request, operationId);
+}
+bool copyParameterWrite(uint32_t operationId, Probe::ParameterWriteView& output) {
+    if (!app || !operationId || app->parameterWrite.view.operationId != operationId) return false;
+    output = app->parameterWrite.view; return true;
+}
 bool copySettingsRefusal(Probe::SettingsRefusal& output) {
     if (!app || !app->settingsRefusal.reason) return false;
     output = app->settingsRefusal; return true;
@@ -4525,6 +4599,7 @@ void serviceApplication() {
         cancelInvalidPositionClears(a, sampled);
         cancelInvalidPositionStages(a, sampled);
         cancelInvalidProfileCandidate(a, sampled);
+        cancelInvalidParameterWrite(a, sampled);
         a.owner.service(sampled, recoveryReady);
         if (hadDE && !a.runner.transmitEnabled()) a.recoveryGuardUntilUs = nowUs() + RECOVER_US;
 #if MOTORCONTROLRS_LOAD_FIXTURE
@@ -4542,6 +4617,7 @@ void serviceApplication() {
     const uint64_t completedSampleUs = nowUs();
     serviceSelectedStage(a, completedSampleUs);
     serviceProfileCandidate(a, completedSampleUs);
+    serviceParameterWrite(a, completedSampleUs);
     serviceGroup(a, completedSampleUs); // No extra clock read while no group operation runs.
     serviceCoordinates(a, completedSampleUs);
     RuntimeWitness::mark(RuntimeWitness::CONSOLE);

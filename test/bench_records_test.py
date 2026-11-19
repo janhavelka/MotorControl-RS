@@ -952,5 +952,106 @@ class CorrelationTest(unittest.TestCase):
         self.assertEqual(records.output_interval(500, [old], 8, True)["status"], "not observed")
 
 
+class SnapshotBench(FakeBench):
+    """Drive 4's homing words behind `home restore` (wired bench 06) and the
+    profile stage route. ``restore_words`` overrides what a restore stores."""
+    restore_words = None
+    stage_words = None
+
+    def _command(self, name, address, host, driver, kwargs):
+        if name == "home-restore":
+            home = self.settings[self.selected]["home"]
+            if host == ("inspect",):
+                return dict(ok=True, result="accepted", pending=False, session_ok=True, execution="acknowledged",
+                            unsettled=False, error="none")
+            words = self.restore_words or self.snapshot_words
+            home.update(raw_method=words[0], raw_search_speed=words[1], raw_return_speed=words[2], raw_ramp_time=words[3],
+                        raw_offset_words=list(words[4:6]))
+            return dict(ok=True, result="accepted", pending=True, operation_id=self._next())
+        if name == "motion-profile-stage":
+            self.stage_words = [int(t) for t in host[:5]]
+            current = self.settings[self.selected]["motion-profile"]
+            current[1:6] = self.stage_words
+            return dict(ok=True, operation_id=self._next(), state="succeeded", outcome="success")
+        return super()._command(name, address, host, driver, kwargs)
+
+
+HOME_WRITES = [{"drive": 4, "key": "homing.method", "index": None, "candidate": 35},
+               {"drive": 4, "key": "homing.search-speed", "index": None, "candidate": 60}]
+
+
+class SnapshotRouteTest(unittest.TestCase):
+    """Wired bench 06: home/velocity words restored from the run's snapshot read."""
+
+    def plan(self, level="06", context=None):
+        return json.loads(json.dumps(records.restoration_plan(BASELINE, HOME_WRITES, level, {}, context=context)))
+
+    def test_plan_needs_a_stated_snapshot_and_the_06_image(self):
+        plan = self.plan(context={"snapshots": {"home": {}}})
+        self.assertTrue(plan["admissible"], plan["refused"])
+        self.assertEqual([(s["route"], s["snapshot"], s["words"]) for s in plan["steps"]],
+                         [("snapshot", "home", [24, 120, 60, 100, 0, 0])])  # One restore for the whole window.
+        self.assertFalse(self.plan()["admissible"])  # No snapshot stated: no route.
+        refused = self.plan("05", {"snapshots": {"home": {}}})
+        self.assertIn("requires prompt 06", refused["refused"][0]["reason"])
+        missing = self.plan(context={"snapshots": {"velocity": {}}})
+        self.assertIn("no home snapshot", missing["refused"][0]["reason"])
+
+    def bench(self, words):
+        bench = SnapshotBench()
+        bench.selected = 4
+        home = bench.settings[4]["home"]
+        home.update(raw_method=words[0], raw_search_speed=words[1], raw_return_speed=words[2], raw_ramp_time=words[3],
+                    raw_offset_words=list(words[4:6]))
+        return bench
+
+    def test_restore_writes_the_snapshot_and_reads_it_back(self):
+        bench = self.bench([35, 60, 30, 100, 0, 0])
+        bench.snapshot_words = [24, 120, 60, 100, 0, 0]
+        snapshots = {"home": {"operation_id": 77, "address": 4, "words": [24, 120, 60, 100, 0, 0]}}
+        results = records.restore(bench, self.plan(context={"snapshots": {"home": {}}}), snapshots=snapshots)
+        self.assertTrue(results[0]["restored"], results[0])
+        self.assertEqual(results[0]["ending"], [24, 120, 60, 100, 0, 0])
+        restores = [kw["host_args"] for name, kw in bench.calls if name == "home-restore"]
+        self.assertEqual(restores[0], ("77",))
+        # Equal words: no write at all.
+        bench = self.bench([24, 120, 60, 100, 0, 0])
+        results = records.restore(bench, self.plan(context={"snapshots": {"home": {}}}), snapshots=snapshots)
+        self.assertIn("no write", results[0]["reason"])
+        self.assertFalse([n for n, _ in bench.calls if n == "home-restore"])
+
+    def test_readback_mismatch_is_uncertain_and_ends_the_restoration(self):
+        bench = self.bench([35, 60, 30, 100, 0, 0])
+        bench.snapshot_words = [24, 120, 60, 100, 0, 0]
+        bench.restore_words = [24, 120, 60, 100, 0, 1]
+        snapshots = {"home": {"operation_id": 77, "address": 4, "words": [24, 120, 60, 100, 0, 0]}}
+        results = records.restore(bench, self.plan(context={"snapshots": {"home": {}}}), snapshots=snapshots)
+        self.assertTrue(results[0]["uncertain"])
+        self.assertIn("readback differs", results[0]["reason"])
+        self.assertEqual(len([n for n, _ in bench.calls if n == "home-restore" and _["host_args"] != ("inspect",)]), 1)
+        with self.assertRaises(probe.BenchError):  # No snapshot of this drive: never a guessed source.
+            records.snapshot_restore(bench, dict(self.plan(context={"snapshots": {"home": {}}})["steps"][0]), {})
+
+    def test_pre_run_words_away_from_the_baseline_are_reported(self):
+        bench = self.bench([33, 60, 30, 100, 0, 0])
+        bench.snapshot_words = [35, 60, 30, 100, 0, 0]
+        snapshots = {"home": {"operation_id": 77, "address": 4, "words": [35, 60, 30, 100, 0, 0]}}
+        results = records.restore(bench, self.plan(context={"snapshots": {"home": {}}}), snapshots=snapshots)
+        self.assertFalse(results[0]["restored"] or results[0]["uncertain"], results[0])
+        self.assertIn("pre-run snapshot words", results[0]["reason"])
+
+    def test_stage_step_compares_the_whole_profile_window(self):
+        writes = [{"drive": 4, "key": k, "index": None, "candidate": None}
+                  for k in ("profile.acceleration", "profile.target")]
+        plan = json.loads(json.dumps(records.restoration_plan(BASELINE, writes, "06", {"4": {"configure": {}}})))
+        self.assertEqual(len(plan["steps"]), 1)
+        bench = SnapshotBench()
+        bench.selected = 4
+        bench.settings[4]["motion-profile"][4:6] = [0, 2000]  # Only the target pair differs.
+        results = records.restore(bench, plan)
+        self.assertTrue(results[0]["restored"], results[0])
+        self.assertEqual(bench.stage_words, [100, 100, 60, 0, 5000])
+        self.assertEqual(results[0]["window"], [100, 100, 60, 0, 5000])
+
 if __name__ == "__main__":
     unittest.main()

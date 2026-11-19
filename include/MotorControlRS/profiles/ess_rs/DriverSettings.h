@@ -124,7 +124,10 @@ struct DriverObservation {
  * firmware, never a family default; the core only applies it.
  * With UNKNOWN only unchanged default polarity has a known level, and an input
  * polarity change is admitted only when the terminal's previous function and
- * the candidate's final function are both 0 (no drive effect), connected or not. */
+ * the candidate's final function are both 0 (no drive effect), connected or not.
+ * An output polarity change with UNKNOWN is admitted only when the terminal's
+ * declared load permits either level (IoOutputFacts::allowedLevels 3), because
+ * its level after the inversion is not predicted; every other load refuses it. */
 enum class IoStatusMapping : uint8_t { UNKNOWN, BEFORE_INVERSION, AFTER_INVERSION };
 /** Caller-stated facts for one input terminal. A connected terminal needs
  * supplied facts for every change, including a no-function inversion, and a

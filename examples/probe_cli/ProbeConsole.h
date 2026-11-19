@@ -16,6 +16,7 @@
 #include "IoQualification.h"
 #include "DriveGroup.h"
 #include "ProfileCandidate.h"
+#include "ParameterWrite.h"
 #include "MotorControlRS/profiles/ess_rs/Codec.h"
 #include "MotorControlRS/profiles/ess_rs/Reads.h"
 #include "MotorControlRS/profiles/ess_rs/Actions.h"
@@ -420,6 +421,8 @@ struct Host {
     Action (*discovery)(void*, const DiscoveryCommand*, DiscoveryView&) = nullptr;
     Action (*debug)(void*, const DebugMode* requested, DebugSnapshot&) = nullptr;
     Action (*motionProfile)(void*, MotionProfileCommand, MotionProfileView&) = nullptr;
+    /// Restore or D9 experiment session; null request inspects. View is the current session.
+    Action (*parameterWrite)(void*, const ParameterWriteRequest*, ParameterWriteView&) = nullptr;
     Action (*stageProfile)(void*, uint32_t commandId, const ProfileCandidate&, uint32_t& operationId) = nullptr;
     /** Drive group. SHOW, STATUS, CLEAR and WIRING are synchronous host
      * declarations without bus traffic. SET, MOVE, STOP and READ_STATE admit one
@@ -506,6 +509,7 @@ private:
     void retainStopReply(uint32_t id, const char* command, Action result, uint8_t address, uint32_t operationId,
                          bool ordinaryStop = false, uint32_t replacedOperationId = 0, bool stopEscalation = false) noexcept;
     void parameterRead(uint32_t id, MotorControlRS::ESS_RS::ReadKind, const char* address) noexcept;
+    void parameterWrite(uint32_t id, const char* command, const ParameterWriteRequest* request) noexcept;
     void qualificationRoute(uint32_t id, QualificationRoute, const char* const* tokens, std::size_t count) noexcept;
     void ioQualificationRoute(uint32_t id, const char* const* tokens, std::size_t count) noexcept;
     void qualificationReply(uint32_t id, const char* command, const char* result, const char* label, const char* value, bool ok = false) noexcept;

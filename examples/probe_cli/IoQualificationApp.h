@@ -59,6 +59,27 @@ RecordLookup recordedInput(const App& a, uint8_t address, uint8_t terminal, bool
         }
     return RecordLookup::NOT_RECORDED;
 }
+// The recorded output status mapping (RECORDED_OUTPUT_MAPPINGS) of output 0..1
+// of the selected axis, under the same fresh-identity rule as inputs. Group
+// members have input records only.
+RecordLookup recordedOutput(const App& a, uint8_t address, uint8_t output, uint64_t now,
+                            ESS::IoStatusMapping& mapping) {
+    if (output >= 2) return RecordLookup::NOT_RECORDED;
+    if (address != a.axis.target.address) return RecordLookup::IDENTITY_REQUIRED;
+    if (!identityFresh(a, a.identity, a.axis.target, now)) return RecordLookup::IDENTITY_REQUIRED;
+    for (const auto& record : RECORDED_OUTPUT_MAPPINGS)
+        if (record.model == a.identity.rawModel && record.firmware == a.identity.rawVersion &&
+            record.outputs[output] != ESS::IoStatusMapping::UNKNOWN) {
+            mapping = record.outputs[output]; return RecordLookup::FOUND;
+        }
+    return RecordLookup::NOT_RECORDED;
+}
+// One lookup for terminals 0..5 (X0..X3, Y0..Y1).
+RecordLookup recordedMapping(const App& a, uint8_t address, uint8_t terminal, bool member, uint64_t now,
+                             ESS::IoStatusMapping& output) {
+    if (terminal < 4) return recordedInput(a, address, terminal, member, now, output);
+    return member ? RecordLookup::NOT_RECORDED : recordedOutput(a, address, terminal - 4, now, output);
+}
 bool ioFactsValid(const IoQualification& q, uint64_t now) {
     using namespace MotorControlRS;
     if (!q.target.id || !q.configurationGeneration || q.purpose > IoPurpose::SEGMENT || q.terminal >= 6 ||
@@ -273,9 +294,10 @@ Probe::QualificationReply ioQualificationCommand(void*, const Probe::IoQualifica
     }
     q.function = command.function; q.polarity = command.polarity; q.custom = command.custom;
     q.input = command.input; q.output = command.output;
-    if (command.terminal < 4 && (command.recordedMapping || q.input.statusMapping != ESS::IoStatusMapping::UNKNOWN)) {
+    auto& stated = command.terminal < 4 ? q.input.statusMapping : q.output.statusMapping;
+    if (command.recordedMapping || stated != ESS::IoStatusMapping::UNKNOWN) {
         ESS::IoStatusMapping recorded = ESS::IoStatusMapping::UNKNOWN;
-        const auto found = app ? recordedInput(*app, command.address, command.terminal, command.member, uart.sample(), recorded) :
+        const auto found = app ? recordedMapping(*app, command.address, command.terminal, command.member, uart.sample(), recorded) :
             RecordLookup::IDENTITY_REQUIRED;
         if (command.recordedMapping && found != RecordLookup::FOUND) {
             Probe::QualificationReply result(Action::QUALIFICATION_REQUIRED);
@@ -283,12 +305,12 @@ Probe::QualificationReply ioQualificationCommand(void*, const Probe::IoQualifica
             if (found == RecordLookup::IDENTITY_REQUIRED) result.readFirst = "read identity";
             return result;
         }
-        if (!command.recordedMapping && found == RecordLookup::FOUND && recorded != q.input.statusMapping) {
+        if (!command.recordedMapping && found == RecordLookup::FOUND && recorded != stated) {
             Probe::QualificationReply result(Action::QUALIFICATION_REQUIRED);
             result.reason = "mapping_contradicts_record";
             return result;
         }
-        if (command.recordedMapping) q.input.statusMapping = recorded;
+        if (command.recordedMapping) stated = recorded;
     }
     const auto result = installIoQualification(q);
     return Probe::QualificationReply(result ? Action::OK :

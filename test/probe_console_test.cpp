@@ -2430,6 +2430,10 @@ void testIoQualificationRoutes(bool fixtures = false) {
     }
     const std::string longest = "@4294967295 io qualification install 247 x3 17 1 assign before triggers-inhibited protection-removal\n";
     assert(longest.size() <= Probe::LINE_CAPACITY); send(console, longest);
+    // Wired bench 06: outputs take `recorded` too.
+    send(console, "io qualification install 1 y0 9 1 0 assign recorded indicator either\n");
+    assert(local.last.recordedMapping && local.last.terminal == 4 && local.last.output.supplied &&
+        local.last.output.load == Ess::IoOutputLoad::INDICATOR && local.last.output.allowedLevels == 3);
     send(console, "io qualification install 1 y1 10 1 1 assign before control either\n");
     assert(local.last.terminal == 5 && local.last.function == 10 && local.last.polarity == 1 && local.last.custom == 1 &&
         local.last.output.supplied && local.last.output.load == Ess::IoOutputLoad::CONTROL && local.last.output.allowedLevels == 3 &&
@@ -2445,7 +2449,7 @@ void testIoQualificationRoutes(bool fixtures = false) {
         "install 1 y0 9 0 0 configure unknown none either", "install 1 y0 9 0 0 assign unknown guessed either",
         "install 1 y0 9 0 0 assign unknown none guessed", "install member 2 y0 0 0 0 assign unknown none either",
         "install 1 y0 9 0 0 assign unknown none either extra", "inspect 1 x0", "inspect 1 x0 assign extra",
-        "install 1 y0 9 0 0 assign recorded none either", "install 1 x0 0 0 assign recorded extra",
+        "install 1 x0 0 0 assign recorded extra", "install 1 y0 9 0 0 assign recorded none either extra",
         "inspect member 2 x0 configure", "revoke 1 y0 finite-move", "revoke 1 x0 assign extra", "install member"}) {
         const auto calls = local.calls;
         send(console, std::string("io qualification ") + invalid + "\n");

@@ -98,14 +98,14 @@ const Entry COMMANDS[] = {
     {"segment", Command::SEGMENT, "segment position|speed|start INDEX read [address] | segment position|speed|start INDEX set FIELD INTEGER [FIELD INTEGER ...] [address]", "indexed_stored_records_only_external_execution", true, "Read or update stored segment settings; this does not execute a segment."},
     {"control", Command::CONTROL, "control read [address] | control set algorithm|encoder-resolution|maximum-effective-current|closed-maximum-current|closed-base-current|open-maximum-current|lock-current|lock-delay INTEGER [field integer ...] [address]; algorithm open-loop|algorithm-1", "stopped_native_control_settings_and_checked_readback", true, "Read or update supported control settings while the drive is stopped."},
     {"tuning", Command::TUNING, "tuning filters|current-loop|la|collision read [address] | tuning GROUP set FIELD INTEGER [FIELD INTEGER ...] [address]; filters: input-filter pulse-low-pass deviation-threshold arrival-window arrival-time pulse-mean; current-loop: multiplier kp ki kc; la: kp1 kv1 node1 kp2 kv2 node2 kvf position-ki; collision: threshold current", "qualified_stopped_native_tuning_and_checked_readback", true, "Read or update named filter, current-loop, LA or collision parameters."},
-    {"home", Command::HOME, "home methods | home read [address] | home auxiliary <0..11> | home method search_native return_native ramp_native zero [address]", "checked_parameter_read_auxiliary_setting_or_qualified_homing", true, "Read homing parameters, select auxiliary configuration, list methods or request qualified homing."},
+    {"home", Command::HOME, "home methods | home read [address] | home restore SNAPSHOT_ID|inspect | home auxiliary <0..11> | home method search_native return_native ramp_native zero [address]", "checked_parameter_read_auxiliary_setting_or_qualified_homing", true, "Read homing parameters, select auxiliary configuration, list methods or request qualified homing."},
     {"enable", Command::ENABLE, "enable [address]", "request_enable_then_observe_flags", true, "Request motor enable and observe the resulting flags."},
     {"motor-release", Command::MOTOR_RELEASE, "motor-release [address] | motor-release after-stop ID mechanics-permit-release triggers-inhibited", "request_release_then_observe_flags", true, "Request motor release; after-stop requires explicit mechanical and trigger facts."},
     {"alarm-clear", Command::ALARM_CLEAR, "alarm-clear [address]", "request_clear_resettable_alarm_then_observe_flags", true, "Request alarm clearing and check the drive flags."},
     {"stop", Command::STOP, "stop normal|fast [address]", "priority_stop_with_explicit_policy_then_observe_flags", true, "normal: stop with deceleration; fast: ESS emergency stop without the ramp. An admitted ordinary stop may recover once before its first send; target, tuple, lease and capacity checks still apply. A sent stop whose reply is lost is never resent; stop fast can escalate a running stop normal."},
     {"move", Command::MOVE, "move relative|absolute value unit frame native_rpm configured [setup write|verify|stored] [basis actual|commanded|queued] [round mode error [approx error]] [address] | move angle value unit frame positive|negative|shortest reject|positive|negative native_rpm configured [setup write|verify|stored] [round mode error [approx error]] [address]", "finite_move_through_public_coordinate_preparation", true, "Advanced move: explicit frame, rounding and setup policy; ordinary moves use moveby/moveto."},
     {"position-clear", Command::POSITION_CLEAR, "position-clear [address]", "explicit_device_position_zero_only", true, "Explicitly set the drive position counter to zero."},
-    {"velocity", Command::VELOCITY, "velocity read [address] | velocity value rpm|steps/s|fullsteps/s|counts/s|turns/s|deg/s|rad/s|mm/s native|motor|load duration_ms configured normal|fast [round mode error [approx error]] [address]", "checked_parameter_read_or_finite_serial_velocity_with_explicit_stop", true, "Read native velocity parameters or request finite velocity with an explicit stop policy."},
+    {"velocity", Command::VELOCITY, "velocity read [address] | velocity restore SNAPSHOT_ID|inspect | velocity value rpm|steps/s|fullsteps/s|counts/s|turns/s|deg/s|rad/s|mm/s native|motor|load duration_ms configured normal|fast [round mode error [approx error]] [address]", "checked_parameter_read_or_finite_serial_velocity_with_explicit_stop", true, "Read native velocity parameters or request finite velocity with an explicit stop policy."},
     {"monitor", Command::MONITOR, "monitor [off | interval_ms count]", "finite_nonconsuming_state_polling", true, "Read drive state a finite number of times; off ends local polling."},
     {"caps", Command::CAPS, "caps", "show_implemented_routes_and_explicit_capability_gaps", false, "Show implemented operations and unsupported or unresolved capabilities."},
     {"axis", Command::AXIS, "axis config [set field value [maximum]] | axis origin exact_native", "configure_host_coordinates_only", false, "Configure host coordinates, units and origin without motor traffic."},
@@ -645,7 +645,7 @@ HelpText helpText(const Entry& entry, const Host& host) {
         if (host.inspectHomeQualification && reads && motion && setter)
             text.syntax = "home methods | home qualification | home read [address] | home auxiliary <0..11> | home method search_native return_native ramp_native zero [address]";
         if (host.qualification && host.inspectHomeQualification && reads && motion && setter) {
-            text.syntax = "home methods | home qualification | home qualification install METHOD SEARCH RETURN RAMP mechanics rates ramp zero-offset auxiliary inputs [index] [reference] | home qualification revoke | home read [address] | home auxiliary <0..11> | home method search_native return_native ramp_native zero [address]";
+            text.syntax = "home methods | home qualification | home qualification install METHOD SEARCH RETURN RAMP mechanics rates ramp zero-offset auxiliary inputs [index] [reference] | home qualification revoke | home read [address] | home restore SNAPSHOT_ID|inspect | home auxiliary <0..11> | home method search_native return_native ramp_native zero [address]";
             text.description = "Read homing parameters, state qualification facts, select auxiliary configuration, list methods or request qualified homing.";
         }
     } else if (entry.command == Command::VELOCITY) {
@@ -1254,6 +1254,53 @@ void Console::parameterRead(uint32_t id, Ess::ReadKind kind, const char* supplie
     if (result == Action::OK) track(id, operationId);
     action(id, command, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0);
 }
+namespace {
+const char* parameterWriteKind(ParameterWriteKind kind) {
+    switch (kind) {
+    case ParameterWriteKind::NONE: return "none";
+    case ParameterWriteKind::HOME_RESTORE: return "home_restore";
+    case ParameterWriteKind::VELOCITY_RESTORE: return "velocity_restore";
+    }
+    return "invalid";
+}
+bool writeEvidence(char* out, std::size_t size, std::size_t& used, const char* name, const Ess::ActionEvidence& e) {
+    char rx[2 * Ess::ACTION_MAX_REPLY_BYTES + 1];
+    hex(e.raw, e.length, rx, sizeof(rx));
+    return append(out, size, used, ",\"%s\":{\"event\":%u,\"tx_accepted\":%lu,\"tx_complete\":%s,\"qualified\":%s,\"response_confirmed\":%s,\"execution_unknown\":%s,\"earliest_us\":%llu,\"latest_us\":%llu,\"delivered_us\":%llu,\"status\":\"%s\",\"detail\":%ld,\"rx_hex\":\"%s\"}",
+        name, static_cast<unsigned>(e.event), static_cast<unsigned long>(e.txAccepted), boolean(e.txComplete), boolean(e.qualified),
+        boolean(e.responseConfirmed), boolean(e.executionUnknown), static_cast<unsigned long long>(e.earliestUs),
+        static_cast<unsigned long long>(e.latestUs), static_cast<unsigned long long>(e.deliveredUs),
+        Core::errToString(e.status.code), static_cast<long>(e.status.detail), rx);
+}
+} // namespace
+// One reply for admission and inspection: the result of this command and the
+// current session, which a refusal leaves unchanged. Poll with `... inspect`.
+void Console::parameterWrite(uint32_t id, const char* command, const ParameterWriteRequest* request) noexcept {
+    if (!host_.parameterWrite) { error(id, command, "unavailable"); return; }
+    ParameterWriteView v;
+    const Action result = host_.parameterWrite(host_.context, request, v);
+    std::size_t used = 0;
+    bool fits = append(output_, sizeof(output_), used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":%s,\"result\":\"%s\",\"request\":\"%s\",\"kind\":\"%s\",\"operation_id\":%lu,\"snapshot_id\":%lu,\"address\":%u,\"target_generation\":%lu,\"configuration_generation\":%lu,\"serial_generation\":%lu,\"first\":%u,\"count\":%u,\"words\":[",
+        static_cast<unsigned long>(id), command, boolean(result == Action::OK), actionName(result), request ? "write" : "inspect",
+        parameterWriteKind(v.kind), static_cast<unsigned long>(v.operationId), static_cast<unsigned long>(v.snapshotId),
+        v.target.address, static_cast<unsigned long>(v.target.generation), static_cast<unsigned long>(v.configurationGeneration),
+        static_cast<unsigned long>(v.serialGeneration), v.first, v.count);
+    for (uint8_t i = 0; fits && i < v.count && i < 6; ++i) fits = append(output_, sizeof(output_), used, i ? ",%u" : "%u", v.words[i]);
+    fits = fits && append(output_, sizeof(output_), used, "],\"readback\":[");
+    for (uint8_t i = 0; fits && v.readbackKnown && i < v.count && i < 6; ++i)
+        fits = append(output_, sizeof(output_), used, i ? ",%u" : "%u", v.readback[i]);
+    fits = fits && append(output_, sizeof(output_), used,
+        "],\"pending\":%s,\"session_ok\":%s,\"readback_known\":%s,\"cancelled\":%s,\"unsettled\":%s,\"execution\":\"%s\",\"error\":\"%s\",\"started_us\":%llu,\"deadline_us\":%llu,\"finished_us\":%llu",
+        boolean(v.pending), boolean(v.ok), boolean(v.readbackKnown), boolean(v.cancelled), boolean(v.unsettled),
+        executionName(v.execution), v.error, static_cast<unsigned long long>(v.startedUs),
+        static_cast<unsigned long long>(v.deadlineUs), static_cast<unsigned long long>(v.finishedUs)) &&
+        writeEvidence(output_, sizeof(output_), used, "write_evidence", v.writeEvidence) &&
+        writeEvidence(output_, sizeof(output_), used, "read_evidence", v.readEvidence) &&
+        append(output_, sizeof(output_), used, "}");
+    if (!fits) { error(id, command, "output_full"); return; }
+    emit();
+}
 void Console::qualificationReply(uint32_t id, const char* command, const char* result,
                                  const char* label, const char* value, bool ok) noexcept {
     std::size_t used = 0;
@@ -1703,6 +1750,23 @@ void Console::dispatch() noexcept {
                 boolean(view.host.activeKnown),boolean(view.host.blocked),static_cast<unsigned long>(view.host.generation),static_cast<unsigned long>(view.host.actualBaud),hostFailure(view.host.failure));
         if (!fits) { error(id,"communication","output_full"); return; }
         emit(); return;
+    }
+    if ((entry->command == Command::HOME || entry->command == Command::VELOCITY) &&
+        count > first + 1 && std::strcmp(tokens[first + 1], "restore") == 0) {
+        // home restore SNAPSHOT_ID | home restore inspect (velocity the same):
+        // the words of an earlier checked read of the selected axis.
+        if (outputPending()) { ++inputDropped_; return; }
+        const bool home = entry->command == Command::HOME;
+        const char* command = home ? "home-restore" : "velocity-restore";
+        if (count != first + 3) { error(id, command, "invalid_arguments"); return; }
+        if (!std::strcmp(tokens[first + 2], "inspect")) { parameterWrite(id, command, nullptr); return; }
+        uint32_t snapshot = 0;
+        if (!number(tokens[first + 2], snapshot) || !snapshot) { error(id, command, "invalid_arguments"); return; }
+        ParameterWriteRequest request;
+        request.kind = home ? ParameterWriteKind::HOME_RESTORE : ParameterWriteKind::VELOCITY_RESTORE;
+        request.snapshotId = snapshot;
+        parameterWrite(id, command, &request);
+        return;
     }
     if ((entry->command == Command::HOME || entry->command == Command::VELOCITY) &&
         count > first + 1 && std::strcmp(tokens[first + 1], "read") == 0) {
@@ -2511,7 +2575,7 @@ void Console::dispatch() noexcept {
         const auto caps = Ess::readCapabilities();
         Snapshot snapshot; if (host_.snapshot) host_.snapshot(host_.context, snapshot);
         std::snprintf(output_, sizeof(output_),
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"caps\",\"ok\":true,\"probe\":%s,\"identity\":%s,\"config\":%s,\"state\":%s,\"velocity_parameters\":%s,\"homing_parameters\":%s,\"max_steps\":%u,\"max_reply_bytes\":%u,\"writes\":%s,\"motion\":%s,\"write_response_confirmed\":%s,\"axis_reserved\":%s,\"actions\":%s,\"device_queue_guarantee\":false,\"velocity\":%s,\"configured_ramp_policy\":true,\"acceleration_mapping\":false,\"velocity_unsupported\":[\"jerk\",\"blending\",\"live_updates\",\"torque\",\"current\",\"external_jog\"],\"driver_settings\":%s,\"limit_pair_writes\":false,\"home\":%s,\"home_methods\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,17,19,20,21,22,23,24,25,26,27,28,29,30,33,34,35],\"home_physical_qualified\":false,\"io_settings\":%s,\"input_terminals\":4,\"output_terminals\":2,\"no_function\":0,\"input_function_codes\":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17],\"output_function_codes\":[0,1,2,3,4,5,9,10],\"output_function_11\":\"unresolved\",\"input_mask\":15,\"output_mask\":3,\"external_enable_precedence\":\"unknown\",\"electrical_output_state_known\":false,\"segment_storage\":16,\"maximum_input_selections\":8,\"segment_execution\":\"external_input\",\"segment_pulse_writes\":false,\"negative_segment_speed_encoding\":\"unresolved\",\"control_settings\":%s,\"control_algorithm_codes\":[1,2],\"configured_encoder_is_identification\":false,\"current_percent_base\":\"unresolved\",\"effective_current_limit_from_peak\":false,\"tuning\":%s,\"tuning_groups\":[\"filters\",\"current-loop\",\"la\",\"collision\"],\"tuning_physical_scaling_known\":false,\"collision_003b_003c_access\":\"unresolved\",\"persistence\":%s,\"persistence_operations\":[\"save\",\"factory_restore\"],\"persistence_verified_all\":false,\"persistence_invocation_limit\":2}",
+            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"caps\",\"ok\":true,\"probe\":%s,\"identity\":%s,\"config\":%s,\"state\":%s,\"velocity_parameters\":%s,\"homing_parameters\":%s,\"max_steps\":%u,\"max_reply_bytes\":%u,\"writes\":%s,\"motion\":%s,\"write_response_confirmed\":%s,\"axis_reserved\":%s,\"actions\":%s,\"device_queue_guarantee\":false,\"velocity\":%s,\"configured_ramp_policy\":true,\"acceleration_mapping\":false,\"velocity_unsupported\":[\"jerk\",\"blending\",\"live_updates\",\"torque\",\"current\",\"external_jog\"],\"driver_settings\":%s,\"limit_pair_writes\":false,\"home\":%s,\"home_methods\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,17,19,20,21,22,23,24,25,26,27,28,29,30,33,34,35],\"home_physical_qualified\":false,\"io_settings\":%s,\"input_terminals\":4,\"output_terminals\":2,\"no_function\":0,\"input_function_codes\":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17],\"output_function_codes\":[0,1,2,3,4,5,9,10],\"output_function_11\":\"not_admitted\",\"cross_mapped_custom\":\"not_admitted\",\"output_status_mapping\":\"recorded_y0\",\"input_mask\":15,\"output_mask\":3,\"external_enable_precedence\":\"unknown\",\"electrical_output_state_known\":false,\"segment_storage\":16,\"maximum_input_selections\":8,\"segment_execution\":\"external_input\",\"segment_pulse_writes\":false,\"negative_segment_speed_encoding\":\"unresolved\",\"control_settings\":%s,\"control_algorithm_codes\":[1,2],\"configured_encoder_is_identification\":false,\"current_percent_base\":\"unresolved\",\"effective_current_limit_from_peak\":false,\"tuning\":%s,\"tuning_groups\":[\"filters\",\"current-loop\",\"la\",\"collision\"],\"tuning_physical_scaling_known\":false,\"collision_003b_003c_access\":\"unresolved\",\"persistence\":%s,\"persistence_operations\":[\"save\",\"factory_restore\"],\"persistence_verified_all\":false,\"persistence_invocation_limit\":2}",
             static_cast<unsigned long>(id), boolean(caps.probe && callable(Command::PROBE)), boolean(caps.identity && callable(Command::READ_IDENTITY)), boolean(caps.config && callable(Command::READ_CONFIG)), boolean(caps.state && callable(Command::READ_STATE)), boolean(caps.velocityParameters && host_.startTypedRead && host_.snapshot), boolean(caps.homingParameters && host_.startTypedRead && host_.snapshot), caps.maxSteps, caps.maxReplyBytes,
             boolean(callable(Command::ENABLE) || callable(Command::MOVE) || (host_.startVelocity && host_.snapshot && host_.axis) || callable(Command::DRIVER) || (host_.startHome && host_.snapshot && host_.axis) || callable(Command::COMMUNICATION) || callable(Command::PERSISTENCE) || callable(Command::MOTION_PROFILE)),
             boolean(host_.startMove && host_.snapshot && host_.axis), boolean(snapshot.writeResponseConfirmed), boolean(snapshot.axisReserved), callable(Command::ENABLE) ? "[\"enable\",\"release\",\"clear_alarm\",\"clear_position\",\"stop_normal\",\"stop_fast\"]" : "[]", boolean(host_.startVelocity && host_.snapshot && host_.axis), boolean(host_.startDriver && host_.snapshot), boolean(host_.startHome && host_.snapshot && host_.axis), boolean(host_.startDriver && host_.snapshot), boolean(host_.startDriver && host_.snapshot), boolean(host_.startDriver && host_.snapshot), boolean(host_.persistence != nullptr));

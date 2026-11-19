@@ -37,7 +37,8 @@ struct IoQualificationCommand {
     bool member = false;
     IoPurpose purpose = IoPurpose::ASSIGN;
     uint16_t function = 0, polarity = 0, custom = 0;
-    /** Input install only: take the status mapping from RECORDED_INPUT_MAPPINGS
+    /** Take the status mapping from RECORDED_INPUT_MAPPINGS (inputs) or
+     * RECORDED_OUTPUT_MAPPINGS (outputs, wired bench 06)
      * for the target's fresh checked identity (console token `recorded`). */
     bool recordedMapping = false;
     MotorControlRS::ESS_RS::IoInputFacts input;

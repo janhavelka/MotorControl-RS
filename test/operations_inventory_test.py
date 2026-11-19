@@ -324,7 +324,7 @@ class Coverage(unittest.TestCase):
         for name in ("JOG_SPEED", "JOG_ACCELERATION_TIME", "JOG_DECELERATION_TIME"):
             self.assertEqual(records[name]["obligations"]["read"], "IMPLEMENTED")
             self.assertEqual(records[name]["read_operations"], ["velocity_parameter_read"])
-            self.assertEqual(records[name]["write_operations"], ["velocity_parameters"])
+            self.assertEqual(records[name]["write_operations"], ["velocity_parameters", "velocity_parameters_restore"])
         self.assertNotIn("velocity_parameter_reads", {gap["id"] for gap in INVENTORY["gaps"]})
         self.assertNotIn("homing_parameter_reads", {gap["id"] for gap in INVENTORY["gaps"]})
         for route in ("velocity", "velocity inspect", "velocity read extra", "read velocity"):

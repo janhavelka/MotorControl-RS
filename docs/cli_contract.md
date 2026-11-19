@@ -62,6 +62,7 @@ guides define complete arguments and prerequisites.
 | `axis config`, `axis origin`, `prepare` | Pure host coordinates and [target preview](axis_preparation.md) |
 | `move relative\|absolute\|angle` | Detailed [finite moves](ess_position.md) with explicit frame/setup/rounding |
 | `velocity read [address]` | One checked native JOG-parameter read; canonical `velocity-read`, no writes or qualification |
+| `velocity restore SNAPSHOT_ID\|inspect [address]` | Writes back the three JOG words of an earlier checked `velocity read` (FC10 `0x001D/3`, no start) and reads them back; canonical `velocity-restore`; [velocity guide](ess_velocity.md) |
 | `velocity` | [Finite velocity](ess_velocity.md) with explicit duration and stop policy |
 | `home qualification install METHOD SEARCH RETURN RAMP FACT...`, `home qualification revoke`, `velocity qualification install FACT...`, `velocity qualification revoke`, `position-clear qualification install clear-semantics`, `position-clear qualification revoke` | [Named commissioning facts](#qualification-routes), local and on the ordinary image |
 | `io qualification install|inspect|revoke ...` | [Exact terminal facts](#terminal-qualification), local; assignment, drive configuration, finite move and segment purposes stay separate |
@@ -69,6 +70,7 @@ guides define complete arguments and prerequisites.
 | `enable`, `motor-release`, `alarm-clear`, `position-clear`, `stop normal\|fast` | Explicit [drive actions](ess_actions.md) |
 | `home read [address]` | One checked seven-word native parameter read; canonical `home-read`, no writes or qualification |
 | `home auxiliary CHOICE` | Explicit stored auxiliary choice0..11; canonical `home-auxiliary`, prior/echo/readback and independent active qualification |
+| `home restore SNAPSHOT_ID\|inspect [address]` | Writes back the six words of an earlier checked `home read` (FC10 `0x0031/6`, raw offset included, no start) and reads them back; canonical `home-restore`; [restoring the homing words](ess_homing.md#restoring-the-homing-words) |
 | `home methods`, `home qualification`, `home ...` | Method inventory, passive qualification inspection and qualified [homing](ess_homing.md); home acceptance replies `accepted`, then one terminal `home` line |
 | `driver`, `io`, `segment`, `control`, `tuning` | Typed reads/whole-candidate updates; [driver](ess_driver_settings.md), [I/O](ess_io.md), [segments](ess_segments.md), [control](ess_control_settings.md), [tuning](ess_tuning.md) |
 | `motion-profile read\|inspect\|restore\|forget` / `motion-profile start-speed NATIVE` | Retained position-parameter snapshot and explicit restoration |
@@ -490,7 +492,7 @@ Output11 and unsupported output codes reject before admission.
 | Token | Values and meaning |
 | --- | --- |
 | `PURPOSE` | `assign`, `configure`, `finite-move`, `segment`; install each purpose separately |
-| `MAPPING` | `unknown`, `before`, `after`: independently established status location relative to inversion; inputs also `recorded` (below) |
+| `MAPPING` | `unknown`, `before`, `after`: independently established status location relative to inversion; also `recorded` (below) |
 | `triggers-inhibited` | External triggering remains inhibited during the operation; an inactive sample alone does not establish this |
 | `protection-removal` | Removal or polarity change of a connected protection assignment; allowed only for `assign` |
 | `LOAD` | `none`, `indicator`, `control`: the declared attached output load |
@@ -501,13 +503,17 @@ the stated facts and candidate to `installIoQualification`. `unknown` mapping
 does not authorize a polarity interpretation, with one exception (wired bench
 05): a polarity change on a terminal whose previous and final function are both
 0, connected or not. Its level has no drive effect; a connected terminal still
-needs the record and a confirmed FC06 reply.
+needs the record and a confirmed FC06 reply. For outputs (wired bench 06),
+`unknown` admits a polarity change only for a load stated with `either` levels.
 
-`recorded` (inputs only) takes the mapping from the application record
-`RECORDED_INPUT_MAPPINGS` (`examples/probe_cli/IoStatusRecord.h`). Since
-[wired bench 05](reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md)
-it holds one entry: model `0x4EEA`, firmware `0x0029`, `after` on X0-X3,
-measured on drives 1, 2 and 4. The record applies only when the target (the
+`recorded` takes the mapping from the application records
+`RECORDED_INPUT_MAPPINGS` and `RECORDED_OUTPUT_MAPPINGS`
+(`examples/probe_cli/IoStatusRecord.h`). Each holds one entry for model
+`0x4EEA`, firmware `0x0029`: `after` on X0-X3, measured on drives 1, 2 and 4
+([wired bench 05](reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md)),
+and `after` on Y0, measured on drive 4
+([wired bench 06](reports/2026-11-19_wired_bench_06_outputs.md)). Y1 is not
+recorded, so `recorded` on Y1 is refused with `mapping_not_recorded`. The record applies only when the target (the
 selected axis, or the member's own join identity) has a fresh checked
 `read identity` of that exact target and binding whose model and firmware match
 an entry, as the control-settings model gate requires. Refusals, local and
@@ -520,7 +526,8 @@ without traffic:
 | `mapping_contradicts_record` | an explicit `before`/`after` that differs from an applicable record | none |
 
 `unknown` stays allowed with a record. The programmatic API is
-`copyRecordedInputMapping(address, terminal, mapping, member)`;
+`copyRecordedInputMapping(address, terminal, mapping, member)` and
+`copyRecordedOutputMapping(address, terminal, mapping, member)`;
 `installIoQualification` refuses a stated mapping that contradicts an
 applicable record. The inspected record shows the resolved mapping. Missing evidence names the needed
 read. No command supplies omitted facts or qualifies motion from assignment intent.

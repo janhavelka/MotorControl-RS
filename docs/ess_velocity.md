@@ -7,6 +7,19 @@ starting motion. Programmatic submission, copied results and release are describ
 in [typed reads](ess_reads.md#native-velocity-parameter-read). Motion qualification
 remains independent.
 
+Every `velocity` run writes its own JOG words (`0x001D/3`). `velocity restore
+SNAPSHOT_ID [address]` puts back the exact three words of an earlier checked
+`velocity read` of the same drive and binding. It was added in
+[wired bench 06](reports/2026-11-19_wired_bench_06_outputs.md); the API is
+`restoreVelocityParameters(snapshotId, id)` with `copyParameterWrite`. The
+route sends one FC10 to the reviewed `0x001D/3` window with no start, then one
+FC03 readback. A connected input with function 8, 9 or 10 refuses unless a
+CONFIGURE record states triggers inhibited. Reservation, `readback_mismatch`,
+lost-ACK handling without resend, `inspect` and the pinned first snapshot
+follow the [home restore](ess_homing.md#restoring-the-homing-words). Measured on
+drive 4: snapshot [120, 100, 100], a 30 rpm run left [30, 100, 100], and the
+restore read back [120, 100, 100].
+
 Signed serial velocity uses the installed core in
 `VelocityOperation.h` and `profiles/ess_rs/Velocity.h`. It reuses `Axis.cpp` exact
 factor cancellation and quantization, checked ESS codecs and the existing

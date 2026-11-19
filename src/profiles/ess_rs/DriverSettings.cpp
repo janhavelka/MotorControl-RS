@@ -508,8 +508,11 @@ Status validateOutputChange(uint8_t terminal, uint8_t index, const uint16_t* sta
         !facts.allowedLevels || (facts.allowedLevels & ~3u))
         return invalid(DriverError::IO_EFFECTS_REQUIRED, "declared output load and allowed levels required");
     const uint16_t mask = uint16_t(1) << terminal;
+    // Without a status mapping the level after an inversion is not predicted.
+    // Only a declared load that permits either level needs no prediction
+    // (wired bench 06); every other load keeps the refusal.
     if (index == 12 && ((state[12] ^ p.previous.raw[12]) & mask) &&
-        facts.statusMapping == IoStatusMapping::UNKNOWN)
+        facts.statusMapping == IoStatusMapping::UNKNOWN && facts.allowedLevels != 3)
         return invalid(DriverError::IO_EFFECTS_REQUIRED, "output polarity mapping is unresolved");
     // Automatic signals and no-function have no stable electrical-state promise.
     // Canonical custom outputs have a known requested signal before inversion.

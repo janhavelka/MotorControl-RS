@@ -56,6 +56,22 @@
   `classify_mapping`, `timing_trial`, the interlock option `read_last`,
   `apply_write(check=...)`, input-polarity restoration with per-terminal
   mappings, install mapping `recorded`.
+- Snapshot restore routes (wired bench 06): `home restore SNAPSHOT_ID|inspect`
+  and `velocity restore SNAPSHOT_ID|inspect`, API `restoreHomingParameters`,
+  `restoreVelocityParameters` and `copyParameterWrite`. Each writes the exact
+  words of an earlier checked `home read` (`0x0031/6`, raw offset included) or
+  `velocity read` (`0x001D/3`) of the same drive and binding with no start,
+  then reads them back. They need fresh stopped, alarm-free state and no
+  uninhibited home-enable (11) or speed/JOG (8-10) input. The axis is reserved
+  until the readback; a mismatch reports `readback_mismatch`; a lost
+  acknowledgement is never resent and refuses the next restore until a read.
+  Each binding keeps 8 snapshots, with its first checked read pinned.
+- Recorded output status mapping (wired bench 06): `RECORDED_OUTPUT_MAPPINGS`
+  (`0x4EEA`/`0x0029`, Y0 after inversion, Y1 not recorded), `recorded` for
+  output installs, `copyRecordedOutputMapping`. Caps `output_function_11` and
+  `cross_mapped_custom` (`not_admitted`) and `output_status_mapping`
+  (`recorded_y0`). Harness: the `outputs` scenario (`scripts/bench_outputs.py`,
+  cases O1-O9), and snapshot routes in the restoration planner.
 
 ### Changed
 
@@ -65,6 +81,14 @@
   from the request, so one candidate that inverts a terminal and assigns it a
   function is refused without a mapping on unconnected terminals too (the
   application already refused it).
+- Output polarity with UNKNOWN status mapping (wired bench 06): admitted for a
+  load stated with either level (`allowedLevels` 3); inactive-only and
+  active-only loads are still refused.
+- The `release` action is observed as long as a configured stop (2 s plus
+  margin, 50 ms polls). With output function 5 (brake) assigned, firmware
+  `0x0029` reports RELEASED about 1.34 s after the release, past the old
+  500 ms window, which ended in `observation_limit`. The write is never repeated.
+- `scripts/verify.py` checks the velocity parity test's app fixtures.
 - The input-filter tuning experiment admits `MEASURED_INPUT_FILTERS`
   {0, 1, 2, 3, 5, 10, 20, 50} from and to any value in the set (was 2/3);
   100 left the candidate set because it suppressed 200 ms pulses.

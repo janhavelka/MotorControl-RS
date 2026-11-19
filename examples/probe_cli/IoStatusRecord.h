@@ -25,6 +25,23 @@ constexpr RecordedInputMapping RECORDED_INPUT_MAPPINGS[] = {
                       MotorControlRS::ESS_RS::IoStatusMapping::AFTER_INVERSION,
                       MotorControlRS::ESS_RS::IoStatusMapping::AFTER_INVERSION}, 20261119},
 };
+/** Measured output status mapping (0x0009 against the 0x004B inversion) for one
+ * exact model and firmware, as RecordedInputMapping (same identity rule;
+ * `copyRecordedOutputMapping`). Index 0 is Y0, 1 is Y1. */
+struct RecordedOutputMapping {
+    uint16_t model, firmware;
+    MotorControlRS::ESS_RS::IoStatusMapping outputs[2];
+    uint32_t sourceId;
+};
+/** Wired bench 06, 19 November 2026 (docs/reports/2026-11-19_wired_bench_06_outputs.md):
+ * drive 4 Y0, model 0x4EEA, firmware 0x0029, function 9, polarity 1, 20 custom
+ * writes (O2): 0x0009 bit 0 read the inverted output (custom XOR polarity), and
+ * aux1 followed it; at polarity 0 it read the custom bit (O1). The status bit is
+ * the level after inversion. Only drive 4's Y0 is wired; Y1 was not measured. */
+constexpr RecordedOutputMapping RECORDED_OUTPUT_MAPPINGS[] = {
+    {0x4EEA, 0x0029, {MotorControlRS::ESS_RS::IoStatusMapping::AFTER_INVERSION,
+                      MotorControlRS::ESS_RS::IoStatusMapping::UNKNOWN}, 20261119},
+};
 /** Input-filter coefficients (0x0108) the standalone tuning experiment admits,
  * from and to any value in the set: the prompt 05 candidates with complete
  * delay and width results on drive 1 (wired bench 05, 19 November 2026). 100

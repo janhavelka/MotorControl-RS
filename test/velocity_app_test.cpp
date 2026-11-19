@@ -666,11 +666,119 @@ void parameterReadHumanTerminal() {
         assert(releaseOperation(id));
     }
 }
+// Wired bench 06 Implement 4: `velocity restore` writes the three JOG words
+// 0x001D..0x001F of an earlier checked velocity read of the same drive and
+// binding with no start, then reads them back.
+void typedReply(uint32_t id, const std::vector<uint8_t>& bytes) {
+    const auto token = view(id).typedRead->step;
+    for (unsigned i = 0; i < 25000 && !app->owner.txAccepted(findRecord(*app, id)->requestId); ++i) step();
+    assert(app->owner.txAccepted(findRecord(*app, id)->requestId));
+    scheduleReply(std::max(hardware.writeStarted + hardware.tx.size() * 87 + 1000, hardware.time + 1000), bytes);
+    for (unsigned i = 0; i < 25000 && view(id).pending && view(id).typedRead->step == token; ++i) step();
+}
+void restoreReads(uint16_t firstFunction = 0, uint16_t motion = 1, uint16_t speed = 0) {
+    writeResponseConfirmed = true;
+    command("@90 read config\n"); const uint32_t config = app->latestOperationId;
+    typedReply(config, registers(1, {0, 1000})); typedReply(config, registers(1, {0, 0, 0}));
+    typedReply(config, registers(1, {0, 0, 0})); typedReply(config, registers(1, {0, firstFunction, 0, 0, 0}));
+    typedReply(config, registers(1, {3, 4000})); pump();
+    assert(app->configuration.operationId == config && releaseOperation(config));
+    command("@91 read state\n"); const uint32_t state = app->latestOperationId;
+    typedReply(state, registers(1, {0, motion})); typedReply(state, registers(1, {0, 0}));
+    typedReply(state, registers(1, {0, 0, speed})); pump();
+    assert(releaseOperation(state));
+}
+uint32_t velocitySnapshot(uint16_t speed, uint16_t acceleration, uint16_t deceleration) {
+    const auto id = parameterRead(); parameterReply(id, registers(1, {speed, acceleration, deceleration}));
+    assert(app->velocityParameters.operationId == id && releaseOperation(id)); return id;
+}
+Probe::ParameterWriteView restoreView(uint32_t id) { Probe::ParameterWriteView v; assert(copyParameterWrite(id, v)); return v; }
+void serveRestore(uint32_t id, const std::vector<uint8_t>& response) {
+    const uint8_t phase = app->parameterWrite.phase;
+    for (unsigned i = 0; i < 25000 && !app->owner.txAccepted(app->parameterWrite.request); ++i) step();
+    assert(app->owner.txAccepted(app->parameterWrite.request));
+    scheduleReply(std::max(hardware.writeStarted + hardware.tx.size() * 87 + 1000, hardware.time + 1000), response);
+    for (unsigned i = 0; i < 25000 && restoreView(id).pending && app->parameterWrite.phase == phase; ++i) step();
+}
+const std::vector<uint8_t> VELOCITY_RESTORE_ACK = crc({1, 16, 0, 0x1D, 0, 3});
+void velocityRestoreRoutes() {
+    fresh(); restoreReads();
+    const auto snapshot = velocitySnapshot(120, 100, 100);
+    const auto later = velocitySnapshot(30, 200, 200); // As a velocity run leaves them.
+    unsigned writes = hardware.writes; uint32_t id = 77;
+    assert(!restoreVelocityParameters(later + 100, id) && id == 77);
+    assert(!restoreHomingParameters(snapshot, id) && id == 77); // Wrong kind of source.
+    assert(hardware.writes == writes);
+    assert(restoreVelocityParameters(snapshot, id) && axisReserved(*app, 1));
+    serveRestore(id, VELOCITY_RESTORE_ACK);
+    assert(hardware.writes == writes + 1 && hardware.tx == crc({1, 16, 0, 0x1D, 0, 3, 6, 0, 120, 0, 100, 0, 100}));
+    assert(!app->velocityParameters.operationId && !app->velocityPrerequisites.target.id);
+    serveRestore(id, registers(1, {120, 100, 100}));
+    assert(hardware.tx == crc({1, 3, 0, 0x1D, 0, 3}));
+    auto v = restoreView(id);
+    assert(!v.pending && v.ok && v.kind == Probe::ParameterWriteKind::VELOCITY_RESTORE && v.count == 3);
+    assert(v.readback[0] == 120 && !axisReserved(*app, 1) && hardware.writes == writes + 2);
+    // Readback mismatch.
+    restoreReads(); const auto again = velocitySnapshot(120, 100, 100);
+    assert(restoreVelocityParameters(again, id));
+    serveRestore(id, VELOCITY_RESTORE_ACK); serveRestore(id, registers(1, {120, 100, 99}));
+    v = restoreView(id); assert(!v.ok && !std::strcmp(v.error, "readback_mismatch") && !v.unsettled);
+    // Lost acknowledgement: unknown, not resent, a velocity read settles it.
+    restoreReads(); const auto lost = velocitySnapshot(120, 100, 100);
+    writes = hardware.writes;
+    assert(restoreVelocityParameters(lost, id));
+    for (unsigned i = 0; i < 25000 && !app->owner.txAccepted(app->parameterWrite.request); ++i) step();
+    for (unsigned i = 0; i < 200000 && restoreView(id).pending; ++i) step();
+    v = restoreView(id);
+    assert(v.unsettled && v.execution == ActionExecution::UNKNOWN && hardware.writes == writes + 1 && !axisReserved(*app, 1));
+    uint32_t refused = 0; assert(!restoreVelocityParameters(lost, refused) && !refused);
+    pump(5000); assert(hardware.writes == writes + 1);
+    uint32_t recovery = 0; assert(recover(app, 0, recovery) == Probe::Action::OK);
+    for (unsigned i = 0; i < 25000 && view(recovery).pending; ++i) step();
+    restoreReads(); const auto settled = velocitySnapshot(120, 100, 100);
+    assert(!app->parameterWrite.view.unsettled && !axisReserved(*app, 1));
+    assert(restoreVelocityParameters(settled, id));
+    serveRestore(id, VELOCITY_RESTORE_ACK); serveRestore(id, registers(1, {120, 100, 100}));
+    assert(restoreView(id).ok);
+    // Moving, fast feedback, another drive: refused before TX.
+    restoreReads(0, 1 | 4); const auto moving = velocitySnapshot(120, 100, 100);
+    writes = hardware.writes; id = 77;
+    assert(!restoreVelocityParameters(moving, id) && id == 77);
+    restoreReads(0, 1, 7); assert(!restoreVelocityParameters(moving, id) && id == 77 && hardware.writes == writes + 8);
+    command("@95 useaddr 2\n"); writes = hardware.writes;
+    assert(!restoreVelocityParameters(moving, id) && id == 77 && hardware.writes == writes);
+    // JOG (9) or speed (8) inputs refuse without a CONFIGURE record that inhibits them.
+    for (const uint16_t function : {8, 9, 10}) {
+        fresh(); restoreReads(function); const auto jog = velocitySnapshot(120, 100, 100);
+        writes = hardware.writes; id = 77;
+        const auto status = restoreVelocityParameters(jog, id);
+        assert(!status && status.detail == static_cast<int32_t>(Probe::Action::QUALIFICATION_REQUIRED) && id == 77);
+        assert(hardware.writes == writes);
+    }
+    fresh(); restoreReads(11); const auto homeInput = velocitySnapshot(120, 100, 100);
+    assert(restoreVelocityParameters(homeInput, id)); // Function 11 does not use the JOG words.
+}
+// Actual replies from the restore route, for the host parser's parity check.
+void emitRestoreReplies() {
+    const auto emit = [](const std::string& line) {
+        command(line + "\n"); pump(); std::fwrite(Serial.output.data(), 1, Serial.output.size(), stdout);
+    };
+    fresh(); restoreReads();
+    emit("@870 velocity restore inspect");
+    const auto snapshot = velocitySnapshot(120, 100, 100);
+    emit("@871 velocity restore " + std::to_string(snapshot));
+    const auto id = app->parameterWrite.view.operationId;
+    serveRestore(id, VELOCITY_RESTORE_ACK); serveRestore(id, registers(1, {120, 100, 100}));
+    emit("@872 velocity restore inspect");
+    restoreReads(0, 1 | 4); const auto moving = velocitySnapshot(120, 100, 100);
+    emit("@873 velocity restore " + std::to_string(moving));
+}
 } // namespace
 int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--emit-recovery-result") {
         ownedStopBeforeTxRetainsSettlement(true); return 0;
     }
+    if (argc == 2 && std::string(argv[1]) == "--emit-restore-replies") { emitRestoreReplies(); return 0; }
     parameterReadApplicationPath();
     parameterReadQualificationAndHistoricalResults();
     parameterReadConsoleAndCapacity();
@@ -687,4 +795,5 @@ int main(int argc, char** argv) {
     lostOwnedStopNeverReplays();
     ownedStopBeforeTxRetainsSettlement();
     ownedStopRecoveryFailureAndCancellation();
+    velocityRestoreRoutes();
 }

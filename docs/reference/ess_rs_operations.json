@@ -930,6 +930,45 @@
       ]
     },
     {
+      "id": "velocity_parameters_restore",
+      "kind": "WRITE",
+      "records": [
+        "JOG_SPEED",
+        "JOG_ACCELERATION_TIME",
+        "JOG_DECELERATION_TIME"
+      ],
+      "cli_commands": [
+        "velocity restore SNAPSHOT_ID"
+      ],
+      "native": {
+        "state": "PASS",
+        "evidence": [
+          "test/velocity_app_test.cpp",
+          "test/velocity_console_parity_test.py",
+          "test/bench_records_test.py"
+        ]
+      },
+      "hardware": {
+        "state": "PASS",
+        "evidence": [
+          "docs/reports/2026-11-19_wired_bench_06_outputs.md"
+        ],
+        "reason": "Drive 4, 19 November 2026 (image B): snapshot [120,100,100], a 30 rpm 200 ms velocity run left [30,100,100], the restore wrote [120,100,100] through 0x001D/3 and read it back."
+      },
+      "reason": "Application route (restoreVelocityParameters): the exact three JOG words of an earlier checked velocity read of the same drive and binding through the reviewed FC10 0x001D/3 window with no start, then one FC03 readback; speed, JOG and speed-movement inputs (8-10) refuse unless inhibited; same reservation and no-replay rules as the home restore.",
+      "api": {
+        "header": "include/MotorControlRS/profiles/ess_rs/Codec.h",
+        "symbols": [
+          "buildWriteMultipleRegisters",
+          "parseWriteMultipleRegisters",
+          "buildReadRegisters",
+          "parseRegisters"
+        ]
+      },
+      "implementation": "IMPLEMENTED",
+      "cli": "REACHABLE"
+    },
+    {
       "api": {
         "header": "include/MotorControlRS/profiles/ess_rs/Velocity.h",
         "symbols": [
@@ -1191,6 +1230,46 @@
       ]
     },
     {
+      "id": "home_parameters_restore",
+      "kind": "WRITE",
+      "records": [
+        "HOMING_METHOD",
+        "HOMING_SPEED",
+        "HOMING_QUERY_SPEED",
+        "HOMING_RAMP_TIME"
+      ],
+      "cli_commands": [
+        "home restore SNAPSHOT_ID"
+      ],
+      "native": {
+        "state": "PASS",
+        "evidence": [
+          "test/home_app_test.cpp",
+          "test/home_console_parity_test.py",
+          "test/bench_records_test.py"
+        ]
+      },
+      "hardware": {
+        "state": "PASS",
+        "evidence": [
+          "docs/reports/2026-11-19_wired_bench_06_outputs.md"
+        ],
+        "reason": "Drive 4, 19 November 2026 (image B): after ten home 33 runs staged [33,60,30,100,0,0], the restore wrote the pre-run snapshot [35,60,30,100,0,0] through 0x0031/6 and read it back. The baseline method/rates [24,120,60,100] were not restored because no snapshot of them existed (left by an earlier run, RAM). Offset words 0/0 only."
+      },
+      "reason": "Application route (restoreHomingParameters, examples/probe_cli ParameterWriteApp.h): the exact six words of an earlier checked home read of the same drive, binding and host tuple (the first read of the binding is kept), D7 raw offset included, through the reviewed FC10 0x0031/6 window with no start, then one FC03 readback. Needs fresh stopped, alarm-free state and no home-enable input unless inhibited; reserved until the readback; an unknown write refuses the next restore until a home read; never resent. No offset sign, order or scale is resolved: the offset words are written back raw (D7), so this route gives HOMING_OFFSET no write credit; its typed write stays with D10.",
+      "api": {
+        "header": "include/MotorControlRS/profiles/ess_rs/Codec.h",
+        "symbols": [
+          "buildWriteMultipleRegisters",
+          "parseWriteMultipleRegisters",
+          "buildReadRegisters",
+          "parseRegisters"
+        ]
+      },
+      "implementation": "IMPLEMENTED",
+      "cli": "REACHABLE"
+    },
+    {
       "id": "home_zero_offset",
       "kind": "WRITE",
       "records": [
@@ -1394,10 +1473,10 @@
       "native": {
         "state": "PASS",
         "evidence": [
-          "test/io_test.cpp",
           "test/io_app_test.cpp",
-          "test/probe_console_test.cpp",
-          "test/io_qualification_app_test.cpp"
+          "test/io_qualification_app_test.cpp",
+          "test/io_test.cpp",
+          "test/probe_console_test.cpp"
         ]
       },
       "hardware": {
@@ -1408,9 +1487,10 @@
           "docs/reports/2026-11-18_wired_bench_01_baseline.md",
           "docs/reports/2026-11-18_wired_bench_02_fixture_wiring.md",
           "docs/reports/2026-11-19_wired_bench_04_harness.md",
-          "docs/reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md"
+          "docs/reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md",
+          "docs/reports/2026-11-19_wired_bench_06_outputs.md"
         ],
-        "reason": "Thirteen explicit passive/unloaded settings updates and exact restoration PASS as stored-register evidence. Full assignment/physical-function qualification NOT_RUN; checked FC06 source/ACK remains unconfirmed, matching FC03 readback settles only stored values. On 16 November 2026 the M04 round trips (64 updates each, confirmed FC06 replies and full readback, exact restoration) also passed on drives 2 and 4; physical function effects stay NOT_RUN. On 18 November 2026 (wired bench 02) drive 1's board-declared connected X3 refused function 16 without ASSIGN facts before TX, then took 0 -> 16 -> 0 with facts (confirmed replies, readback); drive 4's board-declared Y0 took function 9 and custom 1/0 with one inverted aux1 edge per custom write. Stored-value and controller-timestamped evidence only; function 16 had no observable effect to test. On 19 November 2026 (wired bench 04) the harness restore route wrote drive 4 Y0 0 -> 9 -> 0 and drive 2 X3 0 -> 7 -> 0 with stated ASSIGN facts, each read back; with X3 = 7 the shared-output interlock refused mosfet2 before any ON. Stored-value evidence only. Wired bench 05 (19 November 2026): 81 connected-terminal writes on drives 1, 2, 4 (X0-X3 to function 0, polarity 1 and back at function 0 with mapping unknown, PIN 14+t, polarity with the measured mapping, power-up functions), each confirmed and read back, then drive 1 X3 17 with polarity 8 admitted only with the recorded mapping. Stored-value and drive-reported status evidence; no input function's drive effect."
+        "reason": "Thirteen explicit passive/unloaded settings updates and exact restoration PASS as stored-register evidence. Full assignment/physical-function qualification NOT_RUN; checked FC06 source/ACK remains unconfirmed, matching FC03 readback settles only stored values. On 16 November 2026 the M04 round trips (64 updates each, confirmed FC06 replies and full readback, exact restoration) also passed on drives 2 and 4; physical function effects stay NOT_RUN. On 18 November 2026 (wired bench 02) drive 1's board-declared connected X3 refused function 16 without ASSIGN facts before TX, then took 0 -> 16 -> 0 with facts (confirmed replies, readback); drive 4's board-declared Y0 took function 9 and custom 1/0 with one inverted aux1 edge per custom write. Stored-value and controller-timestamped evidence only; function 16 had no observable effect to test. On 19 November 2026 (wired bench 04) the harness restore route wrote drive 4 Y0 0 -> 9 -> 0 and drive 2 X3 0 -> 7 -> 0 with stated ASSIGN facts, each read back; with X3 = 7 the shared-output interlock refused mosfet2 before any ON. Stored-value evidence only. Wired bench 05 (19 November 2026): 81 connected-terminal writes on drives 1, 2, 4 (X0-X3 to function 0, polarity 1 and back at function 0 with mapping unknown, PIN 14+t, polarity with the measured mapping, power-up functions), each confirmed and read back, then drive 1 X3 17 with polarity 8 admitted only with the recorded mapping. Stored-value and drive-reported status evidence; no input function's drive effect. Wired bench 06 (19 November 2026): drive 4 Y0 functions 9, 0, 2, 4, 3, 5 and 1 and output polarity written through the ordinary route with stated facts (load indicator, levels either; the polarity change with mapping unknown is admitted for an either-level load only), each confirmed and read back, every one restored. Y0 output effects measured against aux1 and drive status (O1-O9: custom, polarity, running, arrival, homing complete, brake, alarm); the 0x0009 mapping is recorded (after inversion) for 0x4EEA/0x0029 Y0. Inputs and Y1 output effects stay unmeasured."
       },
       "reason": "Per-terminal exact commissioning facts admit inputs 0-17, outputs 0-5/9-10 and canonical custom outputs. Every FC06 intermediate is checked; connected terminals require confirmed replies. Source-qualified status/polarity mapping and declared load limits stay explicit; no replay or automatic rollback. Output 11/cross-mapping, startup and physical effects remain unresolved or untested. A no-function inversion (previous and final function 0) is admitted with UNKNOWN mapping on any terminal; the recorded mapping (model 0x4EEA, firmware 0x0029: after inversion) admits other polarity changes with a fresh identity.",
       "choices": [
@@ -1476,10 +1556,12 @@
       },
       "hardware": {
         "state": "NOT_RUN",
-        "evidence": [],
-        "reason": "Value11 mapping to two ESS terminals unresolved; read preserves raw, assignment rejected."
+        "evidence": [
+          "docs/reports/2026-11-19_wired_bench_06_outputs.md"
+        ],
+        "reason": "Production assignment stays refused. Wired bench 06 D9 experiment (image A only, removed afterwards): on drive 4 Y0 of 0x4EEA/0x0029 function 11 followed experimental 0x004F bit 2 (two runs) and function 10 followed bit 1; the ledger records the classes. No production route uses them; Y1 and other models are not measured."
       },
-      "reason": "Listed numeric enum is not sufficient for a resolved custom2 output mapping. No invented third ESS output."
+      "reason": "Listed numeric enum; the measured Y0 mapping (function 11 follows 0x004F bit 2 on 0x4EEA/0x0029) is a ledger record, not production admission. No invented third ESS output."
     },
     {
       "id": "stored_position_read",

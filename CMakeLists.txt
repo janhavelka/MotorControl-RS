@@ -194,6 +194,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 ${CMAKE_CXX_COMPILER} ${CMAKE_CXX_COMPILER_ID})
             add_test(NAME bench_scenarios COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/bench_scenarios_test.py)
             add_test(NAME bench_records COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/bench_records_test.py)
+            add_test(NAME bench_outputs COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/bench_outputs_test.py)
             add_test(NAME bench_stress COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/bench_stress_test.py)
             add_test(NAME motion_campaign COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/motion_campaign_test.py)
             add_test(NAME communication_harness COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/communication_harness_test.py)
@@ -215,7 +216,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                   --group-member-fixtures $<TARGET_FILE:group_app_test> $<TARGET_FILE:idf_group_app_test>)
             add_test(NAME velocity_console_parity COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/test/velocity_console_parity_test.py
-                $<TARGET_FILE:probe_console_test>)
+                $<TARGET_FILE:probe_console_test> $<TARGET_FILE:velocity_app_test> $<TARGET_FILE:idf_velocity_app_test>)
             add_test(NAME io_transport COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/test/io_transport_test.py)
             add_test(NAME segment_console_parity COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/segment_console_parity_test.py $<TARGET_FILE:probe_console_test>)

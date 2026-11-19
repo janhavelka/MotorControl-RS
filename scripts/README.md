@@ -72,7 +72,8 @@ there. See the [dependency and delivery handoff](../docs/archive/reports/2026-10
 | `bench_motion.py` | Explicit finite position/action/stop phases with retained evidence and cleanup |
 | `bench_repeat.py` | Bounded comparison of full, verified and stored position setup policies |
 | `bench_session.py` | Shared session/evidence implementation imported by the campaign tools |
-| `bench_records.py` | Wired-bench records: fixture, shared-output interlock, run folders, `result.json`, run checker, baseline comparison/restoration, edge correlation; `check FOLDER` is offline |
+| `bench_records.py` | Wired-bench records: fixture, shared-output interlock, run folders, `result.json`, run checker, baseline comparison/restoration (snapshot routes for homing and JOG words), edge correlation; `check FOLDER` is offline |
+| `bench_outputs.py` | Wired bench 06 `outputs` scenario: drive 4 Y0 cases O1-O11, `aux1` edges against write TX/ACK/closure and state-sample brackets, set/clear events against `0x0007` |
 
 `bench_stress.py` is a separate, bench-specific campaign tool. It has its own
 console parser and is not covered by the strict parser claim above. It checks
@@ -114,10 +115,12 @@ stage. Refusals the records decide carry `reason`, `purpose`, `read_first` and
 
 ### Wired-bench run folders
 
-`bench_scenarios.py` has seven wired-bench scenarios: `input-map`, `y0-map`,
-`baseline-compare`, `baseline-capture` and `restore` (prompt 04), and
+`bench_scenarios.py` has eight wired-bench scenarios: `input-map`, `y0-map`,
+`baseline-compare`, `baseline-capture` and `restore` (prompt 04),
 `status-mapping` and `input-timing` (prompt 05,
-[guide](../docs/bench_scenarios.md#status-mapping-and-input-timing-wired-bench-05)).
+[guide](../docs/bench_scenarios.md#status-mapping-and-input-timing-wired-bench-05)),
+and `outputs` (prompt 06, one `--case O1`..`O9` per run,
+[guide](../docs/bench_scenarios.md#outputs-wired-bench-06)).
 Each needs
 `--run-dir build/bench/YYYY-MM-DD_wbNN_slug` (created exclusively; an existing
 folder fails before the port opens) and `--firmware IMAGE`; scenarios that

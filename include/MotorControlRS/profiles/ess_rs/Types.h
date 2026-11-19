@@ -251,13 +251,13 @@ enum class OutputFunction : uint16_t {
     HOMING_COMPLETE = 3,
     /** Valid level when correct position reached. */
     IN_POSITION = 4,
-    /** Valid when motor locked; invalid when released. */
+    /** Valid when motor locked; invalid when released. With it assigned, 0x4EEA/0x0029 reports RELEASED about 1.34 s after a release (measured). */
     BRAKE = 5,
     /** Custom output controlled through 0x004F. */
     CUSTOM_0 = 9,
-    /** Custom output controlled through 0x004F. */
+    /** Custom output controlled through 0x004F; on Y0 of 0x4EEA/0x0029 it follows bit 1 (measured). */
     CUSTOM_1 = 10,
-    /** Listed choice; mapping to only two ESS outputs unresolved. */
+    /** Listed choice, not admitted; on Y0 of 0x4EEA/0x0029 it follows 0x004F bit 2 (measured, D9 experiment). */
     CUSTOM_2 = 11,
 };
 

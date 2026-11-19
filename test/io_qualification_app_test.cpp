@@ -19,8 +19,8 @@
 
 namespace {
 using namespace MotorControlRS;
-uint16_t registers[3][0x140];
-unsigned runningReads[3], served;
+uint16_t registers[5][0x140]; // Drives 1, 2 and 4 (wired bench 06 D9).
+unsigned runningReads[5], served;
 bool loseWriteReply;
 std::vector<std::vector<uint8_t>> frames;
 
@@ -35,7 +35,7 @@ void serve() {
     if (served == hardware.writes) return;
     served = hardware.writes;
     const auto frame = hardware.tx; frames.push_back(frame);
-    assert(frame.size() >= 8 && frame[0] >= 1 && frame[0] <= 2);
+    assert(frame.size() >= 8 && frame[0] >= 1 && frame[0] <= 4 && frame[0] != 3);
     const uint8_t address = frame[0]; const uint16_t first = word(frame,2);
     std::vector<uint8_t> response;
     if (frame[1] == 3) {
@@ -75,7 +75,7 @@ void fresh(bool confirmed = true, uint32_t ageMs = 0) {
     resetHardware(); resetUsbConsole(); platformReady = false;
     std::memset(registers,0,sizeof(registers)); std::memset(runningReads,0,sizeof(runningReads));
     frames.clear(); served = 0; loseWriteReply = false;
-    for (uint8_t address = 1; address <= 2; ++address) {
+    for (uint8_t address : {uint8_t(1), uint8_t(2), uint8_t(4)}) {
         auto& r = registers[address];
         r[0] = 0x4EEA; r[1] = 0x29; r[2] = address; r[7] = 1;
         r[0x11] = 1000; r[0x13] = address; r[0x19] = 1;
@@ -383,6 +383,60 @@ void recordedMapping() {
     assert(text.find("\"result\":\"done\"") != std::string::npos && valid(0,IoPurpose::FINITE_MOVE,2));
     assert(clearGroup()); assert(!copyRecordedInputMapping(2,0,mapping,true));
 }
+// Wired bench 06 Implement 6: the recorded Y0 output status mapping (O2:
+// after inversion). `recorded` and the stated-mapping refusals work as for
+// inputs; with the record a predicted polarity change admits a one-level load.
+ESS::DriverRequest outputPolarityOnly(uint16_t value) {
+    ESS::DriverRequest r; r.group = ESS::DriverGroup::IO;
+    r.fields = static_cast<uint32_t>(ESS::DriverField::OUTPUT_POLARITY); r.outputPolarity = value;
+    r.configurationGeneration = app->axis.generation; return r;
+}
+void recordedOutputMapping() {
+    const auto& record = RECORDED_OUTPUT_MAPPINGS[0];
+    assert(sizeof(RECORDED_OUTPUT_MAPPINGS) / sizeof(RECORDED_OUTPUT_MAPPINGS[0]) == 1);
+    assert(record.model == 0x4EEA && record.firmware == 0x0029 && record.sourceId == 20261119);
+    assert(record.outputs[0] == ESS::IoStatusMapping::AFTER_INVERSION && record.outputs[1] == ESS::IoStatusMapping::UNKNOWN);
+    fresh(); wiring(4,InputWiring::CONNECTED); registers[1][0x4C] = 9; ioBaseline();
+    auto mapping = ESS::IoStatusMapping::UNKNOWN;
+    assert(!copyRecordedOutputMapping(1,0,mapping) && mapping == ESS::IoStatusMapping::UNKNOWN); // No identity read.
+    auto before = frames.size();
+    auto text = consoleReply("@70 io qualification install 1 y0 9 1 0 assign recorded control active");
+    assert(text.find("\"result\":\"mapping_not_recorded\"") != std::string::npos &&
+           text.find("\"read_first\":\"read identity\"") != std::string::npos && frames.size() == before);
+    // Without a mapping only an either-level load admits the inversion (Implement 1).
+    text = consoleReply("@71 io qualification install 1 y0 9 1 0 assign unknown control active");
+    assert(text.find("\"result\":\"done\"") != std::string::npos);
+    refused(outputPolarityOnly(1));
+    read(ESS::ReadKind::IDENTITY);
+    assert(copyRecordedOutputMapping(1,0,mapping) && mapping == ESS::IoStatusMapping::AFTER_INVERSION);
+    assert(!copyRecordedOutputMapping(1,1,mapping) && !copyRecordedOutputMapping(2,0,mapping)); // Y1 none; another target.
+    assert(revokeIoQualification(1,4,IoPurpose::ASSIGN));
+    text = consoleReply("@72 io qualification install 1 y0 9 1 0 assign before control active");
+    assert(text.find("\"result\":\"mapping_contradicts_record\"") != std::string::npos && !valid(4));
+    auto q = facts(4); q.function = 9; q.polarity = 1; q.output.load = ESS::IoOutputLoad::CONTROL; q.output.allowedLevels = 2;
+    q.output.statusMapping = ESS::IoStatusMapping::BEFORE_INVERSION;
+    assert(!installIoQualification(q) && !valid(4));
+    // With the record: custom 0 inverted is active at every write, so an active-only load admits it.
+    text = consoleReply("@73 io qualification install 1 y0 9 1 0 assign recorded control active");
+    assert(text.find("\"result\":\"done\"") != std::string::npos && valid(4));
+    IoQualification installed; bool current = false;
+    assert(copyIoQualification(1,4,IoPurpose::ASSIGN,installed,current) && current &&
+           installed.output.statusMapping == ESS::IoStatusMapping::AFTER_INVERSION);
+    uint32_t id = 0; assert(update(outputPolarityOnly(1),id));
+    until([&] { return !result(id).pending; });
+    assert(result(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS && registers[1][0x4B] == 1);
+    // An inactive-only load stays refused: the predicted level is active.
+    fresh(); wiring(4,InputWiring::CONNECTED); registers[1][0x4C] = 9; ioBaseline(); read(ESS::ReadKind::IDENTITY);
+    text = consoleReply("@74 io qualification install 1 y0 9 1 0 assign recorded control inactive");
+    assert(text.find("\"result\":\"done\"") != std::string::npos);
+    refused(outputPolarityOnly(1));
+    // Another firmware has no record.
+    fresh(); wiring(4,InputWiring::CONNECTED); registers[1][1] = 0x2A; registers[1][0x4C] = 9; ioBaseline();
+    read(ESS::ReadKind::IDENTITY);
+    assert(!copyRecordedOutputMapping(1,0,mapping));
+    text = consoleReply("@75 io qualification install 1 y0 9 1 0 assign recorded control active");
+    assert(text.find("\"result\":\"mapping_not_recorded\"") != std::string::npos && text.find("read_first") == std::string::npos);
+}
 void connectedOutputsAndReplySource() {
     for (bool confirmed : {false,true}) {
         fresh(confirmed); wiring(4,InputWiring::CONNECTED); ioBaseline();
@@ -649,6 +703,62 @@ void finiteMoveMatrix() {
             Probe::GroupResult done; assert(copyGroupResult(id,done) && done.ok);
         }
 }
+// Wired bench 06 Implement 3: the D9 experiment ran on image A (Y0 = 10 followed
+// custom bit 1, Y0 = 11 followed experimental bit 2; ledger notes) and its
+// admission is removed. Production admission is unchanged: function 11, cross-
+// mapped custom bits and reserved custom bits stay refused before any frame.
+void readAt(uint8_t address, ESS::ReadKind kind) {
+    uint32_t id = 0; assert(host(app).startTypedRead(app,1,address,kind,id) == Probe::Action::OK);
+    findRecord(*app,id)->programmaticRead = true; // Released here, never reported.
+    until([&] { return !result(id).pending; }); assert(result(id).typedRead->state == ReadState::SUCCEEDED); idle();
+    assert(releaseOperation(id));
+}
+void drive4Reads() {
+    readAt(4,ESS::ReadKind::CONFIG);
+    uint32_t id = 0; assert(submitDriverRead(4,ESS::DriverGroup::IO,id));
+    until([&] { return !result(id).pending; }); assert(result(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS);
+    idle(); assert(releaseOperation(id)); readAt(4,ESS::ReadKind::STATE);
+}
+IoQualification y0Facts(uint16_t function, uint16_t custom) {
+    IoQualification q; assert(inspectIoQualification(4,4,IoPurpose::ASSIGN,q));
+    q.output.supplied = true; q.output.load = ESS::IoOutputLoad::INDICATOR; q.output.allowedLevels = 3;
+    q.qualifiedUs = hardware.time; q.function = function; q.custom = custom;
+    return q;
+}
+void consoleLine(const std::string& text) {
+    Serial.input = text; Serial.output.clear();
+    for (unsigned i = 0; i < 2000 && !Serial.input.empty(); ++i) step();
+    for (unsigned i = 0; i < 200; ++i) step();
+}
+void experimentRemoved() {
+    fresh(); assert(host(app).selectTarget(app,4) == Probe::Action::OK);
+    wiring(4,InputWiring::CONNECTED); wiring(5,InputWiring::UNCONNECTED); drive4Reads();
+    auto before = frames.size();
+    consoleLine("@880 io experiment d9 y0 11 4 indicator either\n");
+    assert(Serial.output.find("\"ok\":false") != std::string::npos && frames.size() == before);
+    consoleLine("@881 io experiment inspect\n");
+    assert(Serial.output.find("\"ok\":false") != std::string::npos && frames.size() == before);
+    ESS::DriverRequest eleven;
+    assert(ESS::prepareOutputFunction(eleven,0,static_cast<ESS::OutputFunction>(11)).code == Err::UNSUPPORTED);
+    assert(!installIoQualification(y0Facts(11,0))); // Function 11 facts stay refused.
+    // Y0 = 10 with custom 0 is an ordinary assignment; every set custom bit is refused.
+    assert(installIoQualification(y0Facts(10,0)));
+    ESS::DriverRequest y0; assert(ESS::prepareOutputFunction(y0,0,ESS::OutputFunction::CUSTOM_1));
+    y0.configurationGeneration = app->axis.generation;
+    uint32_t id = 0; assert(submitDriverSettings(4,y0,id));
+    until([&] { return !result(id).pending; }); idle();
+    assert(result(id).driverContext->outcome == ESS::DriverOutcome::SUCCESS && registers[4][0x4C] == 10);
+    assert(releaseOperation(id));
+    for (uint16_t custom : {1, 2, 3, 4}) {
+        drive4Reads(); installIoQualification(y0Facts(10,custom & 1));
+        ESS::DriverRequest r; r.group = ESS::DriverGroup::IO; r.fields = static_cast<uint32_t>(ESS::DriverField::CUSTOM_OUTPUT);
+        r.customOutput = custom; r.configurationGeneration = app->axis.generation;
+        before = frames.size(); uint32_t refused = 778;
+        assert(!submitDriverSettings(4,r,refused) && refused == 778);
+        for (unsigned i = 0; i < 100; ++i) step();
+        assert(frames.size() == before && registers[4][0x4F] == 0);
+    }
+}
 } // namespace
 int main() {
     assignmentMatrix(); publicDriverRoutes(); exactFactsAndProtection(); polarityAndInhibition();
@@ -656,6 +766,6 @@ int main() {
     unchangedPolarityReplySource();
     lifetimeAndUncertainty(); revokeAfterFirstWrite();
     queuedStageExpiry(); settingsPurposePolicies(); independentQualificationAges();
-    groupQualificationLifetime(); finiteMoveMatrix(); recordedMapping();
+    groupQualificationLifetime(); finiteMoveMatrix(); recordedMapping(); recordedOutputMapping(); experimentRemoved();
     if (app) { app->~App(); std::free(app); app = nullptr; }
 }

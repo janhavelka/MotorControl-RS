@@ -104,6 +104,41 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+On 19 November [wired bench 06](reports/2026-11-19_wired_bench_06_outputs.md)
+flashed three Arduino `bench_s3_load_timer` images. All were built from base
+`05c02d4` plus the uncommitted prompt 06 tree. Each flash followed a passing
+`before_flash_check`, and four regions were hash-verified each time.
+
+- The measurement image with the D9 experiment:
+  `BDF4055E4F8D93E0AB2AB26CD178B427025C3B4C5B38470971A77E149F102E66`.
+- The image with the release fix, the pinned snapshot and the experiment
+  removed: `7487D9D2AB294FC380A718B03AF20AE91000E3551B053F4D3535F1673CE99E76`.
+- Last, the final-tree image
+  `EC564FA888B5AFD8A78D2308058B3CAA7C68AC1A97AD62ED2DC0F53BCD991B92`
+  (firmware-source diff
+  `E8E5206C3DB8078C895F06AAD57FA747B3C57817269751EEE2F82C63B1982A23`, plus the
+  untracked `ParameterWrite.h` `8498DCCC...45945C20` and `ParameterWriteApp.h`
+  `FC819A57...B8954EF5`).
+
+The final tree's native ESP-IDF 5.5.5 image
+(`7B7B03EECA16E188DBCE07012D8AC31A3F988291ABEC3A0DF5F6635BC41954E6`) was built,
+not flashed. Ending state:
+
+- **Board:** prompt 06 final image, all bench outputs off, `aux1` active (Y0
+  off), drive 1 selected with board declarations, COM13 closed.
+- **Drives 1/2/4:** enabled, stopped, alarm-free, speed 0. Position words:
+  drive 1 [0, 7750], drive 2 [0, 7524], drive 4 [65535, 63490] (drive 4 moved
+  and homed in prompt 06). I/O `[0,1,2,3,0,0,0,0,0]`, deviation threshold
+  4000, input filter 2.
+- **Settings:** `baseline-compare`: 570 of 573 fields equal. Drive 4's homing
+  method/search/return words read 35/60/30 against the baseline 24/120/60.
+  These are RAM values left by an O7 run whose restore had no snapshot; ramp
+  and offset are equal.
+- **Owner action pending:** power-cycle drive 4, then run `baseline-compare`.
+  Nothing was saved, so the power-up words are expected to be the stored
+  24/120/60, but that is not verified. Until then, read the homing words
+  before relying on them; every `home` writes its own words.
+
 On 19 November [wired bench 05](reports/2026-11-19_wired_bench_05_status_mapping_input_timing.md)
 flashed three Arduino `bench_s3_load_timer` images built from base `852ea51` plus
 the uncommitted prompt 05 tree, each after a passing `before_flash_check`, four

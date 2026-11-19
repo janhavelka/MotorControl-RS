@@ -39,3 +39,12 @@ for line in output.splitlines():
     seen_reads.add(name)
 assert seen_reads == expected_reads, (seen_reads, expected_reads)
 print(f"PASS: {len(seen_reads)} actual core/console velocity-parameter read terminals accepted by Python")
+
+# Wired bench 06: actual `velocity restore` replies from both application frontends.
+from parameter_write_checks import check_parameter_write_replies
+assert len(sys.argv) == 4, "both real application frontends are required"
+restore_tokens = {i: (lambda r: (str(r["snapshot_id"]),)) for i in range(870, 874)}
+for executable in sys.argv[2:]:
+    restored = check_parameter_write_replies(executable, "--emit-restore-replies", "velocity-restore", restore_tokens,
+                                             ("empty", "none"))
+print(f"PASS: {restored} actual velocity restore replies accepted by Python, forged sessions refused")

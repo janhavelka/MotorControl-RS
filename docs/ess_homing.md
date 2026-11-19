@@ -564,6 +564,35 @@ run `read state` and `home read`, then `home qualification install` again; the h
 terminal report and each refusal's `read_first` say so. Installation does not stage
 anything, so a stored word changes only when that next home runs.
 
+### Restoring the homing words
+
+Every `home` writes its own six words (`0x0031/6`). To put back the words of an
+earlier checked read, use `home restore SNAPSHOT_ID [address]`; this route was
+added in [wired bench 06](reports/2026-11-19_wired_bench_06_outputs.md). The
+API is `restoreHomingParameters(snapshotId, id)` with `copyParameterWrite`.
+
+- `SNAPSHOT_ID` is the operation ID of a checked `home read` of the same drive,
+  binding and serial tuple.
+- The route writes those exact six words (D7: a raw nonzero offset included,
+  with no order, sign or scale implied) through the reviewed FC10 `0x0031/6`
+  window, with no start, then reads them back once with FC03.
+- It needs fresh state, stopped and alarm-free. A connected input with
+  function 11 (homing enable) refuses unless a CONFIGURE record states
+  triggers inhibited.
+- The axis stays reserved until the readback. A readback difference is
+  `readback_mismatch`.
+- A lost acknowledgement leaves the write `unknown`. It is never resent, and
+  the next restore is refused until a fresh `home read` settles it.
+- `home restore inspect` shows the session (`request`, `words`, `readback`,
+  `pending`, `unsettled`, `error`, evidence).
+- The application keeps 8 snapshots per binding. The first checked read stays
+  in slot 0, so a run's pre-run read survives later home reads. A controller
+  reset clears them.
+
+Measured on drive 4 (19 November 2026): ten `home 33` runs, then a restore of
+the pre-run words [35, 60, 30, 100, 0, 0], read back equal. The bench
+harness's restoration plan uses this route for `0x0031`-`0x0036`.
+
 The deadline is `ApplicationOptions::moveTimeoutMs` (30 s by default), as for moves,
 polling every 20 ms until RUNNING is reported and every 500 ms from the second poll
 after it. Sixty-four polls cover that deadline only if RUNNING arrives early; a search

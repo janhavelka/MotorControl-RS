@@ -16,6 +16,7 @@ import re
 import time
 
 import bench_motion as motion
+import bench_outputs as bench_out
 import bench_probe as probe
 import bench_records as records
 from bench_session import checked, run_recorded
@@ -37,6 +38,9 @@ FOLDER_SCENARIOS = {
     'input-timing': 'wired bench 05: one input-filter value on one drive (CONFIGURE path, read back), interlocked '
                     'mosfet2 pulses with back-to-back read state: delay intervals, width table, optional relay '
                     'against MOSFET; the filter restored from the baseline',
+    'outputs': 'wired bench 06: one Y0 case (--case O1..O11) on drive 4: Y0 set through the ordinary I/O route '
+               '(load indicator, levels either), the case stimulus with read-state polls, aux1 edges and debug '
+               'decoded traffic tabulated per COMMON Timing, restoration from the baseline',
 }
 
 SCENARIOS = {
@@ -90,6 +94,7 @@ def arguments(argv=None):
                         help='input-map: interlock read age bound, recorded in the scenario record')
     parser.add_argument('--cycles', type=int, default=5, help='y0-map: custom on/off cycles (1..20)')
     parser.add_argument('--phase-s', type=float, default=3.0, help='y0-map: phase length in seconds (0.5..10)')
+    parser.add_argument('--repetitions', type=int, help='outputs: timing repetitions of the case (default per case)')
     parser.add_argument('--change', nargs=3, metavar=('ADDRESS', 'KEY', 'VALUE'),
                         help='input-map/restore: one explicit case write through the ordinary setter, restored at the end')
     parser.add_argument('--assign-facts', nargs='+', action='append', metavar='TERMINAL FACT',
@@ -179,7 +184,8 @@ def arguments(argv=None):
                           (args.filter_value, ('input-timing',)), (args.widths, ('input-timing',)),
                           (args.compare_relay or None, ('input-timing',)),
                           (None if args.traffic == 'raw' else args.traffic, ('input-timing',)),
-                          (args.reason, ('baseline-capture',)), (args.prompt, ('baseline-capture',))):
+                          (args.reason, ('baseline-capture',)), (args.prompt, ('baseline-capture',)),
+                          (args.repetitions, ('outputs',))):
         if option is not None and args.scenario not in scopes:
             parser.error('scenario-specific arguments cannot enter another scenario')
     if args.scenario == 'settings' and args.input_facts == 'segment':
@@ -399,7 +405,7 @@ def _folder_arguments(parser, args):
         parser.error('wired-bench scenarios use the board declarations and choose their own debug mode')
     if args.image_level is not None and not re.fullmatch(r'[0-9]{2}', args.image_level):
         parser.error('--image-level needs a two-digit prompt')
-    if args.scenario in ('restore', 'y0-map', 'status-mapping', 'input-timing') or \
+    if args.scenario in ('restore', 'y0-map', 'status-mapping', 'input-timing', 'outputs') or \
             (args.scenario == 'input-map' and args.change):
         if args.image_level is None:
             parser.error('a scenario that writes needs --image-level (the prompt whose routes the image has)')
@@ -439,6 +445,20 @@ def _folder_arguments(parser, args):
         if args.terminals is not None and len(set(args.terminals)) != len(args.terminals):
             parser.error('--terminals names distinct terminals')
         args.mapping_cases = args.mapping_cases or 'map'
+    if args.scenario == 'outputs':
+        if args.case not in bench_out.CASES:
+            parser.error('outputs needs --case O1..O11 (prompt 06 case table)')
+        if bench_out.CASES[args.case].get('removed'):
+            parser.error('%s is a D9 experiment case: it ran on the experiment image of wired bench 06; the '
+                         'experiment admission was removed with the ledger record (Implement 3)' % args.case)
+        if args.address != records.FIXTURE['y0_owner']:
+            parser.error('outputs runs on the Y0 owner, drive %d (--address)' % records.FIXTURE['y0_owner'])
+        if args.image_level is None or int(args.image_level) < 6:
+            parser.error('outputs needs --image-level 06 or later (restore routes, either-level polarity, D9)')
+        if args.repetitions is None:
+            args.repetitions = bench_out.CASES[args.case]['repetitions']
+        if not 0 <= args.repetitions <= 20:
+            parser.error('outputs needs 0..20 repetitions')
     if args.scenario == 'input-timing':
         args.widths = list(args.widths or TIMING_WIDTHS_MS)
         if args.image_level is None or int(args.image_level) < 5:
@@ -485,6 +505,8 @@ def _facts(args):
         return {str(args.address): {'configure': {}}}
     if args.scenario == 'y0-map':
         return {str(records.FIXTURE['y0_owner']): {'assign': {'y0': ['indicator', 'either']}}}
+    if args.scenario == 'outputs':
+        return {str(records.FIXTURE['y0_owner']): {'assign': {'y0': ['indicator', 'either']}, 'configure': {}}}
     if args.change is None:
         return {}
     stated = {}
@@ -525,13 +547,27 @@ def folder_plan(args, baseline):
         write_list = _mapping_write_list(args)
     if name == 'input-timing' and args.filter_value != 2:
         write_list = [{'drive': args.address, 'key': 'filters.input-filter', 'index': None, 'candidate': args.filter_value}]
-    if write_list:
+    experiment = None
+    if name == 'outputs':
+        write_list, plan, cases, commands, bounds, expected, experiment = _outputs_plan(args, baseline, facts)
+        for entry in write_list:
+            steps, refusal = records.plan_entry(baseline, entry, args.image_level, facts, restore=False)
+            if refusal and (entry['key'].startswith('profile.') or records.snapshot_route(entry['key'])):
+                refusal = None  # Written by the case stimulus (move or home staging), not by a setter.
+            forward.append({'entry': entry, 'steps': steps, 'refusal': refusal})
+        write_list_done = True
+    else:
+        write_list_done = False
+    if write_list and not write_list_done:
         plan = records.restoration_plan(baseline, write_list, args.image_level, facts)
         for entry in write_list:
             steps, refusal = records.plan_entry(baseline, entry, args.image_level, facts, restore=False)
             forward.append({'entry': entry, 'steps': steps, 'refusal': refusal})
-    cases, commands, bounds, expected = [], [], {}, {}
-    if name == 'input-map':
+    if not write_list_done:
+        cases, commands, bounds, expected = [], [], {}, {}
+    if name == 'outputs':
+        pass
+    elif name == 'input-map':
         mapped = [o for o in args.outputs if o not in args.expect_refusal]
         cases.append(_case(case + '.declarations', 'declaration_agreement: the board table of drives 1, 2, 4 '
                            'equals FIXTURE (X0-X3 connected on each, Y0 on drive 4 only)', ['local']))
@@ -593,8 +629,8 @@ def folder_plan(args, baseline):
                     'every baseline read of drive A', 'restoration plan steps', 'every baseline read of drive A']
         expected = {'acknowledged': 'write terminals of the case write and the restoration',
                     'read back': 'group reads before, after the case write and after the restoration'}
-    return {'drives': [{'address': a, 'required_enabled': True} for a in drives],
-            'terminals': (['x0', 'x1', 'x2', 'x3'] if name == 'input-map' else ['y0'] if name == 'y0-map' else
+    record = {'drives': [{'address': a, 'required_enabled': True} for a in drives],
+            'terminals': (['x0', 'x1', 'x2', 'x3'] if name == 'input-map' else ['y0'] if name in ('y0-map', 'outputs') else
                           (args.terminals or list(records.TERMINALS)) if name == 'status-mapping' else
                           ['x3'] + (['x0', 'x1'] if args.compare_relay else []) if name == 'input-timing' else []),
             'commands': commands, 'cases': cases,
@@ -606,6 +642,9 @@ def folder_plan(args, baseline):
                         'select the originally selected drive', 'close COM13'],
             'max_age_ms': args.max_age_ms if name == 'input-map' else records.MAX_AGE_MS, 'facts': facts,
             'image_level': args.image_level}
+    if experiment is not None:
+        record['experiment'] = experiment
+    return record
 
 
 class _Run:
@@ -1873,9 +1912,294 @@ def _timing_verdicts(run, args, detail):
         run.verdict('F04', 'controller-timestamped', 'PASS', None, ['input_timing.json'])
 
 
+
+
+# --------------------------------------------------------------------------
+# Outputs (wired bench 06): one case of the Y0 case table per run.
+
+OUTPUT_WRITES = {
+    'O1': (('io.y0', 9), ('io.custom', 1)),
+    'O2': (('io.y0', 9), ('io.output-polarity', 1), ('io.custom', 1)),
+    'O3': (('io.output-polarity', 1),),
+    'O4': (('io.y0', 2),),
+    'O5': (('io.y0', 2), ('io.output-polarity', 1)),
+    'O6': (('io.y0', 4),),
+    'O7': (('io.y0', 3), ('homing.auxiliary', 7), ('homing.method', 35)),
+    'O8': (('io.y0', 5),),
+    'O9': (('io.y0', 1), ('filters.deviation-threshold', 1)),
+    'O10': (('io.y0', 10),),
+    'O11': (('io.y0', 11),),
+}
+PROFILE_KEYS = ('profile.acceleration', 'profile.deceleration', 'profile.speed', 'profile.target')
+MOTION_CASES = ('O4', 'O5', 'O6', 'O7', 'O9')
+
+
+def _outputs_write_list(args):
+    owner = records.FIXTURE['y0_owner']
+    out = [{'drive': owner, 'key': key, 'index': None, 'candidate': value} for key, value in OUTPUT_WRITES[args.case]]
+    if args.case in MOTION_CASES:
+        out += [{'drive': owner, 'key': key, 'index': None, 'candidate': None} for key in PROFILE_KEYS]
+    return out
+
+
+def _outputs_plan(args, baseline, facts):
+    owner = records.FIXTURE['y0_owner']
+    case = bench_out.CASES[args.case]
+    write_list = _outputs_write_list(args)
+    context = {'snapshots': {'home': {}}} if args.case == 'O7' else None
+    plan = records.restoration_plan(baseline, write_list, args.image_level, facts, context=context)
+    cid = args.case
+    assertions = {
+        'O1': 'Y0 = 9, polarity 0: custom bit 0 on/off %d cycles; one inverted aux1 edge per write; 0x0009 bit 0 '
+              'follows' % args.repetitions,
+        'O2': 'Y0 = 9, polarity 1: custom bit 0 on/off %d cycles; level inverted against O1; the 0x0009 mapping '
+              'consistent' % args.repetitions,
+        'O3': 'Y0 = 0: aux1 and 0x0009 recorded at polarity 0 and 1',
+        'O4': 'Y0 = 2: %d moves of 1000/3000 steps and one stop fast mid-move: one ON and one OFF edge per move' %
+              args.repetitions,
+        'O5': 'Y0 = 2, polarity 1: one 1000-step move, inverse of O4',
+        'O6': 'Y0 = 4: %d complete moves, a stop fast short of target, position clear; set/clear events against '
+              '0x0007 bit 0' % args.repetitions,
+        'O7': 'Y0 = 3: home 35 from a not-homed state, then %d x (a 200-step move, home 33); set/clear events '
+              'against 0x0007 bit 1' % args.repetitions,
+        'O8': 'Y0 = 5: %d x (motor-release, enable, 1 s); edges follow the commands and 0x0007 bit 4' %
+              args.repetitions,
+        'O9': 'Y0 = 1, threshold 1: %d x (2000-step move at 60 rpm latching alarm 5, recovery, stop fast, '
+              'alarm-clear); edge inside the silence, off edge at alarm-clear' % args.repetitions,
+        'O10': 'D9 experiment: Y0 = 10, custom 1, 2, 3, 0, Y0 0; outcome class',
+        'O11': 'D9 experiment: Y0 = 11, custom 1, 2, 3, 4, 0, Y0 0; outcome class',
+    }
+    cases = [_case(cid, assertions[args.case], case['levels'])]
+    commands = ['useaddr 4', 'debug decoded', 'read config/io read/read state 4 (baseline compare of the I/O words)',
+                'bench clear', 'bench']
+    commands += {'custom': ['io set y0 9 4 (ASSIGN y0 indicator either)'] +
+                 (['io set output-polarity 1 4'] if case['polarity'] else []) +
+                 ['per cycle and C in (1, 0): read config, read state, io read, facts, io set custom C 4; read state; bench'],
+                 'levels': ['read state, bench', 'io set output-polarity 1 4', 'read state, bench'],
+                 'running': ['io set y0 2 4'] + (['io set output-polarity 1 4'] if case['polarity'] else []) +
+                 ['motion-profile read', 'per move: read config, read state, move relative N steps native 60 configured, '
+                  'read state until stopped (bench every 4th)'] +
+                 (['move relative 3000 ...; stop fast after RUNNING and 0.8 s; move relative -3000'] if args.case == 'O4' else []),
+                 'arrival': ['io set y0 4 4', 'motion-profile read', 'per move: as O4', 'move +3000 with stop fast',
+                             'move -1000', 'position-clear qualification install clear-semantics', 'position-clear'],
+                 'homing': ['CONFIGURE facts', 'home auxiliary 7', 'io set y0 3 4', 'motion-profile read',
+                            'per cycle: read config, read state, home read (the first is the restore snapshot), '
+                            'home qualification install 35 ...; home 35 60 30 100 zero; move +/-200',
+                            'home qualification install 33 ... index reference; home 33 60 30 100 zero'],
+                 'brake': ['io set y0 5 4', 'per cycle: motor-release, read state x3, enable, read state x3, 1 s'],
+                 'alarm': ['CONFIGURE facts', 'tuning filters set deviation-threshold 1 4', 'io set y0 1 4',
+                           'motion-profile read', 'per cycle: move relative 2000 (no reply expected), 2 s, read state '
+                           '(recover only if required), stop fast, alarm-clear, read state'],
+                 'experiment': ['per step: read config, io read, read state; io experiment d9 FIELD VALUE 4 indicator '
+                                'either; io experiment inspect until done; read state; bench']}[case['kind']]
+    commands += ['restoration: experiment custom 0 then Y0 0 (O10/O11), motion-profile restore, home restore of the '
+                 'first home read (O7), the plan steps', 'debug (previous mode)']
+    bounds = {'repetitions': args.repetitions, 'moves_max_steps': 3000, 'speed_rpm': 60,
+              'experiment': case['kind'] == 'experiment'}
+    expected = {level: {'controller-timestamped': 'aux1 edges against the write request start and reply end and '
+                                                  'the drive transition brackets (bench_out.json)',
+                        'read back': 'I/O readback after each write; 0x0009 per step',
+                        'drive-reported': 'drive status samples around each edge'}[level] for level in case['levels']}
+    experiment = None
+    if case['kind'] == 'experiment':
+        experiment = {'decision': 'D9', 'prompt': '06', 'date': '2026-11-19', 'drive': owner, 'terminal': 'y0',
+                      'polarity': 0, 'load': Y0_FACTS_TEXT, 'function': case['function'],
+                      'custom_candidates': case['custom'],
+                      'restoration': ['io experiment d9 custom 0 4 indicator either (from any candidate)',
+                                      'io experiment d9 y0 0 4 indicator either (then the plan finds Y0 equal)']}
+    return write_list, plan, cases, commands, bounds, expected, experiment
+
+
+Y0_FACTS_TEXT = 'indicator either'
+
+
+def _outputs_restore(console, live, run, plan, timeout):
+    """Restoration per the step 2 table: stop and alarm first, then the
+    experiment words, the profile snapshot and the plan."""
+    owner = records.FIXTURE['y0_owner']
+    # The prepared stop first: harmless on a stopped drive, and it reconciles
+    # the address conflict an uncertain action leaves (home or release).
+    run.deviations_stop = console.command('stop', stop_policy='fast', address=owner, timeout_s=timeout).get('outcome')
+    state = console.command('read-state', address=owner, timeout_s=timeout)
+    summary = _state_summary(state)
+    if not state.get('ok') or summary['running'] or summary['raw_speed']:
+        run.deviations.append('drive 4 not reported stopped before restoration; prepared stop fast sent')
+        console.command('stop', stop_policy='fast', address=owner, timeout_s=timeout)
+        state = probe.observe_stopped(console, address=owner, timeout_s=timeout)
+        summary = _state_summary(state)
+    if summary['raw_alarm'] or summary['alarm_flag']:
+        console.command('stop', stop_policy='fast', address=owner, timeout_s=timeout)
+        console.command('alarm-clear', address=owner, timeout_s=timeout)
+        summary = _state_summary(console.command('read-state', address=owner, timeout_s=timeout))
+    if summary['released']:
+        console.command('enable', address=owner, timeout_s=timeout)
+        time.sleep(1.0)
+    if 'profile' in live.snapshots and not live.snapshots.get('profile_replaced'):
+        console.command('read-config', address=owner, timeout_s=timeout)
+        console.command('read-state', address=owner, timeout_s=timeout)
+        try:
+            live.snapshots['profile_restored'] = bench_out._profile(live, 'restore')
+        except probe.BenchError as error:
+            run.deviations.append('motion-profile restore: %s' % error)
+    if live.snapshots.get('profile_replaced'):
+        # The replacement session's original is not the baseline; release it so
+        # the planner reads the current words fresh and stages the baseline.
+        console.command('motion-profile', host_args=('forget',), timeout_s=timeout)
+    snapshots = {'home': live.snapshots['home']} if 'home' in live.snapshots else {}
+    results = records.restore(console, plan, timeout_s=timeout, snapshots=snapshots) if plan['steps'] else []
+    for result in results:
+        if result['key'] == 'profile.start-speed-relation':
+            continue
+        if result['key'] == 'home.window':
+            for key in records.SNAPSHOT_ROUTES['home']['keys']:
+                run.field({'drive': owner, 'key': key, 'index': None},
+                          baseline=(records.baseline_field(live.baseline, owner, key) or {}).get('value'),
+                          ending=None if result['ending'] is None else result['ending'],
+                          restored=result['restored'], uncertain=result['uncertain'], reason=result['reason'],
+                          restoration={'window': 'home', 'before': result.get('before'), 'write': result.get('write')})
+            continue
+        run.field(result, ending=result['ending'], restored=result['restored'], uncertain=result['uncertain'],
+                  reason=result['reason'], restoration={k: result.get(k) for k in ('before', 'written', 'write')})
+    return results
+
+
+def _outputs(console, args, record, run, baseline):
+    timeout = args.timeout
+    scenario = run.scenario
+    cid = args.case
+    owner = records.FIXTURE['y0_owner']
+    _preflight(console, run, timeout)
+    declarations = records.check_declarations(console, timeout_s=timeout)
+    records.use_drive(console, owner, timeout_s=timeout)
+    before = records.read_drive(console, owner, ('io', 'state', 'config'), select=False, timeout_s=timeout)
+    diff = records.diff_fields(baseline, {owner: records.raws_from(before)}, ('io',))
+    run.folder.write_json('baseline_before.json', {'declarations': declarations, 'drives': {str(owner): {
+        k: {x: e.get(x) for x in ('command', 'operation_id', 'raw', 'error')} for k, e in before.items()}},
+        'diff': diff})
+    plan = scenario['restoration_plan']
+    if not plan['admissible'] or any(w['refusal'] for w in scenario['case_writes'] if
+                                     not w['entry']['key'].startswith('profile.')):
+        reasons = [r['reason'] for r in plan['refused']] + [w['refusal']['reason'] for w in scenario['case_writes']
+                                                            if w['refusal'] and not w['entry']['key'].startswith('profile.')]
+        for level in scenario['cases'][0]['required_levels']:
+            run.verdict(cid, level, 'NOT RUN', 'no admissible route before any write: ' + '; '.join(reasons))
+        return
+    if declarations['verdict'] != 'PASS' or any(d['status'] != 'equal' for d in diff):
+        raise probe.BenchError('Y0 owner not at the baseline I/O words or declarations disagree; no write')
+    state = _state_summary(before['state'].get('reply') or {})
+    live = bench_out.Live(console, run, baseline, args, scenario['facts'], timeout)
+    emit = console.emit
+    console.emit = live.tap(emit)
+    detail = {'case': cid, 'declarations': declarations}
+    error = None
+    try:
+        checked(console, 'bench', host_args=('clear',), timeout_s=timeout)
+        live.view()
+        detail['debug_before'] = checked(console, 'debug', host_args=(), timeout_s=timeout)
+        if live.case['kind'] == 'homing':
+            records.use_drive(console, owner, timeout_s=timeout)
+            console.command('read-config', address=owner, timeout_s=timeout)
+            snapshot = checked(console, 'home-read', address=owner, timeout_s=timeout)
+            h = snapshot.get('homing_parameters') or {}
+            live.snapshots['home'] = {'operation_id': snapshot['operation_id'], 'address': owner,
+                                      'words': [h.get('raw_method'), h.get('raw_search_speed'), h.get('raw_return_speed'),
+                                                h.get('raw_ramp_time'), *(h.get('raw_offset_words') or [None, None])],
+                                      'baseline_words': records.snapshot_words(baseline, owner, 'home'), 'read': h}
+            if live.snapshots['home']['words'] != live.snapshots['home']['baseline_words']:
+                run.deviations.append('drive 4 homing words before the case %s differ from the baseline %s '
+                                      '(left by an earlier run, RAM); the restore returns them to the pre-run words'
+                                      % (live.snapshots['home']['words'], live.snapshots['home']['baseline_words']))
+        bench_out.RUNNERS[live.case['kind']](live)
+        detail['debug_after'] = checked(console, 'debug', host_args=(), timeout_s=timeout)
+    except (Exception, KeyboardInterrupt) as caught:
+        error = caught
+        run.deviations.append('case %s stopped: %s' % (cid, caught))
+    finally:
+        console.emit = emit
+        if console.synchronized:
+            try:
+                # Restoration edges get their own recorded row, after every stimulus row.
+                live.rows.append({'label': 'restoration', 'start_us': live.now_us(), 'expect': None})
+                detail['restoration'] = _outputs_restore(console, live, run, plan, timeout)
+            except (Exception, KeyboardInterrupt) as caught:
+                run.deviations.append('restoration stopped: %s' % caught)
+            live.views.append(checked(console, 'bench', host_args=(), timeout_s=timeout))
+        writes = bench_out.wire_writes(live.traffic)
+        edges, lost = records._merge_edges([records._bench_view(v) for v in live.views])
+        rows = bench_out.split_rows(live.rows, live.views[-1]['now_us'] if live.views else 0)
+        detail['analysis'] = bench_out.analyse(rows, edges, live.samples, writes, lost)
+        detail.update(rows_input=rows, edges=edges, lost_edge_windows=lost, writes=writes, samples=live.samples,
+                      observations=live.observations, events=live.events, snapshots=live.snapshots,
+                      traffic_records=len(live.traffic), traffic_gaps=records._traffic_gaps(
+                          [r for r in live.traffic if isinstance(r, dict) and type(r.get('sequence')) is int]))
+        on_values = {'arrival': (('motion', bench_out.IN_POSITION), 1), 'homing': (('motion', bench_out.HOMED), 1),
+                     'brake': (('motion', bench_out.RELEASED), 0), 'alarm': (('alarm',), 1),
+                     'running': (('motion', bench_out.RUNNING), 1)}
+        if live.case['kind'] in on_values:
+            key, on = on_values[live.case['kind']]
+            if live.case['polarity']:
+                on = 1 - on
+            # Edges of the Y0 function and polarity writes (setup, restoration)
+            # are not drive transitions; they are listed, not paired.
+            own = [r for r in detail['analysis']['rows'] if r['label'].startswith('setup io.') or r['label'] == 'restoration']
+            function_edges = [e for r in own for e in r['edges']]
+            stimulus_edges = [e for e in edges if e not in function_edges]
+            detail['events'] = bench_out.pair_events(stimulus_edges, bench_out.transitions(live.samples, key), on)
+            detail['events']['function_write_edges'] = function_edges
+        run.folder.write_json('outputs.json', detail)
+        run.folder.write_json('traffic.json', live.traffic)
+    _outputs_verdicts(run, live, cid, detail, error)
+
+
+def _outputs_verdicts(run, live, cid, detail, error):
+    analysis = detail['analysis']
+    kind = live.case['kind']
+    levels = live.case['levels']
+    evidence = ['outputs.json', 'traffic.json']
+    if error is not None and not analysis['rows']:
+        for level in levels:
+            run.verdict(cid, level, 'NOT RUN', 'stopped before the stimulus: %s' % error)
+        return
+    failed, indeterminate = analysis['failed'], analysis['indeterminate']
+    unattributed = analysis['unattributed']
+    stopped = 'stopped early: %s' % error if error else None
+    if kind in ('custom', 'running', 'brake', 'alarm'):
+        problems = ['%s FAIL' % label for label in failed] + (['%d unattributed edges' % len(unattributed)] if unattributed else [])
+        verdict = 'FAIL' if problems else 'indeterminate' if indeterminate or error else 'PASS'
+        run.verdict(cid, 'controller-timestamped', verdict, '; '.join(problems + [stopped] if stopped else problems) or None, evidence)
+    if kind == 'custom':
+        obs = live.observations
+        if live.case['polarity']:
+            classes = {bench_out.mapping_class(o['custom'], 1, o['status_bit']) for o in obs}
+            detail_text = 'mapping classes %s' % sorted(classes)
+            run.verdict(cid, 'read back', 'PASS' if len(classes) == 1 and 'contradiction' not in classes else 'FAIL',
+                        detail_text, evidence)
+        else:
+            ok = obs and all(o['status_bit'] == o['custom'] for o in obs)
+            run.verdict(cid, 'read back', 'PASS' if ok else 'FAIL', None if ok else '0x0009 bit 0 did not follow every write', evidence)
+    if kind == 'levels':
+        run.verdict(cid, 'controller-timestamped', 'PASS' if len(live.observations) == 2 else 'NOT RUN',
+                    'levels recorded: %s' % live.observations, evidence)
+    if kind in ('running', 'arrival', 'homing', 'brake', 'alarm') and 'drive-reported' in levels:
+        events = detail.get('events') or {}
+        unpaired = len(events.get('unpaired_edges', [])) + len(events.get('unpaired_transitions', []))
+        measured = analysis['summary']['drive_unmeasured'] == 0
+        if kind in ('arrival', 'homing'):
+            verdict = 'PASS' if events.get('pairs') and not unpaired and not error else 'indeterminate'
+            run.verdict(cid, 'controller-timestamped', verdict,
+                        '%d edges, %d paired, %d unpaired edges, %d unpaired transitions' % (
+                            len(events.get('pairs', [])), len(events.get('pairs', [])) - len(events.get('unpaired_edges', [])),
+                            len(events.get('unpaired_edges', [])), len(events.get('unpaired_transitions', []))), evidence)
+            run.verdict(cid, 'drive-reported', verdict, None, evidence)
+        else:
+            run.verdict(cid, 'drive-reported', 'PASS' if measured and not unpaired else 'indeterminate',
+                        None if measured and not unpaired else '%d unmeasured brackets, %d unpaired' % (
+                            analysis['summary']['drive_unmeasured'], unpaired), evidence)
+
+
 FOLDER_RUNNERS = {'input-map': _input_map, 'y0-map': _y0_map, 'baseline-compare': _baseline_compare,
                   'baseline-capture': _baseline_capture, 'restore': _restore, 'status-mapping': _status_mapping,
-                  'input-timing': _input_timing}
+                  'input-timing': _input_timing, 'outputs': _outputs}
 
 
 def run_folder(args, *, port_opener=None, check_board=None):
@@ -1915,7 +2239,8 @@ def run_folder(args, *, port_opener=None, check_board=None):
     try:
         run_recorded(port=args.port, scenario=args.scenario, inputs={'run': folder.name, 'case': args.case},
                      run=work, address=args.address, timeout_s=args.timeout,
-                     debug='raw' if args.scenario == 'y0-map' or (args.scenario == 'input-timing' and args.traffic == 'raw')
+                     debug='decoded' if args.scenario == 'outputs' else
+                     'raw' if args.scenario == 'y0-map' or (args.scenario == 'input-timing' and args.traffic == 'raw')
                      or (args.scenario == 'status-mapping' and args.mapping_cases == 'record') else None,
                      firmware=args.firmware,
                      port_opener=opener, max_records=args.evidence_records,

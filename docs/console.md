@@ -36,6 +36,7 @@ after success or a read-only preparation rejection. Actual enable, alarm, encodi
 | --- | --- |
 | `home read` | Read raw homing parameters and offset words; known method codes do not imply executable or qualified homing. |
 | `velocity read` | Read raw JOG speed and acceleration/deceleration words; speed/sign/ramp scaling remain unresolved. |
+| `home restore ID`, `velocity restore ID` | Write back the exact words of the checked `home read` or `velocity read` with operation ID `ID` (same drive and binding), no start, then read them back. `... restore inspect` shows the last restore. A lost reply is never resent. |
 | `settings` | Read actual drive settings; also show choices for the next move. |
 | `subdivision` | Read the drive's subdivision and related settings. |
 | `subdivision options` | Show the documented range and useful example values. |
@@ -620,6 +621,19 @@ io set input-polarity 8 1
 Without the identity the install replies `mapping_not_recorded` with
 `read_first` `read identity`; an explicit `before` against the record replies
 `mapping_contradicts_record`. Both send nothing.
+
+Outputs take `recorded` the same way for Y0 of model `0x4EEA`, firmware `0x0029`
+(`after`, [wired bench 06](reports/2026-11-19_wired_bench_06_outputs.md)); Y1 has
+no record. With `unknown`, an output polarity change needs a load stated with
+`either` levels:
+
+```text
+read identity 4
+io read 4
+read state 4
+io qualification install 4 y0 9 1 0 assign recorded indicator either
+io set output-polarity 1 4
+```
 
 Inspect a selected-axis input without traffic:
 

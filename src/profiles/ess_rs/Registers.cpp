@@ -51,7 +51,7 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 69,
      "OUTPUT_STATUS", "bitfield",
      "unspecified", "unspecified", "RO",
-     "Y0-Y1 bits 0-1, bits 2-15 reserved; 0 invalid, 1 valid."},
+     "Y0-Y1 bits 0-1, bits 2-15 reserved; 0 invalid, 1 valid. Documented: the order against the 0x004B inversion is not stated. Measured 2026-11-19 (wired bench 06; model 0x4EEA, firmware 0x0029, drive 4, Y0 wired sinking to the board input aux1): the bit is the output level after inversion (function 9, polarity 1: custom 1 reads 0 with Y0 off, custom 0 reads 1 with Y0 on; 20 writes); at polarity 0 it follows the custom bit. Function 0 reads 0 at polarity 0 and 1 (Y0 off). Y1 not measured."},
     // Function PDF pages 69, 30.
     {0x000A, 2, RegisterAccess::READ_ONLY, RegisterSignedness::UNRESOLVED,
      RegisterWordOrder::CONFIGURABLE, 0x0000000Cu, 69,
@@ -267,25 +267,25 @@ const RegisterDescriptor CATALOGUE[] = {
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 74,
      "OUTPUT_POLARITY", "bitfield",
      "0-65535", "0", "RW",
-     "Bits 0-1 default 0 / inverted 1; bits 2-15 reserved."},
+     "Bits 0-1 default 0 / inverted 1; bits 2-15 reserved. Measured 2026-11-19 (wired bench 06; model 0x4EEA, firmware 0x0029, drive 4, Y0 wired sinking to the board input aux1): polarity 1 inverts Y0 for functions 9 (custom) and 2 (running: on while stopped, off while moving); with function 0 Y0 stays off at both polarities."},
     // Function PDF pages 74, 28.
     {0x004C, 1, RegisterAccess::READ_WRITE, RegisterSignedness::ENUMERATED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000400u, 74,
      "OUTPUT_Y0_FUNCTION", "unspecified",
      "0-11; values6, 7, 8 not described", "0", "RW",
-     "Custom value 11 is listed despite only two ESS outputs; exact custom-selector mapping unresolved. Generic 0x004E is not an ESS output register."},
+     "Custom values 9, 10 and 11 are documented as user defined 0, 1 and 2 controlled by 0x004F (p28), while p74 defines only 0x004F bits 0 (Y0) and 1 (Y1). Measured 2026-11-19 (wired bench 06; model 0x4EEA, firmware 0x0029, drive 4, Y0 wired sinking to the board input aux1), D9 experiment, two runs each: function 10 follows 0x004F bit 1 (class \"follows bit 1\": on for 2 and 3, off for 1 and 0) and function 11 follows experimental bit 2 (class \"follows experimental bit 2\": on only for 4); the function value selects the custom bit, not the terminal. Production admission is unchanged: function 11 and custom bits other than the terminal's canonical one stay refused; Y1 and other models are not measured. Functions 1-5 measured on Y0: 1 on during the alarm-5 latch, off 7-9 ms after alarm-clear; 2 on while RUNNING; 3 on at HOMED, off at a new home search start; 4 on at rest in position and at arrival, off at the next start, not set after a stop short of target; 5 on about 205 ms after enable, off 2-4 ms after the release reply, and with 5 assigned the drive reports RELEASED 1.33-1.34 s after the release (at once without it); 5 assigned while enabled leaves Y0 off until the next enable. Generic 0x004E is not an ESS output register."},
     // Function PDF pages 74, 28.
     {0x004D, 1, RegisterAccess::READ_WRITE, RegisterSignedness::ENUMERATED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000400u, 74,
      "OUTPUT_Y1_FUNCTION", "unspecified",
      "0-11; values6, 7, 8 not described", "0", "RW",
-     "Custom value 11 is listed despite only two ESS outputs; exact custom-selector mapping unresolved. Generic 0x004E is not an ESS output register."},
+     "Custom values 9, 10 and 11 are documented as user defined 0, 1 and 2 controlled by 0x004F (p28); p74 defines only bits 0 and 1. Y1 is not wired on the bench and was not measured (see 0x004C for the Y0 measurement); the exact custom-selector mapping of Y1 is unresolved. Generic 0x004E is not an ESS output register."},
     // Function PDF pages 74, 28.
     {0x004F, 1, RegisterAccess::READ_WRITE, RegisterSignedness::BITFIELD,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 74,
      "CUSTOM_OUTPUT", "bitfield",
      "0-65535", "0", "RW",
-     "Y0/Y1 bits 0/1; bits 2-15 reserved; applicable to outputs configured custom."},
+     "Y0/Y1 bits 0/1; bits 2-15 reserved; applicable to outputs configured custom. Measured 2026-11-19 (wired bench 06; model 0x4EEA, firmware 0x0029, drive 4, Y0 wired sinking to the board input aux1), D9 experiment: 0x004F = 4 was acknowledged and read back as 4, and bit 2 drives an output assigned function 11; bits 3-15 not tested. Production keeps bits 2-15 refused."},
     // Function PDF pages 75, 23.
     {0x0050, 1, RegisterAccess::READ_WRITE, RegisterSignedness::ENUMERATED,
      RegisterWordOrder::SINGLE_REGISTER, 0x00000000u, 75,

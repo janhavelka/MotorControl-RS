@@ -94,6 +94,9 @@ def check_inventory(root, listing, build):
             if path.name == "home_console_parity_test.py":
                 expected.extend(str((build / (binary+suffix)).resolve()) for binary in
                     ("home_app_test", "idf_home_app_test"))
+            if path.name == "velocity_console_parity_test.py":
+                expected.extend(str((build / (binary+suffix)).resolve()) for binary in
+                    ("velocity_app_test", "idf_velocity_app_test"))
             if [str(Path(arg).resolve()) for arg in registered["command"][2:]] != expected:
                 raise RuntimeError(f"wrong console fixture: {path.name}")
         else:

@@ -363,7 +363,11 @@ this fixture unlocks.
 2. **Y0 to aux1.** On drive 4 assign Y0 = 9 (custom 0) with the output facts,
    write the custom bit on and off, and check the `aux1` edges and the output
    status bits (`bench_scenarios.py --scenario y0-map --address 4`). Repeat with
-   output polarity inverted. Restore Y0 = 0.
+   output polarity inverted. Restore Y0 = 0. The timed cases are
+   `bench_scenarios.py --scenario outputs --case O1` and `O2` with
+   `--image-level 06`. Measured on 19 November ([wired bench 06](reports/2026-11-19_wired_bench_06_outputs.md)):
+   one edge per write, 4-6 ms after the TX, and `0x0009` bit 0 is the level
+   after inversion (recorded for `0x4EEA`/`0x0029` Y0).
 3. **Stop by input.** X3 = 5 (stop), then 6 (emergency stop), during a small
    finite move; `bench on mosfet2 200`. Y0 = 2 (running) gives the
    `mosfet2` on time to `aux1` edge interval. Repeat with X3 = 4 (release) on a
@@ -379,8 +383,11 @@ this fixture unlocks.
 7. **PT segments.** X0 = 12, X1-X3 = 14-16. Set PIN levels with relays and
    MOSFET2, wait more than 10 ms, pulse X0; read the reached position for
    several segments.
-8. **Outputs.** Y0 = 2, 4, 3 and 1 in turn: running, in-position, homed and
-   alarm edges against serial state and the move timeline.
+8. **Outputs.** Y0 = 2, 4, 3, 5 and 1 in turn: running, in-position, homed,
+   brake and alarm edges against serial state and the move timeline
+   (`--scenario outputs --case O4` to `O9`). Measured in wired bench 06; the
+   set and clear events are in [ESS I/O](ess_io.md#measured-output-behavior-wired-bench-06).
+   Y1 and drives 1/2 outputs are not wired and not measured.
 9. **Shared start.** Stage a profile on each of drives 1, 2 and 4, set X0 = 7 on
    all three, pulse `mosfet1` once, and compare the three drives' recorded
    motion with drive 4's `aux1` running edge. Then a shared stop: X3 = 5 on all

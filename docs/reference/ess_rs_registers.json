@@ -248,7 +248,7 @@
       "signedness": "BITFIELD",
       "word_order": "SINGLE_REGISTER",
       "issues": [],
-      "notes": "Y0-Y1 bits 0-1, bits 2-15 reserved; 0 invalid, 1 valid.",
+      "notes": "Y0-Y1 bits 0-1, bits 2-15 reserved; 0 invalid, 1 valid. Documented: the order against the 0x004B inversion is not stated. Measured 2026-11-19 (wired bench 06; model 0x4EEA, firmware 0x0029, drive 4, Y0 wired sinking to the board input aux1): the bit is the output level after inversion (function 9, polarity 1: custom 1 reads 0 with Y0 off, custom 0 reads 1 with Y0 on; 20 writes); at polarity 0 it follows the custom bit. Function 0 reads 0 at polarity 0 and 1 (Y0 off). Y1 not measured.",
       "choices": "OutputBit"
     },
     {
@@ -990,7 +990,7 @@
       "signedness": "BITFIELD",
       "word_order": "SINGLE_REGISTER",
       "issues": [],
-      "notes": "Bits 0-1 default 0 / inverted 1; bits 2-15 reserved.",
+      "notes": "Bits 0-1 default 0 / inverted 1; bits 2-15 reserved. Measured 2026-11-19 (wired bench 06; model 0x4EEA, firmware 0x0029, drive 4, Y0 wired sinking to the board input aux1): polarity 1 inverts Y0 for functions 9 (custom) and 2 (running: on while stopped, off while moving); with function 0 Y0 stays off at both polarities.",
       "choices": "OutputBit"
     },
     {
@@ -1010,7 +1010,7 @@
       "issues": [
         "SEMANTICS_UNRESOLVED"
       ],
-      "notes": "Custom value 11 is listed despite only two ESS outputs; exact custom-selector mapping unresolved. Generic 0x004E is not an ESS output register.",
+      "notes": "Custom values 9, 10 and 11 are documented as user defined 0, 1 and 2 controlled by 0x004F (p28), while p74 defines only 0x004F bits 0 (Y0) and 1 (Y1). Measured 2026-11-19 (wired bench 06; model 0x4EEA, firmware 0x0029, drive 4, Y0 wired sinking to the board input aux1), D9 experiment, two runs each: function 10 follows 0x004F bit 1 (class \"follows bit 1\": on for 2 and 3, off for 1 and 0) and function 11 follows experimental bit 2 (class \"follows experimental bit 2\": on only for 4); the function value selects the custom bit, not the terminal. Production admission is unchanged: function 11 and custom bits other than the terminal's canonical one stay refused; Y1 and other models are not measured. Functions 1-5 measured on Y0: 1 on during the alarm-5 latch, off 7-9 ms after alarm-clear; 2 on while RUNNING; 3 on at HOMED, off at a new home search start; 4 on at rest in position and at arrival, off at the next start, not set after a stop short of target; 5 on about 205 ms after enable, off 2-4 ms after the release reply, and with 5 assigned the drive reports RELEASED 1.33-1.34 s after the release (at once without it); 5 assigned while enabled leaves Y0 off until the next enable. Generic 0x004E is not an ESS output register.",
       "choices": "OutputFunction"
     },
     {
@@ -1030,7 +1030,7 @@
       "issues": [
         "SEMANTICS_UNRESOLVED"
       ],
-      "notes": "Custom value 11 is listed despite only two ESS outputs; exact custom-selector mapping unresolved. Generic 0x004E is not an ESS output register.",
+      "notes": "Custom values 9, 10 and 11 are documented as user defined 0, 1 and 2 controlled by 0x004F (p28); p74 defines only bits 0 and 1. Y1 is not wired on the bench and was not measured (see 0x004C for the Y0 measurement); the exact custom-selector mapping of Y1 is unresolved. Generic 0x004E is not an ESS output register.",
       "choices": "OutputFunction"
     },
     {
@@ -1048,7 +1048,7 @@
       "signedness": "BITFIELD",
       "word_order": "SINGLE_REGISTER",
       "issues": [],
-      "notes": "Y0/Y1 bits 0/1; bits 2-15 reserved; applicable to outputs configured custom.",
+      "notes": "Y0/Y1 bits 0/1; bits 2-15 reserved; applicable to outputs configured custom. Measured 2026-11-19 (wired bench 06; model 0x4EEA, firmware 0x0029, drive 4, Y0 wired sinking to the board input aux1), D9 experiment: 0x004F = 4 was acknowledged and read back as 4, and bit 2 drives an output assigned function 11; bits 3-15 not tested. Production keeps bits 2-15 refused.",
       "choices": "OutputBit"
     },
     {
@@ -3145,7 +3145,7 @@
         {
           "name": "BRAKE",
           "value": 5,
-          "description": "Valid when motor locked; invalid when released.",
+          "description": "Valid when motor locked; invalid when released. With it assigned, 0x4EEA/0x0029 reports RELEASED about 1.34 s after a release (measured).",
           "pages": [
             28,
             74
@@ -3163,7 +3163,7 @@
         {
           "name": "CUSTOM_1",
           "value": 10,
-          "description": "Custom output controlled through 0x004F.",
+          "description": "Custom output controlled through 0x004F; on Y0 of 0x4EEA/0x0029 it follows bit 1 (measured).",
           "pages": [
             28,
             74
@@ -3172,7 +3172,7 @@
         {
           "name": "CUSTOM_2",
           "value": 11,
-          "description": "Listed choice; mapping to only two ESS outputs unresolved.",
+          "description": "Listed choice, not admitted; on Y0 of 0x4EEA/0x0029 it follows 0x004F bit 2 (measured, D9 experiment).",
           "pages": [
             28,
             74

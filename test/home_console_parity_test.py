@@ -304,3 +304,11 @@ for executable in sys.argv[2:]:
     uncertain_records.append(records)
 assert uncertain_records[0] == uncertain_records[1], "Arduino/IDF uncertain home evidence differs"
 print("PASS: both real application frontends retain UNKNOWN after observed home33/34/35")
+
+# Wired bench 06: actual `home restore` replies from both application frontends.
+from parameter_write_checks import check_parameter_write_replies
+restore_tokens = {i: (lambda r: (str(r["snapshot_id"]) if r["snapshot_id"] else "999",)) for i in range(860, 869)}
+for executable in sys.argv[2:]:
+    restored = check_parameter_write_replies(executable, "--emit-restore-replies", "home-restore", restore_tokens,
+                                             ("empty", "none", "readback_mismatch", "write_unknown"))
+print(f"PASS: {restored} actual home restore replies accepted by Python, forged sessions refused")

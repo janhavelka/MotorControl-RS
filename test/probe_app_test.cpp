@@ -615,6 +615,27 @@ void testNormalStopObservesLegalRampWithoutReplay() {
     assert(view(unresolved).actionContext->outcome == ActionOutcome::DEADLINE);
     assert(hardware.writes == 1); // Expiry cannot replay the stop or infer standstill.
 }
+// Wired bench 06 (O8): with output function 5 (brake) assigned, drive 4 reported
+// RELEASED 1.33-1.34 s after an acknowledged release (at the first poll without
+// it). The release is observed as long as a configured stop and never repeated.
+void testDelayedReleaseIsObservedWithoutReplay() {
+    using namespace MotorControlRS;
+    fresh(); timerCapture(); qualifyActions();
+    const uint32_t release = actionAdmission(ActionKind::RELEASE);
+    actionStep(release);
+    const uint64_t acknowledged = view(release).actionContext->writeEvidence.deliveredUs;
+    unsigned polls = 0;
+    while (hardware.time - acknowledged < 1400000) {
+        actionStep(release, registerReply({0, 1})); // Enabled, in position: not yet released.
+        ++polls;
+        assert(view(release).pending); // Outlasts the old 20-poll, 0.5 s window.
+    }
+    actionStep(release, registerReply({0, 17}));
+    assert(view(release).actionContext->completion == ActionCompletion::OBSERVED);
+    assert(view(release).actionContext->outcome == ActionOutcome::OBSERVED);
+    assert(hardware.writes == polls + 2); // One release write; every later frame is an observation.
+    assert(!axisReserved(*app, 1));
+}
 void testStopUsesReservedCapacityAndFullAdmissionPreservesWork() {
     using namespace MotorControlRS;
     fresh(); timerCapture(); qualifyActions();
@@ -1870,7 +1891,8 @@ int main() {
     testSegmentRecoveryCancelsReadbackContinuation();
     testSuccessfulProbeAndReset(); testCheckedExceptionAndParserRejection();
     testActionGateAndSeparateAcknowledgement(); testStopSupersedesOnlyAfterAdmissionAndSettlesInflight();
-    testNormalStopObservesLegalRampWithoutReplay(); testStopUsesReservedCapacityAndFullAdmissionPreservesWork();
+    testNormalStopObservesLegalRampWithoutReplay(); testDelayedReleaseIsObservedWithoutReplay();
+    testStopUsesReservedCapacityAndFullAdmissionPreservesWork();
     testRepeatedStopPreservesEvidenceAndReservedCapacity();
     testSuccessfulStopsDoNotFillOrdinaryResults();
     testRepeatedStopCannotDiscardUndeliveredResult();

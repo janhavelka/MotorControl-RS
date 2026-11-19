@@ -85,7 +85,12 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   [rerun](reports/2026-11-16_unattended_bench_tests.md#shared-start-speed-record-1-the-4-october-fail-reproduced).
 - [ ] Resolve output function 11 ('User defined 2'; p28 ties functions 9-11 to
   `0x004F`, but p74 defines only terminal bits 0-1) and crossmapped custom actuation. No external trigger/selector edges are synthesized by serial
-  settings. [I/O contract](ess_io.md).
+  settings. [I/O contract](ess_io.md). Measured on Y0 of `0x4EEA`/`0x0029`
+  (wired bench 06, D9 experiment, [report](reports/2026-11-19_wired_bench_06_outputs.md)):
+  function 10 follows `0x004F` bit 1 and function 11 follows the reserved
+  bit 2. Both are recorded in the ledger. Production admission was not added:
+  it would need Y1 and another firmware, so both stay refused. The experiment
+  admission was removed.
 - [ ] Resolve the earlier collision registers 0x003B/0x003C and later collision
   values 0/0 outside documented ranges on firmware 0x0029. Keep unknown values
   raw. [Tuning evidence](archive/reports/ess_release_18_2026-10-04.md).
@@ -195,6 +200,28 @@ functional evidence; independent shaft calibration remains absent.
   pass on the record image; all 573 baseline fields equal at the end. Output
   status mapping stays with 06; the 10 ms rule needs a latched input function
   (07, 09); filter persistence 17.
+- [ ] Measure drive 4's Y0 output functions and deliver the homing/JOG
+  restore routes ([wired bench 06](prompts/ess_wired_bench/06_outputs.md)).
+  Implementation: done.
+  - An UNKNOWN-mapping output polarity change is admitted only for an
+    either-level load.
+  - `RECORDED_OUTPUT_MAPPINGS` (Y0 `after`) and `recorded` for output facts.
+  - `home restore` and `velocity restore` (`restoreHomingParameters`,
+    `restoreVelocityParameters`): exact snapshot words through `0x0031/6` and
+    `0x001D/3`, no start, readback, no resend; the first snapshot is pinned.
+  - A `release` is observed as long as a configured stop.
+  - The `outputs` harness scenario.
+
+  Hardware, 19 November ([report](reports/2026-11-19_wired_bench_06_outputs.md)):
+  O1-O11 PASS. `0x0009` is the level after inversion. The set and clear events
+  of functions 1-5 are in [ESS I/O](ess_io.md#measured-output-behavior-wired-bench-06).
+  With brake function 5 the drive reports RELEASED 1.33-1.34 s after a
+  release. Both restore routes made one round trip on drive 4.
+  Open: drive 4's homing words 35/60/30 (baseline 24/120/60, RAM) need an
+  owner power cycle, then `baseline-compare`.
+  Handed on: `home 35` completion from a homed state is unobservable (12); the
+  alarm-5 no-reply interval and the brake report delay (16). Y1 and the outputs
+  of drives 1/2 are not measured.
 - [x] Declare the fixture wiring at boot ([wired bench 02](prompts/ess_wired_bench/02_fixture_wiring_declarations.md)).
   Implementation: done. A validated board table (`BoardPins.h`, menuconfig)
   applies at boot, after `useaddr` and to new group members, with visible
@@ -403,8 +430,9 @@ more drives (now addresses 1, 2 and 4, star wiring).
   mapping and restart persistence. The startup wording and stored assignment
   defaults remain an ambiguity. No wired fixture or drive restart was used in 04.
   Input status mapping: measured in wired bench 05 (after inversion, recorded
-  for model `0x4EEA`, firmware `0x0029`); output mapping, input function
-  effects and persistence remain.
+  for model `0x4EEA`, firmware `0x0029`). Output mapping: measured on drive 4
+  Y0 in wired bench 06 (after inversion, recorded); Y1, input function effects
+  and persistence remain.
   These physical checks moved from [multi-drive 06](prompts/ess_multi_drive/06_two_drive_qualification.md)
   to the [wired bench set](prompts/ess_wired_bench/README.md) (05, 06, 17).
 - [x] Wire the [bench I/O fixture](bench_io.md): X inputs of drives 1, 2 and 4 in
@@ -416,8 +444,10 @@ more drives (now addresses 1, 2 and 4, star wiring).
   [wired bench set](prompts/ess_wired_bench/README.md). The wiring map and
   drive 4's Y0 map passed again in [wired bench 01](reports/2026-11-18_wired_bench_01_baseline.md)
   and as the `input-map`/`y0-map` harness scenarios in
-  [wired bench 04](reports/2026-11-19_wired_bench_04_harness.md);
-  no drive input or output function has been tested through the wiring yet.
+  [wired bench 04](reports/2026-11-19_wired_bench_04_harness.md).
+  Output functions 1-5 and 9-11 of drive 4 Y0 were measured in
+  [wired bench 06](reports/2026-11-19_wired_bench_06_outputs.md) (plan steps 2
+  and 8). No input function has been tested through the wiring yet.
 - [ ] Start motion from a shared input edge: function 7 with a staged profile
   first (absolute mode preferred), then PT segments with PIN selection, the
   negative PV speed encoding, and observation and stop of input-started motion ([multi-drive 05](prompts/ess_multi_drive/05_input_triggered_start.md)).
