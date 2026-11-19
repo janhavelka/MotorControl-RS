@@ -411,11 +411,33 @@ See the [core evidence](reports/2026-10-29_ess_position_interrupt_core.md) and
 [application evidence](reports/2026-10-29_ess_position_interrupt_owner.md).
 The raw `buildStartPosition` builder validates wire shape/intent only; it does not perform application admission.
 
+### Measured retrigger meaning (wired bench 09)
+
+Drive 4, model `0x4EEA`, firmware `0x0029`, 60 rpm, 100 ms ramps, 19 November
+2026 ([report](reports/2026-11-19_wired_bench_09_input_and_serial_starts.md)):
+
+| Case | Result |
+| --- | --- |
+| Relative ±3000, `position interrupt` about 1 s in (I1, 10 runs; I4, 5) | Every run ended 3102-3110 increments past the last sample before the interrupt (4048-4133 from the start): the stored displacement restarts from the position at the retrigger. The about 100 extra increments are the travel between that sample and the write |
+| Absolute T = P0 ± 3000, interrupt about 1 s in (I2, 5; I4, 5) | Ended at T in 4 of 10 and at T - 1 in 6 (the forward runs); plain serial absolute moves on drive 4 end at T - 1 too (E1, 6/6) |
+| Relative ±1000, interrupt at 0.85, 0.95, 1.05 s (I3) | 0.85 and 0.95 s: restart from the current position (+1101, -1076 from the interrupt sample). 1.05 s: the original had already arrived (ARRIVED set 72-157 ms before the interrupt TX) but its observer had not concluded, so the route admitted the write and it ran as an ordinary new start (+1000 more, 2000 in total) |
+| Completion witness (I1, I2, I4 with Y0 = 4) | ARRIVED (`0x0007` bit 0) and Y0 arrival are set once, at the final endpoint; nothing changes at the retrigger while the original is moving |
+
+The original ended `cancelled` and the replacement `acknowledged` /
+`not_observed` in every run; no write was resent. ARRIVED therefore does not
+separate the replacement from the original: the original never arrives, and an
+absolute replacement has the original's endpoint. The route stays ACK-only.
+
 ### Remaining replacement work
 
 N05 remains PARTIAL. The implemented route retriggers the exact qualified stored
-profile and reports ACK, not arrival. New targets or profiles during motion
-still need two kinds of evidence:
+profile and reports ACK, not arrival. Wired bench 09 measured the retrigger
+meaning above; the route still admits an interrupt after the original has
+physically arrived when the original's own observer has not yet seen it (I3 at
+1.05 s), which makes the write an ordinary new start. A refinement that refuses
+when a newer checked state sample already shows the original ended is not
+implemented. New targets or profiles during motion still need two kinds of
+evidence:
 
 - When each profile/target write takes effect, and whether the drive can hold
   those values until the new trigger. Bit 3 does not prove staging isolation.

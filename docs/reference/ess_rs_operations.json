@@ -550,10 +550,11 @@
         "state": "PASS",
         "evidence": [
           "docs/reports/2026-11-02_standalone_14_bench_regression.md",
-          "docs/reports/2026-11-16_hil_regression.md"
+          "docs/reports/2026-11-16_hil_regression.md",
+          "docs/reports/2026-11-19_wired_bench_09_input_and_serial_starts.md"
         ]
       },
-      "reason": "Restricted exact native stored-profile start-or-interrupt through the ordinary application/owner and console, with independent original/replacement/stop results. ACK-only; no active staging/new-target or completion attribution. Broader N05 remains PARTIAL."
+      "reason": "Restricted exact native stored-profile start-or-interrupt through the ordinary application/owner and console, with independent original/replacement/stop results. ACK-only; no active staging/new-target or completion attribution. Wired bench 09 (drive 4, firmware 0x0029): a relative retrigger restarts the stored displacement from the current position (I1/I4 15/15), an absolute one ends at T or T-1 like plain serial moves (I2/I4), ARRIVED and Y0 arrival set once at the final endpoint, so completion stays not_observed; an interrupt after the original had arrived but before its observer saw it ran as an ordinary new start (I3). Broader N05 remains PARTIAL."
     },
     {
       "id": "enable",
@@ -3032,7 +3033,7 @@
     "Local wiring declarations distinguish unknown, unconnected and connected terminals. They assign no drive function, observe no electrical state and receive no device read/write/action credit. Wired bench 02 (2026-11-18) adds an optional board table applied at boot, after useaddr and to new group members, with per-terminal sources default/board/host/invalid_table; an invalid table makes every declaration unknown. The table and host overrides remain local declarations without device credit; the W06/W08 I/O writes of that run are hardware evidence for io_settings_write only as recorded in its report.",
     "Local profile list and discover inspect/cancel/restore/finish are host/session controls, not READ implementation credit; the discovery device obligation maps to the producing discover route only. Plain monitor is passive; READ coverage maps to monitor INTERVAL_MS COUNT.",
     "Prompt28 reconciles bounded recorded functional action/move evidence, explicitly classifies twelve read-only decoded status/alarm choices, retains the invalid auxiliary value as no-operation metadata and assigns the missing position-interrupt bit to prompt09. Raw setting reads gain no setter credit; per-choice physical activation is not inferred from a passing read.",
-    "Wired bench 08 (19 November 2026): input function 7 (InputFunction.POSITION_MOVE, owned by io_settings_write) gains a production external-start route: `arm position` stages the five 0x0021 words with no start word through the existing stage sessions, `arm trigger` pulses one owned MOSFET output after the firmware line-isolation reads (shared truth table test/line_isolation_cases.json), and the InputStart core attributes the start from fresh 0x0006/7 samples; `disarm` closes observation. The route sends no register write of its own beyond the staged profile; it adds no operation or choice disposition and no hardware evidence. Home (11), PT (12) and PV (13) staging refuse before any traffic until prompts 12, 13 and 14; the first physical use is prompt 09."
+    "Wired bench 08 (19 November 2026): input function 7 (InputFunction.POSITION_MOVE, owned by io_settings_write) gains a production external-start route: `arm position` stages the five 0x0021 words with no start word through the existing stage sessions, `arm trigger` pulses one owned MOSFET output after the firmware line-isolation reads (shared truth table test/line_isolation_cases.json), and the InputStart core attributes the start from fresh 0x0006/7 samples; `disarm` closes observation. The route sends no register write of its own beyond the staged profile; it adds no operation or choice disposition and no hardware evidence. Home (11), PT (12) and PV (13) staging refuse before any traffic until prompts 12, 13 and 14; the first physical use is prompt 09. Wired bench 09 (19 November 2026) ran it on the bench: single starts on drive 4 in both 0x0050 modes and shared starts of drives 1, 2, 4 attributed (A1 20/20, A2 10/10, B1 50/50), held levels started one move, 10 ms pulses start and 5 ms do not, serial, group and X3 stops end input-started moves short, disarm does not inhibit the input; see docs/reports/2026-11-19_wired_bench_09_input_and_serial_starts.md. No disposition changed."
   ],
   "gaps": [
     {
@@ -3093,7 +3094,7 @@
       ],
       "owner": "09",
       "disposition": "PARTIAL",
-      "reason": "The exact qualified native USE_STORED subset now has core, ordinary owner/application API and position interrupt ORIGINAL_ID route with ACK-only results. Broader active staging/new-target replacement and completion attribution remain evidence-gated; the usable subset does not close N05."
+      "reason": "The exact qualified native USE_STORED subset has core, ordinary owner/application API and position interrupt ORIGINAL_ID route with ACK-only results. Wired bench 09 measured the retrigger meaning; ARRIVED does not separate replacement from original, so completion attribution stays unsupported. Missing: when 0x0021-0x0025 writes take effect while moving and whether the drive holds them until the next trigger (staging isolation), a completion witness that separates the replacement, and a refusal of an interrupt after the original already ended by a newer checked state sample. The usable subset does not close N05."
     }
   ],
   "public_surface": [
@@ -3795,7 +3796,7 @@
         "arm",
         "disarm"
       ],
-      "reason": "Wired bench 08: bounded observation and attribution of motion a drive input starts (functions 7, 11, 12, 13 effects). It yields only the existing non-changing 0x0006/7 sample reads and consumes caller-noted source edges and samples; it never yields a write, a retrigger or a retry. The application's arm/trigger/disarm route (console arm, disarm) owns staging, the owned bench pulse and the line isolation. No hardware credit: prompt 09 runs the first bench use."
+      "reason": "Wired bench 08: bounded observation and attribution of motion a drive input starts (functions 7, 11, 12, 13 effects). It yields only the existing non-changing 0x0006/7 sample reads and consumes caller-noted source edges and samples; it never yields a write, a retrigger or a retry. The application's arm/trigger/disarm route (console arm, disarm) owns staging, the owned bench pulse and the line isolation. Wired bench 09: first bench use for function 7 on drive 4 and drives 1, 2, 4 (A1/A2/B1 attributed; standstill needs speed word 0 and only RUNNING after completion is a further start; aux1 witness counts only lost session edges)."
     }
   ],
   "non_operation_choices": [

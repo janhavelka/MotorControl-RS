@@ -48,8 +48,8 @@ struct Run {
     }
     // One sample requested at now and answered 10 ms later.
     void sample(uint16_t motion, int32_t position, uint16_t inputs = 0, bool preEdge = false, uint16_t alarm = 0,
-                uint64_t requestUs = 0) {
-        words(motion, position, inputs, alarm);
+                uint64_t requestUs = 0, uint16_t speed = 0) {
+        words(motion, position, inputs, alarm, speed);
         InputStartEvent e = event(InputStartEventKind::SAMPLE);
         e.sequence = preEdge ? 0 : c.nextSequence; e.preEdge = preEdge;
         e.requestUs = requestUs ? requestUs : now; now += 10000;
@@ -215,8 +215,15 @@ void testSecondStarts() {
       r.wait(40000); r.sample(RUNNING_WORD, 1600);                       // then a second run while held.
       assert(r.c.outcome == InputStartOutcome::SECOND_START && r.result().further == InputStartFurther::SEEN); }
     { Run r; armToEdge(r); moveAndRelease(r); r.wait(600000); r.sample(STOPPED_WORD, 1500);
-      r.wait(600000); r.sample(STOPPED_WORD, 2500); // After the falling edge, inside the post-release window.
+      r.wait(600000); r.sample(RUNNING_WORD, 1700); // After the falling edge, inside the post-release window.
       assert(r.c.outcome == InputStartOutcome::SECOND_START); }
+    // A position change at standstill after the completion is not a start: it is
+    // not excluded (settling or a start between samples), and never SECOND_START.
+    { Run r; armToEdge(r); moveAndRelease(r); r.wait(40000); r.sample(STOPPED_WORD, 1500);
+      r.wait(40000); r.sample(STOPPED_WORD, 2500); r.settle(2500);
+      const auto x = r.result();
+      assert(x.outcome == InputStartOutcome::ATTRIBUTED && x.further == InputStartFurther::NOT_EXCLUDED);
+      assert(x.positionMatches && x.positionChange == 2000); } // The completion matched; the later change is reported.
 }
 void testCompletionBetweenSamplesHasNoInventedOnset() {
     Run r; armToEdge(r);
@@ -288,7 +295,50 @@ void testHomeAndVelocityEffects() {
 }
 } // namespace
 
+// Wired bench 09 (A6d, drive 4, stop normal ~1 s into an input-started +3000
+// move, back-to-back reads): the drive cleared RUNNING while its speed word was
+// still 23 and the position still moved (50734 running, 50763 not running at
+// speed 23, 50764 at speed 0, then fixed). Completion marked at the first sample
+// without RUNNING turned that last increment into SECOND_START (B2: 10 of 30
+// member results). Standstill is RUNNING clear and speed word 0.
+void testStopTailIsNotASecondStart() {
+    const uint16_t SPEED_58 = 58, SPEED_23 = 23;
+    auto recorded = facts(); recorded.baselineWords[4] = 0; recorded.baselineWords[5] = 49406; recorded.expectedDisplacement = 3000;
+    { Run r(recorded); r.sample(STOPPED_WORD, 49406); r.wait(40000); r.isolation(true); r.sample(STOPPED_WORD, 49406, 0, true); r.on();
+      r.wait(40000); r.sample(RUNNING_WORD, 50734, 0, false, 0, 0, SPEED_58); r.off();
+      InputStartEvent stop; stop.kind = InputStartEventKind::STOP; stop.operationId = OP; stop.stopId = 91;
+      assert(advanceInputStart(r.c, stop, r.now));
+      r.wait(40000); r.sample(0, 50763, 0, false, 0, 0, SPEED_23);
+      r.wait(40000); r.sample(0, 50764);
+      r.settle(50764);
+      const auto x = r.result();
+      assert(x.outcome == InputStartOutcome::STOPPED && x.further != InputStartFurther::SEEN && x.stoppedAfterStop);
+      assert(x.completion == InputStartCompletion::FINITE_STOPPED && x.positionChange == 50764 - 49406); }
+    // The same tail ended by a stop input (no serial stop): stopped short, attributed, never a second start.
+    { Run r(recorded); r.sample(STOPPED_WORD, 49406); r.wait(40000); r.isolation(true); r.sample(STOPPED_WORD, 49406, 0, true); r.on();
+      r.wait(40000); r.sample(RUNNING_WORD, 50734, 0, false, 0, 0, SPEED_58); r.off();
+      r.wait(40000); r.sample(0, 50763, 0, false, 0, 0, SPEED_23);
+      r.wait(40000); r.sample(0, 50764); r.settle(50764);
+      const auto x = r.result();
+      assert(x.outcome == InputStartOutcome::ATTRIBUTED && x.further == InputStartFurther::NONE_SEEN && !x.positionMatches); }
+    // Not running with a nonzero speed is not a conclusion either.
+    { Run r; armToEdge(r); r.wait(40000); r.sample(RUNNING_WORD, 900); r.off();
+      for (unsigned i = 0; i < 50; ++i) { r.wait(40000); r.sample(0, 1500, 0, false, 0, 0, 1); }
+      r.time(); assert(r.c.state == ActionState::ACTIVE); }
+    // B2 on the speed rule alone (drives 1 and 2): one increment after the reported
+    // standstill. It is settling, reported as not excluded, never a second start.
+    { Run r; armToEdge(r); r.wait(40000); r.sample(RUNNING_WORD, 900); r.wait(40000); r.sample(0, 1500);
+      r.wait(40000); r.sample(0, 1501); r.off(); r.settle(1501);
+      const auto x = r.result();
+      assert(x.outcome == InputStartOutcome::ATTRIBUTED && x.further == InputStartFurther::NOT_EXCLUDED);
+      assert(x.positionChange == 1001 && x.completion == InputStartCompletion::FINITE_STOPPED); }
+    // RUNNING again after the standstill is a further start.
+    { Run r; armToEdge(r); r.wait(40000); r.sample(RUNNING_WORD, 900); r.wait(40000); r.sample(0, 1500);
+      r.wait(40000); r.sample(RUNNING_WORD, 1501);
+      assert(r.c.outcome == InputStartOutcome::SECOND_START && r.result().further == InputStartFurther::SEEN); }
+}
 int main() {
+    testStopTailIsNotASecondStart();
     testPrepareRefusalsPreserveOutput();
     testWorkIsReadOnlyAndRepeats();
     testAttributedRelativeStart();

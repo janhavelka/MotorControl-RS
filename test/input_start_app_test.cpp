@@ -37,13 +37,13 @@ struct FakeBench final : BenchIo::Port {
     BenchIo::OutputView outputs[BenchIo::OUTPUTS];
     unsigned applies = 0, onCalls = 0, offCalls = 0, quiesces = 0;
     bool failOn = false, stuck = false;
-    uint32_t inputOverwritten = 0;
+    uint32_t inputEdges = 0, inputOverwritten = 0; // aux1 ring counters (BenchIo::InputView).
     std::function<void(uint8_t)> rising; // Simulator hook: the drives see an input edge.
     uint64_t now() const { return hardware.time; }
     void view(BenchIo::View& v) const {
         v = BenchIo::View(); v.ready = true; v.nowUs = now();
         for (uint8_t i = 0; i < BenchIo::OUTPUTS; ++i) v.outputs[i] = outputs[i];
-        v.input.known = true; v.input.overwritten = inputOverwritten;
+        v.input.known = true; v.input.edges = inputEdges; v.input.overwritten = inputOverwritten;
     }
     void off(uint8_t i, BenchIo::OffReason reason) {
         if (!outputs[i].active || stuck) return;
@@ -369,7 +369,12 @@ void testTriggerRefusals() {
                             "@23 disarm 1 2\n", "@23 arm inspect\n", "@23 arm\n"}) {
         command(bad); contains("invalid_arguments");
     }
-    trigger(id);
+    // Wired bench 09 Implement 1: the shortest reliable start pulse measured on
+    // drive 4 was 10 ms (A3: 3/3 single starts at 10..200 ms, none at 5 ms); the
+    // route's minimum keeps a 10 ms margin and is admitted at exactly 20 ms.
+    static_assert(Probe::INPUT_START_MIN_WIDTH_MS == 20, "minimum start pulse from the A3 sweep");
+    trigger(id, "mosfet2", Probe::INPUT_START_MIN_WIDTH_MS);
+    assert(bench.outputs[3].holdMs == Probe::INPUT_START_MIN_WIDTH_MS);
     command("@24 arm trigger " + sid + " mosfet2 200\n"); contains("already_triggered");
     assert(bench.onCalls == 1);
     done();
@@ -618,6 +623,48 @@ void testGroupMembers() {
     for (uint8_t i = 0; i < 2; ++i) assert(result(i).outcome == Outcome::ATTRIBUTED && result(i).positionChange == 400);
     assert(!count(isStart) && bench.onCalls == 1);
 }
+// Wired bench 09: the aux1 edge ring is never drained, so once it holds
+// EDGE_CAPACITY edges its own overwrite counter grows with every new edge. That
+// wrap-around is not lost session evidence; only session edges the ring no
+// longer retains (more than EDGE_CAPACITY since arming, or a clear) degrade.
+void testAux1RingWrapIsNotLostEvidence() {
+    const uint32_t ring = static_cast<uint32_t>(BenchIo::EDGE_CAPACITY);
+    // Recorded shape: 16 two-edge trials after `bench clear`, then every edge overwrites.
+    fresh(); selectedFacts(1);
+    bench.inputEdges = 2 * 16; bench.inputOverwritten = 0;
+    auto id = arm("x3 relative 1000 60");
+    trigger(id);
+    bench.inputEdges += 2; bench.inputOverwritten += 2; // Y0 running on and off of this start.
+    done();
+    assert(result().outcome == Outcome::ATTRIBUTED && !result().missing && session().aux1Overwrites == 0);
+    assert(releaseOperation(id));
+    // A long-wrapped ring before arming changes nothing either.
+    selectedFacts(1);
+    bench.inputEdges = 500; bench.inputOverwritten = 468;
+    id = arm("x3 relative 1000 60");
+    trigger(id);
+    bench.inputEdges += 2; bench.inputOverwritten += 2;
+    done();
+    assert(result().outcome == Outcome::ATTRIBUTED && !result().missing && session().aux1Overwrites == 0);
+    assert(releaseOperation(id));
+    // More session edges than the ring holds: the oldest of them are lost.
+    selectedFacts(1);
+    id = arm("x3 relative 1000 60");
+    trigger(id);
+    bench.inputEdges += ring + 3; bench.inputOverwritten += ring + 3;
+    done();
+    assert(result().outcome == Outcome::INDETERMINATE && (result().missing & ESS::INPUT_START_MISSING_OVERWRITE));
+    assert(session().aux1Overwrites == 3);
+    assert(releaseOperation(id));
+    // A ring clear during the session loses its edges.
+    selectedFacts(1);
+    id = arm("x3 relative 1000 60");
+    trigger(id);
+    bench.inputEdges = 0; bench.inputOverwritten = 0;
+    done();
+    assert(result().outcome == Outcome::INDETERMINATE && (result().missing & ESS::INPUT_START_MISSING_OVERWRITE));
+    assert(releaseOperation(id));
+}
 } // namespace
 
 int main() {
@@ -634,6 +681,7 @@ int main() {
     testDeadlineWithoutTrigger();
     testAbsoluteAndAbsoluteBy();
     testGroupMembers();
+    testAux1RingWrapIsNotLostEvidence();
     std::puts("input_start_app: PASS");
     return 0;
 }

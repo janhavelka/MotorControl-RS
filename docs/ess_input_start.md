@@ -3,9 +3,9 @@
 Wired bench 08, 19 November 2026. This guide is the contract of the route that
 lets a drive input start motion the host staged: arm a host observation
 session, pulse one owned bench output once, observe and attribute the result,
-disarm. It is software only: no physical behavior is claimed here. Prompt 09
-([wired bench 09](prompts/ess_wired_bench/09_input_and_serial_starts.md)) is its
-first bench use.
+disarm. Wired bench 08 delivered it as software; wired bench 09
+([prompt](prompts/ess_wired_bench/09_input_and_serial_starts.md)) ran it on the
+bench: see [measured on the bench](#measured-on-the-bench-wired-bench-09).
 
 ## What is delivered
 
@@ -27,9 +27,9 @@ and samples. It never yields a write, a retrigger or a retry.
 | Claim | Source (physical page) | Status |
 | --- | --- | --- |
 | Function 7: "when a valid level signal is given ... completes the action according to the given motion parameters" | Function manual p17 | documented (level wording) |
-| Functions 7, 11, 12 "the edge is valid"; 13 level | p27 | documented (edge wording); contradicts p17's level wording. The route depends on neither; prompt 09 measures held levels |
+| Functions 7, 11, 12 "the edge is valid"; 13 level | p27 | documented (edge wording); contradicts p17's level wording. The route depends on neither. Measured (wired bench 09): a 2000 ms held assertion started one move in each mode and nothing after the release; this fits an edge-started drive and a level drive that rearms only after release, and is no general verdict |
 | `0x0050` 0 relative, 1 absolute "when using IO to control positioning motion"; `0x0051` PV trigger level/edge | p75 | documented. The staged target words mean a displacement or an endpoint only through `0x0050`, not through the serial start bit |
-| X inputs need a level longer than 10 ms | Hardware manual p9 | documented; 20 ms named minimum width (prompt 09 raises it from its sweep) |
+| X inputs need a level longer than 10 ms | Hardware manual p9 | documented; measured on drive 4 at filter 2: 10 ms started 3/3, 5 ms 0/3 (wired bench 09); the route's minimum stays 20 ms |
 | Interrupt fixed length (function 7 during motion) | p29 | documented; not used by this route |
 
 ## Arm
@@ -80,15 +80,28 @@ after the last write, in this order:
 
 1. `read config A`
 2. `driver read A` (the `0x0050` mode)
-3. `motion-profile read`
+3. `motion-profile read`, leaving its profile session open
 4. `read state A`
 5. `io qualification install A x3 7 0 finite-move MAPPING triggers-inhibited`
 
-For group members the same reads come from `group set` (identity,
-configuration, profile), `driver read ADDRESS` for each member and `group read
-state`; an installed `group reference` that went stale refuses the member
-(`member_reference_stale`): revoke it or install it again with the current read
-IDs. `absolute-by` computes each target from the fresh feedback of step 4.
+Step 3's session must stay open until the arm: a `motion-profile forget` after
+the read unbinds the move readiness and the arm refuses `move_readiness`
+(measured in wired bench 09, where the harness's baseline read helper forgot
+the session after reading). After a profile stage in the same controller
+session the selected axis also needs `motion-profile start-speed relation W W`
+for the stored start word `W`, as every move does.
+
+For group members the reads come from `group set` (identity, configuration,
+profile), then `group read state`, then `driver read ADDRESS` for each member,
+then the member records (`io qualification install member ADDRESS ...`). A
+member record captures the member's checked state: before `group read state`
+it is refused `reads_required` (measured, wired bench 09). An installed `group
+reference` that went stale refuses the member (`member_reference_stale`):
+revoke it or install it again with the current read IDs. `absolute-by`
+computes each target from the fresh feedback of step 4 (members: `group read
+state`). A group member's start-speed relation cannot be restated: after a
+profile stage of that drive in the same controller session it refuses group
+arms until the controller restarts (wired bench 07 G2).
 An admitted trigger expires the members' cached state (the input may move the
 drive outside any host record), so the next arm needs a fresh `read state`.
 
@@ -132,16 +145,37 @@ ordinary owner, from ARMED until its context ends after the post-release window
 (default 2 s and at least four samples after the falling edge, or after a later
 stop) or the armed window closes. Sampling pauses during the trigger reads.
 
-A change is RUNNING or a position different from the baseline. It is
-`ATTRIBUTED` only when every witness holds:
+A change is RUNNING, a nonzero speed word or a position different from the
+baseline. A drive is at standstill only when it reports RUNNING clear and speed
+word 0: after a serial, group or input stop the drive clears RUNNING while its
+speed word still decays and the position settles by up to about 30 increments
+(measured in wired bench 09, A6d), so completion, "stopped after the stop" and
+the conclusion wait for that standstill. Even then, after some group and
+serial stops the session's own samples showed a further change after the
+reported standstill (on the image with the standstill rule: 12 of 30 member
+results of B2, all on drives 1 and 2, 2 of 9 of B3 and 1 of 12 A6 trials on
+drive 4), while those members
+ended as far as in the other trials and drive 4 gave no further Y0 running
+edge: no second move took place. A further start is therefore RUNNING reported
+again after the completion; a later position or speed change without RUNNING
+sets `further` to `not_excluded` (settling, or a start that completed between
+samples) and is never reported as a start. Before these corrections stop tails were reported as `second_start`
+(wired bench 09 B2, B3, A6). A change is `ATTRIBUTED` only when every witness
+holds:
 
 - exactly one source ON noted inside the armed window;
 - a pre-edge sample taken by the trigger step that matched the baseline
   (stopped, same position, input inactive, speed 0);
 - the first changed sample was requested after the edge;
 - the line isolation was decided and held at the ON;
-- no lost sample, no sample spacing above twice `poll-ms`, no debug-copy or
-  `aux1` ring overwrite since the pre-edge sample;
+- no lost sample, no sample spacing above twice `poll-ms`, no debug-copy
+  overwrite since the pre-edge sample, and no `aux1` edge recorded since
+  arming that the 32-edge ring no longer retains (more than 32 edges since
+  arming, or `bench clear`). The ring is never drained, so its own
+  `overwritten` counter grows with every edge once it is full; that
+  wrap-around is not a lost session witness (wired bench 09 found every
+  session INDETERMINATE from the 17th two-edge trial after `bench clear`
+  before this was corrected);
 - no serial start reached the drive and the configuration generation did not
   change (a change cancels the session).
 
@@ -160,7 +194,7 @@ tolerance (`position_matches`).
 | `indeterminate` | A witness is missing; never counts as passed |
 | `no_start` | No change through the hold, the release and the post-release window |
 | `unattributed_motion` | A change before the edge, or with the edge outside the armed window |
-| `second_start` | A further change after the first completion (during the hold or after the falling edge) |
+| `second_start` | RUNNING reported again after the first completion (during the hold or after the falling edge) |
 | `stopped` | A stop was recorded by its stop ID; a stopped sample and the post-release window followed |
 | `drive_fault` | A sample reported alarm, release or a soft limit |
 | `transport_error` | Sampling could not continue (bus recovery required) |
@@ -170,7 +204,8 @@ tolerance (`position_matches`).
 Execution (start observed) and completion (`finite_stopped`, `homed`,
 `velocity_stopped`) are separate fields. `further` says whether a further start
 is excluded: `none_seen`, `seen`, or `not_excluded` for an endpoint already
-reached, where a repeated start shows no position change. A repeated absolute
+reached, where a repeated start shows no position change, and for a position
+change at standstill after the completion. A repeated absolute
 target the drive already holds therefore reports `indeterminate`
 (`running_not_sampled`) unless RUNNING was sampled. A velocity run is never
 reported finite. A missing sample, a timeout or a transport error never yields
@@ -206,7 +241,11 @@ ordinary queue (per-member spacing about 27 ms, still under the 40 ms
 degradation bound, but other ordinary commands wait). Stops use the urgent path
 and are not starved. The view reports per-member spacing (min, median of the
 last 64, max), late and lost samples, debug-copy and `aux1` overwrites and the
-stop-service delay; prompt 09 measures them with three armed drives. Contexts
+stop-service delay. Measured with three armed drives at `poll-ms 50` (wired
+bench 09): per-member spacing median 51 ms and maximum 59.6 ms, no late or lost
+sample, and a `group stop` reached its first accepted TX byte 20.6-28.7 ms after
+its admission while the session sampled (`stop_service_delay_max_us`, ten
+group stops). `poll-ms 20` was not run. Contexts
 and results for four members live in the App block in PSRAM: 11,232 bytes per
 session on the ESP32-S3 build (720 bytes per context; compiler-reported for the
 native IDF image's flags), a fixed block that three armed members share.
@@ -218,6 +257,24 @@ The ON and OFF times are controller GPIO-write times (`evidence`
 bracketed by its request start and reply end; the drive's own start time is
 never claimed. Native tests use a simulated drive; they establish the software
 contract only.
+
+## Measured on the bench (wired bench 09)
+
+Model `0x4EEA`, firmware `0x0029`, drives 1, 2 and 4, X0 = 7 driven by
+`mosfet1`, input filter 2, 60 rpm, 100 ms ramps, poll 50 ms, 19 November 2026
+([report](reports/2026-11-19_wired_bench_09_input_and_serial_starts.md)).
+These are results for this fixture and firmware, not family-wide claims.
+
+| Quantity | Result |
+| --- | --- |
+| Single starts, drive 4 | A1 absolute 20/20 and A2 relative 10/10 `attributed`, one start per edge |
+| Shared starts, drives 1, 2, 4 | B1 50/50 `attributed` on every member (image B), 10/10 on the final image |
+| D (`mosfet1` ON to drive 4 Y0 running on, `aux1`) | 12.99 / 14.37 / 15.46 ms (min/median/max, n = 50, B1); 13.0 / 14.2 / 15.4 ms single (A1) |
+| First-change brackets after the ON | drive 1 +2..+63 ms, drive 2 -31..+30 ms, drive 4 -11..+50 ms (medians); the shared-start spread is bounded only to below about 95 ms by the 50 ms round-robin sampling, not measured |
+| Shortest start pulse | 10 ms started 3/3 (10, 12, 15, 20, 30, 50, 200 ms all 3/3), 5 ms 0/3; the 20 ms minimum keeps a 10 ms margin |
+| Held level, 2000 ms | relative +500: one start, none during the rest of the hold or 2 s after the release; absolute +1000: one start, no RUNNING sample or Y0 edge after it (a zero-length restart at the reached target cannot be excluded) |
+| Capacity, three armed members at poll 50 ms | per-member spacing median 51 ms, max 59.6 ms, no late or lost sample in 150 sessions; `memory` while armed: internal free 341,484 bytes (minimum 336,336), PSRAM free 7,108,140, stack free 3,844 bytes |
+| Final feedback against the staged target | drive 1 exact or +1, drive 2 exact or +1, drive 4 0 to -2 (direction dependent); relative +500 alternated 501/499 with exact pair sums, so the command advances exactly and the feedback differs by about one increment; plain serial absolute moves show the same (drive 4 at T - 1 6/6 with IN_POSITION set, drives 1 and 2 exact 12/12) |
 
 ## Related
 

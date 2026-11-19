@@ -359,7 +359,8 @@ struct App {
         uint32_t widthMs = 0;
         uint8_t ownedMask = 0;          ///< Outputs mapped to the armed terminal.
         uint32_t ownedOns[BenchIo::OUTPUTS] = {};
-        uint32_t debugBase = 0, aux1Base = 0;
+        uint32_t debugBase = 0;
+        uint32_t aux1EdgesBase = 0; ///< aux1 edges since boot or clear at arming (BenchIo::InputView::edges).
         uint32_t serialGeneration = 0, bindingGeneration = 0, declaration = 0; ///< Context the session was armed in.
         bool disarming = false;
         ESS::MovePrerequisites prerequisites[Probe::INPUT_START_MEMBERS]; ///< Arm scratch; never on the loop stack.

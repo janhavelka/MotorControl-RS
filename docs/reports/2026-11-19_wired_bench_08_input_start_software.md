@@ -248,4 +248,6 @@ interruption; and that no serial start word is sent by the route.
 ## Commits and CI
 
 The lead owns Git and CI; nothing was committed or dispatched by this session.
+The lead committed the work as `dd2fb1c`; CI run 44470340636 on that exact
+commit passed all four jobs (native gcc, native clang, Arduino, ESP-IDF).
 Bench procedure: none, gate G0.

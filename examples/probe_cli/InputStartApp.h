@@ -255,7 +255,7 @@ Probe::Action armInputStartIn(App& a, const Probe::InputStartRequest& r, uint32_
     s.participantCount = s.step = 0; s.triggerRequest = Rtu::RequestId(); s.disarming = false;
     s.ownedMask = owned;
     for (uint8_t i = 0; i < BenchIo::OUTPUTS; ++i) s.ownedOns[i] = view.outputs[i].ons;
-    s.debugBase = debugOverwrites(a); s.aux1Base = view.input.overwritten;
+    s.debugBase = debugOverwrites(a); s.aux1EdgesBase = view.input.edges;
     for (uint8_t i = 0; i < r.count; ++i) {
         auto& member = s.members[i];
         const auto& d = drives[i];
@@ -468,13 +468,24 @@ void serviceInputStops(App& a, uint64_t now) {
             }
     }
 }
+// aux1 edges recorded since arming that the edge ring no longer retains. The
+// ring is never drained, so its own `overwritten` counter grows with every edge
+// once it is full; that is wrap-around, not lost session evidence (wired bench
+// 09: from the 17th two-edge trial after `bench clear` every session turned
+// INDETERMINATE). A counter below the base (`bench clear`) loses the session's
+// edges as well.
+uint32_t aux1SessionLost(const BenchIo::InputView& input, uint32_t edgesBase) {
+    if (input.edges < edgesBase) return input.edges + 1;
+    const uint32_t since = input.edges - edgesBase;
+    return since > BenchIo::EDGE_CAPACITY ? since - static_cast<uint32_t>(BenchIo::EDGE_CAPACITY) : 0;
+}
 // Source edges as the port reports them, and the ring-overwrite witnesses.
 void serviceInputSource(App& a, uint64_t now) {
     auto& s = a.inputStart;
     auto& v = s.view;
     const auto& bench = benchView(a);
     const uint32_t debug = debugOverwrites(a) > s.debugBase ? debugOverwrites(a) - s.debugBase : 0;
-    const uint32_t aux1 = bench.input.overwritten > s.aux1Base ? bench.input.overwritten - s.aux1Base : 0;
+    const uint32_t aux1 = aux1SessionLost(bench.input, s.aux1EdgesBase);
     if (debug > v.debugOverwrites || aux1 > v.aux1Overwrites) {
         v.debugOverwrites = std::max(debug, v.debugOverwrites); v.aux1Overwrites = std::max(aux1, v.aux1Overwrites);
         if (v.phase == Probe::InputStartPhase::OBSERVING || v.phase == Probe::InputStartPhase::TRIGGERING)

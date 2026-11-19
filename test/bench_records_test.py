@@ -347,8 +347,8 @@ class DeclarationTest(unittest.TestCase):
 
 
 class TruthTableTest(unittest.TestCase):
-    def test_shared_cases_cover_li01_to_li15(self):
-        self.assertEqual([c["id"] for c in CASES["cases"]], ["LI%02d" % n for n in range(1, 16)])
+    def test_shared_cases_cover_li01_to_li18(self):
+        self.assertEqual([c["id"] for c in CASES["cases"]], ["LI%02d" % n for n in range(1, 19)])
         self.assertEqual([c["id"] for c in CASES["cases"] if not c["harness_only"]],
                          ["LI%02d" % n for n in range(1, 10)] + ["LI14"])
 
@@ -1136,6 +1136,77 @@ class NamedPreStartTest(unittest.TestCase):
         member = next(p for p in entry["participants"] if p["address"] == 4)
         self.assertEqual(member["row"], "L3")
         self.assertIn("io (pre-start)", entry["age_at_on_ms"][4])
+
+
+class SessionMemberTest(unittest.TestCase):
+    """Wired bench 09: an armed input-start member is reserved (its io read is
+    refused); row L3 then uses the firmware trigger's 0x0040/5 read."""
+
+    def named(self, phase="observing", words=(0, 7, 2, 3, 5), age_ms=900, session=300):
+        return {"address": 4, "output": "mosfet2", "terminal": "x3", "function": 5, "polarity": 0, "effect": "stop",
+                "session_io": {"session": session, "raw": list(words), "started_us": 10_000_000 - age_ms * 1000},
+                "session_phase": phase}
+
+    def facts(self, named, running=True):
+        state = FakeBench()._state(4)
+        for block in state["state_blocks"]:
+            if block["block"] == 0:
+                block["running"] = running
+        state["started_us"] = 9_950_000
+        return records.participant_facts(4, {"read-state": state}, 10_000_000, named=named)
+
+    def test_observing_session_member_running_admits_l3(self):
+        named = self.named()
+        facts = self.facts(named)
+        self.assertEqual(facts["functions"], [7, 2, 3, 5])
+        self.assertEqual(records.decide_participant(facts, "mosfet2", named=named, pending=[])["row"], "L3")
+
+    def test_phase_words_age_and_function_refuse(self):
+        for named, row in ((self.named(phase="done"), "L1"), (self.named(words=(0, 7, 2, 3)), "L1"),
+                           (self.named(age_ms=10_500), "L1"), (self.named(words=(0, 7, 2, 3, 6)), "L4"),
+                           (self.named(session=0), "L1")):
+            with self.subTest(named=named):
+                facts = self.facts(named)
+                self.assertEqual(records.decide_participant(facts, "mosfet2", named=named, pending=[])["row"], row,
+                                 facts.get("unknown"))
+
+    def test_stopped_session_member_takes_the_ordinary_rows(self):
+        named = self.named()
+        self.assertEqual(records.decide_participant(self.facts(named, running=False), "mosfet2", named=named,
+                                                    pending=[])["row"], "L7")
+
+    def test_interlock_skips_the_io_read_and_bounds_the_session_read(self):
+        case = next(c for c in CASES["cases"] if c["id"] == "LI10")
+        bench = InterlockConsoleTest().bench_for(case)
+        named = dict(self.named(), session_io={"session": 300, "raw": [0, 1, 2, 3, 5],
+                                               "started_us": bench.now_us - 200000})
+        bench.pending = {}  # The session's own move is no console operation.
+        record = {"running_members": [named]}
+        records.bench_on(bench, "mosfet2", 50, record)
+        entry = record["interlock"][-1]
+        self.assertNotIn("io", entry["reads"][4])
+        self.assertEqual(next(p for p in entry["participants"] if p["address"] == 4)["row"], "L3")
+        self.assertIn("io (session)", entry["age_at_on_ms"][4])
+        self.assertIsNone(entry["session_io"][4]["problem"])
+
+
+class StartMemberTest(unittest.TestCase):
+    """Wired bench 09 (D13): a named start member admits row M only stationary with function 7."""
+
+    def test_rows(self):
+        for cid, expect in (("LI16", "M"), ("LI17", "L4")):
+            case = next(c for c in CASES["cases"] if c["id"] == cid)
+            result = records.isolation_decision("mosfet2", records.case_participants(case), named=case["named"], pending=[])
+            self.assertEqual(next(p for p in result["participants"] if p["address"] == 4)["row"], expect)
+        case = next(c for c in CASES["cases"] if c["id"] == "LI16")
+        for change in ({"function": 5}, {"polarity": 1}, {"output": "mosfet1"}):
+            with self.subTest(change=change):
+                result = records.isolation_decision("mosfet2", records.case_participants(case),
+                                                    named=dict(case["named"], **change), pending=[])
+                self.assertEqual((result["decision"], result["row"]), ("refuse", "L4"))
+        pending = [{"operation_id": 700, "address": 1}]
+        result = records.isolation_decision("mosfet2", records.case_participants(case), named=case["named"], pending=pending)
+        self.assertEqual((result["decision"], result["row"]), ("refuse", "L4"))
 
 
 if __name__ == "__main__":

@@ -659,6 +659,13 @@ trigger outputs and the width, poll, window, post-release and read-age bounds.
 `wiring` adds `bench_outputs` and `bench_output_map`. The API, console and
 harness call one route; see [input-started motion](ess_input_start.md).
 
+Wired bench 09 (19 November 2026) kept the 20 ms minimum width with evidence:
+on drive 4 a 10 ms pulse started every trial and 5 ms none, so 20 ms keeps a
+10 ms margin. `capacity.aux1_overwrites` now counts `aux1` edges recorded since
+arming that the 32-edge ring no longer retains, not the ring's own wrap-around
+count. A member result reaches completion only at a reported standstill
+(RUNNING clear and speed word 0).
+
 ## Verification and qualification
 
 Native console/application tests cover help parity, strict parsing, direct API

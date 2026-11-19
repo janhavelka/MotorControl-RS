@@ -1331,5 +1331,231 @@ class InputStartPlanTest(unittest.TestCase):
                 self.args(*bad)
         self.assertEqual(self.args('--start-terminal', 'x0', '--trigger-output', 'mosfet1').start_terminal, 'x0')
 
+
+# --------------------------------------------------------------------------
+# Wired bench 09: input-started and serially interrupted moves
+
+import bench_input_starts as starts  # noqa: E402
+
+
+class ProfileConsole:
+    """Records commands; a motion-profile read answers settled, as the firmware does."""
+
+    def __init__(self):
+        self.calls = []
+
+    def clock(self):
+        return 0.0
+
+    def sleep(self, _):
+        pass
+
+    def command(self, name, **kwargs):
+        self.calls.append((name, kwargs.get('host_args') or kwargs.get('driver_args')))
+        reply = {'ok': True, 'operation_id': len(self.calls)}
+        if name == 'wiring':
+            reply.update(address=4, target=4, result='done')
+        if name == 'driver':
+            reply['observation'] = {'raw': [0, 1000, 0, 0, 0, 0, 1]}
+        if name == 'motion-profile':
+            reply.update(pending=False, session_ok=True, original=[30, 100, 100, 60, 0, 5000],
+                         current=[30, 100, 100, 60, 0, 5000], error='none')
+        return reply
+
+
+class ReferenceReadsTest(unittest.TestCase):
+    """Wired bench 09 deviation 1: the fresh sequence keeps the profile session open."""
+
+    def test_documented_order_without_a_forget_after_the_profile_read(self):
+        console = ProfileConsole()
+        out = starts.reference_reads(console, 4, 5.0)
+        names = [(n, a[0] if a else None) for n, a in console.calls if n != 'wiring']
+        self.assertEqual(names, [('read-config', None), ('driver', 'read'), ('motion-profile', 'forget'),
+                                 ('motion-profile', 'read'), ('motion-profile-start-speed-relation', '30'),
+                                 ('read-state', None)])
+        read = names.index(('motion-profile', 'read'))
+        self.assertNotIn(('motion-profile', 'forget'), names[read:])
+        self.assertEqual(out['motion-profile'], [30, 100, 100, 60, 0, 5000])
+        self.assertEqual(out['driver']['raw'][6], 1)
+
+    def test_the_baseline_read_helper_forgets_its_session(self):
+        # The cause: records.read_group reads and then forgets the profile session.
+        console = ProfileConsole()
+        scenarios.records.read_group(console, 4, 'motion-profile')
+        self.assertEqual([a[0] for n, a in console.calls if n == 'motion-profile'], ['read', 'forget'])
+
+
+def _result(change, expected, outcome='attributed', further='not_excluded', start=-10000, end=50000, on=1_000_000):
+    return {'known': True, 'outcome': outcome, 'missing': [] if outcome == 'attributed' else ['spacing'],
+            'further': further, 'completion': 'finite_stopped', 'running_observed': True, 'change_observed': True,
+            'change_start_us': on + start, 'change_end_us': on + end, 'position_change': change,
+            'expected_known': True, 'expected_change': expected, 'position_matches': change == expected,
+            'samples': 40, 'lost_samples': 0, 'late_samples': 0,
+            'spacing_us': {'min': 50000, 'median': 51000, 'max': 52000, 'count': 38}, 'stop_id': 0,
+            'stopped_after_stop': False}
+
+
+def _session(results, on=1_000_000, off=1_050_000, rows=None):
+    return {'operation_id': 300, 'phase': 'done', 'error': 'none',
+            'source': {'state': 'hold_elapsed', 'on_us': on, 'off_us': off},
+            'isolation': {'admitted': True, 'rows': rows or [{'address': a, 'row': 'M'} for a in results]},
+            'capacity': {'debug_overwrites': 0, 'aux1_overwrites': 0, 'stop_service_delay_max_us': 0},
+            'members': [{'address': a, 'result': r} for a, r in results.items()]}
+
+
+class InputStartAnalysisTest(unittest.TestCase):
+    def test_start_delay_brackets_and_endpoint_error(self):
+        edges = [{'at_us': 1_013_381, 'active': False}, {'at_us': 3_100_000, 'active': True}]
+        a = starts.start_trial(_session({4: _result(1999, 2000), 1: _result(2000, 2000)}), edges)
+        self.assertEqual(a['d_us'], 13381)
+        self.assertEqual(a['members'][4]['bracket_us'], [-10000, 50000])
+        self.assertEqual(a['members'][4]['endpoint_error'], -1)
+        self.assertEqual(a['members'][1]['endpoint_error'], 0)
+        self.assertEqual((a['y0_on_during_hold'], a['y0_on_after_release']), (1, 0))
+
+    def test_no_edge_within_a_second_leaves_d_unknown(self):
+        a = starts.start_trial(_session({4: _result(500, 500)}), [{'at_us': 2_100_000, 'active': False}])
+        self.assertIsNone(a['d_us'])
+
+    def test_verdicts_split_attribution_and_exact_endpoint(self):
+        edges = [{'at_us': 1_014_000, 'active': False}]
+        exact = [{'index': 1, 'analysis': starts.start_trial(_session({4: _result(500, 500)}), edges)}]
+        self.assertEqual(starts.start_verdicts(exact, [4]),
+                         {'controller-timestamped': ('PASS', None), 'drive-reported': ('PASS', None)})
+        off = [{'index': 1, 'analysis': starts.start_trial(_session({4: _result(499, 500)}), edges)}]
+        v = starts.start_verdicts(off, [4])
+        self.assertEqual(v['controller-timestamped'][0], 'PASS')
+        self.assertEqual(v['drive-reported'][0], 'FAIL')
+        self.assertIn('no tolerance', v['drive-reported'][1])
+
+    def test_second_start_fails_and_a_missing_witness_is_indeterminate(self):
+        edges = [{'at_us': 1_014_000, 'active': False}]
+        second = [{'index': 1, 'analysis': starts.start_trial(_session({4: _result(1000, 500, 'second_start', 'seen')}),
+                                                              edges)}]
+        self.assertEqual(starts.start_verdicts(second, [4])['drive-reported'][0], 'FAIL')
+        open_ = [{'index': 1, 'analysis': starts.start_trial(_session({4: _result(500, 500, 'indeterminate')}), edges)}]
+        self.assertEqual(starts.start_verdicts(open_, [4])['controller-timestamped'][0], 'indeterminate')
+        self.assertEqual(starts.start_verdicts([], [4])['drive-reported'][0], 'NOT RUN')
+
+    def test_shared_spread_bounds_from_member_brackets(self):
+        a = starts.start_trial(_session({1: _result(2000, 2000, start=1442, end=63104),
+                                         2: _result(2000, 2000, start=-30711, end=30243),
+                                         4: _result(2000, 2000, start=-10728, end=48517)}), [])
+        self.assertEqual(starts.spread(a), {'lower_us': 0, 'upper_us': 63104 + 30711})
+        summary = starts.summarize_starts([{'analysis': a}])
+        self.assertEqual(summary['members']['1']['endpoint_errors'], {'0': 1})
+        self.assertAlmostEqual(summary['spread_upper_ms']['max'], 93.815)
+
+    def test_width_table_and_floor(self):
+        trials = []
+        for width, starts_seen in ((5, (0, 0, 0)), (10, (1, 0, 1)), (12, (1, 1, 1)), (15, (1, 1, 1)), (20, (1, 1, 1))):
+            for n in starts_seen:
+                trials.append({'width_ms': width, 'count': {'starts': n, 'position_change': 200 * n}})
+        table = starts.width_table(trials)
+        self.assertEqual(table['reliable_floor_ms'], 12)
+        self.assertEqual({k: v for k, v in table['widths']['10'].items() if k != 'changes'},
+                         {'trials': 3, 'single': 2, 'none': 1, 'multiple': 0, 'unclear': 0})
+        trials.append({'width_ms': 30, 'count': {'starts': 2}})
+        self.assertIsNone(starts.width_table(trials)['reliable_floor_ms'])
+
+    def test_count_starts_from_running_episodes_and_y0_edges(self):
+        samples = [_sample(0, 0, position=100), _sample(50_000, 4, position=150), _sample(100_000, 4, position=250),
+                   _sample(150_000, 1, position=301)]
+        # Recorded A3 shape: one episode, one Y0 edge, feedback +201 for a +200 start.
+        self.assertEqual(starts.count_starts(samples, 100, 301, 200, 1),
+                         {'running_episodes': 1, 'y0_edges': 1, 'position_change': 201, 'starts': 1})
+        self.assertIsNone(starts.count_starts(samples, 100, 301, 200, 2)['starts'])  # Edge and samples disagree.
+        quiet = [_sample(0, 1, position=100), _sample(50_000, 1, position=300)]
+        self.assertIsNone(starts.count_starts(quiet, 100, 300, 200, 0)['starts'])  # Moved with no witness.
+        self.assertEqual(starts.count_starts(quiet[:1], 100, 100, 200, 0)['starts'], 0)
+
+    def test_stop_classification_needs_every_witness(self):
+        base = {'analysis': starts.start_trial(_session({4: _result(1450, 3000)}), [{'at_us': 1_014_000, 'active': False}]),
+                'moving_witness': {4: 'running_sample'}, 'edges': [{'at_us': 1_014_000, 'active': False}]}
+        self.assertEqual(starts.stop_classification(base, 3000, 2_000_000)[4]['class'], 'stopped')
+        unwitnessed = dict(base, moving_witness={})
+        self.assertEqual(starts.stop_classification(unwitnessed, 3000, 2_000_000)[4]['class'], 'indeterminate')
+        restarted = dict(base, edges=base['edges'] + [{'at_us': 2_500_000, 'active': False}])
+        self.assertEqual(starts.stop_classification(restarted, 3000, 2_000_000)[4]['class'], 'fail')
+        full = dict(base, analysis=starts.start_trial(_session({4: _result(3000, 3000)}), []))
+        self.assertEqual(starts.stop_classification(full, 3000, 2_000_000)[4]['class'], 'fail')
+        late = dict(full, moving_witness={})
+        self.assertEqual(starts.stop_classification(late, 3000, 2_000_000)[4]['class'], 'indeterminate')
+
+    def test_interrupt_analysis_compares_both_meanings(self):
+        samples = [_sample(0, 4, position=0), _sample(1_000_000, 4, position=900), _sample(2_000_000, 4, position=2500),
+                   _sample(3_000_000, 1, position=3900), _sample(4_000_000, 1, position=3900)]
+        a = starts.interrupt_analysis({'form': 'relative', 'steps': 3000, 'start_position': 0, 'interrupt_position': 900,
+                                       'samples': samples, 'interrupt_tx_us': 1_050_000})
+        self.assertEqual((a['minus_start'], a['minus_interrupt']), (3900, 3000))
+        self.assertTrue(a['ends_at_interrupt_plus_steps'])
+        self.assertFalse(a['ends_at_start_plus_steps'])
+        self.assertEqual(a['arrived_transitions'][0]['to'], 1)
+        b = starts.interrupt_analysis({'form': 'absolute', 'steps': 3000, 'target': 3900, 'samples': samples})
+        self.assertTrue(b['ends_at_target'])
+
+
+class InputStartsPlanTest(unittest.TestCase):
+    """The 09 families: cases, named states, write list and restoration before the port."""
+
+    def args(self, scenario, *extra):
+        return scenarios.arguments(['--scenario', scenario, '--firmware', str(ROOT / 'README.md'), '--plan-only',
+                                    '--image-level', '08', *extra])
+
+    def test_shared_plan_writes_x0_mode_and_y0_and_restores_them(self):
+        args = self.args('input-start-shared', '--cases', 'B1', 'B3', '--leave-profile')
+        plan = scenarios.folder_plan(args, scenarios.records.load_baseline(args.baseline))
+        keys = {(e['drive'], e['key']): e['candidate'] for e in plan['write_list']}
+        for address in (1, 2, 4):
+            self.assertEqual(keys[(address, 'io.x0')], 7)
+            self.assertEqual(keys[(address, 'drive.position-mode')], 1)
+            self.assertEqual(keys[(address, 'io.x3')], 5)
+        self.assertEqual(keys[(4, 'io.y0')], 2)
+        self.assertTrue(plan['restoration_plan']['admissible'])
+        steps = [(s['drive'], s['key']) for s in plan['restoration_plan']['steps']]
+        self.assertLess(steps.index((4, 'io.x0')), steps.index((4, 'drive.position-mode')))
+        self.assertTrue(all(e['key'].startswith('profile.') for e in plan['left_changed']))
+        self.assertEqual([c['id'] for c in plan['cases']], ['B1', 'B3'])
+        self.assertEqual(plan['terminals'], ['x0', 'x3', 'y0'])
+
+    def test_single_plan_with_a11_restores_the_velocity_words_by_snapshot(self):
+        args = self.args('input-start-single', '--cases', 'A2', 'A11')
+        plan = scenarios.folder_plan(args, scenarios.records.load_baseline(args.baseline))
+        routes = {s['key']: s['route'] for s in plan['restoration_plan']['steps']}
+        self.assertEqual(routes['jog.speed'], 'snapshot')
+        self.assertEqual(routes['io.x0'], 'ordinary')
+        self.assertEqual(routes['profile.acceleration'], 'ordinary')  # One 0x0021/5 stage step.
+
+    def test_snapshot_restores_run_before_other_drives_are_selected(self):
+        # Wired bench 09 A11: drive 1 and 2 steps first selected those drives and
+        # made drive 4's velocity snapshot stale (`velocity restore` refused).
+        args = self.args('input-start-single', '--cases', 'A11')
+        plan = scenarios.folder_plan(args, scenarios.records.load_baseline(args.baseline))['restoration_plan']
+        ordered = scenarios.snapshot_steps_first(plan)['steps']
+        self.assertEqual(ordered[0]['route'], 'snapshot')
+        self.assertEqual(ordered[0]['drive'], 4)
+        self.assertEqual(sorted(map(json.dumps, ordered)), sorted(map(json.dumps, plan['steps'])))
+        rest = [s for s in plan['steps'] if s['route'] != 'snapshot']
+        self.assertEqual(ordered[1:], rest)
+
+    def test_cases_belong_to_their_family_and_bounds_refuse(self):
+        for bad in (('input-start-single', '--cases', 'B1'), ('input-start-shared',),
+                    ('position-interrupt', '--cases', 'I1', 'I1'), ('input-start-single', '--cases', 'A1', '--case', 'A1'),
+                    ('input-start-single', '--cases', 'A1', '--repetitions', '51')):
+            with self.subTest(bad=bad), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                self.args(*bad)
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            scenarios.arguments(['--scenario', 'position-interrupt', '--firmware', str(ROOT / 'README.md'), '--plan-only',
+                                 '--image-level', '07', '--cases', 'I1'])
+
+    def test_named_states_hold_function_7_only_on_members(self):
+        for name, state in starts.STATES.items():
+            for address in starts.DRIVES:
+                words = starts.expected_io(state, address)
+                if address not in state['members']:
+                    self.assertFalse(7 <= words[1] <= 13 or 7 <= words[4] <= 13, (name, address))
+        self.assertEqual(starts.expected_io(starts.STATES['NC-Y4'], 4)[6], 4)
+
+
 if __name__ == '__main__':
     unittest.main()

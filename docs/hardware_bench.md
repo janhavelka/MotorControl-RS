@@ -104,6 +104,34 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+On 19 November [wired bench 09](reports/2026-11-19_wired_bench_09_input_and_serial_starts.md)
+flashed four Arduino `bench_s3_load_timer` images: `dd2fb1c` (A,
+`695A6D7571610F78509D96CE3740187C78471F6626BE59CB9BF85E6B2BF65DA2`), then
+`dd2fb1c` plus the uncommitted prompt 09 tree with the `aux1` fix (B,
+`B16B6C2678DC2CFF7948D0702F6F7610A91FD10CF9A211ACC2E35ABC30C6274B`), with the
+standstill rule (C, `58F83CDF7F1687299607720E3B2511BFB0ABF73F56B18AB5AC54C9E1B8A5766B`)
+and, last, the final firmware tree with the further-start rule (D,
+`28D9E1D7F8D71CD6B15F016280A38239C5E2A5BB49A65CD6197A3FF678B0591C`,
+firmware-source diff `DF6A64D07B14DFD19A08F79C58E3CE2DCA8A7EFFCBAEA0F7CF19CA467DD1528B`;
+reflashed once to restart the controller). Each flash followed a passing
+`before_flash_check`; four regions were hash-verified each time. The final
+tree's native ESP-IDF 5.5.5 image
+(`1E09D77DA2CBF760A68101D3911FAEE5BDA88F5F9421890C14B1A3D648B53698`) was built,
+not flashed. Ending state:
+
+- **Board:** image D, all bench outputs off, `aux1` active (Y0 off), drive 1
+  selected with board declarations, group empty, debug off, COM13 closed.
+- **Drives 1/2/4:** enabled, stopped, alarm-free, speed 0. Position words:
+  drive 1 [0, 30142], drive 2 [0, 29883], drive 4 [1, 46733]; drive 4 not
+  homed. I/O `[0,1,2,3,0,0,0,0,0]`, `0x0050` 0, deviation threshold 4000,
+  input filter 2, profile [100, 100, 60, 0, 5000].
+- **Settings:** `baseline-compare`: 569 of 573 fields equal. Differences, all
+  RAM on drive 4: 06's homing words 35/60/30 (baseline 24/120/60) and 09's
+  velocity speed word 30 (baseline 120; its restore snapshot went stale).
+- **Owner action pending (06, 09):** power-cycle drive 4, then run
+  `baseline-compare`. Until then read the homing and velocity words before
+  relying on them.
+
 On 19 November [wired bench 07](reports/2026-11-19_wired_bench_07_stop_release_inputs.md)
 flashed two Arduino `bench_s3_load_timer` images. Both were built from base
 `1441c55` plus the uncommitted prompt 07 tree. Each flash followed a passing

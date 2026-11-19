@@ -64,6 +64,18 @@
   {"id": "LI15", "note": "as LI10 with an unrelated operation (602 on drive 2) also pending", "harness_only": true,
    "drives": {"1": {"io": [0, 1, 2, 3, 0, 0, 0, 0, 0]}, "2": {"io": [0, 1, 2, 3, 0, 0, 0, 0, 0]}, "4": {"io": [0, 1, 2, 3, 5, 0, 0, 0, 0], "running": true}},
    "named": {"address": 4, "operation_id": 501, "output": "mosfet2", "terminal": "x3", "function": 5, "polarity": 0, "effect": "stop"},
-   "pending": [{"operation_id": 501, "address": 4}, {"operation_id": 602, "address": 2}], "expect": {"decision": "refuse", "row": "L4", "address": 2}}
+   "pending": [{"operation_id": 501, "address": 4}, {"operation_id": 602, "address": 2}], "expect": {"decision": "refuse", "row": "L4", "address": 2}},
+  {"id": "LI16", "note": "wired bench 09 (D13): drive 4 named start member, X3 = 7 polarity 0, stopped, for a deliberate unarmed pulse", "harness_only": true,
+   "drives": {"1": {"io": [0, 1, 2, 3, 0, 0, 0, 0, 0]}, "2": {"io": [0, 1, 2, 3, 0, 0, 0, 0, 0]}, "4": {"io": [0, 1, 2, 3, 7, 0, 0, 0, 0]}},
+   "named": {"address": 4, "output": "mosfet2", "terminal": "x3", "function": 7, "polarity": 0, "effect": "position-start"},
+   "pending": [], "expect": {"decision": "admit", "row": "L7", "address": 1, "member_row": "M"}},
+  {"id": "LI17", "note": "as LI16 with the start member running", "harness_only": true,
+   "drives": {"1": {"io": [0, 1, 2, 3, 0, 0, 0, 0, 0]}, "2": {"io": [0, 1, 2, 3, 0, 0, 0, 0, 0]}, "4": {"io": [0, 1, 2, 3, 7, 0, 0, 0, 0], "running": true}},
+   "named": {"address": 4, "output": "mosfet2", "terminal": "x3", "function": 7, "polarity": 0, "effect": "position-start"},
+   "pending": [], "expect": {"decision": "refuse", "row": "L4", "address": 4}},
+  {"id": "LI18", "note": "as LI16 with drive 2, not named, also holding X3 = 7", "harness_only": true,
+   "drives": {"1": {"io": [0, 1, 2, 3, 0, 0, 0, 0, 0]}, "2": {"io": [0, 1, 2, 3, 7, 0, 0, 0, 0]}, "4": {"io": [0, 1, 2, 3, 7, 0, 0, 0, 0]}},
+   "named": {"address": 4, "output": "mosfet2", "terminal": "x3", "function": 7, "polarity": 0, "effect": "position-start"},
+   "pending": [], "expect": {"decision": "refuse", "row": "L5", "address": 2}}
  ]
 }

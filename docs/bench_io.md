@@ -393,7 +393,15 @@ this fixture unlocks.
    before the operation (row L3).
 4. **Function 7 position start.** Stage a profile, absolute mode
    (`0x0050` = 1), X0 = 7, one `bench on mosfet1 50` pulse. Then hold the level
-   for 2 s to see whether a held level starts a second move.
+   for 2 s to see whether a held level starts a second move. Run it as
+   `bench_scenarios.py --scenario input-start-single --cases A1 ... --image-level
+   09` ([guide](bench_scenarios.md#input-started-and-interrupted-moves-wired-bench-09)).
+   Measured on 19 November ([wired bench 09](reports/2026-11-19_wired_bench_09_input_and_serial_starts.md)):
+   every armed start was attributed (A1 20/20 absolute, A2 10/10 relative), D
+   from the `mosfet1` ON to the Y0 running edge 13.0-15.4 ms, 10 ms pulses start
+   and 5 ms do not, and a 2 s held level started one move in both modes. Drives
+   1 and 2 hold X0 = 0 in the single-drive states so that the shared `mosfet1`
+   line starts only drive 4.
 5. **Home start and origin.** X0 = 11 with a method that does not need a
    sensor; then a switch method with X0 = 1 origin, asserting the origin from
    the host at a chosen time or position.
@@ -413,7 +421,14 @@ this fixture unlocks.
    three during a group move. The shared stop ran on 19 November as `--case
    G1` (staged) and `G2` (sequential): every member stopped short with its own
    outcome and nothing restarted. During a sequential group's start phase the
-   console answers `busy`, so a pulse can only follow the last start.
+   console answers `busy`, so a pulse can only follow the last start. The
+   input-started shared start ran on 19 November as `--scenario
+   input-start-shared --cases B1` ([wired bench 09](reports/2026-11-19_wired_bench_09_input_and_serial_starts.md)):
+   50/50 starts attributed on every member, D 13.0-15.5 ms on drive 4, and the
+   members' first-change brackets overlap, so 50 ms round-robin sampling bounds
+   the spread only to about 95 ms (not a skew measurement). `group stop` and the
+   X3 stop input stopped input-started group moves short with no restart (B2,
+   B3, final image).
 10. **Shared segments.** Steps 7 and 9 together: different stored tables per
     drive, one shared selector and trigger.
 11. JOG/speed inputs (8-10) and PV segments (13), each in an explicit case

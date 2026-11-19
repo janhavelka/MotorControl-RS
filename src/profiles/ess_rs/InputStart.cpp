@@ -37,8 +37,13 @@ uint64_t releaseReference(const InputStartContext& c) {
 bool released(const InputStartContext& c) {
     return (c.sourceOns && !c.sourceActive) || c.stopRequested;
 }
+// Standstill as the drive reports it: RUNNING clear and speed word 0. After a
+// serial, group or input stop the drive clears RUNNING while the speed word still
+// decays and the position still settles (wired bench 09, A6d); a sample without
+// RUNNING alone is neither a completion nor a stopped state.
+bool moving(const uint16_t* words) { return (words[1] & RUNNING) != 0 || words[6] != 0; }
 bool concludable(const InputStartContext& c, uint64_t nowUs) {
-    if (!c.lastKnown || (c.last.words[1] & RUNNING) || !released(c)) return false;
+    if (!c.lastKnown || moving(c.last.words) || !released(c)) return false;
     if (c.stopRequested && !c.stoppedAfterStop) return false;
     const uint64_t reference = releaseReference(c);
     return nowUs >= reference + c.options.postReleaseUs && c.samplesAfterRelease >= c.options.postReleaseSamples;
@@ -81,9 +86,9 @@ void consume(InputStartContext& c, const InputStartSample& s, int32_t position, 
     if (!s.preEdge) ++c.nextSequence;
     c.nextSampleUs = s.requestUs + c.options.pollIntervalUs;
     if (alarm || (motion & FAULTS)) { finish(c, InputStartOutcome::DRIVE_FAULT, nowUs, "drive reported alarm, release or soft limit"); return; }
-    const bool running = (motion & RUNNING) != 0;
+    const bool running = (motion & RUNNING) != 0, inMotion = moving(s.words);
     const int32_t reference = c.completed ? c.completedPosition : c.baselinePosition;
-    const bool changed = running || position != reference;
+    const bool changed = inMotion || position != reference;
     bool inputActive = false;
     inputStartLevel(s.words[2], p.terminal, p.polarity, p.statusMapping, inputActive);
     if (s.preEdge) {
@@ -100,7 +105,7 @@ void consume(InputStartContext& c, const InputStartSample& s, int32_t position, 
         else c.unchangedRequestUs = s.requestUs;
         return;
     }
-    if (c.stopRequested && s.requestUs >= c.stopUs && !running) c.stoppedAfterStop = true;
+    if (c.stopRequested && s.requestUs >= c.stopUs && !inMotion) c.stoppedAfterStop = true;
     if (released(c) && s.requestUs >= releaseReference(c) && c.samplesAfterRelease != UINT32_MAX) ++c.samplesAfterRelease;
     if (inputActive && !c.inputObserved) { c.inputObserved = true; c.inputObservedUs = s.requestUs; }
     if (changed && c.sourceOutsideWindow) {
@@ -112,14 +117,21 @@ void consume(InputStartContext& c, const InputStartSample& s, int32_t position, 
         c.changeStartUs = c.unchangedRequestUs; c.changeEndUs = s.replyEndUs;
         c.changeAfterEdge = s.requestUs >= c.onUs;
     } else if (c.completed) {
-        if (changed) {
+        // A further start is a drive-reported RUNNING sample after the completion.
+        // Position or speed changing without RUNNING is the drive settling after a
+        // stop (wired bench 09: further changes after the reported standstill
+        // with no second move) or a start that completed between samples: not
+        // excluded, never reported as a start.
+        if (running) {
             c.furtherStart = true; c.furtherStartUs = s.requestUs;
             finish(c, InputStartOutcome::SECOND_START, nowUs, "a further start after the completion");
+        } else if (changed && !c.settledAfterCompletion) {
+            c.settledAfterCompletion = true; c.settledUs = s.requestUs;
         }
         return;
     }
-    if (running) { c.runningObserved = true; return; }
-    // Stopped after a change: a finite move may complete between samples (onset unknown).
+    if (inMotion) { if (running) c.runningObserved = true; return; }
+    // At standstill after a change: a finite move may complete between samples (onset unknown).
     c.completed = true; c.completedUs = s.replyEndUs; c.completedPosition = position;
     c.homedObserved = (motion & HOMED) != 0;
 }
@@ -299,7 +311,8 @@ Status getInputStart(const InputStartContext& c, InputStartResult& out) noexcept
             InputStartCompletion::FINITE_STOPPED;
     if (c.furtherStart) r.further = InputStartFurther::SEEN;
     else if (c.completed && c.state != ActionState::ACTIVE)
-        r.further = c.effect == InputStartEffect::ENDPOINT ? InputStartFurther::NOT_EXCLUDED : InputStartFurther::NONE_SEEN;
+        r.further = c.effect == InputStartEffect::ENDPOINT || c.settledAfterCompletion ? InputStartFurther::NOT_EXCLUDED :
+            InputStartFurther::NONE_SEEN;
     r.sourceCommanded = c.sourceOns != 0; r.sourceActive = c.sourceActive; r.inputObserved = c.inputObserved;
     r.onUs = c.onUs; r.offUs = c.offUs; r.changeObserved = c.changeObserved; r.runningObserved = c.runningObserved;
     r.changeStartUs = c.changeStartUs; r.changeEndUs = c.changeEndUs;

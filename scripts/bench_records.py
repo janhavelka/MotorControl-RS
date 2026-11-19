@@ -63,6 +63,19 @@ MAX_AGE_MS = 1000
 # Intended effects a named running member may receive (truth table row L3).
 EFFECTS = {"limit": (2, 3), "release": (4,), "stop": (5, 6), "fixed-length": (7,),
            "selection": (14, 15, 16, 17)}
+# Wired bench 09 (D13): a named *start member* is the stationary drive of the
+# case that a deliberate unarmed pulse may start through its own function 7
+# (row M, as the firmware trigger's armed member). It must read stopped and
+# alarm-free with function 7 and the named polarity on the switched terminal;
+# running, or any other assignment, refuses (L4). Every other drive keeps the
+# ordinary rows, so a non-member with 7-13 still refuses (L5).
+START_EFFECT = "position-start"
+# Wired bench 09: a member of an active input-start session is reserved, so
+# its `io read` is refused (axis_conflict). Its I/O words then come from the
+# firmware trigger's own isolation read of 0x0040/5 (polarity and X0-X3) just
+# before that session's ON (``session_io``); the reservation refuses every
+# settings write to it until the session is done, as for a pre-start io read.
+SESSION_IO_WORDS = 5
 # Wired bench 07: a running member's own operation reserves its axis, so the
 # firmware refuses its `io read` (axis_conflict, measured). Row L3 then takes
 # the member's I/O words from its last checked `io read` before the operation
@@ -309,6 +322,8 @@ def participant_facts(address: int, reads: dict, now_us: int | None, extra_ms: f
     ``NAMED_IO_MAX_AGE_MS`` (wired bench 07).
     """
     facts = {"address": address, "unknown": [], "ages_ms": {}, "operation_ids": {}}
+    if named is not None and reads.get("io") is None and named.get("session_io") is not None:
+        return _session_facts(facts, reads, now_us, extra_ms, named)
     if named is not None and reads.get("io") is None:
         problem = named_io_problem(named)
         if problem:
@@ -345,21 +360,81 @@ def participant_facts(address: int, reads: dict, now_us: int | None, extra_ms: f
         facts["unknown"].append("input polarity bits unknown")
     if any(f > 17 for f in words[1:5]):
         facts["unknown"].append("input function outside 0..17")
-    blocks = _blocks(reads["read-state"])
+    _state_facts(facts, reads["read-state"])
+    facts.update(functions=list(words[1:5]), polarity=words[0])
+    return facts
+
+
+def _state_facts(facts: dict, state: dict) -> None:
+    """Motion, alarm and input facts of one ``read state`` (shared by both io sources)."""
+    blocks = _blocks(state)
     motion, status = blocks.get(0), blocks.get(1)
     if motion is None or status is None:
         facts["unknown"].append("read state lacks motion or I/O block")
+        return
+    if motion.get("alarm_known") is not True or motion.get("unknown_motion_bits") != 0:
+        facts["unknown"].append("unknown motion bits")
+    if status.get("unknown_input_bits") != 0 or status.get("unknown_output_bits") != 0:
+        facts["unknown"].append("unknown input/output bits")
+    if (type(motion.get("running")) is not bool or type(motion.get("alarm_flag")) is not bool or
+            type(motion.get("raw_alarm")) is not int):
+        facts["unknown"].append("motion flags missing")
     else:
-        if motion.get("alarm_known") is not True or motion.get("unknown_motion_bits") != 0:
-            facts["unknown"].append("unknown motion bits")
-        if status.get("unknown_input_bits") != 0 or status.get("unknown_output_bits") != 0:
-            facts["unknown"].append("unknown input/output bits")
-        if (type(motion.get("running")) is not bool or type(motion.get("alarm_flag")) is not bool or
-                type(motion.get("raw_alarm")) is not int):
-            facts["unknown"].append("motion flags missing")
-        else:
-            facts.update(running=motion["running"], raw_alarm=motion["raw_alarm"],
-                         alarm_flag=motion["alarm_flag"], raw_inputs=status.get("raw_inputs"))
+        facts.update(running=motion["running"], raw_alarm=motion["raw_alarm"],
+                     alarm_flag=motion["alarm_flag"], raw_inputs=status.get("raw_inputs"))
+
+
+def session_io_problem(named: dict) -> str | None:
+    """Why an input-start session member's trigger read cannot stand in for a
+    fresh ``io read`` (wired bench 09), or None. ``named['session_io']`` holds
+    the session ID, the firmware's 0x0040/5 words and their request start;
+    ``named['session_phase']`` is the session phase read just before the
+    interlock (only ``observing`` keeps the reservation and its own move)."""
+    s = named.get("session_io")
+    if not isinstance(s, dict):
+        return "no session isolation read"
+    words = s.get("raw")
+    if not (isinstance(words, list) and len(words) == SESSION_IO_WORDS and all(type(w) is int for w in words)):
+        return "session isolation read lacks five words"
+    if type(s.get("session")) is not int or s["session"] <= 0:
+        return "session isolation read names no session"
+    if type(s.get("started_us")) is not int or s["started_us"] <= 0:
+        return "session isolation read has no sample time"
+    if named.get("session_phase") != "observing":
+        return "session %s is %s, not observing" % (s["session"], named.get("session_phase"))
+    return None
+
+
+def _session_facts(facts: dict, reads: dict, now_us, extra_ms: float, named: dict) -> dict:
+    """Decision inputs of an input-start session member: the firmware trigger's
+    0x0040/5 words (age bound NAMED_IO_MAX_AGE_MS) and a fresh ``read state``."""
+    problem = session_io_problem(named)
+    if problem:
+        facts["unknown"].append(problem)
+        return facts
+    s = named["session_io"]
+    facts["io_source"] = "input-start session %d isolation read" % s["session"]
+    facts["age_bounds_ms"] = {"io": NAMED_IO_MAX_AGE_MS}
+    state = reads.get("read-state")
+    if state is None:
+        facts["unknown"].append("missing read-state")
+        return facts
+    facts["operation_ids"] = {"io": None, "read-state": state.get("operation_id")}
+    if not state.get("ok"):
+        facts["unknown"].append("read-state failed: %s" % state.get("result", state.get("outcome")))
+        return facts
+    started = state.get("started_us")
+    if type(started) is not int or type(now_us) is not int or started > now_us or s["started_us"] > now_us:
+        facts["unknown"].append("read has no usable sample time")
+        return facts
+    facts["ages_ms"] = {"io": round((now_us - s["started_us"]) / 1000.0 + extra_ms, 3),
+                        "read-state": round((now_us - started) / 1000.0 + extra_ms, 3)}
+    words = s["raw"]
+    if words[0] > 0xF:
+        facts["unknown"].append("input polarity bits unknown")
+    if any(f > 17 for f in words[1:5]):
+        facts["unknown"].append("input function outside 0..17")
+    _state_facts(facts, state)
     facts.update(functions=list(words[1:5]), polarity=words[0])
     return facts
 
@@ -377,6 +452,10 @@ def _named_mismatch(named: dict, output: str, terminal: str, function: int, pola
         return "terminal reads function %d, named %d" % (function, named["function"])
     if polarity != named.get("polarity"):
         return "terminal reads polarity %d, named %s" % (polarity, named.get("polarity"))
+    if named.get("session_io") is not None:
+        # An input-start session's own move: no console operation is pending for
+        # it; the session phase (checked by session_io_problem) stands instead.
+        return None
     console_id = named.get("console_operation_id", named.get("operation_id"))
     console_address = named.get("console_address", named.get("address"))
     if not any(p.get("operation_id") == console_id and p.get("address") == console_address for p in pending):
@@ -407,6 +486,17 @@ def decide_participant(facts: dict, output: str, *, max_age_ms: float = MAX_AGE_
     polarity = (facts["polarity"] >> index) & 1
     if isinstance(named, list):
         named = next((m for m in named if m.get("address") == facts.get("address")), None)
+    if named is not None and named.get("effect") == START_EFFECT and named.get("address") == facts.get("address"):
+        # Wired bench 09 (D13): the stationary drive a deliberate unarmed pulse starts.
+        if named.get("output") != output or named.get("terminal") != terminal:
+            return decision("L4", False, "named start member on %s/%s, switched %s/%s" % (
+                named.get("output"), named.get("terminal"), output, terminal))
+        if facts["running"]:
+            return decision("L4", False, "named start member is running")
+        if function != 7 or polarity != named.get("polarity") or named.get("function") != 7:
+            return decision("L4", False, "named start member reads function %d polarity %d, named 7 polarity %s"
+                            % (function, polarity, named.get("polarity")))
+        return decision("M", True, "named start member, function 7, stopped (deliberate unarmed start, D13)")
     if facts.get("io_source"):
         # Wired bench 07: the member's own pending operation reserves the axis.
         if named is None or named.get("address") != facts.get("address"):
@@ -563,7 +653,8 @@ def interlock(console, output: str, scenario: dict, *, timeout_s=5.0) -> dict:
     try:
         for address in participants:
             reads[address] = {}
-            member = next((m for m in members if m.get("address") == address and "io_read" in m), None)
+            member = next((m for m in members if m.get("address") == address and
+                           ("io_read" in m or "session_io" in m)), None)
             for name in INTERLOCK_READS:
                 if name == "io" and member is not None:
                     continue  # Its own operation reserves the axis: the pre-start io read stands (row L3).
@@ -585,6 +676,11 @@ def interlock(console, output: str, scenario: dict, *, timeout_s=5.0) -> dict:
                                         "started_us": m["io_read"].get("started_us"), "raw": m["io_read"].get("raw"),
                                         "problem": named_io_problem(m)}
                          for m in members if "io_read" in m}
+    entry["session_io"] = {m["address"]: {"session": (m["session_io"] or {}).get("session"),
+                                          "started_us": (m["session_io"] or {}).get("started_us"),
+                                          "raw": (m["session_io"] or {}).get("raw"),
+                                          "phase": m.get("session_phase"), "problem": session_io_problem(m)}
+                           for m in members if "session_io" in m}
     entry["bench_before"] = _bench_view(view)
     if not view.get("ok"):
         entry.update(row="L1", reason="bench view refused: %s" % view.get("result"))
@@ -597,7 +693,8 @@ def interlock(console, output: str, scenario: dict, *, timeout_s=5.0) -> dict:
     entry["pending"] = pending
     extra_ms = (console.clock() - marked) * 1000.0
     facts = {a: participant_facts(a, reads[a], view.get("now_us"), extra_ms,
-                                  named=next((m for m in members if m.get("address") == a and "io_read" in m), None))
+                                  named=next((m for m in members if m.get("address") == a and
+                                              ("io_read" in m or "session_io" in m)), None))
              for a in participants}
     entry["facts"] = facts
     result = isolation_decision(output, facts, max_age_ms=max_age_ms, named=named, pending=pending)
@@ -625,7 +722,8 @@ def interlock_ordering(participants, reads: dict, sent: list, drv: dict, named: 
     if not drv.get("ok") or (ids and drv.get("operation_id") != ids[-1]):
         problems.append("latest admitted operation %s, last interlock read %s" % (drv.get("operation_id"),
                                                                                   ids[-1] if ids else None))
-    if not _members(named) and drv.get("pending"):
+    # A named start member (wired bench 09) runs nothing: the owner must be idle.
+    if not [m for m in _members(named) if m.get("effect") != START_EFFECT] and drv.get("pending"):
         problems.append("owner reports %s pending requests" % drv.get("pending"))
     return {"operation_ids": ids, "drv_operation_id": drv.get("operation_id"), "drv_pending": drv.get("pending"),
             "sent": sent, "problems": problems}
@@ -653,11 +751,14 @@ def bench_on(console, output: str, hold_ms: int, record: dict, *, timeout_s=5.0)
     on_us = entry["on"]["outputs"][output]["on_us"]
     ages = {a: {name: round((on_us - r["started_us"]) / 1000.0, 3) for name, r in reads.items()}
             for a, reads in entry["reads"].items()}
+    for address, view in (entry.get("session_io") or {}).items():
+        if type(view.get("started_us")) is int:
+            ages.setdefault(address, {})["io (session)"] = round((on_us - view["started_us"]) / 1000.0, 3)
     for address, view in (entry.get("named_io") or {}).items():
         if type(view.get("started_us")) is int:
             ages.setdefault(address, {})["io (pre-start)"] = round((on_us - view["started_us"]) / 1000.0, 3)
     entry["age_at_on_ms"] = ages
-    if any(age > (NAMED_IO_MAX_AGE_MS if name == "io (pre-start)" else entry["max_age_ms"])
+    if any(age > (NAMED_IO_MAX_AGE_MS if name in ("io (pre-start)", "io (session)") else entry["max_age_ms"])
            for reads in ages.values() for name, age in reads.items()):
         entry["off_after_age"] = _bench_view(console.command("bench", host_args=("off",), timeout_s=timeout_s))
         raise BenchError("an interlock read was older than %s ms at the ON; all outputs switched off" % entry["max_age_ms"])

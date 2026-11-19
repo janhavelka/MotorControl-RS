@@ -12,7 +12,9 @@ namespace MotorControlRSExample { namespace Probe {
  * Function 7 (position start) is delivered; home (11), PT (12) and PV (13)
  * staging refuse before any traffic until prompts 12, 13 and 14. */
 constexpr uint8_t INPUT_START_MEMBERS = 4; ///< Drives on one fixture line (FIXTURE_WIRING_CAPACITY).
-constexpr uint32_t INPUT_START_MIN_WIDTH_MS = 20;   ///< Named minimum; prompt 09 raises it from its sweep.
+/// Shortest trigger pulse. Wired bench 09 (A3, drive 4, input filter 2): 10 ms started
+/// every trial (10..200 ms, 3/3 each), 5 ms none; 20 ms keeps a 10 ms margin.
+constexpr uint32_t INPUT_START_MIN_WIDTH_MS = 20;
 constexpr uint32_t INPUT_START_MAX_WIDTH_MS = 5000; ///< Fixed maximum, enough for 09's held level.
 constexpr uint32_t INPUT_START_MIN_POLL_MS = 20, INPUT_START_MAX_POLL_MS = 500, INPUT_START_DEFAULT_POLL_MS = 50;
 constexpr uint32_t INPUT_START_MIN_WINDOW_MS = 100, INPUT_START_MAX_WINDOW_MS = 30000, INPUT_START_DEFAULT_WINDOW_MS = 10000;
@@ -98,7 +100,9 @@ struct InputStartView {
     const char* decisionReason = "none";
     uint8_t rowCount = 0;
     InputStartRow rows[INPUT_START_MEMBERS];
-    // Capacity witnesses while sampling.
+    // Capacity witnesses while sampling: debug-copy records overwritten before
+    // the reader copied them, and aux1 edges recorded since arming that the
+    // never-drained 32-edge ring no longer retains (not its wrap-around count).
     uint32_t debugOverwrites = 0, aux1Overwrites = 0;
     uint64_t stopServiceDelayMaxUs = 0;
     uint8_t count = 0;

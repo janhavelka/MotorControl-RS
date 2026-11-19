@@ -4,6 +4,17 @@
 
 ### Added
 
+- Wired bench 09 harness: `scripts/bench_input_starts.py` and the folder
+  scenarios `input-start-single` (A1-A11), `input-start-shared` (B1-B3, short
+  regression R) and `position-interrupt` (I1-I4, serial endpoint diagnostic E1)
+  with named states entered by ordinary writes and read back, the shared line
+  check against the state, armed starts through the firmware trigger and
+  deliberate unarmed pulses. The interlock (`bench_records`) gains a named
+  *start member* (row M, stationary with function 7, for D13 starts) and
+  *session members* (an armed drive's I/O words from the firmware trigger's own
+  `0x0040/5` read, because its `io read` is refused while reserved); truth
+  table cases LI16-LI18.
+
 - Input-started motion route (wired bench 08, software only): the core
   `InputStart.h` attributes a start that a drive input causes from fresh
   `0x0006/7` samples and caller-noted source edges (outcomes `ATTRIBUTED`,
@@ -160,6 +171,25 @@
 
 ### Fixed
 
+- Input-start sessions no longer turn INDETERMINATE once the never-drained
+  32-edge `aux1` ring has wrapped: only `aux1` edges recorded since arming that
+  the ring no longer retains (or a `bench clear`) count as lost witnesses.
+  Found on the bench (wired bench 09 B1 on 08's image: every session from the
+  17th two-edge trial after `bench clear` was INDETERMINATE); native regression
+  `testAux1RingWrapIsNotLostEvidence`.
+- The input-start core treats a drive as at standstill only when it reports
+  RUNNING clear and speed word 0. After a serial, group or input stop the drive
+  clears RUNNING while its speed word still decays and its position settles by
+  up to about 30 increments; the old rule reported that tail as `second_start`
+  (wired bench 09 B2/B3, A6d back-to-back reads). Native regression
+  `testStopTailIsNotASecondStart` from the recorded words. A further start is
+  now RUNNING reported again after the completion; a later position or speed
+  change without RUNNING (still seen after some stops on drives 1, 2 and 4,
+  with no second move) sets `further` to `not_excluded` and is never reported
+  as `second_start`.
+- The `input-start` harness scenario kept the profile session open after its
+  fresh `motion-profile read`: the shared baseline read helper forgot it, so
+  every arm on the bench was refused `move_readiness` (wired bench 09 pilot).
 - Group stop-on-failure moves require result capacity and reserve stop/recovery
   IDs before staging. Retained results and unrelated stops cannot consume that
   operation's fallback resources. An explicit stop keeps the reservation until

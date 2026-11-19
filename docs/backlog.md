@@ -42,10 +42,16 @@ records the implementation and checks. The
 exercised reads, settings, home 33/34/35 and ACK-only retrigger.
 
 - [ ] Resolve N05 active profile/target replacement and attributable completion.
-  The existing retrigger remains ACK-only. Establish the
-  [missing staging and observation evidence](ess_position.md#remaining-replacement-work)
-  before extending it; [standalone 03](prompts/standalone/03_position_interrupt.md)
-  owns that work.
+  The existing retrigger remains ACK-only. [Wired bench 09](reports/2026-11-19_wired_bench_09_input_and_serial_starts.md)
+  measured its meaning on drive 4: a relative retrigger restarts the stored
+  displacement from the current position, an absolute one ends at its target
+  (or one increment short, as plain serial moves on drive 4), and ARRIVED sets
+  once at the final endpoint, so it cannot separate the replacement from the
+  original; an interrupt after the original had arrived but before its observer
+  saw it ran as a new start. Still missing: staging isolation while moving, a
+  completion witness for the replacement, and a refusal based on a newer
+  checked state sample ([remaining work](ess_position.md#remaining-replacement-work)).
+  Hardware: measured (I1-I4); implementation: unchanged, ACK-only.
 - [x] Stage validated position-profile candidates and host archives without motion
   ([standalone 02](reports/2026-11-15_standalone_02_profile_staging.md)). Fresh session reads,
   one retained result slot and the shared owner preserve deadlines and evidence.
@@ -468,7 +474,13 @@ more drives (now addresses 1, 2 and 4, star wiring).
   natively tested on the selected axis and group members in both `0x0050`
   modes ([input-started motion](ess_input_start.md),
   [report](reports/2026-11-19_wired_bench_08_input_start_software.md)); no
-  hardware evidence yet (prompt 09). Home (12), PT (13) and PV (14) staging
+  hardware evidence yet (prompt 09). Bench (wired bench 09, 19 November):
+  function 7 starts attributed on drive 4 in both modes (A1 20/20, A2 10/10)
+  and on drives 1, 2, 4 (B1 50/50), D 13.0-15.5 ms, 10 ms pulses start and
+  5 ms do not, a 2 s held level starts one move, serial, group and X3 stops
+  end input-started moves short, disarm does not inhibit the input; two route
+  defects fixed on the bench (`aux1` ring wrap, stop tails reported as second
+  starts) ([report](reports/2026-11-19_wired_bench_09_input_and_serial_starts.md)). Home (12), PT (13) and PV (14) staging
   still refuse. PT depends on standalone 04/06; function 7
   does not need standalone 02's separate archive-import route. Source inhibition,
   intermediate writes and stop/disarm evidence stay explicit.
@@ -477,6 +489,10 @@ more drives (now addresses 1, 2 and 4, star wiring).
   Three-drive unicast group evidence already exists; map exact cases/images
   before running missing cases. Wired triggers and independent physical timing
   remain open; broadcast cases are not applicable. No second-drive blocker remains.
+  Item 4 (50 starts from one edge, absolute, `0x0050` read fresh per drive, a
+  stop of all drives during edge-started moves) ran in [wired bench 09](reports/2026-11-19_wired_bench_09_input_and_serial_starts.md):
+  50/50 attributed on every member and `group stop` stopped every member short;
+  the spread is bounded by sampling to below about 95 ms, not measured as skew.
 
 ## Release and future profiles
 

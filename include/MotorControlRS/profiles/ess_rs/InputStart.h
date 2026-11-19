@@ -41,7 +41,7 @@ enum class InputStartOutcome : uint8_t {
     INDETERMINATE,       ///< A witness is missing (see missing); never counts as passed.
     NO_START,            ///< No change through the hold, the release and the post-release window.
     UNATTRIBUTED_MOTION, ///< Change before the edge, or with the edge outside the armed window.
-    SECOND_START,        ///< A further change after an attributed completion.
+    SECOND_START,        ///< RUNNING reported again after the first completion.
     STOPPED,             ///< A stop was recorded; a stopped state and the post-release window followed.
     DRIVE_FAULT,         ///< A sample reported alarm, release or a soft limit.
     TRANSPORT_ERROR,     ///< The application could no longer sample the drive.
@@ -50,12 +50,17 @@ enum class InputStartOutcome : uint8_t {
 };
 /// Start of motion seen in a sample after the source edge (RUNNING or a position change).
 enum class InputStartExecution : uint8_t { NOT_OBSERVED, OBSERVED };
-/** Completion evidence, separate from execution. FINITE_STOPPED: stopped with a
+/** Completion evidence, separate from execution. "Stopped" is the drive's own
+ * standstill report: RUNNING clear and speed word 0 (a sample without RUNNING but
+ * with speed is still moving; wired bench 09). FINITE_STOPPED: stopped with a
  * changed position (or RUNNING seen, then stopped). HOMED: stopped with the homed
  * bit. VELOCITY_STOPPED: a velocity run reported stopped; never a finite completion. */
 enum class InputStartCompletion : uint8_t { NOT_OBSERVED, FINITE_STOPPED, HOMED, VELOCITY_STOPPED };
-/** Whether a further start after the first completion is excluded. NOT_EXCLUDED:
- * an endpoint already reached cannot show a repeated start by position. */
+/** Whether a further start after the first completion is excluded. SEEN: RUNNING
+ * was reported again. NOT_EXCLUDED: an endpoint already reached cannot show a
+ * repeated start by position, or the position (or speed word) changed after the
+ * completion without RUNNING; that is either the drive settling (measured after
+ * stops, wired bench 09) or a start that completed between samples. */
 enum class InputStartFurther : uint8_t { NOT_EVALUATED, NONE_SEEN, SEEN, NOT_EXCLUDED };
 /// Witnesses a result lacks (bit mask). Any bit makes an attribution INDETERMINATE.
 enum InputStartMissing : uint16_t {
@@ -185,6 +190,8 @@ struct InputStartContext {
     uint64_t completedUs = 0;
     bool furtherStart = false;
     uint64_t furtherStartUs = 0;
+    bool settledAfterCompletion = false; ///< Position or speed changed after the completion without RUNNING.
+    uint64_t settledUs = 0;
     bool stopRequested = false, stoppedAfterStop = false;
     uint32_t stopId = 0;
     uint64_t stopUs = 0;

@@ -370,6 +370,38 @@ A homing snapshot is the first checked read after the drive is selected: the
 firmware pins that read, later reads rotate through seven slots, and a later
 `useaddr` makes every snapshot stale.
 
+### Input-started and interrupted moves (wired bench 09)
+
+[Prompt 09](prompts/ess_wired_bench/09_input_and_serial_starts.md) added three
+folder scenarios on `scripts/bench_input_starts.py`, each taking `--cases` in
+order and `--image-level 08` or later: `input-start-single` (A1-A11, drive 4),
+`input-start-shared` (B1-B3, drives 1, 2, 4 as one group) and
+`position-interrupt` (I1-I4). `--repetitions` overrides the case runs (pilots);
+`--leave-profile` keeps the `0x0021/5` words changed in RAM for a later run of
+the same controller session (a profile stage revokes group members' start-speed
+relation until the controller restarts). Pass `--evidence-mib 64`: three-member
+session views are about 5 kB each.
+
+Every case starts from a named state (`STATES`): NA-abs, NA-rel, NA-X3, NB,
+NB-X3, NC and NC-Y4. Entry writes only the differing fields through the planned
+ordinary routes with the stated facts (function 7 removed first, then X3, Y0,
+`0x0050`, function 7 last), reads each back, takes the session-level io/config
+agreement while no drive is reserved, and runs the shared line check (fresh `io
+read` of 1, 2, 4 against the state; no drive outside the state's members with
+7-13 on X0 or X3). An armed trial then runs the documented reference sequence
+(`bench_input_starts.reference_reads`: the profile session stays open), arms,
+checks the non-members again, sends `arm trigger`, compares the firmware's
+isolation rows with the state, and polls `arm inspect` and `bench` until the
+session is done; continued motion gets `stop fast` (`group stop fast` for NB).
+
+Unarmed pulses go through `bench_records.bench_on` with a named member: a
+*start member* (`effect position-start`, row M, stationary with function 7) for
+the deliberate D13 starts of A3 and A10, a running member (`fixed-length`, its
+pre-start `io read`) for A11, and *session members* (the firmware trigger's
+`0x0040/5` words, the session phase `observing`) for the X3 stops of A7 and B3,
+because an armed drive refuses its own `io read`. `input_starts.json` keeps
+every trial, the session views, edges, samples and the restoration.
+
 ## Stress tool
 
 `scripts/bench_stress.py` runs randomized finite cases on the recorded ESS bench.
