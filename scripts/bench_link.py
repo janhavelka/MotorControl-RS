@@ -48,9 +48,6 @@ import sys
 import time
 from pathlib import Path
 
-import serial
-from serial.tools import list_ports
-
 import bench_limits as limits
 import bench_probe as probe
 import bench_records as records
@@ -242,6 +239,7 @@ def prepared_stop(live):
 
 def wait_port(port: str, present: bool, limit_s: float) -> float:
     """Seconds until the board's port is (or is no longer) enumerated."""
+    from serial.tools import list_ports  # pyserial is needed only on the bench host.
     began = time.monotonic()
     serial_number = records.FIXTURE["board"]["serial"]
     while time.monotonic() - began < limit_s:
@@ -254,6 +252,7 @@ def wait_port(port: str, present: bool, limit_s: float) -> float:
 
 def rts_reset(live) -> dict:
     """Controller reset: DTR low, RTS high for 150 ms on a new handle (bench_stress)."""
+    import serial  # pyserial is needed only on the bench host.
     port = serial.Serial()
     port.port, port.baudrate = live.args.port, 115200
     port.dtr, port.rts = False, True
