@@ -51,6 +51,9 @@ static_assert(static_cast<uint64_t>(ESS::ACTION_MAX_POLLS) * RUNNING_POLL_US >= 
 // lets an in-flight transaction settle and one bounded recovery finish while a
 // never-transmitted stop still has its own request budget.
 constexpr uint32_t STOP_RECOVERY_US = REQUEST_US + RECOVERY_BUDGET_US;
+static_assert(Probe::VELOCITY_STOP_RECOVERY_MS * 1000ULL == STOP_RECOVERY_US &&
+    Probe::VELOCITY_NORMAL_STOP_BUDGET_MS * 1000ULL == NORMAL_STOP_US + STOP_RECOVERY_US,
+    "velocity stop budgets carry the ordinary stops' recovery allowance");
 // Bench, 3 November 2026: firmware 0x0029 echoed and ignored starts sent up to
 // 0.6 s after an enable frame, with no status bit showing readiness. Not documented.
 constexpr uint32_t ENABLE_SETTLE_US = 1000000;
@@ -1852,8 +1855,9 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
     // Commissioning flags stay false until an operator or API caller states them.
     // Setup consumes duration. Wired bench 14: the velocity limits record decides
     // the envelope below; the poll interval grows so that 64 polls cover the
-    // duration, and the stop budget follows the stop policy (20 ms / 2 s direct,
-    // 50 ms / 3 s normal, the budget covering a 2000 ms deceleration word).
+    // duration, and the stop budget follows the stop policy (20 ms / 4.5 s direct,
+    // 50 ms / 5.5 s normal, covering a 2000 ms deceleration word); wired bench 18
+    // added one recovery to both, as for ordinary stops (STOP_RECOVERY_US).
     const bool normalStop = supplied.stop.behavior == StopBehavior::CONFIGURED_DECELERATION;
     const auto stopPolicy = normalStop ? Probe::VelocityStop::NORMAL : Probe::VelocityStop::FAST;
     const uint32_t durationMs = static_cast<uint32_t>((supplied.durationUs + 999) / 1000);
@@ -3716,8 +3720,26 @@ Probe::Action startRecovery(App& a, uint32_t commandId, bool automatic, uint32_t
     if (!automatic) a.latestOperationId = operationId;
     return Probe::Action::OK;
 }
+// Wired bench 18: a velocity run whose start may have reached the drive owes its
+// own timed stop. Explicit recovery would cancel that continuation and send no
+// stop, leaving the drive running; it is refused busy instead. The run's held-
+// stop path performs the one recovery its stop needs, and once the run ends,
+// recovery is admitted again. A run still staging (no start sent) is cancelled
+// as before.
+bool velocityOwesStop(const App& a) {
+    for (const auto& record : a.records) {
+        if (!record.operationId || record.kind != App::OperationKind::VELOCITY || terminal(a, record)) continue;
+        const auto phase = record.velocity.phase;
+        if (phase == ESS::VelocityPhase::OBSERVING || phase == ESS::VelocityPhase::STOPPING ||
+            (phase == ESS::VelocityPhase::TRIGGER && record.requestId.owner && a.owner.txAccepted(record.requestId)))
+            return true;
+    }
+    return false;
+}
 Probe::Action recover(void* context, uint32_t commandId, uint32_t& operationId) {
-    return startRecovery(*static_cast<App*>(context), commandId, false, operationId);
+    App& a = *static_cast<App*>(context);
+    if (velocityOwesStop(a)) return Probe::Action::BUSY;
+    return startRecovery(a, commandId, false, operationId);
 }
 #include "SimpleMotionApp.h"
 #include "PositionStageApp.h"

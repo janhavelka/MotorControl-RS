@@ -464,6 +464,21 @@ reported position by one increment for about 1.5 s
 ([three-drive tests](reports/2026-11-12_multi_drive_write_motion_stress.md)).
 `--subdivision` is refused with more than one drive.
 
+`--usb slow-reader` pauses host reads for 0.5-5 s in 30 % of the result waits
+(each wait is extended by its pause) while output flows; `--usb saturate
+--count N` writes N numbered `version` lines at the maximum rate, idle and then
+during a +20000 move with one `stop fast` among them, and records sent,
+replied, `input_dropped` and the uncounted loss, the unanswered IDs and the
+console ring. `--skip home` leaves homing out of the mix and the auxiliary
+word as found (D15: a home stages homing words that a drive change or reset
+can no longer restore). The summary records the host OS, pyserial and USB
+driver versions (wired bench 18). Before every move the tool states
+`motion-profile start-speed relation WORD WORD` from its fresh profile read:
+a profile stage (a restoration, for example) locks moves on that address until
+the relation is stated or the controller restarts. After the read-only
+postmortem of a failed or interrupted run it sends one `stop fast` per drive
+and releases those results, so no harness exit leaves a drive moving.
+
 Use a new `--out` directory. It holds case results, health samples, a summary
 and compressed incident traffic. Subdivision is restored to `--restore`
 (default 1000) only after a clean run. Other RAM settings are left as recorded.
@@ -685,3 +700,27 @@ finish`) and
 `factory_guard` (a second factory command in one run log is refused).
 
 Results: [wired bench 17](reports/2026-11-19_wired_bench_17_communication_and_persistence.md).
+
+## Link loss, controller reset and USB faults (wired bench 18)
+
+`python scripts/bench_link.py --case ID --run-dir build/bench/DATE_wb18_SLUG
+--firmware IMAGE --commit TEXT [--windows S...] [--flash-dir DIR]` runs one
+case on drive 4 per run folder (drives 1 and 2 are read before and after).
+A case may need several console sessions: the fault happens between them with
+the port closed. An RTS reset opens a new handle with DTR low and RTS high for
+150 ms, as `bench_stress.py` does; a reflash runs the prepared esptool command
+of the running image from `--flash-dir` (bootloader, partitions, boot_app0 and
+the image); H2 starts the velocity run in a child process and kills it. The
+later sessions open with no motor traffic until the case's first request.
+Every reset or reflash follows `before_flash_check` in the same session; the
+drive under test then starts its motion, the deliberate D11 deviation. Cases:
+R0 (image regression), RV (`recover` during velocity), H1, H2, W1, W2, W3, G1,
+G2, PR (profile words of 1, 2, 4 back to the baseline after stress runs);
+L1-L4 and U1 are recorded NOT RUN with no traffic while the owner is away.
+W1 binds soft limits at +-150000 after `home 35 120 60 100` (only `0x0031`
+differs from the baseline) and restores the homing words at the end with
+`home 24 120 60 100`, whose staging writes the baseline words; its search is
+stopped at once. Each folder holds `link.json` (detail, timeline, events,
+samples) beside the session files (`session`, `after`, `start_N`, `end_N`,
+`restore`, `child`). Results:
+[wired bench 18](reports/2026-11-20_wired_bench_18_link_loss_and_host_faults.md).

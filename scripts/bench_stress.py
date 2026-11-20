@@ -13,6 +13,14 @@ With --addresses, each case runs on one drive chosen at random and selected
 with useaddr; --cross-reads also reads the other drives while one moves and
 fails the run if any of them runs, alarms or changes position.
 
+USB modes (wired bench 18): ``--usb slow-reader`` pauses host reads for
+0.5-5 s inside some result waits while output flows (each wait is extended by
+its pause); ``--usb saturate`` sends ``--count`` numbered no-motor commands at
+the maximum rate, idle and then during a finite move with one ``stop fast``
+among them, and reports the uncounted loss (sent - replied - input_dropped).
+The host OS, pyserial and USB driver versions go into the summary and every
+stall record.
+
 Exit codes: 0 duration reached, 3 anomaly, 4 USB check or stop failed, 5 still
 degraded after recovery (needs a motor power cycle).
 """
@@ -22,8 +30,10 @@ import ctypes
 import gzip
 import json
 import pathlib
+import platform
 import random
 import re
+import subprocess
 import sys
 import time
 
@@ -58,6 +68,9 @@ class Console:
         self.replies = {}
         self.retained = []
         self.port = None
+        self.pauses = []       # Slow-reader pauses: (host time, seconds).
+        self.pause_chance = 0.0
+        self.rng = random.Random(0)
         self.open()
 
     def open(self):
@@ -163,9 +176,19 @@ class Console:
                 return item
         return None
 
+    def pause(self):
+        """Slow reader: no host read for 0.5-5 s; returns the pause length."""
+        seconds = round(self.rng.uniform(0.5, 5.0), 2)
+        self.pauses.append((round(time.time(), 3), seconds))
+        self.ring.append((round(time.time(), 3), f"-- host reads paused {seconds} s"))
+        time.sleep(seconds)
+        return seconds
+
     def terminal(self, reply, wait):
         ident = reply["_id"]
         end = time.time() + wait
+        if self.pause_chance and self.rng.random() < self.pause_chance:
+            end += self.pause()  # The wait is extended by its own pause.
         while ident not in self.terminals:
             self.pump(0.002)
             if time.time() > end:
@@ -180,6 +203,28 @@ class Console:
                 return
             if result in ("done", "invalid", "invalid_operation_id"):  # invalid: not retained, nothing to release
                 self.retained.remove(op)
+
+
+def host_info():
+    """Host OS, Python, pyserial and the board's USB driver (Windows PnP), for stall records."""
+    info = dict(os=platform.platform(), python=platform.python_version(),
+                pyserial=getattr(serial, "__version__", None), driver=None)
+    if sys.platform == "win32":
+        query = ("Get-CimInstance Win32_PnPSignedDriver | Where-Object { $_.HardwareID -like '*VID_303A&PID_1001*' } | "
+                 "Select-Object DeviceName,DriverVersion,DriverProviderName,InfName | ConvertTo-Json -Compress")
+        try:
+            info["driver"] = subprocess.run(["powershell", "-NoProfile", "-Command", query], capture_output=True,
+                                            text=True, timeout=30).stdout.strip() or None
+        except (OSError, subprocess.SubprocessError) as error:
+            info["driver"] = "unavailable: %s" % error
+    return info
+
+
+def saturation_loss(sent: int, replied: int, dropped_before, dropped_after):
+    """Q13: commands neither answered nor counted by the firmware as dropped input."""
+    dropped = None if dropped_before is None or dropped_after is None else dropped_after - dropped_before
+    return dict(sent=sent, replied=replied, input_dropped=dropped,
+                uncounted=None if dropped is None else sent - replied - dropped)
 
 
 def keep_awake():
@@ -232,6 +277,10 @@ class Run:
         self.started = time.time()
         self.moved = 0
         self.last = None
+        self.host = host_info()
+        if getattr(args, "usb", "off") == "slow-reader":
+            self.console.pause_chance = 0.3
+            self.console.rng = random.Random(args.seed)
 
     # Reads
     def read(self, kind, wait=2.0):
@@ -363,7 +412,19 @@ class Run:
                 if not view.get("session_ok", True):
                     raise Anomaly("PROFILE_READ", view.get("error"))
                 break
+        self.relation(view)
         return before
+
+    def relation(self, view):
+        """A profile stage on this address (a restoration, for example) locks
+        moves until the start-speed relation is stated from a fresh profile
+        read (CLI contract); state it for the stored word, as the scenarios do."""
+        current = view.get("current") if isinstance(view, dict) else None
+        if not (isinstance(current, list) and current):
+            return
+        reply = self.console.send(f"motion-profile start-speed relation {current[0]} {current[0]}")
+        if not reply.get("ok"):
+            raise Anomaly("START_SPEED_RELATION", reply.get("result"))
 
     def settle(self, limit):
         """Sample until not RUNNING. Returns samples; never sends a stop."""
@@ -578,7 +639,7 @@ class Run:
     def case_simple(self):
         """The ordinary route: stated speed and ramps, then moveby, with ramps across the admitted range."""
         ramps = self.simple_ramps()
-        before = self.state()
+        before = self.prepare()  # Fresh profile read and start-speed relation, as before ordinary moves.
         steps = self.random.choice([100, 1000, 3000]) * self.random.choice([1, -1])
         self.simple_move(f"moveby {steps}", steps, ramps)
         after = self.state()
@@ -745,6 +806,8 @@ class Run:
         return "ok"
 
     def prepare_auxiliary(self):
+        if "home" in getattr(self.args, "skip", ()):
+            return  # No home in the mix: the auxiliary word stays as found (D15 snapshot discipline).
         reply = self.console.send("home read")
         item = self.console.terminal(reply, 2) if reply.get("ok") else None
         self.console.release_all()
@@ -790,7 +853,7 @@ class Run:
             drv = "still unresponsive after reopen"
         record = dict(when=time.strftime("%H:%M:%S"), detail=str(detail), recovered_on_same_handle=not stalled_only,
                       arrivals=arrivals[:10], drv=drv, stop_reply=None, stop_terminal=None,
-                      stop_confirmed=False)
+                      stop_confirmed=False, host=getattr(self, "host", None))
         self.usb_stalls.append(record)
         self.counts["usb_stall"] += 1
         if not isinstance(drv, str):
@@ -905,10 +968,92 @@ class Run:
         except Unresponsive:
             pass
 
+    def flood(self, count, stop_at=None):
+        """Write ``count`` numbered `version` lines as fast as the port takes them,
+        reading between writes; one `stop fast` replaces line ``stop_at``. Returns
+        (first id, ids sent, stop id)."""
+        c = self.console
+        first, stop_id, sent = c.next_id, None, []
+        for n in range(count):
+            ident = c.next_id
+            c.next_id += 1
+            if n == stop_at:
+                stop_id = ident
+                line = f"@{ident} stop fast {self.address}\n"
+            else:
+                line = f"@{ident} version\n"
+            c.port.write(line.encode())
+            sent.append(ident)
+            if n % 16 == 0:
+                c.pump(0)
+        c.pump(3.0)
+        return first, sent, stop_id
+
+    def saturate(self, count):
+        """Q13: saturation idle, then during a finite move with one stop fast in the middle."""
+        c = self.console
+        out = {}
+        self.console.send("debug off", 3.0)
+        for phase in ("idle", "move"):
+            before = c.send("drv", 3.0).get("input_dropped")
+            row = {}
+            if phase == "move":
+                self.prepare()
+                start = self.start_move(20000, 60)
+                row["move_operation_id"] = start.get("operation_id")
+                c.pump(1.0)
+            begun = time.time()
+            first, sent, stop_id = self.flood(count, stop_at=count // 2 if phase == "move" else None)
+            row["seconds"] = round(time.time() - begun, 2)
+            replied = sum(1 for i in sent if i in c.replies)
+            after = c.send("drv", 3.0).get("input_dropped")
+            row.update(saturation_loss(len(sent), replied, before, after))
+            row["unanswered_ids"] = [i for i in sent if i not in c.replies][:40] if row.get("uncounted") else []
+            with open(self.out / ("saturation_%s_ring.jsonl" % phase), "w", encoding="utf-8") as ring:
+                for entry in c.ring:  # The last 6000 lines around the flood.
+                    ring.write(json.dumps(entry) + chr(10))
+            if stop_id is not None:
+                reply = c.replies.get(stop_id)
+                row["stop_reply"] = reply and {k: reply.get(k) for k in ("ok", "result", "operation_id")}
+                item = c.terminals.get(stop_id)
+                if item is None and reply and reply.get("ok"):
+                    item = c.terminal(dict(reply, _id=stop_id), 7.0)
+                row["stop_terminal"] = item and {k: item.get(k) for k in ("ok", "outcome", "execution", "completion")}
+                state = self.state(check=False)
+                row["after"] = {k: state.get(k) for k in ("raw_motion", "raw_speed", "position", "raw_alarm")}
+                if state.get("raw_motion", 0) & RUNNING:
+                    row["safety_stop"] = self.stop("fast").get("outcome")
+            for i in sent:
+                c.replies.pop(i, None)
+            c.release_all()
+            out[phase] = row
+        self.saturation = out
+        return out
+
+    def safety_stop(self):
+        """After a failed or interrupted run (and its read-only postmortem): one
+        new stop fast per drive, so no harness exit leaves a drive moving
+        (wired bench 12 deviation 1). Never a replay; failures are recorded."""
+        self.safety_stops = []
+        for address in self.addresses:
+            try:
+                reply = self.console.send(f"stop fast {address}", 3.0)
+                item = self.console.terminal(reply, 7.0) if reply.get("ok") else None
+                self.safety_stops.append((address, reply.get("result"), (item or {}).get("outcome")))
+            except Exception as error:  # A dead console cannot stop anything; say so.
+                self.safety_stops.append((address, "failed", str(error)))
+        try:  # Free the stop results, so a later strict session finds no foreign retained stop.
+            self.console.release_all()
+        except Exception as error:
+            self.safety_stops.append((None, "release failed", str(error)))
+
     def summary(self, final=None):
         data = dict(elapsed_s=round(time.time() - self.started), moved_increments=self.moved, counts=dict(self.counts),
                     addresses=self.addresses, per_drive=dict(self.per_drive),
-                    anomalies=self.anomalies, usb_stalls=self.usb_stalls, health=self.health, final=final, seed=self.args.seed)
+                    anomalies=self.anomalies, usb_stalls=self.usb_stalls, health=self.health, final=final, seed=self.args.seed,
+                    host=getattr(self, "host", None), usb=getattr(self.args, "usb", "off"),
+                    pauses=len(self.console.pauses), paused_s=round(sum(p for _, p in self.console.pauses), 1),
+                    saturation=getattr(self, "saturation", None), safety_stops=getattr(self, "safety_stops", None))
         (self.out / "summary.json").write_text(json.dumps(data, indent=1))
         return data
 
@@ -931,6 +1076,7 @@ class Run:
                      ("simple", self.case_simple, 10)]
         if self.args.only:
             cases = [c for c in cases if c[0] == self.args.only]
+        cases = [c for c in cases if c[0] not in getattr(self.args, "skip", ())]
         names = [c[0] for c in cases]
         weights = [c[2] for c in cases]
         table = {c[0]: c[1] for c in cases}
@@ -1015,6 +1161,10 @@ def main():
     parser.add_argument("--only", help="run one case repeatedly, for a targeted reproduction")
     parser.add_argument("--addresses", default="1", help="comma-separated ESS drives; each case picks one")
     parser.add_argument("--cross-reads", action="store_true", help="read the other drives while one moves")
+    parser.add_argument("--usb", choices=("off", "slow-reader", "saturate"), default="off",
+                        help="wired bench 18: pause host reads in result waits, or the Q13 saturation run")
+    parser.add_argument("--count", type=int, default=10000, help="--usb saturate: commands per phase")
+    parser.add_argument("--skip", nargs="+", default=(), help="cases left out of the mix (home under D15)")
     parser.add_argument("--declare-unconnected", action="store_true",
                         help="state that no drive terminal is wired; declared again after each useaddr; "
                              "refused when the board table declares a terminal of that drive connected or is invalid")
@@ -1032,8 +1182,15 @@ def main():
     run = Run(args)
     code = 1
     try:
-        code = run.loop()
+        if args.usb == "saturate":
+            run.select(args.addresses[0], force=True)
+            run.saturate(args.count)
+            code = 0
+        else:
+            code = run.loop()
     finally:
+        if code != 0:
+            run.safety_stop()
         data = run.summary(final=code)
         run.console.close()
     print(json.dumps({k: data[k] for k in ("elapsed_s", "moved_increments", "counts", "final")}))

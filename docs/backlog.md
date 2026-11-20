@@ -442,6 +442,13 @@ functional evidence; independent shaft calibration remains absent.
   [earlier health investigation](reports/2026-10-06_firmware_health.md).
   Four hours of accumulated active testing in the narrower position envelope
   already passed; it does not replace the overnight rerun or broader failures.
+  Wired bench 18 (20 November, image X): a 4-hour extended three-drive run with
+  `debug raw` (3155 cases, resets and homing left out) and a 30-minute
+  slow-reader run (410 read pauses of 0.5-5 s) found no stall; a host that
+  stops reading for 10 s is recorded by the firmware watcher as a stall and
+  recovers on the same handle. HW-12 stays NOT REPRODUCED; the stall capture
+  now also records the host OS, pyserial and USB driver versions
+  ([report](reports/2026-11-20_wired_bench_18_link_loss_and_host_faults.md)).
 - [ ] Independently measure TX/RX/DE, final stop-bit publication, FIFO sampling,
   idle watermarks, echo source, turnaround and service/load tolerance. Decide
   the production capture CPU budget. Cache-off capture remains unsupported.
@@ -459,12 +466,35 @@ functional evidence; independent shaft calibration remains absent.
   into PASS. [Host tuple evidence](archive/reports/ess_release_19_audit_2026-10-04.md).
 - [ ] Qualify alternate motor tuples, duplicate physical responders and
   undocumented watchdog interactions. A valid discovery response cannot
-  exclude collisions. [Discovery contract](ess_discovery.md).
+  exclude collisions. [Discovery contract](ess_discovery.md). Wired bench 18
+  (20 November, drive 4, `0x4EEA`/`0x0029`): serial velocity kept running
+  through 10.7, 30.7 and 60.7 s of bus silence after controller resets, so no
+  drive-side watchdog acted within 60 s there; drives 1 and 2, longer windows
+  and pulled cables are untested
+  ([report](reports/2026-11-20_wired_bench_18_link_loss_and_host_faults.md)).
 - [ ] Qualify incoming USB saturation. The pinned SDK does not report USB RX
   ring overflow; console discard counters cannot prove loss-free transport.
+  Wired bench 18 Q1 (two runs of 10,000 `version` lines): idle 0 uncounted,
+  during a move 5 lines neither answered nor counted in `input_dropped`; a
+  `stop fast` among them still dispatched and was observed. Attributing the 5
+  needs an RX overflow count from the driver.
 - [ ] Exercise controlled wire faults, lost acknowledgements, partial setup,
   late replies, reconnect and actual motor restart with retained uncertainty
   and no automatic write replay. Use the real fixture required by each case.
+  Wired bench 18: a paused reader (10 s), a killed harness process, RTS
+  controller resets (during velocity, a long move and at standstill) and a
+  reflash during a move left every result intact and sent no stop twice; a
+  controller reset loses the conflict bit and refuses motion until fresh reads;
+  a same-context delayed reply needs the owner interlock or a recovery boundary
+  before reuse (native test). The cable pulls (L1-L4) and the USB unplug (U1)
+  wait for the owner.
+- [ ] Wired bench 18 audit follow-ups (aud-20261120-041436-4bd24b), left open:
+  F2, pin the late-poll recovery test to the deadline boundary for both stop
+  policies; F3, compare the old read's retained evidence in
+  `sameContextDelayedReply`; `recover` while an input-started velocity arm
+  (`arm velocity`, `arm pv`) runs, not examined; a homing-words restore route
+  that does not start a home (W1 restored them with a stopped
+  `home 24 120 60 100` staging, accepted as recorded).
 - [ ] Qualify physical communication changes, save/factory restore and restart
   survival with a complete backup and a verified restoration route. Actual
   motor restart control is unavailable; acknowledgement is not durability.

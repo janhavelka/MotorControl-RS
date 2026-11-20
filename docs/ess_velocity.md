@@ -99,7 +99,12 @@ run one bounded transport recovery for the explicit stop only when no stop byte
 was accepted. The original run failure and its evidence remain unchanged. A lost start
 acknowledgement remains UNKNOWN even after a subsequent checked stop; primary
 failure and cleanup failure remain separate. Local cancellation ends the local
-sequence without sending stop, retaining needsStop/uncertainty. Explicit stop
+sequence without sending stop, retaining needsStop/uncertainty. An explicit
+`recover` would cancel the run the same way, so it is refused `busy`, before
+any traffic, while a run may be moving (trigger on the wire, observing or
+stopping); the run's held-stop path performs the one recovery its stop needs,
+and recovery is admitted again once the run ends (wired bench 18, item 3; a
+run still staging is cancelled as before). Explicit stop
 preempts unsent continuations through the existing reserved stop path. Uncertain
 staging reserves the physical address until reconciliation; result release and
 host recovery do not clear that uncertainty.
@@ -122,9 +127,13 @@ and `approx ERROR` use strict exact-number parsing; optional final address is
 1..247. The console parses 1..12000 ms; the application's
 [velocity limits](#velocity-limits-jog-setter-and-input-velocity-wired-bench-14)
 admit +/-60 native rpm and 1..1000 ms unless a qualification cell or the
-promoted table admits more. A direct stop has an additional immutable 2 s
-budget and a normal stop 3 s; the poll interval is 20 ms (direct) or 50 ms
-(normal), longer when 64 polls would not cover the duration. This is a software
+promoted table admits more. A direct stop has an additional immutable 4.5 s
+budget and a normal stop 5.5 s; the poll interval is 20 ms (direct) or 50 ms
+(normal), longer when 64 polls would not cover the duration. Both budgets
+include `STOP_RECOVERY_US` (2.5 s: the last poll settling and one bounded
+recovery) as ordinary stops do; before wired bench 18 they were 2 s and 3 s and
+a direct stop after a late failed poll and a full recovery expired unsent
+(native test `lateFailedPollStopAfterFullRecovery`). This is a software
 envelope, not physical qualification. Qualification starts false and
 `velocity` replies `qualification_required` until the facts are stated:
 
@@ -181,6 +190,22 @@ unadmitted operation generates no cleanup write. No hidden retry or recovery is
 used, including after host interrupt or framing loss. Software cannot stop an
 autonomous motor after host/link loss; such a physical test needs an independent
 bench stop mechanism.
+
+### Bus silence and host loss (wired bench 18)
+
+No ESS page documents a communication timeout, watchdog or heartbeat. Measured
+on drive 4 (`0x4EEA`/`0x0029`, 20 November 2026, image X): a serial run at
+120 rpm (the baseline JOG words through a one-run cell) kept running through
+RTS controller resets with no bus traffic for 10.7, 30.7 and 60.7 s (travel
+22055, 62024 and 121985 increments, RUNNING set) until the rebooted
+controller's `stop fast`. So no drive-side watchdog stopped serial velocity
+within 60 s of silence on this drive and firmware; longer windows, drives 1
+and 2 and a pulled cable (L1-L4) are untested. The case's drive-side end was a
+bound soft limit at +150000 (prompt 11's route after `home 35`). A run whose
+harness process was killed mid-run (H2) ended at the controller's own timed
+stop, sent once and observed. Loss of the controller or link is therefore not
+a stop; the only controller-independent ends are drive inputs and soft
+limits.
 
 Original function PDF pages17/18 document signed RPM, the three native words and
 serial start; pages18/19 distinguish external JOG functions8/9/10. Page25 describes
@@ -263,7 +288,7 @@ Measured on `0x4EEA`/`0x0029`, 19 November 2026, free shafts:
 | C1 | 2 | 120, 300, 600, 1200, 2000 and 3000 rpm x ramps 100 and 500 x both signs, subdivision 1000, 2 s, 3 trials each: every run within 0.4 % of its rate, every stop observed, no alarm; with ramp 500 the ramp took 0.50-0.53 s at every speed (ramp time does not scale with speed) |
 | C2 | 2 | 300 rpm for 10 s, twice: 4987 increments/s against 5000 |
 | C3 | 2 | Subdivision 6000, 500, 600, 700 and 1000 rpm (50,000-100,000 increments/s), ramp 500, both signs, `stop normal` at 0.9 of the ramp (450 ms runs) and at constant speed (2000 ms), 10 runs each: 160 runs, every stop observed, no creep (RUNNING or motion 0.5 s after the stop), no alarm |
-| C4 | 2 | 3000 rpm, ramp 100, deceleration 2000, twice: the stop ended about 2.1 s after it was sent, inside the 3 s normal budget |
+| C4 | 2 | 3000 rpm, ramp 100, deceleration 2000, twice: the stop ended about 2.1 s after it was sent, inside the 3 s normal budget (5.5 s since wired bench 18) |
 
 The velocity rate decision: no HW-14 creep was seen in velocity mode up to
 100,000 increments/s (C3), so velocity keeps no separate rate ceiling beyond

@@ -72,7 +72,7 @@ the owner stays Partial and the next ready prompt starts.
 | 15 | Partial | T10 and the forward algorithm transition of T11 (no qualified target-mode current tuple; algorithm writes stay refused); T12 deferred to the owner; T14 (D8 FC03 probe of `0x003B/2`) needs a ledger access field for experimental reads and a bounded read route; the deviation-threshold table for 16 is in `SettingCandidates.h`; CI on the recording commit (lead) | [2026-11-19](../../reports/2026-11-19_wired_bench_15_control_tuning.md) |
 | 16 | Partial | F3 (input stop of the HW-14 creep: the shared-output interlock has no row for a drive moving with no pending operation); F4, R1, R3 and A2's drive 1 leg deferred (owner away); F2's +200 check move read 199 (open ±1 feedback row); CI on the recording commit (lead) | [2026-11-19](../../reports/2026-11-19_wired_bench_16_alarms_and_failures.md) |
 | 17 | Partial | Every hardware case (P0, S1, S2, P2-P5, F1, F2, C1, C2, D1, D2, S3) deferred to the owner with the [run plan](../../reports/2026-11-19_wired_bench_17_communication_and_persistence.md#owner-return-run-plan); F1/F2 also need item 6 (restricted recommissioning, specified, not implemented: factory restore refused before TX); the in-app restart fact withdrawn after the audit (restarts proven host-side until prompt 14's JOG setter runs inside the lease); `0x003B`/`0x003C` unread (D8 route); CI on the recording commit (lead) | [2026-11-19](../../reports/2026-11-19_wired_bench_17_communication_and_persistence.md) |
-| 18 | Pending | — | — |
+| 18 | Partial | L1-L4 and U1 deferred to the owner (cable pulls, USB unplug); W1 measured on drive 4 only, windows up to 60.7 s; Q13's 5 uncounted lines need an RX overflow count; HW-12 not reproduced in 4 h (stays open); CI on the recording commit (lead) | [2026-11-20](../../reports/2026-11-20_wired_bench_18_link_loss_and_host_faults.md) |
 | 19 | Pending | — | — |
 | 20 | Pending | — | — |
 
@@ -94,7 +94,7 @@ Executors add a row for each step that needs the owner and do not wait.
 | 15 | Supervise T12 (encoder resolution change) | T12 |
 | 16 | Cable pull during a long drive 4 run (F4); a drive 4 power cycle after a reproduced HW-01 or Q04; a scope or min/max meter on drive 4's +DC/GND during R1 and R3 if available; alarm 5 on drive 1 (A2 drive 1 leg: it has never cleared alarm 5, so a restart may be needed) | F4, R1, R3, A2 drive 1 leg |
 | 17 | Power cycles (about 30, one drive at a time, at least 5 s), DIP switch inspection (`0x0003` mapping) and changes for drive 2 (SW2-SW5 OFF for D1, back to address 2 for D2), `mosfet2`/`relay2` held across P4b/P4c power-ups; run order in the [prompt 17 plan](../../reports/2026-11-19_wired_bench_17_communication_and_persistence.md#owner-return-run-plan) | P0, S1, S2, P2-P5, C1, C2, D1, D2, S3 (F1, F2 also need item 6); 05 filter persistence; 10 `0x0019` = 1 after save and restart; 11 V-01 on drives 1 and 2 and `0x0017`/`0x0018` persistence; 13 `0x0050` = 1 after save and restart |
-| 18 | Link removal and restore | L1-L4, U1 |
+| 18 | With the owner present and a prepared `stop fast 4`: pull drive 4's RS485 plug 10 s during a velocity run (L1) and 5 s during a long move (L3); pull the trunk at the controller 10 s during velocity (L2) and 5 s during a group move on 1, 2, 4 (L4); unplug USB 10 s during motion with the board on the 24 V supply (U1); optional: listen to the relays during a G2 reflash | L1-L4, U1 (`bench_link.py --case L1..L4\|U1`) |
 | 19 | Power the drives one at a time | B1-B4 |
 
 ## Decisions

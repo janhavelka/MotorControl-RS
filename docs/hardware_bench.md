@@ -104,6 +104,38 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+On 19-20 November [wired bench 18](reports/2026-11-20_wired_bench_18_link_loss_and_host_faults.md)
+first flashed Arduino `bench_s3_load_timer` image W of the committed tree
+(`C3169E737370B64463F614A6CCEA10BF54011445C1E79A5E3309F1A62C78F81E`,
+`5a7d9e3`; regression: input-start A1 attributed, +2000 move, the withdrawn
+persistence routes refused with no frame), then image X
+(`5E71644794122AA6C21E1FF9C31FDFE08919859318C470DB97D6278A1287654E`,
+`5a7d9e3` plus the prompt 18 tree: velocity stop budgets with one recovery,
+`recover` refused while a velocity run may move), each after `baseline-compare`
+573/573 equal and a passing `before_flash_check`, with the esptool command
+recorded in the report; G2 reflashed X during a move with the same command. The
+final tree is Arduino Y
+(`CC185E88452BC6B7965344F627027D1091A49CFACB105419888475B4C35B9F2E`) and native
+IDF 5.5.5 (`973704DE822EC5E78A8532D9EA1564DF54B393117B3D742E14C006789C9E767C`),
+built, not flashed (comment-only difference). Ending state:
+
+- **Board:** image X, outputs off, COM13 closed.
+- **Drives 1/2/4:** enabled, stopped, alarm-free, I/O `[0,1,2,3,0,0,0,0,0]`,
+  every other setting as after wired bench 15. Positions: drive 1 [0, 28544],
+  drive 2 [0, 25956], drive 4 [1, 38391] (103927); none homed. The profile
+  restorations left the start-speed relation of drives 1, 2 and 4 to be stated
+  before each move until the next controller restart (host state; the
+  scenario tools and `bench_stress.py` state it).
+- **Settings:** `baseline-compare` 573 of 573 fields equal
+  (`build/bench/2026-11-20_wb18_final_compare/`). RAM only, nothing saved, no communication
+  setting changed.
+- **Relay wear:** none added (no bench output commanded in prompt 18; 20
+  `mosfet1` pulses in the A1 regression).
+- **Measured on drive 4 (`0x0029`, wired bench 18):** serial velocity kept
+  running through 10.7, 30.7 and 60.7 s of bus silence after controller resets
+  (no watchdog within 60 s); finite moves finished alone through an RTS reset
+  and a reflash; with stop (5) on X0-X3 no strapping-pin pulse stopped a move.
+
 On 19 November [wired bench 17](reports/2026-11-19_wired_bench_17_communication_and_persistence.md)
 flashed Arduino `bench_s3_load_timer` image T
 (`66648BBCAF482F21F0212609C46784A3A5D568049877636C3D5AF763BC274A4F`, `bd99963`

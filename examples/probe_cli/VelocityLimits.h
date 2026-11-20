@@ -32,10 +32,18 @@ constexpr uint16_t VELOCITY_MAX_RAMP_WORD = 2000;           ///< Native ramp wor
 constexpr uint16_t VELOCITY_MIN_SUBDIVISION = 400, VELOCITY_MAX_SUBDIVISION = 51200; ///< 0x0011 (p69).
 constexpr uint32_t VELOCITY_POLLS = 64;                     ///< ESS::ACTION_MAX_POLLS.
 constexpr uint32_t VELOCITY_FAST_POLL_MS = 20, VELOCITY_NORMAL_POLL_MS = 50;
-/** Stop budgets after the run's own stop, fixed at admission. The normal budget
- * covers a 2000 ms deceleration word plus two requests (NORMAL_STOP_US), the
- * direct one the 2 s used since the first velocity route. */
-constexpr uint32_t VELOCITY_FAST_STOP_BUDGET_MS = 2000, VELOCITY_NORMAL_STOP_BUDGET_MS = 3000;
+/** Allowance in every stop budget for the last poll to settle and one bounded
+ * recovery to finish before the held end stop is sent: STOP_RECOVERY_US of the
+ * ordinary stops (one request plus RECOVERY_BUDGET_US). Wired bench 18: without
+ * it a direct stop expired unsent after a late failed poll and a full recovery. */
+constexpr uint32_t VELOCITY_STOP_RECOVERY_MS = 2500;
+/** Stop budgets: the time from the run's scheduled stop due time (start plus
+ * duration) to its deadline, both fixed at admission. The normal budget covers
+ * a 2000 ms deceleration word plus two requests (NORMAL_STOP_US), the direct
+ * one the 2 s used since the first velocity route; both add
+ * VELOCITY_STOP_RECOVERY_MS. */
+constexpr uint32_t VELOCITY_FAST_STOP_BUDGET_MS = 2000 + VELOCITY_STOP_RECOVERY_MS;
+constexpr uint32_t VELOCITY_NORMAL_STOP_BUDGET_MS = 3000 + VELOCITY_STOP_RECOVERY_MS;
 
 enum class VelocityStop : uint8_t { NORMAL, FAST };
 /** One exact run, as a qualification cell or a promoted table entry names it. */

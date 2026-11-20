@@ -81,6 +81,7 @@ there. See the [dependency and delivery handoff](../docs/archive/reports/2026-10
 | `bench_tuning.py` | Wired bench 15 `control-tuning` scenario (`--cases B T1..T14`, `--address`, T3/T9 on drives 2 and 4, `--fields` for T5/T6): pinned reads, restore proofs through `tuning candidates check`, reference move M with Y0 intervals from `aux1`, alarm-5 recovery and reconciling stops, the threshold bisection; writes `tuning.json`; unit tests in `test/bench_tuning_test.py` |
 | `bench_alarms.py` | Wired bench 16 `alarms-failures` scenario (`--cases G1 A1..A5 F1..F4 R1..R3 N1`, `--address`, alarm cases on drives 2 and 4, `--repetitions`, `--delays`): alarm 5 with the silence reads and the reporting rule (`classify_silence`), alarm-clear and the starts after it, the HW-14 and Q05 attempts through `position limits set`, the step 5 failed-stop decision and the release after stop; writes `alarms.json`; unit tests in `test/bench_alarms_test.py` |
 | `bench_limits.py` | Wired bench 11 `limits` scenario: X1/X2 limit inputs (relay2/relay1) during moves, velocity and group moves, stationary and held-limit refusals (L1-L10), and the soft-limit flow through the production enable route (S1-S4, S6, S7); reuses the prompt 07 helpers and classification |
+| `bench_link.py` | Wired bench 18 link-loss cases, one per run folder (`--case R0 RV H1 H2 W1 W2 W3 G1 G2 PR`; `L1`-`L4`, `U1` refused before any traffic under D15; `--windows` for W1, `--flash-dir` for G2): several console sessions per case split by the fault itself, which happens with the port closed (RTS reset on a new handle, the prepared esptool command, or a killed child process); `before_flash_check` before every reset or reflash; the watchdog reading, the move outcome across a fault and the item 4 pulse-credit rule; writes `link.json`; unit tests in `test/bench_link_test.py` |
 | `bench_switch.py` | Wired bench 12 `switch` scenario: host-driven origin and limit switches from polled positions (window mode, bracketed bound, preflight, live budget, travel guard, hold renewal), branch analysis (path, edges, final position) and the auxiliary, homed-output, foreign-limit and soft-limit cases |
 | `bench_stop_inputs.py` | Wired bench 07 `stop-inputs` scenario: X3 functions 4-6 during moves, velocity, homing, held stops, serial stops and group moves; interlocked `mosfet2` pulses with the named running member; Implement 3 trial classification, L1/LR/L2 tables |
 | `bench_probe.py` input-start commands | Wired bench 08: `arm-position`, `arm-trigger`, `arm-inspect`, `disarm`, wired bench 13 `arm-segment` (PT member fields, `last_request_us`/`last_reply_us`), and the refused `arm-home`/`arm-velocity`, with a strict reply validator (`Console._check_input_start`); `bench_scenarios.py --scenario input-start` runs one function 7 start on the selected drive in a run folder: optional `--change` of the armed terminal with ASSIGN facts, the documented fresh reads, the FINITE_MOVE record, arm, one pulse after the firmware isolation reads, observation, disarm and restoration; `check_declarations` also compares the firmware's `bench_outputs` map with `FIXTURE["outputs"]` |
@@ -94,6 +95,14 @@ for options; that command opens no port. See the
 [stress tool limits](../docs/bench_scenarios.md#stress-tool) before a live run.
 Its `--declare-unconnected` refuses, before declaring, when the board wiring
 table declares a terminal of the selected drive connected or is invalid.
+Wired bench 18 added `--usb slow-reader` (host read pauses of 0.5-5 s in
+result waits), `--usb saturate --count N` (the Q13 saturation figure, idle and
+during a move with one `stop fast`), `--skip CASE...` (with `home` the
+auxiliary word is not touched) and the host OS, pyserial and USB driver
+versions in the summary and every stall record. Before every move it states
+`motion-profile start-speed relation` from the fresh profile read (a profile
+stage locks moves on that address until then), and any failed exit sends one
+`stop fast` per drive and releases those results.
 
 Wiring replies: the strict parser requires the `wiring` reply's `sources`,
 `board` and `fixture` keys, and `fixture_error` exactly when `fixture` is

@@ -334,5 +334,58 @@ class MultiDriveTests(unittest.TestCase):
         self.assertEqual(console.sent, [])
 
 
+class UsbModeTests(unittest.TestCase):
+    """Wired bench 18: the slow-reader pause, the saturation figure and the skipped cases."""
+
+    def test_saturation_loss_counts_only_unexplained_lines(self):
+        self.assertEqual(bench.saturation_loss(10000, 9990, 5, 12)["uncounted"], 3)
+        self.assertEqual(bench.saturation_loss(10000, 10000, 0, 0)["uncounted"], 0)
+        self.assertIsNone(bench.saturation_loss(10, 9, None, 4)["uncounted"])
+
+    def test_slow_reader_pause_extends_the_wait_it_interrupts(self):
+        console = bench.Console.__new__(bench.Console)
+        console.ring, console.pauses, console.terminals = collections.deque(maxlen=10), [], {}
+        console.pause_chance, console.rng = 1.0, random.Random(1)
+        clock = Clock()
+        arrivals = {"at": 4.0}
+
+        def pump(seconds):
+            clock.sleep(max(seconds, 0.01))
+            if clock.now >= arrivals["at"]:
+                console.terminals[5] = {"id": 5}
+        console.pump = pump
+        with mock.patch.object(bench.time, "time", clock.time), mock.patch.object(bench.time, "sleep", clock.sleep):
+            item = console.terminal({"_id": 5}, 1.0)
+        self.assertEqual(item, {"id": 5})
+        self.assertEqual(len(console.pauses), 1)
+        self.assertTrue(0.5 <= console.pauses[0][1] <= 5.0)
+
+    def test_safety_stop_reaches_every_drive_and_survives_a_dead_console(self):
+        run = bench.Run.__new__(bench.Run)
+        run.addresses = [1, 2, 4]
+        console = ScriptedConsole()
+        console.terminal = lambda reply, wait: {"outcome": "observed"}
+        released = []
+        console.release_all = lambda: released.append(True)
+        run.console = console
+        run.safety_stop()
+        self.assertEqual([c for c in console.sent], ["stop fast 1", "stop fast 2", "stop fast 4"])
+        self.assertEqual(run.safety_stops[0][2], "observed")
+        self.assertEqual(released, [True])
+
+        def dead(command, wait=None):
+            raise bench.Unresponsive(command)
+        console.send = dead
+        run.safety_stop()
+        self.assertEqual([s[1] for s in run.safety_stops], ["failed"] * 3)
+
+    def test_skipped_home_keeps_the_auxiliary_word(self):
+        run = bench.Run.__new__(bench.Run)
+        run.args = types.SimpleNamespace(skip=("home",))
+        run.console = ScriptedConsole()
+        run.prepare_auxiliary()
+        self.assertEqual(run.console.sent, [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -195,8 +195,13 @@ console routes. Active records retain it through the write, observation waits
 and reads. A wait holds no bus transaction. Compatible non-consuming reads and
 other addresses can use the same existing `BusOwner`.
 
-A physical-address uncertainty bit survives result release, reset and host
-recovery. An uncertain command or acknowledged command without observed effect
+A physical-address uncertainty bit survives result release, the console
+`reset` and host recovery. A controller reset loses it with the rest of the
+application state (enable waits, conflicts and checked targets; only the
+runtime witness survives): after a reset readiness refuses motion until fresh
+reads, and a move sent before them is refused with no frame (wired bench 18
+W3, 20 November 2026). The drive itself keeps executing whatever it was
+doing. An uncertain command or acknowledged command without observed effect
 blocks another ordinary action on that address. Explicit stop can reconcile the
 conflict after a checked stopped-state report, without changing the historical
 interrupted outcome. Releasing a failed stop's result frees its dedicated stop

@@ -260,6 +260,26 @@ A stop still needs settled in-flight transport and its own checked outcome.
 Diagnostic display loss is distinct from protocol/result loss. See the
 [console contract](console.md) for result ownership and repeated-stop behavior.
 
+Measured USB behavior (wired bench 18, image X, Windows 11 `usbser.sys`
+10.0.26100.9974, pyserial 3.5, 20 November 2026):
+
+- **Host stops reading** (H1): no read for 10 s during a 15 s move with
+  `debug raw`. The firmware kept running the move; `output_short_writes`
+  rose by 7944 and `drv.usb_stall` recorded one 7.9 s stall (`nudges` 0,
+  `connected` true); when reads resumed on the same handle the move terminal
+  arrived intact. A paused reader therefore looks like a stall to the watcher;
+  only the host side tells them apart.
+- **Killed harness** (H2): a velocity run whose host process was killed
+  1.5 s in ended at the controller's own timed stop; the retained result read
+  after reconnecting showed the stop acknowledged and observed.
+- **Saturation** (Q1, two runs): 10,000 numbered `version` lines at the
+  maximum host rate took 12.7 s. Idle: 1793-1794 replies, 8206-8207 counted
+  in `input_dropped`, 0 uncounted. During a move: 1602-1608 replies,
+  8387-8393 dropped and **5 uncounted** in both runs (lines neither answered
+  nor counted). A `stop fast` placed among them was accepted and observed.
+  The IDF RX ring (256 bytes) does not report overflow, so the uncounted lines
+  are not attributed; zero uncounted loss is not proof of none.
+
 Polling capture can fail when formatting or scheduler gaps lose timing evidence.
 Timer capture is the measured loaded reference; external electrical timing
 qualification remains open.

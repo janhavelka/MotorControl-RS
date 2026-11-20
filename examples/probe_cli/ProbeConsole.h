@@ -410,6 +410,11 @@ struct Host {
     /** Per-terminal facts and inspection through the public application API.
      * This callback is local and never submits a drive operation. */
     QualificationReply (*ioQualification)(void*, const IoQualificationCommand&, IoQualification&, bool& valid) = nullptr;
+    /** Explicit host transport recovery; never a motor stop. BUSY, before any
+     * traffic, while a serial velocity run may be moving (wired bench 18): the
+     * run stays in charge of its own stop, with at most one bounded recovery
+     * attempt for a stop that was never sent and no guarantee that the stop is
+     * delivered. */
     Action (*recover)(void*, uint32_t commandId, uint32_t& operationId) = nullptr;
     /** Fixture-only bench route: one fixed address-0 frame, then a silent window.
      * Not a production API; reported through reportProbe with broadcast=true. */

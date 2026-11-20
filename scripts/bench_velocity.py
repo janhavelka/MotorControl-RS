@@ -512,8 +512,8 @@ def velocity_run(live, rpm, duration_ms, stop="normal", cell=None, sample=True, 
             return trial
     live.read_state(live.address)
     first = len(live.samples)
-    # The terminal follows the duration and the stop budget (3 s normal, 2 s direct): wired bench 14
-    # C2 lost the console when a 10 s run outlasted a fixed 10 s response deadline.
+    # The terminal follows the duration and the stop budget (5.5 s normal, 4.5 s direct since wired
+    # bench 18): wired bench 14 C2 lost the console when a 10 s run outlasted a fixed 10 s deadline.
     handle = live.console.begin("velocity", velocity_args=(str(rpm), "rpm", "native", str(duration_ms), "configured", stop),
                                 address=live.address, timeout_s=max(live.timeout, duration_ms / 1000.0 + 6.0))
     if not handle.accepted:
@@ -1104,7 +1104,7 @@ def stop_budget_verdict(trial) -> tuple:
     t = trial.get("terminal") or {}
     if not t.get("ok"):
         return "FAIL", "the run's stop was not observed inside its budget (%s)" % trial.get("outcome")
-    return "PASS", "stop observed inside the 3 s normal budget"
+    return "PASS", "stop observed inside the normal stop budget"
 
 
 def highest_passing(c1) -> int | None:

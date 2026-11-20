@@ -90,6 +90,15 @@ Board notes that matter here:
   3 V node, or expansion header U18 pin 1 (shared with relay2's GPIO18).
 - GPIO3, 45 and 46 are strapping pins. Board resistors hold the outputs off at
   reset; this has not been checked on this board with an oscilloscope.
+  Detection trials (wired bench 18, 20 November 2026, drive 4 with stop (5) on
+  X0-X3): a finite move continued to its target through one RTS controller
+  reset (G1, +12001 of 12000) and through a full esptool reflash with
+  download mode and boot (G2, 13.9 s flash, +40001 of 40000), alarm 0, I/O
+  words still 5. No output pulse long enough for the drive to act on reached
+  an input. The detection limit is the shortest stopping pulse measured in
+  wired bench 07 (5 ms stopped 0 of 3 moves, 10 ms 3 of 3); shorter pulses are
+  unobserved, and the electrical levels stay unmeasured. Rule 5 below is
+  unchanged.
 
 ## The one decision: what powers the board
 

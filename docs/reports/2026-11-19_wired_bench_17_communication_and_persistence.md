@@ -278,4 +278,7 @@ regenerated), reports index, promptset README.
 
 ## Commits and CI
 
-The lead owns Git and CI. No commit or CI run was made in this session.
+The lead owns Git and CI. No commit or CI run was made in this session. The
+lead committed the work, with the audit fixes, as `5a7d9e3`; CI run
+44630351860 on that exact commit passed all four jobs (native gcc, native
+clang, Arduino, ESP-IDF). The independent audit was aud-20261119-221441-f77672.

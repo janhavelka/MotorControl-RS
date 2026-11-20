@@ -93,8 +93,12 @@ guides define complete arguments and prerequisites.
 `config` reports host settings; `settings` reads motor configuration and position
 parameters and shows next-move intent. Neither implicitly enables the drive.
 `release ID` frees result storage; `motor-release` sends a drive action. Local
-`cancel`, `monitor off`, `stats reset` and `recover` do not stop a motor. There
-is no raw-register write command or serial segment-start command.
+`cancel`, `monitor off`, `stats reset` and `recover` do not stop a motor.
+`recover` replies `busy`, before any traffic, while a serial velocity run may
+be moving (its start on the wire, observing or stopping): cancelling it would
+leave the drive running with no stop, and the run's own held stop performs the
+one recovery it needs (wired bench 18). There is no raw-register write command
+or serial segment-start command.
 
 ## Simple positioning and coordinates
 
@@ -776,7 +780,8 @@ arm pv xN RECORD pin3|pv2-deadman|pv-pt-mix [poll-ms ..] [window-ms ..]
 refusal, `request` (`show`, `qualify`, `raise`, `reset`), `reason`,
 `bus_traffic` false, `source` (`legacy`, `cell`, `raised`), `max_rpm`,
 `max_duration_ms`, `subdivision` (checked `0x0011`, 0 when unknown),
-`max_rate` (increments/s at that subdivision), `poll_ms`, `stop_budget_ms`,
+`max_rate` (increments/s at that subdivision), `poll_ms`, `stop_budget_ms`
+(5500 normal, 4500 direct, each including one recovery since wired bench 18),
 `legacy` `{max_rpm 60, max_duration_ms 1000}`, `cell_armed`, `raised`,
 `consumed_operation_id`, `promoted_count` and, while armed, `cell` (`rpm`,
 `acceleration`, `deceleration`, `subdivision`, `duration_ms`, `stop`, `rate`).

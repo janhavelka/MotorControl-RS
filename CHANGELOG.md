@@ -4,6 +4,23 @@
 
 ### Added
 
+- Wired bench 18 harness `scripts/bench_link.py`: link-loss cases on drive 4,
+  one per run folder, with the fault between console sessions (RTS reset on a
+  new handle, the prepared esptool command of the running image, a killed
+  child process), `before_flash_check` before every reset or reflash, the
+  watchdog reading of a silent window, the move outcome across a fault and the
+  pulse-credit rule; owner cases refused before traffic under D15.
+  `bench_stress.py` gains `--usb slow-reader`, `--usb saturate --count N`
+  (sent, replied, `input_dropped` and the uncounted loss), `--skip CASE...`
+  and the host OS, pyserial and USB driver versions in its records; it
+  states the start-speed relation from its fresh profile read before every
+  move (a profile stage had locked its moves) and stops every drive after a
+  failed exit; `run_recorded(after_snapshot=False)` for a session handed to a
+  reset.
+- Native test `sameContextDelayedReply`: a reply delayed past its request's
+  closure that matches a reused request context byte for byte is refused
+  before reuse by the owner interlock and is indistinguishable after an
+  explicit recovery boundary.
 - Wired bench 17: stated facts for drive communication changes and
   persistence in the standalone application. `communication qualification
   install FIELD VALUE stationary effects route-back [dip-off]` and `persistence
@@ -405,6 +422,16 @@
 
 ### Fixed
 
+- A serial velocity run's stop budget after its timed stop is 4.5 s (direct)
+  and 5.5 s (normal), each including the ordinary stops' recovery allowance
+  `STOP_RECOVERY_US`. With 2 s and 3 s, a direct stop after a late failed
+  poll and a full recovery expired unsent and a normal stop lost the
+  observation of a 2000 ms deceleration (`lateFailedPollStopAfterFullRecovery`).
+- Explicit `recover` replies `busy`, before any traffic, while a serial
+  velocity run may be moving (start on the wire, observing or stopping); it
+  used to cancel the run, which then ended with no stop and the drive running.
+  The run's own held stop performs the one recovery it needs
+  (`recoverRefusedWhileRunOwesStop`).
 - `alarm-clear` is admitted against an address's historical conflict only in
   the state wired bench 15 saw (selected axis; fresh reads after the conflict
   began with the alarm, RELEASED, speed 0 and the same position in two

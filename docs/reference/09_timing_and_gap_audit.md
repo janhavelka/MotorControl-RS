@@ -185,7 +185,7 @@ manual supplies no guaranteed total latency from host stop request to rest.
 | Lock delay `0x0107` | Function p78 gives milliseconds, range 0-20000, default 4000, after movement stops. | This is a motor lock-state delay, not a communication timeout or motion-completion guarantee. |
 | Input filter `0x0108` | Function p78 gives a coefficient, range 0-65535, default 2. | No conversion from coefficient to time is supplied. |
 | Arrival/end time `0x010C` | Function p78 gives range 0-200 and default 10. | Neither a unit nor an exact qualification rule is stated; do not infer milliseconds from neighboring entries. |
-| Communication loss | No watchdog or refresh interval is documented in the reviewed ESS function material through Appendix 2 or the hardware manual. | Do not advertise automatic communication-loss stopping, and do not claim firmware lacks such a feature. Its presence, settings and behavior remain unqualified. |
+| Communication loss | No watchdog or refresh interval is documented in the reviewed ESS function material through Appendix 2 or the hardware manual. | Do not advertise automatic communication-loss stopping, and do not claim firmware lacks such a feature. Measured (wired bench 18, drive 4, `0x4EEA`/`0x0029`, 20 November 2026): serial velocity at 120 rpm kept running through 10.7, 30.7 and 60.7 s of bus silence after controller resets, so nothing stopped it within 60 s on that drive; longer windows, other drives and cable faults remain unqualified. |
 
 ## Why timing stays profile-specific
 

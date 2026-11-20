@@ -173,6 +173,18 @@ and urgent pressure. Outcomes are `RECOVERED`, `EXPIRED`, `READ_ERROR` and
 success arrives after recovery expiry. Physical cleanup may continue afterward
 without changing the retained recovery outcome.
 
+Reuse of a matchable request context (wired bench 18 item 7, audit V2-F10).
+A reply delayed past its request's closure can match a later request with the
+same bytes (address, function, register, count or value) exactly. The owner
+cannot tell the two apart, so the boundary comes first: a request that closed
+without a reply leaves the owner interlocked (`needsRecovery`), the same
+request is refused before any byte, and only an explicit recovery boundary
+admits it again. The old result keeps its failure. After the boundary, a
+delayed reply that arrives during the new request is accepted as the new
+request's reply: the recovery drained an idle link, which proves nothing about
+the age of a reply that arrives later. Native test `sameContextDelayedReply`
+(`stop_path_app_test`).
+
 Sticky adapter faults may require explicit adapter cleanup after TX/DE settle
 before a fresh attempt; read errors are surfaced, never silently cleared.
 Discarding preserves valid byte-order and watermark bounds across service calls

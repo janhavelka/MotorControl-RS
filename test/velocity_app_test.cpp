@@ -251,14 +251,8 @@ void delayedEvidenceAndRecovery() {
     velocityStep(id); velocityStep(id,registers(1,{0,1}));
     assert(!view(id).pending && !view(id).velocityContext->needsStop);
     assert(view(id).velocityContext->outcome == ActionOutcome::DEADLINE);
-    // Explicit recovery invalidates a still-active old-generation continuation.
-    fresh(); qualify(); const auto recovering=admitVelocity(); velocityStep(recovering); waitTx(recovering);
-    const uint32_t oldGeneration=app->bindingGeneration;
-    uint32_t recovery=0; assert(recover(app,99,recovery) == Probe::Action::OK);
-    for (unsigned i=0;i<250000 && (view(recovering).pending || view(recovery).pending);++i) step();
-    assert(!view(recovering).pending && !view(recovery).pending && app->bindingGeneration == oldGeneration+1);
-    assert(view(recovering).velocityContext->needsStop && axisReserved(*app,1));
-    assert(view(recovery).recovery && hardware.writes == 2);
+    // Wired bench 18: explicit recovery no longer cancels a trigger on the wire
+    // (recoverRefusedWhileRunOwesStop); the run's own held stop recovers.
 }
 void expiredPollRetainsTransportEvidence() {
     for (bool transmitted : {false, true}) {
@@ -556,6 +550,132 @@ void ownedStopRecoveryFailureAndCancellation() {
         assert(hardware.writes == writes && app->recovery.operationId == recovery);
         assert(view(id).velocityContext->outcome == originalOutcome);
     }
+}
+// Wired bench 18 item 2: the last poll before the timed stop is transmitted and
+// never answered, and line noise keeps the bus busy, so the held end stop waits
+// for almost a full RECOVERY_BUDGET_US recovery. The run's deadline must still
+// cover that recovery, the stop request and, for a normal stop, a 2000 ms
+// configured deceleration. Before the fix a direct stop expired unsent and a
+// normal stop lost its observation.
+void lateFailedPollStopAfterFullRecovery() {
+    for (bool normal : {false, true}) {
+        fresh(); qualify();
+        if (normal) app->velocityPrerequisites.decelerationTime = 2000;
+        auto r = request(); if (!normal) r.stop.behavior = StopBehavior::DIRECT;
+        uint32_t id = 0; assert(startVelocity(app, 1, 1, r, id) == Probe::Action::OK);
+        velocityStep(id); velocityStep(id);
+        const auto due = view(id).velocityContext->stopDueUs;
+        const auto interval = view(id).velocityContext->options.pollIntervalUs;
+        for (;;) { // Answer RUNNING up to the last poll before the timed stop.
+            waitTx(id);
+            if (hardware.writeStarted + 2 * interval >= due) break;
+            const uint8_t token = view(id).velocityContext->step;
+            scheduleReply(hardware.writeStarted + 8 * 87 + 1000, registers(1, {0, 4}));
+            for (unsigned i = 0; i < 25000 && view(id).velocityContext->step == token; ++i) step();
+        }
+        const uint64_t txEnd = hardware.writeStarted + 8 * 87;
+        assert(txEnd < due && view(id).velocityContext->phase == ESS::VelocityPhase::OBSERVING);
+        // No reply; continuous noise from just after the response timeout for 1.83 s.
+        scheduleReply(txEnd + 205000, std::vector<uint8_t>(21000, 0x55), 87, 0);
+        const auto writes = hardware.writes;
+        while (hardware.writes == writes && view(id).pending) step(100);
+        // Before the fix the run ended here at its deadline: stop not transmitted.
+        assert(view(id).pending && hardware.tx == crc({1, 6, 0, 0x27, static_cast<uint8_t>(normal ? 1 : 2), 0}));
+        assert(hardware.writeStarted > txEnd + 205000 + 21000 * 87 && findRecord(*app, id)->stopRecoveryOperationId);
+        const auto recovery = findRecord(*app, id)->stopRecoveryOperationId;
+        assert(view(recovery).recoveryResult.outcome == Rtu::RecoveryOutcome::RECOVERED);
+        velocityStep(id); // The stop write acknowledged.
+        const auto stopAck = view(id).velocityContext->stop.writeEvidence.deliveredUs;
+        while (normal && hardware.time - stopAck < 2000000) {
+            velocityStep(id, registers(1, {0, 4})); assert(view(id).pending);
+        }
+        velocityStep(id, registers(1, {0, 0}));
+        const auto& c = *view(id).velocityContext;
+        assert(!view(id).pending && c.outcome == ActionOutcome::TRANSPORT_ERROR && c.runningObserved);
+        assert(c.stop.execution == ActionExecution::ACKNOWLEDGED && c.completion == ActionCompletion::OBSERVED);
+        assert(!c.needsStop && !axisReserved(*app, 1) && c.stopDueUs == due);
+        const auto settled = hardware.writes; pump(2000); assert(hardware.writes == settled);
+    }
+}
+// Wired bench 18 item 3: an explicit recover would cancel a velocity run that
+// may be moving, and the run would end without its stop. It is refused busy
+// before any traffic; the run's own held-stop path performs the one recovery
+// its stop needs, and the stop is sent once.
+void recoverRefusedWhileRunOwesStop() {
+    fresh(); qualify(); const auto id = admitVelocity();
+    velocityStep(id); velocityStep(id); velocityStep(id, registers(1, {0, 4}));
+    assert(view(id).velocityContext->phase == ESS::VelocityPhase::OBSERVING);
+    const auto writes = hardware.writes, generation = app->bindingGeneration;
+    uint32_t recovery = 777;
+    assert(recover(app, 99, recovery) == Probe::Action::BUSY && recovery == 777);
+    command("@95 recover\n");
+    assert(Serial.output.find("\"command\":\"recover\",\"ok\":false,\"result\":\"busy\"") != std::string::npos);
+    assert(hardware.writes == writes && app->bindingGeneration == generation && !app->recovery.operationId);
+    assert(view(id).pending && !findRecord(*app, id)->cancelContinuation);
+    // The same run into STOPPING: its last poll before the timed stop gets no
+    // reply and line noise holds the bus, so the end stop is held for one recovery.
+    const auto due = view(id).velocityContext->stopDueUs;
+    const auto interval = view(id).velocityContext->options.pollIntervalUs;
+    for (;;) {
+        waitTx(id);
+        if (hardware.writeStarted + 2 * interval >= due) break;
+        const uint8_t token = view(id).velocityContext->step;
+        scheduleReply(hardware.writeStarted + 8 * 87 + 1000, registers(1, {0, 4}));
+        for (unsigned i = 0; i < 25000 && view(id).velocityContext->step == token; ++i) step();
+    }
+    scheduleReply(hardware.writeStarted + 8 * 87 + 205000, std::vector<uint8_t>(3000, 0x55), 87, 0);
+    const auto* record = findRecord(*app, id);
+    while (view(id).pending && !(record->stopHeld && app->owner.recovering())) step(100);
+    assert(view(id).pending && record->stopHeld && record->stopRecoveryId);
+    assert(view(id).velocityContext->phase == ESS::VelocityPhase::STOPPING);
+    const auto outcome = view(id).velocityContext->outcome;
+    assert(outcome == ActionOutcome::TRANSPORT_ERROR);
+    const auto checkRefused = [&](bool held) {
+        const auto latest = app->latestOperationId, bound = app->bindingGeneration;
+        const auto automatic = app->recovery.operationId;
+        const auto attached = record->stopRecoveryId;
+        const auto request = record->requestId; const auto sentWrites = hardware.writes;
+        assert(recover(app, 99, recovery) == Probe::Action::BUSY && recovery == 777);
+        assert(app->latestOperationId == latest && app->bindingGeneration == bound);
+        assert(app->recovery.operationId == automatic && record->stopRecoveryId == attached);
+        assert(record->stopHeld == held && !record->cancelContinuation && view(id).pending);
+        assert(record->requestId.owner == request.owner && record->requestId.slot == request.slot &&
+            record->requestId.generation == request.generation && hardware.writes == sentWrites);
+    };
+    checkRefused(true); // While the end stop is held for its recovery.
+    const auto beforeStop = hardware.writes;
+    while (hardware.writes == beforeStop && view(id).pending) step(100);
+    assert(hardware.writes == beforeStop + 1 && hardware.tx == crc({1, 6, 0, 0x27, 1, 0}));
+    assert(app->owner.txAccepted(record->requestId));
+    checkRefused(false); // While the sent stop's reply is unresolved.
+    velocityStep(id); velocityStep(id, registers(1, {0, 0}));
+    const auto& stopped = *view(id).velocityContext;
+    assert(!view(id).pending && stopped.outcome == outcome && stopped.runningObserved);
+    assert(stopped.stop.execution == ActionExecution::ACKNOWLEDGED && stopped.completion == ActionCompletion::OBSERVED);
+    assert(hardware.writes == beforeStop + 2 && !stopped.needsStop); // One stop FC06, one observation.
+    const auto settledWrites = hardware.writes; pump(2000); assert(hardware.writes == settledWrites);
+    // A trigger on the wire with no reply owes its stop too.
+    fresh(); qualify(); const auto started = admitVelocity(); velocityStep(started); waitTx(started);
+    assert(view(started).velocityContext->phase == ESS::VelocityPhase::TRIGGER);
+    assert(recover(app, 99, recovery) == Probe::Action::BUSY);
+    const auto deadline = view(started).velocityContext->deadlineUs;
+    while (view(started).pending && hardware.writes == 2 && hardware.time < deadline) step(100);
+    assert(hardware.tx == crc({1, 6, 0, 0x27, 1, 0}) && app->recovery.automatic);
+    velocityStep(started); velocityStep(started, registers(1, {0, 0}));
+    assert(!view(started).pending && view(started).velocityContext->stop.execution == ActionExecution::ACKNOWLEDGED);
+    assert(!view(started).velocityContext->needsStop && hardware.writes == 4);
+    // Staging before the trigger owes nothing: recovery cancels it as before.
+    fresh(); qualify(); const auto staging = admitVelocity(); waitTx(staging);
+    assert(view(staging).velocityContext->phase == ESS::VelocityPhase::STAGING);
+    assert(recover(app, 99, recovery) == Probe::Action::OK);
+    for (unsigned i = 0; i < 250000 && (view(staging).pending || view(recovery).pending); ++i) step();
+    assert(!view(staging).pending && !view(staging).velocityContext->needsStop && hardware.writes == 1);
+    // Once the run ended, recovery is admitted again.
+    fresh(); qualify(); const auto ended = admitVelocity();
+    velocityStep(ended); velocityStep(ended); velocityStep(ended, registers(1, {0, 4}));
+    advanceHardware(view(ended).velocityContext->stopDueUs); serviceApplication();
+    velocityStep(ended); velocityStep(ended, registers(1, {0, 0}));
+    assert(!view(ended).pending && recover(app, 99, recovery) == Probe::Action::OK);
 }
 const std::vector<uint8_t> PARAMETER_REPLY = {1,3,6,0,0x3C,0,0x32,0,0x64,0xD1,0x54};
 uint32_t parameterRead() {
@@ -997,7 +1117,7 @@ void velocityLimitRules() {
     assert(velocityPollMs(1000, VelocityStop::NORMAL) == 50 && velocityPollMs(1000, VelocityStop::FAST) == 20);
     assert(velocityPollMs(2000, VelocityStop::FAST) == 32 && velocityPollMs(10000, VelocityStop::NORMAL) == 157);
     assert(velocityPollMs(VELOCITY_MAX_DURATION_MS, VelocityStop::FAST) * VELOCITY_POLLS >= VELOCITY_MAX_DURATION_MS);
-    assert(velocityStopBudgetMs(VelocityStop::NORMAL) == 3000 && velocityStopBudgetMs(VelocityStop::FAST) == 2000);
+    assert(velocityStopBudgetMs(VelocityStop::NORMAL) == 5500 && velocityStopBudgetMs(VelocityStop::FAST) == 4500);
     const VelocityCell table[] = {cellOf(120), cellOf(300), cellOf(600), cellOf(1200), cellOf(-120),
         cellOf(500, 500, 6000, 2000, VelocityStop::NORMAL, true), cellOf(600, 500, 6000, 2000, VelocityStop::NORMAL, true)};
     const auto admit = [&](const VelocityCell& run) { return velocityPromotedAdmission(table, 7, run); };
@@ -1051,14 +1171,15 @@ void velocityLimitsRoutes() {
     assert(tryRun(30, 1001, id) == P::INVALID && tryRun(-61, 200, id) == P::INVALID && hardware.writes == writes);
     auto v = limitsCall(K::SHOW);
     assert(v.source == Probe::VelocityLimitsSource::LEGACY && v.maximumRpm == 60 && v.maximumDurationMs == 1000);
-    assert(v.subdivision == 1000 && v.maximumRate == 1000 && v.pollMs == 50 && v.stopBudgetMs == 3000 && !v.promotedCount);
-    // A legacy run keeps its poll interval and stop budget.
+    assert(v.subdivision == 1000 && v.maximumRate == 1000 && v.pollMs == 50 && v.stopBudgetMs == 5500 && !v.promotedCount);
+    // A legacy run keeps its poll interval; its deadline is the duration plus the
+    // stop budget (5.5 s normal, 4.5 s direct since wired bench 18).
     assert(tryRun(60, 1000, id) == P::OK);
     assert(view(id).velocityContext->options.pollIntervalUs == 50000);
-    assert(view(id).velocityContext->deadlineUs - view(id).velocityContext->startedUs == 4000000);
+    assert(view(id).velocityContext->deadlineUs - view(id).velocityContext->startedUs == 6500000);
     dropRun(id);
     assert(tryRun(-60, 1000, id, false) == P::OK && view(id).velocityContext->options.pollIntervalUs == 20000);
-    assert(view(id).velocityContext->deadlineUs - view(id).velocityContext->startedUs == 3000000);
+    assert(view(id).velocityContext->deadlineUs - view(id).velocityContext->startedUs == 5500000);
     dropRun(id);
     // Qualification cell: checked against the selected axis, one at a time.
     const auto cell = cellOf(120);
@@ -1079,7 +1200,7 @@ void velocityLimitsRoutes() {
     // The matching run is admitted once: 64 polls cover 2 s, the normal stop budget follows; it consumes the cell.
     assert(tryRun(120, 2000, id) == P::OK);
     assert(view(id).velocityContext->options.pollIntervalUs == 50000);
-    assert(view(id).velocityContext->deadlineUs - view(id).velocityContext->startedUs == 5000000);
+    assert(view(id).velocityContext->deadlineUs - view(id).velocityContext->startedUs == 7500000);
     v = limitsCall(K::SHOW); assert(!v.cellArmed && v.source == Probe::VelocityLimitsSource::LEGACY && v.consumedOperationId == id);
     dropRun(id);
     uint32_t again = 0;
@@ -1216,6 +1337,8 @@ int main(int argc, char** argv) {
     lostOwnedStopNeverReplays();
     ownedStopBeforeTxRetainsSettlement();
     ownedStopRecoveryFailureAndCancellation();
+    lateFailedPollStopAfterFullRecovery();
+    recoverRefusedWhileRunOwesStop();
     velocityRestoreRoutes();
     stopReleaseRule();
     limitVelocityRule();

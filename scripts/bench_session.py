@@ -89,7 +89,7 @@ class _Transcript:
 
 def run_recorded(*, port, out=None, scenario, inputs, run, address=1, timeout_s=5,
                  debug=None, firmware=None, refresh=True, max_records=20000,
-                 max_bytes=16 * 1024 * 1024, port_opener=open_port, paths=None):
+                 max_bytes=16 * 1024 * 1024, port_opener=open_port, paths=None, after_snapshot=True):
     """Reserve exclusive artifacts before opening one port; write summary on error.
 
     ``run(console, record)`` performs a finite named scenario and its preplanned
@@ -101,6 +101,10 @@ def run_recorded(*, port, out=None, scenario, inputs, run, address=1, timeout_s=
     ``paths`` (run-folder layout) names the exclusive ``summary``, ``jsonl``
     and ``console`` files instead of the ``out`` prefix; the console file is a
     plain transcript (``>`` sent, ``<`` received lines).
+
+    ``after_snapshot=False`` skips the after-values for a session whose
+    scenario hands the board to a deliberate reset, flash or process kill
+    right after this session closes (wired bench 18); the record says so.
     """
     if paths is None:
         prefix = Path(out)
@@ -150,8 +154,11 @@ def run_recorded(*, port, out=None, scenario, inputs, run, address=1, timeout_s=
                     if record['campaigns_failed'] or record.get('workload_verified') is not True:
                         raise BenchError('requested workload did not complete; cleanup does not convert it to PASS')
                     # Full after-values are new explicit reads on success only.
-                    record['after'] = snapshot(console, address=address, refresh=refresh, timeout_s=timeout_s)
-                    verify_restoration(record)
+                    if after_snapshot:
+                        record['after'] = snapshot(console, address=address, refresh=refresh, timeout_s=timeout_s)
+                        verify_restoration(record)
+                    else:
+                        record['after'] = {'skipped': 'the scenario resets, flashes or kills next'}
                     record['ok'] = True
                 except BaseException as error:
                     primary_error = error

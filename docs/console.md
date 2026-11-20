@@ -252,7 +252,8 @@ API. No motion or setting changes occur merely by opening the console or asking
 for help. `recover` repairs host transport only, and `stats reset` clears host counters.
 Neither command replays a motor write or erases an uncertain outcome. A stop already
 waiting for recovery is sent afterwards, for the first time. A new `recover` releases
-the previous delivered recovery result.
+the previous delivered recovery result. While a serial velocity run may be moving,
+`recover` replies `busy`: the run's own held stop recovers the bus and is sent once.
 
 ## Drive group
 

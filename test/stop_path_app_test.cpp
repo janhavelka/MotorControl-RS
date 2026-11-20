@@ -399,6 +399,32 @@ void stopDuringExplicitRecovery() {
     reply(stopping); reply(stopping, words({0, 0}));
     assert(actionOf(stopping).completion == ActionCompletion::OBSERVED && frames(FAST_STOP) == 1);
 }
+// Wired bench 18 item 7 (audit V2-F10): a reply delayed past its request's
+// closure can match a later request of the same context byte for byte. The old
+// read keeps its failure; the owner's interlock refuses the same request before
+// any byte until an explicit recovery boundary. After that boundary a delayed
+// matching reply is accepted as the new request's own: the recovery drained an
+// idle link, which proves nothing about the age of a reply that arrives later.
+void sameContextDelayedReply() {
+    fresh(); known();
+    command("@1 read state\n"); const auto first = latest(); waitTx(first);
+    const auto frame = hardware.tx;
+    until(first); // No reply: the read closes at its response timeout.
+    const auto failed = *view(first).typedRead;
+    assert(failed.state == ReadState::FAILED && app->owner.needsRecovery());
+    const auto writes = hardware.writes;
+    command("@2 read state\n");
+    assert(said("\"result\":\"recovery_required\"") && hardware.writes == writes);
+    command("@3 recover\n"); assert(said("\"result\":\"accepted\"")); const auto recovery = latest();
+    until(recovery);
+    assert(view(recovery).recoveryResult.outcome == Rtu::RecoveryOutcome::RECOVERED && !app->owner.needsRecovery());
+    command("@4 read state\n"); const auto second = latest(); waitTx(second);
+    assert(hardware.tx == frame && hardware.writes == writes + 1);
+    // The first request's late reply arrives now; nothing separates it from the second's.
+    readReply(second, words({0, 1}));
+    assert(view(second).typedRead->step == 1 && view(second).pending);
+    assert(view(first).typedRead->state == ReadState::FAILED && view(first).typedRead->step == failed.step);
+}
 // An explicit recover arriving after a stop was queued holds that stop too.
 void explicitRecoverHoldsQueuedStop() {
     fresh(); known();
@@ -1096,6 +1122,7 @@ int main(int argc, char** argv) {
         {"incompleteStopTxIsNeverRecovered", incompleteStopTxIsNeverRecovered},
         {"stopDuringExplicitRecovery", stopDuringExplicitRecovery},
         {"explicitRecoverHoldsQueuedStop", explicitRecoverHoldsQueuedStop},
+        {"sameContextDelayedReply", sameContextDelayedReply},
         {"transmittedStopStaysUnknown", transmittedStopStaysUnknown},
         {"twoFaultsInARow", twoFaultsInARow},
         {"recoveryExpiryEndsStop", recoveryExpiryEndsStop},
