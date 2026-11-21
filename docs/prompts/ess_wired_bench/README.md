@@ -97,6 +97,71 @@ Executors add a row for each step that needs the owner and do not wait.
 | 18 | With the owner present and a prepared `stop fast 4`: pull drive 4's RS485 plug 10 s during a velocity run (L1) and 5 s during a long move (L3); pull the trunk at the controller 10 s during velocity (L2) and 5 s during a group move on 1, 2, 4 (L4); unplug USB 10 s during motion with the board on the 24 V supply (U1); optional: listen to the relays during a G2 reflash | L1-L4, U1 (`bench_link.py --case L1..L4\|U1`) |
 | 19 | Power the drives one at a time | B1-B4 |
 
+### What the attended work decides
+
+The table above is the owner checklist. The examples below describe the
+behavior each choice would establish. Use the existing test procedures and
+record the fixture and drive firmware with each result.
+
+**Baseline and restart persistence (all, 13 and 17).** A limit function can
+read back correctly while the drive is running and still come up differently
+after power returns. The same distinction applies to PT absolute mode and
+pair word order. For example, an absolute record for +400 should reach +400
+from both 0 and +100 if the setting takes effect.
+
+- **Keep the current runtime subset.** This avoids changing stored settings and
+  lets runtime tests continue. It leaves restart behavior unqualified.
+- **Start with a baseline comparison, then verify persistence on one identified
+  drive at a time.** This isolates changes and gives before/after evidence.
+  It takes attended power cycles and the corresponding restoration plan. The
+  [prompt 17 run plan](../../reports/2026-11-19_wired_bench_17_communication_and_persistence.md#owner-return-run-plan)
+  has the sequence and case-specific prerequisites.
+
+**An independent stop for signed PT and overlap tests (11–14).** A stored
+reverse move or a JOG trial with a held limit needs an independent way to end
+the run. For example, if a candidate reverse record unexpectedly starts
+positive, the same input route under test cannot be its only stop path.
+
+- **Use one freed terminal or a separately wired stop on the selected drive.**
+  This keeps the test narrow and avoids changing the shared-output policy.
+  It needs wiring and a checked stop before the candidate run.
+- **Add a specific interlock case for two outputs.** This could exercise an
+  active trigger and a separate stop using the existing fixture. It needs a
+  defined terminal pair, fresh verified assignments and tests proving other
+  output combinations still refuse. D14 remains the current interlock rule.
+
+**Collision homing (12).** A commanded home that ends when the shaft meets a
+mechanical stop needs both the correct negative-method encoding and a fixture
+where contact can be observed. For example, a method number accepted on the
+wire could produce a switch-seeking move instead of stopping at contact.
+
+- **Use the qualified switch-homing subset where it serves the machine.** This
+  uses an observed reference. It needs a switch and leaves collision homing open.
+- **Get the vendor's exact method and setting definitions, then qualify one
+  matching fixture.** This can establish a usable collision-home route. It
+  requires the vendor evidence and the mechanical setup listed above.
+
+**Link failure during motion (16 and 18).** A software test can drop replies.
+An unplugged cable also removes the host's path to the drive. For example, a
+drive might keep moving while the host correctly reports a communication loss.
+
+- **Keep simulated loss for repeatable host tests.** This exercises bounded
+  timeouts and result handling without bench attendance. It cannot establish
+  what the drive does on the wire or what the shaft does during the break.
+- **Use the attended cable and USB cases for physical evidence.** Capturing the
+  drive's motion and state through the break distinguishes continued motion
+  from a real stop. This needs a person and the prepared recovery in the table.
+
+**Broadcast reply collisions (19).** If two drives answer address 0 at once,
+the shared capture can show a corrupt reply without identifying the sender.
+
+- **Keep using addressed commands in production.** They preserve per-drive
+  replies and avoid the observed broadcast failure. Start timing depends on the
+  addressed or wired route. See the [group-start options](../../backlog.md#choosing-how-a-group-starts).
+- **Power one drive at a time for the planned diagnostic.** An isolated reply
+  can identify a responder. It needs someone at the bench, and even a clean
+  single-drive result does not establish group behavior. D5 remains in force.
+
 ## Decisions
 
 | ID | Decision | Source |

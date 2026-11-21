@@ -7,6 +7,138 @@ the [changelog](../CHANGELOG.md) and [reports](reports/README.md) record deliver
 The [release scope](releases/1.0.0.md) and [operation inventory](ess_api_cli_coverage.md)
 separate implementation from native and hardware evidence.
 
+## Open engineering choices
+
+The options below describe possible behavior. Today's API and qualification
+limits remain in the detailed backlog. See the
+[owner-return checklist](prompts/ess_wired_bench/README.md#deferred-to-owner-return)
+for tests that need someone at the bench.
+
+### Confirming a move that finishes between polls (K-01)
+
+The host can miss `RUNNING` on a short move. For example, it commands +100
+increments and first reads an idle drive at +99 with `ARRIVED` set and zero
+reported speed. Should that result count as completion? The drive's position
+unit and the relationship between its positioning-error setting and the
+reported endpoint still need independent measurement.
+
+- **Keep exact matching for the missed-`RUNNING` path.** Easier to verify and
+  less likely to accept stale feedback. A valid move one increment short can
+  remain unconfirmed. This is today's policy where the fallback is enabled.
+- **Allow a measured tolerance on the applicable drive and configuration.**
+  It could recognize short moves that finish within the verified window. It
+  needs independent position measurements, a settled position, and a minimum
+  displacement that separates arrival from the old endpoint. Keep the two
+  checked reports and report the observed position beside the requested one.
+
+Start with the [shaft measurement plan](prompts/standalone/08_motion_measurement.md)
+before changing the [completion rules](ess_position.md#exact-final-position-completion).
+
+### Replacing a move already in progress (N05)
+
+Suppose a drive is moving toward +1000 and the caller changes the target to
++600. The old move could arrive between the last state poll and the new write.
+In the existing ACK-only route, a single `ARRIVED` indication cannot establish
+which request completed.
+
+- **Stop, confirm standstill, then issue a new move with its own result.** This
+  uses the existing operations and gives each move a clear boundary. It breaks
+  continuous motion and takes longer.
+- **Qualify a separate live replacement operation.** This could change the
+  target without stopping. It needs proof that staging does not change what the
+  drive is already doing, fresh evidence that the old move is active, and a
+  way to attribute acceptance and completion even if it finishes during the
+  handoff. Keep the existing ACK-only result until that proof exists.
+
+Use stop-then-move when the application can accept the pause. See the
+[replacement evidence and open checks](ess_position.md#remaining-replacement-work).
+
+### Reverse and absolute stored position records
+
+PT records are stored drive-side moves selected by an input. For example, a
+machine wants one record to move back 400 increments and another to go to
+coordinate +400 regardless of its current position. On the tested firmware the
+signed record has no motion witness, and the attempted absolute record ran
+relative within the tested power cycle.
+
+- **Use the current nonnegative PT subset and ordinary serial moves for the
+  reverse or absolute cases.** This uses the existing typed routes. It gives up
+  the autonomous input start for those cases and needs a live host link.
+- **Qualify signed targets and absolute mode separately.** A measured signed
+  move with an independent stop can settle the sign. An attended save/restart
+  check from different starting positions can settle whether absolute mode
+  takes effect. This could keep input-triggered operation, but each result
+  applies to the recorded firmware and settings and may confirm a limitation.
+
+See [PT bench evidence](reports/2026-11-19_wired_bench_13_pt_segments.md) and the
+[owner-return checklist](prompts/ess_wired_bench/README.md#deferred-to-owner-return).
+
+### Choosing how a group starts
+
+For example, three axes need to begin a move from one command. If the process
+allows the measured delay between axes, staging and starting each drive by
+address can be sufficient. A process that needs tighter start timing needs
+independent measurement at each drive.
+
+- **Use individually addressed starts after staging and readback.** This keeps
+  per-drive acknowledgements and works on the current bus. The drives receive
+  separate start frames, so the start spread grows with the group and load.
+- **Use a shared wired input after staging.** One electrical edge removes serial
+  frame spacing. It needs wiring and verified arm, held-input and stop behavior.
+  The edge alone cannot establish the time each shaft begins to move.
+
+Production broadcast remains NO-GO after observed replies and receive errors.
+See the [multi-drive findings](prompts/ess_multi_drive/README.md#finding-map)
+and [group-start evidence](reports/2026-11-19_wired_bench_09_input_and_serial_starts.md).
+
+### Finding drives on a bus with gaps in its addresses
+
+For example, drives answer at 2 and 4. A scan times out at 3 and currently stops
+before checking 4. A timeout at 3 could also mean its reply is late, so the bus
+owner needs to protect the next transaction.
+
+- **Probe known addresses separately.** Simple and useful when commissioning
+  already provides the addresses. It cannot discover an address nobody knows.
+- **Resume the scan once the bus owner can retire the timed-out transaction.**
+  This discovers sparse installations. It needs bounded retirement and a test
+  showing a delayed reply cannot be mistaken for the next result. Keep the
+  failure visible if the owner cannot establish a clean next exchange.
+
+### Diagnosing a drive that remains `RUNNING` after stop
+
+For example, after an interrupted move, the drive keeps reporting `RUNNING` even
+at a rate previously treated as routine. A host timeout or another stop reply
+cannot tell whether the shaft stopped or why the flag stayed set.
+
+- **Keep the outcome unresolved and prevent a new move until state is known.**
+  The application keeps its existing stop and recovery rules. This avoids
+  accepting a false idle state, at the cost of interrupting service.
+- **Capture drive status, shaft movement and supply voltage together on an
+  attended rerun.** This can distinguish a stuck status from continuing motion
+  and test whether supply disturbances accompany the failure. It needs someone
+  available to observe and power-cycle the drive if the fault recurs.
+
+See the [recorded failure](reports/2026-11-02_standalone_14_bench_regression.md#the-failure)
+and the [wired bench 16 plan](prompts/ess_wired_bench/16_alarms_and_failures.md).
+
+### Adding drive features whose manuals or measurements disagree
+
+For example, an output may read back the requested function number while the
+terminal never switches as expected. An ESS position record can likewise
+echo a start-speed write while still reading zero. An echo confirms the wire
+exchange and leaves the device effect open.
+
+- **Keep the supported functions and expose the observed mismatch.** This keeps
+  callers on measured routes. It leaves some vendor-listed features unavailable.
+- **Add a narrow profile rule once its effect is verified.** Ask the vendor for
+  the exact model and firmware behavior, then use fitting evidence for the
+  specific operation, such as observing the intended output on the relevant
+  terminals. This can add a useful capability, but its scope follows the
+  evidence. Keep unresolved homing trajectories and encodings gated.
+
+See the [native ESS entries](#native-ess-coverage) and the
+[vendor questions](reports/2026-11-12_broadcast_and_sync_review.md#questions-for-the-vendor).
+
 ## Maintenance and FieldCore integration
 
 The seven [maintainability stages](archive/prompts/maintainability/README.md)
