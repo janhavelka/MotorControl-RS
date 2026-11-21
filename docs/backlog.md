@@ -16,8 +16,10 @@ for tests that need someone at the bench.
 
 ### Confirming a move that finishes between polls (K-01)
 
-The host can miss `RUNNING` on a short move. For example, it commands +100
-increments and first reads an idle drive at +99 with `ARRIVED` set and zero
+The host checks drive status at intervals. A short move can start and finish
+between two checks, leaving the host without a `RUNNING` report. For
+example, it commands +100 increments and first reads an idle drive at
++99 with `ARRIVED` set and zero
 reported speed. Should that result count as completion? The drive's position
 unit and the relationship between its positioning-error setting and the
 reported endpoint still need independent measurement.
@@ -38,8 +40,9 @@ before changing the [completion rules](ess_position.md#exact-final-position-comp
 
 Suppose a drive is moving toward +1000 and the caller changes the target to
 +600. The old move could arrive between the last state poll and the new write.
-In the existing ACK-only route, a single `ARRIVED` indication cannot establish
-which request completed.
+The current replacement command reports the drive's acknowledgement (ACK).
+It confirms a reply to the write. A single later `ARRIVED` flag cannot
+tell the host which of the two moves finished.
 
 - **Stop, confirm standstill, then issue a new move with its own result.** This
   uses the existing operations and gives each move a clear boundary. It breaks
@@ -55,11 +58,12 @@ Use stop-then-move when the application can accept the pause. See the
 
 ### Reverse and absolute stored position records
 
-PT records are stored drive-side moves selected by an input. For example, a
+PT records are moves stored in the drive and chosen by an input. For example, a
 machine wants one record to move back 400 increments and another to go to
-coordinate +400 regardless of its current position. On the tested firmware the
-signed record has no motion witness, and the attempted absolute record ran
-relative within the tested power cycle.
+coordinate +400 regardless of its current position. On the tested firmware,
+the bench has yet to observe which direction the drive moves for a
+negative target. The tested absolute setting still moved by the requested
+amount from its starting point during that power cycle.
 
 - **Use the current nonnegative PT subset and ordinary serial moves for the
   reverse or absolute cases.** This uses the existing typed routes. It gives up
@@ -94,15 +98,17 @@ and [group-start evidence](reports/2026-11-19_wired_bench_09_input_and_serial_st
 ### Finding drives on a bus with gaps in its addresses
 
 For example, drives answer at 2 and 4. A scan times out at 3 and currently stops
-before checking 4. A timeout at 3 could also mean its reply is late, so the bus
-owner needs to protect the next transaction.
+before checking 4. The reply for 3 might still show up late. The code in charge
+of the serial bus must make sure that reply cannot be taken as the result for
+the next request.
 
 - **Probe known addresses separately.** Simple and useful when commissioning
   already provides the addresses. It cannot discover an address nobody knows.
-- **Resume the scan once the bus owner can retire the timed-out transaction.**
-  This discovers sparse installations. It needs bounded retirement and a test
-  showing a delayed reply cannot be mistaken for the next result. Keep the
-  failure visible if the owner cannot establish a clean next exchange.
+- **Continue only once the old request is safely closed.** This discovers
+  drives even when some addresses are unused. Put a limit on how long the
+  bus owner can spend closing the old request and test that its delayed
+  reply cannot be mistaken for the next result. Show the failure if the
+  owner cannot verify that it is safe to send again.
 
 ### Diagnosing a drive that remains `RUNNING` after stop
 

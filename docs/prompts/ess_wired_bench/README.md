@@ -103,10 +103,11 @@ The table above is the owner checklist. The examples below describe the
 behavior each choice would establish. Use the existing test procedures and
 record the fixture and drive firmware with each result.
 
-**Baseline and restart persistence (all, 13 and 17).** A limit function can
+**Which settings survive power loss (all, 13 and 17).** A limit function can
 read back correctly while the drive is running and still come up differently
 after power returns. The same distinction applies to PT absolute mode and
-pair word order. For example, an absolute record for +400 should reach +400
+the order of the two register words used to store one value. For example,
+an absolute position record for +400 should reach +400
 from both 0 and +100 if the setting takes effect.
 
 - **Keep the current runtime subset.** This avoids changing stored settings and
@@ -117,8 +118,8 @@ from both 0 and +100 if the setting takes effect.
   [prompt 17 run plan](../../reports/2026-11-19_wired_bench_17_communication_and_persistence.md#owner-return-run-plan)
   has the sequence and case-specific prerequisites.
 
-**An independent stop for signed PT and overlap tests (11–14).** A stored
-reverse move or a JOG trial with a held limit needs an independent way to end
+**A separate stop for reverse moves and overlapping inputs (11–14).** A stored
+reverse move or a manual jog (JOG) with a limit input held needs a separate way to end
 the run. For example, if a candidate reverse record unexpectedly starts
 positive, the same input route under test cannot be its only stop path.
 
@@ -130,9 +131,9 @@ positive, the same input route under test cannot be its only stop path.
   defined terminal pair, fresh verified assignments and tests proving other
   output combinations still refuse. D14 remains the current interlock rule.
 
-**Collision homing (12).** A commanded home that ends when the shaft meets a
-mechanical stop needs both the correct negative-method encoding and a fixture
-where contact can be observed. For example, a method number accepted on the
+**Finding home by touching a mechanical stop (collision homing, 12).**
+The drive needs the correct negative method number and a fixture where
+contact can be observed. For example, a method number accepted on the
 wire could produce a switch-seeking move instead of stopping at contact.
 
 - **Use the qualified switch-homing subset where it serves the machine.** This
