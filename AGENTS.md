@@ -326,3 +326,9 @@ not registers to invent or include in read/write windows.
 manuals and verifies `serial_contrasts_sources.json` offline with `--check`.
 It also refuses changed snapshot bytes. These references inform the design;
 they do not establish support for the compared drives.
+
+## Commit and pull request attribution
+
+Credit human contributors for their work. Omit AI co-author trailers, AI-generated
+signatures or sign-offs, generated-by footers, session links, and other AI
+attribution from commit messages and pull request titles and descriptions.
