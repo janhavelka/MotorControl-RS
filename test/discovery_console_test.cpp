@@ -67,13 +67,19 @@ int main(int argc, char** argv) {
     send(c,"discover manufacturer stepperonline addresses 1 3 tuple 115200 8N1 identity");
     assert(f.request.settings.first==1 && f.request.settings.last==3 && f.request.settings.identity);
     assert(f.request.settings.tupleCount==1 && f.request.settings.tuples[0].baud==115200);
+    send(c,"discover addresses 1 8 past-silent identity");
+    assert(f.request.settings.pastSilent && f.request.settings.identity && f.request.settings.last==8);
+    send(c,"discover addresses 1 8 tuple 115200 8N1 past-silent");assert(f.request.settings.pastSilent && f.request.settings.tupleCount==1);
     send(c,"discover query-ms 1 overall-ms 60000 requests 256 results 8");
+    assert(!f.request.settings.pastSilent);
     assert(f.request.settings.queryMs==1 && f.request.settings.overallMs==60000 && f.request.settings.requestLimit==256);
-    const char* invalid[]={"addresses 0 1","addresses 2 1","addresses 1 248","tuple 57600 8N1","tuple 9600 8E2","tuple 9600 8N1 tuple 9600 8N1","manufacturer leadshine","profile iem_rs","profile ess_rs manufacturer stepperonline","identity identity","query-ms 0","query-ms 5001","overall-ms 60001","requests 257","results 9","cancel extra","restore extra","finish extra","addresses 1","query-ms 2 query-ms 3","broadcast","save","address 1"};
+    const char* invalid[]={"addresses 0 1","addresses 2 1","addresses 1 248","tuple 57600 8N1","tuple 9600 8E2","tuple 9600 8N1 tuple 9600 8N1","manufacturer leadshine","profile iem_rs","profile ess_rs manufacturer stepperonline","identity identity","query-ms 0","query-ms 5001","overall-ms 60001","requests 257","results 9","cancel extra","restore extra","finish extra","addresses 1","query-ms 2 query-ms 3","broadcast","save","address 1","past-silent past-silent","past-silent tuple 9600 8N1 tuple 19200 8N1","tuple 9600 8N1 tuple 19200 8N1 past-silent"};
     const auto before=f.calls;
     for(const char* text:invalid){send(c,std::string("discover ")+text);assert(f.has("\"ok\":false"));}
     assert(f.calls==before);
-    send(c,"discover inspect");assert(f.has("\"action\":-1"));assert(f.begins==3);
+    send(c,"discover inspect");assert(f.has("\"action\":-1"));assert(f.begins==5);
+    assert(f.has("\"past_silent\":false") && f.has("\"silent\":[],\"silent_count\":0,\"settles\":0,\"settle\":\"none\""));
+    send(c,"discover addresses 1 2 past-silent tuple 9600 8N1 tuple 19200 8N1");assert(f.has("past_silent_one_tuple"));
     send(c,"discover cancel");assert(f.request.kind==Probe::DiscoveryCommandKind::CANCEL);
     send(c,"discover restore");assert(f.request.kind==Probe::DiscoveryCommandKind::RESTORE);
     send(c,"discover finish");assert(f.request.kind==Probe::DiscoveryCommandKind::FINISH);
@@ -95,6 +101,8 @@ int main(int argc, char** argv) {
         e.transportDetail=e.status.detail=std::numeric_limits<int32_t>::min();e.status.code=Core::Err::INVALID_CONFIG;finding.identityEvidence=e;
         e.length=e.receivedLength=7;
     }
+    s.settings.pastSilent=true;s.silentCount=247;for(unsigned address=1;address<=247;++address) s.silent[address/8]|=static_cast<uint8_t>(1U<<(address%8));
+    s.settles=255;s.lateBytes=65535;s.settle=Probe::DiscoverySettle::TRANSPORT_ERROR;s.boundaryRequired=s.boundaryCrossed=true;
     char measured[16384];std::size_t measuredLength=0;assert(Probe::discoveryScan(measured,sizeof(measured),measuredLength,&s));
     std::printf("Maximum-width discovery context: %u bytes\n",static_cast<unsigned>(measuredLength));std::fflush(stdout);
     send(c,"discover inspect");assert(f.has("\"findings\":["));assert(f.has("18446744073709551615"));assert(!f.has("output_capacity"));

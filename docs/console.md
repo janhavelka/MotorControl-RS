@@ -402,6 +402,16 @@ origin. Host absolute coordinates need a declared scale and explicit origin.
 inspect it, configure scale/gear/lead/limits, or set an origin. It changes no
 drive register. The selected axis's scale is never copied into another member.
 
+Wired bench 19 ran host absolute plans this way on drives 1, 2 and 4:
+`group axis N config set command 1000`, a fresh `group read state`, the
+reference below at the read position, `group axis N origin POSITION`, then
+`group plan add N absolute 2000 steps motor 60 configured` per member.
+Reinstall the reference from a fresh read before each plan. A member whose
+absolute target equals its current position refuses the whole plan before any
+frame (zero displacement). After a `group stop` that interrupts a plan, a
+following plan may be refused `unavailable` (open, see the
+[wired bench 19 report](reports/2026-11-23_wired_bench_19_multi_drive_remaining.md)).
+
 Before setting an origin, install a caller-qualified command-coordinate fact:
 
 ```text

@@ -196,7 +196,7 @@ wait for the owner; the prompt continues with its other cases meanwhile and
 stays Partial until they run. A conditional step that becomes necessary makes
 the prompt Partial the same way.
 
-## Owner absence, 20 November to about 4 December 2026
+## Owner absence, 20 November to about 6 December 2026
 
 Decision D15. The owner is away and nobody can touch the bench. A drive that
 becomes unreachable or needs a restart stays lost for the rest of the

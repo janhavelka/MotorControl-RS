@@ -73,7 +73,7 @@ the owner stays Partial and the next ready prompt starts.
 | 16 | Partial | F3 (input stop of the HW-14 creep: the shared-output interlock has no row for a drive moving with no pending operation); F4, R1, R3 and A2's drive 1 leg deferred (owner away); F2's +200 check move read 199 (open ±1 feedback row); CI on the recording commit (lead) | [2026-11-19](../../reports/2026-11-19_wired_bench_16_alarms_and_failures.md) |
 | 17 | Partial | Every hardware case (P0, S1, S2, P2-P5, F1, F2, C1, C2, D1, D2, S3) deferred to the owner with the [run plan](../../reports/2026-11-19_wired_bench_17_communication_and_persistence.md#owner-return-run-plan); F1/F2 also need item 6 (restricted recommissioning, specified, not implemented: factory restore refused before TX); the in-app restart fact withdrawn after the audit (restarts proven host-side until prompt 14's JOG setter runs inside the lease); `0x003B`/`0x003C` unread (D8 route); CI on the recording commit (lead) | [2026-11-19](../../reports/2026-11-19_wired_bench_17_communication_and_persistence.md) |
 | 18 | Partial | L1-L4 and U1 deferred to the owner (cable pulls, USB unplug); W1 measured on drive 4 only, windows up to 60.7 s; Q13's 5 uncounted lines need an RX overflow count; HW-12 not reproduced in 4 h (stays open); CI on the recording commit (lead) | [2026-11-20](../../reports/2026-11-20_wired_bench_18_link_loss_and_host_faults.md) |
-| 19 | Pending | — | — |
+| 19 | Partial | G3: after a group stop during an absolute plan, one member's next read is not current and the following absolute plans are refused `unavailable` before any frame (3 of 4 stops; cause unresolved, the group refusal names no reason); E1 (HW-15 drive timing) NOT RUN: needs a boot-time post-enable wait option and a second image; B1-B4 deferred; B5, K1 NOT RUN (no bias); items 5-6 (broadcast trial route, link check) not built; CI on the recording commit (lead) | [2026-11-23](../../reports/2026-11-23_wired_bench_19_multi_drive_remaining.md) |
 | 20 | Pending | — | — |
 
 States: Pending, Partial, Blocked, Complete. Only the session that did the work
@@ -81,8 +81,8 @@ changes a row.
 
 ## Deferred to owner return
 
-The owner is away from 20 November to about 4 December 2026 (D15,
-[COMMON](COMMON.md#owner-absence-20-november-to-about-4-december-2026)).
+The owner is away from 20 November to about 6 December 2026 (D15,
+[COMMON](COMMON.md#owner-absence-20-november-to-about-6-december-2026)).
 Executors add a row for each step that needs the owner and do not wait.
 
 | From | Owner action | Unlocks |
@@ -95,7 +95,7 @@ Executors add a row for each step that needs the owner and do not wait.
 | 16 | Cable pull during a long drive 4 run (F4); a drive 4 power cycle after a reproduced HW-01 or Q04; a scope or min/max meter on drive 4's +DC/GND during R1 and R3 if available; alarm 5 on drive 1 (A2 drive 1 leg: it has never cleared alarm 5, so a restart may be needed) | F4, R1, R3, A2 drive 1 leg |
 | 17 | Power cycles (about 30, one drive at a time, at least 5 s), DIP switch inspection (`0x0003` mapping) and changes for drive 2 (SW2-SW5 OFF for D1, back to address 2 for D2), `mosfet2`/`relay2` held across P4b/P4c power-ups; run order in the [prompt 17 plan](../../reports/2026-11-19_wired_bench_17_communication_and_persistence.md#owner-return-run-plan) | P0, S1, S2, P2-P5, C1, C2, D1, D2, S3 (F1, F2 also need item 6); 05 filter persistence; 10 `0x0019` = 1 after save and restart; 11 V-01 on drives 1 and 2 and `0x0017`/`0x0018` persistence; 13 `0x0050` = 1 after save and restart |
 | 18 | With the owner present and a prepared `stop fast 4`: pull drive 4's RS485 plug 10 s during a velocity run (L1) and 5 s during a long move (L3); pull the trunk at the controller 10 s during velocity (L2) and 5 s during a group move on 1, 2, 4 (L4); unplug USB 10 s during motion with the board on the 24 V supply (U1); optional: listen to the relays during a G2 reflash | L1-L4, U1 (`bench_link.py --case L1..L4\|U1`) |
-| 19 | Power the drives one at a time | B1-B4 |
+| 19 | Power the drives one at a time (pull the other two drives' power connectors) for B1-B3, B4 the same day with all three; optionally fit fail-safe bias (pull-up on A, pull-down on B at one point) and set one drive's DIP to 3 for K1, then back to 4. The broadcast trial route and link check (prompt 19 items 5-6) are built first | B1-B4, B5, K1 |
 
 ### What the attended work decides
 
@@ -181,7 +181,7 @@ the shared capture can show a corrupt reply without identifying the sender.
 | D12 | Raised limits are opt-in only (D6); legacy defaults stay the defaults. One production candidate table per setting is defined where the setting is widened (for example the deviation threshold in 15) and referenced, not redefined, by later prompts | Lead, under D3 |
 | D13 | Drive behavior that the application deliberately refuses to command (for example a start with a limit input held) is characterized only through a path the drive itself decides, such as a staged function-7 start triggered by a bench pulse; host admission is never bypassed and no experiment flag enters the production route | Lead, under D1 |
 | D14 | Shared-output interlock freshness (19 November, from 04's measurement). Within one controller, a drive's assignments or motion change between the interlock reads and the ON only through this controller's own traffic, a bench output or a drive restart. Ordering is the primary guard: the interlock's reads are the last bus traffic before the ON, an output already on refuses, and any accepted operation still pending other than the named running member's refuses. The read age is a 1000 ms backstop (measured worst case 424 ms through the console; the earlier 300 ms default had no hazard basis and is not met by the console path). Prompt 08's firmware trigger applies the same rule and bound to its own read times |
-| D15 | During the owner's absence (20 November to about 4 December 2026) prompts run unattended: no owner waits, no save, factory restore or communication-setting write, no fault that only a restart clears; owner steps are deferred to the README table ([COMMON](COMMON.md#owner-absence-20-november-to-about-4-december-2026)) | Owner, 19 November | Lead, under D1 |
+| D15 | During the owner's absence (20 November to about 6 December 2026) prompts run unattended: no owner waits, no save, factory restore or communication-setting write, no fault that only a restart clears; owner steps are deferred to the README table ([COMMON](COMMON.md#owner-absence-20-november-to-about-6-december-2026)) | Owner, 19 November | Lead, under D1 |
 
 ## Superseded hardware work
 

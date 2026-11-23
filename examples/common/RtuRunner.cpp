@@ -236,6 +236,7 @@ DrainResult Runner::discard(uint64_t nowUs) noexcept {
             lastRxEndUs_ = byte.endUs;
             rxUncertaintyUs_ = byte.uncertaintyUs;
             output.lastByteUs = byte.endUs;
+            ++output.bytes; // At most READ_BUDGET per call.
             increment(stats_.rxBytes); increment(stats_.discarded);
             record(Event::DISCARD, byte.endUs, byte.value);
             continue;
@@ -376,6 +377,7 @@ bool Runner::processByte(const RxByte& byte, uint64_t nowUs) noexcept {
     increment(stats_.rxBytes);
     if (phase_ == Phase::WAIT_BUS) {
         if (byte.endUs > quietSince_) quietSince_ = byte.endUs;
+        if (result_.waitDiscarded != std::numeric_limits<uint16_t>::max()) ++result_.waitDiscarded;
         increment(stats_.discarded);
         record(Event::DISCARD, byte.endUs, byte.value);
         return true;

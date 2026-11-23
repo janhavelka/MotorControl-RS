@@ -141,6 +141,13 @@ confirmed identity. Duplicate-address devices or indistinguishable replies
 are not automatically repaired, and a valid reply does not prove that only
 one physical device is present at that address.
 
+A scan may continue past a silent address only in a context where a late
+reply cannot be mistaken for a new one: one tuple, no address probed twice,
+one bounded settle per silence, termination on any late byte or foreign frame,
+and an explicit operator recovery before ordinary traffic or a new scan
+(the ESS `past-silent` mode, [discovery guide](ess_discovery.md#continuing-past-a-silent-address-past-silent)).
+Without such a context, a fault ends the scan.
+
 ## CLI and qualification
 
 - `profile list` is the local manufacturer/profile catalog; `caps` includes

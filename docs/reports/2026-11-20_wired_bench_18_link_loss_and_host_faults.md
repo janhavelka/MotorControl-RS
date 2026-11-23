@@ -297,3 +297,12 @@ promptset README (status row 18, deferred row).
 The lead owns Git and CI. No commit, push or CI dispatch was made in this
 session. Firmware, console and harness behavior changed, so the four CI jobs
 are required on the recording commit.
+
+The lead committed the work, with the audit follow-up (aud-20261120-041436-4bd24b:
+no production defect; the STOPPING refusal test and comment fixes added, the
+rest in the backlog), as `baf4779`. CI run 44674243066 on that commit FAILED
+the native gcc and clang jobs: `bench_link_test` could not import pyserial,
+which CI does not install (Arduino and ESP-IDF passed). The lead made
+`bench_link.py` import pyserial only where it opens the port and committed
+that as `08a88eb`; CI run 44675417247 on that exact commit passed all four
+jobs.

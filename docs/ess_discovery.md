@@ -35,6 +35,7 @@ read identity [ADDRESS]
 discover [profile ess_rs | manufacturer stepperonline]
          [addresses FIRST LAST] [tuple BAUD FORMAT]...
          [query-ms N] [overall-ms N] [requests N] [results N] [identity]
+         [past-silent]
 discover inspect|cancel|restore|finish
 ```
 
@@ -70,11 +71,58 @@ stop is claimed. Urgent work cannot bypass recovery or use a mismatched tuple.
 Cancellation cancels unsent requests and lets physical TX/reception settle.
 `cancel SCAN_OPERATION_ID`, or bare `cancel` while a scan owns the session, uses
 the same cancellation policy. Faults stop with partial results; there is no
-automatic recovery, retry or continuation. Healthy endings restore the exact
+automatic recovery or retry, and a default scan never continues past a fault.
+`past-silent` (below) is the one defined continuation. Healthy endings restore the exact
 starting tuple, rather than startup defaults, before ordinary work resumes.
 Failed restoration keeps an explicit interlock. Use `recover` for a transaction
 fault, then `discover restore`; a failed host setup uses `discover restore` for
 explicit repair. These actions never resume scanning.
+
+### Continuing past a silent address (`past-silent`)
+
+Without a response-lifetime bound (none is qualified for these drives) an idle
+gap cannot exclude a late reply, and ESS frames carry no transaction ID. So a
+scan continues past silence only where a late reply cannot match a later
+request context:
+
+- One tuple only; a multi-tuple `past-silent` scan is refused before any TX
+  (`past_silent_one_tuple`, API `INVALID`). Addresses ascend, so no address is
+  probed twice.
+- Silence is a probe that sent every byte and received none (`NO_RESPONSE`,
+  no echo or adapter fault). It is recorded in the `silent` list beside the
+  findings and consumes no finding slot; it is an observation, not proof of
+  absence.
+- Before the next, different address the scan runs one bounded settle: the
+  owner's recovery drain and idle gap, counted as one request and limited by
+  the query and overall budgets. It never resends the probe. Silence at the
+  last address needs no settle.
+- Any byte the settle drains, or that the runner discards before a later
+  probe's TX, ends the scan (`settle: late_bytes`, `late_bytes`). Partial
+  bytes, a frame from another address (a late reply is never a responder at
+  the next address), CRC, length, gap, echo or correlation faults end it with
+  today's interlock.
+- A scan that recorded silence ends in INTERLOCK with `boundary_required`,
+  whatever its outcome. `discover restore` and ordinary traffic stay refused
+  until an explicit `recover` admitted after the scan ended has recovered the
+  bus (`boundary_crossed`); then `discover restore` and `discover finish` as
+  usual. That operator recovery is the boundary before a silent address can be
+  probed again. Cancellation during a settle lets the settle finish first.
+- Beginning a `past-silent` scan releases a delivered earlier `recover`
+  result (the settles need the owner's one recovery slot); an undelivered one
+  refuses `busy`.
+
+The reply adds `settings.past_silent`, `silent`, `silent_count`, `settles`,
+`settle` (`none`, `recovered`, `late_bytes`, `expired`, `read_error`,
+`transport_error`), `late_bytes`, `boundary_required` and `boundary_crossed`.
+`bench_probe.py discovery-check --cross-boundary ...` runs the operator
+sequence after such a scan; without the flag the campaign stops at the
+interlock. Wired bench 19 (20 November 2026, image A,
+`0x4EEA`/`0x0029`): `discover addresses 1 8 past-silent identity requests 32`
+found 1, 2 and 4 with identity, silent 3 and 5-8, four settles and no late
+byte; a probe and `discover restore` were refused before the boundary, then
+`recover`, restore and finish succeeded. The same scan without `past-silent`
+stopped at 3 as before. One clean bench scan does not prove correlation in
+general.
 Recovery also cancels a healthy scan's unadmitted continuations, even when its
 completion is serviced late. An admitted query still settles and retains evidence;
 restoration waits for recovery settlement before ordinary work resumes.

@@ -250,7 +250,7 @@ def discovery_arguments(tokens: tuple[str, ...]) -> dict:
         raise ValueError("discovery arguments require a tuple of strings")
     if tokens in (("inspect",), ("cancel",), ("restore",), ("finish",)):
         return dict(action=tokens[0])
-    result = dict(action="begin", profile="ess_rs", tuples=[], identity=False)
+    result = dict(action="begin", profile="ess_rs", tuples=[], identity=False, past_silent=False)
     seen = set()
     index = 0
     while index < len(tokens):
@@ -292,11 +292,16 @@ def discovery_arguments(tokens: tuple[str, ...]) -> dict:
             result[key] = integer(raw, *bounds[key])
         elif key == "identity":
             result["identity"] = True
+        elif key == "past-silent":
+            result["past_silent"] = True
         else:
             raise ValueError("unknown discovery option")
+    if result["past_silent"] and len(result["tuples"]) > 1:
+        raise ValueError("past-silent scans one tuple: a late reply must never match a reused request context")
     return result
 
 
+DISCOVERY_SETTLES = ("none", "recovered", "late_bytes", "expired", "read_error", "transport_error")
 DISCOVERY_EVIDENCE_COLUMNS = ["first", "count", "event", "raw_hex", "received_length", "qualified", "attempted_us",
                               "earliest_us", "latest_us", "delivered_us", "transport_detail", "tx_accepted",
                               "execution_unknown", "status", "detail", "frame_error"]
@@ -3665,7 +3670,7 @@ class Console:
         require(isinstance(scan, dict), "context is invalid")
         require(all(number(scan.get(k)) for k in ("operation_id", "phase", "outcome", "requests", "count", "tuple_index", "address",
                                                  "started_us", "deadline_us", "finished_us", "original_serial_generation")), "progress fields invalid")
-        require(scan["phase"] <= 5 and scan["outcome"] <= 9 and scan["operation_id"] <= 0xFFFFFFFF,
+        require(scan["phase"] <= 6 and scan["outcome"] <= 9 and scan["operation_id"] <= 0xFFFFFFFF,
                 "unknown phase/outcome or operation ID")
         require(all(type(scan.get(k)) is bool for k in ("owned", "restored", "released", "cancel_requested")), "state flags invalid")
         if scan["phase"] == 0:
@@ -3684,7 +3689,7 @@ class Console:
         require(isinstance(settings, dict) and number(settings.get("first"), 1, 247) and number(settings.get("last"), settings["first"], 247), "address range invalid")
         require(number(settings.get("query_ms"), 1, 5000) and number(settings.get("overall_ms"), 1, 60000) and
                 number(settings.get("request_limit"), 1, 256) and number(settings.get("result_limit"), 1, 8) and
-                type(settings.get("identity")) is bool, "budgets invalid")
+                type(settings.get("identity")) is bool and type(settings.get("past_silent")) is bool, "budgets invalid")
         tuples = settings.get("tuples")
         require(isinstance(tuples, list) and 1 <= len(tuples) <= 4 and all(tuple_valid(t) for t in tuples) and
                 len({(t["baud"], t["format"]) for t in tuples}) == len(tuples), "tuple candidates invalid")
@@ -3692,10 +3697,28 @@ class Console:
         if action == 0 and item["ok"]:
             for key, field in (("first", "first"), ("last", "last"), ("query-ms", "query_ms"), ("overall-ms", "overall_ms"), ("requests", "request_limit"), ("results", "result_limit")):
                 require(key not in expected or settings[field] == expected[key], "accepted candidate/budget differs")
-            require(settings["identity"] == expected["identity"] and (not expected["tuples"] or tuples == expected["tuples"]), "accepted tuple/refinement differs")
+            require(settings["identity"] == expected["identity"] and settings["past_silent"] == expected["past_silent"] and
+                    (not expected["tuples"] or tuples == expected["tuples"]), "accepted tuple/refinement/past-silent differs")
         require(scan["requests"] <= settings["request_limit"] and scan["count"] <= settings["result_limit"] and
                 scan["count"] <= scan["requests"] and scan["tuple_index"] <= len(tuples), "count exceeds retained budgets")
         require(scan.get("evidence_columns") == DISCOVERY_EVIDENCE_COLUMNS, "wire columns differ")
+        # Past-silent record (wired bench 19): silence beside the findings, settles
+        # counted as requests, and the explicit operator boundary before restoration.
+        silent = scan.get("silent")
+        require(isinstance(silent, list) and all(number(a, settings["first"], settings["last"]) for a in silent) and
+                silent == sorted(set(silent)) and scan.get("silent_count") == len(silent), "silent record invalid")
+        require(number(scan.get("settles"), 0, 255) and number(scan.get("late_bytes"), 0, 65535) and
+                scan.get("settle") in DISCOVERY_SETTLES and
+                all(type(scan.get(k)) is bool for k in ("boundary_required", "boundary_crossed")), "settle record invalid")
+        if not settings["past_silent"]:
+            require(not silent and scan["settles"] == 0 and scan["late_bytes"] == 0 and scan["settle"] == "none" and
+                    not scan["boundary_required"] and not scan["boundary_crossed"], "default scan carries past-silent state")
+        else:
+            require(len(tuples) == 1 and scan["settles"] <= len(silent), "past-silent tuple or settle count invalid")
+            require(scan["boundary_required"] == bool(silent) and (scan["boundary_required"] or not scan["boundary_crossed"]),
+                    "silence without the explicit boundary")
+            if scan["phase"] == 5:
+                require(not silent or scan["boundary_crossed"], "silent scan restored without the operator boundary")
         findings = scan.get("findings")
         require(isinstance(findings, list) and len(findings) == scan["count"], "retained findings count differs")
         ids = set()
@@ -3804,7 +3827,9 @@ class Console:
                         "identity closure exceeds its immutable query/scan deadline")
             else:
                 require(values == [0, 0, 0, 0] and not f["identity_ambiguous"], "failed/unattempted refinement publishes identity")
-        require(scan["requests"] >= len(findings) + sum(f["identity_attempted"] for f in findings), "identity attempts exceed admitted request budget")
+        require(scan["requests"] >= len(findings) + sum(f["identity_attempted"] for f in findings) + len(silent) + scan["settles"],
+                "identity attempts, silent probes and settles exceed admitted request budget")
+        require(not {f["target"][1] for f in findings} & set(silent), "an address is both silent and a finding")
         if scan["phase"] == 5:
             require(scan["outcome"] != 0 and not scan["owned"] and scan["restored"] and scan["finished_us"] >= scan["started_us"], "terminal scan lacks restoration")
         if scan["phase"] == 4:
@@ -3815,7 +3840,8 @@ class Console:
         if old and old["operation_id"] == scan["operation_id"]:
             for key in ("started_us", "deadline_us", "settings", "original_target", "original_tuple", "original_serial_generation"):
                 require(scan[key] == old[key], "retained immutable scan context changed")
-            require(scan["requests"] >= old["requests"] and scan["count"] >= old["count"], "partial progress disappeared")
+            require(scan["requests"] >= old["requests"] and scan["count"] >= old["count"] and
+                    set(old["silent"]) <= set(scan["silent"]) and scan["settles"] >= old["settles"], "partial progress disappeared")
             for before, after in zip(old["findings"], findings):
                 for key in ("profile", "target", "operation_id", "serial", "tx_hex", "started_us", "deadline_us", "outcome", "confidence", "raw_model_known", "raw_model", "probe"):
                     require(before[key] == after[key], "retained attempt evidence changed")
@@ -3909,6 +3935,12 @@ class Console:
                 raise BenchError("local discovery inventory differs from implemented profile capabilities")
         if handle.command == "discover":
             self._check_discovery(handle, item)
+            if (item["ok"] and item.get("action") == 0 and isinstance(item.get("scan"), dict) and
+                    item["scan"].get("settings", {}).get("past_silent")):
+                for earlier, original in list(self.operations.items()):  # Settles need the recovery slot.
+                    if original.command == "recover" and original.terminal is not None:
+                        original.released = True
+                        del self.operations[earlier]
         if handle.command in ("status", "config") and item["ok"]:
             self._check_host_serial(item, handle.serial)
             if handle.command == "config" and handle.serial is not None and handle.serial["known"]:
@@ -5270,8 +5302,13 @@ def state_health_campaign(console: Console, *, count: int, interval_s: float, ti
                      checks_passed=passed, ok=failure is None and passed == count, error=failure)
 
 
-def discovery_campaign(console, *, tokens: tuple[str, ...], timeout_s: float) -> dict:
-    """One scan, finite local inspections, no retry or automatic recovery."""
+def discovery_campaign(console, *, tokens: tuple[str, ...], timeout_s: float, cross_boundary: bool = False) -> dict:
+    """One scan, finite local inspections, no retry or automatic recovery.
+
+    ``cross_boundary`` is the operator's explicit choice to run the documented
+    reuse boundary after a past-silent scan that recorded silence: one
+    ``recover``, ``discover restore``, then ``discover finish``. Any other
+    interlock still ends the campaign for explicit repair."""
     selected = discovery_arguments(tokens)
     if selected["action"] != "begin":
         raise ValueError("discovery campaign requires bounded scan candidates")
@@ -5297,6 +5334,23 @@ def discovery_campaign(console, *, tokens: tuple[str, ...], timeout_s: float) ->
         scans += 1
     console.emit("discovery_summary", scan=scan, inspections=scans, restored=scan["restored"],
                  interlocked=scan["phase"] == 4, ok=scan["phase"] == 5 and scan["outcome"] == 1)
+    if scan["phase"] == 4 and cross_boundary and scan.get("boundary_required") and scan["outcome"] == 1:
+        recovered = console.command("recover", timeout_s=timeout_s)
+        console.emit("discovery_boundary", recovery=recovered, automatic_retry=False)
+        if not recovered["ok"]:
+            raise BenchError("discovery boundary recovery failed; partial findings retained")
+        restored = console.command("discover", host_args=("restore",), timeout_s=timeout_s)
+        while restored["ok"] is False and restored.get("result") == "recovery_required" and scans < 1500:
+            # Restoration waits for the boundary recovery to be observed; inspect, never resend recover.
+            console.sleep(.05); scans += 1
+            restored = console.command("discover", host_args=("inspect",), timeout_s=timeout_s)
+            if restored["scan"]["phase"] == 4 and restored["scan"].get("boundary_crossed"):
+                restored = console.command("discover", host_args=("restore",), timeout_s=timeout_s)
+        scan = restored["scan"]
+        while scan["phase"] != 5 and scans < 1500 and console.clock() < deadline + timeout_s:
+            console.sleep(.05); scans += 1
+            scan = console.command("discover", host_args=("inspect",), timeout_s=timeout_s)["scan"]
+        console.emit("discovery_restored", scan=scan, inspections=scans)
     if scan["phase"] == 4:
         raise BenchError("discovery stopped with retained partial results and host/transport interlock; explicit repair required")
     if scan["outcome"] != 1:
@@ -5405,14 +5459,17 @@ def arguments(argv: list[str] | None) -> argparse.Namespace:
     sub.add_parser("profile-list", help="compiled manufacturer/profile inventory; no motor traffic")
     discovery_help = ("[profile ess_rs | manufacturer stepperonline] [addresses FIRST LAST] "
                       "[tuple BAUD FORMAT] (up to four distinct reviewed tuples) [query-ms 1..5000] "
-                      "[overall-ms 1..60000] [requests 1..256] [results 1..8] [identity]. "
+                      "[overall-ms 1..60000] [requests 1..256] [results 1..8] [identity] [past-silent]. "
                       "Defaults: selected endpoint/current tuple, 500 ms/query, 5000 ms overall, "
                       "16 requests, 8 results, no identity refinement or retries. Console input is "
-                      "128 bytes/20 tokens including correlation and command. "
+                      "128 bytes/22 tokens including correlation and command. past-silent: one tuple, "
+                      "records zero-RX addresses, one settle per silence; silence ends needing recover, restore, finish. "
                       "Controls: inspect, cancel, restore, finish. Interlocks require explicit repair.")
     discover = sub.add_parser("discover", help="one bounded scan action; inspect/cancel/restore/finish retain evidence", description=discovery_help)
     discover.add_argument("discovery_tokens", nargs="*")
     discovery_check = sub.add_parser("discovery-check", help="one finite ESS scan, bounded inspection and explicit result release", description=discovery_help)
+    discovery_check.add_argument("--cross-boundary", action="store_true",
+                                 help="after a past-silent scan with silence, run recover, discover restore, finish")
     discovery_check.add_argument("discovery_tokens", nargs="*")
     sub.add_parser("probe", help="one model-register read and cached observations")
     host = sub.add_parser("host", help="one host-only serial query or explicit tuple change; no motor writes")
@@ -5711,7 +5768,8 @@ def main(argv: list[str] | None = None) -> int:
                         if not result["ok"]:
                             raise BenchError("discovery command refused: " + str(result.get("result")))
                     elif args.mode == "discovery-check":
-                        discovery_campaign(console,tokens=args.host_args,timeout_s=args.timeout)
+                        discovery_campaign(console,tokens=args.host_args,timeout_s=args.timeout,
+                                           cross_boundary=args.cross_boundary)
                     elif args.mode == "communication":
                         result = console.command("communication", host_args=args.host_args, timeout_s=args.timeout)
                         if not result["ok"]:

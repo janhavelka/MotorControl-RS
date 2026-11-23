@@ -15,12 +15,24 @@ struct DiscoverySettings {
     uint16_t requestLimit = 16;
     uint8_t resultLimit = DISCOVERY_MAX_RESULTS;
     bool identity = false;
+    /** Continue past a probe that sent every byte and received none (wired
+     * bench 19). One tuple only; each address is probed once. A silent probe
+     * gets one bounded in-scan settle (owner recovery drain and idle gap),
+     * counted as one request. Any byte drained by it or discarded before a
+     * later probe ends the scan. A scan that recorded silence ends in
+     * INTERLOCK and needs explicit `recover`, `discover restore` and
+     * `discover finish`; that operator recovery is the reuse boundary. */
+    bool pastSilent = false;
 };
 struct DiscoveryCommand {
     DiscoveryCommandKind kind = DiscoveryCommandKind::BEGIN;
     DiscoverySettings settings;
 };
-enum class DiscoveryPhase : uint8_t { EMPTY, PROBE, IDENTITY, RESTORING, INTERLOCK, TERMINAL };
+/** SETTLE (past-silent only) waits for the in-scan recovery after a silent probe. */
+enum class DiscoveryPhase : uint8_t { EMPTY, PROBE, IDENTITY, RESTORING, INTERLOCK, TERMINAL, SETTLE };
+/** Result of the latest past-silent settle. LATE_BYTES: the settle drained
+ * bytes or a later probe discarded bytes before its TX; the scan ends. */
+enum class DiscoverySettle : uint8_t { NONE, RECOVERED, LATE_BYTES, EXPIRED, READ_ERROR, TRANSPORT_ERROR };
 enum class DiscoveryOutcome : uint8_t {
     NONE, COMPLETE, CANCELLED, DEADLINE, REQUEST_LIMIT, RESULT_LIMIT,
     TRANSPORT_FAULT, RESTORE_FAILED, PREEMPTED, SETUP_FAILED
@@ -45,10 +57,20 @@ struct DiscoveryScan {
     uint64_t startedUs = 0, deadlineUs = 0, finishedUs = 0;
     DiscoveryPhase phase = DiscoveryPhase::EMPTY;
     DiscoveryOutcome outcome = DiscoveryOutcome::NONE;
-    uint16_t requests = 0;
+    uint16_t requests = 0; ///< Probes, identity reads and settles admitted.
     uint8_t count = 0, tupleIndex = 0, address = 0;
     bool owned = false, restored = false, released = false, cancelRequested = false;
-    DiscoveryFinding findings[DISCOVERY_MAX_RESULTS];
+    DiscoveryFinding findings[DISCOVERY_MAX_RESULTS]; ///< Responders and the terminal failure; never past-silent silence.
+    // Past-silent record. A timeout is an observation, not proof of absence.
+    uint8_t silent[32] = {}; ///< Bit per address (address / 8, bit address % 8) that answered nothing.
+    uint8_t silentCount = 0, settles = 0;
+    uint16_t lateBytes = 0; ///< Bytes drained by settles or discarded before a later probe's TX.
+    DiscoverySettle settle = DiscoverySettle::NONE;
+    uint64_t settleId = 0; ///< Owner recovery generation of the pending settle.
+    /** Silence was recorded: restoration waits for an explicit operator
+     * recovery admitted while the scan is in INTERLOCK. */
+    bool boundaryRequired = false, boundaryCrossed = false;
+    uint64_t boundaryRecoveryId = 0; ///< That operator recovery's owner generation.
 };
 struct DiscoveryView {
     const DiscoveryScan* scan = nullptr; ///< Synchronous formatting only.

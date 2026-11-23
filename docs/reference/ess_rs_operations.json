@@ -456,9 +456,10 @@
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.md",
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json",
           "docs/reports/2026-11-18_wired_bench_01_baseline.md",
-          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md"
+          "docs/reports/2026-11-18_wired_bench_03_connected_setters.md",
+          "docs/reports/2026-11-23_wired_bench_19_multi_drive_remaining.md"
         ],
-        "reason": "Reviewed five-word staging for positive finite relative commands and exact original-profile restoration PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. The new per-member group route has no physical credit from these older records. Wired bench 03 (prompt 01 B08 as specified): staged group move of 100 steps on drives 1, 2, 4 with connected X0-X3: each member's 0x0021-0x0025 written and read back (match), all started and completed (+100), then a 2000-step staged move stopped by group stop normal after 1.2 s, all stopped."
+        "reason": "Reviewed five-word staging for positive finite relative commands and exact original-profile restoration PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. The new per-member group route has no physical credit from these older records. Wired bench 03 (prompt 01 B08 as specified): staged group move of 100 steps on drives 1, 2, 4 with connected X0-X3: each member's 0x0021-0x0025 written and read back (match), all started and completed (+100), then a 2000-step staged move stopped by group stop normal after 1.2 s, all stopped. Wired bench 19: staged and sequential per-member absolute plans (G1, 20 plans) staged each member's own words and completed; profile words restored through the stage route."
       },
       "id": "finite_position_staging",
       "kind": "WRITE",
@@ -502,9 +503,10 @@
           "docs/archive/reports/ess_release_25_26_audit_2026-10-05.json",
           "docs/reports/2026-11-18_wired_bench_01_baseline.md",
           "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md",
-          "docs/reports/2026-11-19_wired_bench_11_limits.md"
+          "docs/reports/2026-11-19_wired_bench_11_limits.md",
+          "docs/reports/2026-11-23_wired_bench_19_multi_drive_remaining.md"
         ],
-        "reason": "Positive finite relative commands of 100 native increments at 60 RPM, configured native ramps and fresh running/completion reports PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. The new per-member group route has no physical credit from these older records. Wired bench 07 (19 November 2026, drive 4): 3000-step relative moves at 60 rpm stopped short by X3 = 5 or 6 pulses (S1/S2/S8/S9), each ended STOP_INPUT or STOPPED_SHORT, never complete, with no further start; staged group moves on drives 1, 2 and 4 (G1) the same. Wired bench 11: a limit input toward the motion stops it (LIMIT_INPUT); an active limit input refuses every start before TX; soft-limit stops report SOFT_LIMIT; unknown soft-limit state refuses before TX."
+        "reason": "Positive finite relative commands of 100 native increments at 60 RPM, configured native ramps and fresh running/completion reports PASS as bounded drive-reported functional evidence on both recorded S3 frameworks. Independent electrical response-source, shaft and stop-distance measurements, negative encoding, other position paths and endurance are not qualified. The new per-member group route has no physical credit from these older records. Wired bench 07 (19 November 2026, drive 4): 3000-step relative moves at 60 rpm stopped short by X3 = 5 or 6 pulses (S1/S2/S8/S9), each ended STOP_INPUT or STOPPED_SHORT, never complete, with no further start; staged group moves on drives 1, 2 and 4 (G1) the same. Wired bench 11: a limit input toward the motion stops it (LIMIT_INPUT); an active limit input refuses every start before TX; soft-limit stops report SOFT_LIMIT; unknown soft-limit state refuses before TX. Wired bench 19: G4 relative member (-800 and back) PASS; R1 +1000 and a one-member group +500 on each drive PASS."
       },
       "id": "move_relative",
       "kind": "ACTION",
@@ -817,9 +819,10 @@
         "evidence": [
           "docs/reports/2026-11-16_hil_regression.md",
           "docs/reports/2026-11-19_wired_bench_07_stop_release_inputs.md",
-          "docs/reports/2026-11-19_wired_bench_11_limits.md"
+          "docs/reports/2026-11-19_wired_bench_11_limits.md",
+          "docs/reports/2026-11-23_wired_bench_19_multi_drive_remaining.md"
         ],
-        "reason": "bench_scenarios absolute and return phases within the raw 0..250 fixture window on drive 1 (e56d4c0 and baa91c9) and return phases on drives 2 and 4 (baa91c9), each observed. Outside that window the scenario refuses before writes. Group per-member absolute targets and independent shaft/origin/path measurement are NOT RUN. Wired bench 07 (19 November 2026, drive 4): 3000-step absolute moves at 60 rpm stopped short by X3 = 5 or 6 pulses (S1/S2/S8/S9), each ended STOP_INPUT or STOPPED_SHORT, never complete, with no further start; staged group moves on drives 1, 2 and 4 (G1) the same. Wired bench 11: a limit input toward the motion stops it (LIMIT_INPUT); an active limit input refuses every start before TX; soft-limit stops report SOFT_LIMIT; unknown soft-limit state refuses before TX."
+        "reason": "bench_scenarios absolute and return phases within the raw 0..250 fixture window on drive 1 (e56d4c0 and baa91c9) and return phases on drives 2 and 4 (baa91c9), each observed. Outside that window the scenario refuses before writes. Wired bench 19 (20-23 November 2026, image A): host-coordinate group absolute plans on drives 1, 2 and 4 (member scale 1000, caller-qualified reference and origin per member): G1 20 plans, 10 staged and 10 sequential, each member at its own target (endpoint error 0 or -1); G2 a zero-displacement member refuses the plan before any frame; G4 mixed absolute/relative plan and return PASS; G3 FAIL: after 3 of 4 group stops mid-plan one member's next read was not current and the following absolute plans were refused unavailable before any frame (open). Independent shaft/origin/path measurement is NOT RUN. Wired bench 07 (19 November 2026, drive 4): 3000-step absolute moves at 60 rpm stopped short by X3 = 5 or 6 pulses (S1/S2/S8/S9), each ended STOP_INPUT or STOPPED_SHORT, never complete, with no further start; staged group moves on drives 1, 2 and 4 (G1) the same. Wired bench 11: a limit input toward the motion stops it (LIMIT_INPUT); an active limit input refuses every start before TX; soft-limit stops report SOFT_LIMIT; unknown soft-limit state refuses before TX."
       },
       "reason": "Unwrapped absolute and explicitly wrapped paths use the existing finite mover and START_POSITION choice, counted separately under move_relative; full turns, direction/ties, fresh references and selected-path limits are retained. Multi-drive09 uses these same core preparations for copied per-member intents through submitGroupMoves and the inert group plan submit route; each member retains its own target, reference, staging and completion evidence."
     },
@@ -2844,10 +2847,12 @@
         "state": "PASS",
         "evidence": [
           "docs/archive/reports/ess_release_22_2026-10-05.md",
-          "docs/archive/reports/ess_release_22_audit_2026-10-05.md"
-        ]
+          "docs/archive/reports/ess_release_22_audit_2026-10-05.md",
+          "docs/reports/2026-11-23_wired_bench_19_multi_drive_remaining.md"
+        ],
+        "reason": " Wired bench 19 D1-D3: one checked reply per request on 1, 2, 4 with no discarded byte; past-silent found 1, 2, 4 and silent 3, 5-8 with four settles and the boundary; the default scan stopped at 3 as before."
       },
-      "reason": "Finite ESS-only address/host tuple scanning with typed identity refinement; partial faults, explicit restoration and no automatic rebind/retry or collision exclusion. Alternate motor tuples remain unqualified."
+      "reason": "Finite ESS-only address/host tuple scanning with typed identity refinement; partial faults, explicit restoration and no automatic rebind/retry or collision exclusion. past-silent (wired bench 19) continues past zero-RX addresses on one tuple with one bounded settle each and ends needing the explicit recover/restore/finish boundary; any late byte or foreign frame ends the scan. Alternate motor tuples remain unqualified."
     },
     {
       "id": "position_profile_read",

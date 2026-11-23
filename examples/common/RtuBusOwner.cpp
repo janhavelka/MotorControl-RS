@@ -355,6 +355,8 @@ void BusOwner::serviceRecovery(uint64_t nowUs, bool mayDrain) noexcept {
     }
     if (active_ != NONE || runner_.transmitEnabled() || !mayDrain) return;
     const DrainResult drained = runner_.discard(nowUs);
+    const uint32_t room = std::numeric_limits<uint32_t>::max() - recovery_.discarded;
+    recovery_.discarded += drained.bytes < room ? drained.bytes : room;
     if (drained.lastByteUs > recoveryQuietUs_) recoveryQuietUs_ = drained.lastByteUs;
     if (drained.state == ReadState::ERROR) {
         finishRecovery(RecoveryOutcome::READ_ERROR, nowUs, drained.reason);

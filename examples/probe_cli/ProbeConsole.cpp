@@ -73,7 +73,7 @@ const Entry COMMANDS[] = {
     {"motion", Command::MOTION, "motion [write|stored]", "inspect_or_select_simple_motion_setup", false, "Choose setup policy: write parameters before start, or explicitly reuse stored parameters."},
     {"subdivision", Command::SUBDIVISION, "subdivision [INTEGER|options]", "typed_drive_subdivision_read_write_with_checked_readback", true, "Read or set motor subdivision (400..51200); options shows useful examples. Automatically checks stopped state and reads back the setting."},
     {"stepsperturn", Command::STEPS_PER_TURN, "stepsperturn POSITIVE_NUMBER", "host_command_scale_only_no_motor_settings", false, "Declare command steps per motor turn for angle conversion."},
-    {"discover", Command::DISCOVER, "discover [profile ess_rs|manufacturer stepperonline] [addresses FIRST LAST] [tuple BAUD FORMAT] [query-ms 1..5000] [overall-ms 1..60000] [requests 1..256] [results 1..8] [identity] | discover inspect|cancel|restore|finish; max4 distinct tuples,128bytes,20tokens; defaults selected endpoint/current tuple,query500ms,overall5000ms,requests16,results8,no identity,no retries", "bounded_nonchanging_queries_retained_findings_host_restoration", true, "Find responding drives within explicit address, serial and time limits."},
+    {"discover", Command::DISCOVER, "discover [profile ess_rs|manufacturer stepperonline] [addresses FIRST LAST] [tuple BAUD FORMAT] [query-ms 1..5000] [overall-ms 1..60000] [requests 1..256] [results 1..8] [identity] [past-silent] | discover inspect|cancel|restore|finish; max4 distinct tuples (past-silent: one),128bytes,22tokens with @ID; defaults selected endpoint/current tuple,query500ms,overall5000ms,requests16,results8,no identity,no retries; past-silent records zero-RX addresses, settles once per silence (one request) and ends needing recover, restore, finish", "bounded_nonchanging_queries_retained_findings_host_restoration", true, "Find responding drives within explicit address, serial and time limits."},
     {"debug", Command::DEBUG, "debug [off|raw|decoded]", "observe_regular_operations_and_cached_diagnostics", false, "Show diagnostics; select raw or decoded traffic while ordinary commands run."},
     {"position", Command::POSITION, "position interrupt <original-id> | position limits | position limits set RPM RATE RAMP case NAME | position limits default", "qualified_stored_position_start_or_interrupt_ack_only", true, "Retrigger the exact stored native move (acknowledgement does not prove interruption or arrival; use a checked stop to settle motion), or show, install or revoke the named position limits of the selected axis (local, no traffic)."},
     {"motion-profile", Command::MOTION_PROFILE, "motion-profile read|inspect|restore|forget | motion-profile stage ACC DEC RPM TARGET_W0 TARGET_W1 ORDER ADDRESS [model firmware] | motion-profile start-speed <native>", "snapshot_restore_or_explicit_native_start_speed_setting", true, "Read, inspect, stage or restore position parameters without starting; set native start speed separately."},
@@ -1222,10 +1222,17 @@ bool discoveryScan(char* out, std::size_t capacity, std::size_t& used, const Dis
         static_cast<unsigned long>(s.operationId),static_cast<unsigned>(s.phase),static_cast<unsigned>(s.outcome),boolean(s.owned),boolean(s.restored),boolean(s.released),boolean(s.cancelRequested),
         s.requests,s.count,s.tupleIndex,s.address,static_cast<unsigned long long>(s.startedUs),static_cast<unsigned long long>(s.deadlineUs),static_cast<unsigned long long>(s.finishedUs),
         static_cast<unsigned long>(s.originalTarget.id),s.originalTarget.address,static_cast<unsigned long>(s.originalTarget.generation)) ||
-        !hostTuple(out,capacity,used,s.originalTuple) || !append(out,capacity,used,",\"original_serial_generation\":%lu,\"settings\":{\"first\":%u,\"last\":%u,\"query_ms\":%lu,\"overall_ms\":%lu,\"request_limit\":%u,\"result_limit\":%u,\"identity\":%s,\"tuples\":[",
-        static_cast<unsigned long>(s.originalSerialGeneration),s.settings.first,s.settings.last,static_cast<unsigned long>(s.settings.queryMs),static_cast<unsigned long>(s.settings.overallMs),s.settings.requestLimit,s.settings.resultLimit,boolean(s.settings.identity))) return false;
+        !hostTuple(out,capacity,used,s.originalTuple) || !append(out,capacity,used,",\"original_serial_generation\":%lu,\"settings\":{\"first\":%u,\"last\":%u,\"query_ms\":%lu,\"overall_ms\":%lu,\"request_limit\":%u,\"result_limit\":%u,\"identity\":%s,\"past_silent\":%s,\"tuples\":[",
+        static_cast<unsigned long>(s.originalSerialGeneration),s.settings.first,s.settings.last,static_cast<unsigned long>(s.settings.queryMs),static_cast<unsigned long>(s.settings.overallMs),s.settings.requestLimit,s.settings.resultLimit,boolean(s.settings.identity),boolean(s.settings.pastSilent))) return false;
     for(uint8_t i=0;i<s.settings.tupleCount;++i) if ((i && !append(out,capacity,used,",")) || !hostTuple(out,capacity,used,s.settings.tuples[i])) return false;
-    if (!append(out,capacity,used,"]},\"evidence_columns\":[\"first\",\"count\",\"event\",\"raw_hex\",\"received_length\",\"qualified\",\"attempted_us\",\"earliest_us\",\"latest_us\",\"delivered_us\",\"transport_detail\",\"tx_accepted\",\"execution_unknown\",\"status\",\"detail\",\"frame_error\"],\"findings\":[")) return false;
+    static const char* const settles[]={"none","recovered","late_bytes","expired","read_error","transport_error"};
+    if (static_cast<unsigned>(s.settle)>=sizeof(settles)/sizeof(settles[0]) || !append(out,capacity,used,"]},\"silent\":[")) return false;
+    unsigned listed=0;
+    for(unsigned address=1;address<=247;++address) if (s.silent[address/8] & (1U<<(address%8)))
+        if ((listed++ && !append(out,capacity,used,",")) || !append(out,capacity,used,"%u",address)) return false;
+    if (listed!=s.silentCount || !append(out,capacity,used,"],\"silent_count\":%u,\"settles\":%u,\"settle\":\"%s\",\"late_bytes\":%u,\"boundary_required\":%s,\"boundary_crossed\":%s",
+        s.silentCount,s.settles,settles[static_cast<unsigned>(s.settle)],s.lateBytes,boolean(s.boundaryRequired),boolean(s.boundaryCrossed))) return false;
+    if (!append(out,capacity,used,",\"evidence_columns\":[\"first\",\"count\",\"event\",\"raw_hex\",\"received_length\",\"qualified\",\"attempted_us\",\"earliest_us\",\"latest_us\",\"delivered_us\",\"transport_detail\",\"tx_accepted\",\"execution_unknown\",\"status\",\"detail\",\"frame_error\"],\"findings\":[")) return false;
     for(uint8_t i=0;i<s.count;++i) {
         const auto& f=s.findings[i];const auto& p=f.probe;const auto& r=f.request;
         if (r.length>sizeof(r.bytes)) return false;
@@ -1849,6 +1856,7 @@ void Console::dispatch() noexcept {
                 for(uint8_t i=0;i<settings.tupleCount;++i) if(sameTuple(tuple,settings.tuples[i])) {error(id,"discover","duplicate_tuple");return;}
                 settings.tuples[settings.tupleCount++]=tuple;
             } else if (!std::strcmp(key,"identity")) {flag=4;settings.identity=true;}
+            else if (!std::strcmp(key,"past-silent")) {flag=128;settings.pastSilent=true;}
             else {
                 if (!std::strcmp(key,"query-ms")) flag=8;
                 else if (!std::strcmp(key,"overall-ms")) flag=16;
@@ -1863,6 +1871,7 @@ void Console::dispatch() noexcept {
             if(flag && (seen&flag)) {error(id,"discover","duplicate_option");return;}
             seen|=flag;
         }
+        if(settings.pastSilent && settings.tupleCount>1) {error(id,"discover","past_silent_one_tuple");return;}
         if(outputPending() && request.kind!=DiscoveryCommandKind::CANCEL) {++inputDropped_;return;}
         DiscoveryView view;const auto result=host_.discovery(host_.context,inspect?nullptr:&request,view);
         if(outputPending()) {++inputDropped_;return;}

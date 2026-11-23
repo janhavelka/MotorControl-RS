@@ -126,6 +126,7 @@ struct Result {
     uint16_t txAccepted = 0;
     uint16_t rxLength = 0;
     uint16_t echoBytes = 0;
+    uint16_t waitDiscarded = 0; ///< Bytes discarded while waiting for bus idle before TX (saturating).
     bool txComplete = false;
     bool rxTruncated = false;
     uint64_t closureEarliestUs = 0; ///< Last stop lower bound plus final t3.5.
@@ -157,6 +158,7 @@ struct DrainResult {
     ReadState state = ReadState::PENDING;
     Reason reason = Reason::NONE;
     uint64_t throughUs = 0, lastByteUs = 0;
+    uint16_t bytes = 0; ///< Bytes discarded by this call.
 };
 
 /** Caller-owned storage, alive and exclusive for the runner lifetime. TX/RX must

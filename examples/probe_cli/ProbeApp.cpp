@@ -3676,6 +3676,11 @@ Probe::Action startRecovery(App& a, uint32_t commandId, bool automatic, uint32_t
     // has not reached the owner yet. Settle any admitted query and restore the
     // original tuple, but never resume old candidates after recovery.
     if (a.discovery.owned) a.discovery.cancelRequested = true;
+    // A past-silent scan with silence restores only after this explicit
+    // recovery, admitted once the scan has ended in INTERLOCK.
+    if (a.discovery.owned && a.discovery.phase == Probe::DiscoveryPhase::INTERLOCK &&
+        a.discovery.boundaryRequired && !a.discovery.boundaryCrossed && !automatic)
+        a.discovery.boundaryRecoveryId = id;
     a.commissioningConfirmedGeneration = 0; // Recovery requires a new explicit candidate observation.
     a.persistenceConfirmedGeneration = 0;
     a.persistenceBaselineKnown = false;
@@ -5148,6 +5153,9 @@ void serviceApplication() {
             if (!a.recovery.prepared) a.recovery.prepared = uart.clear();
             recoveryReady = a.recovery.prepared; sampled = uart.sample();
         }
+        // A past-silent settle drains through the runner so that every late
+        // byte is counted; clearing the adapter first would discard them unseen.
+        if (a.owner.recovering() && a.discovery.settleId) recoveryReady = true;
         const bool hadDE = a.runner.transmitEnabled();
 #if MOTORCONTROLRS_LOAD_FIXTURE
         loadFixture.serviced(sampled, a.owner.active());

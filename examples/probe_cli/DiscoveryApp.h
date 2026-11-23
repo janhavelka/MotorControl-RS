@@ -13,10 +13,22 @@ void discoveryEnd(App& a, Probe::DiscoveryOutcome outcome) {
     if (a.discovery.outcome == Probe::DiscoveryOutcome::NONE) a.discovery.outcome = outcome;
     a.discovery.phase = Probe::DiscoveryPhase::RESTORING;
 }
+// A scan that recorded silence restores only after an explicit operator
+// recovery, admitted while the scan was in INTERLOCK, has recovered the bus.
+bool discoveryBoundary(App& a) {
+    auto& scan = a.discovery;
+    if (!scan.boundaryRequired || scan.boundaryCrossed) return true;
+    const auto* boundary = scan.boundaryRecoveryId ? a.owner.recoveryResult(scan.boundaryRecoveryId) : nullptr;
+    if (boundary) {
+        scan.boundaryCrossed = boundary->outcome == Rtu::RecoveryOutcome::RECOVERED;
+        if (!scan.boundaryCrossed) scan.boundaryRecoveryId = 0; // A failed recovery is no boundary.
+    }
+    return scan.boundaryCrossed;
+}
 void discoveryRestore(App& a) {
     auto& scan = a.discovery;
     if (a.discoveryRequest.owner || a.owner.active() || a.owner.pending() || a.owner.recovering()) return;
-    if (a.owner.needsRecovery() || (!a.serial.blocked && uart.needsRecovery())) {
+    if (a.owner.needsRecovery() || (!a.serial.blocked && uart.needsRecovery()) || !discoveryBoundary(a)) {
         scan.phase = Probe::DiscoveryPhase::INTERLOCK; return;
     }
     Probe::HostRequest request; request.tuple = scan.originalTuple;
@@ -29,15 +41,71 @@ void discoveryRestore(App& a) {
     scan.restored = true; scan.owned = false; scan.phase = Probe::DiscoveryPhase::TERMINAL;
     scan.finishedUs = nowUs();
 }
+// Past-silent: a probe that sent every byte and heard nothing, with no other
+// fault, is silence. Anything else keeps today's terminal interlock.
+bool discoverySilent(const Rtu::Completion& result, const MotorControlRS::ESS_RS::ProbeObservation& probe) {
+    const auto& t = result.transport;
+    return probe.outcome == MotorControlRS::ProbeOutcome::NO_RESPONSE && t.reason == Rtu::Reason::NO_RESPONSE &&
+        result.outcome == Rtu::Outcome::TRANSPORT && t.txComplete && t.txAccepted == result.txLength &&
+        !t.rxLength && !t.rxTruncated && !t.waitDiscarded && !uart.needsRecovery();
+}
+void addLateBytes(Probe::DiscoveryScan& scan, uint32_t bytes) {
+    const uint32_t total = scan.lateBytes + bytes;
+    scan.lateBytes = static_cast<uint16_t>(total > UINT16_MAX ? UINT16_MAX : total);
+}
+// One bounded owner recovery after a silent probe: drain, count and idle gap,
+// counted as one request, within the scan deadline. It never resends the probe
+// and the silent address is never probed again in this scan. Returns true
+// when the next, different address may be probed.
+bool discoverySettle(App& a, uint64_t now) {
+    using Probe::DiscoveryOutcome; using Probe::DiscoverySettle;
+    auto& scan = a.discovery;
+    if (!scan.settleId) {
+        // Not started: an end here leaves the runner interlocked for the operator.
+        if (scan.cancelRequested) discoveryEnd(a, DiscoveryOutcome::CANCELLED);
+        else if (now >= scan.deadlineUs) discoveryEnd(a, DiscoveryOutcome::DEADLINE);
+        else if (scan.requests >= scan.settings.requestLimit) discoveryEnd(a, DiscoveryOutcome::REQUEST_LIMIT);
+        else if (a.owner.active() || a.owner.pending() || a.owner.recovering()) {
+            discoveryEnd(a, DiscoveryOutcome::TRANSPORT_FAULT); // Recovery would cancel another producer's work.
+        } else {
+            uint64_t id = 0;
+            const uint64_t deadline = std::min(scan.deadlineUs, now + uint64_t(scan.settings.queryMs) * 1000);
+            if (a.owner.recover(now, deadline, id) != Rtu::RecoveryAdmission::ACCEPTED)
+                discoveryEnd(a, DiscoveryOutcome::TRANSPORT_FAULT);
+            else { scan.settleId = id; ++scan.requests; ++scan.settles; return false; }
+        }
+        discoveryRestore(a); return false;
+    }
+    const auto* recovered = a.owner.recoveryResult(scan.settleId);
+    if (!recovered) return false; // Cancellation and deadline wait for the settle to finish.
+    const auto outcome = recovered->outcome;
+    addLateBytes(scan, recovered->discarded);
+    scan.settle = recovered->discarded ? DiscoverySettle::LATE_BYTES :
+        outcome == Rtu::RecoveryOutcome::RECOVERED ? DiscoverySettle::RECOVERED :
+        outcome == Rtu::RecoveryOutcome::EXPIRED ? DiscoverySettle::EXPIRED :
+        outcome == Rtu::RecoveryOutcome::READ_ERROR ? DiscoverySettle::READ_ERROR : DiscoverySettle::TRANSPORT_ERROR;
+    a.owner.releaseRecovery(scan.settleId); scan.settleId = 0;
+    if (scan.settle != DiscoverySettle::RECOVERED) discoveryEnd(a, DiscoveryOutcome::TRANSPORT_FAULT);
+    else if (scan.cancelRequested) discoveryEnd(a, DiscoveryOutcome::CANCELLED);
+    else if (now >= scan.deadlineUs) discoveryEnd(a, DiscoveryOutcome::DEADLINE);
+    else { ++scan.address; scan.phase = Probe::DiscoveryPhase::PROBE; return true; }
+    discoveryRestore(a); return false;
+}
 void serviceDiscovery(App& a, uint64_t now) {
     using namespace MotorControlRS;
     using Probe::DiscoveryPhase; using Probe::DiscoveryOutcome;
     auto& scan = a.discovery;
+    if (scan.owned && scan.phase == DiscoveryPhase::INTERLOCK) discoveryBoundary(a);
     if (!scan.owned || scan.phase == DiscoveryPhase::INTERLOCK) return;
     if (a.discoveryRequest.owner) {
         const auto* result = a.owner.result(a.discoveryRequest);
         if (!result) return; // Physical TX/capture must settle, even after cancellation.
-        bool fault = a.owner.needsRecovery() || uart.needsRecovery();
+        bool fault = a.owner.needsRecovery() || uart.needsRecovery(), silent = false;
+        if (scan.settings.pastSilent && result->transport.waitDiscarded) {
+            // Bytes before this TX may be a late reply to an earlier request.
+            addLateBytes(scan, result->transport.waitDiscarded);
+            scan.settle = Probe::DiscoverySettle::LATE_BYTES; fault = true;
+        }
         if (a.discoveryIdentityPending) {
             auto& finding = scan.findings[scan.count - 1];
             const auto event = discoveryEvent(*result, a.discoveryIdentity.operationId);
@@ -68,18 +136,29 @@ void serviceDiscovery(App& a, uint64_t now) {
             }
             if (scan.settings.identity && finding.probe.outcome == ProbeOutcome::RESPONDER && !fault && !scan.cancelRequested)
                 scan.phase = DiscoveryPhase::IDENTITY;
+            if (checked && scan.settings.pastSilent && discoverySilent(*result, finding.probe)) {
+                // Silence is an observation beside the findings; it consumes no responder slot.
+                silent = true; scan.boundaryRequired = true;
+                scan.silent[scan.address / 8] |= static_cast<uint8_t>(1U << (scan.address % 8));
+                ++scan.silentCount; finding = Probe::DiscoveryFinding(); --scan.count;
+            }
         }
         a.owner.release(a.discoveryRequest); a.discoveryRequest = Rtu::RequestId();
-        if (fault) discoveryEnd(a, DiscoveryOutcome::TRANSPORT_FAULT);
+        if (fault && !silent) discoveryEnd(a, DiscoveryOutcome::TRANSPORT_FAULT);
         else if (scan.cancelRequested) discoveryEnd(a, DiscoveryOutcome::CANCELLED);
         else if (now >= scan.deadlineUs) discoveryEnd(a, DiscoveryOutcome::DEADLINE);
-        else if (scan.phase != DiscoveryPhase::IDENTITY) {
+        else if (silent) {
+            // The last address needs no settle: the operator's boundary recovers the bus.
+            if (scan.address < scan.settings.last) scan.phase = DiscoveryPhase::SETTLE;
+            else discoveryEnd(a, DiscoveryOutcome::COMPLETE);
+        } else if (scan.phase != DiscoveryPhase::IDENTITY) {
             if (scan.address < scan.settings.last) ++scan.address;
             else if (scan.tupleIndex + 1 < scan.settings.tupleCount) { ++scan.tupleIndex; scan.address = scan.settings.first; }
             else discoveryEnd(a, DiscoveryOutcome::COMPLETE);
         }
     }
     if (scan.phase == DiscoveryPhase::RESTORING) { discoveryRestore(a); return; }
+    if (scan.phase == DiscoveryPhase::SETTLE && !discoverySettle(a, now)) return;
     if (scan.cancelRequested) discoveryEnd(a, DiscoveryOutcome::CANCELLED);
     else if (now >= scan.deadlineUs) discoveryEnd(a, DiscoveryOutcome::DEADLINE);
     else if (scan.requests >= scan.settings.requestLimit) discoveryEnd(a, DiscoveryOutcome::REQUEST_LIMIT);
@@ -166,10 +245,20 @@ Probe::Action discoveryCommand(void* context, const Probe::DiscoveryCommand* com
         !settings.queryMs || settings.queryMs > 5000 || !settings.overallMs || settings.overallMs > 60000 ||
         !settings.requestLimit || settings.requestLimit > 256 || !settings.resultLimit || settings.resultLimit > Probe::DISCOVERY_MAX_RESULTS ||
         settings.tupleCount > Probe::DISCOVERY_MAX_TUPLES) return Probe::Action::INVALID;
+    // Past-silent never reuses a request context a late reply could match: one tuple, each address once.
+    if (settings.pastSilent && settings.tupleCount > 1) return Probe::Action::INVALID;
     if (!settings.tupleCount) { settings.tupleCount = 1; settings.tuples[0] = a.serial.active; }
     for (uint8_t i = 0; i < settings.tupleCount; ++i) {
         if (!Esp32S3Uart::supports(settings.tuples[i])) return Probe::Action::UNSUPPORTED;
         for (uint8_t j = 0; j < i; ++j) if (sameTuple(settings.tuples[i], settings.tuples[j])) return Probe::Action::INVALID;
+    }
+    if (settings.pastSilent && a.recovery.operationId) {
+        // Settles need the owner's one recovery slot: a delivered earlier
+        // recovery result is released as a new recovery would release it.
+        const auto* finished = a.owner.recoveryResult(a.recovery.id);
+        if (!finished || !a.recovery.delivered) return Probe::Action::BUSY;
+        for (auto& record : a.records) if (record.stopRecoveryId == a.recovery.id) record.stopRecoveryResult = *finished;
+        a.owner.releaseRecovery(a.recovery.id); a.recovery = App::Recovery();
     }
     scan.~DiscoveryScan(); new (&scan) Probe::DiscoveryScan(); // Large retained findings stay in PSRAM.
     scan.settings = settings; scan.originalTarget = a.axis.target; scan.originalTuple = a.serial.active;

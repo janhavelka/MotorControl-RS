@@ -104,6 +104,8 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+Wired bench 19 (20-23 November 2026): Arduino image A (`92ACE8BF8334F54659A6AC9B4C145448D867E5AB824039B0AAB7DBD0B08EF4AE`, `08a88eb` plus the prompt 19 firmware tree, source diff `e3d2f497`) is on the board. Ending state: drives 1, 2 and 4 at addresses 1, 2, 4, enabled, stopped, alarm-free, I/O `[0,1,2,3,0,0,0,0,0]`, `baseline-compare` 573/573 equal; positions (RAM) drive 1 35849, drive 2 26065, drive 4 111224, none homed; nothing saved. The last profile stage revoked the start-speed relation of 1, 2 and 4 until the next controller restart, so group moves need a restart first. No fail-safe bias is fitted; addresses 3 and 5-8 were silent to a read-only `past-silent` scan ([report](reports/2026-11-23_wired_bench_19_multi_drive_remaining.md)).
+
 On 19-20 November [wired bench 18](reports/2026-11-20_wired_bench_18_link_loss_and_host_faults.md)
 first flashed Arduino `bench_s3_load_timer` image W of the committed tree
 (`C3169E737370B64463F614A6CCEA10BF54011445C1E79A5E3309F1A62C78F81E`,

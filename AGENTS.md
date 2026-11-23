@@ -148,9 +148,9 @@ that later tests depend on. Remote power control still does not exist; ask the
 owner to power-cycle when a test needs a restart. The wired I/O fixture is in
 [bench I/O](docs/bench_io.md).
 
-Owner absence, 20 November to about 4 December 2026: nobody can touch the
+Owner absence, 20 November to about 6 December 2026: nobody can touch the
 bench. Bench work continues unattended under the rules in the wired-bench
-[COMMON contract](docs/prompts/ess_wired_bench/COMMON.md#owner-absence-20-november-to-about-4-december-2026):
+[COMMON contract](docs/prompts/ess_wired_bench/COMMON.md#owner-absence-20-november-to-about-6-december-2026):
 no save, factory restore or communication-setting write, no fault that only a
 restart clears, and owner steps deferred instead of asked for.
 

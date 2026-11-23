@@ -131,6 +131,7 @@ struct RecoveryResult {
     RequestId interrupted;
     RecoveryOutcome outcome = RecoveryOutcome::EXPIRED;
     Reason reason = Reason::NONE; ///< Read/clock evidence; NONE for a refused transport check.
+    uint32_t discarded = 0; ///< Stale bytes this recovery drained (saturating); any byte is late traffic.
 };
 
 /** Small application-owned scheduler around the real Runner. Construction performs

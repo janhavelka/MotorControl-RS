@@ -4,6 +4,18 @@
 
 ### Added
 
+- Discovery `past-silent` (wired bench 19): one tuple, silent addresses
+  recorded beside the findings, one bounded settle per silence counted as a
+  request, any late byte or foreign frame ends the scan, and a scan with
+  silence ends needing `recover`, `discover restore`, `discover finish`. The
+  runner reports bytes discarded before TX (`Result::waitDiscarded`), a drain
+  its discarded bytes (`DrainResult::bytes`) and a recovery its drained bytes
+  (`RecoveryResult::discarded`). Harness validation, `discovery-check
+  --cross-boundary`, and native, console and harness tests.
+- Wired bench 19 harness `scripts/bench_multi.py` (D1-D3 discovery cases,
+  G1-G4 host-coordinate group absolute plans, R1 per-drive regression) with
+  `test/bench_multi_test.py`; pyserial is imported only where a port opens.
+
 - Wired bench 18 harness `scripts/bench_link.py`: link-loss cases on drive 4,
   one per run folder, with the fault between console sessions (RTS reset on a
   new handle, the prepared esptool command of the running image, a killed

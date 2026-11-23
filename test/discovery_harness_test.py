@@ -28,12 +28,15 @@ def finding(address=1,op=8,identity=False,outcome=1):
                 identity_known=identity,identity_ambiguous=False,collision_excluded=False,
                 identity=[773,41,address,0] if identity else [0,0,0,0],identity_evidence=ie)
 
-def scan(*,phase=5,outcome=1,identity=False,findings=None,released=False):
+def scan(*,phase=5,outcome=1,identity=False,findings=None,released=False,silent=(),settles=0,crossed=None):
     findings=[finding(identity=identity)] if findings is None else findings
+    past=bool(silent) or crossed is not None
     return dict(operation_id=7,phase=phase,outcome=outcome,owned=phase!=5,restored=phase==5,released=released,cancel_requested=False,
-                requests=len(findings)*(2 if identity else 1),count=len(findings),tuple_index=0,address=1,started_us=100,deadline_us=5000100,
+                requests=len(findings)*(2 if identity else 1)+len(silent)+settles,count=len(findings),tuple_index=0,address=1,started_us=100,deadline_us=5000100,
                 finished_us=200 if phase==5 else 0,original_target=[1,1,9],original_tuple=dict(baud=115200,format="8N1"),original_serial_generation=1,
-                settings=dict(first=1,last=3,query_ms=500,overall_ms=5000,request_limit=16,result_limit=8,identity=identity,tuples=[dict(baud=115200,format="8N1")]),
+                settings=dict(first=1,last=3,query_ms=500,overall_ms=5000,request_limit=16,result_limit=8,identity=identity,past_silent=past,tuples=[dict(baud=115200,format="8N1")]),
+                silent=list(silent),silent_count=len(silent),settles=settles,settle="recovered" if settles else "none",late_bytes=0,
+                boundary_required=bool(silent),boundary_crossed=bool(crossed),
                 evidence_columns=bench.DISCOVERY_EVIDENCE_COLUMNS,findings=findings)
 
 def response(tokens=(),**changes):
@@ -71,6 +74,52 @@ class DiscoveryTests(unittest.TestCase):
                   ("query-ms","0"),("query-ms","5001"),("overall-ms","60001"),("requests","257"),("results","9"),("identity","identity"),
                   ("tuple","9600","8N1","tuple","9600","8N1"),("cancel","extra"),("save",),("broadcast",)):
             with self.subTest(tokens=t),self.assertRaises(ValueError):bench.discovery_arguments(t)
+    def test_past_silent_grammar_admits_one_tuple(self):
+        parsed=bench.discovery_arguments(("addresses","1","8","past-silent","identity"))
+        self.assertTrue(parsed["past_silent"]);self.assertFalse(bench.discovery_arguments(())["past_silent"])
+        for t in (("past-silent","past-silent"),("past-silent","tuple","9600","8N1","tuple","19200","8N1")):
+            with self.subTest(tokens=t),self.assertRaises(ValueError):bench.discovery_arguments(t)
+    def test_past_silent_record_and_boundary(self):
+        good=scan(phase=4,findings=[finding(),finding(address=3,op=9)],silent=[2],settles=1)
+        c,p=self.console(lambda t:response(t,scan=copy.deepcopy(good)))
+        self.assertEqual(c.command("discover",host_args=("inspect",),timeout_s=.1)["scan"]["silent"],[2])
+        def broken(change):
+            value=copy.deepcopy(good);change(value);return value
+        bad=[broken(lambda v:v.update(boundary_required=False)),                       # silence without the boundary
+             broken(lambda v:v.update(silent=[2,2],silent_count=2)),                     # duplicate address
+             broken(lambda v:v.update(silent=[1],silent_count=1)),                       # silent and a finding
+             broken(lambda v:v.update(settles=2)),                                       # more settles than silences
+             broken(lambda v:v.update(requests=3)),                                      # settle not counted
+             broken(lambda v:v["settings"].update(past_silent=False)),                   # default scan with silence
+             broken(lambda v:v.update(silent=[9],silent_count=1)),                       # outside the candidates
+             broken(lambda v:v.update(settle="guessed")),
+             broken(lambda v:v.update(phase=5,owned=False,restored=True,finished_us=200)),  # restored before the boundary
+            ]
+        for value in bad:
+            c,p=self.console(lambda t,value=value:response(t,scan=copy.deepcopy(value)))
+            with self.subTest(value=value),self.assertRaises(bench.BenchError):
+                c.command("discover",host_args=("inspect",),timeout_s=.1)
+        done=scan(findings=[finding(),finding(address=3,op=9)],silent=[2],settles=1,crossed=True)
+        c,p=self.console(lambda t:response(t,scan=copy.deepcopy(done)))
+        self.assertTrue(c.command("discover",host_args=("inspect",),timeout_s=.1)["scan"]["boundary_crossed"])
+    def test_past_silent_campaign_crosses_boundary_only_when_asked(self):
+        class Boundary(Campaign):
+            def __init__(self):super().__init__();self.recovered=False
+            def command(self,name,*,host_args=None,timeout_s):
+                self.calls.append((name,)+tuple(host_args or ()))
+                if name=="recover":self.recovered=True;return dict(ok=True,result="recovered")
+                if host_args==("restore",):
+                    return response(host_args,scan=scan(phase=5,findings=[finding()],silent=[2],crossed=True))
+                if host_args==("finish",):
+                    return response(host_args,scan=scan(phase=5,findings=[finding()],silent=[2],crossed=True,released=True))
+                return response(host_args,scan=scan(phase=4,findings=[finding()],silent=[2],crossed=self.recovered))
+        tokens=("addresses","1","2","past-silent")
+        campaign=Boundary()
+        with self.assertRaisesRegex(bench.BenchError,"explicit repair"):bench.discovery_campaign(campaign,tokens=tokens,timeout_s=1)
+        self.assertEqual(campaign.calls,[("discover",)+tokens])
+        campaign=Boundary();result=bench.discovery_campaign(campaign,tokens=tokens,timeout_s=1,cross_boundary=True)
+        self.assertEqual(campaign.calls,[("discover",)+tokens,("recover",),("discover","restore"),("discover","finish")])
+        self.assertEqual(result["silent"],[2]);self.assertEqual(campaign.calls.count(("recover",)),1)
     def test_actual_wire_controls_are_local_correlated_commands(self):
         c,p=self.console();r=c.command("discover",host_args=("inspect",),timeout_s=.1)
         self.assertEqual(p.sent,[b"@1 discover inspect\n"]);self.assertFalse(c.operations);self.assertEqual(r["scan"]["findings"][0]["raw_model"],773)

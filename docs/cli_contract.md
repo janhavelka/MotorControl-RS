@@ -80,7 +80,7 @@ guides define complete arguments and prerequisites.
 | `motion-profile read\|inspect\|restore\|forget` / `motion-profile start-speed NATIVE` | Retained position-parameter snapshot and explicit restoration |
 | `motion-profile stage ACC DEC RPM TARGET_W0 TARGET_W1 ORDER ADDRESS [model firmware]` | [Candidate staging](ess_position.md#candidate-profile-staging), five words only, no start/save; one retained result slot |
 | `communication ...`, `persistence ...` | Explicit [drive communication](ess_communication.md) and [save/restore](ess_persistence.md) workflows |
-| `discover ...` | Bounded non-changing [scan](ess_discovery.md) |
+| `discover ...` | Bounded non-changing [scan](ess_discovery.md); `past-silent` continues past zero-RX addresses on one tuple and ends needing `recover`, `discover restore`, `discover finish` |
 | `monitor [off\|INTERVAL_MS COUNT]` | Inspect or enable finite state polling; `off` cancels its local continuation |
 | `cancel [ID]`, `release ID`, `recover` | Local cancellation, terminal-result release and explicit host transport recovery |
 | `debug [off\|raw\|decoded]`, `capture-read`, `load` | Copied traffic, fixed read-only timing fixture and optional host workload |

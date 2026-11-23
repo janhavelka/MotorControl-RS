@@ -482,6 +482,9 @@ functional evidence; independent shaft calibration remains absent.
   ([report](reports/2026-11-19_wired_bench_14_velocity_jog_pv.md)); the position
   ceiling stays 50,000 (its late-stop matrix was not rerun). Raising the ceiling needs a fix or a rerun of the
   late-stop matrix on the new firmware.
+- [x] Discovery past a silent address: `past-silent` (one tuple, one bounded settle per silence, late bytes end the scan, explicit recover/restore/finish boundary); native and harness tests; bench PASS on 1, 2, 4 with 3 and 5-8 silent ([wired bench 19](reports/2026-11-23_wired_bench_19_multi_drive_remaining.md)).
+- [ ] Group absolute plan after a group stop: one member's next read is not current and the following absolute plans are refused `unavailable` before any frame (wired bench 19 G3, 3 of 4 stops). Name the group refusal reason, find the late finalization, add a native regression, rerun G3.
+- [ ] Broadcast trial route and read-only link check (wired bench 19 items 5-6), then B1-B5 and K1 with the owner (multi-drive 07, lost first byte at address 3, fail-safe bias).
 - [ ] Measure the enable settling time (HW-15) beyond one drive's 0.6 s for
   position starts: home and velocity starts, other drives or firmware, an enable
   sent to an enabled drive. Alarm clear with an alarm latched: wired bench 16 A3

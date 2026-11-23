@@ -772,6 +772,201 @@ void urgentStopRestoresOriginalTupleBeforeDispatch() {
     pump(1000); assert(hardware.writes == 4 && !app->owner.needsRecovery());
 }
 }
+// Wired bench 19: discovery past a silent address. One tuple, each address
+// once; a silent probe gets one bounded settle counted as a request; any late
+// byte ends the scan; silence ends needing recover, restore and finish.
+Probe::DiscoverySettings pastSilent(uint8_t first, uint8_t last) {
+    auto value = range(first, last); value.pastSilent = true; return value;
+}
+bool silentAt(uint8_t address) { return (scan().silent[address / 8] & (1U << (address % 8))) != 0; }
+void waitScanTx(unsigned before) { // TX only; the reply and the next request follow the scan.
+    for (unsigned i = 0; i < 200000 && hardware.writes == before; ++i) step();
+    assert(hardware.writes == before + 1);
+}
+void waitPhase(ScanPhase phase) {
+    for (unsigned i = 0; i < 200000 && scan().phase != phase; ++i) step();
+    assert(scan().phase == phase);
+}
+// Explicit operator boundary: recover, then restore, then finish.
+void crossBoundary() {
+    assert(scan().phase == ScanPhase::INTERLOCK && scan().boundaryRequired && !scan().boundaryCrossed);
+    assert(control(Probe::DiscoveryCommandKind::RESTORE) == Probe::Action::RECOVERY_REQUIRED);
+    assert(scan().phase == ScanPhase::INTERLOCK && !scan().restored);
+    Serial.output.clear(); Serial.input = "@99 recover" + std::string(1, char(10)); // Delivered like an operator's.
+    for (unsigned i = 0; i < 1000 && !Serial.input.empty(); ++i) step();
+    assert(Serial.input.empty() && app->recovery.operationId);
+    for (unsigned i = 0; i < 10000 && app->owner.recovering(); ++i) step(1000);
+    pump();
+    assert(!app->owner.needsRecovery() && scan().boundaryCrossed && app->recovery.delivered);
+    assert(control(Probe::DiscoveryCommandKind::RESTORE) == Probe::Action::OK);
+    waitSettled(); assert(scan().phase == ScanPhase::TERMINAL && scan().restored);
+    assert(control(Probe::DiscoveryCommandKind::FINISH) == Probe::Action::OK);
+}
+void pastSilentContinuesAfterSilence() {
+    fresh(); const auto candidates = pastSilent(1, 3);
+    assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+    reply(0, words(1, {0x4EEA}));
+    waitScanTx(1); reviewedFrame(2, 1);            // Address 2 never answers.
+    reply(2, words(3, {0x4EEA})); reviewedFrame(3, 1);
+    waitSettled();
+    assert(scan().outcome == ScanOutcome::COMPLETE && scan().count == 2 && scan().requests == 4);
+    assert(scan().settles == 1 && scan().settle == Probe::DiscoverySettle::RECOVERED && !scan().lateBytes);
+    assert(scan().silentCount == 1 && silentAt(2) && !silentAt(1) && !silentAt(3));
+    assert(scan().findings[0].request.target.address == 1 && scan().findings[1].request.target.address == 3);
+    assert(scan().findings[0].probe.outcome == ProbeOutcome::RESPONDER && scan().findings[1].probe.outcome == ProbeOutcome::RESPONDER);
+    // The runner is healthy, but silence needs the explicit operator boundary.
+    assert(!app->owner.needsRecovery() && hardware.writes == 3);
+    uint32_t unchanged = 123;
+    assert(host(app).startProbe(app, 4, 2, unchanged) == Probe::Action::BUSY && unchanged == 123);
+    assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::BUSY); // No reuse of 2.
+    pump(1000); assert(hardware.writes == 3);
+    crossBoundary();
+    assert(host(app).startProbe(app, 5, 2, unchanged) == Probe::Action::OK && hardware.writes == 3);
+    waitScanTx(3); reviewedFrame(2, 1);
+}
+void pastSilentAtLastAddressAndSilenceOnly() {
+    fresh(); auto candidates = pastSilent(1, 2);
+    assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+    reply(0, words(1, {0x4EEA}));
+    waitScanTx(1); reviewedFrame(2, 1); waitSettled();
+    assert(scan().outcome == ScanOutcome::COMPLETE && scan().count == 1 && scan().requests == 2 && !scan().settles);
+    assert(scan().silentCount == 1 && silentAt(2) && app->owner.needsRecovery());
+    crossBoundary(); assert(hardware.writes == 2);
+    // A later past-silent scan releases the delivered recovery result and runs.
+    candidates = pastSilent(3, 4);
+    assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK && !app->recovery.operationId);
+    waitScanTx(2); reviewedFrame(3, 1);
+    waitScanTx(3); reviewedFrame(4, 1); waitSettled();
+    assert(scan().outcome == ScanOutcome::COMPLETE && !scan().count && scan().silentCount == 2 && scan().settles == 1);
+    assert(scan().requests == 3 && silentAt(3) && silentAt(4));
+}
+void pastSilentNeverContinuesAfterBytesOrFaults() {
+    for (unsigned scenario = 0; scenario < 4; ++scenario) {
+        fresh(); const auto candidates = pastSilent(1, 3);
+        assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+        reply(0, words(1, {0x4EEA}));
+        if (scenario == 0) reply(1, {2, 3});                    // Partial bytes stay terminal.
+        else if (scenario == 1) { auto broken = words(2, {60}); broken.back() ^= 1; reply(1, broken); }
+        else if (scenario == 2) reply(1, words(4, {60}));        // Another address answers: foreign.
+        else {                                                  // A frame that closes after its deadline.
+            waitTx(1);
+            scheduleReply(hardware.writeStarted + 8 * hardware.txCharacterUs + app->serial.timing.responseTimeoutUs - 300,
+                words(2, {60}), hardware.txCharacterUs);
+        }
+        waitSettled();
+        assert(scan().outcome == ScanOutcome::TRANSPORT_FAULT && scan().phase == ScanPhase::INTERLOCK);
+        assert(scan().count == 2 && !scan().silentCount && !scan().settles && hardware.writes == 2);
+        assert(scan().findings[1].probe.outcome != ProbeOutcome::RESPONDER && app->owner.needsRecovery());
+    }
+}
+void pastSilentLateFrameDuringSettleEndsScan() {
+    fresh(); const auto candidates = pastSilent(1, 3);
+    assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+    reply(0, words(1, {0x4EEA}));
+    waitTx(1);
+    // Starts after the response timeout (NO_RESPONSE), lands in the settle's drain.
+    scheduleReply(hardware.writeStarted + 8 * hardware.txCharacterUs + app->serial.timing.responseTimeoutUs + 400,
+        words(2, {60}), hardware.txCharacterUs);
+    waitSettled();
+    assert(scan().outcome == ScanOutcome::TRANSPORT_FAULT && scan().phase == ScanPhase::INTERLOCK);
+    assert(scan().settles == 1 && scan().settle == Probe::DiscoverySettle::LATE_BYTES && scan().lateBytes == 7);
+    assert(scan().silentCount == 1 && silentAt(2) && scan().count == 1 && hardware.writes == 2); // 3 never probed.
+    assert(!app->owner.needsRecovery()); // The settle recovered, the boundary still holds.
+    crossBoundary(); assert(hardware.writes == 2);
+}
+void pastSilentDelayedFrameAtNextAddressIsForeign() {
+    for (bool beforeTx : {false, true}) {
+        fresh(); const auto candidates = pastSilent(2, 4);
+        assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+        waitScanTx(0); reviewedFrame(2, 1);               // Silent.
+        if (beforeTx) {
+            // The delayed reply from 2 arrives while the probe of 3 waits for bus idle.
+            for (unsigned i = 0; i < 200000 && app->runner.phase() != Rtu::Phase::WAIT_BUS; ++i) step();
+            assert(app->runner.phase() == Rtu::Phase::WAIT_BUS && hardware.writes == 1 && scan().settles == 1);
+            scheduleReply(hardware.time + 10, words(2, {0x4EEA}), hardware.txCharacterUs);
+            waitScanTx(1); reviewedFrame(3, 1);
+            reply(1, words(3, {0x4EEA}));
+        } else {
+            reply(1, words(2, {0x4EEA}));                 // Delayed reply from 2 during the probe of 3.
+            reviewedFrame(3, 1);
+        }
+        waitSettled();
+        assert(scan().outcome == ScanOutcome::TRANSPORT_FAULT && scan().phase == ScanPhase::INTERLOCK);
+        assert(scan().silentCount == 1 && silentAt(2) && scan().count == 1 && hardware.writes == 2);
+        assert(scan().findings[0].request.target.address == 3);
+        if (beforeTx) { // 3's own checked reply is kept; the discarded bytes end the scan.
+            assert(scan().settle == Probe::DiscoverySettle::LATE_BYTES && scan().lateBytes == 7);
+            assert(scan().findings[0].probe.outcome == ProbeOutcome::RESPONDER);
+        } else {         // The delayed frame from 2 is foreign, never a responder at 3.
+            assert(scan().findings[0].probe.outcome == ProbeOutcome::MISMATCH && app->owner.needsRecovery());
+        }
+    }
+}
+void pastSilentRefusesReuseBeforeTx() {
+    fresh(); const unsigned configurations = hardware.configCalls;
+    auto candidates = pastSilent(1, 2); candidates.tupleCount = 2;
+    candidates.tuples[0].baud = 9600; candidates.tuples[1].baud = 115200;
+    assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::INVALID);
+    assert(!hardware.writes && hardware.configCalls == configurations && !scan().operationId);
+    candidates.tupleCount = 0; // The default single tuple is admitted.
+    assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+}
+void pastSilentBudgetsCountSettles() {
+    fresh(); auto candidates = pastSilent(1, 3); candidates.requestLimit = 2;
+    assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+    reply(0, words(1, {0x4EEA}));
+    waitScanTx(1); waitSettled();                         // No request left for a settle.
+    assert(scan().outcome == ScanOutcome::REQUEST_LIMIT && scan().requests == 2 && !scan().settles);
+    assert(scan().silentCount == 1 && app->owner.needsRecovery() && scan().phase == ScanPhase::INTERLOCK);
+
+    fresh(); candidates.requestLimit = 3;
+    assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+    reply(0, words(1, {0x4EEA}));
+    waitScanTx(1); waitSettled();                         // The settle used the third request.
+    assert(scan().outcome == ScanOutcome::REQUEST_LIMIT && scan().requests == 3 && scan().settles == 1);
+    assert(hardware.writes == 2 && scan().phase == ScanPhase::INTERLOCK && !app->owner.needsRecovery());
+
+}
+void pastSilentCancellationDuringSettle() {
+    fresh(); const auto candidates = pastSilent(1, 3);
+    assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+    waitScanTx(0); waitPhase(ScanPhase::SETTLE);
+    for (unsigned i = 0; i < 200000 && !scan().settleId; ++i) step();
+    assert(scan().settleId && app->owner.recovering());
+    assert(control(Probe::DiscoveryCommandKind::CANCEL) == Probe::Action::OK);
+    assert(app->owner.recovering()); // The settle is not cut short.
+    waitSettled();
+    assert(scan().outcome == ScanOutcome::CANCELLED && scan().settle == Probe::DiscoverySettle::RECOVERED);
+    assert(scan().settles == 1 && scan().silentCount == 1 && hardware.writes == 1 && scan().phase == ScanPhase::INTERLOCK);
+    crossBoundary(); assert(hardware.writes == 1);
+}
+void pastSilentRestoresTupleAfterBoundary() {
+    fresh(); auto candidates = pastSilent(1, 2); candidates.tupleCount = 1; candidates.tuples[0].baud = 9600;
+    assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+    waitScanTx(0); assert(app->serial.active.baud == 9600);
+    reply(1, words(2, {0x4EEA})); waitSettled();
+    assert(scan().outcome == ScanOutcome::COMPLETE && scan().count == 1 && silentAt(1) && scan().settles == 1);
+    assert(scan().phase == ScanPhase::INTERLOCK && app->serial.active.baud == 9600);
+    crossBoundary(); assert(app->serial.active.baud == 115200 && hardware.writes == 2);
+}
+void pastSilentConsoleParity() {
+    fresh();
+    const auto command = [](const std::string& text) {
+        Serial.output.clear(); Serial.input = text;
+        for (unsigned i = 0; i < 1000 && !Serial.input.empty(); ++i) step();
+        assert(Serial.input.empty()); pump(1000);
+    };
+    command("@1 discover addresses 1 2 past-silent tuple 9600 8N1 tuple 19200 8N1\n");
+    assert(Serial.output.find("past_silent_one_tuple") != std::string::npos && !hardware.writes);
+    command("@2 discover addresses 1 2 past-silent past-silent\n");
+    assert(Serial.output.find("duplicate_option") != std::string::npos && !hardware.writes);
+    command("@3 discover addresses 1 2 past-silent\n");
+    assert(scan().settings.pastSilent && Serial.output.find("\"past_silent\":true") != std::string::npos);
+    waitScanTx(0); reply(1, words(2, {0x4EEA})); waitSettled();
+    command("@4 discover inspect\n");
+    assert(Serial.output.find("\"silent\":[1],\"silent_count\":1,\"settles\":1,\"settle\":\"recovered\",\"late_bytes\":0,"
+        "\"boundary_required\":true,\"boundary_crossed\":false") != std::string::npos);
+}
 int main() {
     minimalCurrentTupleAndRetainedEvidence();
     rejectedCandidatesAndExclusiveAdmission(); finiteBudgetsAndCheckedExceptions();
@@ -792,6 +987,11 @@ int main() {
     fullOrdinaryResultsCannotConsumeScanOrStopStorage();
     explicitRecoveryCannotResumeUnharvestedScan();
     urgentStopRestoresOriginalTupleBeforeDispatch();
+    pastSilentContinuesAfterSilence(); pastSilentAtLastAddressAndSilenceOnly();
+    pastSilentNeverContinuesAfterBytesOrFaults(); pastSilentLateFrameDuringSettleEndsScan();
+    pastSilentDelayedFrameAtNextAddressIsForeign(); pastSilentRefusesReuseBeforeTx();
+    pastSilentBudgetsCountSettles(); pastSilentCancellationDuringSettle();
+    pastSilentRestoresTupleAfterBoundary(); pastSilentConsoleParity();
     if (app) { app->~App(); std::free(app); app = nullptr; }
     std::puts("Discovery application tests passed");
 }
