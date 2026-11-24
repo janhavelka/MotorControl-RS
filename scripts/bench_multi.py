@@ -63,7 +63,7 @@ CASES = {
                "reply per request from the addressed drive; runner rx_bytes grow by exactly 7 per probe and 13 per "
                "identity read; no discarded byte, failed transaction or timeout"),
     "D2": dict(levels=["drive-reported"], assertion="discover addresses 1 8 past-silent identity: responders 1, 2, 4 with "
-               "identity, silent 3 and 5-8, four settles, no late byte, outcome complete, INTERLOCK with the boundary "
+               "identity, silent 3 and 5-8, one settle per silence, no late byte, outcome complete, INTERLOCK with the boundary "
                "required; probe and discover restore refused before the operator recover; then restore (tuple and "
                "selection as before) and finish; a probe afterwards is admitted"),
     "D3": dict(levels=["drive-reported"], assertion="the same scan without past-silent: responders 1 and 2, no response at "
@@ -122,7 +122,7 @@ def d2_problems(ended: dict, refusals: dict, restored: dict) -> list:
         problems.append("findings %s" % found)
     if ended["silent"] != EXPECTED_SILENT:
         problems.append("silent %s" % ended["silent"])
-    if (ended["settles"], ended["settle"], ended["late_bytes"]) != (len(EXPECTED_SILENT) - 1, "recovered", 0):
+    if (ended["settles"], ended["settle"], ended["late_bytes"]) != (len(EXPECTED_SILENT), "recovered", 0):
         problems.append("settles %s %s late %s" % (ended["settles"], ended["settle"], ended["late_bytes"]))
     if (ended["phase"], ended["outcome"], ended["boundary_required"], ended["boundary_crossed"], ended["restored"]) != \
             (4, 1, True, False, False):
@@ -179,6 +179,30 @@ def g_verdict(trials: list, tolerance: int) -> tuple[str, str]:
     spread = sorted(abs(e) for t in trials if t.get("ok") for e in t["errors"].values())
     return ("PASS" if not bad else "FAIL"), ("; ".join(bad) if bad else "%d trials, endpoint |error| max %d" %
                                               (len(trials), spread[-1] if spread else 0))
+
+
+def stop_problems(stop_terminal: dict, states: dict, start: dict, end: dict) -> list:
+    """Why a group stop mid-plan is not shown: the stop result not observed for
+    every member, a member still running or at speed, or a member that never
+    moved (its stop proves nothing). Empty means the stop evidence holds."""
+    problems = []
+    members = {m.get("address"): m for m in (stop_terminal or {}).get("members", [])}
+    if not stop_terminal or stop_terminal.get("ok") is not True:
+        problems.append("group stop %s" % ((stop_terminal or {}).get("state") or (stop_terminal or {}).get("result")))
+    for a in DRIVES:
+        m = members.get(a)
+        if not m or m.get("completion") != "observed":
+            problems.append("drive %d stop %s" % (a, m and m.get("completion")))
+        st = states.get(a)
+        if not st or st["motion"] & RUNNING_BIT or st["speed"]:
+            problems.append("drive %d not reported stopped" % a)
+        if start.get(a) is None or end.get(a) is None or start[a] == end[a]:
+            problems.append("drive %d did not move" % a)
+    return problems
+
+
+def all_stopped(states: dict) -> bool:
+    return all(states.get(a) and not states[a]["motion"] & RUNNING_BIT and not states[a]["speed"] for a in DRIVES)
 
 
 # --------------------------------------------------------------------------
@@ -377,16 +401,43 @@ def submit(live, intents, mode, label, *, stop=None):
                      terminal=terminal, status=live.call("group-status"))  # Member freshness, waits, reservations.
         live.call("group-plan-clear")
         return trial
+    stop_handle = None
     if stop:
         time.sleep(STOP_AFTER_S)
-        trial["stop"] = live.call("group-stop", host_args=(stop,), timeout_s=max(live.timeout, 10)).get("outcome")
+        stop_handle = live.console.begin("group-stop", host_args=(stop,), timeout_s=max(live.timeout, 10))
     terminal = live.console.wait(handle, release=True)
     trial["terminal"] = terminal
-    _, positions = group_state(live)
-    trial["end"] = positions
+    if stop:
+        # Audit F2: no later plan unless the stop result and fresh reads show every member stopped.
+        trial["stop"] = live.console.wait(stop_handle, release=True) if stop_handle.accepted else {"ok": False, "result": "refused"}
+        states = member_states(live)
+        _, positions = group_state(live)
+        trial["end"] = positions
+        trial["stop_problems"] = stop_problems(trial["stop"], states, starts_at, positions)
+        if trial["stop_problems"]:
+            end_on_uncertain_stop(live, trial["stop_problems"])
+    else:
+        _, positions = group_state(live)
+        trial["end"] = positions
     trial["ok"] = terminal.get("ok") is True
     trial["state"] = terminal.get("state")
     return trial
+
+
+def member_states(live) -> dict:
+    """Fresh read state of every member: {address: sample or None}."""
+    return {a: live.read_state(a) for a in DRIVES}
+
+
+def end_on_uncertain_stop(live, problems):
+    """Prepared stop fast to every member, standstill from fresh reads, then end the case."""
+    prepared_stops(live)
+    try:
+        for a in DRIVES:
+            probe.observe_stopped(live.console, address=a, timeout_s=live.timeout)
+    except probe.BenchError as error:
+        raise probe.BenchError("standstill not shown after the prepared stops (%s): live motion ends" % error)
+    raise probe.BenchError("group stop evidence uncertain: %s; prepared stops sent, case ends" % "; ".join(problems))
 
 
 def run_g1(live, origins):
@@ -430,12 +481,16 @@ def run_g3(live, origins):
         # each from fresh reads, measure how long the member stays refused.
         # The first refusal keeps the case FAIL.
         later = []
-        while resumed.get("state") == "refused" and not resumed.get("frames") and len(later) < G3_LATER:
+        latest = resumed
+        # Each repeat only on the latest attempt's evidence: refused with no frame
+        # and every member read stopped since.
+        while latest.get("state") == "refused" and not latest.get("frames") and len(later) < G3_LATER:
             time.sleep(1.0)
-            attempt = submit(live, target, "staged", "G3 %s later %d" % (policy, len(later) + 1))
-            later.append(attempt)
-            if attempt.get("state") != "refused":
-                break
+            states = member_states(live)
+            if not all_stopped(states):
+                end_on_uncertain_stop(live, ["a member is not reported stopped before a repeat"])
+            latest = submit(live, target, "staged", "G3 %s later %d" % (policy, len(later) + 1))
+            later.append(latest)
         if later:
             resumed["later"] = later
         trials.append(resumed)

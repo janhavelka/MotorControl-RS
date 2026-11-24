@@ -2001,6 +2001,20 @@ void testLimitAndSoftLimitMembers() {
     assert(count(isWrite, from) == 0);
     assert(copySettingsRefusal(refusal) && !std::strcmp(refusal.reason, "soft_limit_state_unknown"));
 }
+// Wired bench 19 G3/motion_b: a group refusal names the member check.
+void testGroupRefusalNamesMemberCheck() {
+    fresh(); readyGroup();
+    revokePositionStartSpeedRelation(*app, 2);
+    uint32_t id = 77; const auto writes = hardware.writes;
+    assert(!submitGroupMove(groupMove(Policy::LEAVE), id) && id == 77 && hardware.writes == writes);
+    assert(app->settingsRefusal.reason && !std::strcmp(app->settingsRefusal.reason, "start_speed_relation"));
+    fresh(); readyGroup();
+    invalidateMemberConfiguration(*app, 4, uart.sample());
+    assert(!submitGroupMove(groupMove(Policy::LEAVE), id) && id == 77);
+    assert(app->settingsRefusal.reason && !std::strcmp(app->settingsRefusal.reason, "member_configuration"));
+    fresh(); readyGroup();
+    assert(submitGroupMove(groupMove(Policy::LEAVE), id) && !app->settingsRefusal.reason); // Admitted: no reason.
+}
 int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--emit-member-fixtures") {
         testMemberConsolePlan(true); return 0;
@@ -2014,6 +2028,7 @@ int main(int argc, char** argv) {
             sizeof(App), sizeof(App::GroupMember), sizeof(App::EnableWait), sizeof(app->enableWaits), sizeof(ESS::ActionEvidence));
         return 0;
     }
+    testGroupRefusalNamesMemberCheck();
     testMemberIntentMappingAndCopiedFrames();
     testMemberRequestRejectsShapeAndInvalidLast();
     testMemberScalesAreIndependent();

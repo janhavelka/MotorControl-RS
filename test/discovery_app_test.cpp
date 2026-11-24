@@ -829,16 +829,32 @@ void pastSilentAtLastAddressAndSilenceOnly() {
     assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
     reply(0, words(1, {0x4EEA}));
     waitScanTx(1); reviewedFrame(2, 1); waitSettled();
-    assert(scan().outcome == ScanOutcome::COMPLETE && scan().count == 1 && scan().requests == 2 && !scan().settles);
-    assert(scan().silentCount == 1 && silentAt(2) && app->owner.needsRecovery());
+    // The last silence settles like any other (audit F4).
+    assert(scan().outcome == ScanOutcome::COMPLETE && scan().count == 1 && scan().requests == 3 && scan().settles == 1);
+    assert(scan().silentCount == 1 && silentAt(2) && !app->owner.needsRecovery());
+    assert(scan().settle == Probe::DiscoverySettle::RECOVERED && scan().phase == ScanPhase::INTERLOCK);
     crossBoundary(); assert(hardware.writes == 2);
     // A later past-silent scan releases the delivered recovery result and runs.
     candidates = pastSilent(3, 4);
     assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK && !app->recovery.operationId);
     waitScanTx(2); reviewedFrame(3, 1);
     waitScanTx(3); reviewedFrame(4, 1); waitSettled();
-    assert(scan().outcome == ScanOutcome::COMPLETE && !scan().count && scan().silentCount == 2 && scan().settles == 1);
-    assert(scan().requests == 3 && silentAt(3) && silentAt(4));
+    assert(scan().outcome == ScanOutcome::COMPLETE && !scan().count && scan().silentCount == 2 && scan().settles == 2);
+    assert(scan().requests == 4 && silentAt(3) && silentAt(4));
+
+    // The final settle reports an exhausted budget, and late bytes as a fault.
+    fresh(); candidates = pastSilent(1, 2); candidates.requestLimit = 2;
+    assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+    reply(0, words(1, {0x4EEA})); waitScanTx(1); waitSettled();
+    assert(scan().outcome == ScanOutcome::REQUEST_LIMIT && !scan().settles && app->owner.needsRecovery());
+    fresh(); candidates = pastSilent(1, 2);
+    assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+    reply(0, words(1, {0x4EEA})); waitTx(1);
+    scheduleReply(hardware.writeStarted + 8 * hardware.txCharacterUs + app->serial.timing.responseTimeoutUs + 400,
+        words(2, {60}), hardware.txCharacterUs);
+    waitSettled();
+    assert(scan().outcome == ScanOutcome::TRANSPORT_FAULT && scan().settle == Probe::DiscoverySettle::LATE_BYTES);
+    assert(scan().settles == 1 && scan().lateBytes == 7 && scan().phase == ScanPhase::INTERLOCK && hardware.writes == 2);
 }
 void pastSilentNeverContinuesAfterBytesOrFaults() {
     for (unsigned scenario = 0; scenario < 4; ++scenario) {
@@ -874,31 +890,71 @@ void pastSilentLateFrameDuringSettleEndsScan() {
     assert(!app->owner.needsRecovery()); // The settle recovered, the boundary still holds.
     crossBoundary(); assert(hardware.writes == 2);
 }
+// Audit F1: a byte while a past-silent request waits for bus idle ends the
+// scan before that request's TX, before the first silence and after a settle.
+void pastSilentByteBeforeTxSendsNothing() {
+    for (bool afterSettle : {false, true}) {
+        fresh(); const auto candidates = pastSilent(2, 4);
+        assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+        const unsigned before = afterSettle ? 1 : 0;
+        if (afterSettle) { waitScanTx(0); reviewedFrame(2, 1); } // Silent, then a settle.
+        for (unsigned i = 0; i < 200000 && !(app->runner.phase() == Rtu::Phase::WAIT_BUS && hardware.writes == before); ++i) step();
+        assert(app->runner.phase() == Rtu::Phase::WAIT_BUS && hardware.writes == before);
+        assert(scan().settles == (afterSettle ? 1 : 0));
+        scheduleReply(hardware.time + 10, words(2, {0x4EEA}), hardware.txCharacterUs);
+        waitSettled(); pump(2000);
+        assert(hardware.writes == before); // No new frame.
+        assert(scan().outcome == ScanOutcome::TRANSPORT_FAULT && scan().phase == ScanPhase::INTERLOCK);
+        assert(scan().settle == Probe::DiscoverySettle::LATE_BYTES && scan().lateBytes >= 1 && app->owner.needsRecovery());
+        assert(scan().count == 1 && scan().findings[0].probe.outcome != ProbeOutcome::RESPONDER);
+        assert(scan().findings[0].request.target.address == (afterSettle ? 3 : 2) && !scan().findings[0].probe.provenance.txAccepted);
+        assert(scan().silentCount == (afterSettle ? 1 : 0));
+    }
+}
 void pastSilentDelayedFrameAtNextAddressIsForeign() {
-    for (bool beforeTx : {false, true}) {
+    for (bool beforeTx : {false}) {
         fresh(); const auto candidates = pastSilent(2, 4);
         assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
         waitScanTx(0); reviewedFrame(2, 1);               // Silent.
-        if (beforeTx) {
-            // The delayed reply from 2 arrives while the probe of 3 waits for bus idle.
-            for (unsigned i = 0; i < 200000 && app->runner.phase() != Rtu::Phase::WAIT_BUS; ++i) step();
-            assert(app->runner.phase() == Rtu::Phase::WAIT_BUS && hardware.writes == 1 && scan().settles == 1);
-            scheduleReply(hardware.time + 10, words(2, {0x4EEA}), hardware.txCharacterUs);
-            waitScanTx(1); reviewedFrame(3, 1);
-            reply(1, words(3, {0x4EEA}));
-        } else {
-            reply(1, words(2, {0x4EEA}));                 // Delayed reply from 2 during the probe of 3.
-            reviewedFrame(3, 1);
-        }
+        (void)beforeTx;
+        reply(1, words(2, {0x4EEA}));                 // Delayed reply from 2 during the probe of 3.
+        reviewedFrame(3, 1);
         waitSettled();
         assert(scan().outcome == ScanOutcome::TRANSPORT_FAULT && scan().phase == ScanPhase::INTERLOCK);
         assert(scan().silentCount == 1 && silentAt(2) && scan().count == 1 && hardware.writes == 2);
         assert(scan().findings[0].request.target.address == 3);
-        if (beforeTx) { // 3's own checked reply is kept; the discarded bytes end the scan.
-            assert(scan().settle == Probe::DiscoverySettle::LATE_BYTES && scan().lateBytes == 7);
-            assert(scan().findings[0].probe.outcome == ProbeOutcome::RESPONDER);
-        } else {         // The delayed frame from 2 is foreign, never a responder at 3.
-            assert(scan().findings[0].probe.outcome == ProbeOutcome::MISMATCH && app->owner.needsRecovery());
+        // The delayed frame from 2 is foreign, never a responder at 3.
+        assert(scan().findings[0].probe.outcome == ProbeOutcome::MISMATCH && app->owner.needsRecovery());
+    }
+}
+// Audit F5: a restore refused during recovery stays INTERLOCK, with no later
+// automatic restore; a failed recovery is no boundary.
+void pastSilentRestoreRefusedDuringRecovery() {
+    for (bool failRecovery : {false, true}) {
+        fresh(); const auto candidates = pastSilent(1, 2);
+        assert(control(Probe::DiscoveryCommandKind::BEGIN, &candidates) == Probe::Action::OK);
+        reply(0, words(1, {0x4EEA})); waitScanTx(1); waitSettled();
+        assert(scan().phase == ScanPhase::INTERLOCK && scan().boundaryRequired);
+        Serial.output.clear(); Serial.input = "@98 recover" + std::string(1, char(10));
+        for (unsigned i = 0; i < 1000 && !Serial.input.empty(); ++i) step();
+        assert(app->owner.recovering());
+        if (failRecovery) // Continuous noise: the recovery never sees an idle gap and expires.
+            for (unsigned k = 0; k < 30; ++k)
+                scheduleReply(hardware.time + 10 + k * 1000ULL * hardware.txCharacterUs,
+                    std::vector<uint8_t>(1000, 0x55), hardware.txCharacterUs);
+        assert(control(Probe::DiscoveryCommandKind::RESTORE) == Probe::Action::RECOVERY_REQUIRED);
+        assert(scan().phase == ScanPhase::INTERLOCK);
+        for (unsigned i = 0; i < 10000 && app->owner.recovering(); ++i) step(1000);
+        pump(2000);
+        assert(scan().phase == ScanPhase::INTERLOCK && !scan().restored && app->serial.active.baud == 115200);
+        if (failRecovery) {
+            assert(!scan().boundaryCrossed && app->owner.needsRecovery());
+            assert(control(Probe::DiscoveryCommandKind::RESTORE) == Probe::Action::RECOVERY_REQUIRED);
+            assert(scan().phase == ScanPhase::INTERLOCK && !scan().restored);
+        } else {
+            assert(scan().boundaryCrossed);
+            assert(control(Probe::DiscoveryCommandKind::RESTORE) == Probe::Action::OK);
+            waitSettled(); assert(scan().restored && scan().phase == ScanPhase::TERMINAL);
         }
     }
 }
@@ -990,6 +1046,7 @@ int main() {
     pastSilentContinuesAfterSilence(); pastSilentAtLastAddressAndSilenceOnly();
     pastSilentNeverContinuesAfterBytesOrFaults(); pastSilentLateFrameDuringSettleEndsScan();
     pastSilentDelayedFrameAtNextAddressIsForeign(); pastSilentRefusesReuseBeforeTx();
+    pastSilentByteBeforeTxSendsNothing(); pastSilentRestoreRefusedDuringRecovery();
     pastSilentBudgetsCountSettles(); pastSilentCancellationDuringSettle();
     pastSilentRestoresTupleAfterBoundary(); pastSilentConsoleParity();
     if (app) { app->~App(); std::free(app); app = nullptr; }

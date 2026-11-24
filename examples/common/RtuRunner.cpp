@@ -271,6 +271,7 @@ Admission Runner::start(const Request& request, uint64_t nowUs) noexcept {
     replyGapUs_ = request.replyGapUs ? request.replyGapUs : timing_.gap35Us;
     silenceUs_ = request.silenceUs;
     echo_ = request.echo;
+    quietBeforeTx_ = request.quietBeforeTx;
     pending_ = Reason::NONE;
     quietSince_ = nowUs;
     observed_ = haveRx_ = false;
@@ -380,6 +381,7 @@ bool Runner::processByte(const RxByte& byte, uint64_t nowUs) noexcept {
         if (result_.waitDiscarded != std::numeric_limits<uint16_t>::max()) ++result_.waitDiscarded;
         increment(stats_.discarded);
         record(Event::DISCARD, byte.endUs, byte.value);
+        if (quietBeforeTx_) { finish(Reason::UNEXPECTED_RX, nowUs, true); return false; }
         return true;
     }
 

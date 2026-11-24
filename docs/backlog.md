@@ -484,6 +484,13 @@ functional evidence; independent shaft calibration remains absent.
   late-stop matrix on the new firmware.
 - [x] Discovery past a silent address: `past-silent` (one tuple, one bounded settle per silence, late bytes end the scan, explicit recover/restore/finish boundary); native and harness tests; bench PASS on 1, 2, 4 with 3 and 5-8 silent ([wired bench 19](reports/2026-11-23_wired_bench_19_multi_drive_remaining.md)).
 - [ ] Group absolute plan after a group stop: one member's next read is not current and the following absolute plans are refused `unavailable` before any frame (wired bench 19 G3, 3 of 4 stops). Name the group refusal reason, find the late finalization, add a native regression, rerun G3.
+- [ ] Wired bench 19 audit remainder: F6 the broadcast-trial route and read-only
+  link check, built before the owner-return B/K runs; F9 G1 timing evidence and
+  the G2 refusal cause in the verdicts; F8 document the counting points of the
+  byte counters (`waitDiscarded`, `DrainResult::bytes`, `RecoveryResult::discarded`);
+  F3 R1 restores and compares the profile words on the same drive before forgetting
+  the snapshot or selecting another drive (a restore stage revokes the start-speed
+  relation and blocks R1's group move until a restart, so R1 needs reordering).
 - [ ] Broadcast trial route and read-only link check (wired bench 19 items 5-6), then B1-B5 and K1 with the owner (multi-drive 07, lost first byte at address 3, fail-safe bias).
 - [ ] Measure the enable settling time (HW-15) beyond one drive's 0.6 s for
   position starts: home and velocity starts, other drives or firmware, an enable

@@ -209,6 +209,37 @@ check (items 5 and 6) must be built first.
 - `discover` reply `findings` keep no per-address record of silent probes
   beyond the bitmap (by design; the wire timing of a silent probe is not kept).
 
+## After the audit
+
+Independent audit `aud-20261124-095050-1c0ff2` of `44e7f4f` (CI run
+45146685010 green). Fixed, with native or host tests, no hardware rerun:
+
+| Finding | Change | Test |
+| --- | --- | --- |
+| F1 pre-TX late byte | `Request::quietBeforeTx` (discovery `past-silent` only): a byte while waiting for bus idle ends the request before TX (`UNEXPECTED_RX`, fault, interlock); the old test that expected the probe to go out is reversed | `pastSilentByteBeforeTxSendsNothing`: no new frame, no responder, before the first silence and after a settle |
+| F4 final silence | the last silence settles too; clean settle completes, no request left reports `request_limit`, late bytes the fault; D2 now expects five settles (the bench run measured four with image A) | `pastSilentAtLastAddressAndSilenceOnly` |
+| F5 refused restore | `discover restore` during a pending recovery or transfer is refused and the scan stays INTERLOCK; a restore in progress replies OK | `pastSilentRestoreRefusedDuringRecovery`: early restore, then no automatic restore; failed recovery |
+| F7 echo | silence also requires zero echo bytes | not representable: discovery requests use `Echo::NONE` |
+| F2 G3 stop check | the group stop result and fresh stopped reads of every member gate any later plan; otherwise the prepared stops, standstill from fresh reads, and the case ends; each repeat needs the latest attempt's evidence | `test_stop_evidence_gates_later_plans` (failed stop, unmoved member, still running) |
+| G3 reason | a group refusal names the member check (`member_binding`, `member_identity`, `member_configuration`, `member_profile`, `member_reference_stale`, or the first failing move readiness term); the harness accepts these | `testGroupRefusalNamesMemberCheck` (revoked start-speed relation, lost configuration) |
+
+The G3 cause is still not established; the next G3 run will name the refusing
+check. F3 (R1 profile restore per drive) needs R1 reordered and is in the
+backlog with F6, F8 and F9.
+
+Checks after the fixes: `discovery_app_test`, `discovery_console_test`,
+`runner_test`, `bus_owner_test`, `group_app_test`, `discovery_harness_test`,
+`bench_multi_test` (`serial` = None) PASS; `check_repository.py`,
+`check_ess_operations.py`, `generate_ess_registers.py --check`,
+`check_promptset.py` PASS; `verify.py --mode quick` in
+`build/verify/wb19_audit_quick`: PASS (122 registered CTest tests, package and installed consumers). Builds (not flashed): Arduino
+`937D69BE0CB1AFCB2387AA2C80C72BD84C2587E55C8733FC2BEC8315DC822100`, native
+IDF 5.5.5 `5E45A4BEFBA0058498FE1E840C3533B17360508EFDD815D9A30F5861F28A0A1C`.
+
+The firmware changed (discovery `past-silent` settle at the last address, the
+pre-TX byte rule, restore refusal and the group refusal reason): stage (d)
+needs a short bench regression, D2 on the new image and one group plan.
+
 ## Commits and CI
 
 The lead owns Git and CI. No commit, push or CI dispatch was made in this

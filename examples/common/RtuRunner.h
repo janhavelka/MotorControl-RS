@@ -113,6 +113,10 @@ struct Request {
      * long. Every byte in the window is retained as a finding, never a reply.
      * SILENT is not an acknowledgement: no drive confirms a broadcast. */
     uint32_t silenceUs = 0;
+    /** True: any byte while waiting for bus idle ends the request before TX
+     * (UNEXPECTED_RX, fault, explicit recovery). False keeps the ordinary
+     * discard-and-wait. Discovery past a silent address uses it (wired bench 19). */
+    bool quietBeforeTx = false;
 };
 
 /** FRAME means a complete envelope was collected, not a valid CRC or motor action.
@@ -265,7 +269,7 @@ private:
     uint64_t now_ = 0, quietSince_ = 0, assertedUs_ = 0, queuedUs_ = 0;
     uint64_t txEndUs_ = 0, releasedUs_ = 0, lastRxEndUs_ = 0, observedUs_ = 0;
     uint64_t deadlineUs_ = 0, cancellationUs_ = 0;
-    bool clockSet_ = false, observed_ = false, haveRx_ = false, de_ = false;
+    bool clockSet_ = false, observed_ = false, haveRx_ = false, de_ = false, quietBeforeTx_ = false;
 };
 
 const char* phaseName(Phase phase) noexcept;

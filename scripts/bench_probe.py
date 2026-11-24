@@ -113,6 +113,12 @@ SETTINGS_REFUSAL_REASONS = ("input_facts_required", "input_facts_stale", "input_
 SETTINGS_REFUSAL_COMMANDS = ("driver", "segment", "tuning", "home-auxiliary", "motion-profile-start-speed", "motion-profile-stage")
 # Wired bench 07: motion refusals the shared stop/release rule decided (purpose motion).
 # Wired bench 11 adds the limit-input and soft-limit-state reasons.
+# Wired bench 19: the member check that refused a group move (GroupApp noteGroupRefusal).
+GROUP_REFUSAL_REASONS = ("member_binding", "member_identity", "member_configuration", "member_profile",
+                         "member_reference_stale", "profile_unbound", "profile_stale", "request_basis",
+                         "motion_not_stationary", "io_stale", "soft_limit_unbound", "word_order_unknown", "released",
+                         "start_speed_relation", "start_speed_above_request", "ramp_out_of_range", "stop_input",
+                         "limit_input", "input_policy", "absolute_not_ready")
 MOTION_REFUSAL_REASONS = ("stop_input_active", "release_input_active", "input_state_stale", "input_mapping_unknown",
                           "limit_input_active", "soft_limit_state_unknown", "soft_limit_endpoint", "soft_limits_enabled",
                           "triggers_inhibited_required", "input_active")
@@ -3622,7 +3628,13 @@ class Console:
         elif any(key in item for key in ("reason", "purpose", "read_first", "terminal")) and item.get("purpose") == "motion":
             # Motion refusals the shared stop/release rule decided (wired bench 07).
             velocity_input = handle.command == "velocity" and item.get("reason") in VELOCITY_INPUT_REASONS
-            if (handle.command not in MOTION_REFUSAL_COMMANDS or
+            # A group refusal may instead name the member check (wired bench 19).
+            group_check = (handle.command in ("group-move", "group-plan-submit") and item["result"] == "unavailable" and
+                           item.get("reason") in GROUP_REFUSAL_REASONS and item.get("read_first") == "group read state" and
+                           "terminal" not in item)
+            if group_check:
+                pass
+            elif (handle.command not in MOTION_REFUSAL_COMMANDS or
                     item["result"] != ("qualification_required" if velocity_input and item.get("reason") ==
                                        "triggers_inhibited_required" else "unavailable") or
                     (item.get("reason") in VELOCITY_INPUT_REASONS and not velocity_input) or

@@ -47,16 +47,17 @@ bool discoverySilent(const Rtu::Completion& result, const MotorControlRS::ESS_RS
     const auto& t = result.transport;
     return probe.outcome == MotorControlRS::ProbeOutcome::NO_RESPONSE && t.reason == Rtu::Reason::NO_RESPONSE &&
         result.outcome == Rtu::Outcome::TRANSPORT && t.txComplete && t.txAccepted == result.txLength &&
-        !t.rxLength && !t.rxTruncated && !t.waitDiscarded && !uart.needsRecovery();
+        !t.rxLength && !t.rxTruncated && !t.echoBytes && !t.waitDiscarded && !uart.needsRecovery();
 }
 void addLateBytes(Probe::DiscoveryScan& scan, uint32_t bytes) {
     const uint32_t total = scan.lateBytes + bytes;
     scan.lateBytes = static_cast<uint16_t>(total > UINT16_MAX ? UINT16_MAX : total);
 }
 // One bounded owner recovery after a silent probe: drain, count and idle gap,
-// counted as one request, within the scan deadline. It never resends the probe
-// and the silent address is never probed again in this scan. Returns true
-// when the next, different address may be probed.
+// counted as one request, within the scan deadline, after every silence (the
+// last address included). It never resends the probe and the silent address is
+// never probed again in this scan. Returns true when the next, different
+// address may be probed.
 bool discoverySettle(App& a, uint64_t now) {
     using Probe::DiscoveryOutcome; using Probe::DiscoverySettle;
     auto& scan = a.discovery;
@@ -88,6 +89,7 @@ bool discoverySettle(App& a, uint64_t now) {
     if (scan.settle != DiscoverySettle::RECOVERED) discoveryEnd(a, DiscoveryOutcome::TRANSPORT_FAULT);
     else if (scan.cancelRequested) discoveryEnd(a, DiscoveryOutcome::CANCELLED);
     else if (now >= scan.deadlineUs) discoveryEnd(a, DiscoveryOutcome::DEADLINE);
+    else if (scan.address >= scan.settings.last) discoveryEnd(a, DiscoveryOutcome::COMPLETE);
     else { ++scan.address; scan.phase = Probe::DiscoveryPhase::PROBE; return true; }
     discoveryRestore(a); return false;
 }
@@ -147,11 +149,8 @@ void serviceDiscovery(App& a, uint64_t now) {
         if (fault && !silent) discoveryEnd(a, DiscoveryOutcome::TRANSPORT_FAULT);
         else if (scan.cancelRequested) discoveryEnd(a, DiscoveryOutcome::CANCELLED);
         else if (now >= scan.deadlineUs) discoveryEnd(a, DiscoveryOutcome::DEADLINE);
-        else if (silent) {
-            // The last address needs no settle: the operator's boundary recovers the bus.
-            if (scan.address < scan.settings.last) scan.phase = DiscoveryPhase::SETTLE;
-            else discoveryEnd(a, DiscoveryOutcome::COMPLETE);
-        } else if (scan.phase != DiscoveryPhase::IDENTITY) {
+        else if (silent) scan.phase = DiscoveryPhase::SETTLE; // The last address too.
+        else if (scan.phase != DiscoveryPhase::IDENTITY) {
             if (scan.address < scan.settings.last) ++scan.address;
             else if (scan.tupleIndex + 1 < scan.settings.tupleCount) { ++scan.tupleIndex; scan.address = scan.settings.first; }
             else discoveryEnd(a, DiscoveryOutcome::COMPLETE);
@@ -192,6 +191,7 @@ void serviceDiscovery(App& a, uint64_t now) {
     request.wire.replyLength = ESS::expectedReadRegistersLen(request.expected.count);
     request.wire.responseTimeoutUs = a.serial.timing.responseTimeoutUs; request.wire.replyGapUs = a.serial.timing.replyGapUs;
     request.wire.deadlineUs = deadline;
+    request.wire.quietBeforeTx = scan.settings.pastSilent; // A pre-TX byte may be a late reply: no TX, fault.
     request.expected.address = target.address; request.expected.target = target.id;
     request.expected.targetGeneration = target.generation; request.expected.function = 3; request.expected.first = 0;
     request.validator = Rtu::essValidator();
@@ -220,8 +220,12 @@ Probe::Action discoveryCommand(void* context, const Probe::DiscoveryCommand* com
     }
     if (command->kind == DiscoveryCommandKind::RESTORE) {
         if (scan.phase != DiscoveryPhase::INTERLOCK) return Probe::Action::INVALID;
+        // Refused here, the scan stays in INTERLOCK: no later automatic restore.
+        if (a.discoveryRequest.owner || a.owner.active() || a.owner.pending() || a.owner.recovering())
+            return Probe::Action::RECOVERY_REQUIRED;
         scan.phase = DiscoveryPhase::RESTORING; discoveryRestore(a);
-        return scan.restored ? Probe::Action::OK : Probe::Action::RECOVERY_REQUIRED;
+        // A restore in progress (host setup busy) finishes on its own; INTERLOCK means refused.
+        return scan.phase == DiscoveryPhase::INTERLOCK ? Probe::Action::RECOVERY_REQUIRED : Probe::Action::OK;
     }
     if (command->kind == DiscoveryCommandKind::FINISH) {
         if (scan.phase != DiscoveryPhase::TERMINAL || scan.owned) return Probe::Action::BUSY;

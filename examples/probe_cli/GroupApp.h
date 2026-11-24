@@ -641,6 +641,21 @@ bool validGroupIntent(const MotorControlRS::MoveRequest& move) {
         std::isfinite(p.radians) && std::isfinite(p.maximumApproximationError) && p.maximumApproximationError >= 0 &&
         move.speedRpm && move.ramp == MoveRamp::VERIFIED_CONFIGURED && move.setup <= MoveSetup::USE_STORED;
 }
+// Wired bench 19: a group refusal names the member check that decided it,
+// unless an input or limit rule already named it.
+const char* memberNotCurrentReason(const App& a, const App::GroupMember& m) {
+    if (!a.group.declared || !m.axis.generation || m.axis.target.generation != a.bindingGeneration ||
+        !knownTarget(a, m.address)) return "member_binding";
+    if (!m.identity.operationId || !Probe::sameTarget(m.identity.target, m.axis.target) ||
+        !expectedIdentity(m.identity, m.address)) return "member_identity";
+    if (!m.configuration.operationId || !Probe::sameTarget(m.configuration.target, m.axis.target)) return "member_configuration";
+    return "member_profile";
+}
+void noteGroupRefusal(App& a, const char* reason) {
+    if (a.settingsRefusal.reason || !reason) return;
+    a.settingsRefusal.reason = reason; a.settingsRefusal.purpose = "motion";
+    a.settingsRefusal.readFirst = "group read state"; a.settingsRefusal.terminal = -1;
+}
 Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveRequest& supplied,
                              Probe::GroupReply& reply, const Probe::GroupMemberMoves* individual = nullptr) {
     using namespace MotorControlRS;
@@ -695,7 +710,7 @@ Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveR
     for (uint8_t i = 0; i < count; ++i) {
         const auto& m = a.group.members[i];
         reply.address = m.address;
-        if (!memberCurrent(a, m)) return Probe::Action::UNAVAILABLE;
+        if (!memberCurrent(a, m)) { noteGroupRefusal(a, memberNotCurrentReason(a, m)); return Probe::Action::UNAVAILABLE; }
         if (axisReserved(a, m.address)) return Probe::Action::AXIS_CONFLICT;
         if (enableSettling(a, m.address, now)) return Probe::Action::BUSY; // HW-15: the drive ignores an early start.
     }
@@ -742,6 +757,7 @@ Probe::Action startGroupMove(App& a, uint32_t commandId, const Probe::GroupMoveR
                 if (!a.settingsRefusal.reason) noteLimitInputRefusal(a, limitInputs(facts, now));
                 if (!a.settingsRefusal.reason && facts.configuration.raw.softLimitEnable != 0)
                     noteSoftLimitRefusal(a, "soft_limit_state_unknown");
+                noteGroupRefusal(a, staleReference ? "member_reference_stale" : moveReadinessReason(facts, request, now));
             }
             return !readiness ? Probe::Action::UNAVAILABLE :
                 checked.code == Err::UNSUPPORTED ? Probe::Action::UNSUPPORTED : Probe::Action::INVALID;

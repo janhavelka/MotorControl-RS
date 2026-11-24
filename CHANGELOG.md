@@ -12,6 +12,14 @@
   its discarded bytes (`DrainResult::bytes`) and a recovery its drained bytes
   (`RecoveryResult::discarded`). Harness validation, `discovery-check
   --cross-boundary`, and native, console and harness tests.
+- After the wired bench 19 audit: a `past-silent` request that hears any byte
+  while waiting for bus idle ends before its TX (`Request::quietBeforeTx`,
+  ordinary requests unchanged); the last silence settles like the others;
+  `discover restore` refused during a pending recovery leaves the scan in
+  INTERLOCK; silence also requires zero echo bytes; a group move refusal names
+  the member check that refused (`reason`, `read_first: group read state`);
+  `bench_multi.py` G3 checks the stop result and fresh stopped reads before any
+  later plan and ends the case with the prepared stops otherwise.
 - Wired bench 19 harness `scripts/bench_multi.py` (D1-D3 discovery cases,
   G1-G4 host-coordinate group absolute plans, R1 per-drive regression) with
   `test/bench_multi_test.py`; pyserial is imported only where a port opens.

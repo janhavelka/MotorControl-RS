@@ -16,8 +16,8 @@ def finding(address, outcome=1, known=True):
 
 
 def ended(**changes):
-    value = {"phase": 4, "outcome": 1, "requests": 15, "findings": [finding(a) for a in multi.DRIVES],
-             "silent": list(multi.EXPECTED_SILENT), "settles": 4, "settle": "recovered", "late_bytes": 0,
+    value = {"phase": 4, "outcome": 1, "requests": 16, "findings": [finding(a) for a in multi.DRIVES],
+             "silent": list(multi.EXPECTED_SILENT), "settles": 5, "settle": "recovered", "late_bytes": 0,
              "boundary_required": True, "boundary_crossed": False, "restored": False}
     value.update(changes)
     return value
@@ -72,6 +72,20 @@ class MultiTests(unittest.TestCase):
                              {"address": 2, "read_state": "succeeded", "status": "OK", "state_known": True},
                              {"address": 4, "read_state": "failed", "status": "TIMEOUT", "state_known": False}]}
         self.assertEqual(multi.stale_members(reply), [1])
+
+    def test_stop_evidence_gates_later_plans(self):
+        stop = {"ok": True, "state": "succeeded", "members": [{"address": a, "completion": "observed"} for a in multi.DRIVES]}
+        still = {a: {"motion": 0, "speed": 0} for a in multi.DRIVES}
+        start, end = {1: 0, 2: 0, 4: 0}, {1: 1500, 2: -1500, 4: 1500}
+        self.assertEqual(multi.stop_problems(stop, still, start, end), [])
+        failed = dict(stop, ok=False, state="failed", members=[dict(m, completion="not_observed") for m in stop["members"]])
+        self.assertTrue(multi.stop_problems(failed, still, start, end))                       # failed stop
+        self.assertTrue(multi.stop_problems(stop, still, start, {1: 1500, 2: 0, 4: 1500}))  # unmoved member
+        running = {**still, 4: {"motion": multi.RUNNING_BIT, "speed": 60}}
+        self.assertTrue(multi.stop_problems(stop, running, start, end))                       # still running
+        self.assertFalse(multi.all_stopped(running))
+        self.assertTrue(multi.all_stopped(still))
+        self.assertTrue(multi.stop_problems(None, still, start, end))
 
     def test_r1_rows(self):
         row = {"address": 1, "probe": "success", "identity": True, "config": True, "state": True,

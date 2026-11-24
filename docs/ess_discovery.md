@@ -92,12 +92,14 @@ request context:
   no echo or adapter fault). It is recorded in the `silent` list beside the
   findings and consumes no finding slot; it is an observation, not proof of
   absence.
-- Before the next, different address the scan runs one bounded settle: the
-  owner's recovery drain and idle gap, counted as one request and limited by
-  the query and overall budgets. It never resends the probe. Silence at the
-  last address needs no settle.
-- Any byte the settle drains, or that the runner discards before a later
-  probe's TX, ends the scan (`settle: late_bytes`, `late_bytes`). Partial
+- After every silence, the last address included, the scan runs one bounded
+  settle: the owner's recovery drain and idle gap, counted as one request and
+  limited by the query and overall budgets. It never resends the probe. With
+  no request left the scan ends `request_limit` without a settle.
+- Any byte the settle drains ends the scan. Any byte while a later request
+  waits for bus idle ends that request before its TX (`quietBeforeTx`,
+  `UNEXPECTED_RX`) and the scan, with the runner interlocked (`settle:
+  late_bytes`, `late_bytes`). Partial
   bytes, a frame from another address (a late reply is never a responder at
   the next address), CRC, length, gap, echo or correlation faults end it with
   today's interlock.
@@ -105,7 +107,10 @@ request context:
   whatever its outcome. `discover restore` and ordinary traffic stay refused
   until an explicit `recover` admitted after the scan ended has recovered the
   bus (`boundary_crossed`); then `discover restore` and `discover finish` as
-  usual. That operator recovery is the boundary before a silent address can be
+  usual. A `discover restore` sent while that recovery or any transfer is
+  still pending is refused `recovery_required` and the scan stays in
+  INTERLOCK; nothing restores later on its own. A recovery that fails is no
+  boundary. That operator recovery is the boundary before a silent address can be
   probed again. Cancellation during a settle lets the settle finish first.
 - Beginning a `past-silent` scan releases a delivered earlier `recover`
   result (the settles need the owner's one recovery slot); an undelivered one
@@ -118,8 +123,9 @@ The reply adds `settings.past_silent`, `silent`, `silent_count`, `settles`,
 sequence after such a scan; without the flag the campaign stops at the
 interlock. Wired bench 19 (20 November 2026, image A,
 `0x4EEA`/`0x0029`): `discover addresses 1 8 past-silent identity requests 32`
-found 1, 2 and 4 with identity, silent 3 and 5-8, four settles and no late
-byte; a probe and `discover restore` were refused before the boundary, then
+found 1, 2 and 4 with identity, silent 3 and 5-8, four settles (that image
+did not settle after the last address; the current firmware settles five
+times) and no late byte; a probe and `discover restore` were refused before the boundary, then
 `recover`, restore and finish succeeded. The same scan without `past-silent`
 stopped at 3 as before. One clean bench scan does not prove correlation in
 general.

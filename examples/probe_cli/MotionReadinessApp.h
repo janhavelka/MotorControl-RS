@@ -255,6 +255,31 @@ inline bool absoluteMoveReady(const App& a, const MotorControlRS::MoveRequest& r
     const auto reference = axisReference(a);
     return absoluteMoveReady(selectedFacts(a, &reference), request, now);
 }
+/** Name of the first moveRequirements check that refuses, or nullptr when all
+ * pass (wired bench 19: group refusals named no cause). Same order and terms. */
+const char* moveReadinessReason(const MotionFacts& f, const MotorControlRS::MoveRequest& request, uint64_t now) {
+    using namespace MotorControlRS;
+    const auto& profile = f.profile.view;
+    if (!motionProfileBound(f)) return "profile_unbound";
+    if (!profile.ok || profile.pending || !profile.closureQualified ||
+        !MotorControlRS::evidenceAgeValid(profile.closureEarliestUs, now, f.maximumAgeUs)) return "profile_stale";
+    if (request.position.wrapped || request.position.basis != RelativeBasis::ACTUAL) return "request_basis";
+    if (!motionProfileStationary(f, now)) return "motion_not_stationary";
+    const auto& io = f.block(ESS::StateBlock::IO);
+    if (!Probe::fresh(io, f.axis.target, now, f.maximumAgeUs) || io.value.unknownInputBits) return "io_stale";
+    if (f.configuration.raw.softLimitEnable != 0 && !f.softLimitBound) return "soft_limit_unbound";
+    if (!f.configuration.wordOrderKnown) return "word_order_unknown";
+    if (f.block(ESS::StateBlock::MOTION).value.released) return "released";
+    uint16_t minimumRpm = 0;
+    if (!positionStartingSpeed(f, now, minimumRpm)) return "start_speed_relation";
+    if (minimumRpm > request.speedRpm) return "start_speed_above_request";
+    if (profile.current[1] > 2000 || profile.current[2] > 2000) return "ramp_out_of_range";
+    if (stopInputs(f, now).result != StopInputs::CLEAR) return "stop_input";
+    if (limitInputs(f, now).result != LimitInputs::CLEAR) return "limit_input";
+    if (!moveInputPolicy(f, now)) return "input_policy";
+    if (!request.position.relative && !absoluteMoveReady(f, request, now)) return "absolute_not_ready";
+    return nullptr;
+}
 bool moveRequirements(const MotionFacts& f, const MotorControlRS::MoveRequest& request,
                       uint64_t now, ESS::MovePrerequisites& out) {
     using namespace MotorControlRS;
