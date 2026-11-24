@@ -240,7 +240,40 @@ The firmware changed (discovery `past-silent` settle at the last address, the
 pre-TX byte rule, restore refusal and the group refusal reason): stage (d)
 needs a short bench regression, D2 on the new image and one group plan.
 
+## Regression on the audited image, 24 November 2026
+
+Image B (Arduino `bench_s3_load_timer` from `9b34e00`, firmware tree equal to
+that commit): `937D69BE0CB1AFCB2387AA2C80C72BD84C2587E55C8733FC2BEC8315DC822100`.
+Before the flash: `before_flash_check` PASS (all three drives stopped,
+alarm-free, I/O `[0,1,2,3,0,0,0,0,0]`) and `compare_before_b` 573/573 equal.
+esptool wrote bootloader, partitions, boot_app0 and the image, each "Hash of
+data verified"; post-flash check PASS (`2026-11-24_wb19_flash_b/`). The bench
+clock restarted at the flash (`bench` `now_us` 132 s at the end); the status
+`uptime_ms` field kept counting across the esptool and RTS resets, so it is
+not a restart witness. D2's five settles identify image B.
+
+| Case | Run | Verdict | Measured |
+| --- | --- | --- | --- |
+| D2 | `d2_b` | PASS | responders 1, 2, 4 with identity, silent `[3,5,6,7,8]`, **5 settles** `recovered`, 0 late bytes, 16 requests, INTERLOCK; `probe 4` refused `busy` with 0 frames, `discover restore` refused `recovery_required`; `recover`, restore (boundary crossed), finish; `probe 1` success |
+| G1 (one round) | `motion_e` | PASS | `--g1-runs 2`: staged and sequential target and return, endpoint errors 0/-1; start TX spread 17.1/17.5 ms staged, 42.9/42.9 ms sequential |
+| G3 | `motion_e` | PASS | stop normal and stop fast 1.5 s in: every member ~4550/4600 short; the stop-evidence gate passed both times (stop results observed, fresh per-member reads stopped, every member moved); each resumed plan was admitted and reached the targets (errors 0/-1), then returned |
+
+No stale group read and no refusal occurred in these two stops, so no named
+refusal reason was captured. The earlier G3 failure (3 of 4 stops on image A)
+did not recur; the stop gate's per-member reads now sit between the stop and
+the next group read, which changes the sequence. The cause stays unresolved;
+the named reason will identify it if it recurs.
+
+Ending state: drives 1, 2 and 4 enabled, stopped, alarm-free, I/O
+`[0,1,2,3,0,0,0,0,0]`, positions drive 1 35849, drive 2 26065, drive 4 111224
+(every plan returned to its origin), none homed; `final_compare_b` 573/573
+equal; profile words restored through the stage route (the start-speed
+relation of 1, 2 and 4 is revoked again until the next controller restart);
+outputs off, 0 relay operations; COM13 closed. Harness addition:
+`bench_multi.py --g1-runs N` (even, 2..10).
+
 ## Commits and CI
 
-The lead owns Git and CI. No commit, push or CI dispatch was made in this
-session.
+The lead owns Git and CI. `44e7f4f` (prompt 19 work) passed CI run
+45146685010; `9b34e00` (audit fixes) passed CI run 45371955989. The lead adds
+the CI of the final commit.

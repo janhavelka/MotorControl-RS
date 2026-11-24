@@ -445,7 +445,7 @@ def run_g1(live, origins):
     targets = {a: ("absolute", v) for a, v in OFFSETS.items()}
     home = {a: ("absolute", 0) for a in DRIVES}
     for mode in ("staged", "sequential"):
-        for index in range(G1_RUNS):
+        for index in range(live.args.g1_runs):
             intents = targets if index % 2 == 0 else home
             t = submit(live, intents, mode, "G1 %s %d" % (mode, index + 1))
             native = member_targets(origins, intents, t["start"])
@@ -672,7 +672,7 @@ def scenario_record(args, image, commit, baseline):
                    "restore: stop fast 1, 2, 4; motion-profile stage of the baseline words per drive, read back"],
     }[args.group]
     bounds = {"exposure": EXPOSURE[args.group], "rpm": RPM, "offsets": OFFSETS, "long": LONG,
-              "mixed": {str(a): list(v) for a, v in MIXED.items()}, "g1_runs_per_mode": G1_RUNS,
+              "mixed": {str(a): list(v) for a, v in MIXED.items()}, "g1_runs_per_mode": args.g1_runs,
               "stop_after_s": STOP_AFTER_S, "r1": [R1_MOVE, R1_STOP_MOVE, R1_GROUP], "tolerance": args.tolerance}
     return dict(image=image, commit=commit, port=args.port,
                 drives=[{"address": a, "required_enabled": True} for a in DRIVES], terminals=[],
@@ -698,11 +698,15 @@ def arguments(argv=None):
     parser.add_argument("--image-level", default="19")
     parser.add_argument("--timeout", type=float, default=5.0)
     parser.add_argument("--cases", nargs="+", choices=GROUPS["MOTION"], help="MOTION: only these cases (default all)")
+    parser.add_argument("--g1-runs", type=int, default=G1_RUNS,
+                        help="G1 plans per start mode, alternating target and origin (even, 2..%d)" % G1_RUNS)
     parser.add_argument("--tolerance", type=int, default=2,
                         help="endpoint tolerance in increments (drive 4's recorded feedback offset is 1-2)")
     args = parser.parse_args(argv)
     if args.port != records.FIXTURE["board"]["port"]:
         parser.error("the wired bench is on %s" % records.FIXTURE["board"]["port"])
+    if not 2 <= args.g1_runs <= G1_RUNS or args.g1_runs % 2:
+        parser.error("--g1-runs is even, 2..%d, so every member ends at its origin" % G1_RUNS)
     if args.cases and args.group != "MOTION":
         parser.error("--cases selects MOTION cases")
     return args

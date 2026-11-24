@@ -483,7 +483,7 @@ functional evidence; independent shaft calibration remains absent.
   ceiling stays 50,000 (its late-stop matrix was not rerun). Raising the ceiling needs a fix or a rerun of the
   late-stop matrix on the new firmware.
 - [x] Discovery past a silent address: `past-silent` (one tuple, one bounded settle per silence, late bytes end the scan, explicit recover/restore/finish boundary); native and harness tests; bench PASS on 1, 2, 4 with 3 and 5-8 silent ([wired bench 19](reports/2026-11-23_wired_bench_19_multi_drive_remaining.md)).
-- [ ] Group absolute plan after a group stop: one member's next read is not current and the following absolute plans are refused `unavailable` before any frame (wired bench 19 G3, 3 of 4 stops). Name the group refusal reason, find the late finalization, add a native regression, rerun G3.
+- [ ] Group absolute plan after a group stop: one member's next read is not current and the following absolute plans are refused `unavailable` before any frame (wired bench 19 G3, 3 of 4 stops on image A; 0 of 2 on image B with the stop gate's fresh reads). Refusals now name the member check; if it recurs, find the late finalization and add a native regression.
 - [ ] Wired bench 19 audit remainder: F6 the broadcast-trial route and read-only
   link check, built before the owner-return B/K runs; F9 G1 timing evidence and
   the G2 refusal cause in the verdicts; F8 document the counting points of the
