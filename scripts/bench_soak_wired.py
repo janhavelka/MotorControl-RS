@@ -507,7 +507,8 @@ def arguments(argv=None):
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--firmware", type=Path, required=True, help="running image (SHA-256 recorded)")
     parser.add_argument("--commit", required=True)
-    parser.add_argument("--case-id", choices=("K1", "K2"), default="K1")
+    parser.add_argument("--case-id", choices=("K1", "K2", "smoke"), default="K1",
+                        help="smoke: a short live check of the driver, not a K1/K2 result")
     parser.add_argument("--image-level", default="20")
     parser.add_argument("--timeout", type=float, default=5.0)
     parser.add_argument("--duration", type=float, default=3600.0)
@@ -576,6 +577,13 @@ def main(argv=None):
     reason = "%d cases, ended by %s, %d anomalies" % (soak.completed, soak.ended, len(soak.anomalies))
     for level in scenario["cases"][0]["required_levels"]:
         run.verdict(args.case_id, level, verdict, reason)
+    for entry in scenario["write_list"]:  # One stage restores 0x0021-0x0025 together (as bench_multi).
+        if entry["key"].startswith("profile.") and (entry["drive"], entry["key"], entry.get("index")) not in run.fields:
+            window = run.fields.get((entry["drive"], "profile.acceleration", None))
+            if window and window["restored"]:
+                value = (records.baseline_field(baseline, entry["drive"], entry["key"]) or {}).get("value")
+                run.field(entry, baseline=value, ending=value, restored=True,
+                          reason="restored and read back with the drive's 0x0021/5 stage window")
     state = run.cases[args.case_id]
     cases = [{**scenario["cases"][0], "verdicts": state["verdicts"], "reason": state["reason"],
               "evidence": [p for p in ["soak.json", "health.jsonl", "plan_check.json"] if (folder / p).exists()]}]
