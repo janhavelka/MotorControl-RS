@@ -344,6 +344,35 @@ class DeclarationTests(unittest.TestCase):
             soak.arguments(base + ["--evidence-mib", "8"])
 
 
+class StartToleranceTests(unittest.TestCase):
+    """Wired bench 20: drive 1's steady +1 increment B1 endpoint; never wider than the measured +-2."""
+
+    def trial(self, error):
+        members = {a: {"outcome": "attributed", "further": "none_seen", "bracket_us": [1, 2], "position_matches": e == 0,
+                       "endpoint_error": e, "position_change": 2000 + (e or 0), "expected_change": 2000}
+                   for a, e in ((1, error), (2, 0), (4, 0))}
+        return {"index": 1, "analysis": {"members": members, "d_us": 10}}
+
+    def test_prompt_09_keeps_no_tolerance_and_the_soak_admits_the_steady_offset(self):
+        level = "drive-reported"
+        self.assertEqual(soak.starts.start_verdicts([self.trial(1)], [1, 2, 4])[level][0], "FAIL")
+        self.assertEqual(soak.starts.start_verdicts([self.trial(1)], [1, 2, 4], soak.START_TOLERANCE)[level],
+                         ("PASS", None))
+        self.assertEqual(soak.starts.start_verdicts([self.trial(-2)], [1, 2, 4], soak.START_TOLERANCE)[level][0], "PASS")
+        for error in (3, -3, None):
+            with self.subTest(error=error):
+                verdict = soak.starts.start_verdicts([self.trial(error)], [1, 2, 4], soak.START_TOLERANCE)[level]
+                self.assertEqual(verdict[0], "FAIL")
+                self.assertIn("tolerance 2 increments", verdict[1])
+        self.assertEqual(soak.START_TOLERANCE, 2)
+
+    def test_soak_start_problems_use_the_tolerance(self):
+        detail = {"trials": [self.trial(1)], "runs": 1}
+        self.assertEqual(soak.start_problems("start_group", "B1", detail), [])
+        detail = {"trials": [self.trial(3)], "runs": 1}
+        self.assertRegex(soak.start_problems("start_group", "B1", detail)[0], "drive-reported FAIL")
+
+
 class PreparedStopTests(unittest.TestCase):
     def test_an_unavailable_drive_is_bound_by_one_read_then_stopped(self):
         """Wired bench 20 b4: a stop to a drive with no checked reply since the last selection is refused."""

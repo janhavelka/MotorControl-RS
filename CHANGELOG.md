@@ -4,6 +4,11 @@
 
 ### Added
 
+- Wired bench 20 b6: the wired soak's drive-reported endpoint check for armed starts
+  (A1, A2, B1) allows the documented ±2 increment feedback offset (wired bench 09 E1;
+  the same rule as `bench_multi.py` and `bench_pt.py`). Three deliberate B1 reruns
+  showed drive 1 at a steady +1 with no change within 2 s. `bench_input_starts.py`
+  keeps zero tolerance by default.
 - Wired bench 20 b4: the safety stops of `bench_stress.py` and the prepared stops of
   `bench_multi.py` (used by `bench_soak_wired.py`) bind a drive whose stop is refused
   `unavailable` with one `read state` and send one new stop fast. The firmware admits

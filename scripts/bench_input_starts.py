@@ -298,15 +298,16 @@ def summarize_starts(trials: list) -> dict:
             "spread_lower_ms": stats([s["lower_us"] for s in spreads], 1000.0)}
 
 
-def start_verdicts(trials: list, members: list) -> dict:
+def start_verdicts(trials: list, members: list, tolerance: int = 0) -> dict:
     """A1/A2/B1 per evidence level.
 
     controller-timestamped: one source ON after an admitted isolation decision,
     the first-change bracket ending after the ON, and (Y0 owner) the running-on
     edge D. drive-reported: every member ``attributed`` with no further start
-    and its final feedback equal to the staged endpoint or displacement without
-    a tolerance. A second start, unattributed motion or no start is FAIL at
-    both levels; a missing witness is indeterminate."""
+    and its final feedback equal to the staged endpoint or displacement, within
+    ``tolerance`` increments (prompt 09: none; the wired soak passes its
+    measured steady offset). A second start, unattributed motion or no start is
+    FAIL at both levels; a missing witness is indeterminate."""
     out = {}
     if not trials:
         return {lv: ("NOT RUN", "no trial") for lv in ("controller-timestamped", "drive-reported")}
@@ -330,7 +331,9 @@ def start_verdicts(trials: list, members: list) -> dict:
             if outcome == "attributed":
                 if m.get("further") == "seen":
                     fails.append("trial %s drive %s: further start" % (t.get("index"), address))
-                if m.get("endpoint_error") not in (0, None) or not m.get("position_matches"):
+                error = m.get("endpoint_error")
+                if (error is None or abs(error) > tolerance) if tolerance else \
+                        (error not in (0, None) or not m.get("position_matches")):
                     endpoint.append("trial %s drive %s: change %s, expected %s" % (
                         t.get("index"), address, m.get("position_change"), m.get("expected_change")))
                 if not m.get("bracket_us") or m["bracket_us"][1] <= 0:
@@ -345,7 +348,8 @@ def start_verdicts(trials: list, members: list) -> dict:
         return {lv: ("indeterminate", "; ".join(open_)) for lv in ("controller-timestamped", "drive-reported")}
     out["controller-timestamped"] = ("indeterminate", "; ".join(controller_open)) if controller_open else ("PASS", None)
     out["drive-reported"] = ("FAIL", "attributed, single start; final feedback differs from the staged target "
-                             "(no tolerance): " + "; ".join(endpoint)) if endpoint else ("PASS", None)
+                             "(%s): " % ("tolerance %d increments" % tolerance if tolerance else "no tolerance") +
+                             "; ".join(endpoint)) if endpoint else ("PASS", None)
     return out
 
 
@@ -1492,8 +1496,9 @@ def run_case(live, cid):
 # --------------------------------------------------------------------------
 # Verdicts
 
-def case_verdicts(cid, detail, error):
-    """(level -> verdict, reason) per the prompt 09 case table."""
+def case_verdicts(cid, detail, error, tolerance=0):
+    """(level -> verdict, reason) per the prompt 09 case table; ``tolerance``
+    (increments) applies to the A1/A2/B1 endpoint only."""
     case = CASES[cid]
     levels = case["levels"]
     stopped_early = "stopped early: %s" % error if error else None
@@ -1502,7 +1507,7 @@ def case_verdicts(cid, detail, error):
     trials = detail.get("trials", [])
     kind = case["kind"]
     if kind in ("start", "group-start"):
-        out = start_verdicts(trials, DRIVES if kind == "group-start" else [OWNER])
+        out = start_verdicts(trials, DRIVES if kind == "group-start" else [OWNER], tolerance)
         runs = detail.get("runs", case["runs"])
         if len(trials) < runs or error:
             out = {lv: (v if v != "PASS" else "indeterminate", r or "%d of %d trials; %s" % (len(trials), runs, stopped_early))

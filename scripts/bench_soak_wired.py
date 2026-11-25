@@ -73,6 +73,12 @@ PT_RELAY = pt.PIN_OUTPUTS[0]              # relay2 on X1.
 PT_RELAY_OPS_MAX = 3                      # relay2 ONs one regression may make (two selections, one renewal).
 SHORT_HOLD = "a PIN output's hold ends before the trigger pulse and its margin"
 TOLERANCE = 2                      # Endpoint increments; drive 4's recorded feedback offset is 1-2.
+# Armed-start endpoints (A1/A2/B1) in the soak: the documented steady feedback
+# offset of 1-2 increments (wired bench 09 E1; the +-2 rule of bench_multi
+# (19) and bench_pt (13)). Wired bench 20 measured drive 1 at +1 in four B1
+# starts (K1 segment 1 and three reruns), unchanged over 2 s of back-to-back
+# reads after the session ended: a steady offset, not settling.
+START_TOLERANCE = 2
 EVIDENCE_RECORDS_PER_MIB = 4096   # Measured 27,659 records in 17.7 MB (b2 smoke): about 1,600 per MiB.
 SNAPSHOTS = {"snapshots": {"velocity": True}}  # Velocity words: velocity restore of the case's own snapshot.
 # name: (family, weight, runner argument). Starts name their prompt 09 case.
@@ -139,8 +145,8 @@ def plan_steps(names):
 
 
 def start_problems(name, cid, detail, error=None):
-    """Every non-PASS level of the prompt 09 verdicts of one start case."""
-    verdicts = starts.case_verdicts(cid, detail, error)
+    """Every non-PASS level of the prompt 09 verdicts of one start case, endpoints within START_TOLERANCE."""
+    verdicts = starts.case_verdicts(cid, detail, error, START_TOLERANCE)
     return ["%s %s %s: %s" % (name, level, verdict, reason) for level, (verdict, reason) in verdicts.items()
             if verdict != "PASS"]
 
@@ -259,7 +265,8 @@ class Soak:
 
     def run_start(self, name, cid):
         detail = starts.run_case(self.live, cid)
-        detail["verdicts"] = {level: list(v) for level, v in starts.case_verdicts(cid, detail, None).items()}
+        detail["verdicts"] = {level: list(v) for level, v in
+                              starts.case_verdicts(cid, detail, None, START_TOLERANCE).items()}
         return detail, start_problems(name, cid, detail)
 
     def run_group(self, name, argument):
