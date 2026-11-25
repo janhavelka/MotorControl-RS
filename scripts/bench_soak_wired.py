@@ -73,6 +73,7 @@ PT_RELAY = pt.PIN_OUTPUTS[0]              # relay2 on X1.
 PT_RELAY_OPS_MAX = 3                      # relay2 ONs one regression may make (two selections, one renewal).
 SHORT_HOLD = "a PIN output's hold ends before the trigger pulse and its margin"
 TOLERANCE = 2                      # Endpoint increments; drive 4's recorded feedback offset is 1-2.
+EVIDENCE_RECORDS_PER_MIB = 4096   # Measured 27,659 records in 17.7 MB (b2 smoke): about 1,600 per MiB.
 SNAPSHOTS = {"snapshots": {"velocity": True}}  # Velocity words: velocity restore of the case's own snapshot.
 # name: (family, weight, runner argument). Starts name their prompt 09 case.
 CASES = {
@@ -241,8 +242,23 @@ class Soak:
         return stress.plan_check(plan_steps(self.names), self.args.relay_used, self.relay_planned())
 
     # Runners: each returns (detail, problems).
+    def share_declarations(self, declarations):
+        """Board declarations for every interlock of the session, read once before any arm.
+
+        ``bench_records.interlock`` otherwise reads them on its first ON: inside an
+        armed session that selects other drives and forgets the armed drive's
+        profile snapshot (wired bench 20 A7: ``motion-profile forget`` busy, the
+        X3 stop pulse never sent).
+        """
+        if declarations.get("verdict") != "PASS":
+            raise probe.BenchError("declaration agreement failed: %s" % declarations.get("problems"))
+        for live in (self.live, self.vlive, self.ptlive):
+            if live is not None:
+                live.record["declarations"] = declarations
+
     def run_start(self, name, cid):
         detail = starts.run_case(self.live, cid)
+        detail["verdicts"] = {level: list(v) for level, v in starts.case_verdicts(cid, detail, None).items()}
         return detail, start_problems(name, cid, detail)
 
     def run_group(self, name, argument):
@@ -391,11 +407,13 @@ class Soak:
                 self.ended = "relay budget"
                 break
             detail, problems, error = None, [], None
+            began = time.monotonic()
             try:
                 detail, problems = self.runners[family](name, argument)
                 problems = problems + self.restore_case()
             except Exception as caught:  # noqa: BLE001 - every failure ends the soak with its evidence.
                 error = "%s: %s" % (type(caught).__name__, caught)
+            self.case_record(name, detail, problems, error, began)
             if error or problems:
                 multi.prepared_stops(self.live)  # COMMON: the prepared stops at once, before diagnosis.
                 self.incident(name, detail, problems, error)
@@ -408,6 +426,15 @@ class Soak:
                 self.sample_health()
         self.sample_health()
         return 0
+
+    def case_record(self, name, detail, problems, error, began):
+        """One line per case in ``cases.jsonl``: duration, problems, start verdicts and the evidence used."""
+        budget = getattr(self.live.console, "evidence_budget", None)
+        entry = {"when": time.strftime("%H:%M:%S"), "case": name, "seconds": round(time.monotonic() - began, 1),
+                 "problems": problems, "error": error, "verdicts": (detail or {}).get("verdicts"),
+                 "evidence_bytes": getattr(budget, "bytes", None), "evidence_records": getattr(budget, "records", None)}
+        with open(self.folder / "cases.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, default=str) + "\n")
 
     def summary(self):
         return {"completed": self.completed, "counts": self.counts, "ended": self.ended, "anomalies": self.anomalies,
@@ -501,6 +528,27 @@ def scenario_record(args, image, baseline):
                 max_age_ms=records.MAX_AGE_MS, facts=soak_facts(), image_level=args.image_level)
 
 
+def session(folder, live, work, evidence_mib):
+    """``bench_multi.session`` with the soak's evidence budget: the console streams
+    every line to the JSONL and keeps none in host memory, and the soak trims its
+    own events, so the budget bounds disk use only (about 2.5 MB per case)."""
+    def run(console, record):
+        live.console = console
+        try:
+            work(console)
+        except BaseException:
+            if console.synchronized:
+                multi.prepared_stops(live)
+            raise
+        record["workload_verified"] = True
+
+    return run_recorded(port=live.args.port, scenario="wired-soak", inputs={"case": live.args.case_id}, run=run,
+                        address=1, timeout_s=live.timeout, firmware=live.args.firmware, refresh=False,
+                        paths=dict(summary=folder / "summary.json", jsonl=folder / "session.jsonl",
+                                   console=folder / "console.log"),
+                        max_records=evidence_mib * EVIDENCE_RECORDS_PER_MIB, max_bytes=evidence_mib * 1024 * 1024)
+
+
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--port", default="COM13")
@@ -516,15 +564,16 @@ def arguments(argv=None):
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--only", nargs="+", choices=tuple(CASES), help="only these cases")
     parser.add_argument("--health-every", type=int, default=25)
+    parser.add_argument("--evidence-mib", type=int, default=512,
+                        help="session evidence budget; about 2.5 MB per case, so 512 MiB is about 2 h")
     parser.add_argument("--relay-used", type=stress.relay_totals, required=True,
                         help="relay operations since prompt 01, relay1=N,relay2=N")
     args = parser.parse_args(argv)
     if args.port != records.FIXTURE["board"]["port"]:
         parser.error("the wired bench is on %s" % records.FIXTURE["board"]["port"])
-    if args.cases is not None and args.cases < 1 or args.health_every < 1:
-        parser.error("--cases and --health-every need positive counts")
+    if args.cases is not None and args.cases < 1 or args.health_every < 1 or not 16 <= args.evidence_mib <= 2048:
+        parser.error("--cases and --health-every need positive counts; --evidence-mib 16..2048")
     args.repetitions = 1  # One trial per start case (bench_input_starts.run_case).
-    args.group = "soak"   # The session's recorded input (bench_multi.session; 64 MiB evidence budget).
     return args
 
 
@@ -553,6 +602,7 @@ def main(argv=None):
         live.console = vlive.console = ptlive.console = console
         live.detail["motion"] = True
         multi.baseline_before(live)
+        soak.share_declarations(records.check_declarations(console, timeout_s=live.timeout))
         starts.enter_state(live, "BASE")
         soak.velocity_plans = {a: records.restoration_plan(
             baseline, [e for e in scenario["write_list"] if e["drive"] == a and records.snapshot_route(e["key"])],
@@ -568,7 +618,7 @@ def main(argv=None):
 
     try:
         records.check_board(args.port)
-        multi.session(folder, live, work)
+        session(folder, live, work, args.evidence_mib)
     except (Exception, KeyboardInterrupt) as caught:
         error = caught
         run.deviations.append("run stopped: %s" % caught)

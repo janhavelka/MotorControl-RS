@@ -29,7 +29,12 @@
   the plan check before it starts (other drives on a switched line may hold
   only functions that command no motion: none, origin, limits, stops), group
   clear, the baseline I/O state and a per-field I/O diff after
-  every case, and the prepared stops before the incident on any failure. New
+  every case, and the prepared stops before the incident on any failure. The
+  soak reads the board declarations once before any arm: the interlock read
+  them on its first ON, inside an armed session, where selecting other drives
+  made `motion-profile forget` refuse `busy` and A7's X3 stop pulse was never
+  sent (wired bench 20 b2). It writes one `cases.jsonl` line per case and has
+  its own session budget (`--evidence-mib`, default 512 MiB, about 2 h). New
   `scripts/coverage_matrix.py`: one row per inventory ID and field, index or
   route; a G3 row cannot get a final-image PASS, an UNSUPPORTED row gets a
   refusal check only, a roll-up keeps a known FAIL. Tests

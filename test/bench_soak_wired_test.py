@@ -293,5 +293,56 @@ class PtTests(unittest.TestCase):
             self.assertRegex(s.plan_check()[0], "exceed the budget")
 
 
+class DeclarationTests(unittest.TestCase):
+    """Wired bench 20 A7: no selection change or profile forget inside an armed session."""
+
+    def soak(self, folder):
+        args = types.SimpleNamespace(seed=1, only=None, relay_used=dict(USED), duration=1, cases=None, health_every=1)
+        return soak.Soak(FakeLive(), FakeLive(), args, Path(folder), FakeLive())
+
+    def test_declarations_are_shared_before_any_arm(self):
+        for live in (FakeLive(),):
+            live.record = {}
+        with tempfile.TemporaryDirectory() as folder:
+            s = self.soak(folder)
+            for live in (s.live, s.vlive, s.ptlive):
+                live.record = {}
+            declarations = {"verdict": "PASS", "rows": [], "problems": []}
+            s.share_declarations(declarations)
+            self.assertTrue(all(live.record["declarations"] is declarations for live in (s.live, s.vlive, s.ptlive)))
+            with self.assertRaises(soak.probe.BenchError):
+                s.share_declarations({"verdict": "FAIL", "problems": ["drive 4 board differs"]})
+
+    def test_interlock_with_shared_declarations_never_reads_them_again(self):
+        """The regression: with the session's declarations the interlock selects no drive."""
+        records = soak.records
+        console = types.SimpleNamespace(command=mock.Mock(side_effect=AssertionError("no console traffic expected")))
+        scenario = {"declarations": {"verdict": "PASS", "rows": [], "problems": []}, "max_age_ms": 300,
+                    "running_members": []}
+        with mock.patch.object(records, "check_declarations", side_effect=AssertionError("selection change")) as check, \
+                mock.patch.object(records, "use_drive", side_effect=AssertionError("selection change")), \
+                mock.patch.object(records, "check_input_agreement",
+                                  return_value={"verdict": "FAIL", "problems": ["stop here"]}):
+            entry = records.interlock(console, "mosfet2", scenario)
+        check.assert_not_called()
+        console.command.assert_not_called()
+        self.assertEqual(entry["row"], "L1")
+
+    def test_case_records_carry_duration_and_evidence(self):
+        with tempfile.TemporaryDirectory() as folder:
+            s = self.soak(folder)
+            s.live.console = types.SimpleNamespace(evidence_budget=types.SimpleNamespace(bytes=2500000, records=4000))
+            s.case_record("stop_input", {"verdicts": {"drive-reported": ["PASS", None]}}, [], None, soak.time.monotonic())
+            line = json.loads((Path(folder) / "cases.jsonl").read_text(encoding="utf-8"))
+            self.assertEqual((line["case"], line["evidence_bytes"], line["verdicts"]["drive-reported"][0]),
+                             ("stop_input", 2500000, "PASS"))
+
+    def test_evidence_budget_option(self):
+        base = ["--run-dir", "x", "--firmware", "f.bin", "--commit", "c", "--relay-used", "relay1=1,relay2=2"]
+        self.assertEqual(soak.arguments(base).evidence_mib, 512)
+        with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
+            soak.arguments(base + ["--evidence-mib", "8"])
+
+
 if __name__ == "__main__":
     unittest.main()
