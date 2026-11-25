@@ -208,6 +208,11 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   Arduino loop task and the IDF owner task 12 KiB. On the bench the group move
   and stop path now leaves 4,996 bytes free, against 900 before
   ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md)).
+  Wired bench 20 found the armed input start deeper still (2,548 bytes free at
+  12 KiB), so both tasks now have 16 KiB (6,644 bytes free on that path).
+- [ ] Reduce the armed-start stack path itself: `Console::dispatch` has the
+  largest frame (2,464 bytes, `-fstack-usage`), on every command path (wired
+  bench 20 firmware fix slice).
 - [x] Explain the wider group start spread of the 16 November regression
   (18.9/49.5 ms medians): raw traffic copying was on. The same moves give
   19.8/50.6 ms with `debug raw` and 16.8/41.0 ms without

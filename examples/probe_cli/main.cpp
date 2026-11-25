@@ -10,7 +10,10 @@ using namespace MotorControlRSExample;
 
 // Bench, 16 November 2026: the group move path left 900 of the core's default
 // 8192 loop-task bytes free. `memory` reports the remaining margin.
-SET_LOOP_TASK_STACK_SIZE(12 * 1024);
+// Wired bench 20: 12 KiB left 2,548 bytes free after an armed input start
+// (Console::dispatch 2,464 B + the arm admission 1,216 B + position preparation
+// 1,648/1,584 B frames, -fstack-usage); 16 KiB keeps at least 4 KiB free there.
+SET_LOOP_TASK_STACK_SIZE(16 * 1024);
 
 #if MOTORCONTROLRS_BENCH_IO
 namespace {

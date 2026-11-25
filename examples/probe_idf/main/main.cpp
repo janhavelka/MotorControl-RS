@@ -24,7 +24,9 @@ using namespace MotorControlRSExample;
 // These driver-facing task objects stay internal even with external BSS enabled.
 // Bench, 16 November 2026: the Arduino group move path left 900 of 8192 bytes
 // free; both builds give the shared application 12 KiB. `memory` reports it.
-DRAM_ATTR StackType_t ownerStack[12288 / sizeof(StackType_t)];
+// The same 16 KiB as the Arduino loop task (wired bench 20: 12 KiB left
+// 2,548 bytes free after an armed input start).
+DRAM_ATTR StackType_t ownerStack[16384 / sizeof(StackType_t)];
 DRAM_ATTR StaticTask_t ownerState;
 #if CONFIG_MOTORCONTROLRS_BENCH_IO
 DRAM_ATTR Esp32BenchIo benchIo; // Timer and interrupt state stay in internal RAM.

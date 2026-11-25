@@ -120,7 +120,7 @@ control block and owner stack are internal; App is explicitly allocated in PSRAM
 The read-only checks leave 2292 bytes of owner and 3272 bytes of worker stack
 headroom, with 8177408 bytes PSRAM free. These are observations for that workload.
 
-`app_main` starts one priority-1 owner on core 1 with an explicit 12288-byte
+`app_main` starts one priority-1 owner on core 1 with an explicit 16384-byte
 internal stack and static internal task control block. That task initializes
 the shared application, then calls its cooperative service loop. The optional
 fixture is enabled in this native example and creates the same priority-2

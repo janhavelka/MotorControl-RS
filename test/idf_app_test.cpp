@@ -28,7 +28,7 @@ void fresh() {
 void startOwner() {
     app_main();
     assert(hardware.taskCreates == 1 && hardware.createdTask);
-    assert(hardware.taskCore == 1 && hardware.taskPriority == 1 && hardware.taskStackBytes == 12288);
+    assert(hardware.taskCore == 1 && hardware.taskPriority == 1 && hardware.taskStackBytes == 16384);
     const auto task = hardware.createdTask;
     hardware.runningCore = hardware.taskCore;
     hardware.stopOnIdle = true;

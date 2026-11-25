@@ -281,6 +281,7 @@ void serviceSimpleMotion(App& a, uint64_t now) {
             }
             prepareSubdivisionCoordinates(a); // Same drive value, missing host convention; no setting write.
         }
+        const uint32_t conventionGeneration = a.axis.generation; // Host-only steps follow; no drive write.
         if (v.scaleKnown) {
             const auto& scale = a.axis.units.commandStepsPerMotorTurn;
             if (!scale.numerator || scale.numerator != static_cast<uint32_t>(v.stepsPerTurn.numerator) ||
@@ -310,6 +311,7 @@ void serviceSimpleMotion(App& a, uint64_t now) {
             }
             a.bootOriginPending = false;
         }
+        carryStartSpeedRelation(a, conventionGeneration);
         if (a.bootCoordinates && a.axis.originKnown) {
             if (!usable) invalidateAxis(a);
             else {

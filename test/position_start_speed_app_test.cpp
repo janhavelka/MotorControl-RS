@@ -363,6 +363,26 @@ void testProfileReadsCannotResurrectARevokedRelation() {
     assert(!moveBy(Rational(10), PositionUnit::STEPS, move, 60) && move == 77 && hardware.writes == writes);
 }
 
+void testSimpleConventionStepKeepsTheStatedRelation() {
+    // Wired bench 20 K2: the route's own host convention step must not refuse a relation stated just before it.
+    fresh(); baseline(); readPositionProfile(30);
+    MotorControlRSExample::PositionStartSpeedRelation relation;
+    relation.target = app->axis.target; relation.configurationGeneration = app->axis.generation;
+    relation.rawStartSpeed = 30; relation.minimumPositionSpeedRpm = 60; relation.qualifiedUs = hardware.time;
+    assert(installPositionStartSpeedRelation(relation));
+    const uint32_t before = app->axis.generation;
+    ++app->axis.generation;                       // The convention step (scale or boot origin).
+    carryStartSpeedRelation(*app, before);
+    assert(app->positionStartSpeedRelation.configurationGeneration == app->axis.generation);
+    const uint32_t carried = app->axis.generation;
+    ++app->axis.generation;                       // A second, unrelated change: an older relation is not carried.
+    carryStartSpeedRelation(*app, carried + 7);
+    assert(app->positionStartSpeedRelation.configurationGeneration == carried);
+    ++app->axis.target.generation;               // A new binding of the target never carries.
+    carryStartSpeedRelation(*app, carried);
+    assert(app->positionStartSpeedRelation.configurationGeneration == carried);
+}
+
 void testRevocationStaysWithItsAddressAcrossSelection() {
     // Bench, 16 November 2026: a candidate write revoked drive 2's relation, then
     // every move on drive 4 refused after useaddr although drive 4 was untouched.
@@ -597,6 +617,7 @@ int main(int argc, char** argv) {
     testFailuresAndChangedConfiguration(); testConsoleAndRefreshedMoveRelationship();
     testCompatibleMoveAndHumanTerminal(); testProfileReadsCannotResurrectARevokedRelation();
     testRevocationStaysWithItsAddressAcrossSelection();
+    testSimpleConventionStepKeepsTheStatedRelation();
     testPositionRelationKeepsItsOriginalAge();
     testPriorCompletionCannotRenewOrRequalifySession();
     testLegacyRestoreSettlesOnlyItsFiveWrittenWords();

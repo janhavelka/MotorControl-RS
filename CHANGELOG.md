@@ -4,6 +4,15 @@
 
 ### Added
 
+- Wired bench 20 firmware fixes. The Arduino loop task and the native ESP-IDF
+  motor owner task have 16 KiB of stack instead of 12 KiB: an armed input start left
+  2,548 bytes free at 12 KiB (deepest frames `Console::dispatch` 2,464 B, the arm
+  admission 1,216 B, position preparation 1,648 and 1,584 B). The simple route's own
+  host convention step (command scale, boot origin) no longer invalidates a
+  start-speed relation stated for the same target in the generation just before it
+  (`carryStartSpeedRelation`); the raw word, profile closure and age are still
+  checked, and every other generation change still revokes it. Before, the first
+  simple move after a controller restart refused a relation stated right before it.
 - Wired bench 20 b6: the wired soak's drive-reported endpoint check for armed starts
   (A1, A2, B1) allows the documented ±2 increment feedback offset (wired bench 09 E1;
   the same rule as `bench_multi.py` and `bench_pt.py`). Three deliberate B1 reruns

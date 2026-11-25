@@ -2021,7 +2021,7 @@ int main(int argc, char** argv) {
     }
 #if !MOTORCONTROLRS_TEST_IDF
     // The Arduino sketch widens the loop task that runs group moves (900 of 8192 bytes left).
-    assert(getArduinoLoopTaskStackSize() == 12 * 1024);
+    assert(getArduinoLoopTaskStackSize() == 16 * 1024);
 #endif
     if (argc == 2 && std::string(argv[1]) == "--storage-layout") {
         std::printf("App=%zu GroupMember=%zu EnableWait=%zu EnableWaitArray=%zu ActionEvidence=%zu\n",

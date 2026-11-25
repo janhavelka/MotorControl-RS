@@ -213,6 +213,20 @@ void revokePositionStartSpeedRelation(App& a, uint8_t address) {
     a.positionStartSpeedRelation = PositionStartSpeedRelation();
     a.movePrerequisites.startSpeedKnown = a.movePrerequisites.readinessQualified = false;
 }
+/** The simple route's own host convention step (command scale, boot origin)
+ * changes the configuration generation but no drive word. A start-speed
+ * relation stated for this target and binding in the generation just before
+ * that step is rebound to the new generation; its raw word, profile closure and
+ * age are still checked by positionStartingSpeed. Any other generation change,
+ * another target or an older relation keeps invalidating it (wired bench 20 K2:
+ * the first simple move after a controller restart refused its own relation). */
+void carryStartSpeedRelation(App& a, uint32_t previousGeneration) {
+    auto& relation = a.positionStartSpeedRelation;
+    if (!relation.target.id || !Probe::sameTarget(relation.target, a.axis.target) ||
+        !previousGeneration ||
+        relation.configurationGeneration != previousGeneration || a.axis.generation == previousGeneration) return;
+    relation.configurationGeneration = a.axis.generation;
+}
 bool positionStartingSpeed(const MotionFacts& f, uint64_t now, uint16_t& minimumRpm) {
     const auto& profile = f.profile.view;
     if (!f.startSpeedRelationRequired) {
