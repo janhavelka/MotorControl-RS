@@ -4,6 +4,33 @@
 
 ### Added
 
+- Wired bench 20 soak tools. `scripts/bench_stress.py`: a plan check
+  (`plan_check`) that validates each bench edge's role (attributed start
+  through `arm trigger`, selector, switch, stop, negative) against the planned
+  input functions of drives 1, 2 and 4, and rejects a raw edge used to start
+  an attributed operation, a role that does not match the assignments, a reset
+  without the interlock and a relay budget overrun (10,000 operations per
+  relay, at most one per 2 s); relay counters from `bench` `ons` across
+  controller restarts (`--relay-used`); `--cases`; `--wiring declared`
+  (prompt 02's board table, refused together with `--declare-unconnected`);
+  `stats` and `bench` in health samples; cross-reads that accept motion only
+  on drives moving by design; the before-reset interlock before every
+  controller reset (resets at standstill only); a group stop and one stop per
+  moving drive on a USB stall; `stop fast` to every drive at once on an
+  anomaly that can mean continued motion; incident files indexed in
+  `incidents.jsonl` as they are written. pyserial is imported only where a
+  port opens. New `scripts/bench_soak_wired.py`: the wired soak share on the
+  existing runners (prompt 09 input starts A1/A2/B1/B2/A7/I1 with the
+  `aux1` bracket, prompt 19 group plans relative/absolute, staged/sequential,
+  group stop normal/fast, prompt 14 velocity cells on drives 2 and 4 with
+  `velocity restore` on the same drive at once), the plan check before it
+  starts, group clear, the baseline I/O state and a per-field I/O diff after
+  every case, and the prepared stops before the incident on any failure. New
+  `scripts/coverage_matrix.py`: one row per inventory ID and field, index or
+  route; a G3 row cannot get a final-image PASS, an UNSUPPORTED row gets a
+  refusal check only, a roll-up keeps a known FAIL. Tests
+  `bench_stress_test.py`, `bench_soak_wired_test.py`, `coverage_matrix_test.py`
+  and an inventory test for evidence moved without the JSON.
 - Discovery `past-silent` (wired bench 19): one tuple, silent addresses
   recorded beside the findings, one bounded settle per silence counted as a
   request, any late byte or foreign frame ends the scan, and a scan with

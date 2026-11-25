@@ -265,6 +265,20 @@ class Coverage(unittest.TestCase):
         self.assertEqual(records["DRIVER_MODEL"]["source_certainty"], "DOCUMENTED_NO_RECORDED_ISSUES")
         self.assertEqual(INVENTORY["model_availability"]["qualification"], "UNQUALIFIED")
 
+    def test_moved_evidence_without_the_json_rejected(self):
+        """Wired bench 20: a report moved (archived) while the inventory still names its old path."""
+        moved = next(r for o in INVENTORY["operations"] for r in o["hardware"]["evidence"]
+                     if r.startswith("docs/reports/"))
+        original = operations.local_file
+
+        def after_move(reference):
+            path = original(reference)
+            return path.with_name(path.name + ".moved") if reference == moved else path
+        with mock.patch.object(operations, "local_file", after_move):
+            with self.assertRaisesRegex(ValueError, "missing hardware evidence: " + moved):
+                operations.check(INVENTORY, LEDGER)
+        operations.check(INVENTORY, LEDGER)  # The unmoved tree passes.
+
     def test_unknown_record_rejected(self):
         self.rejected(lambda value: value["operations"][1]["records"].append("UNKNOWN_REGISTER"))
 
