@@ -1276,6 +1276,15 @@ class Run:
         for address in self.addresses:
             try:
                 reply = self.console.send(f"stop fast {address}", 3.0)
+                if reply.get("result") == "unavailable":
+                    # Refused before TX: the firmware admits an action, a stop included, only to the
+                    # selected drive or to one with a checked reply since the last selection change
+                    # or restart (wired bench 20 b4). One read binds it; the new stop is no replay.
+                    bound = self.console.send(f"read state {address}", 3.0)
+                    if bound.get("ok"):
+                        self.console.terminal(bound, 2.0)
+                    self.safety_stops.append((address, "unavailable, bound by read", bound.get("result")))
+                    reply = self.console.send(f"stop fast {address}", 3.0)
                 item = self.console.terminal(reply, 7.0) if reply.get("ok") else None
                 self.safety_stops.append((address, reply.get("result"), (item or {}).get("outcome")))
             except Exception as error:  # A dead console cannot stop anything; say so.

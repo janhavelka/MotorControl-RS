@@ -4,6 +4,11 @@
 
 ### Added
 
+- Wired bench 20 b4: the safety stops of `bench_stress.py` and the prepared stops of
+  `bench_multi.py` (used by `bench_soak_wired.py`) bind a drive whose stop is refused
+  `unavailable` with one `read state` and send one new stop fast. The firmware admits
+  an action, a stop included, only to the selected drive or to one with a checked reply
+  since the last selection change or controller restart; the refused stop sent nothing.
 - Wired bench 20 soak tools. `scripts/bench_stress.py`: a plan check
   (`plan_check`) that validates each bench edge's role (attributed start
   through `arm trigger`, selector, switch, stop, negative) against the planned

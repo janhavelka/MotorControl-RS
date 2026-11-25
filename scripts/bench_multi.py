@@ -227,11 +227,20 @@ class Live(starts.Live):
 
 
 def prepared_stops(live):
-    """Group stop fast, then stop fast to every drive; never retried here."""
+    """Group stop fast, then stop fast to every drive; never retried here.
+
+    A drive stop refused ``unavailable`` was refused before TX: the firmware admits
+    a stop only to the selected drive or to one with a checked reply since the last
+    selection change or restart (wired bench 20 b4). One ``read state`` binds that
+    drive and one new stop fast follows; nothing sent is ever replayed.
+    """
     for name, kwargs in (("group-stop", {"host_args": ("fast",)}),
                          *(("stop", {"stop_policy": "fast", "address": a}) for a in DRIVES)):
         try:
-            live.call(name, **kwargs)
+            reply = live.call(name, **kwargs)
+            if name == "stop" and reply.get("result") == "unavailable":
+                live.call("read-state", address=kwargs["address"])
+                live.call(name, **kwargs)
         except Exception as error:  # noqa: BLE001 - recorded, not retried.
             live.detail.setdefault("prepared_stop_errors", []).append("%s: %s" % (name, error))
 

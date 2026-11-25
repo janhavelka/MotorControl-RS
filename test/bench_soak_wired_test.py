@@ -344,5 +344,23 @@ class DeclarationTests(unittest.TestCase):
             soak.arguments(base + ["--evidence-mib", "8"])
 
 
+class PreparedStopTests(unittest.TestCase):
+    def test_an_unavailable_drive_is_bound_by_one_read_then_stopped(self):
+        """Wired bench 20 b4: a stop to a drive with no checked reply since the last selection is refused."""
+        live = FakeLive()
+        live.detail = {}
+        sent = []
+
+        def call(name, **kwargs):
+            sent.append((name, kwargs.get("address")))
+            if name == "stop" and kwargs["address"] == 4 and sent.count(("stop", 4)) == 1:
+                return {"ok": False, "result": "unavailable"}
+            return {"ok": True, "result": "accepted"}
+        live.call = call
+        soak.multi.prepared_stops(live)
+        self.assertEqual(sent, [("group-stop", None), ("stop", 1), ("stop", 2), ("stop", 4), ("read-state", 4), ("stop", 4)])
+        self.assertEqual(live.detail, {})
+
+
 if __name__ == "__main__":
     unittest.main()

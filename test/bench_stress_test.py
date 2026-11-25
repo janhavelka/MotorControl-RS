@@ -380,6 +380,26 @@ class UsbModeTests(unittest.TestCase):
         run.safety_stop()
         self.assertEqual([s[1] for s in run.safety_stops], ["failed"] * 3)
 
+    def test_safety_stop_binds_an_unavailable_drive_and_sends_one_new_stop(self):
+        run = bench.Run.__new__(bench.Run)
+        run.addresses = [1, 2]
+        console = ScriptedConsole(states={2: (1, 0, 0)})
+        stops = {"stop fast 2": iter([dict(ok=False, result="unavailable"), dict(ok=True, result="accepted")])}
+        plain_send = console.send
+
+        def send(command, wait=None):
+            if command in stops:
+                console.sent.append(command)
+                return dict(next(stops[command]), _id=99)
+            return plain_send(command, wait)
+        console.send = send
+        console.terminal = lambda reply, wait: {"outcome": "observed", "ok": True, "state_blocks": []}
+        run.console = console
+        run.safety_stop()
+        self.assertEqual([c for c in console.sent if c.startswith(("stop", "read"))],
+                         ["stop fast 1", "stop fast 2", "read state 2", "stop fast 2"])
+        self.assertEqual([s[1] for s in run.safety_stops], [None, "unavailable, bound by read", "accepted"])
+
     def test_skipped_home_keeps_the_auxiliary_word(self):
         run = bench.Run.__new__(bench.Run)
         run.args = types.SimpleNamespace(skip=("home",))
