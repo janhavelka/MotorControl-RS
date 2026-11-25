@@ -415,6 +415,12 @@ class PlanCheckTests(unittest.TestCase):
                         assignments=assignments())
         self.assertEqual(bench.plan_check([start_step(), group, stop, negative] + bench.mix_plan(["plain", "mcu_reset"])), [])
 
+    def test_passive_functions_outside_the_case_are_admitted_release_is_not(self):
+        # Prompt 13 ran its trigger over the baseline origin (1) and limits of the other drives.
+        self.assertEqual(bench.plan_check([start_step(assignments=assignments(x0={1: 1, 2: 5, 4: 7}))]), [])
+        self.assertRegex(bench.plan_check([start_step(assignments=assignments(x0={1: 4, 4: 7}))])[0],
+                         "drive 1 x0 = 4 does not match")
+
     def test_raw_edge_as_attributed_start_is_rejected(self):
         problems = bench.plan_check([start_step(route="bench_on")])
         self.assertEqual(len(problems), 1)

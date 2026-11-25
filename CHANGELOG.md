@@ -23,8 +23,12 @@
   existing runners (prompt 09 input starts A1/A2/B1/B2/A7/I1 with the
   `aux1` bracket, prompt 19 group plans relative/absolute, staged/sequential,
   group stop normal/fast, prompt 14 velocity cells on drives 2 and 4 with
-  `velocity restore` on the same drive at once), the plan check before it
-  starts, group clear, the baseline I/O state and a per-field I/O diff after
+  `velocity restore` on the same drive at once, prompt 13 G1 PT trigger with
+  its PIN0 selector on `relay2` under the relay rate and budget, layout,
+  records 1-16 and position mode restored on the same drive inside the case),
+  the plan check before it starts (other drives on a switched line may hold
+  only functions that command no motion: none, origin, limits, stops), group
+  clear, the baseline I/O state and a per-field I/O diff after
   every case, and the prepared stops before the incident on any failure. New
   `scripts/coverage_matrix.py`: one row per inventory ID and field, index or
   route; a G3 row cannot get a final-image PASS, an UNSUPPORTED row gets a

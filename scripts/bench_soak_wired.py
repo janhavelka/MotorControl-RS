@@ -13,6 +13,14 @@ checks, the arm-trigger isolation and the restorations are the qualified ones:
 - group moves (``bench_multi.submit``): relative and absolute plans, staged and
   sequential, each followed by its return plan, and group stop normal/fast of a
   long absolute plan;
+- the PT trigger with its PIN selector (``bench_pt.run_regression``, prompt 13
+  G1): on drive 1, 2 or 4, stored records 1-8 set to that drive's
+  non-negative table through the typed PT setter, the layout X0 = 12, X1-X3 =
+  PIN0-PIN2, record 2 selected by PIN0 (``relay2``), armed and triggered, then
+  a trigger refused for a short PIN hold; the layout, the sixteen record words
+  and the position mode restored on the same drive inside the case. The relay
+  rate (one ON per 2 s) and budget apply; each case's ``relay2`` operations are
+  counted from ``bench`` views;
 - velocity inside prompt 14's envelope (``bench_velocity.velocity_run`` with
   the qualified 100/100 ms cell at subdivision 1000, 120-600 rpm, 2 s) on
   drives 2 and 4 (D15 safeguard 14), its words restored by ``velocity
@@ -28,12 +36,15 @@ restoring them after each case revokes the start-speed relation and refuses
 group moves until a controller restart. Any exception or failed case sends
 the prepared ``group stop fast`` and ``stop fast`` to every drive at once,
 writes its incident file and ends the soak; nothing is retried or replayed.
-Relay operations are counted from ``bench`` views (none of these cases
-switches a relay). Exit codes: 0 duration, case limit or evidence headroom
+Relay operations are counted from ``bench`` views; only the PT case
+switches a relay. NOT RUN for K1, not in the soak driver: the limit-switch
+pulse (prompt 11) and prompt 07's own stop-input procedure (A7 is the stop
+input). Exit codes: 0 duration, case limit, evidence headroom or relay budget
 reached; 3 anomaly.
 """
 import argparse
 import json
+import math
 import random
 import sys
 import time
@@ -42,6 +53,7 @@ from pathlib import Path
 import bench_input_starts as starts
 import bench_multi as multi
 import bench_probe as probe
+import bench_pt as pt
 import bench_records as records
 import bench_stop_inputs as stops
 import bench_stress as stress
@@ -55,6 +67,11 @@ VELOCITY_DRIVES = (2, 4)           # D15 safeguard 14: velocity phase on drive 2
 VELOCITY_RPM = (120, 300, 600)     # Inside 14's C1 cells: ramps 100 ms, subdivision 1000, 2 s.
 VELOCITY_MS = 2000
 RELATIVE = {1: 1000, 2: -800, 4: 500}
+PT_DRIVES = tuple(sorted(pt.TABLES))      # Non-negative tables only (prompt 13, D15 safeguard 13).
+PT_RECORD = pt.CASES["G1"]["record"]      # Record 2: PIN0 on, the others off.
+PT_RELAY = pt.PIN_OUTPUTS[0]              # relay2 on X1.
+PT_RELAY_OPS_MAX = 3                      # relay2 ONs one regression may make (two selections, one renewal).
+SHORT_HOLD = "a PIN output's hold ends before the trigger pulse and its margin"
 TOLERANCE = 2                      # Endpoint increments; drive 4's recorded feedback offset is 1-2.
 SNAPSHOTS = {"snapshots": {"velocity": True}}  # Velocity words: velocity restore of the case's own snapshot.
 # name: (family, weight, runner argument). Starts name their prompt 09 case.
@@ -69,6 +86,7 @@ CASES = {
     "group_stop_normal": ("group", 3, ("absolute", "staged", "normal")),
     "group_stop_fast": ("group", 3, ("absolute", "staged", "fast")),
     "velocity": ("velocity", 10, None),
+    "pt_trigger": ("pt", 6, None),
 }
 
 
@@ -82,11 +100,26 @@ def assignments(state_name):
     return {a: {"x0": state["x0"][a], "x1": 2, "x2": 3, "x3": state["x3"][a]} for a in DRIVES}
 
 
+def pt_assignments(address):
+    """Prompt 13's layout on ``address``; the other drives keep the 01 baseline words."""
+    planned = assignments("BASE")
+    planned[address] = dict(pt.LAYOUT)
+    return planned
+
+
 def plan_steps(names):
     """``bench_stress.plan_check`` steps: each edge of each case with its role."""
     steps = []
     for name in names:
         family, _, argument = CASES[name]
+        if family == "pt":
+            for address in PT_DRIVES:  # The case picks one of them.
+                planned = pt_assignments(address)
+                steps.append(dict(case=name, role="selector", route="bench_on", output=PT_RELAY, members=[address],
+                                  function=pt.LAYOUT["x1"], assignments=planned))
+                steps.append(dict(case=name, role="attributed_start", route="arm_trigger", output=pt.TRIGGER_OUTPUT,
+                                  members=[address], function=pt.LAYOUT["x0"], assignments=planned))
+            continue
         if family != "starts":
             steps.append(dict(case=name, role="serial"))
             continue
@@ -134,9 +167,40 @@ def velocity_problems(name, detail):
         out.append("%s: terminal %s" % (name, run.get("terminal")))
     if (run.get("settle") or {}).get("moving"):
         out.append("%s: still moving after the run" % name)
-    out += ["%s: velocity word %s not restored" % (name, r.get("key")) for r in detail.get("restored", [])
-            if not r.get("restored") or r.get("uncertain")]
+    return out + restored_problems(name, detail.get("restored", []))
+
+
+def pt_problems(name, trial):
+    """The record run (prompt 13 run verdict) and the refused short-hold trigger."""
+    if not trial:
+        return ["%s: no trial" % name]
+    out = []
+    verdict, reason = (trial.get("run") or {}).get("verdict") or ("FAIL", "no run")
+    if verdict != "PASS":
+        out.append("%s record %d: %s" % (name, PT_RECORD, reason))
+    trigger = trial.get("trigger") or {}
+    if not (trigger.get("admitted") is False and trigger.get("reason") == SHORT_HOLD and
+            trial.get("ons_before") is not None and trial.get("ons_before") == trial.get("ons_after")):
+        out.append("%s: short PIN hold trigger %s, mosfet1 ons %s -> %s" % (
+            name, trigger, trial.get("ons_before"), trial.get("ons_after")))
+    if trial.get("continued_motion"):
+        out.append("%s: continued motion %s" % (name, trial["continued_motion"]))
     return out
+
+
+def relay_problems(name, operations, seconds):
+    """More relay ONs than the case plans, or faster than one per RELAY_MIN_INTERVAL_S."""
+    out = []
+    if operations > PT_RELAY_OPS_MAX:
+        out.append("%s: %d %s operations, planned at most %d" % (name, operations, PT_RELAY, PT_RELAY_OPS_MAX))
+    if operations > 1 and seconds < stress.RELAY_MIN_INTERVAL_S * (operations - 1):
+        out.append("%s: %d %s operations in %.1f s" % (name, operations, PT_RELAY, seconds))
+    return out
+
+
+def restored_problems(name, results):
+    return ["%s: %s %s not restored (%s)" % (name, r.get("key"), r.get("index"), r.get("reason")) for r in results
+            if not r.get("restored") or r.get("uncertain")]
 
 
 def restoration_problems(diff, states):
@@ -154,18 +218,27 @@ def restoration_problems(diff, states):
 class Soak:
     """One soak session: the case loop, bookkeeping and per-case restoration."""
 
-    def __init__(self, live, vlive, args, folder):
-        self.live, self.vlive, self.args, self.folder = live, vlive, args, folder
+    def __init__(self, live, vlive, args, folder, ptlive=None):
+        self.live, self.vlive, self.ptlive, self.args, self.folder = live, vlive, ptlive, args, folder
         self.random = random.Random(args.seed)
         self.names = [n for n in CASES if not args.only or n in args.only]
         self.relays = stress.RelayCounter(args.relay_used)
         self.counts, self.anomalies, self.health = {}, [], []
         self.completed, self.ended = 0, None
-        self.velocity_plans = {}
-        self.runners = {"starts": self.run_start, "group": self.run_group, "velocity": self.run_velocity}
+        self.velocity_plans, self.pt_plans = {}, {}
+        self.runners = {"starts": self.run_start, "group": self.run_group, "velocity": self.run_velocity,
+                        "pt": self.run_pt}
+
+    def relay_planned(self):
+        """Worst case relay2 operations of a case-limited soak: its PT share at PT_RELAY_OPS_MAX each."""
+        if self.args.cases is None or "pt_trigger" not in self.names:
+            return {}
+        share = CASES["pt_trigger"][1] / sum(CASES[n][1] for n in self.names)
+        # Twice the expected share, as a margin for the random draw; the loop also stops at the budget.
+        return {PT_RELAY: math.ceil(2 * self.args.cases * share * PT_RELAY_OPS_MAX)}
 
     def plan_check(self):
-        return stress.plan_check(plan_steps(self.names), self.args.relay_used)
+        return stress.plan_check(plan_steps(self.names), self.args.relay_used, self.relay_planned())
 
     # Runners: each returns (detail, problems).
     def run_start(self, name, cid):
@@ -216,11 +289,40 @@ class Soak:
             v.snapshots.pop("velocity", None)
         return detail, velocity_problems(name, detail)
 
+    def run_pt(self, name, _argument):
+        """One prompt 13 G1 regression; layout, records and mode restored on the same drive."""
+        p = self.ptlive
+        if self.live.current != "BASE" or self.live.group:
+            raise probe.BenchError("the PT layout starts only from the baseline I/O state without a group")
+        address = self.random.choice(PT_DRIVES)
+        time.sleep(self.relays.admit(PT_RELAY, time.monotonic()))
+        before = self.relays.total(PT_RELAY)
+        began = time.monotonic()
+        detail = {"address": address, "record": PT_RECORD}
+        try:
+            pt.setup_table(p, address, 0)
+            detail["trial"] = pt.run_regression(p, address, PT_RECORD)
+        finally:
+            try:
+                pt.outputs_off(p)
+                pt.restore_layout(p, address)  # The trigger function first.
+            finally:
+                detail["restored"] = [{k: r.get(k) for k in ("key", "index", "restored", "uncertain", "reason")}
+                                      for r in _stop_restore(p.console, p, p.run, self.pt_plans[address], p.timeout,
+                                                             owner=address)]
+                self.relays.observe(p.call("bench", host_args=()).get("outputs"))
+                self.relays.last_on[PT_RELAY] = time.monotonic()  # Upper bound of the last ON.
+        detail["relay_operations"] = self.relays.total(PT_RELAY) - before
+        return detail, (pt_problems(name, detail.get("trial")) + restored_problems(name, detail["restored"]) +
+                        relay_problems(name, detail["relay_operations"], time.monotonic() - began))
+
     # Bookkeeping.
     def trim(self, keep=2000):
         """Bounded host memory over hours: recent events and samples only; the
         bench views (aux1 edges) belong to the finished case."""
-        for live in (self.live, self.vlive):
+        for live in (self.live, self.vlive, self.ptlive):
+            if live is None:
+                continue
             del live.events[:-keep]
             del live.samples[:-keep]
             live.views.clear()
@@ -285,6 +387,9 @@ class Soak:
                 break
             name = self.random.choices(self.names, weights)[0]
             family, _, argument = CASES[name]
+            if family == "pt" and self.relays.total(PT_RELAY) + PT_RELAY_OPS_MAX > stress.RELAY_BUDGET:
+                self.ended = "relay budget"
+                break
             detail, problems, error = None, [], None
             try:
                 detail, problems = self.runners[family](name, argument)
@@ -321,7 +426,25 @@ def write_list():
     for a in VELOCITY_DRIVES:
         for key in records.SNAPSHOT_ROUTES["velocity"]["keys"]:
             entries.setdefault((a, key), {"drive": a, "key": key, "index": None, "candidate": None})
-    return list(entries.values())
+    out = list(entries.values())
+    for a in PT_DRIVES:
+        out += [e for e in pt_entries(a) if (e["drive"], e["key"]) not in entries or e["index"] is not None]
+    return out
+
+
+def pt_entries(address):
+    """Fields one PT case changes: the layout, records 1-16 target and speed, the position mode."""
+    out = [{"drive": address, "key": "io." + t, "index": None, "candidate": pt.LAYOUT[t]} for t in records.TERMINALS]
+    for n in range(1, 17):
+        out.append({"drive": address, "key": "records.position.target", "index": n, "candidate": None})
+        out.append({"drive": address, "key": "records.position.speed", "index": n, "candidate": None})
+    return out + [{"drive": address, "key": "drive.position-mode", "index": None, "candidate": 0}]
+
+
+def pt_plan(baseline, address, image_level):
+    """The in-case restoration of records and mode on ``address`` (the layout goes back through restore_layout)."""
+    return records.restoration_plan(baseline, [e for e in pt_entries(address) if not e["key"].startswith("io.")],
+                                    image_level, pt.pt_facts())
 
 
 def final_plan(plan):
@@ -330,14 +453,33 @@ def final_plan(plan):
     return dict(plan, steps=[s for s in plan["steps"] if not s.get("snapshot")])
 
 
+def merge_facts(*sources):
+    """Union of scenario facts ({drive: {purpose: {terminal: [facts]}}}), lists in first-seen order."""
+    out = {}
+    for source in sources:
+        for key, value in source.items():
+            if isinstance(value, dict):
+                out[key] = merge_facts(out.get(key, {}), value)
+            elif isinstance(value, list):
+                out[key] = list(out.get(key, [])) + [v for v in value if v not in out.get(key, [])]
+            else:
+                out.setdefault(key, value)
+    return out
+
+
+def soak_facts():
+    """The facts of the prompt 09 states and of prompt 13's layout and segments."""
+    return merge_facts(starts.facts(), pt.pt_facts())
+
+
 def scenario_record(args, image, baseline):
     entries = write_list()
     cid = args.case_id
     return dict(image=image, commit=args.commit, port=args.port,
-                drives=[{"address": a, "required_enabled": True} for a in DRIVES], terminals=["x0", "x3", "y0"],
+                drives=[{"address": a, "required_enabled": True} for a in DRIVES], terminals=["x0", "x1", "x2", "x3", "y0"],
                 commands=["per case: bench_input_starts.run_case (enter state, arm position/trigger/inspect, disarm), "
                           "bench_multi.submit (group plans, group stop), bench_velocity.velocity_run (velocity cell, "
-                          "velocity restore on the same drive); then group clear, enter state BASE, io diff, read state 1 2 4",
+                          "velocity restore on the same drive), bench_pt.setup_table + run_regression (records 1-8, layout, PIN0 on relay2, arm segment, arm trigger; restore_layout and the records/mode plan on the same drive); then group clear, enter state BASE, io diff, read state 1 2 4",
                           "restore: stop fast 1, 2, 4; restoration plan (profile stage, I/O words, velocity restore)"],
                 cases=[{"id": cid, "required": True, "assertion": "wired soak share: zero anomalies, restoration clean",
                         "required_levels": ["drive-reported", "controller-timestamped"]}],
@@ -349,14 +491,14 @@ def scenario_record(args, image, baseline):
                                     "the controller or harness dies during velocity, rotation continues until a "
                                     "restarted controller stops it (D11)"},
                 prepared_stop=["group stop fast; stop fast 1, 2, 4 (every bench output drops first)"],
-                restoration_plan=records.restoration_plan(baseline, entries, args.image_level, starts.facts(),
+                restoration_plan=records.restoration_plan(baseline, entries, args.image_level, soak_facts(),
                                                          context=SNAPSHOTS),
                 left_changed=[], expected_evidence={cid: "soak.json, health.jsonl, incident files, session logs"},
                 abort_conditions=["any non-PASS case verdict or exception", "an I/O word differing from the baseline after "
                                   "a case", "a drive not read stopped and alarm-free after a case"],
                 cleanup=["prepared stops", "restoration plan, read back", "group clear", "bench outputs off",
                          "ending reads", "close COM13"],
-                max_age_ms=records.MAX_AGE_MS, facts=starts.facts(), image_level=args.image_level)
+                max_age_ms=records.MAX_AGE_MS, facts=soak_facts(), image_level=args.image_level)
 
 
 def arguments(argv=None):
@@ -366,7 +508,7 @@ def arguments(argv=None):
     parser.add_argument("--firmware", type=Path, required=True, help="running image (SHA-256 recorded)")
     parser.add_argument("--commit", required=True)
     parser.add_argument("--case-id", choices=("K1", "K2"), default="K1")
-    parser.add_argument("--image-level", default="19")
+    parser.add_argument("--image-level", default="20")
     parser.add_argument("--timeout", type=float, default=5.0)
     parser.add_argument("--duration", type=float, default=3600.0)
     parser.add_argument("--cases", type=int, help="end after this many completed cases")
@@ -397,7 +539,8 @@ def main(argv=None):
     run = _Run(scenario, folder)
     live = multi.Live(run, baseline, args)
     vlive = velocity.Live(None, run, baseline, argparse.Namespace(**vars(args), address=VELOCITY_DRIVES[0]), args.timeout)
-    soak = Soak(live, vlive, args, folder.path)
+    ptlive = pt.Live(None, run, baseline, args, args.timeout)
+    soak = Soak(live, vlive, args, folder.path, ptlive)
     problems = soak.plan_check()
     folder.write_json("plan_check.json", {"steps": plan_steps(soak.names), "problems": problems})
     if problems:
@@ -406,13 +549,14 @@ def main(argv=None):
 
     def work(console):
         nonlocal code
-        live.console = vlive.console = console
+        live.console = vlive.console = ptlive.console = console
         live.detail["motion"] = True
         multi.baseline_before(live)
         starts.enter_state(live, "BASE")
         soak.velocity_plans = {a: records.restoration_plan(
             baseline, [e for e in scenario["write_list"] if e["drive"] == a and records.snapshot_route(e["key"])],
             args.image_level, starts.facts(), context=SNAPSHOTS) for a in VELOCITY_DRIVES}
+        soak.pt_plans = {a: pt_plan(baseline, a, args.image_level) for a in PT_DRIVES}
         try:
             code = soak.loop()
         finally:

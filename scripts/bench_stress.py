@@ -54,14 +54,19 @@ MOTION_FUNCTIONS = frozenset(range(7, 18))  # Start, trigger, speed, JOG, PV, PT
 STOP_FUNCTIONS = frozenset({5, 6})          # Stop, emergency stop.
 SWITCH_FUNCTIONS = frozenset({1, 2, 3})     # Origin, positive limit, negative limit.
 INERT = frozenset({0})
+# Functions that command no motion on an idle drive: none, origin and limit
+# sensors, stops. Release (4) and 7-17 are never admitted outside the case
+# (prompt 13 ran its PIN and trigger edges over the baseline origin and limit
+# inputs of the other drives).
+PASSIVE = INERT | SWITCH_FUNCTIONS | STOP_FUNCTIONS
 # Role: (route of the edge, functions admitted on a member's switched terminal,
 # functions admitted on every other drive on that line).
 ROLES = {
-    "attributed_start": ("arm_trigger", MOTION_FUNCTIONS, INERT),
-    "selector": ("bench_on", MOTION_FUNCTIONS, INERT),
-    "switch": ("bench_on", SWITCH_FUNCTIONS, INERT | SWITCH_FUNCTIONS),
-    "stop": ("bench_on", STOP_FUNCTIONS, INERT | STOP_FUNCTIONS),
-    "negative": ("bench_on", INERT | SWITCH_FUNCTIONS | STOP_FUNCTIONS, INERT | SWITCH_FUNCTIONS | STOP_FUNCTIONS),
+    "attributed_start": ("arm_trigger", MOTION_FUNCTIONS, PASSIVE),
+    "selector": ("bench_on", MOTION_FUNCTIONS, PASSIVE),
+    "switch": ("bench_on", SWITCH_FUNCTIONS, PASSIVE),
+    "stop": ("bench_on", STOP_FUNCTIONS, PASSIVE),
+    "negative": ("bench_on", PASSIVE, PASSIVE),
 }
 RELAYS = ("relay1", "relay2")
 RELAY_BUDGET = 10000         # Per relay for the whole set: 10 % of the FTR-B4 rated electrical minimum.
