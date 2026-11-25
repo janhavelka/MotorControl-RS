@@ -227,6 +227,7 @@ class Soak:
         self.counts, self.anomalies, self.health = {}, [], []
         self.completed, self.ended = 0, None
         self.velocity_plans, self.pt_plans = {}, {}
+        self.velocity_drives = set()  # Drives whose velocity words a case wrote (and restored at once).
         self.runners = {"starts": self.run_start, "group": self.run_group, "velocity": self.run_velocity,
                         "pt": self.run_pt}
 
@@ -288,6 +289,7 @@ class Soak:
     def run_velocity(self, name, _argument):
         v = self.vlive
         v.address = self.random.choice(VELOCITY_DRIVES)
+        self.velocity_drives.add(v.address)
         v.snapshots.pop("velocity", None)
         records.use_drive(v.console, v.address, timeout_s=v.timeout)
         velocity.qualify_velocity(v)
@@ -634,6 +636,12 @@ def main(argv=None):
                 value = (records.baseline_field(baseline, entry["drive"], entry["key"]) or {}).get("value")
                 run.field(entry, baseline=value, ending=value, restored=True,
                           reason="restored and read back with the drive's 0x0021/5 stage window")
+    for entry in scenario["write_list"]:  # Velocity words change only in a velocity case on that drive.
+        if (records.snapshot_route(entry["key"]) == "velocity" and entry["drive"] not in soak.velocity_drives and
+                (entry["drive"], entry["key"], entry.get("index")) not in run.fields):
+            value = (records.baseline_field(baseline, entry["drive"], entry["key"]) or {}).get("value")
+            run.field(entry, baseline=value, ending=value, restored=True,
+                      reason="not written: no velocity case ran on this drive in this run")
     state = run.cases[args.case_id]
     cases = [{**scenario["cases"][0], "verdicts": state["verdicts"], "reason": state["reason"],
               "evidence": [p for p in ["soak.json", "health.jsonl", "plan_check.json"] if (folder / p).exists()]}]
