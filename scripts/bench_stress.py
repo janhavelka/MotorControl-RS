@@ -37,12 +37,179 @@ import subprocess
 import sys
 import time
 
-import serial
-import serial.tools.list_ports as list_ports
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import bench_records as records  # noqa: E402  (no pyserial import)
 
 IDENTITY = (0x303A, 0x1001, "3C:0F:02:CD:6B:98")
 HOME_FACTS = "mechanics rates ramp zero-offset auxiliary inputs"
 RUNNING, HOMED, ARRIVED, ALARM_BIT, RELEASED = 4, 2, 1, 8, 16
+
+# Soak plan (wired bench 20 item 3). Every bench edge names its role; the plan
+# check compares the role with the input functions planned for drives 1, 2
+# and 4 at that step (COMMON "Shared outputs"). Function codes: InputFunction.
+DRIVES = tuple(records.FIXTURE["input_drives"])
+OUTPUTS = dict(records.FIXTURE["outputs"])
+TERMINALS = records.TERMINALS
+MOTION_FUNCTIONS = frozenset(range(7, 18))  # Start, trigger, speed, JOG, PV, PT, home and selector (COMMON).
+STOP_FUNCTIONS = frozenset({5, 6})          # Stop, emergency stop.
+SWITCH_FUNCTIONS = frozenset({1, 2, 3})     # Origin, positive limit, negative limit.
+INERT = frozenset({0})
+# Role: (route of the edge, functions admitted on a member's switched terminal,
+# functions admitted on every other drive on that line).
+ROLES = {
+    "attributed_start": ("arm_trigger", MOTION_FUNCTIONS, INERT),
+    "selector": ("bench_on", MOTION_FUNCTIONS, INERT),
+    "switch": ("bench_on", SWITCH_FUNCTIONS, INERT | SWITCH_FUNCTIONS),
+    "stop": ("bench_on", STOP_FUNCTIONS, INERT | STOP_FUNCTIONS),
+    "negative": ("bench_on", INERT | SWITCH_FUNCTIONS | STOP_FUNCTIONS, INERT | SWITCH_FUNCTIONS | STOP_FUNCTIONS),
+}
+RELAYS = ("relay1", "relay2")
+RELAY_BUDGET = 10000         # Per relay for the whole set: 10 % of the FTR-B4 rated electrical minimum.
+RELAY_MIN_INTERVAL_S = 2.0   # Per relay, no faster than the rated test rate (0.5 Hz).
+RESET_CASES = ("mcu_reset", "simple_boot")
+# Anomalies that can mean continued motion: the prepared stop fast goes out at once.
+CONTINUED_MOTION = ("OTHER_DRIVE", "RUNNING_STUCK", "RUNNING_AFTER_STOP", "NOT_SETTLED")
+
+
+def plan_check(steps, relay_used=None, relay_planned=None):
+    """Rejections of a soak plan before it starts; an empty list admits it.
+
+    A step has ``case`` and ``role``. ``serial`` steps switch no output. A
+    ``reset`` step needs ``interlock`` True. An edge step names ``output``,
+    ``route`` (``arm_trigger`` or ``bench_on``), ``members``, the members'
+    ``function`` for starts and selectors, and ``assignments``
+    {drive: {terminal: function}} of drives 1, 2 and 4 at that step.
+    ``relay_used`` (operations since prompt 01) plus ``relay_planned`` must stay
+    within RELAY_BUDGET per relay; a plan that switches a relay needs
+    ``relay_used``.
+    """
+    problems = []
+    for step in steps:
+        name, role = step.get("case"), step.get("role")
+        if role == "reset":
+            if step.get("interlock") is not True:
+                problems.append(f"{name}: reset without the before-reset interlock")
+            continue
+        if role == "serial":
+            continue
+        if role not in ROLES:
+            problems.append(f"{name}: unknown edge role {role}")
+            continue
+        route, member_functions, other_functions = ROLES[role]
+        if role == "attributed_start" and step.get("route") != "arm_trigger":
+            problems.append(f"{name}: raw edge used as the start of an attributed operation")
+            continue
+        if step.get("route") != route:
+            problems.append(f"{name}: route {step.get('route')} does not match role {role}")
+            continue
+        terminal = OUTPUTS.get(step.get("output"))
+        assignments = step.get("assignments") or {}
+        if terminal is None or any(set(assignments.get(d) or {}) != set(TERMINALS) for d in DRIVES):
+            problems.append(f"{name}: output or planned assignments of drives {DRIVES} incomplete")
+            continue
+        members = set(step.get("members") or ())
+        if role in ("attributed_start", "selector", "switch", "stop") and not members:
+            problems.append(f"{name}: {role} edge without members")
+            continue
+        for drive in DRIVES:
+            function = assignments[drive][terminal]
+            if drive in members:
+                admitted = function in member_functions and (
+                    role not in ("attributed_start", "selector") or function == step.get("function"))
+            else:
+                admitted = function in other_functions
+            if not admitted:
+                problems.append(f"{name}: drive {drive} {terminal} = {function} does not match role {role}")
+    relays = {s.get("output") for s in steps if s.get("output") in RELAYS} | set(relay_planned or ())
+    if relays and relay_used is None:
+        problems.append("relay operations since prompt 01 not stated")
+    for relay in RELAYS:
+        total = (relay_used or {}).get(relay, 0) + (relay_planned or {}).get(relay, 0)
+        if total > RELAY_BUDGET:
+            problems.append(f"{relay}: {total} operations exceed the budget of {RELAY_BUDGET}")
+    return problems
+
+
+def mix_plan(names):
+    """Plan steps of a mix: resets carry the interlock this harness always runs."""
+    return [dict(case=n, role="reset", interlock=True) if n in RESET_CASES else dict(case=n, role="serial")
+            for n in names]
+
+
+class RelayCounter:
+    """Relay operations (``bench`` view ``ons``) of this run, on top of the
+    operations recorded before it. ``ons`` counts from boot, so a lower count
+    is a controller restart and the earlier session's count is kept."""
+
+    def __init__(self, used=None):
+        self.used = dict(used or {})
+        self.run = {r: 0 for r in RELAYS}
+        self.seen = {}
+        self.last_on = {}
+
+    def observe(self, outputs):
+        for output in outputs or ():
+            name, ons = output.get("name"), output.get("ons")
+            if name not in RELAYS or type(ons) is not int:
+                continue
+            previous = self.seen.get(name)
+            if previous is not None:
+                self.run[name] += ons - previous if ons >= previous else ons
+            self.seen[name] = ons
+
+    def total(self, relay):
+        return self.used.get(relay, 0) + self.run[relay]
+
+    def admit(self, relay, now):
+        """Seconds to wait before the next ON of ``relay``; Anomaly when the budget is spent."""
+        if self.total(relay) + 1 > RELAY_BUDGET:
+            raise Anomaly("RELAY_BUDGET", {"relay": relay, "total": self.total(relay)})
+        return max(0.0, self.last_on.get(relay, float("-inf")) + RELAY_MIN_INTERVAL_S - now)
+
+    def totals(self):
+        return {r: dict(before=self.used.get(r, 0), run=self.run[r], total=self.total(r)) for r in RELAYS}
+
+
+def declared_wiring_problem(reply, address):
+    """Prompt 02's board declaration in force for ``address``: the table
+    applied, its masks equal to the fixture, the bench output map applied and
+    no host override. Returns the first problem, or None."""
+    expected = records._expected_board(address)
+    if any(key not in reply for key in ("board", "sources", "fixture", "bench_outputs")):
+        return "wiring reply lacks the board declaration or the bench output map"
+    if reply["fixture"] != "applied":
+        return "board fixture table %s" % reply["fixture"]
+    if reply["board"] != expected:
+        return "board declaration %s differs from the fixture %s" % (reply["board"], expected)
+    if reply.get("bench_output_map") != "applied" or reply["bench_outputs"] != records.expected_bench_outputs():
+        return "bench output map differs from the fixture"
+    if (reply.get("inputs") or []) + (reply.get("outputs") or []) != expected["inputs"] + expected["outputs"]:
+        return "session declarations differ from the board table"
+    return None
+
+
+def option_problems(args):
+    """Option combinations refused before the port opens."""
+    problems = []
+    if getattr(args, "declare_unconnected", False) and getattr(args, "wiring", "as-found") == "declared":
+        problems.append("--declare-unconnected contradicts the declared wiring of prompt 02")
+    if getattr(args, "cases", None) is not None and args.cases < 1:
+        problems.append("--cases needs a positive count")
+    return problems
+
+
+def _serial():
+    """pyserial, imported where a port opens, so the tests run without it."""
+    import serial
+    import serial.tools.list_ports  # noqa: F401  (binds serial.tools)
+    return serial
+
+
+def _pyserial_version():
+    try:
+        return _serial().__version__
+    except ImportError:
+        return None
 
 
 class Anomaly(Exception):
@@ -57,7 +224,7 @@ class Unresponsive(Exception):
 
 class Console:
     def __init__(self, port, out, ring=6000):
-        found = [p for p in list_ports.comports() if p.device == port]
+        found = [p for p in _serial().tools.list_ports.comports() if p.device == port]
         if not found or (found[0].vid, found[0].pid, found[0].serial_number) != IDENTITY:
             raise SystemExit(f"{port} is not the recorded bench device")
         self.name, self.out = port, out
@@ -74,7 +241,7 @@ class Console:
         self.open()
 
     def open(self):
-        self.port = serial.Serial()
+        self.port = _serial().Serial()
         self.port.port = self.name
         self.port.baudrate = 115200
         self.port.timeout = 0.005
@@ -89,7 +256,7 @@ class Console:
 
     def reset_mcu(self):
         self.close()
-        s = serial.Serial()
+        s = _serial().Serial()
         s.port = self.name
         s.baudrate = 115200
         s.dtr = False
@@ -101,7 +268,7 @@ class Console:
         s.close()
         for _ in range(40):
             time.sleep(0.25)
-            if any(p.device == self.name and p.serial_number == IDENTITY[2] for p in list_ports.comports()):
+            if any(p.device == self.name and p.serial_number == IDENTITY[2] for p in _serial().tools.list_ports.comports()):
                 break
         time.sleep(3.0)
         self.terminals.clear()
@@ -208,7 +375,7 @@ class Console:
 def host_info():
     """Host OS, Python, pyserial and the board's USB driver (Windows PnP), for stall records."""
     info = dict(os=platform.platform(), python=platform.python_version(),
-                pyserial=getattr(serial, "__version__", None), driver=None)
+                pyserial=_pyserial_version(), driver=None)
     if sys.platform == "win32":
         query = ("Get-CimInstance Win32_PnPSignedDriver | Where-Object { $_.HardwareID -like '*VID_303A&PID_1001*' } | "
                  "Select-Object DeviceName,DriverVersion,DriverProviderName,InfName | ConvertTo-Json -Compress")
@@ -252,6 +419,22 @@ def state_fields(item):
     return out
 
 
+def stop_confirmed(reply, item, address):
+    """A fresh normal stop of ``address`` whose terminal proves observed standstill."""
+    motion = (item or {}).get("raw_motion")
+    return bool(
+        reply.get("ok") and reply.get("result") == "accepted"
+        and item and item.get("ok") is True and item.get("type") == "action"
+        and item.get("id") == reply.get("_id") and item.get("command_id") == reply.get("_id")
+        and reply.get("operation_id") and item.get("operation_id") == reply["operation_id"]
+        and item.get("action_kind") == "stop" and item.get("stop_policy") == "normal"
+        and item.get("target") == address and item.get("address") == address
+        and item.get("state") == "succeeded" and item.get("outcome") == "observed"
+        and item.get("execution") == "acknowledged" and item.get("completion") == "observed"
+        and item.get("observation_known") is True and item.get("raw_alarm") == 0
+        and type(motion) is int and 0 <= motion <= 0xFFFF and not motion & (RUNNING | ALARM_BIT))
+
+
 class Run:
     address = 1  # Selected drive; tools built without __init__ keep node 1.
 
@@ -278,6 +461,11 @@ class Run:
         self.moved = 0
         self.last = None
         self.host = host_info()
+        self.completed = 0
+        self.by_design = set()     # Drives that move by design in the current case.
+        self.group_active = False  # A group operation of the current case may be moving.
+        self.relays = RelayCounter(getattr(args, "relay_used", None))
+        self.plan = None
         if getattr(args, "usb", "off") == "slow-reader":
             self.console.pause_chance = 0.3
             self.console.rng = random.Random(args.seed)
@@ -317,7 +505,8 @@ class Run:
         return state_fields(item)
 
     def cross_read(self):
-        """One read of another drive: it must stay stopped, alarm-free and in place."""
+        """One read of another drive: it must stay stopped, alarm-free and in place,
+        unless the current case moves it by design (then alarm-free only)."""
         others = [a for a in getattr(self, "addresses", [self.address]) if a != self.address]
         if not getattr(self.args, "cross_reads", False) or not others:
             return
@@ -325,6 +514,11 @@ class Run:
         fields = self.read_other(other)
         self.counts["cross_read"] += 1
         known = self.positions.get(other)
+        if other in getattr(self, "by_design", ()):
+            if fields.get("raw_alarm"):
+                raise Anomaly("OTHER_DRIVE", {"address": other, "fields": fields, "by_design": True,
+                                              "moving": self.address})
+            return
         if (fields.get("raw_alarm") or fields.get("raw_motion", 0) & RUNNING or
                 (known is not None and fields.get("position") != known)):
             raise Anomaly("OTHER_DRIVE", {"address": other, "fields": fields, "expected_position": known,
@@ -369,7 +563,13 @@ class Run:
         if not reply.get("ok"):
             raise Anomaly("SELECT", (f"useaddr {address}", reply.get("result")))
         self.address = self.selected = address
-        if getattr(self.args, "declare_unconnected", False):
+        if getattr(self.args, "wiring", "as-found") == "declared":
+            # Prompt 02's board table states every X terminal and drive 4's Y0
+            # connected; useaddr restores it, so it is checked, never declared.
+            problem = declared_wiring_problem(self.console.send("wiring"), address)
+            if problem:
+                raise Anomaly("SELECT", ("wiring", f"drive {address}: {problem}"))
+        elif getattr(self.args, "declare_unconnected", False):
             # useaddr resets the host's wiring declarations to the board table or
             # the default. "Nothing wired" is a stated fixture fact, never a drive
             # change; it is refused when the immutable board declaration says a
@@ -597,14 +797,37 @@ class Run:
         self.moved += delta
         return f"rpm={rpm} interrupts={interrupts} delta={delta} refused={self.refused}"
 
+    def reset_interlock(self):
+        """COMMON "Before every flash or controller reset", read back just before
+        the reset: drives 1, 2 and 4 stopped, alarm-free, at zero speed and with
+        no input function 7-17. RESET_INTERLOCK otherwise; nothing is reset."""
+        rows = {}
+        for address in DRIVES:
+            config = self.read(f"config {address}")
+            inputs = (config.get("config") or {}).get("inputs") or []
+            functions = [e.get("function") for e in inputs]
+            fields = self.read_other(address)
+            problems = []
+            if len(functions) != 4 or not all(e.get("known") is True for e in inputs):
+                problems.append("input functions not known")
+            elif any(type(f) is not int or 7 <= f <= 17 for f in functions):
+                problems.append(f"input function 7-17 assigned: {functions}")
+            if (fields.get("raw_alarm") != 0 or fields.get("raw_motion", RUNNING) & RUNNING or
+                    "raw_speed" not in fields or fields["raw_speed"]):
+                problems.append("not reported stopped, alarm-free and at zero speed")
+            rows[address] = dict(functions=functions, problems=problems)
+        self.counts["reset_interlock"] += 1
+        if any(r["problems"] for r in rows.values()):
+            raise Anomaly("RESET_INTERLOCK", rows)
+        return rows
+
     def case_mcu_reset(self):
-        """Controller reset while idle or during a finite move. The drive owns the move and finishes it."""
-        moving = self.random.random() < 0.7
+        """Controller reset at standstill after the before-reset interlock; resets
+        during motion stay wired bench 18's evidence."""
+        moving = False
         steps, rpm = 3000, 60
         before = self.prepare()
-        if moving:
-            self.start_move(steps, rpm)
-            self.console.pump(self.random.uniform(0.05, 2.5))
+        self.reset_interlock()
         self.console.reset_mcu()
         self.t0 = time.time()
         self.console.send("debug " + self.args.debug, 3.0)
@@ -655,6 +878,7 @@ class Run:
         if 1 not in getattr(self, "addresses", [1]):
             return "skipped: the boot zero belongs to node 1"
         self.select(1)  # The firmware sets its boot zero only for the startup drive.
+        self.reset_interlock()
         self.console.reset_mcu()
         self.console.send("debug " + self.args.debug, 3.0)
         self.after_reset()
@@ -857,29 +1081,28 @@ class Run:
         self.usb_stalls.append(record)
         self.counts["usb_stall"] += 1
         if not isinstance(drv, str):
-            # One fresh stop after reconnect; never replay a request lost earlier.
+            # One fresh stop per moving drive after reconnect (a group stop first
+            # for group cases); never replay a request lost earlier.
             c.next_id += 1
+            record["stops"] = []
             try:
-                reply = c.send(f"stop normal {self.address}", 3.0)
-                record["stop_reply"] = reply
-                if reply.get("ok") and reply.get("result") == "accepted":
-                    item = c.terminal(reply, 7.0)
-                    record["stop_terminal"] = item
-                    motion = (item or {}).get("raw_motion")
-                    record["stop_confirmed"] = bool(
-                        item and item.get("ok") is True and item.get("type") == "action"
-                        and item.get("id") == reply.get("_id")
-                        and item.get("command_id") == reply.get("_id")
-                        and reply.get("operation_id") and item.get("operation_id") == reply["operation_id"]
-                        and item.get("action_kind") == "stop" and item.get("stop_policy") == "normal"
-                        and item.get("target") == self.address and item.get("address") == self.address
-                        and item.get("state") == "succeeded" and item.get("outcome") == "observed"
-                        and item.get("execution") == "acknowledged" and item.get("completion") == "observed"
-                        and item.get("observation_known") is True and item.get("raw_alarm") == 0
-                        and type(motion) is int and 0 <= motion <= 0xFFFF
-                        and not motion & (RUNNING | ALARM_BIT))
+                if getattr(self, "group_active", False):
+                    reply = c.send("group stop normal", 10.0)
+                    item = c.terminal(reply, 10.0) if reply.get("ok") else None
+                    record["group_stop"] = dict(reply=reply, terminal=item,
+                                                confirmed=bool(item and item.get("ok") is True))
+                for address in [self.address] + sorted(set(getattr(self, "by_design", ())) - {self.address}):
+                    reply = c.send(f"stop normal {address}", 3.0)
+                    item = c.terminal(reply, 7.0) if reply.get("ok") and reply.get("result") == "accepted" else None
+                    record["stops"].append(dict(address=address, reply=reply, terminal=item,
+                                                confirmed=stop_confirmed(reply, item, address)))
+                    if address == self.address:
+                        record["stop_reply"], record["stop_terminal"] = reply, item
+                record["stop_confirmed"] = (all(s["confirmed"] for s in record["stops"]) and
+                                            record.get("group_stop", {}).get("confirmed", True))
             except Unresponsive as exc:
                 record["stop_error"] = str(exc)
+                record["stop_confirmed"] = False
         record["file"] = self.incident("USB_STALL", record).name
         self.summary()
         return record["stop_confirmed"]
@@ -889,9 +1112,12 @@ class Run:
         stamp = time.strftime("%Y%m%d_%H%M%S")
         path = self.out / f"incident_{stamp}_{name}.jsonl.gz"
         with gzip.open(path, "wt", encoding="utf-8") as f:
-            f.write(json.dumps({"incident": name, "detail": str(detail), "counts": self.counts, "moved": self.moved}) + "\n")
+            f.write(json.dumps({"incident": name, "detail": str(detail), "counts": self.counts, "moved": self.moved,
+                                "address": self.address, "by_design": sorted(getattr(self, "by_design", ()))}) + "\n")
             for entry in self.console.ring:
                 f.write(json.dumps(entry) + "\n")
+        with open(self.out / "incidents.jsonl", "a", encoding="utf-8") as index:  # Written as it happens.
+            index.write(json.dumps(dict(when=time.strftime("%H:%M:%S"), incident=name, file=path.name)) + "\n")
         return path
 
     def postmortem(self):
@@ -917,6 +1143,7 @@ class Run:
     def recover(self):
         """Bounded software recovery, then the verification ladder."""
         log = []
+        log.append(("interlock", self.reset_interlock()))
         self.console.reset_mcu()
         log.append("mcu_reset")
         self.after_reset()
@@ -963,8 +1190,14 @@ class Run:
             reply = self.console.send("drv", 2.0)
             self.health = {k: reply.get(k) for k in ("output_blocked", "output_short_writes", "input_dropped", "stop_evidence_overwritten", "reset_reason", "usb_stall")}
             self.health["memory"] = self.console.send("memory", 2.0)
+            self.health["stats"] = self.console.send("stats", 2.0)
+            bench = self.console.send("bench", 2.0)
+            self.relays.observe(bench.get("outputs"))
+            self.health["bench"] = {o.get("name"): {k: o.get(k) for k in ("active", "ons", "off_reason")}
+                                    for o in bench.get("outputs") or ()}
+            self.health["relay_ops"] = self.relays.totals()
             with open(self.out / "health.jsonl", "a", encoding="utf-8") as f:
-                f.write(json.dumps(dict(when=time.strftime("%H:%M:%S"), cases=self.counts.total(), **self.health)) + chr(10))
+                f.write(json.dumps(dict(when=time.strftime("%H:%M:%S"), cases=self.completed, **self.health)) + chr(10))
         except Unresponsive:
             pass
 
@@ -1053,7 +1286,10 @@ class Run:
                     anomalies=self.anomalies, usb_stalls=self.usb_stalls, health=self.health, final=final, seed=self.args.seed,
                     host=getattr(self, "host", None), usb=getattr(self.args, "usb", "off"),
                     pauses=len(self.console.pauses), paused_s=round(sum(p for _, p in self.console.pauses), 1),
-                    saturation=getattr(self, "saturation", None), safety_stops=getattr(self, "safety_stops", None))
+                    saturation=getattr(self, "saturation", None), safety_stops=getattr(self, "safety_stops", None),
+                    completed=getattr(self, "completed", None), case_limit=getattr(self.args, "cases", None),
+                    plan=getattr(self, "plan", None),
+                    relay_ops=self.relays.totals() if hasattr(self, "relays") else None)
         (self.out / "summary.json").write_text(json.dumps(data, indent=1))
         return data
 
@@ -1080,8 +1316,13 @@ class Run:
         names = [c[0] for c in cases]
         weights = [c[2] for c in cases]
         table = {c[0]: c[1] for c in cases}
+        problems = plan_check(mix_plan(names), getattr(self.args, "relay_used", None))
+        self.plan = dict(cases=names, weights=weights, problems=problems)
+        if problems:
+            raise SystemExit("plan check refused: " + "; ".join(problems))
         self.console.send("debug " + self.args.debug)
         self.console.pump(0.2)
+        self.relays.observe(self.console.send("bench").get("outputs"))
         for address in reversed(self.addresses):  # Probe every drive, end on the first.
             self.select(address, force=True)
             self.positions[address] = self.settled_position() if getattr(self.args, "cross_reads", False) else self.state()["position"]
@@ -1091,12 +1332,16 @@ class Run:
         end = self.started + self.args.duration
         rest = time.time() + 1200
         written = 0
-        while time.time() < end:
+        limit = getattr(self.args, "cases", None)
+        while time.time() < end and (limit is None or self.completed < limit):
             name = self.random.choices(names, weights)[0]
             begun = time.time()
             try:
                 self.select(self.random.choice(self.addresses))
                 note = table[name]()
+                self.completed += 1
+                self.by_design.clear()
+                self.group_active = False
                 self.counts[name] += 1
                 self.per_drive[self.address] += 1
                 self.positions[self.address] = (self.settled_position() if getattr(self.args, "cross_reads", False)
@@ -1114,6 +1359,8 @@ class Run:
                 self.counts["anomaly_" + kind] += 1
                 self.cases.write(f"{time.strftime('%H:%M:%S')},{name},{kind},{time.time() - begun:.2f},a={self.address} {detail}\n")
                 self.cases.flush()
+                if kind in CONTINUED_MOTION:
+                    self.safety_stop()  # COMMON: the prepared stop fast at once, before diagnosis.
                 path = self.incident(kind, detail)
                 postmortem = None
                 if kind != "CONSOLE_UNRESPONSIVE":
@@ -1137,14 +1384,25 @@ class Run:
             if time.time() > rest:
                 self.console.pump(60)
                 rest = time.time() + 1200
-            if self.counts.total() // 100 != written:
-                written = self.counts.total() // 100
+            if self.completed // 100 != written:
+                written = self.completed // 100
                 self.sample_health()
                 self.summary()
         self.sample_health()
         if self.args.subdivision and self.args.restore:
             self.set_subdivision(self.args.restore)
         return 0
+
+
+def relay_totals(text):
+    """``relay1=N,relay2=N``: operations of each relay before this run."""
+    try:
+        totals = {k: int(v) for k, v in (item.split("=", 1) for item in text.split(","))}
+    except ValueError:
+        raise argparse.ArgumentTypeError("relay1=N,relay2=N")
+    if set(totals) != set(RELAYS) or any(v < 0 for v in totals.values()):
+        raise argparse.ArgumentTypeError("relay1=N,relay2=N with non-negative counts")
+    return totals
 
 
 def main():
@@ -1165,6 +1423,11 @@ def main():
                         help="wired bench 18: pause host reads in result waits, or the Q13 saturation run")
     parser.add_argument("--count", type=int, default=10000, help="--usb saturate: commands per phase")
     parser.add_argument("--skip", nargs="+", default=(), help="cases left out of the mix (home under D15)")
+    parser.add_argument("--cases", type=int, help="end the run after this many completed cases")
+    parser.add_argument("--wiring", choices=("as-found", "declared"), default="as-found",
+                        help="declared: require prompt 02's board declaration on every selected drive")
+    parser.add_argument("--relay-used", type=relay_totals, default=None,
+                        help="relay operations since prompt 01, relay1=N,relay2=N (relay budget)")
     parser.add_argument("--declare-unconnected", action="store_true",
                         help="state that no drive terminal is wired; declared again after each useaddr; "
                              "refused when the board table declares a terminal of that drive connected or is invalid")
@@ -1178,6 +1441,8 @@ def main():
         parser.error("--addresses needs distinct drives within 1..247")
     if args.subdivision and len(args.addresses) > 1:
         parser.error("--subdivision applies to one drive only")
+    for problem in option_problems(args):
+        parser.error(problem)
     keep_awake()
     run = Run(args)
     code = 1

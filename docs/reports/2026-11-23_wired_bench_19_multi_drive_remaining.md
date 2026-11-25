@@ -275,5 +275,6 @@ outputs off, 0 relay operations; COM13 closed. Harness addition:
 ## Commits and CI
 
 The lead owns Git and CI. `44e7f4f` (prompt 19 work) passed CI run
-45146685010; `9b34e00` (audit fixes) passed CI run 45371955989. The lead adds
-the CI of the final commit.
+45146685010; `9b34e00` (audit fixes) passed CI run 45371955989. The closeout
+commit `0a94399` passed CI run 45379425041 on all four jobs (native gcc, native
+clang, Arduino, ESP-IDF).

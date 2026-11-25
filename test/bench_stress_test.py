@@ -159,6 +159,7 @@ class UsbStopTests(unittest.TestCase):
         run.cases = io.StringIO()
         run.prepare_auxiliary = mock.Mock()
         run.addresses, run.positions, run.per_drive = [1], {}, collections.Counter()
+        run.relays, run.completed, run.by_design, run.group_active = bench.RelayCounter(), 0, set(), False
         run.select = mock.Mock()
         run.state = mock.Mock(return_value={"position": 0})
         run.case_plain = mock.Mock(side_effect=bench.Unresponsive("move relative"))
@@ -385,6 +386,283 @@ class UsbModeTests(unittest.TestCase):
         run.console = ScriptedConsole()
         run.prepare_auxiliary()
         self.assertEqual(run.console.sent, [])
+
+
+def assignments(**terminals):
+    """Planned functions of drives 1, 2 and 4; ``x0={4: 7}`` sets one terminal of one drive."""
+    plan = {d: {t: 0 for t in bench.TERMINALS} for d in bench.DRIVES}
+    for terminal, functions in terminals.items():
+        for drive, function in functions.items():
+            plan[drive][terminal] = function
+    return plan
+
+
+def start_step(**changes):
+    step = dict(case="arm_start", role="attributed_start", route="arm_trigger", output="mosfet1",
+                members=[4], function=7, assignments=assignments(x0={4: 7}))
+    step.update(changes)
+    return step
+
+
+class PlanCheckTests(unittest.TestCase):
+    """Wired bench 20 item 3: every rejection of the plan check."""
+
+    def test_attributed_starts_through_the_trigger_route_are_admitted(self):
+        group = start_step(case="arm_group", members=[1, 2, 4], assignments=assignments(x0={1: 7, 2: 7, 4: 7}))
+        stop = dict(case="stop_input", role="stop", route="bench_on", output="mosfet2", members=[4],
+                    assignments=assignments(x3={4: 5}))
+        negative = dict(case="negative_pulse", role="negative", route="bench_on", output="mosfet2", members=[],
+                        assignments=assignments())
+        self.assertEqual(bench.plan_check([start_step(), group, stop, negative] + bench.mix_plan(["plain", "mcu_reset"])), [])
+
+    def test_raw_edge_as_attributed_start_is_rejected(self):
+        problems = bench.plan_check([start_step(route="bench_on")])
+        self.assertEqual(len(problems), 1)
+        self.assertIn("raw edge used as the start", problems[0])
+
+    def test_edge_role_must_match_the_planned_assignments(self):
+        cases = {
+            "non-member start function": start_step(assignments=assignments(x0={2: 7, 4: 7})),
+            "member function differs": start_step(case="arm_group", members=[1, 2, 4],
+                                                  assignments=assignments(x0={1: 7, 2: 8, 4: 7})),
+            "stop line with a start": dict(case="stop_input", role="stop", route="bench_on", output="mosfet2",
+                                           members=[4], assignments=assignments(x3={1: 7, 4: 5})),
+            "switch member not a switch": dict(case="limit", role="switch", route="bench_on", output="relay2",
+                                               members=[1], assignments=assignments(x1={1: 5})),
+            "negative onto a start": dict(case="negative_pulse", role="negative", route="bench_on", output="mosfet1",
+                                          members=[], assignments=assignments(x0={2: 7})),
+            "selector through the trigger": dict(case="pin", role="selector", route="arm_trigger", output="relay1",
+                                                 members=[4], function=13, assignments=assignments(x2={4: 13})),
+        }
+        for label, step in cases.items():
+            with self.subTest(label):
+                problems = bench.plan_check([step], relay_used={"relay1": 0, "relay2": 0})
+                self.assertEqual(len(problems), 1, problems)
+                self.assertRegex(problems[0], "does not match role")
+
+    def test_incomplete_assignments_and_unknown_roles_are_rejected(self):
+        partial = assignments(x0={4: 7})
+        del partial[2]
+        self.assertRegex(bench.plan_check([start_step(assignments=partial)])[0], "incomplete")
+        self.assertRegex(bench.plan_check([dict(case="x", role="pulse")])[0], "unknown edge role")
+
+    def test_reset_without_interlock_is_rejected(self):
+        self.assertRegex(bench.plan_check([dict(case="mcu_reset", role="reset")])[0], "without the before-reset interlock")
+        self.assertEqual(bench.plan_check(bench.mix_plan(["mcu_reset", "simple_boot"])), [])
+
+    def test_relay_budget_overrun_and_unstated_totals_are_rejected(self):
+        limit = dict(case="limit", role="switch", route="bench_on", output="relay2", members=[1, 2, 4],
+                     assignments=assignments(x1={1: 2, 2: 2, 4: 2}))
+        self.assertEqual(bench.plan_check([limit], {"relay1": 0, "relay2": 9000}, {"relay2": 1000}), [])
+        self.assertRegex(bench.plan_check([limit], {"relay1": 0, "relay2": 9001}, {"relay2": 1000})[0],
+                         "relay2: 10001 operations exceed the budget")
+        self.assertRegex(bench.plan_check([limit])[0], "not stated")
+
+
+class RelayCounterTests(unittest.TestCase):
+    def test_counts_survive_a_controller_restart(self):
+        counter = bench.RelayCounter({"relay1": 100, "relay2": 7})
+        counter.observe([dict(name="relay1", ons=5), dict(name="relay2", ons=0), dict(name="mosfet1", ons=50)])
+        counter.observe([dict(name="relay1", ons=8)])
+        counter.observe([dict(name="relay1", ons=2)])  # Restart: ons counts from boot again.
+        self.assertEqual(counter.totals()["relay1"], dict(before=100, run=5, total=105))
+        self.assertEqual(counter.total("relay2"), 7)
+
+    def test_rate_and_budget_limits(self):
+        counter = bench.RelayCounter({"relay1": 0, "relay2": bench.RELAY_BUDGET})
+        counter.last_on["relay1"] = 10.0
+        self.assertAlmostEqual(counter.admit("relay1", 10.5), 1.5)
+        self.assertEqual(counter.admit("relay1", 13.0), 0.0)
+        with self.assertRaises(bench.Anomaly) as caught:
+            counter.admit("relay2", 0.0)
+        self.assertEqual(caught.exception.kind, "RELAY_BUDGET")
+
+
+class WiringAndOptionTests(unittest.TestCase):
+    def wiring(self, address, **changes):
+        board = bench.records._expected_board(address)
+        reply = dict(ok=True, fixture="applied", board=board, sources=["board"] * 6,
+                     inputs=board["inputs"], outputs=board["outputs"], bench_output_map="applied",
+                     bench_outputs=bench.records.expected_bench_outputs())
+        reply.update(changes)
+        return reply
+
+    def test_declared_wiring_matches_prompt_02(self):
+        for address in (1, 2, 4):
+            self.assertIsNone(bench.declared_wiring_problem(self.wiring(address), address))
+        self.assertRegex(bench.declared_wiring_problem(self.wiring(4), 1), "differs from the fixture")
+        self.assertRegex(bench.declared_wiring_problem(self.wiring(4, outputs=[1, 1]), 4), "host override|differ")
+        self.assertRegex(bench.declared_wiring_problem(self.wiring(1, fixture="invalid"), 1), "invalid")
+        self.assertRegex(bench.declared_wiring_problem(dict(ok=True), 1), "lacks")
+
+    def test_declared_wiring_is_checked_after_each_selection(self):
+        console = ScriptedConsole()
+        console.send = mock.Mock(side_effect=lambda c, wait=None: self.wiring(2) if c == "wiring" else dict(ok=True))
+        run = MultiDriveTests.run_fixture(None, console)
+        run.args.wiring = "declared"
+        run.select(2)
+        sent = [call.args[0] for call in console.send.call_args_list]
+        self.assertIn("wiring", sent)
+        self.assertFalse([c for c in sent if c.startswith("wiring ")])  # Checked, never declared.
+        console.send = mock.Mock(side_effect=lambda c, wait=None: self.wiring(4) if c == "wiring" else dict(ok=True))
+        with self.assertRaisesRegex(bench.Anomaly, "drive 1"):
+            run.select(1)
+
+    def test_unconnected_declaration_and_declared_wiring_are_refused_together(self):
+        args = types.SimpleNamespace(declare_unconnected=True, wiring="declared", cases=None)
+        self.assertRegex(bench.option_problems(args)[0], "contradicts")
+        args.declare_unconnected, args.cases = False, 0
+        self.assertRegex(bench.option_problems(args)[0], "positive")
+        self.assertEqual(bench.relay_totals("relay1=3,relay2=4"), {"relay1": 3, "relay2": 4})
+        with self.assertRaises(bench.argparse.ArgumentTypeError):
+            bench.relay_totals("relay1=3")
+
+
+class InterlockConsole(ScriptedConsole):
+    """Answers read config/state of every drive for the before-reset interlock."""
+    def __init__(self, functions, states):
+        super().__init__(states=states)
+        self.functions = functions
+
+    def send(self, command, wait=None):
+        self.sent.append(command)
+        words = command.split()
+        return dict(ok=True, result="accepted", _id=len(self.sent), kind=words[1], address=int(words[2]))
+
+    def terminal(self, reply, wait):
+        if reply["kind"] == "config":
+            return dict(ok=True, config=dict(inputs=[dict(function=f, known=True) for f in self.functions[reply["address"]]]))
+        motion, alarm, position = self.states[reply["address"]]
+        return dict(ok=True, state_blocks=[dict(raw_motion=motion, raw_alarm=alarm, raw_speed=0,
+                                                position_words=[position >> 16, position & 0xFFFF])])
+
+
+class SoakSafetyTests(unittest.TestCase):
+    def run_fixture(self, console):
+        run = MultiDriveTests.run_fixture(None, console)
+        run.by_design, run.group_active = set(), False
+        return run
+
+    def test_cross_reads_tolerate_motion_only_on_drives_moving_by_design(self):
+        console = ScriptedConsole(states={2: (1 | bench.RUNNING, 0, 900)})
+        run = self.run_fixture(console)
+        run.addresses, run.positions = [1, 2], {2: 500}
+        run.by_design = {2}
+        run.cross_read()  # Moving and moved by design: admitted.
+        run.by_design = set()
+        with self.assertRaises(bench.Anomaly):
+            run.cross_read()
+        console.states[2] = (1 | bench.RUNNING, 1, 900)
+        run.by_design = {2}
+        with self.assertRaises(bench.Anomaly):
+            run.cross_read()  # An alarm is never by design.
+
+    def test_reset_interlock_reads_every_drive_and_refuses_start_functions(self):
+        states = {a: (1, 0, 0) for a in (1, 2, 4)}
+        clean = {a: [1, 2, 3, 0] for a in (1, 2, 4)}
+        run = self.run_fixture(InterlockConsole(clean, states))
+        rows = run.reset_interlock()
+        self.assertEqual(sorted(rows), [1, 2, 4])
+        self.assertEqual([c for c in run.console.sent if c.startswith("read config")],
+                         ["read config 1", "read config 2", "read config 4"])
+        for functions, state in (({**clean, 2: [1, 7, 3, 0]}, states),
+                                 (clean, {**states, 4: (1 | bench.RUNNING, 0, 0)}),
+                                 (clean, {**states, 1: (1, 5, 0)})):
+            with self.subTest(functions=functions, state=state), self.assertRaises(bench.Anomaly) as caught:
+                self.run_fixture(InterlockConsole(functions, state)).reset_interlock()
+            self.assertEqual(caught.exception.kind, "RESET_INTERLOCK")
+
+    def test_mcu_reset_never_resets_without_the_interlock(self):
+        run = self.run_fixture(ScriptedConsole())
+        run.prepare = mock.Mock(return_value={"position": 0})
+        run.reset_interlock = mock.Mock(side_effect=bench.Anomaly("RESET_INTERLOCK", {}))
+        run.console.reset_mcu = mock.Mock()
+        with self.assertRaises(bench.Anomaly):
+            run.case_mcu_reset()
+        run.console.reset_mcu.assert_not_called()
+
+    def test_incident_file_and_index_are_written_at_once(self):
+        import tempfile, gzip, json
+        with tempfile.TemporaryDirectory() as folder:
+            run = self.run_fixture(ScriptedConsole())
+            run.out, run.moved, run.console.ring = Path(folder), 0, [(1.0, "line")]
+            path = run.incident("POSITION", {"delta": 3})
+            with gzip.open(path, "rt", encoding="utf-8") as f:
+                self.assertEqual(json.loads(f.readline())["incident"], "POSITION")
+            index = (Path(folder) / "incidents.jsonl").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(json.loads(index[0])["file"], path.name)
+
+    def loop_fixture(self, case, cases=None, recover=False):
+        run = bench.Run.__new__(bench.Run)
+        run.console = ScriptedConsole()
+        run.args = types.SimpleNamespace(mix="standard", only="plain", debug="off", subdivision=None, duration=1e9,
+                                         recover=recover, cases=cases)
+        run.started, run.random, run.cases = bench.time.time(), random.Random(1), io.StringIO()
+        run.addresses, run.address, run.positions, run.per_drive = [1], 1, {}, collections.Counter()
+        run.relays, run.completed, run.by_design, run.group_active = bench.RelayCounter(), 0, set(), False
+        run.counts, run.anomalies, run.usb_stalls, run.moved = collections.Counter(), [], [], 0
+        run.select, run.sample_health, run.summary = mock.Mock(), mock.Mock(), mock.Mock()
+        run.state = mock.Mock(return_value={"position": 0})
+        run.case_plain = case
+        return run
+
+    def test_case_count_limit_ends_the_run(self):
+        run = self.loop_fixture(mock.Mock(return_value="ok"), cases=3)
+        self.assertEqual(run.loop(), 0)
+        self.assertEqual((run.completed, run.case_plain.call_count), (3, 3))
+
+    def test_continued_motion_gets_the_stop_fast_before_the_incident(self):
+        order = []
+        run = self.loop_fixture(mock.Mock(side_effect=bench.Anomaly("RUNNING_STUCK", "samples")))
+        run.safety_stop = mock.Mock(side_effect=lambda: order.append("stop fast"))
+        run.incident = mock.Mock(side_effect=lambda name, detail: order.append(name) or Path(name))
+        run.postmortem = mock.Mock(side_effect=lambda: order.append("postmortem"))
+        self.assertEqual(run.loop(), 3)
+        self.assertEqual(order[:3], ["stop fast", "RUNNING_STUCK", "postmortem"])
+
+
+class GroupStallTests(UsbStopTests):
+    """The USB-stall stop covers every moving drive, with a group stop for group cases."""
+
+    def test_group_case_sends_group_stop_and_one_stop_per_moving_drive(self):
+        run = self.run_fixture(stopped())
+        run.group_active, run.by_design = True, {1, 2}
+        sent = run.console.sent
+        console_send = run.console.send
+
+        def send(command, wait=None):
+            if command == "group stop normal":
+                sent.append(command)
+                return dict(ok=True, result="accepted", _id=99, group=True)
+            if command == "stop normal 2":  # Same strict confirmation as drive 1.
+                reply = console_send("stop normal 1", wait)
+                sent[-1] = command
+                return reply
+            return console_send(command, wait)
+        run.console.send = send
+        terminal = run.console.terminal
+        run.console.terminal = lambda reply, wait: dict(ok=True) if reply.get("group") else terminal(reply, wait)
+        self.assertFalse(run.usb_stall("console timeout"))  # Drive 2's terminal names target 1: unproven.
+        record = run.usb_stalls[-1]
+        self.assertEqual([c for c in sent if "stop" in c], ["group stop normal", "stop normal 1", "stop normal 2"])
+        self.assertTrue(record["group_stop"]["confirmed"])
+        self.assertEqual([s["confirmed"] for s in record["stops"]], [True, False])
+
+    def test_recover_still_ends_the_run_when_the_stall_stop_is_refused_missing_or_uncertain(self):
+        for terminal, options in ((stopped(), {"accepted": False}), (None, {}), (stopped(), {"timeout": "terminal"}),
+                                  (stopped(completion="not_observed"), {})):
+            with self.subTest(terminal=terminal, options=options):
+                run = self.run_fixture(terminal, **options)
+                run.args = types.SimpleNamespace(mix="standard", only="plain", debug="off",
+                                                 subdivision=None, duration=60, recover=True)
+                run.started, run.random, run.cases = self.clock.time(), random.Random(1), io.StringIO()
+                run.addresses, run.positions, run.per_drive = [1], {}, collections.Counter()
+                run.relays, run.completed, run.by_design, run.group_active = bench.RelayCounter(), 0, set(), False
+                run.select, run.state = mock.Mock(), mock.Mock(return_value={"position": 0})
+                run.case_plain = mock.Mock(side_effect=bench.Unresponsive("move relative"))
+                run.recover = mock.Mock(side_effect=AssertionError("must not start recovery motion"))
+                self.assertEqual(run.loop(), 4)
+                run.recover.assert_not_called()
 
 
 if __name__ == "__main__":
