@@ -27,7 +27,7 @@ States: Pending, In progress, COMPLETE, Blocked.
 | Queue prompt | Period | Notes | State |
 | --- | --- | --- | --- |
 | [1 Wired bench 19: remaining multi-drive and discovery work](ess_wired_bench/19_multi_drive_remaining.md) | A | Done 2026-11-24 (44e7f4f, audit fixes 9b34e00, regression on image B); G3 cause open, broadcast cases deferred | COMPLETE |
-| [2 Wired bench 20: soak, regression and closeout](ess_wired_bench/20_soak_regression_closeout.md) | A | Split long soaks into segments of at most about 3 h, one per run | Pending |
+| [2 Wired bench 20: soak, regression and closeout](ess_wired_bench/20_soak_regression_closeout.md) | A | Done 2026-11-26: K1 8.53 h on image H, review fixes in final image I; owner-deferred cases open | COMPLETE |
 | [3 Period A complexity review](README.md#unattended-plan-20-november-to-about-6-december-2026) | A | Code changed by wired bench 01-20 | Pending |
 | [4 Standalone 03: position replacement evidence](standalone/03_position_interrupt.md) | B | Includes the N05 remainder of wired bench 09 | Pending |
 | [5 Standalone 04: paired-value encodings](standalone/04_paired_values.md) | B | Mostly superseded by wired bench 10 and 13; disposition per item | Pending |

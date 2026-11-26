@@ -105,9 +105,11 @@ new unattended soak during maintenance.
 ## Latest recorded image and settings
 
 Wired bench 20 (25-26 November 2026, [report](reports/2026-11-26_wired_bench_20_soak_regression_closeout.md)):
-frozen final Arduino image H (`F25E58A26FDD83FD113C1C691BCF14BAC0695E9E19D7D04D2F26F2BA6E18DBEB`,
-firmware `6fa5512`, harness `17f13c2`; 16 KiB loop/owner task stack) is on the board.
-It ran K1 (8.53 h, 0 anomalies), K2 (standard and extended) and M2/M3. Ending state:
+frozen final Arduino image I (`BE1ED75B7A53B926924950C7DC0DC564CD84DF9FC11B080864AA8172C467C194`,
+firmware `54b6b04` with the independent-review fixes; 16 KiB loop/owner task stack) is
+on the board. It passed the affected-case reruns (input starts, group stop fast,
+a 0.66 h K1-mix regression, M2/M3). The previous image H (`F25E58A2…`, firmware
+`6fa5512`) ran K1 (8.53 h, 0 anomalies), K2 (standard and extended) and M2/M3. Ending state:
 drives 1, 2 and 4 enabled, stopped, alarm-free, not homed, RAM only, nothing saved;
 baseline-compare 573/573 equal; bench outputs off; COM13 closed. Group moves need an
 interlocked controller restart first (the last profile restore revoked the

@@ -3,9 +3,10 @@
 Date: 2026-11-25 to 2026-11-26. Prompt:
 [20 soak, regression and closeout](../prompts/ess_wired_bench/20_soak_regression_closeout.md).
 Owner absent (D15): no save, factory restore or communication-setting write; owner
-steps deferred. Status: **Partial**. K1, K2, M2 and M3 passed on the frozen final
-image H; M1 is recorded as the coverage matrix; the owner-deferred cases of 16-19
-stay open.
+steps deferred. Status: **Partial**. K1, K2, M2 and M3 passed on frozen image H;
+the independent review's fixes went into the final image I, which passed the
+affected-case reruns (item 8); M1 is recorded as the coverage matrix; the
+owner-deferred cases of 16-19 stay open.
 
 ## Result
 
@@ -30,7 +31,8 @@ stay open.
 | --- | --- | --- | --- |
 | F | `afd99fc` | `2B00B2E33F10A602666AD83FD42400F2FF6BFB4C1A98068C564E6AD6726355A2` | flashed 25 Nov; K2, first K1 segments, diagnostics |
 | G | `e24b882` (16 KiB stack, path 1) | `6C07AAEB5A1131BF30228BF6202A242F55FEDC561AFDAB7FBE605E7631597485` | flashed 26 Nov; K2, G3 diagnostics |
-| **H (frozen)** | `6fa5512` (G3 member guard); harness at `17f13c2` | `F25E58A26FDD83FD113C1C691BCF14BAC0695E9E19D7D04D2F26F2BA6E18DBEB` | flashed 26 Nov; final K1, K2, M2, M3 |
+| H | `6fa5512` (G3 member guard); harness at `17f13c2` | `F25E58A26FDD83FD113C1C691BCF14BAC0695E9E19D7D04D2F26F2BA6E18DBEB` | flashed 26 Nov; K1 8.53 h, K2, M2, M3 |
+| **I (frozen, final)** | `54b6b04` (review fixes F4, F5, F6, F10, A2-F1, A2-F8, A2-F10) | `BE1ED75B7A53B926924950C7DC0DC564CD84DF9FC11B080864AA8172C467C194` | flashed 26 Nov; affected-case reruns (item 8) |
 
 Bootloader `31B3C1BE…`, partitions `189E7A65…` and boot_app0 `F94C5D78…` are the
 same for F, G and H. Every flash followed `before_flash_check` PASS and a
@@ -136,9 +138,9 @@ runs the deferred rows on return; the lead owns the review fixes and CI.
 
 ## Ending state
 
-Image H frozen on COM13. Drives 1, 2 and 4 enabled, stopped, alarm-free, speed 0,
+Image I frozen on COM13. Drives 1, 2 and 4 enabled, stopped, alarm-free, speed 0,
 not homed, RAM only, nothing saved; baseline-compare 573/573 equal; positions drive
-1 [12, 64601], drive 2 [32, 32140], drive 4 [52, 31266]; group moves need an
+1 [13, 59593], drive 2 [35, 11072], drive 4 [57, 4594]; group moves need an
 interlocked restart (the last profile restore revoked the start-speed relation);
 bench outputs off; COM13 closed.
 
@@ -155,14 +157,104 @@ compares, M runs, K2 `cases.csv`/`summary.json`, K1 `soak.json`/`cases.jsonl`/
   the measured state and excluding failed-stop conflicts is a backlog row.
 - F3 and F7 are design notes; F2, F8 and F9 were dispositioned as false positives.
 - Fixed in the review round: F4 (velocity input gate refuses an UNKNOWN declaration), F5 (a FINITE_MOVE revoke
-  cancels an unsent velocity start), F10 (a refused ON of an owned bench output makes no port call). F6 (member mode
-  and PT publication without an admission-generation check) is open.
+  cancels an unsent velocity start), F10 (a refused ON of an owned bench output makes no port call), F6 (member mode
+  and PT publication now need the admission-time member generation and operation ordering).
 
 ## Independent review
 
-To be filled by the lead (prompt 20 item 7: auditor ID, model, cost, focus text,
-per-finding disposition).
+Prompt 20 item 7. Reviewer: a new agent (Fable 5.2, high effort) that wrote none of
+this set's code. Both audits used `audit_implementation` with diff base `0dfd4a6`
+(the commit before prompt 01's first commit `549079f`), model gpt-6.2-astra at xhigh
+reasoning, depth complex. The auditor cannot escalate a complex audit.
+
+**Audit 1**, `aud-20261126-195513-393cf7`, about $2.18 (195,096 input and 15,474
+output tokens). Inputs: the whole wired-bench promptset, AGENTS.md and COMMON.md;
+the diffs of `examples/probe_cli/ProbeApp.cpp`, `GroupApp.h`, `SoftLimitApp.h` and
+`VelocityLimitsApp.h`. The 400k diff cap and the $6 request guard left room for
+about 165k of the roughly 830k-character code diff. Focus text: scope as above, and
+"(1) are the motion, stop, recovery, group, soft-limit, homing, velocity and
+alarm-clear behaviors added or changed in these files correct and safe? (2) does
+every changed route refuse invalid, unsupported or unready requests before any
+transmission? (3) is there any path that automatically replays or retries a write
+whose outcome is uncertain? (4) is restoration discipline kept? (5) did these
+changes introduce regressions? (6) which added behaviors most need native tests?
+State where a question cannot be answered from the supplied material."
+
+| Finding | Disposition |
+| --- | --- |
+| F1 alarm-clear exception | Deliberate and tested (wired bench 15 F3); witness narrowing in the backlog |
+| F2, F8, F9 | False positives (checked against `Reads.cpp`, `PositionLimitsApp.h`, `VelocityLimits.h`) |
+| F3 host limits on enable, F7 member guard | Design notes |
+| F4 velocity gate passes UNKNOWN | Fixed, `52c921c` |
+| F5 revoke does not cancel an unsent velocity start | Fixed, `52c921c` |
+| F6 member mode/PT publication without admission generation | Fixed, `54b6b04` |
+| F10 refused ON still calls the port | Fixed, `52c921c` |
+
+**Audit 2**, `aud-20261126-200547-a0cd64`, about $1.92 (157,151 input and 16,490
+output tokens). Inputs: prompts 08, 09, 13 and 14, AGENTS.md and COMMON.md; full
+text and diffs of `InputStartApp.h`, `InputStartRoute.h`, the core `InputStart.cpp`
+and `InputStart.h`, and `PersistenceApp.h`. Focus text: the input-start route and
+persistence, with questions on arm, trigger, observe and disarm safety,
+shared-output interlocks, refusals before TX or output change, no replay of a
+write, pulse or start, restoration, PT and PV specifics, save, factory refusal and
+node restore, and tests.
+
+| Finding | Disposition |
+| --- | --- |
+| A2-F1 trigger fires after a participant changed | Fixed, `54b6b04`: refused before any port call |
+| A2-F8 NONE_SEEN for a context cancelled before the window | Fixed, `54b6b04` (NOT_EVALUATED); the STOPPED-ordering half is in the backlog |
+| A2-F10 staging evidence after a disarm | Fixed, `54b6b04` |
+| A2-F3 header word order | Comment fixed, `54b6b04` |
+| A2-F4, A2-F7, A2-F9 | Disagreed (by construction or measured bench 09 decisions) |
+| A2-F11 | Already recorded (PV5/PV6 open) |
+| A2-F13 | False positive |
+| A2-F2, A2-F5, A2-F6, A2-F12, A2-F14 | Backlog |
+
+Neither audit found an automatic replay of an uncertain write. Every fix has a
+failing-first native test. Not audited by OpenAI: the core motion sequencers, the
+console, the bench scripts and the tests.
+
+## Final image I (item 8)
+
+Image I was built from `54b6b04` after its CI passed and flashed behind the
+before-flash check (folder `build/bench/2026-11-26_wb20_flash_i/`; IDF image
+`FD5C06AA38024EEB593A201F8AB314B22EB9E3212F94BD16C66EFC9E3E31F416`, not flashed).
+
+| Check on I | Result |
+| --- | --- |
+| 01 baseline compare | 573/573 equal |
+| M2 | PASS, six refusals with no transaction |
+| M3 | stack free 9,604 bytes at boot, 6,560 after the regression; internal minimum 331,872; 0 failed |
+| Input starts with a trigger (A2 with the Y0 bracket, B1, A7 ×2, PT ×2) | PASS |
+| `group_stop_fast` ×4 | PASS, every origin and generation kept |
+| K1-mix regression, seed 6101 | 0.66 h, 170 cases, 0 anomalies, PASS |
+
+The deliberate A2-F1 refusal and velocity with an UNKNOWN declaration were not
+staged on the bench (the harness cannot move a member between arm and trigger, and
+the baseline assigns no velocity input function); the native tests cover both.
+Relay totals at the end: relay1 at most 120, relay2 at most 500.
 
 ## Commits and CI
 
-The lead owns Git and CI; commits and CI run IDs are recorded by the lead.
+The lead committed every change. CI ("Verify core and firmware": native gcc, native
+clang, Arduino, ESP-IDF) passed on each exact commit:
+
+| Commit | Content | CI run |
+| --- | --- | --- |
+| `5854538` | plan check, relay counters, coverage matrix | 45619451364 |
+| `2f4e375` | wired soak driver | 45629239059 |
+| `afd99fc` | PT trigger case | 45640637657 |
+| `8863005` | smoke marking, profile bookkeeping | 45650824481 |
+| `49be4e4` | A7 declaration fix, evidence budget | 45660869001 |
+| `4cad4ee` | safety-stop binding | 45680698529 |
+| `b20b8db` | velocity-word bookkeeping | 45699785807 |
+| `1b19213` | ±2 armed-start tolerance | 45709991074 |
+| `e24b882` | 16 KiB stack, start-speed carry | 45719711197 |
+| `6544bf7` | group stop settle wait | 45739220788 |
+| `6fa5512` | G3 member guard | 45758890327 |
+| `17f13c2` | signed endpoint error, G3 regression | 45779660697 |
+| `e7d2c64` | records and reconciliation | 45879950821 |
+| `52c921c` | review fixes F4, F5, F10 | 45889920302 |
+| `54b6b04` | review fixes A2-F1, F6, A2-F8, A2-F10 (image I) | 45895594611 |
+
+The commit that records this report section is documentation only.
