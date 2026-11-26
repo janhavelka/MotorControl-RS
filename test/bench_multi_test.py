@@ -1,7 +1,9 @@
 """Wired bench 19 harness: pure checks, case selection and the scenario record.
 Runs without pyserial: the module must import it only where a port opens."""
 import sys
+import types
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.modules["serial"] = None  # CI runners have no pyserial.
@@ -111,6 +113,38 @@ class MultiTests(unittest.TestCase):
                                       {"path": "x", "sha256": "0" * 64}, "c", baseline)
         self.assertEqual(reads["write_list"], [])
         self.assertIn("past-silent", reads["commands"][0])
+
+
+class StoppedStatesTests(unittest.TestCase):
+    """Wired bench 20 G3: a late speed word after a group stop is not continued motion."""
+
+    def live(self, sequences):
+        reads = {a: iter(seq) for a, seq in sequences.items()}
+        sample = lambda motion, speed, position: {"motion": motion, "speed": speed, "position_words": [0, position]}
+        live = types.SimpleNamespace(read_state=lambda a: sample(*next(reads[a])))
+        return live
+
+    def test_late_speed_word_settles_to_stopped(self):
+        still = [(0, 0, 500)] * 4
+        live = self.live({1: [(0, 33, 900), (0, 0, 900), (0, 0, 900)], 2: still, 4: still})
+        states = multi.stopped_states(live, limit_s=5.0)
+        self.assertEqual(multi.stop_problems({"ok": True, "members": [{"address": a, "completion": "observed"} for a in multi.DRIVES]},
+                                             states, {1: 0, 2: 0, 4: 0}, {1: 900, 2: 500, 4: 500}), [])
+
+    def test_continued_motion_returns_at_once(self):
+        live = self.live({1: [(0, 33, 900), (4, 60, 940)], 2: [(0, 0, 500)] * 2, 4: [(0, 0, 500)] * 2})
+        states = multi.stopped_states(live, limit_s=60.0)
+        self.assertTrue(states[1]["motion"] & multi.RUNNING_BIT)
+
+    def test_a_member_that_never_settles_stays_a_problem(self):
+        clock = [0.0]
+        def tick():
+            clock[0] += 0.5
+            return clock[0]
+        live = self.live({1: [(0, 33, 900)] * 50, 2: [(0, 0, 500)] * 50, 4: [(0, 0, 500)] * 50})
+        with mock.patch.object(multi.time, "monotonic", tick):
+            states = multi.stopped_states(live, limit_s=2.0)
+        self.assertEqual(states[1]["speed"], 33)
 
 
 if __name__ == "__main__":

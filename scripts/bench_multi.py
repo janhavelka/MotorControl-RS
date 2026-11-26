@@ -53,6 +53,10 @@ RPM = 60
 SCALE = "1000"                              # Host command steps per motor turn (ASSUMED, member only).
 G1_RUNS = 10                                # Per start mode, alternating target and origin.
 STOP_AFTER_S = 1.5
+# Stop evidence after a group stop (wired bench 20 G3): 78 ms after the stop
+# terminal drive 1 reported RUNNING clear but speed word 33, 0 by the next read
+# (0.3 s), its position unchanged throughout 3 s of back-to-back reads.
+STOP_SETTLE_S = 2.0
 G3_LATER = 5                                # G3 diagnostic admissions after a refusal, 1 s apart.
 R1_MOVE, R1_STOP_MOVE, R1_GROUP = 1000, 3000, 500
 RUNNING_BIT = 4
@@ -419,7 +423,7 @@ def submit(live, intents, mode, label, *, stop=None):
     if stop:
         # Audit F2: no later plan unless the stop result and fresh reads show every member stopped.
         trial["stop"] = live.console.wait(stop_handle, release=True) if stop_handle.accepted else {"ok": False, "result": "refused"}
-        states = member_states(live)
+        states = stopped_states(live)
         _, positions = group_state(live)
         trial["end"] = positions
         trial["stop_problems"] = stop_problems(trial["stop"], states, starts_at, positions)
@@ -431,6 +435,29 @@ def submit(live, intents, mode, label, *, stop=None):
     trial["ok"] = terminal.get("ok") is True
     trial["state"] = terminal.get("state")
     return trial
+
+
+def stopped_states(live, limit_s=STOP_SETTLE_S) -> dict:
+    """Member states after a stop, read until each reports stopped twice in a row
+    (RUNNING clear, speed 0, the same position), at most ``limit_s``. A member
+    whose position changes between reads ends the wait at once (continued
+    motion goes to the prepared stops without delay). Reads only; the last
+    sample of each member is returned for ``stop_problems``."""
+    deadline = time.monotonic() + limit_s
+    last, done = {}, set()
+    while True:
+        for a in DRIVES:
+            if a in done:
+                continue
+            s, prev = live.read_state(a), last.get(a)
+            last[a] = s
+            if s and prev and stops.position(s) != stops.position(prev):
+                return last
+            if (s and prev and not s["motion"] & RUNNING_BIT and not s["speed"] and
+                    not prev["motion"] & RUNNING_BIT and not prev["speed"]):
+                done.add(a)
+        if len(done) == len(DRIVES) or time.monotonic() > deadline:
+            return last
 
 
 def member_states(live) -> dict:

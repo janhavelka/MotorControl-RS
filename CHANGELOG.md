@@ -4,6 +4,11 @@
 
 ### Added
 
+- Wired bench 20 G3: after a group stop, `bench_multi.py` reads the members until each
+  reports stopped twice in a row (RUNNING clear, speed 0), at most 2 s
+  (`stopped_states`); a position change between reads ends the wait at once. A single
+  read 78 ms after the stop terminal saw drive 1's speed word still 33 with its position
+  unchanged and reported "not stopped".
 - Wired bench 20 firmware fixes. The Arduino loop task and the native ESP-IDF
   motor owner task have 16 KiB of stack instead of 12 KiB: an armed input start left
   2,548 bytes free at 12 KiB (deepest frames `Console::dispatch` 2,464 B, the arm
