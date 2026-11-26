@@ -115,6 +115,15 @@ class MultiTests(unittest.TestCase):
         self.assertIn("past-silent", reads["commands"][0])
 
 
+class EndpointErrorTests(unittest.TestCase):
+    def test_a_member_crossing_zero_is_not_two_to_the_32_off(self):
+        """Wired bench 20 K1 (image H): drive 2 moved 0 -> -800 and read back raw 4294966496."""
+        self.assertEqual(multi.endpoint_errors({2: -800, 1: 1000}, {2: 4294966496, 1: 1001}), {2: 0, 1: 1})
+        self.assertEqual(multi.endpoint_errors({2: 0}, {2: 0}), {2: 0})
+        self.assertEqual(multi.endpoint_errors({2: 4294966496}, {2: 0}), {2: 800})
+        self.assertEqual(multi.endpoint_errors({4: 500}, {4: 497}), {4: -3})
+
+
 class StoppedStatesTests(unittest.TestCase):
     """Wired bench 20 G3: a late speed word after a group stop is not continued motion."""
 

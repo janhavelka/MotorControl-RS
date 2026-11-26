@@ -159,7 +159,10 @@ def d3_problems(ended: dict, refusals: dict, restored: dict) -> list:
 
 
 def endpoint_errors(targets: dict, positions: dict) -> dict:
-    return {a: positions[a] - targets[a] for a in targets}
+    """Read position minus target, as a signed 32-bit difference: the drive's
+    feedback is a raw 32-bit word, so a member crossing zero (raw 0 - 800 reads
+    4294966496) is 0 off, not 2**32 (wired bench 20 K1 on image H)."""
+    return {a: ((positions[a] - targets[a] + 0x80000000) & 0xFFFFFFFF) - 0x80000000 for a in targets}
 
 
 def member_targets(origins: dict, intents: dict, starts_at: dict) -> dict:

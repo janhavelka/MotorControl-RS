@@ -1549,9 +1549,23 @@ void testLateSpeedWordAfterGroupStopKeepsMemberOrigin() {
         } else {
             uint32_t read = 0; assert(typedRead(app, 0, 1, ESS::ReadKind::STATE, read) == Probe::Action::OK);
             runUntil([&] { const auto* r = findRecord(*app, read); return r && r->read.state != ReadState::ACTIVE; });
+            releaseOperation(read);
         }
         assert(memberView(1).axis.originKnown && memberView(1).configurationGeneration == generation);
         drives[1].regs[0x000C] = 0; readGroupState(); // The first stationary sample ends the pending observation.
+        assert(memberView(1).axis.originKnown && memberView(1).configurationGeneration == generation);
+        for (const uint8_t a : {1, 2, 4})
+            assert(installGroupReference(memberReference(a, static_cast<int32_t>(memberView(a).rawPosition))));
+        auto back = memberMoves({1, 2, 4}, Policy::LEAVE, Mode::STAGED);
+        for (auto& intent : back.members) {
+            intent.move.position.relative = false; intent.move.position.unit = PositionUnit::TURNS;
+            intent.move.position.frame = CoordinateFrame::MOTOR; intent.move.position.value = Rational(0);
+        }
+        drives[1].regs[0x0007] = 1; // Enabled and in position again for the return move.
+        releaseOperation(id); releaseOperation(stop); // Free result capacity (RESULTS_FULL otherwise).
+        uint32_t ret = 0; assert(submitGroupMoves(back, ret)); // Admitted: the origin was kept.
+        runUntil([&] { return terminalGroup(ret); }, 2000000);
+        assert(groupOp(ret).result.ok);
         assert(memberView(1).axis.originKnown && memberView(1).configurationGeneration == generation);
     }
     // Control: the same speed word on an idle member (no motion of ours pending) still revokes.
