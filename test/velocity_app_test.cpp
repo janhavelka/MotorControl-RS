@@ -1267,10 +1267,30 @@ void velocityInputFunctions() {
         assert(tryRun(30, 200, id) == Probe::Action::UNAVAILABLE && refusedFor("input_active") && !hardware.writes);
         io.value.rawInputs = 0;
         assert(tryRun(30, 200, id) == Probe::Action::OK); dropRun(id);
+        // Review F5: revoking the FINITE_MOVE fact between the 0x001D staging and the
+        // start cancels the unsent start; no start frame follows the staging reply.
+        {
+            auto& fact = app->ioQualifications[0]; fact = q; fact.qualifiedUs = hardware.time;
+            io.observedEarliestUs = io.observedLatestUs = hardware.time;
+            uint32_t run = 0; assert(tryRun(30, 200, run) == Probe::Action::OK);
+            waitTx(run); assert(hardware.tx[3] == 0x1D);
+            const auto staged = hardware.writes;
+            assert(revokeIoQualification(app->axis.target.address, 0, IoPurpose::FINITE_MOVE, false));
+            scheduleReply(std::max(hardware.writeStarted + hardware.tx.size() * 87 + 1000, hardware.time + 1000), acknowledgement());
+            pump(3000);
+            assert(hardware.writes == staged && !view(run).pending);
+            clearRecord(*findRecord(*app, run)); qualify();
+        }
         // An unconnected terminal has no source: admitted without the record.
         fresh(); qualify(); app->configuration.raw.inputFunctions[0] = function;
         app->configuration.wiring[0] = InputWiring::UNCONNECTED;
         assert(tryRun(30, 200, id) == Probe::Action::OK); dropRun(id);
+        // Review F4: UNKNOWN (an address outside the board table, or an invalid
+        // table) is no declaration; prompt 02 refuses it before TX.
+        fresh(); qualify(); app->configuration.raw.inputFunctions[0] = function;
+        app->configuration.wiring[0] = InputWiring::UNKNOWN;
+        const auto writes = hardware.writes;
+        assert(tryRun(30, 200, id) == Probe::Action::UNAVAILABLE && refusedFor("wiring_unknown") && hardware.writes == writes);
     }
 }
 // Wired bench 14: the JOG setter writes 0x001D/3 with no start, inside the input limits.

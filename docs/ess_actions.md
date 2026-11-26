@@ -454,3 +454,5 @@ software tests and retained no-TX bench evidence.
 observation scheduling and application reservation/stop path. An admitted stop
 settles the current move frame and invalidates unsent staging/trigger/observation
 continuations; retained partial setup/trigger uncertainty stays unchanged.
+
+The `alarm-clear` exception for a historical axis conflict (wired bench 15 F3) is deliberate and tested: it is admitted on the selected axis only with fresh reads, after the conflict began, that show the alarm, RELEASED, speed 0 and the same position in two consecutive feedback samples. The witness accepts any alarm in that state; narrowing it to the measured state and excluding conflicts left by a failed stop is a backlog item (wired bench 20 review F1).

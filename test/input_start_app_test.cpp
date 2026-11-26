@@ -342,6 +342,12 @@ void testSelectedRelativeStartIsAttributed() {
     assert(session().members[0].staged && session().members[0].expectedDisplacement == 1000);
     // The owned output refuses an ordinary bench on; off always works.
     command("@30 bench on mosfet2 100\n"); contains("\"result\":\"busy\""); assert(!bench.onCalls);
+    { // Review F10: the refused ON makes no port call (called directly: no service turn in between).
+        BenchIo::Request on; on.op = BenchIo::Op::ON; on.output = 3; on.holdMs = 100; // mosfet2
+        BenchIo::View refusedView;
+        const auto applies = bench.applies;
+        assert(benchIoCommand(app, &on, refusedView) == Probe::Action::BUSY && bench.applies == applies);
+    }
     command("@31 bench off mosfet2\n"); contains("\"ok\":true");
     trigger(id);
     const auto& v = session();

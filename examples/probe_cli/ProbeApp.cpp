@@ -1850,7 +1850,8 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
         a.settingsRefusal = Probe::SettingsRefusal();
         a.settingsRefusal.reason = blocked; a.settingsRefusal.purpose = "motion";
         const bool facts = !std::strcmp(blocked, "triggers_inhibited_required");
-        a.settingsRefusal.readFirst = facts ? "io qualification install" : "read state";
+        a.settingsRefusal.readFirst = facts ? "io qualification install" :
+            !std::strcmp(blocked, "wiring_unknown") ? "wiring" : "read state";
         a.settingsRefusal.terminal = -1;
         return facts ? Probe::Action::QUALIFICATION_REQUIRED : Probe::Action::UNAVAILABLE;
     }
@@ -1890,6 +1891,7 @@ Probe::Action startVelocity(void* context, uint32_t commandId, uint8_t address,
     record->serialTuple = a.serial.active; record->serialGeneration = a.serial.generation;
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
     record->deadlineUs = deadline; record->kind = App::OperationKind::VELOCITY; record->axisReserved = true;
+    record->ioQualificationMask = moveIoMask(a.ioQualifications); // Review F5: a revoke cancels the unsent start.
     if (admission == Probe::VelocityAdmission::CELL) consumeVelocityCell(a, record->operationId);
     operationId = a.latestOperationId = record->operationId; return Probe::Action::OK;
 }
@@ -4047,7 +4049,7 @@ Probe::Action benchIoCommand(void* context, const BenchIo::Request* requested, B
     // An input-start session owns the outputs mapped to its terminal: no other
     // ON reaches them until it is done. OFF always works.
     if (requested && requested->op == BenchIo::Op::ON && inputStartOwnsOutput(a, requested->output)) {
-        a.options.benchIo->apply(show, view);
+        view = BenchIo::View(); // Review F10: a refused ON makes no port call (prompt 08).
         return Probe::Action::BUSY;
     }
     switch (a.options.benchIo->apply(requested ? *requested : show, view)) {
@@ -4774,7 +4776,8 @@ MotorControlRS::Status revokeIoQualification(uint8_t address, uint8_t terminalIn
     // An in-flight frame settles normally. Cancellation does not erase its
     // evidence, imply a motor stop or grant a retry.
     for (auto& record : app->records) {
-        bool dependent = purpose == IoPurpose::FINITE_MOVE && record.kind == App::OperationKind::MOVE &&
+        bool dependent = purpose == IoPurpose::FINITE_MOVE &&
+            (record.kind == App::OperationKind::MOVE || record.kind == App::OperationKind::VELOCITY) &&
             (record.ioQualificationMask & (1u << terminalIndex));
         if (record.kind == App::OperationKind::DRIVER && record.driver.kind == ESS::DriverKind::UPDATE) {
             const auto group = record.driver.group;

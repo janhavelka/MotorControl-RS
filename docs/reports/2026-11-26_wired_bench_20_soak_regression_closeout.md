@@ -148,6 +148,16 @@ bench outputs off; COM13 closed.
 compares, M runs, K2 `cases.csv`/`summary.json`, K1 `soak.json`/`cases.jsonl`/
 `health.jsonl`/incidents, diagnostics under `build/bench/b1diag_tools/`).
 
+## Review notes (stage c)
+
+- F1: the narrowed `alarm-clear` exception for a historical axis conflict (wired bench 15 F3) is deliberate and
+  tested. Its witness accepts any alarm with RELEASED, speed 0 and two equal consecutive positions; narrowing it to
+  the measured state and excluding failed-stop conflicts is a backlog row.
+- F3 and F7 are design notes; F2, F8 and F9 were dispositioned as false positives.
+- Fixed in the review round: F4 (velocity input gate refuses an UNKNOWN declaration), F5 (a FINITE_MOVE revoke
+  cancels an unsent velocity start), F10 (a refused ON of an owned bench output makes no port call). F6 (member mode
+  and PT publication without an admission-generation check) is open.
+
 ## Independent review
 
 To be filled by the lead (prompt 20 item 7: auditor ID, model, cost, focus text,

@@ -129,7 +129,11 @@ const char* velocityInputBlocked(const App& a, uint64_t now) {
     const auto& io = a.stateCache.blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
     for (uint8_t t = 0; t < 4; ++t) {
         const uint16_t f = c.raw.inputFunctions[t];
-        if (!((f >= 8 && f <= 10) || f == 13) || c.wiring[t] != MotorControlRS::InputWiring::CONNECTED) continue;
+        if (!((f >= 8 && f <= 10) || f == 13)) continue;
+        // Prompt 02: a route that reads a declaration refuses UNKNOWN (an address
+        // outside the board table, or an invalid table); review F4.
+        if (c.wiring[t] == MotorControlRS::InputWiring::UNKNOWN) return "wiring_unknown";
+        if (c.wiring[t] != MotorControlRS::InputWiring::CONNECTED) continue;
         const auto& q = a.ioQualifications[t];
         const uint16_t polarity = (c.raw.inputPolarity >> t) & 1u;
         if (!q.target.id || q.purpose != IoPurpose::FINITE_MOVE || q.terminal != t || !Probe::sameTarget(q.target, a.axis.target) ||
