@@ -190,6 +190,7 @@ struct App {
         bool interruptWaiting = false; ///< Reserved result, no bus request until old work settles.
         ESS::VelocityContext velocity;
         uint32_t configurationGeneration = 0;
+        uint32_t memberGeneration = 0; ///< A group member's axis generation when this read was admitted (review F6).
         uint32_t driverEffects = 0;
         ESS::DriverContext driver;
         bool singleSettingSession = false, programmaticSettings = false;
@@ -2653,6 +2654,7 @@ Probe::Action startDriverFor(App& a, uint32_t commandId, uint8_t address, ESS::D
     record->serialTuple = a.serial.active; record->serialGeneration = a.serial.generation;
     record->operationId = a.nextOperationId++; record->commandId = commandId; record->address = address;
     record->deadlineUs = record->driver.deadlineUs; record->configurationGeneration = generation;
+    if (const auto* member = groupMember(a, address)) record->memberGeneration = member->axis.generation;
     record->kind = App::OperationKind::DRIVER; record->axisReserved = kind == ESS::DriverKind::UPDATE;
     if (kind == ESS::DriverKind::UPDATE && a.softLimitPending.target.id) a.softLimitPending.operationId = record->operationId;
     operationId = a.latestOperationId = record->operationId; return Probe::Action::OK;
@@ -3190,7 +3192,8 @@ void updateActionReservation(App& a, App::Record& record) {
         if (record.driver.kind == ESS::DriverKind::READ && record.driver.group == ESS::DriverGroup::DRIVE &&
             record.driver.target.generation == a.bindingGeneration)
             if (auto* member = groupMember(a, record.address))
-                if (ESS::getDriver(record.driver, a.driverObserved)) {
+                if (record.memberGeneration && record.memberGeneration == member->axis.generation &&
+                    record.operationId > member->modeOperationId && ESS::getDriver(record.driver, a.driverObserved)) {
                     member->modeKnown = true;
                     member->positionMode = a.driverObserved.raw[6]; member->pvTriggerMode = a.driverObserved.raw[5];
                     member->modeOperationId = record.operationId; member->modeGeneration = member->axis.generation;
@@ -3199,7 +3202,8 @@ void updateActionReservation(App& a, App::Record& record) {
         if (record.driver.kind == ESS::DriverKind::READ && record.driver.group == ESS::DriverGroup::POSITION_SEGMENT &&
             record.driver.target.generation == a.bindingGeneration)
             if (auto* member = groupMember(a, record.address))
-                if (ESS::getDriver(record.driver, a.driverObserved)) {
+                if (record.memberGeneration && record.memberGeneration == member->axis.generation &&
+                    record.operationId > member->recordOperationId && ESS::getDriver(record.driver, a.driverObserved)) {
                     const auto& o = a.driverObserved;
                     member->recordKnown = true; member->recordIndex = o.segmentIndex;
                     std::memcpy(member->recordWords, o.raw, sizeof(member->recordWords));

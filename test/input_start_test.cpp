@@ -163,6 +163,15 @@ void testAttributedRelativeStart() {
     assert(x.changeStartUs == preEdgeRequest && x.changeEndUs > r.c.onUs); // Bracket, not a start time.
     assert(x.spacingCount >= 2 && x.spacingMinUs && x.spacingMedianUs >= x.spacingMinUs && x.spacingMaxUs >= x.spacingMedianUs);
 }
+// Review A2-F8: a context cancelled before its post-release window cannot report
+// that no further start was seen.
+void testCancelBeforePostReleaseWindowIsNotNoneSeen() {
+    Run r; armToEdge(r); moveAndRelease(r);
+    assert(r.c.state == ActionState::ACTIVE && r.c.samplesAfterRelease < r.c.options.postReleaseSamples);
+    assert(advanceInputStart(r.c, r.event(InputStartEventKind::CANCEL), r.now));
+    const auto x = r.result();
+    assert(x.outcome == InputStartOutcome::CANCELLED && x.further != InputStartFurther::NONE_SEEN);
+}
 void testFewerThanFourPostReleaseSamplesKeepObserving() {
     auto o = options(); o.postReleaseUs = 100000; // The time passes before four samples do.
     Run r(facts(), o); armToEdge(r); moveAndRelease(r);
@@ -348,6 +357,7 @@ int main() {
     testPrepareRefusalsPreserveOutput();
     testWorkIsReadOnlyAndRepeats();
     testAttributedRelativeStart();
+    testCancelBeforePostReleaseWindowIsNotNoneSeen();
     testFewerThanFourPostReleaseSamplesKeepObserving();
     testEachMissingWitnessIsIndeterminate();
     testMotionBeforeOrOutsideTheWindowIsUnattributed();

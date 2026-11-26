@@ -331,6 +331,42 @@ void refusedBeforeTx(const std::string& line, const char* reason) {
     }
 }
 
+// Review F6: a member DRIVE read that a configuration change overtakes is not
+// published as the member's mode (a DRIVE update lands between its steps).
+void testStaleMemberModeReadIsNotPublished() {
+    fresh();
+    uint8_t list[2] = {1, 2}; uint32_t set = 0;
+    assert(declareGroup(list, 2, set));
+    runUntil([&] { return !groupOperation(*app, set)->result.pending; });
+    command("@1 driver read 2\n"); const auto id = latest();
+    const auto* r = findRecord(*app, id);
+    assert(r && !terminal(*app, *r)); // Still between its steps.
+    invalidateMemberConfiguration(*app, 2, nowUs()); // What a DRIVE update's TX does to the member.
+    finish(id);
+    assert(!groupMember(*app, 2)->modeKnown);
+    command("@2 driver read 2\n"); finish(latest()); // A read admitted after the change publishes.
+    assert(groupMember(*app, 2)->modeKnown);
+}
+// Review A2-F1 (prompt 08 item 3): a participant that changed since arming, or
+// whose context already concluded, refuses the trigger before any port call.
+void testChangedParticipantRefusesTheOn() {
+    for (int variant = 0; variant < 3; ++variant) {
+        fresh(); selectedFacts(1);
+        const auto id = arm(variant == 2 ? "x3 relative 1000 60 window-ms 100" : "x3 relative 1000 60");
+        auto& d = drives[1];
+        if (variant == 0) setPosition(d, position(d) + 5);   // Position changed since arming.
+        if (variant == 1) d.regs[0x000C] = 12;                // Speed without RUNNING.
+        if (variant == 2) advanceHardware(hardware.time + 150000); // The armed window has expired.
+        const auto ons = bench.onCalls; const auto applies = bench.applies;
+        command("@21 arm trigger " + std::to_string(id) + " mosfet2 200\n");
+        runUntil([] { return session().phase != Phase::TRIGGERING; });
+        const auto& v = session();
+        if (bench.onCalls != ons) std::fprintf(stderr, "variant %d: ON sent (%s)\n", variant, v.decisionReason);
+        assert(bench.onCalls == ons && !v.triggered && !bench.outputs[3].active);
+        assert(!v.admitted && v.decisionReason && std::strlen(v.decisionReason));
+        (void)applies;
+    }
+}
 void testSelectedRelativeStartIsAttributed() {
     fresh(); selectedFacts(1);
     const auto before = frames.size();
@@ -567,6 +603,22 @@ void testStopOfInputStartedMotion() {
     assert(result().outcome == Outcome::STOPPED && result().stopId == stopId && result().stoppedAfterStop);
     assert(session().members[0].stopId == stopId && !std::strcmp(session().members[0].stopResult, "confirmed"));
     assert(bench.onCalls == 1 && drives[1].regs[0x0044] == 7); // Assignment unchanged: removal stays explicit.
+}
+// Review A2-F10: a disarm while the staging frame is on the wire reports the stage
+// session's own execution evidence, not NOT_TRANSMITTED.
+void testDisarmDuringStagingReportsTheStageEvidence() {
+    fresh(); selectedFacts(1);
+    const auto before = frames.size();
+    command("@20 arm position x3 relative 1000 60\n"); contains("\"result\":\"accepted\"");
+    const auto id = session().operationId;
+    runUntil([&] { return count([](const std::vector<uint8_t>& f) { return f[1] == 16 && word(f, 2) == 0x0021; }, before) == 1; });
+    command("@60 disarm " + std::to_string(id) + "\n"); contains("\"ok\":true");
+    pump(4000);
+    command("@61 arm inspect " + std::to_string(id) + "\n");
+    const auto execution = session().members[0].stageExecution;
+    if (execution == MotorControlRS::ActionExecution::NOT_TRANSMITTED) std::fprintf(stderr, "stage execution not reported\n");
+    assert(execution != MotorControlRS::ActionExecution::NOT_TRANSMITTED && execution == app->stage.view.execution);
+    assert(!bench.onCalls && releaseOperation(id));
 }
 void testDisarmAndStuckPort() {
     fresh(); selectedFacts(1);
@@ -1224,6 +1276,8 @@ void testAlarmClearWaitHoldsArmAndTrigger() {
     assert(result().outcome == Outcome::ATTRIBUTED && drives[1].starts == 1);
 }
 int main() {
+    testStaleMemberModeReadIsNotPublished();
+    testChangedParticipantRefusesTheOn();
     testSelectedRelativeStartIsAttributed();
     testAlarmClearWaitHoldsArmAndTrigger();
     testArmRefusalsBeforeTx();
@@ -1231,6 +1285,7 @@ int main() {
     testLineIsolationTruthTable();
     testReadAgeBackstop();
     testStopOfInputStartedMotion();
+    testDisarmDuringStagingReportsTheStageEvidence();
     testDisarmAndStuckPort();
     testInvalidation();
     testStagingEdgeFailsArm();

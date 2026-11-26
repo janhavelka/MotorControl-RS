@@ -1365,6 +1365,18 @@ void decideTrigger(App& a, uint64_t now) {
         sample.transport.earliestUs = sample.transport.latestUs = std::max(row.stateStartedUs, row.stateReplyUs);
         sendContextEvent(a, static_cast<uint8_t>(index), sample, std::max(std::max(now, decision), sample.transport.latestUs));
     }
+    // Review A2-F1 (prompt 08 item 3): the pre-edge sample ends a member's context when
+    // its position changed or its speed is nonzero since arming; a context that already
+    // concluded or expired (also during the interlock reads) cannot be attributed. Any
+    // such participant refuses before any port call.
+    for (uint8_t i = 0; i < v.count; ++i) {
+        const auto& context = s.members[i].context;
+        if (context.state == MotorControlRS::ActionState::ACTIVE) continue;
+        refuseTrigger(a, "L4", v.members[i].address,
+            context.outcome == ESS::InputStartOutcome::UNATTRIBUTED_MOTION ? "member changed since arming (position or speed)" :
+            "member context concluded before the ON");
+        return;
+    }
     // One ON with the hold; its GPIO-write times become the source edges.
     BenchIo::Request on; on.op = BenchIo::Op::ON; on.output = s.output; on.holdMs = s.widthMs;
     a.benchScratch = BenchIo::View();
@@ -1460,6 +1472,19 @@ void serviceInputStart(App& a, uint64_t now) {
         if (!samples && !s.triggerRequest.owner) finishInputStart(a, "none", now);
     }
 }
+// Review A2-F10: a disarm during a staging frame ends the session before the frame
+// settles. Each member reports the stage session's own execution evidence.
+void refreshStageEvidence(App& a) {
+    auto& v = a.inputStart.view;
+    for (uint8_t i = 0; i < v.count; ++i) {
+        auto& mv = v.members[i];
+        if (!v.group) {
+            if (a.stage.view.operationId && a.stage.view.operationId == mv.stageOperationId) mv.stageExecution = a.stage.view.execution;
+        } else if (const auto* m = groupMember(a, a.inputStart.members[i].address)) {
+            if (m->stage.view.operationId && m->stage.view.operationId == mv.stageOperationId) mv.stageExecution = m->stage.view.execution;
+        }
+    }
+}
 Probe::Action disarmInputStartIn(App& a, uint32_t id) {
     auto& s = a.inputStart;
     a.inputStartRefusal = Probe::InputStartReply();
@@ -1476,6 +1501,7 @@ Probe::Action disarmInputStartIn(App& a, uint32_t id) {
     }
     s.disarming = true;
     finishInputStart(a, "disarmed", now);
+    refreshStageEvidence(a);
     return Probe::Action::OK;
 }
 bool releaseInputStart(App& a) {
@@ -1497,6 +1523,7 @@ Probe::Action inputStartCommand(void* context, const Probe::InputStartCommand& c
     case Probe::InputStartCommandKind::INSPECT:
         if (!c.operationId || c.operationId != a.inputStart.view.operationId)
             result = refuseInputStart(a, Probe::Action::INVALID, "unknown_session");
+        else refreshStageEvidence(a);
         break;
     case Probe::InputStartCommandKind::TRIGGER: result = triggerInputStartIn(a, c.operationId, c.output, c.widthMs); id = c.operationId; break;
     case Probe::InputStartCommandKind::DISARM: result = disarmInputStartIn(a, c.operationId); id = c.operationId; break;

@@ -313,8 +313,11 @@ Status getInputStart(const InputStartContext& c, InputStartResult& out) noexcept
             InputStartCompletion::FINITE_STOPPED;
     if (c.furtherStart) r.further = InputStartFurther::SEEN;
     else if (c.completed && c.state != ActionState::ACTIVE)
+        // NONE_SEEN needs the post-release samples; a context that ended before them
+        // (cancelled, for example) did not evaluate the window (review A2-F8).
         r.further = c.effect == InputStartEffect::ENDPOINT || c.settledAfterCompletion ? InputStartFurther::NOT_EXCLUDED :
-            InputStartFurther::NONE_SEEN;
+            c.samplesAfterRelease != UINT32_MAX && c.samplesAfterRelease >= c.options.postReleaseSamples ?
+            InputStartFurther::NONE_SEEN : InputStartFurther::NOT_EVALUATED;
     r.sourceCommanded = c.sourceOns != 0; r.sourceActive = c.sourceActive; r.inputObserved = c.inputObserved;
     r.onUs = c.onUs; r.offUs = c.offUs; r.changeObserved = c.changeObserved; r.runningObserved = c.runningObserved;
     r.changeStartUs = c.changeStartUs; r.changeEndUs = c.changeEndUs;

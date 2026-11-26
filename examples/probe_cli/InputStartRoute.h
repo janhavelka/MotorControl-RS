@@ -94,6 +94,9 @@ struct InputStartMemberView {
     uint8_t address = 0;
     uint32_t configurationGeneration = 0;
     uint16_t function = 0, polarity = 0, positionMode = 0;
+    /** Position: the staged 0x0021/5 words (acceleration, deceleration, speed, then the target pair).
+     * Segment (PT): the armed record's five words as read, speed first; the target pair is
+     * words 3-4 in both, in the drive's word order (review A2-F3). */
     uint16_t stagedWords[5] = {};
     uint32_t stageOperationId = 0;
     bool staged = false;
