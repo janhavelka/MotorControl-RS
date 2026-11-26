@@ -453,6 +453,10 @@ struct App {
         MotionProfileState profile; ///< Checked 0x0020/6 readback of this member.
         Probe::StateCache state;
         Probe::GroupReference coordinate; ///< Explicit caller witness bound to this member's checked reads.
+        /// Our start or stop of this member still needs a stationary sample (RUNNING
+        /// clear, speed 0); until then a late speed word does not revoke its coordinates.
+        bool motionObservationPending = false;
+        uint32_t stillMotionReadId = 0, stillSpeedReadId = 0;
         MotorControlRS::InputWiring inputWiring[4] = {}, outputWiring[2] = {};
         WiringSource inputSources[4] = {}, outputSources[2] = {};
         IoQualification ioQualifications[4]; // Member inputs never borrow selected-axis facts.
@@ -607,6 +611,7 @@ void storedWordsChanged(App& a, uint8_t address) {
     if (auto* member = groupMember(a, address)) member->storedKnown = false;
 }
 void invalidateMemberCoordinates(App::GroupMember& member) {
+    member.motionObservationPending = false;
     if (!MotorControlRS::invalidateAxisReference(member.axis, member.coordinate.reference)) member.axis.generation = 0;
     member.profile.view.generation = member.axis.generation; // Host interpretation changed; raw drive bytes did not.
     member.storedKnown = false;
@@ -781,7 +786,10 @@ void invalidateMotionObservations(App& a, uint8_t address) {
         a.simpleEndpointKnown = false;
         a.motionObservationPending = true;
     }
-    if (auto* member = groupMember(a, address)) member->coordinate.reference.nativeKnown = false;
+    if (auto* member = groupMember(a, address)) {
+        member->coordinate.reference.nativeKnown = false;
+        member->motionObservationPending = true;
+    }
     invalidateObservations(a, address, nowUs());
 }
 bool triggeredMotion(const App& a, uint8_t address) {
@@ -3037,8 +3045,18 @@ void reconcileMemberState(App& a, const App::Record& record, uint8_t block, uint
         (observed.running || observed.released || observed.rawAlarm || observed.alarmFlag || observed.unknownMotionBits ||
          observed.positiveSoftLimit || observed.negativeSoftLimit));
     const bool coordinates = member->axis.originKnown || member->axis.softLimitsKnown || member->coordinate.reference.nativeKnown;
-    const bool revoked = coordinates && ((motion && observed.released) || (!triggeredMotion(a, member->address) &&
-        (changedPosition || movingFeedback || (motion && observed.running))));
+    // As for the selected axis: while our own start or stop still awaits a stationary
+    // sample, its tail (a late speed word, RUNNING, settling) is not untriggered
+    // motion. A release still revokes; admission still requires speed 0.
+    const bool revoked = coordinates && ((motion && observed.released) || (!member->motionObservationPending &&
+        !triggeredMotion(a, member->address) && (changedPosition || movingFeedback || (motion && observed.running))));
+    if (member->motionObservationPending) {
+        if (motion && !observed.running) member->stillMotionReadId = record.operationId;
+        if (block == static_cast<uint8_t>(ESS::StateBlock::FEEDBACK) && !observed.rawSpeed)
+            member->stillSpeedReadId = record.operationId;
+        if (member->stillMotionReadId == record.operationId && member->stillSpeedReadId == record.operationId)
+            member->motionObservationPending = false; // One sample: RUNNING clear and speed 0.
+    }
     if (revoked) invalidateMemberCoordinates(*member);
     if (revoked || (!record.groupChild && contradicted))
         for (auto& cached : member->state.blocks) cached.invalidatedUs = now;
@@ -3484,7 +3502,10 @@ void advanceActions(App& a, uint64_t now) {
                     a.coordinateReference.nativeKnown = false;
                     a.simpleEndpointKnown = false;
                 }
-                if (auto* member = groupMember(a, record.address)) member->coordinate.reference.nativeKnown = false;
+                if (auto* member = groupMember(a, record.address)) {
+                    member->coordinate.reference.nativeKnown = false;
+                    member->motionObservationPending = true;
+                }
             }
             if (!record.effectsInvalidated && invalidatesMotion(record) && a.owner.txAccepted(record.requestId)) {
                 record.effectsInvalidated = true;

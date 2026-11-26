@@ -1522,6 +1522,46 @@ void testMemberReferenceProvenanceAndOutputOnError() {
     assert(!memberView(1).referenceCurrent && !memberView(2).referenceCurrent);
 }
 
+// Wired bench 20 K1 (image G): after a group stop the first member read showed
+// RUNNING clear with the speed word 0x000C still 33 at an unchanged position;
+// that late word revoked the member's coordinates and refused the return plan.
+void testLateSpeedWordAfterGroupStopKeepsMemberOrigin() {
+    for (const bool groupRead : {true, false}) {
+        fresh(); readyGroup();
+        for (const uint8_t a : {1, 2, 4}) configureMember(a, Probe::AxisField::COMMAND_SCALE, 1000);
+        originMember(1, 100, 50); originMember(2, 1000, 900); originMember(4, -100, -150);
+        auto request = memberMoves({1, 2, 4}, Policy::LEAVE, Mode::STAGED);
+        for (auto& intent : request.members) {
+            intent.move.position.relative = false; intent.move.position.unit = PositionUnit::TURNS;
+            intent.move.position.frame = CoordinateFrame::MOTOR; intent.move.position.value = Rational(1);
+        }
+        uint32_t id = 0; assert(submitGroupMoves(request, id));
+        runUntil([] { return drives[1].startsApplied && drives[2].startsApplied && drives[4].startsApplied; });
+        for (const uint8_t a : {1, 2, 4}) drives[a].runningReads = 100000; // Running until the stop.
+        uint32_t stop = 0; assert(submitGroupStop(StopBehavior::DIRECT, stop));
+        runUntil([&] { return terminalGroup(id) && terminalGroup(stop); }, 2000000);
+        const auto generation = memberView(1).configurationGeneration;
+        assert(memberView(1).axis.originKnown);
+        drives[1].regs[0x0007] = 0; drives[1].regs[0x000C] = 33; // Stopped short; the speed word lags.
+        if (groupRead) {
+            uint32_t read = 0; assert(submitGroupStateRead(read));
+            runUntil([&] { return terminalGroup(read); }); // The member's sample may report contradicted state.
+        } else {
+            uint32_t read = 0; assert(typedRead(app, 0, 1, ESS::ReadKind::STATE, read) == Probe::Action::OK);
+            runUntil([&] { const auto* r = findRecord(*app, read); return r && r->read.state != ReadState::ACTIVE; });
+        }
+        assert(memberView(1).axis.originKnown && memberView(1).configurationGeneration == generation);
+        drives[1].regs[0x000C] = 0; readGroupState(); // The first stationary sample ends the pending observation.
+        assert(memberView(1).axis.originKnown && memberView(1).configurationGeneration == generation);
+    }
+    // Control: the same speed word on an idle member (no motion of ours pending) still revokes.
+    fresh(); readyGroup();
+    originMember(4, 100, 123);
+    drives[4].regs[0x000C] = 33;
+    uint32_t read = 0; assert(submitGroupStateRead(read));
+    runUntil([&] { return terminalGroup(read); });
+    assert(!memberView(4).axis.originKnown);
+}
 void testMemberReferenceExpiresAndContradictionsRevokeIt() {
     fresh(); readyGroup();
     assert(installGroupReference(memberReference(4, 123, 100000)));
@@ -2019,6 +2059,7 @@ int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--emit-member-fixtures") {
         testMemberConsolePlan(true); return 0;
     }
+    testLateSpeedWordAfterGroupStopKeepsMemberOrigin();
 #if !MOTORCONTROLRS_TEST_IDF
     // The Arduino sketch widens the loop task that runs group moves (900 of 8192 bytes left).
     assert(getArduinoLoopTaskStackSize() == 16 * 1024);
