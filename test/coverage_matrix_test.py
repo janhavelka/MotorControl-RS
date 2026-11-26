@@ -35,6 +35,7 @@ class CoverageMatrixTests(unittest.TestCase):
         self.assertTrue(all(r["level"] == "sent" for r in rows))
         refused = matrix.rows(inventory(dict(implementation="UNSUPPORTED")), {"op": dict(case="M2-1", verdict="REFUSED")})
         self.assertEqual(matrix.problems(refused), [])
+        self.assertEqual(matrix.operations(refused), {"op": "REFUSED"})
 
     def test_a_fail_is_never_rolled_up_away_and_a_pass_never_widens(self):
         self.assertEqual(matrix.rollup("FAIL", ["PASS", "PASS"]), "FAIL")

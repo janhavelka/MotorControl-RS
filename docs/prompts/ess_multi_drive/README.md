@@ -71,6 +71,8 @@ drives ([report](../../reports/2026-11-12_multi_drive_write_motion_stress.md)).
 
 ## Stages
 
+Wired bench 20 (26 November 2026): the superseded multi-drive prompts 05-07 are not moved; their open bench work is in the active [wired bench set](../ess_wired_bench/README.md), which stays active while owner-deferred items are open.
+
 | Stage | Deliverable | Starting gate | Status |
 | --- | --- | --- | --- |
 | 01 | [Broadcast acceptance test](../../archive/prompts/ess_multi_drive/01_broadcast_acceptance.md) | D6 approved; three-drive link clean at addresses 1, 2 and 4 | COMPLETE: NO-GO ([report](../../reports/2026-11-13_multi_drive_01_broadcast_acceptance.md)) |

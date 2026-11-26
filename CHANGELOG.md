@@ -4,6 +4,11 @@
 
 ### Added
 
+- Wired bench 20 closeout: the coverage matrix of the operation inventory with its
+  final-image case map (`docs/reports/2026-11-26_wired_bench_20_case_map.json`, 625 rows,
+  `--strict` 0 problems); an operation whose rows are all refusals rolls up as REFUSED,
+  never PASS. The 26 operations exercised on frozen image H cite the wired bench 20
+  report; no inventory state changed. Wired bench 19 G3 is recorded as resolved.
 - Wired bench 20 G3: after a group stop, `bench_multi.py` reads the members until each
   reports stopped twice in a row (RUNNING clear, speed 0), at most 2 s
   (`stopped_states`); a position change between reads ends the wait at once. A single

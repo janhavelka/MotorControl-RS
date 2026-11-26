@@ -77,11 +77,14 @@ def problems(matrix, strict=False):
 
 
 def rollup(inventory_state, verdicts):
-    """One operation's result: a known FAIL stays FAIL; PASS needs every row PASS
-    (REFUSED counts for UNSUPPORTED rows) and never widens a non-PASS inventory state."""
+    """One operation's result: a known FAIL stays FAIL; only refusals give REFUSED;
+    PASS needs every row PASS and never widens a non-PASS inventory state; an
+    inventory PASS with rows not rerun is PARTIAL (the historical PASS stands)."""
     verdicts = list(verdicts)
     if inventory_state == "FAIL" or "FAIL" in verdicts:
         return "FAIL"
+    if verdicts and all(v == "REFUSED" for v in verdicts):
+        return "REFUSED"  # UNSUPPORTED: refusal credit only, never a hardware PASS.
     if verdicts and all(v in ("PASS", "REFUSED") for v in verdicts):
         return "PASS" if inventory_state in ("PASS", "NOT_RUN") else inventory_state
     if "BLOCKED" in verdicts:

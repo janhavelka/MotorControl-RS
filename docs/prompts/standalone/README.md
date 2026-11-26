@@ -62,6 +62,8 @@ keeps those distinctions. Use the audit's Current owner column; Next stage is hi
 
 ## Stage status
 
+Wired bench 20 (26 November 2026): the superseded standalone prompts 03-07, 10, 11 and 14 are not moved; their open bench work is in the active [wired bench set](../ess_wired_bench/README.md), which stays active while owner-deferred items are open.
+
 | Stage | Deliverable | Dependencies / starting gate | Status |
 | --- | --- | --- | --- |
 | 01 | [Native velocity and homing parameter reads](../../ess_reads.md) | Public API and ordinary console routes delivered | COMPLETE |

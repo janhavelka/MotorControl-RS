@@ -104,6 +104,15 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+Wired bench 20 (25-26 November 2026, [report](reports/2026-11-26_wired_bench_20_soak_regression_closeout.md)):
+frozen final Arduino image H (`F25E58A26FDD83FD113C1C691BCF14BAC0695E9E19D7D04D2F26F2BA6E18DBEB`,
+firmware `6fa5512`, harness `17f13c2`; 16 KiB loop/owner task stack) is on the board.
+It ran K1 (8.53 h, 0 anomalies), K2 (standard and extended) and M2/M3. Ending state:
+drives 1, 2 and 4 enabled, stopped, alarm-free, not homed, RAM only, nothing saved;
+baseline-compare 573/573 equal; bench outputs off; COM13 closed. Group moves need an
+interlocked controller restart first (the last profile restore revoked the
+start-speed relation). The older records below are kept as history.
+
 Wired bench 19 (20-23 November 2026): Arduino image A (`92ACE8BF8334F54659A6AC9B4C145448D867E5AB824039B0AAB7DBD0B08EF4AE`, `08a88eb` plus the prompt 19 firmware tree, source diff `e3d2f497`) is on the board. Ending state: drives 1, 2 and 4 at addresses 1, 2, 4, enabled, stopped, alarm-free, I/O `[0,1,2,3,0,0,0,0,0]`, `baseline-compare` 573/573 equal; positions (RAM) drive 1 35849, drive 2 26065, drive 4 111224, none homed; nothing saved. The last profile stage revoked the start-speed relation of 1, 2 and 4 until the next controller restart, so group moves need a restart first. On 24 November image B (`937D69BE0CB1AFCB2387AA2C80C72BD84C2587E55C8733FC2BEC8315DC822100`, `9b34e00`, the audited prompt 19 firmware) replaced it: D2, one G1 round and G3 passed; ending state unchanged (positions 35849, 26065, 111224, 573/573 equal, start-speed relation revoked until the next restart). No fail-safe bias is fitted; addresses 3 and 5-8 were silent to a read-only `past-silent` scan ([report](reports/2026-11-23_wired_bench_19_multi_drive_remaining.md)).
 
 On 19-20 November [wired bench 18](reports/2026-11-20_wired_bench_18_link_loss_and_host_faults.md)

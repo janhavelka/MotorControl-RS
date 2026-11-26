@@ -74,8 +74,11 @@ the full standalone regression or qualify wired inputs and outputs.
    group/I/O paths have since passed on the bench. The bench regression moved
    to the [wired bench set](prompts/ess_wired_bench/README.md):
    [01](reports/2026-11-18_wired_bench_01_baseline.md) ran the short regression
-   on the wired fixture and recorded the restoration baseline; prompt 20 owns
-   the full regression. The fault-specific 15/16 hardware cases remain open;
+   on the wired fixture and recorded the restoration baseline;
+   [20](reports/2026-11-26_wired_bench_20_soak_regression_closeout.md) ran the full
+   regression on frozen image H: K1 8.53 h in five segments with 0 anomalies, K2
+   standard and extended, M2/M3 and the coverage matrix; the owner-deferred cases
+   of 16-19 remain. The fault-specific 15/16 hardware cases remain open;
    wired bench 16 reproduced HW-14 and Q05 on drive 4 and deferred the HW-01
    and Q04 reproductions to the owner's return
    ([report](reports/2026-11-19_wired_bench_16_alarms_and_failures.md)).

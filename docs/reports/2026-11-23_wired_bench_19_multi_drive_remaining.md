@@ -224,7 +224,10 @@ Independent audit `aud-20261124-095050-1c0ff2` of `44e7f4f` (CI run
 | G3 reason | a group refusal names the member check (`member_binding`, `member_identity`, `member_configuration`, `member_profile`, `member_reference_stale`, or the first failing move readiness term); the harness accepts these | `testGroupRefusalNamesMemberCheck` (revoked start-speed relation, lost configuration) |
 
 The G3 cause is still not established; the next G3 run will name the refusing
-check. F3 (R1 profile restore per drive) needs R1 reordered and is in the
+check. **Resolved in [wired bench 20](2026-11-26_wired_bench_20_soak_regression_closeout.md)** (26 November): a late
+speed word in the first member read after the stop terminal revoked the member's
+origin; firmware `6fa5512` (member `motionObservationPending` guard) and harness
+`6544bf7` and `17f13c2` fix it. E1 and the broadcast items stay as recorded. F3 (R1 profile restore per drive) needs R1 reordered and is in the
 backlog with F6, F8 and F9.
 
 Checks after the fixes: `discovery_app_test`, `discovery_console_test`,

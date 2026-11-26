@@ -1,0 +1,471 @@
+{
+ "bounded_discovery": {
+  "exclusion": "discovery not rerun on the final image (wired bench 19 D1-D3); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "clear_alarm": {
+  "exclusion": "no alarm occurred in the final-image runs (wired bench 16 evidence); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "clear_position": {
+  "case": "K2 image H (F25E58A2, 6fa5512): standard 504 + extended 526 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "drive-reported",
+  "reason": "position_clear cases in the extended mix",
+  "verdict": "PASS"
+ },
+ "communication_setting": {
+  "exclusion": "G3: deferred, owner away (D15); evidence and deferral in wired bench 17-19",
+  "gate": "G3"
+ },
+ "control_lock_delay_update": {
+  "exclusion": "control settings not in the soak mix (wired bench 15); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "control_settings_read": {
+  "exclusion": "control settings not in the soak mix (wired bench 15); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "control_settings_update": {
+  "exclusion": "control settings not in the soak mix (wired bench 15); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "direct_stop": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "drive-reported",
+  "reason": "group_stop_fast (G3 check 8/8 on H), prepared stops",
+  "verdict": "PASS"
+ },
+ "driver_settings_read": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G1",
+  "level": "drive-reported",
+  "reason": "driver read before every PT arm",
+  "verdict": "PASS"
+ },
+ "driver_settings_update": {
+  "exclusion": "no driver setting write in the soak mix (wired bench 10-11 evidence); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "driver_soft_limit_pairs": {
+  "exclusion": "soft-limit pairs not in the soak mix (wired bench 10-11 evidence); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "enable": {
+  "case": "K2 image H (F25E58A2, 6fa5512): standard 504 + extended 526 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "drive-reported",
+  "reason": "release_enable cases",
+  "verdict": "PASS"
+ },
+ "finite_position_staging": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "drive-reported",
+  "reason": "armed starts, group plans and serial moves stage the profile words",
+  "verdict": "PASS"
+ },
+ "home_parameters": {
+  "exclusion": "home cases excluded from the final-image runs under D15 snapshot discipline (wired bench 12); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "home_parameters_restore": {
+  "exclusion": "home excluded under D15 (wired bench 12); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "home_start": {
+  "exclusion": "home excluded under D15 (wired bench 12); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "home_zero_offset": {
+  "exclusion": "home excluded under D15 (wired bench 12); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "homing_auxiliary_write": {
+  "exclusion": "home excluded under D15 (wired bench 12); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "homing_parameter_read": {
+  "exclusion": "home excluded under D15 (wired bench 12); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "io_custom2_unresolved": {
+  "case": "M2 image H (F25E58A2, 6fa5512): io set y0|y1 11 on 1, 2, 4 refused unresolved before TX",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G1",
+  "level": "sent",
+  "reason": "refusal check only; no hardware-effect credit",
+  "verdict": "REFUSED"
+ },
+ "io_settings_read": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G1",
+  "level": "drive-reported",
+  "reason": "io read in every line check and interlock",
+  "verdict": "PASS"
+ },
+ "io_settings_write": {
+  "exclusion": "io set of x0/x3/y0 written and read back in K1, but the inventory keeps full function qualification NOT_RUN; not widened here; not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "move_absolute": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "drive-reported",
+  "reason": "group absolute plans and A1 absolute starts",
+  "verdict": "PASS"
+ },
+ "move_relative": {
+  "case": "K2 image H (F25E58A2, 6fa5512): standard 504 + extended 526 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "drive-reported",
+  "reason": "plain, interrupt and stop cases; group relative plans in K1",
+  "verdict": "PASS"
+ },
+ "normal_stop": {
+  "case": "K2 image H (F25E58A2, 6fa5512): standard 504 + extended 526 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "drive-reported",
+  "reason": "stop_moving, interrupt_stop, group_stop_normal",
+  "verdict": "PASS"
+ },
+ "position_interrupt_stored": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "drive-reported",
+  "reason": "I1 interrupt and K2 interrupt cases",
+  "verdict": "PASS"
+ },
+ "position_profile_candidate_staging": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G1",
+  "level": "read back",
+  "reason": "ending restoration of 0x0021/5 through the stage route",
+  "verdict": "PASS"
+ },
+ "position_profile_read": {
+  "case": "K2 image H (F25E58A2, 6fa5512): standard 504 + extended 526 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G1",
+  "level": "drive-reported",
+  "reason": "motion-profile read before every ordinary move",
+  "verdict": "PASS"
+ },
+ "position_profile_restore": {
+  "exclusion": "motion-profile restore not used on H (exercised on image G, wired bench 20); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "position_start_speed_write": {
+  "exclusion": "stored start-speed write not in the soak mix (wired bench 14); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "probe": {
+  "case": "K2 image H (F25E58A2, 6fa5512): standard 504 + extended 526 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G1",
+  "level": "drive-reported",
+  "reason": "probe after every selection",
+  "verdict": "PASS"
+ },
+ "read_config": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G1",
+  "level": "drive-reported",
+  "reason": "config reads before every write and interlock",
+  "verdict": "PASS"
+ },
+ "read_identity": {
+  "case": "01 baseline compare image H (F25E58A2, 6fa5512): 573/573",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G1",
+  "level": "drive-reported",
+  "reason": "identity read of every drive in the baseline compare and the group join",
+  "verdict": "PASS"
+ },
+ "read_state": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G1",
+  "level": "drive-reported",
+  "reason": "state reads in every case, settle and cross-read",
+  "verdict": "PASS"
+ },
+ "release": {
+  "case": "K2 image H (F25E58A2, 6fa5512): standard 504 + extended 526 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "drive-reported",
+  "reason": "release_enable cases",
+  "verdict": "PASS"
+ },
+ "restore_factory": {
+  "exclusion": "G3: deferred, owner away (D15); evidence and deferral in wired bench 17-19",
+  "gate": "G3"
+ },
+ "save_parameters": {
+  "exclusion": "G3: deferred, owner away (D15); evidence and deferral in wired bench 17-19",
+  "gate": "G3"
+ },
+ "stored_position_pair_write": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "read back",
+  "reason": "PT case non-negative targets (D10, 13)",
+  "verdict": "PASS"
+ },
+ "stored_position_read": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "drive-reported",
+  "reason": "PT case record reads",
+  "verdict": "PASS"
+ },
+ "stored_position_scalars_write": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "read back",
+  "reason": "PT case record speeds and restoration",
+  "verdict": "PASS"
+ },
+ "stored_speed_read": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "drive-reported",
+  "reason": "PT case record reads",
+  "verdict": "PASS"
+ },
+ "stored_speed_write": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "read back",
+  "reason": "PT case record speeds",
+  "verdict": "PASS"
+ },
+ "stored_start_speed_read": {
+  "exclusion": "not in the PT case (wired bench 13 evidence); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "stored_start_speed_write": {
+  "exclusion": "known FAIL kept (inventory); not rerun; not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "tuning_collision_read": {
+  "exclusion": "tuning not in the soak mix (wired bench 15); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "tuning_collision_update": {
+  "exclusion": "tuning not in the soak mix (wired bench 15); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "tuning_current_loop_read": {
+  "exclusion": "tuning not in the soak mix (wired bench 15); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "tuning_current_loop_update": {
+  "exclusion": "tuning not in the soak mix (wired bench 15); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "tuning_filters_read": {
+  "exclusion": "tuning not in the soak mix (wired bench 15); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "tuning_filters_update": {
+  "exclusion": "tuning not in the soak mix (wired bench 15); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "tuning_input_filter_update": {
+  "exclusion": "tuning not in the soak mix (wired bench 15); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "tuning_la_read": {
+  "exclusion": "tuning not in the soak mix (wired bench 15); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "tuning_la_update": {
+  "exclusion": "tuning not in the soak mix (wired bench 15); not exercised on the final image; the inventory's dated evidence stands",
+  "gate": "G2"
+ },
+ "velocity_parameter_read": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "drive-reported",
+  "reason": "velocity case snapshot read",
+  "verdict": "PASS"
+ },
+ "velocity_parameters": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   1,
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "drive-reported",
+  "reason": "velocity cells on drives 2 and 4",
+  "verdict": "PASS"
+ },
+ "velocity_parameters_restore": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "read back",
+  "reason": "velocity restore on the same drive after every velocity case",
+  "verdict": "PASS"
+ },
+ "velocity_start": {
+  "case": "K1 image H (F25E58A2, 6fa5512): 5 segments, 8.53 h, 2,132 cases, 0 anomalies",
+  "drives": [
+   2,
+   4
+  ],
+  "fixture": "wired drives 1, 2, 4 (bench I/O fixture)",
+  "gate": "G2",
+  "level": "drive-reported",
+  "reason": "velocity cells 120-600 rpm, 2 s",
+  "verdict": "PASS"
+ }
+}
