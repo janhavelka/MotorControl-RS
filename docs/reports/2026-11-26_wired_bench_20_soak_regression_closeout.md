@@ -256,5 +256,6 @@ clang, Arduino, ESP-IDF) passed on each exact commit:
 | `e7d2c64` | records and reconciliation | 45879950821 |
 | `52c921c` | review fixes F4, F5, F10 | 45889920302 |
 | `54b6b04` | review fixes A2-F1, F6, A2-F8, A2-F10 (image I) | 45895594611 |
+| `a308b89` | closeout: review record, final image I (documentation only) | 45907450954 |
 
-The commit that records this report section is documentation only.
+The commit that adds the `a308b89` row is documentation only.
