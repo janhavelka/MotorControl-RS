@@ -446,6 +446,60 @@ void testArmRefusalsBeforeTx() {
     command("@10 bench on mosfet2 5000\n"); contains("\"ok\":true");
     refusedBeforeTx("@8 arm position x3 relative 1000 60\n", "output_active");
 }
+// The shared pre-checks of every arm kind refuse before any frame and before
+// the per-drive facts, in their fixed order (period A review 3a item 1).
+void testArmPreflightRefusals() {
+    const char* const lines[] = {"@8 arm position x3 relative 1000 60\n", "@8 arm segment x3 relative 1\n", "@8 arm velocity x3\n"};
+    const auto otherAddress = [](Probe::InputStartKind kind) { // The console always names the selected axis.
+        Probe::InputStartRequest r;
+        r.kind = kind; r.terminal = 3; r.record = 1; r.count = 1; r.members[0].address = 2;
+        auto& move = r.members[0].move;
+        move.position.unit = PositionUnit::STEPS; move.position.frame = CoordinateFrame::NATIVE; move.position.relative = true;
+        move.position.value = Rational(1000); move.speedRpm = 60; move.ramp = MoveRamp::VERIFIED_CONFIGURED;
+        const auto before = frames.size(); const auto ons = bench.onCalls; const auto sessionId = session().operationId;
+        uint32_t id = 0;
+        assert(armInputStartIn(*app, r, id) == Probe::Action::INVALID && !id);
+        assert(!std::strcmp(app->inputStartRefusal.reason, "not_selected") && app->inputStartRefusal.address == 2);
+        pump(200); // An armed session keeps its own samples; nothing else reaches the bus.
+        assert(!count(isWrite, before) && (sessionId || frames.size() == before));
+        assert(bench.onCalls == ons && session().operationId == sessionId);
+    };
+    const auto refusedWhileArmed = [](const char* line) {
+        const auto before = frames.size(); const auto ons = bench.onCalls; const auto sessionId = session().operationId;
+        command(line); contains("\"reason\":\"session_active\""); contains("\"ok\":false"); contains("\"bus_traffic\":false");
+        pump(200);
+        assert(!count(isWrite, before) && bench.onCalls == ons && session().operationId == sessionId && session().phase == Phase::ARMED);
+    };
+    const Probe::InputStartKind kinds[] = {Probe::InputStartKind::POSITION, Probe::InputStartKind::SEGMENT, Probe::InputStartKind::VELOCITY};
+    for (const char* line : lines) {
+        // X3 has no bench output; then the fixture table is missing as well (checked first).
+        fresh(); selectedFacts(1);
+        app->benchOutputTerminals[3] = FIXTURE_OUTPUT_NONE;
+        refusedBeforeTx(line, "no_output_for_terminal");
+        app->fixtureState = FixtureState::ABSENT;
+        refusedBeforeTx(line, "fixture_table_unavailable");
+        // A read in flight: bus_busy, and the read is the only traffic.
+        fresh(); selectedFacts(1);
+        const auto before = frames.size(); const auto ons = bench.onCalls;
+        Serial.input = "@5 read state\n"; Serial.output.clear();
+        runUntil([] { return Serial.input.empty() && (app->owner.active() || app->owner.pending()); });
+        const auto read = latest();
+        command(line); contains("\"reason\":\"bus_busy\""); contains("\"ok\":false");
+        finish(read);
+        assert(!count(isWrite, before) && bench.onCalls == ons && !session().operationId);
+    }
+    // An armed session refuses a second arm of any kind, also with the fixture
+    // table missing; a request for another address refuses before that.
+    fresh(); selectedFacts(1);
+    const auto armed = arm("x3 relative 1000 60");
+    for (const char* line : lines) refusedWhileArmed(line);
+    app->fixtureState = FixtureState::ABSENT;
+    refusedWhileArmed(lines[0]);
+    for (const auto kind : kinds) otherAddress(kind);
+    assert(session().operationId == armed && session().phase == Phase::ARMED);
+    fresh();
+    for (const auto kind : kinds) otherAddress(kind);
+}
 void testTriggerRefusals() {
     fresh(); selectedFacts(1);
     command("@20 arm position x3 relative 1000 60\n"); contains("\"result\":\"accepted\"");
@@ -1281,6 +1335,7 @@ int main() {
     testSelectedRelativeStartIsAttributed();
     testAlarmClearWaitHoldsArmAndTrigger();
     testArmRefusalsBeforeTx();
+    testArmPreflightRefusals();
     testTriggerRefusals();
     testLineIsolationTruthTable();
     testReadAgeBackstop();

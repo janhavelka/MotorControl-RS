@@ -114,6 +114,32 @@ bool positionMode(const App& a, const ArmDrive& d, uint16_t& mode, uint16_t& pv)
         s.configurationGeneration != a.axis.generation || !a.axis.generation) return false;
     mode = s.raw[6]; pv = s.raw[5]; return true;
 }
+// Fresh state blocks, no alarm, enabled and stopped: the drive rule of every
+// arm kind. Null when clear.
+const char* stationaryProblem(const App& a, const ArmDrive& d, uint64_t now) {
+    const auto age = a.observationAgeUs();
+    const auto& motion = d.state->blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+    const auto& io = d.state->blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
+    const auto& feedback = d.state->blocks[static_cast<uint8_t>(ESS::StateBlock::FEEDBACK)];
+    if (!Probe::fresh(motion, d.axis->target, now, age) || !Probe::fresh(io, d.axis->target, now, age) ||
+        !Probe::fresh(feedback, d.axis->target, now, age) || io.value.unknownInputBits || !feedback.value.pairKnown) return "state_stale";
+    if (motion.value.rawAlarm || motion.value.alarmFlag) return "alarm";
+    if (motion.value.released) return "released";
+    if (motion.value.running || feedback.value.rawSpeed) return "moving";
+    return nullptr;
+}
+// The stop and limit input rules of a move, with the refusal noted. Null when clear.
+const char* stopLimitProblem(App& a, const MotionFacts& facts, uint64_t now) {
+    const auto stops = stopInputs(facts, now);
+    if (stops.result != StopInputs::CLEAR) {
+        noteStopInputRefusal(a, stops); return a.settingsRefusal.reason ? a.settingsRefusal.reason : "stop_input";
+    }
+    const auto limits = limitInputs(facts, now);
+    if (limits.result != LimitInputs::CLEAR) {
+        noteLimitInputRefusal(a, limits); return a.settingsRefusal.reason ? a.settingsRefusal.reason : "limit_input";
+    }
+    return nullptr;
+}
 // Every fact the arm needs for one drive, from cached reads only: no traffic.
 Probe::Action checkArmDrive(App& a, const Probe::InputStartRequest& r, const Probe::InputStartMember& want,
                             uint64_t now, ArmDrive& d, ESS::MovePrerequisites& prerequisites, const char*& reason) {
@@ -131,17 +157,8 @@ Probe::Action checkArmDrive(App& a, const Probe::InputStartRequest& r, const Pro
     uint16_t mode = 0, pv = 0;
     if (!positionMode(a, d, mode, pv) || mode > 1) { reason = "position_mode_unknown"; return Probe::Action::UNAVAILABLE; }
     if (mode != (r.mode == Probe::InputStartMode::ABSOLUTE ? 1u : 0u)) { reason = "position_mode_mismatch"; return Probe::Action::UNAVAILABLE; }
-    const auto age = a.observationAgeUs();
-    const auto& motion = d.state->blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+    if (const char* problem = stationaryProblem(a, d, now)) { reason = problem; return Probe::Action::UNAVAILABLE; }
     const auto& io = d.state->blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
-    const auto& feedback = d.state->blocks[static_cast<uint8_t>(ESS::StateBlock::FEEDBACK)];
-    if (!Probe::fresh(motion, d.axis->target, now, age) || !Probe::fresh(io, d.axis->target, now, age) ||
-        !Probe::fresh(feedback, d.axis->target, now, age) || io.value.unknownInputBits || !feedback.value.pairKnown) {
-        reason = "state_stale"; return Probe::Action::UNAVAILABLE;
-    }
-    if (motion.value.rawAlarm || motion.value.alarmFlag) { reason = "alarm"; return Probe::Action::UNAVAILABLE; }
-    if (motion.value.released) { reason = "released"; return Probe::Action::UNAVAILABLE; }
-    if (motion.value.running || feedback.value.rawSpeed) { reason = "moving"; return Probe::Action::UNAVAILABLE; }
     const uint16_t polarity = (c.raw.inputPolarity >> t) & 1u;
     const auto& q = d.io[t];
     const bool qualified = q.target.id && q.purpose == IoPurpose::FINITE_MOVE && q.terminal == t &&
@@ -165,16 +182,7 @@ Probe::Action checkArmDrive(App& a, const Probe::InputStartRequest& r, const Pro
     MotionFacts facts = d.member ? memberFacts(a, *d.member, want.move.position.relative ? nullptr : &reference) :
         selectedFacts(a, want.move.position.relative ? nullptr : &reference);
     facts.softLimitBound = false; // Wired bench 11: an arm needs the soft limits known disabled.
-    const auto stops = stopInputs(facts, now);
-    if (stops.result != StopInputs::CLEAR) {
-        noteStopInputRefusal(a, stops); reason = a.settingsRefusal.reason ? a.settingsRefusal.reason : "stop_input";
-        return Probe::Action::UNAVAILABLE;
-    }
-    const auto limits = limitInputs(facts, now);
-    if (limits.result != LimitInputs::CLEAR) {
-        noteLimitInputRefusal(a, limits); reason = a.settingsRefusal.reason ? a.settingsRefusal.reason : "limit_input";
-        return Probe::Action::UNAVAILABLE;
-    }
+    if (const char* problem = stopLimitProblem(a, facts, now)) { reason = problem; return Probe::Action::UNAVAILABLE; }
     if (d.member ? facts.configuration.raw.softLimitEnable != 0 : softLimitState(a, now) != SoftLimitState::KNOWN_DISABLED) {
         noteSoftLimitRefusal(a, "soft_limit_state_unknown"); reason = "soft_limit_state_unknown";
         return Probe::Action::UNAVAILABLE;
@@ -300,17 +308,9 @@ Probe::Action checkSegmentArmDrive(App& a, const Probe::InputStartRequest& r, ui
         if ((c.raw.inputPolarity >> f.selectors[b]) & 1u) { reason = "selector_polarity"; return Probe::Action::UNSUPPORTED; }
     if (!positionMode(a, d, f.mode, f.pv) || f.mode > 1) { reason = "position_mode_unknown"; return Probe::Action::UNAVAILABLE; }
     if (f.mode != (r.mode == Probe::InputStartMode::ABSOLUTE ? 1u : 0u)) { reason = "position_mode_mismatch"; return Probe::Action::UNAVAILABLE; }
-    const auto age = a.observationAgeUs();
-    const auto& motion = d.state->blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+    if (const char* problem = stationaryProblem(a, d, now)) { reason = problem; return Probe::Action::UNAVAILABLE; }
     const auto& io = d.state->blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
     const auto& feedback = d.state->blocks[static_cast<uint8_t>(ESS::StateBlock::FEEDBACK)];
-    if (!Probe::fresh(motion, d.axis->target, now, age) || !Probe::fresh(io, d.axis->target, now, age) ||
-        !Probe::fresh(feedback, d.axis->target, now, age) || io.value.unknownInputBits || !feedback.value.pairKnown) {
-        reason = "state_stale"; return Probe::Action::UNAVAILABLE;
-    }
-    if (motion.value.rawAlarm || motion.value.alarmFlag) { reason = "alarm"; return Probe::Action::UNAVAILABLE; }
-    if (motion.value.released) { reason = "released"; return Probe::Action::UNAVAILABLE; }
-    if (motion.value.running || feedback.value.rawSpeed) { reason = "moving"; return Probe::Action::UNAVAILABLE; }
     f.polarity = (c.raw.inputPolarity >> t) & 1u;
     // The trigger and every selector need a FINITE_MOVE record with continued
     // inhibition (the same facts a serial move needs with 12 and 14-16 assigned).
@@ -351,16 +351,7 @@ Probe::Action checkSegmentArmDrive(App& a, const Probe::InputStartRequest& r, ui
         reason = "endpoint_outside_limits"; return Probe::Action::UNAVAILABLE;
     }
     MotionFacts facts = d.member ? memberFacts(a, *d.member, nullptr) : selectedFacts(a, nullptr);
-    const auto stops = stopInputs(facts, now);
-    if (stops.result != StopInputs::CLEAR) {
-        noteStopInputRefusal(a, stops); reason = a.settingsRefusal.reason ? a.settingsRefusal.reason : "stop_input";
-        return Probe::Action::UNAVAILABLE;
-    }
-    const auto limits = limitInputs(facts, now);
-    if (limits.result != LimitInputs::CLEAR) {
-        noteLimitInputRefusal(a, limits); reason = a.settingsRefusal.reason ? a.settingsRefusal.reason : "limit_input";
-        return Probe::Action::UNAVAILABLE;
-    }
+    if (const char* problem = stopLimitProblem(a, facts, now)) { reason = problem; return Probe::Action::UNAVAILABLE; }
     // Soft limits: known disabled, or (selected axis) bound with the endpoint inside.
     const SoftLimitState softState = d.member ? (c.softLimitEnableKnown && c.raw.softLimitEnable == 0 ?
         SoftLimitState::KNOWN_DISABLED : SoftLimitState::UNKNOWN) : softLimitState(a, now);
@@ -558,17 +549,9 @@ Probe::Action checkVelocityArmDrive(App& a, const Probe::InputStartRequest& r, u
             reason = "pv_edge_needs_deadman"; return Probe::Action::UNSUPPORTED;
         }
     }
-    const auto age = a.observationAgeUs();
-    const auto& motion = d.state->blocks[static_cast<uint8_t>(ESS::StateBlock::MOTION)];
+    if (const char* problem = stationaryProblem(a, d, now)) { reason = problem; return Probe::Action::UNAVAILABLE; }
     const auto& io = d.state->blocks[static_cast<uint8_t>(ESS::StateBlock::IO)];
     const auto& feedback = d.state->blocks[static_cast<uint8_t>(ESS::StateBlock::FEEDBACK)];
-    if (!Probe::fresh(motion, d.axis->target, now, age) || !Probe::fresh(io, d.axis->target, now, age) ||
-        !Probe::fresh(feedback, d.axis->target, now, age) || io.value.unknownInputBits || !feedback.value.pairKnown) {
-        reason = "state_stale"; return Probe::Action::UNAVAILABLE;
-    }
-    if (motion.value.rawAlarm || motion.value.alarmFlag) { reason = "alarm"; return Probe::Action::UNAVAILABLE; }
-    if (motion.value.released) { reason = "released"; return Probe::Action::UNAVAILABLE; }
-    if (motion.value.running || feedback.value.rawSpeed) { reason = "moving"; return Probe::Action::UNAVAILABLE; }
     f.polarity = (c.raw.inputPolarity >> t) & 1u;
     // The trigger and every terminal holding a start or selector function (7-17)
     // need a FINITE_MOVE record with continued inhibition.
@@ -624,16 +607,7 @@ Probe::Action checkVelocityArmDrive(App& a, const Probe::InputStartRequest& r, u
     }
     MotionFacts facts = selectedFacts(a, nullptr);
     facts.softLimitBound = false;
-    const auto stops = stopInputs(facts, now);
-    if (stops.result != StopInputs::CLEAR) {
-        noteStopInputRefusal(a, stops); reason = a.settingsRefusal.reason ? a.settingsRefusal.reason : "stop_input";
-        return Probe::Action::UNAVAILABLE;
-    }
-    const auto limits = limitInputs(facts, now);
-    if (limits.result != LimitInputs::CLEAR) {
-        noteLimitInputRefusal(a, limits); reason = a.settingsRefusal.reason ? a.settingsRefusal.reason : "limit_input";
-        return Probe::Action::UNAVAILABLE;
-    }
+    if (const char* problem = stopLimitProblem(a, facts, now)) { reason = problem; return Probe::Action::UNAVAILABLE; }
     // A run has no endpoint: the soft limits must be known disabled (prompt 11).
     if (softLimitState(a, now) != SoftLimitState::KNOWN_DISABLED) {
         noteSoftLimitRefusal(a, "soft_limit_state_unknown"); reason = "soft_limit_state_unknown";
@@ -781,26 +755,10 @@ Probe::Action armInputStartIn(App& a, const Probe::InputStartRequest& r, uint32_
         for (uint8_t j = 0; j < i; ++j)
             if (r.members[j].address == m.address) return refuseInputStart(a, Probe::Action::INVALID, "duplicate_member", m.address);
     }
-    if (r.group) {
-        if (!a.group.declared || r.count != a.group.count) return refuseInputStart(a, Probe::Action::UNAVAILABLE, "group_not_declared");
-    } else if (r.count != 1 || r.members[0].address != a.axis.target.address)
-        return refuseInputStart(a, Probe::Action::INVALID, "not_selected", r.members[0].address);
-    if (inputStartActive(a) || a.inputStart.members[0].sample.owner || a.inputStart.triggerRequest.owner)
-        return refuseInputStart(a, Probe::Action::BUSY, "session_active");
-    if (!platformReady) return refuseInputStart(a, Probe::Action::UNAVAILABLE, "platform");
-    if (a.serial.blocked || a.serial.configuring || a.owner.configurationOwned() || a.owner.needsRecovery() || uart.needsRecovery())
-        return refuseInputStart(a, Probe::Action::RECOVERY_REQUIRED, "recovery_required");
-    if (a.owner.commissioningOwned() || a.discovery.owned || groupSequencing(a) || a.owner.active() || a.owner.pending())
-        return refuseInputStart(a, Probe::Action::BUSY, "bus_busy");
-    if (!a.nextOperationId || a.nextOperationId > UINT32_MAX - 2) return refuseInputStart(a, Probe::Action::IDS_EXHAUSTED, "ids_exhausted");
-    if (!a.options.benchIo) return refuseInputStart(a, Probe::Action::UNAVAILABLE, "bench_unavailable");
-    if (a.fixtureState != FixtureState::APPLIED) return refuseInputStart(a, Probe::Action::UNAVAILABLE, "fixture_table_unavailable");
-    const uint8_t owned = outputsForTerminal(a, r.terminal);
-    if (!owned) return refuseInputStart(a, Probe::Action::UNAVAILABLE, "no_output_for_terminal");
-    const auto& view = benchView(a);
-    if (!view.ready) return refuseInputStart(a, Probe::Action::UNAVAILABLE, "bench_unavailable");
-    for (uint8_t i = 0; i < BenchIo::OUTPUTS; ++i)
-        if (((owned >> i) & 1u) && view.outputs[i].active) return refuseInputStart(a, Probe::Action::BUSY, "output_active");
+    uint8_t owned = 0;
+    const auto pre = armPreflight(a, r, owned);
+    if (pre != Probe::Action::OK) return pre;
+    const auto& view = a.benchScratch; // The bench view armPreflight read; the commit takes its counters.
     const uint64_t now = uart.sample();
     auto& prerequisites = a.inputStart.prerequisites;
     ArmDrive drives[Probe::INPUT_START_MEMBERS];
