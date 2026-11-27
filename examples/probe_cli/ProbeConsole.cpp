@@ -1832,125 +1832,11 @@ void Console::dispatch() noexcept {
     if (entry->command == Command::IO && count > first + 1 && !std::strcmp(tokens[first + 1], "qualification")) {
         ioQualificationRoute(id, tokens + first + 2, count - first - 2); return;
     }
-    if (entry->command == Command::DISCOVER) {
-        if (!host_.discovery) { error(id,"discover","unavailable"); return; }
-        DiscoveryCommand request; bool inspect=false;
-        auto& settings=request.settings;
-        std::size_t at=first+1; uint16_t seen=0;
-        if (count==at+1 && !std::strcmp(tokens[at],"inspect")) inspect=true;
-        else if (count==at+1 && !std::strcmp(tokens[at],"cancel")) request.kind=DiscoveryCommandKind::CANCEL;
-        else if (count==at+1 && !std::strcmp(tokens[at],"restore")) request.kind=DiscoveryCommandKind::RESTORE;
-        else if (count==at+1 && !std::strcmp(tokens[at],"finish")) request.kind=DiscoveryCommandKind::FINISH;
-        else while(at<count) {
-            const char* key=tokens[at++];uint16_t flag=0;uint32_t value=0;
-            if (!std::strcmp(key,"profile") || !std::strcmp(key,"manufacturer")) {
-                flag=1;
-                if(at>=count || std::strcmp(tokens[at++],!std::strcmp(key,"profile")?"ess_rs":"stepperonline")) {error(id,"discover","unsupported_profile");return;}
-            } else if (!std::strcmp(key,"addresses")) {
-                flag=2;uint32_t last=0;
-                if(at+2>count || !number(tokens[at++],value) || !number(tokens[at++],last) || value<1 || last<value || last>247) {error(id,"discover","invalid_addresses");return;}
-                settings.first=static_cast<uint8_t>(value);settings.last=static_cast<uint8_t>(last);
-            } else if (!std::strcmp(key,"tuple")) {
-                HostTuple tuple;
-                if(at+2>count || settings.tupleCount==DISCOVERY_MAX_TUPLES || !number(tokens[at++],tuple.baud) || !parseFormat(tokens[at++],tuple.format) || !reviewedHostTuple(tuple)) {error(id,"discover","invalid_tuple");return;}
-                for(uint8_t i=0;i<settings.tupleCount;++i) if(sameTuple(tuple,settings.tuples[i])) {error(id,"discover","duplicate_tuple");return;}
-                settings.tuples[settings.tupleCount++]=tuple;
-            } else if (!std::strcmp(key,"identity")) {flag=4;settings.identity=true;}
-            else if (!std::strcmp(key,"past-silent")) {flag=128;settings.pastSilent=true;}
-            else {
-                if (!std::strcmp(key,"query-ms")) flag=8;
-                else if (!std::strcmp(key,"overall-ms")) flag=16;
-                else if (!std::strcmp(key,"requests")) flag=32;
-                else if (!std::strcmp(key,"results")) flag=64;
-                else {error(id,"discover","invalid_arguments");return;}
-                const uint32_t maximum=flag==8?5000:flag==16?60000:flag==32?256:8;
-                if(at>=count || !number(tokens[at++],value) || !value || value>maximum) {error(id,"discover","invalid_budget");return;}
-                if(flag==8) settings.queryMs=value; else if(flag==16)settings.overallMs=value;
-                else if(flag==32)settings.requestLimit=static_cast<uint16_t>(value);else settings.resultLimit=static_cast<uint8_t>(value);
-            }
-            if(flag && (seen&flag)) {error(id,"discover","duplicate_option");return;}
-            seen|=flag;
-        }
-        if(settings.pastSilent && settings.tupleCount>1) {error(id,"discover","past_silent_one_tuple");return;}
-        if(outputPending() && request.kind!=DiscoveryCommandKind::CANCEL) {++inputDropped_;return;}
-        DiscoveryView view;const auto result=host_.discovery(host_.context,inspect?nullptr:&request,view);
-        if(outputPending()) {++inputDropped_;return;}
-        std::size_t used=0;
-        if(append(output_,sizeof(output_),used,"{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"discover\",\"ok\":%s,\"result\":\"%s\",\"action\":%d,\"scan\":",static_cast<unsigned long>(id),boolean(result==Action::OK),actionName(result),inspect?-1:static_cast<int>(request.kind)) &&
-            discoveryScan(output_,sizeof(output_),used,view.scan) && append(output_,sizeof(output_),used,"}")) emit();
-        else error(id,"discover","output_capacity");
-        return;
-    }
-    if (entry->command == Command::PROFILE && count >= first + 2 && !std::strcmp(tokens[first+1], "list")) {
-        if (count != first + 2) { error(id,"profile-list","invalid_arguments"); return; }
-        if (outputPending()) { ++inputDropped_; return; }
-        std::size_t used = 0;
-        bool fits = append(output_,sizeof(output_),used,
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"profile-list\",\"ok\":true,\"bus_traffic\":false,\"profiles\":[",static_cast<unsigned long>(id));
-        for (std::size_t i = 0; fits && i < MotorControlRS::discoveryProfileCount(); ++i) {
-            MotorControlRS::DiscoveryProfile profile;
-            MotorControlRS::DiscoveryCapabilities caps;
-            if (!MotorControlRS::getDiscoveryProfile(i,profile).isOk() || !MotorControlRS::getDiscoveryCapabilities(profile.profile,caps).isOk()) {
-                error(id,"profile-list","inventory_error"); return;
-            }
-            fits = (!i || append(output_,sizeof(output_),used,",")) && append(output_,sizeof(output_),used,
-                "{\"manufacturer\":\"%s\",\"manufacturer_name\":\"%s\",\"profile\":\"%s\",\"name\":\"%s\",\"probe\":%s,\"identity\":%s,\"nonchanging\":%s,\"exact_model\":%s,\"firmware\":%s,\"minimum_address\":%u,\"maximum_address\":%u,\"probe_first\":%u,\"probe_count\":%u,\"identity_first\":%u,\"identity_count\":%u}",
-                profile.manufacturerId,profile.manufacturerName,profile.profileId,profile.profileName,
-                boolean(caps.probe),boolean(caps.identity),boolean(caps.nonChanging),boolean(caps.exactModel),boolean(caps.firmware),
-                caps.minimumAddress,caps.maximumAddress,caps.probeFirst,caps.probeCount,caps.identityFirst,caps.identityCount);
-        }
-        if (fits && append(output_,sizeof(output_),used,"]}")) emit();
-        else error(id,"profile-list","output_capacity");
-        return;
-    }
-    if (entry->command == Command::DEBUG) {
-        if (!host_.debug || !host_.snapshot) { error(id,"debug","unavailable"); return; }
-        DebugMode mode=DebugMode::OFF; bool change=count==first+2;
-        if (count<first+1 || count>first+2) { error(id,"debug","invalid_arguments"); return; }
-        if (change) {
-            if (!std::strcmp(tokens[first+1],"raw")) mode=DebugMode::RAW;
-            else if (!std::strcmp(tokens[first+1],"decoded")) mode=DebugMode::DECODED;
-            else if (std::strcmp(tokens[first+1],"off")) { error(id,"debug","invalid_arguments"); return; }
-        }
-        if (outputPending() && (!change || mode!=DebugMode::OFF)) { ++inputDropped_; return; }
-        DebugSnapshot view;
-        const auto result=host_.debug(host_.context,change?&mode:nullptr,view);
-        if (change && result==Action::OK) trafficFormat_=outputFormat_;
-        // Disabling remains possible under pressure; an existing ordinary reply
-        // keeps its ownership and the diagnostic reply may be dropped.
-        if (outputPending()) { ++inputDropped_; return; }
-        Snapshot data;
-        if (host_.snapshot) host_.snapshot(host_.context,data);
-        std::size_t used=0;
-        if (append(output_,sizeof(output_),used,
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"debug\",\"ok\":%s,\"result\":\"%s\",\"mode\":\"%s\",\"observed\":%llu,\"emitted\":%llu,\"dropped\":%llu,\"missed\":%llu,\"skipped\":%llu,\"cursor\":%llu,\"overwritten\":%lu,\"capture_dropped\":%lu,\"retained\":%u,\"capacity\":%u,\"owner\":{\"phase\":\"%s\",\"busy\":%s,\"recovery_required\":%s,\"pending\":%u,\"retained\":%u},\"capture\":{\"mode\":\"%s\",\"faults\":%lu,\"max_poll_gap_us\":%llu},\"memory\":{\"valid\":%s,\"stack_free_bytes\":%lu,\"internal_free\":%lu,\"psram_free\":%lu}}",
-            static_cast<unsigned long>(id),boolean(result==Action::OK),actionName(result),
-            view.mode==DebugMode::RAW?"raw":view.mode==DebugMode::DECODED?"decoded":"off",
-            static_cast<unsigned long long>(view.observed),static_cast<unsigned long long>(view.emitted),
-            static_cast<unsigned long long>(view.dropped),static_cast<unsigned long long>(view.missed),static_cast<unsigned long long>(view.skipped),static_cast<unsigned long long>(view.cursor),
-            static_cast<unsigned long>(view.overwritten),static_cast<unsigned long>(view.captureDropped),static_cast<unsigned>(view.retained),static_cast<unsigned>(view.capacity),
-            Rtu::phaseName(data.phase),boolean(data.busy),boolean(data.recoveryRequired),static_cast<unsigned>(data.pending),static_cast<unsigned>(data.retained),
-            data.timerCapture?"timer":"poll",static_cast<unsigned long>(data.captureFaults),static_cast<unsigned long long>(data.maxPollGapUs),
-            boolean(data.memoryValid),static_cast<unsigned long>(data.stackFreeBytes),static_cast<unsigned long>(data.internalFree),static_cast<unsigned long>(data.psramFree))) emit();
-        else error(id,"debug","output_capacity");
-        return;
-    }
+    if (entry->command == Command::DISCOVER) { discoverRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::PROFILE && count >= first + 2 && !std::strcmp(tokens[first+1], "list")) { profileListRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::DEBUG) { debugRoute(id, tokens, first, count); return; }
     if (entry->command == Command::POSITION_CLEAR && count == first + 2 &&
-        !std::strcmp(tokens[first + 1], "qualification")) {
-        if (outputPending()) { ++inputDropped_; return; }
-        if (!host_.inspectPositionClearQualification) { error(id, "position-clear-qualification", "unavailable"); return; }
-        PositionClearQualification p; bool valid = false;
-        const bool present = host_.inspectPositionClearQualification(host_.context, p, valid);
-        std::size_t used = 0;
-        if (!append(output_, sizeof(output_), used,
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"position-clear-qualification\",\"ok\":true,\"present\":%s,\"valid\":%s,\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"semantics_qualified\":%s}",
-            static_cast<unsigned long>(id), boolean(present), boolean(present && valid),
-            static_cast<unsigned long>(p.target.id), p.target.address, static_cast<unsigned long>(p.target.generation),
-            static_cast<unsigned long>(p.configurationGeneration), boolean(p.semanticsQualified))) {
-            error(id, "position-clear-qualification", "output_full"); return;
-        }
-        emit(); return;
-    }
+        !std::strcmp(tokens[first + 1], "qualification")) { positionClearFactsRoute(id, tokens, first, count); return; }
     if ((entry->command == Command::HOME || entry->command == Command::VELOCITY || entry->command == Command::POSITION_CLEAR) &&
         count > first + 2 && !std::strcmp(tokens[first + 1], "qualification")) {
         if (outputPending()) { ++inputDropped_; return; }
@@ -1958,123 +1844,8 @@ void Console::dispatch() noexcept {
             QualificationRoute::VELOCITY : QualificationRoute::POSITION_CLEAR, tokens + first + 2, count - first - 2);
         return;
     }
-    if (entry->command == Command::MOTION_PROFILE) {
-        if (outputPending()) { ++inputDropped_; return; }
-        if (count >= first + 2 && !std::strcmp(tokens[first + 1], "stage")) {
-            const char* command = "motion-profile-stage";
-            if (!host_.stageProfile) { error(id, command, "unavailable"); return; }
-            if (count != first + 9 && count != first + 11) { error(id, command, "invalid_arguments"); return; }
-            ProfileCandidate candidate;
-            uint32_t values[9] = {};
-            for (std::size_t i = 0; i < count - first - 2; ++i)
-                if (!number(tokens[first + 2 + i], values[i]) || values[i] > 65535) {
-                    error(id, command, "invalid_arguments"); return;
-                }
-            if (values[5] > 1 || !values[6] || values[6] > 247) { error(id, command, "invalid_arguments"); return; }
-            for (std::size_t i = 0; i < 5; ++i) candidate.words[i] = static_cast<uint16_t>(values[i]);
-            candidate.wordOrder = static_cast<Ess::WordOrder>(values[5]); candidate.address = static_cast<uint8_t>(values[6]);
-            candidate.identitySpecified = count == first + 11;
-            candidate.model = static_cast<uint16_t>(values[7]); candidate.firmware = static_cast<uint16_t>(values[8]);
-            uint32_t operationId = 0;
-            const bool available = availableSlot() != OUTSTANDING_SLOTS;
-            if (available) beginWork();
-            const Action result = available ? host_.stageProfile(host_.context, id, candidate, operationId) : Action::BUSY;
-            if (result == Action::OK) track(id, operationId);
-            action(id, command, result, candidate.address, result == Action::OK ? operationId : 0);
-            return;
-        }
-        if (count >= first + 3 && !std::strcmp(tokens[first + 1], "start-speed") && !std::strcmp(tokens[first + 2], "relation")) {
-            qualificationRoute(id, QualificationRoute::START_SPEED_RELATION, tokens + first + 3, count - first - 3);
-            return;
-        }
-        if (count >= first + 2 && !std::strcmp(tokens[first + 1], "start-speed")) {
-            const char* command = "motion-profile-start-speed";
-            if (!host_.startDriver || !host_.snapshot) { error(id, command, "unavailable"); return; }
-            uint32_t native = 0;
-            Ess::DriverRequest request;
-            if (count != first + 3 || !number(tokens[first + 2], native) ||
-                !Ess::preparePositionStartSpeed(request, native)) { error(id, command, "invalid_arguments"); return; }
-            Snapshot snapshot; host_.snapshot(host_.context, snapshot);
-            uint32_t operationId = 0;
-            const bool available = availableSlot() != OUTSTANDING_SLOTS;
-            if (available) beginWork();
-            const Action result = available ? host_.startDriver(host_.context, id, snapshot.address,
-                Ess::DriverKind::UPDATE, request, operationId) : Action::BUSY;
-            if (result == Action::OK) track(id, operationId);
-            action(id, command, result, snapshot.address, result == Action::OK ? operationId : 0);
-            return;
-        }
-        if (!host_.motionProfile) { error(id, "motion-profile", "unavailable"); return; }
-        if (count != first + 2) { error(id, "motion-profile", "invalid_arguments"); return; }
-        MotionProfileCommand command;
-        if (!std::strcmp(tokens[first + 1], "inspect")) command = MotionProfileCommand::INSPECT;
-        else if (!std::strcmp(tokens[first + 1], "read")) command = MotionProfileCommand::SNAPSHOT;
-        else if (!std::strcmp(tokens[first + 1], "restore")) command = MotionProfileCommand::RESTORE;
-        else if (!std::strcmp(tokens[first + 1], "forget")) command = MotionProfileCommand::FORGET;
-        else { error(id, "motion-profile", "invalid_arguments"); return; }
-        MotionProfileView v;
-        const Action result = host_.motionProfile(host_.context, command, v);
-        char tx[39], rx[129], write[17], writeTx[39];
-        hex(v.tx,v.txLength,tx,sizeof(tx)); hex(v.rx,v.rxLength,rx,sizeof(rx));
-        hex(v.writeReply,v.writeReplyLength,write,sizeof(write)); hex(v.writeTx,v.writeTxLength,writeTx,sizeof(writeTx));
-        std::size_t used=0;
-        if (append(output_,sizeof(output_),used,
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"motion-profile\",\"ok\":%s,\"result\":\"%s\",\"pending\":%s,\"saved\":%s,\"restored\":%s,\"session_ok\":%s,\"phase\":%u,\"address\":%u,\"configuration_generation\":%lu,\"serial_generation\":%lu,\"original\":[%u,%u,%u,%u,%u,%u],\"current\":[%u,%u,%u,%u,%u,%u],\"tx_hex\":\"%s\",\"rx_hex\":\"%s\",\"write_reply_hex\":\"%s\",\"tx_accepted\":%llu,\"closure_qualified\":%s,\"closure_earliest_us\":%llu,\"closure_latest_us\":%llu,\"execution_unknown\":%s,\"error\":\"%s\"}",
-            static_cast<unsigned long>(id),boolean(result==Action::OK),actionName(result),boolean(v.pending),boolean(v.saved),boolean(v.restored),boolean(v.ok),static_cast<unsigned>(v.phase),v.address,
-            static_cast<unsigned long>(v.generation),static_cast<unsigned long>(v.serialGeneration),
-            v.original[0],v.original[1],v.original[2],v.original[3],v.original[4],v.original[5],
-            v.current[0],v.current[1],v.current[2],v.current[3],v.current[4],v.current[5],tx,rx,write,
-            static_cast<unsigned long long>(v.txAccepted),boolean(v.closureQualified),static_cast<unsigned long long>(v.closureEarliestUs),static_cast<unsigned long long>(v.closureLatestUs),boolean(v.executionUnknown),v.error)) {
-            --used;
-            if (append(output_,sizeof(output_),used,",\"request\":\"%s\",\"tx_complete\":%s,\"write_tx_complete\":%s,\"deadline_us\":%llu,\"delivered_us\":%llu,\"write_tx_hex\":\"%s\",\"write_tx_accepted\":%llu,\"write_closure_qualified\":%s,\"write_closure_earliest_us\":%llu,\"write_closure_latest_us\":%llu,\"write_delivered_us\":%llu,\"write_execution_unknown\":%s}",
-                tokens[first+1],boolean(v.txComplete),boolean(v.writeTxComplete),static_cast<unsigned long long>(v.deadlineUs),static_cast<unsigned long long>(v.deliveredUs),writeTx,static_cast<unsigned long long>(v.writeTxAccepted),boolean(v.writeQualified),static_cast<unsigned long long>(v.writeEarliestUs),static_cast<unsigned long long>(v.writeLatestUs),static_cast<unsigned long long>(v.writeDeliveredUs),boolean(v.writeExecutionUnknown))) {
-                --used;
-                if (append(output_,sizeof(output_),used,",\"restore_unsettled\":%s,\"write_deadline_us\":%llu,\"write_configuration_generation\":%lu,\"write_serial_generation\":%lu,\"write_binding_generation\":%lu}",
-                    boolean(v.restoreUnsettled),static_cast<unsigned long long>(v.writeDeadlineUs),static_cast<unsigned long>(v.writeConfigurationGeneration),
-                    static_cast<unsigned long>(v.writeSerialGeneration),static_cast<unsigned long>(v.writeBindingGeneration))) emit();
-                else error(id,"motion-profile","output_capacity");
-            }
-            else error(id,"motion-profile","output_capacity");
-        }
-        else error(id,"motion-profile","output_capacity");
-        return;
-    }
-    if (entry->command == Command::HOST) {
-        if (outputPending()) { ++inputDropped_; return; }
-        if (!host_.hostSerial) { error(id, "host", "unavailable"); return; }
-        const std::size_t args = first + 1;
-        HostSnapshot state;
-        const Action queried = host_.hostSerial(host_.context, nullptr, state);
-        if (queried != Action::OK) { error(id, "host", actionName(queried)); return; }
-        HostRequest request; request.tuple = state.active;
-        bool changing = false;
-        if (count == args) {}
-        else if (count == args + 1 && !std::strcmp(tokens[args], "caps")) {}
-        else if (count == args + 1 && !std::strcmp(tokens[args], "restore")) { changing = request.restore = true; }
-        else if (count == args + 2 && !std::strcmp(tokens[args], "baud")) {
-            if (!state.activeKnown) { error(id, "host", "active_tuple_unknown"); return; }
-            if (!number(tokens[args + 1], request.tuple.baud)) { error(id, "host", "invalid_tuple"); return; }
-            changing = true;
-        } else if (count == args + 2 && !std::strcmp(tokens[args], "fmt")) {
-            if (!state.activeKnown) { error(id, "host", "active_tuple_unknown"); return; }
-            if (!parseFormat(tokens[args + 1], request.tuple.format)) { error(id, "host", "invalid_tuple"); return; }
-            changing = true;
-        } else if (count == args + 3 && !std::strcmp(tokens[args], "set")) {
-            if (!number(tokens[args + 1], request.tuple.baud) || !parseFormat(tokens[args + 2], request.tuple.format)) {
-                error(id, "host", "invalid_tuple"); return;
-            }
-            changing = true;
-        } else { error(id, "host", "invalid_arguments"); return; }
-        if (changing && !supports(state, request.restore ? state.original : request.tuple)) { error(id, "host", "unsupported"); return; }
-        const Action result = changing ? host_.hostSerial(host_.context, &request, state) : Action::OK;
-        std::size_t used = 0;
-        const bool fits = append(output_, sizeof(output_), used,
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"host\",\"ok\":%s,\"result\":\"%s\"",
-            static_cast<unsigned long>(id), boolean(result == Action::OK), result == Action::OK ? "done" : actionName(result)) &&
-            hostState(output_, sizeof(output_), used, state);
-        if (!fits) { error(id, "host", "output_full"); return; }
-        emit(); return;
-    }
+    if (entry->command == Command::MOTION_PROFILE) { motionProfileRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::HOST) { hostRoute(id, tokens, first, count); return; }
     if (entry->command == Command::PERSISTENCE && count > first + 1 && (!std::strcmp(tokens[first + 1], "qualification") ||
         !std::strcmp(tokens[first + 1], "restart") || !std::strcmp(tokens[first + 1], "marker") ||
         !std::strcmp(tokens[first + 1], "node"))) {
@@ -2092,99 +1863,8 @@ void Console::dispatch() noexcept {
         if (outputPending()) { ++inputDropped_; return; }
         communicationFactsRoute(id, tokens + first + 2, count - first - 2); return;
     }
-    if (entry->command == Command::PERSISTENCE) {
-        if (outputPending()) { ++inputDropped_; return; }
-        if (!host_.persistence) { error(id,"persistence","unavailable"); return; }
-        const std::size_t args=first+1;
-        PersistenceCommand request; bool inspect=false,plan=false;
-        if(count==args || (count==args+1 && !std::strcmp(tokens[args],"inspect"))) inspect=true;
-        else if(count==args+1 && !std::strcmp(tokens[args],"snapshot")) request.kind=PersistenceCommandKind::SNAPSHOT;
-        else if(count==args+1 && !std::strcmp(tokens[args],"verify")) request.kind=PersistenceCommandKind::VERIFY;
-        else if(count==args+1 && !std::strcmp(tokens[args],"finish")) request.kind=PersistenceCommandKind::FINISH;
-        else if(count==args+2 && !std::strcmp(tokens[args],"host") && !std::strcmp(tokens[args+1],"before")) request.kind=PersistenceCommandKind::SELECT_BEFORE;
-        else if(count==args+2 && (!std::strcmp(tokens[args],"plan") || !std::strcmp(tokens[args],"begin"))) {
-            plan=!std::strcmp(tokens[args],"plan");request.kind=plan?PersistenceCommandKind::PREVIEW:PersistenceCommandKind::BEGIN;
-            if(!std::strcmp(tokens[args+1],"save")) request.request=Ess::PersistenceKind::SAVE;
-            else if(!std::strcmp(tokens[args+1],"factory-restore")) request.request=Ess::PersistenceKind::FACTORY_RESTORE;
-            else { error(id,"persistence","invalid_kind");return; }
-        } else { error(id,"persistence","invalid_arguments");return; }
-        PersistenceView view;const Action result=host_.persistence(host_.context,inspect?nullptr:&request,view);
-        std::size_t used=0;
-        bool fits=append(output_,sizeof(output_),used,
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"persistence\",\"ok\":%s,\"result\":\"%s\",\"action\":%d,\"pending\":%s,\"owned\":%s,\"route_ready\":%s,\"snapshot_known\":%s,\"snapshot_failed\":%s,\"verification_attempts\":%u,\"parent_session\":%s,\"finished\":%s,\"invocations\":%u,\"invocation_limit\":2,\"restart_performed\":false,\"write_replayed\":false,\"plan\":",
-            static_cast<unsigned long>(id),boolean(result==Action::OK),result==Action::OK?"done":actionName(result),inspect?-1:static_cast<int>(request.kind),
-            boolean(view.pending),boolean(view.owned),boolean(view.routeReady),boolean(view.snapshotKnown),boolean(view.snapshotFailed),view.verificationAttempts,boolean(view.parentSession),boolean(view.finished),view.invocations);
-        if (!inspect && (plan || request.kind==PersistenceCommandKind::BEGIN)) {
-            fits=fits && append(output_,sizeof(output_),used,
-                "{\"kind\":\"%s\",\"register\":45,\"value\":%u,\"writes\":1,\"scope\":\"all_parameters\",\"stopped_required\":true,\"completion\":\"unresolved\",\"durability\":\"unverified\",\"restart\":\"required_for_proof\",\"backup\":\"partial_standard_config\"}",
-                persistenceKind(request.request),request.request==Ess::PersistenceKind::SAVE?66:65);
-        } else fits=fits && append(output_,sizeof(output_),used,"null");
-        fits=fits && append(output_,sizeof(output_),used,",\"baseline\":");
-        if(view.baseline) fits=fits && persistenceSnapshot(output_,sizeof(output_),used,view.baseline->beforeConfig,view.baseline->beforeIdentity,view.baseline->stationary,view.baseline->beforeSerial,view.baseline->configurationGeneration);
-        else fits=fits && append(output_,sizeof(output_),used,"null");
-        fits=fits && append(output_,sizeof(output_),used,",\"context\":") && persistenceContext(output_,sizeof(output_),used,view.context) &&
-            append(output_,sizeof(output_),used,",\"host\":{\"active\":") && hostTuple(output_,sizeof(output_),used,view.host.active) &&
-            append(output_,sizeof(output_),used,",\"active_known\":%s,\"blocked\":%s,\"serial_generation\":%lu,\"actual_baud\":%lu,\"failure\":\"%s\"}",
-                boolean(view.host.activeKnown),boolean(view.host.blocked),static_cast<unsigned long>(view.host.generation),static_cast<unsigned long>(view.host.actualBaud),hostFailure(view.host.failure)) &&
-            (!view.reason || append(output_,sizeof(output_),used,",\"reason\":\"%s\"",view.reason)) &&
-            append(output_,sizeof(output_),used,"}");
-        if(!fits) {error(id,"persistence","output_full");return;}
-        emit();return;
-    }
-    if (entry->command == Command::COMMUNICATION) {
-        if (outputPending()) { ++inputDropped_; return; }
-        if (!host_.communication) { error(id,"communication","unavailable"); return; }
-        const std::size_t args=first+1;
-        CommunicationCommand request; bool inspect=false, plan=false;
-        uint16_t reg=0,value=0;
-        if (count==args || (count==args+1 && !std::strcmp(tokens[args],"inspect"))) inspect=true;
-        else if (count==args+1 && !std::strcmp(tokens[args],"finish")) request.kind=CommunicationCommandKind::FINISH;
-        else if (count==args+2 && (!std::strcmp(tokens[args],"host") || !std::strcmp(tokens[args],"confirm"))) {
-            const bool before=!std::strcmp(tokens[args+1],"before");
-            if (!before && std::strcmp(tokens[args+1],"requested")) { error(id,"communication","invalid_candidate"); return; }
-            request.kind=!std::strcmp(tokens[args],"host") ? (before?CommunicationCommandKind::SELECT_BEFORE:CommunicationCommandKind::SELECT_REQUESTED) :
-                (before?CommunicationCommandKind::CONFIRM_BEFORE:CommunicationCommandKind::CONFIRM_REQUESTED);
-        } else if ((count==args+3 || count==args+4) && (!std::strcmp(tokens[args],"plan") || !std::strcmp(tokens[args],"begin"))) {
-            plan=!std::strcmp(tokens[args],"plan"); request.kind=plan?CommunicationCommandKind::PREVIEW:CommunicationCommandKind::BEGIN;
-            Snapshot snapshot; if (host_.snapshot) host_.snapshot(host_.context,snapshot); request.address=snapshot.address;
-            uint32_t numberValue=0;
-            if (!std::strcmp(tokens[args+1],"address")) {
-                if (!number(tokens[args+2],numberValue) || numberValue<1 || numberValue>247) { error(id,"communication","invalid_address"); return; }
-                request.request.field=Ess::CommunicationField::ADDRESS; request.request.address=static_cast<uint16_t>(numberValue); reg=0x0013; value=request.request.address;
-            } else if (!std::strcmp(tokens[args+1],"baud")) {
-                if (!number(tokens[args+2],numberValue) || (numberValue!=115200 && numberValue!=38400 && numberValue!=19200 && numberValue!=9600)) { error(id,"communication","invalid_baud"); return; }
-                value=numberValue==115200?0:numberValue==38400?1:numberValue==19200?2:3;
-                request.request.field=Ess::CommunicationField::BAUD; request.request.baud=static_cast<Ess::BaudRateCode>(value); reg=0x0014;
-            } else if (!std::strcmp(tokens[args+1],"format")) {
-                HostFormat format;
-                if (!parseFormat(tokens[args+2],format)) { error(id,"communication","invalid_format"); return; }
-                value=static_cast<uint16_t>(format); request.request.field=Ess::CommunicationField::FORMAT;
-                request.request.format=static_cast<Ess::SerialFormatCode>(value); reg=0x0015;
-            } else { error(id,"communication","invalid_field"); return; }
-            if (count==args+4) {
-                if (!number(tokens[args+3],numberValue) || numberValue<1 || numberValue>247) { error(id,"communication","invalid_address"); return; }
-                request.address=static_cast<uint8_t>(numberValue);
-            }
-        } else { error(id,"communication","invalid_arguments"); return; }
-        CommunicationView view;
-        const Action result=host_.communication(host_.context,inspect?nullptr:&request,view);
-        std::size_t used=0;
-        bool fits=append(output_,sizeof(output_),used,
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"communication\",\"ok\":%s,\"result\":\"%s\",\"action\":%d,\"pending\":%s,\"owned\":%s,\"route_ready\":%s,\"save_sent\":false,\"restart_performed\":false,\"write_replayed\":false,\"plan\":",
-            static_cast<unsigned long>(id),boolean(result==Action::OK),result==Action::OK?"done":actionName(result),inspect?-1:static_cast<int>(request.kind),
-            boolean(view.pending),boolean(view.owned),boolean(view.routeReady));
-        if (plan || request.kind==CommunicationCommandKind::BEGIN) {
-            fits=fits && append(output_,sizeof(output_),used,
-                "{\"field\":\"%s\",\"address\":%u,\"register\":%u,\"value\":%u,\"writes\":1,\"save\":\"%s\",\"restart\":\"%s\",\"activation\":\"unresolved\",\"prerequisites\":\"fresh_checked_config_exact_candidate_stationary_effects_route_back%s\"}",
-                communicationField(request.request.field),request.address,reg,value,reg==0x0013?"required":"unresolved",reg==0x0013?"unresolved":"required",reg==0x0013?"_address_dip_off":"");
-        } else fits=fits && append(output_,sizeof(output_),used,"null");
-        fits=fits && append(output_,sizeof(output_),used,",\"context\":") && communicationContext(output_,sizeof(output_),used,view.context) &&
-            append(output_,sizeof(output_),used,",\"host\":{\"active\":") && hostTuple(output_,sizeof(output_),used,view.host.active) &&
-            append(output_,sizeof(output_),used,",\"active_known\":%s,\"blocked\":%s,\"serial_generation\":%lu,\"actual_baud\":%lu,\"failure\":\"%s\"}}",
-                boolean(view.host.activeKnown),boolean(view.host.blocked),static_cast<unsigned long>(view.host.generation),static_cast<unsigned long>(view.host.actualBaud),hostFailure(view.host.failure));
-        if (!fits) { error(id,"communication","output_full"); return; }
-        emit(); return;
-    }
+    if (entry->command == Command::PERSISTENCE) { persistenceRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::COMMUNICATION) { communicationRoute(id, tokens, first, count); return; }
     if (entry->command == Command::DRIVER && count > first + 1 && std::strcmp(tokens[first + 1], "experiment") == 0) {
         // The wired bench 10 PT pair experiment was removed when wired bench 13
         // promoted the PT target pairs (`segment position N set target VALUE`).
@@ -2193,185 +1873,14 @@ void Console::dispatch() noexcept {
         error(id, "driver-experiment", "unsupported");
         return;
     }
-    if (entry->command == Command::VELOCITY && count > first + 1 && std::strcmp(tokens[first + 1], "jog") == 0) {
-        // Wired bench 14: velocity jog set SPEED ACCEL DECEL | velocity jog inspect.
-        if (outputPending()) { ++inputDropped_; return; }
-        const char* command = "velocity-jog";
-        if (count == first + 3 && !std::strcmp(tokens[first + 2], "inspect")) { parameterWrite(id, command, nullptr); return; }
-        uint32_t acceleration = 0, deceleration = 0, magnitude = 0;
-        const char* text = count == first + 6 ? tokens[first + 3] : "";
-        const bool negative = *text == '-';
-        if (count != first + 6 || std::strcmp(tokens[first + 2], "set") != 0 || !number(negative ? text + 1 : text, magnitude) ||
-            magnitude > 3000 || !number(tokens[first + 4], acceleration) || !number(tokens[first + 5], deceleration) ||
-            acceleration > 2000 || deceleration > 2000) { error(id, command, "invalid_arguments"); return; }
-        const int32_t speed = negative ? -static_cast<int32_t>(magnitude) : static_cast<int32_t>(magnitude);
-        ParameterWriteRequest request;
-        request.kind = ParameterWriteKind::VELOCITY_SET;
-        request.words[0] = static_cast<uint16_t>(static_cast<int16_t>(speed));
-        request.words[1] = static_cast<uint16_t>(acceleration); request.words[2] = static_cast<uint16_t>(deceleration);
-        parameterWrite(id, command, &request);
-        return;
-    }
-    if (entry->command == Command::VELOCITY && count > first + 1 && std::strcmp(tokens[first + 1], "limits") == 0) {
-        // Wired bench 14 (D6): velocity limits [qualify RPM ACCEL DECEL SUBDIVISION DURATION_MS normal|fast | raise | reset].
-        if (outputPending()) { ++inputDropped_; return; }
-        if (!host_.velocityLimits) { error(id, "velocity-limits", "unavailable"); return; }
-        VelocityLimitsCommand request;
-        const char* verb = count > first + 2 ? tokens[first + 2] : "";
-        bool valid = true;
-        if (count == first + 2) request.kind = VelocityLimitsCommandKind::SHOW;
-        else if (!std::strcmp(verb, "raise")) { request.kind = VelocityLimitsCommandKind::RAISE; valid = count == first + 3; }
-        else if (!std::strcmp(verb, "reset")) { request.kind = VelocityLimitsCommandKind::RESET; valid = count == first + 3; }
-        else if (!std::strcmp(verb, "qualify") && count == first + 9) {
-            request.kind = VelocityLimitsCommandKind::QUALIFY;
-            const char* text = tokens[first + 3];
-            const bool negative = *text == '-';
-            uint32_t magnitude = 0, acceleration = 0, deceleration = 0, subdivision = 0, duration = 0;
-            valid = number(negative ? text + 1 : text, magnitude) && magnitude <= 3000 &&
-                number(tokens[first + 4], acceleration) && acceleration <= 0xFFFF && number(tokens[first + 5], deceleration) &&
-                deceleration <= 0xFFFF && number(tokens[first + 6], subdivision) && subdivision <= 0xFFFF &&
-                number(tokens[first + 7], duration);
-            request.cell.rpm = static_cast<int16_t>(negative ? -static_cast<int32_t>(magnitude) : static_cast<int32_t>(magnitude));
-            request.cell.accelerationTime = static_cast<uint16_t>(acceleration);
-            request.cell.decelerationTime = static_cast<uint16_t>(deceleration);
-            request.cell.subdivision = static_cast<uint16_t>(subdivision); request.cell.durationMs = duration;
-            if (!std::strcmp(tokens[first + 8], "normal")) request.cell.stop = VelocityStop::NORMAL;
-            else if (!std::strcmp(tokens[first + 8], "fast")) request.cell.stop = VelocityStop::FAST;
-            else valid = false;
-        } else valid = false;
-        if (!valid) { error(id, "velocity-limits", "invalid_arguments"); return; }
-        velocityLimitsReply(id, request);
-        return;
-    }
-    if (entry->command == Command::TUNING && count > first + 1 && std::strcmp(tokens[first + 1], "candidates") == 0) {
-        // Wired bench 15: tuning candidates [check control|GROUP FIELD VALUE [address] | threshold VALUE | reset].
-        if (outputPending()) { ++inputDropped_; return; }
-        if (!host_.candidates) { error(id, "tuning-candidates", "unavailable"); return; }
-        CandidatesCommand request;
-        const char* verb = count > first + 2 ? tokens[first + 2] : "";
-        bool valid = true;
-        uint32_t value = 0;
-        if (count == first + 2) request.kind = CandidatesCommandKind::SHOW;
-        else if (!std::strcmp(verb, "reset")) { request.kind = CandidatesCommandKind::RESET; valid = count == first + 3; }
-        else if (!std::strcmp(verb, "threshold") && count == first + 4) {
-            request.kind = CandidatesCommandKind::THRESHOLD;
-            valid = number(tokens[first + 3], value) && value > DEVIATION_THRESHOLD_ORDINARY_MAX && value <= 0xFFFF;
-            request.value = static_cast<uint16_t>(value);
-        } else if (!std::strcmp(verb, "check") && (count == first + 6 || count == first + 7)) {
-            request.kind = CandidatesCommandKind::CHECK;
-            const bool control = !std::strcmp(tokens[first + 3], "control");
-            if (control) request.group = Ess::DriverGroup::CONTROL_SETTINGS;
-            valid = control || tuningGroup(tokens[first + 3], request.group);
-            const uint8_t fields = control ? 8 : Ess::tuningFieldCount(request.group);
-            uint8_t slot = 0;
-            while (valid && slot < fields) {
-                const Probe::CandidateRow* row = candidateRow(request.group, slot);
-                if (row && !std::strcmp(row->name, tokens[first + 4])) break;
-                ++slot;
-            }
-            valid = valid && slot < fields && number(tokens[first + 5], value) && value <= 0xFFFF;
-            request.slot = slot; request.value = static_cast<uint16_t>(value);
-            uint32_t address = 0;
-            if (valid && count == first + 7) {
-                valid = number(tokens[first + 6], address) && address >= 1 && address <= 247;
-                request.address = static_cast<uint8_t>(address);
-            }
-        } else valid = false;
-        if (!valid) { error(id, "tuning-candidates", "invalid_arguments"); return; }
-        candidatesReply(id, request);
-        return;
-    }
+    if (entry->command == Command::VELOCITY && count > first + 1 && std::strcmp(tokens[first + 1], "jog") == 0) { velocityJogRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::VELOCITY && count > first + 1 && std::strcmp(tokens[first + 1], "limits") == 0) { velocityLimitsRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::TUNING && count > first + 1 && std::strcmp(tokens[first + 1], "candidates") == 0) { candidatesRoute(id, tokens, first, count); return; }
     if ((entry->command == Command::HOME || entry->command == Command::VELOCITY) &&
-        count > first + 1 && std::strcmp(tokens[first + 1], "restore") == 0) {
-        // home restore SNAPSHOT_ID | home restore inspect (velocity the same):
-        // the words of an earlier checked read of the selected axis.
-        if (outputPending()) { ++inputDropped_; return; }
-        const bool home = entry->command == Command::HOME;
-        const char* command = home ? "home-restore" : "velocity-restore";
-        if (count != first + 3) { error(id, command, "invalid_arguments"); return; }
-        if (!std::strcmp(tokens[first + 2], "inspect")) { parameterWrite(id, command, nullptr); return; }
-        uint32_t snapshot = 0;
-        if (!number(tokens[first + 2], snapshot) || !snapshot) { error(id, command, "invalid_arguments"); return; }
-        ParameterWriteRequest request;
-        request.kind = home ? ParameterWriteKind::HOME_RESTORE : ParameterWriteKind::VELOCITY_RESTORE;
-        request.snapshotId = snapshot;
-        parameterWrite(id, command, &request);
-        return;
-    }
+        count > first + 1 && std::strcmp(tokens[first + 1], "restore") == 0) { restoreRoute(id, tokens, first, count); return; }
     if ((entry->command == Command::HOME || entry->command == Command::VELOCITY) &&
-        count > first + 1 && std::strcmp(tokens[first + 1], "read") == 0) {
-        if (outputPending()) { ++inputDropped_; return; }
-        const auto kind = entry->command == Command::HOME ? Ess::ReadKind::HOMING_PARAMETERS : Ess::ReadKind::VELOCITY_PARAMETERS;
-        if (count > first + 3) { error(id, readCommandName(kind), "invalid_arguments"); return; }
-        parameterRead(id, kind, count == first + 3 ? tokens[first + 2] : nullptr);
-        return;
-    }
-    if (entry->command == Command::HOME) {
-        if (outputPending()) { ++inputDropped_; return; }
-        const std::size_t args = first + 1;
-        if (count > args && std::strcmp(tokens[args], "qualification") == 0) {
-            if (count != args + 1) { error(id, "home", "invalid_arguments"); return; }
-            if (!host_.inspectHomeQualification) { error(id, "home", "unavailable"); return; }
-            Ess::HomePrerequisites p; bool valid = false;
-            const bool present = host_.inspectHomeQualification(host_.context, p, valid);
-            std::size_t used = 0;
-            const bool fits = append(output_, sizeof(output_), used,
-                "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"home-qualification\",\"ok\":true,\"present\":%s,\"valid\":%s,\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"method\":%d,\"native_parameters\":[%u,%u,%u],\"qualified_us\":%llu,\"qualification_maximum_age_us\":%llu,\"maximum_age_us\":%llu,\"available_inputs\":%u,\"index_qualified\":%s,\"reference_semantics_qualified\":%s}",
-                static_cast<unsigned long>(id), boolean(present), boolean(present && valid),
-                static_cast<unsigned long>(p.target.id), p.target.address, static_cast<unsigned long>(p.target.generation),
-                static_cast<unsigned long>(p.configurationGeneration), static_cast<int>(p.qualifiedMethod),
-                p.qualifiedSearchSpeed, p.qualifiedReturnSpeed, p.qualifiedRampTime,
-                static_cast<unsigned long long>(p.qualifiedUs), static_cast<unsigned long long>(p.qualificationMaximumAgeUs),
-                static_cast<unsigned long long>(p.maximumAgeUs), p.availableInputs, boolean(p.indexQualified), boolean(p.referenceSemanticsQualified));
-            if (!fits) { error(id, "home", "output_full"); return; }
-            emit(); return;
-        }
-        if (count > args && std::strcmp(tokens[args], "auxiliary") == 0) {
-            const char* command = "home-auxiliary";
-            if (!host_.startDriver || !host_.snapshot) { error(id, command, "unavailable"); return; }
-            uint32_t choice = 0; Ess::DriverRequest request;
-            if (count != args + 2 || !number(tokens[args + 1], choice) || choice > 11 ||
-                !Ess::prepareHomingAuxiliary(request, static_cast<Ess::HomingAuxiliary>(choice))) {
-                error(id, command, "invalid_arguments"); return;
-            }
-            Snapshot snapshot; host_.snapshot(host_.context, snapshot);
-            uint32_t operationId = 0;
-            const bool available = availableSlot() != OUTSTANDING_SLOTS;
-            if (available) beginWork();
-            const Action result = available ? host_.startDriver(host_.context, id, snapshot.address,
-                Ess::DriverKind::UPDATE, request, operationId) : Action::BUSY;
-            if (result == Action::OK) track(id, operationId);
-            action(id, command, result, snapshot.address, result == Action::OK ? operationId : 0);
-            return;
-        }
-        if (count == args + 1 && std::strcmp(tokens[args], "methods") == 0) {
-            std::size_t used = 0;
-            const bool fits = HomeConsole::formatMethods(output_, sizeof(output_), used, id);
-            if (!fits) { error(id, "home", "output_full"); return; }
-            emit(); return;
-        }
-        if (!host_.startHome || !host_.snapshot || !host_.axis) { error(id, "home", "unavailable"); return; }
-        Ess::HomeRequest request;
-        uint8_t parsedAddress = 0;
-        bool explicitAddress = false;
-        if (const char* reason = HomeConsole::parse(tokens + args, count - args, request, parsedAddress, explicitAddress)) {
-            error(id, "home", reason); return;
-        }
-        uint32_t address = parsedAddress;
-        if (!explicitAddress) { Snapshot snapshot; host_.snapshot(host_.context, snapshot); address = snapshot.address; }
-        if (address < 1 || address > 247) { error(id, "home", "invalid_address"); return; }
-        AxisCommand query; AxisView axis;
-        query.kind = AxisCommandKind::QUERY;
-        if (!host_.axis(host_.context, query, axis)) { error(id, "home", "unavailable"); return; }
-        request.configurationGeneration = axis.configuration.generation;
-        const bool available = availableSlot() != OUTSTANDING_SLOTS;
-        uint32_t operationId = 0;
-        if (available) beginWork();
-        const Action result = available ? host_.startHome(host_.context, id, static_cast<uint8_t>(address), request, operationId) : Action::BUSY;
-        if (result == Action::OK) track(id, operationId);
-        action(id, "home", result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0);
-        return;
-    }
+        count > first + 1 && std::strcmp(tokens[first + 1], "read") == 0) { parameterReadRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::HOME) { homeRoute(id, tokens, first, count); return; }
     const bool simpleSubdivision = entry->command == Command::SUBDIVISION;
     const bool nativeDriver = entry->command == Command::DRIVER;
     const bool nativeIo = entry->command == Command::IO;
@@ -2379,573 +1888,23 @@ void Console::dispatch() noexcept {
     const bool nativeControl = entry->command == Command::CONTROL;
     const bool nativeTuning = entry->command == Command::TUNING;
     if (nativeDriver || nativeIo || nativeSegment || nativeControl || nativeTuning ||
-        (simpleSubdivision && count >= first + 2 && !std::strcmp(tokens[first + 1], "options"))) {
-        const char* command = nativeTuning ? "tuning" : nativeControl ? "control" :
-            nativeSegment ? "segment" : nativeIo ? "io" : simpleSubdivision ? "subdivision" : "driver";
-        if (outputPending()) { ++inputDropped_; return; }
-        if (simpleSubdivision) {
-            if (count > first + 2) { error(id, command, "invalid_arguments"); return; }
-            if (count == first + 2 && !std::strcmp(tokens[first + 1], "options")) {
-                if (outputFormat_ == Format::HUMAN) {
-                    std::snprintf(output_, sizeof(output_),
-                        "Subdivision: any integer from 400 to 51200; documented default 1000.\n"
-                        "Useful examples: 400, 800, 1000, 1600, 2000, 3200, 6400, 12800, 25600, 51200.\n"
-                        "These are examples, not the only allowed values.\n"
-                        "Read: subdivision. Set while stopped with one command: subdivision 1600.\n"
-                        "Required reads, setting write and readback run automatically.\n"
-                        "A checked change updates the host scale and establishes a new zero at the current stationary position. No save or motion is automatic.");
-                    emit(0, true);
-                } else {
-                    std::snprintf(output_, sizeof(output_),
-                        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"subdivision\",\"ok\":true,\"minimum\":400,\"maximum\":51200,\"default\":1000,\"examples\":[400,800,1000,1600,2000,3200,6400,12800,25600,51200],\"all_integers_in_range\":true,\"device_settings_changed\":false}",
-                        static_cast<unsigned long>(id));
-                    emit();
-                }
-                return;
-            }
-        }
-        if (!host_.startDriver || !host_.snapshot) { error(id, command, "unavailable"); return; }
-        std::size_t next = first + 1;
-        if (next >= count) { error(id, command, "invalid_arguments"); return; }
-        Ess::DriverRequest request;
-        request.group = nativeControl ? Ess::DriverGroup::CONTROL_SETTINGS : nativeIo ? Ess::DriverGroup::IO : Ess::DriverGroup::DRIVE;
-        if (nativeTuning) {
-            if (count < next+2 || !tuningGroup(tokens[next],request.group)) { error(id,command,"invalid_tuning_group");return; }
-            ++next;
-        }
-        if (nativeSegment) {
-            if (count < next + 3) { error(id, command, "invalid_arguments"); return; }
-            if (!std::strcmp(tokens[next], "position")) request.group = Ess::DriverGroup::POSITION_SEGMENT;
-            else if (!std::strcmp(tokens[next], "speed")) request.group = Ess::DriverGroup::SPEED_SEGMENT;
-            else if (!std::strcmp(tokens[next], "start")) request.group = Ess::DriverGroup::SEGMENT_START_SPEED;
-            else { error(id, command, "invalid_record_kind"); return; }
-            uint32_t index = 0;
-            if (!number(tokens[next + 1], index) || index < 1 || index > 16) { error(id, command, "invalid_index"); return; }
-            request.segmentIndex = static_cast<uint8_t>(index); next += 2;
-        }
-        const bool reading = std::strcmp(tokens[next], "read") == 0;
-        if (!reading && std::strcmp(tokens[next], "set") != 0) { error(id, command, "invalid_arguments"); return; }
-        ++next;
-        // An odd trailing token is the optional target; every remaining token
-        // must belong to a complete field/value pair before host admission.
-        const bool hasAddress = reading ? count == next + 1 : (count - next) % 2 != 0;
-        const std::size_t end = count - (hasAddress ? 1 : 0);
-        if ((reading && end != next) || (!reading && end == next)) { error(id, command, "invalid_arguments"); return; }
-        uint32_t address = 0;
-        if (hasAddress && (!number(tokens[end], address) || address < 1 || address > 247)) { error(id, command, "invalid_address"); return; }
-        const char* driveFields[] = {"direction", "subdivision", "word-order", "soft-limit", "over-limit", "interruption", "position-mode", "positive-limit", "negative-limit"};
-        const char* ioFields[] = {"input-polarity", "x0", "x1", "x2", "x3", "output-polarity", "y0", "y1", "custom"};
-        const char* segmentFields[] = {"speed", "acceleration", "deceleration", "target"};
-        const char* startFields[] = {"value"};
-        const char* controlFields[] = {"algorithm", "encoder-resolution", "maximum-effective-current", "closed-maximum-current", "closed-base-current", "open-maximum-current", "lock-current", "lock-delay"};
-        const bool startRecord = request.group == Ess::DriverGroup::SEGMENT_START_SPEED;
-        const char* const* fields = nativeControl ? controlFields : nativeSegment ? (startRecord ? startFields : segmentFields) : nativeIo ? ioFields : driveFields;
-        const std::size_t fieldCount = nativeTuning ? Ess::tuningFieldCount(request.group) : nativeControl ? 8 : nativeSegment ? (startRecord ? 1 : request.group == Ess::DriverGroup::POSITION_SEGMENT ? 4 : 3) : 9;
-        for (; next < end; next += 2) {
-            std::size_t field = 0;
-            while (field < fieldCount && std::strcmp(tokens[next],nativeTuning?tuningField(request.group,field):fields[field]) != 0) ++field;
-            if (field == fieldCount) { error(id, command, "unknown_field"); return; }
-            const uint32_t mask = nativeTuning ? 1UL << field : nativeControl ? 1UL << (23 + field) : nativeSegment ? 1UL << (startRecord ? 21 : field == 3 ? 22 : 18 + field) : 1UL << (field + (nativeIo ? 9 : 0));
-            if (request.fields & mask) { error(id, command, "duplicate_field"); return; }
-            const bool noFunction = nativeIo && std::strcmp(tokens[next + 1], "none") == 0 &&
-                ((field >= 1 && field <= 4) || field == 6 || field == 7);
-            const char* numberText = noFunction ? "0" : tokens[next + 1];
-            if (nativeControl && field == 0) {
-                if (!std::strcmp(numberText, "open-loop")) numberText = "1";
-                else if (!std::strcmp(numberText, "algorithm-1")) numberText = "2";
-            }
-            Core::Rational value;
-            const char* digit = numberText; if (*digit == '-') ++digit;
-            if (!*digit) { error(id, command, "invalid_integer"); return; }
-            for (const char* p = digit; *p; ++p) if (*p < '0' || *p > '9') { error(id, command, "invalid_integer"); return; }
-            if (!Core::parseExactNumber(numberText, value) || value.denominator != 1 ||
-                (!nativeSegment && (nativeTuning || nativeControl || nativeIo || field < 7) && (value.numerator < 0 || value.numerator > 65535))) { error(id, command, "invalid_integer"); return; }
-            if (nativeSegment) {
-                if (field != 3 && (value.numerator < -2147483648LL || value.numerator > 2147483647LL)) { error(id, command, "invalid_integer"); return; }
-                if (!startRecord && (field == 1 || field == 2) && (value.numerator < 0 || value.numerator > 65535)) { error(id, command, "invalid_integer"); return; }
-                request.fields |= mask;
-                if (startRecord) request.segmentStartSpeed = static_cast<int32_t>(value.numerator);
-                else if (field == 0) request.segmentSpeed = static_cast<int32_t>(value.numerator);
-                else if (field == 1) request.segmentAcceleration = static_cast<uint16_t>(value.numerator);
-                else if (field == 2) request.segmentDeceleration = static_cast<uint16_t>(value.numerator);
-                else request.segmentPulseTarget = value.numerator;
-                continue;
-            }
-            const uint16_t word = static_cast<uint16_t>(value.numerator);
-            if (nativeTuning) {
-                // A word outside the documented range is selected as given: only a
-                // D7 exact restore of a pinned read admits it (wired bench 15); the
-                // application and the core refuse every other one before TX.
-                if (!Ess::prepareTuningValue(request,Ess::tuningParameter(request.group,static_cast<uint8_t>(field)),word)) {
-                    request.fields |= 1UL << field; request.tuningValues[field] = word;
-                }
-                continue;
-            }
-            request.fields |= mask;
-            if (nativeControl) {
-                switch (field) {
-                case 0: request.controlAlgorithm = static_cast<Ess::ControlAlgorithm>(word); break;
-                case 1: request.encoderResolution = word; break;
-                case 2: request.maximumEffectiveCurrentMa = word; break;
-                case 3: request.closedMaximumPercent = word; break;
-                case 4: request.closedBasePercent = word; break;
-                case 5: request.openMaximumPercent = word; break;
-                case 6: request.lockPercent = word; break;
-                case 7: request.lockDelayMs = word; break;
-                }
-                continue;
-            }
-            if (nativeIo) {
-                Core::Status checked;
-                if (field >= 1 && field <= 4) checked = Ess::prepareInputFunction(request, static_cast<uint8_t>(field - 1), static_cast<Ess::InputFunction>(word));
-                else if (field == 6 || field == 7) checked = Ess::prepareOutputFunction(request, static_cast<uint8_t>(field - 6), static_cast<Ess::OutputFunction>(word));
-                else if (field == 0) request.inputPolarity = word;
-                else if (field == 5) request.outputPolarity = word;
-                else request.customOutput = word;
-                if (!checked) { error(id, command, driverAdmissionStatus(checked) == Action::UNRESOLVED ? "unresolved" : "invalid_value"); return; }
-                continue;
-            }
-            switch (field) {
-            case 0: request.direction = static_cast<Ess::DefaultDirection>(word); break;
-            case 1: request.subdivision = word; break;
-            case 2: request.wordOrder = static_cast<Ess::WordOrder>(word); break;
-            case 3: request.softLimitEnable = static_cast<Ess::SoftLimitEnable>(word); break;
-            case 4: request.overLimitStop = static_cast<Ess::OverLimitStop>(word); break;
-            case 5: request.interruption = static_cast<Ess::PvTriggerMode>(word); break;
-            case 6: request.positionMode = static_cast<Ess::PositionMode>(word); break;
-            case 7: request.positiveLimit = value.numerator; break;
-            case 8: request.negativeLimit = value.numerator; break;
-            }
-        }
-        if (!hasAddress) { Snapshot snapshot; host_.snapshot(host_.context, snapshot); address = snapshot.address; }
-        if (address < 1 || address > 247) { error(id, command, "invalid_address"); return; }
-        const bool available = availableSlot() != OUTSTANDING_SLOTS;
-        uint32_t operationId = 0;
-        if (available) beginWork();
-        const Action result = available ? host_.startDriver(host_.context, id, static_cast<uint8_t>(address),
-            reading ? Ess::DriverKind::READ : Ess::DriverKind::UPDATE, request, operationId) : Action::BUSY;
-        if (result == Action::OK) track(id, operationId);
-        action(id, command, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0);
-        return;
-    }
-    if (entry->command == Command::VELOCITY) {
-        if (outputPending()) { ++inputDropped_; return; }
-        const std::size_t args = first + 1;
-        if (!host_.startVelocity || !host_.snapshot || !host_.axis) { error(id, "velocity", "unavailable"); return; }
-        Core::VelocityRequest request; uint32_t duration = 0;
-        if (count < args + 6 || !Core::parseExactNumber(tokens[args], request.value) ||
-            !rateUnit(tokens[args + 1], request.unit) || !coordinateFrame(tokens[args + 2], request.frame) ||
-            !number(tokens[args + 3], duration) || duration < 1 || duration > VELOCITY_MAX_DURATION_MS ||
-            std::strcmp(tokens[args + 4], "configured") != 0) { error(id, "velocity", "invalid_arguments"); return; }
-        request.durationUs = duration * 1000; request.ramp = Core::VelocityRamp::VERIFIED_CONFIGURED;
-        if (std::strcmp(tokens[args + 5], "normal") == 0) request.stop.behavior = Core::StopBehavior::CONFIGURED_DECELERATION;
-        else if (std::strcmp(tokens[args + 5], "fast") == 0) request.stop.behavior = Core::StopBehavior::DIRECT;
-        else { error(id, "velocity", "unsupported_policy"); return; }
-        std::size_t next = args + 6;
-        if (next < count && std::strcmp(tokens[next], "round") == 0) {
-            ++next;
-            if (next + 2 > count || !rounding(tokens[next], request.rounding) ||
-                !allowance(tokens[next + 1], request.maximumQuantizationErrorRpm)) { error(id, "velocity", "invalid_arguments"); return; }
-            next += 2;
-            if (next < count && std::strcmp(tokens[next], "approx") == 0) {
-                ++next;
-                if (next >= count || request.unit.position != Core::PositionUnit::RADIANS ||
-                    !allowance(tokens[next++], request.maximumApproximationErrorRpm) || request.maximumApproximationErrorRpm <= 0) {
-                    error(id, "velocity", "invalid_arguments"); return;
-                }
-                request.approximate = true;
-            }
-        }
-        Snapshot snapshot; host_.snapshot(host_.context, snapshot); uint32_t address = snapshot.address;
-        if (count > next + 1 || (count == next + 1 && !number(tokens[next], address))) { error(id, "velocity", "invalid_arguments"); return; }
-        if (address < 1 || address > 247) { error(id, "velocity", "invalid_address"); return; }
-        AxisCommand query; AxisView axis;
-        if (!host_.axis(host_.context, query, axis)) { error(id, "velocity", "invalid_axis_configuration"); return; }
-        request.configurationGeneration = axis.configuration.generation;
-        const bool available = availableSlot() != OUTSTANDING_SLOTS;
-        uint32_t operationId = 0;
-        if (available) beginWork();
-        const Action result = available ? host_.startVelocity(host_.context, id, static_cast<uint8_t>(address), request, operationId) : Action::BUSY;
-        if (result == Action::OK) track(id, operationId);
-        action(id, "velocity", result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0);
-        return;
-    }
+        (simpleSubdivision && count >= first + 2 && !std::strcmp(tokens[first + 1], "options"))) { nativeRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::VELOCITY) { velocityRoute(id, tokens, first, count); return; }
     if (entry->command == Command::MOVE_BY || entry->command == Command::MOVE_TO ||
         entry->command == Command::SPEED || entry->command == Command::ACCEL ||
-        entry->command == Command::DECEL || entry->command == Command::MOTION || entry->command == Command::STEPS_PER_TURN || entry->command == Command::SETTINGS || simpleSubdivision) {
-        if (outputPending()) { ++inputDropped_; return; }
-        if (!host_.simpleMotion) { error(id, entry->name, "unavailable"); return; }
-        SimpleMotionCommand request;
-        const bool move = entry->command == Command::MOVE_BY || entry->command == Command::MOVE_TO;
-        const bool session = move || entry->command == Command::SETTINGS || simpleSubdivision;
-        const std::size_t args = count - first - 1;
-        if (simpleSubdivision) {
-            uint32_t value = 0;
-            if (args > 1 || (args && (!number(tokens[first+1], value) || value < 400 || value > 51200))) {
-                error(id, entry->name, "subdivision_must_be_400_to_51200"); return;
-            }
-            request.kind = SimpleMotionCommandKind::SUBDIVISION; request.nativeValue = static_cast<uint16_t>(value);
-        } else if (entry->command == Command::SETTINGS) {
-            if (args) { error(id, entry->name, "invalid_arguments"); return; }
-            request.kind = SimpleMotionCommandKind::SETTINGS;
-        } else if (move) {
-            if (args < 1 || args > 2 || !Core::parseExactNumber(tokens[first + 1], request.position.value) ||
-                (args == 2 && !positionUnit(tokens[first + 2], request.position.unit))) {
-                error(id, entry->name, "invalid_arguments"); return;
-            }
-            if (request.position.unit != Core::PositionUnit::STEPS && request.position.unit != Core::PositionUnit::DEGREES &&
-                request.position.unit != Core::PositionUnit::TURNS && request.position.unit != Core::PositionUnit::MILLIMETRES) {
-                error(id, entry->name, "use_steps_deg_turn_or_mm"); return;
-            }
-            request.kind = entry->command == Command::MOVE_BY ? SimpleMotionCommandKind::MOVE_BY : SimpleMotionCommandKind::MOVE_TO;
-            request.position.relative = entry->command == Command::MOVE_BY;
-            request.position.frame = request.position.unit == Core::PositionUnit::STEPS && request.position.relative ? Core::CoordinateFrame::NATIVE :
-                request.position.unit == Core::PositionUnit::MILLIMETRES ? Core::CoordinateFrame::LOAD : Core::CoordinateFrame::MOTOR;
-        } else if (entry->command == Command::STEPS_PER_TURN) {
-            if (args != 1 || !Core::parseExactNumber(tokens[first + 1], request.position.value) ||
-                request.position.value.numerator <= 0 || request.position.value.numerator > UINT32_MAX ||
-                request.position.value.denominator > UINT32_MAX) {
-                error(id, entry->name, "invalid_positive_scale"); return;
-            }
-            request.kind = SimpleMotionCommandKind::SCALE;
-        } else {
-            if (args > 2 || (entry->command == Command::MOTION && args > 1)) { error(id, entry->name, "invalid_arguments"); return; }
-            if (args && entry->command == Command::MOTION) {
-                request.kind = SimpleMotionCommandKind::SETUP;
-                if (!std::strcmp(tokens[first + 1], "write")) request.setup = Core::MoveSetup::WRITE_ALL;
-                else if (!std::strcmp(tokens[first + 1], "stored")) request.setup = Core::MoveSetup::USE_STORED;
-                else { error(id, entry->name, "invalid_arguments"); return; }
-            } else if (args) {
-                Core::Rational value;
-                const bool speed = entry->command == Command::SPEED;
-                const char* unit = speed ? "rpm" : "ms";
-                char* number = tokens[first + 1];
-                const std::size_t length = std::strlen(number), unitLength = std::strlen(unit);
-                const bool suffix = length > unitLength && !std::strcmp(number + length - unitLength, unit);
-                if (args == 2 && (suffix || std::strcmp(tokens[first + 2], unit))) {
-                    error(id, entry->name, "invalid_arguments"); return;
-                }
-                if (suffix) number[length - unitLength] = '\0';
-                if (!Core::parseExactNumber(number, value) || value.denominator != 1 ||
-                    value.numerator < 0 || value.numerator > (speed ? 3000 : 2000)) {
-                    error(id, entry->name, speed ? "speed_must_be_0_to_3000_rpm" : "ramp_must_be_0_to_2000_ms"); return;
-                }
-                request.kind = speed ? SimpleMotionCommandKind::SPEED : entry->command == Command::ACCEL ?
-                    SimpleMotionCommandKind::ACCEL : SimpleMotionCommandKind::DECEL;
-                request.nativeValue = static_cast<uint16_t>(value.numerator);
-            }
-        }
-        const bool available = availableSlot() != OUTSTANDING_SLOTS;
-        SimpleMotionView view;
-        if (session && available) beginWork();
-        const auto result = session && !available ? Action::BUSY : host_.simpleMotion(host_.context, id, &request, view);
-        if (result != Action::OK) { action(id, entry->name, result); return; }
-        if (session) {
-            track(id, view.operationId);
-            formatSimpleMotion(id, view, true);
-        } else if (entry->command == Command::STEPS_PER_TURN) {
-            if (outputFormat_ == Format::HUMAN) {
-                std::snprintf(output_,sizeof(output_),"Angle scale: %lld/%llu command steps per motor turn.\nThis host declaration applies after the next move's stopped-state checks; no drive setting changed.",
-                    static_cast<long long>(request.position.value.numerator),static_cast<unsigned long long>(request.position.value.denominator));
-                emit(0,true);
-            } else {
-                std::snprintf(output_,sizeof(output_),"{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"stepsperturn\",\"ok\":true,\"numerator\":%lld,\"denominator\":%llu,\"device_settings_changed\":false}",
-                    static_cast<unsigned long>(id),static_cast<long long>(request.position.value.numerator),static_cast<unsigned long long>(request.position.value.denominator));
-                emit();
-            }
-        } else if (outputFormat_ == Format::HUMAN) {
-            char accel[24], decel[24];
-            if (view.accelerationKnown) std::snprintf(accel,sizeof(accel),"%u",view.acceleration);
-            else std::snprintf(accel,sizeof(accel),"use drive setting");
-            if (view.decelerationKnown) std::snprintf(decel,sizeof(decel),"%u",view.deceleration);
-            else std::snprintf(decel,sizeof(decel),"use drive setting");
-            std::snprintf(output_,sizeof(output_),
-                "Host settings: speed %u rpm; accel %s ms; decel %s ms.\nNo motor setting changed yet. Next move will %s.\nUse settings to compare with the motor's actual values.",
-                view.speedRpm,accel,decel,view.setup == Core::MoveSetup::USE_STORED ? "reuse stored parameters" : "send parameters before start");
-            emit(0,true);
-        } else {
-            std::snprintf(output_,sizeof(output_),
-                "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":true,\"speed_rpm\":%u,\"acceleration\":%u,\"deceleration\":%u,\"acceleration_known\":%s,\"deceleration_known\":%s,\"ramp_units\":\"native\",\"ramp_time_unit\":\"ms\",\"setup\":\"%s\",\"device_settings_changed\":false}",
-                static_cast<unsigned long>(id),entry->name,view.speedRpm,view.acceleration,view.deceleration,
-                boolean(view.accelerationKnown),boolean(view.decelerationKnown),view.setup == Core::MoveSetup::USE_STORED ? "stored" : "write");
-            emit();
-        }
-        return;
-    }
-    if (entry->command == Command::POSITION && count > first + 1 && std::strcmp(tokens[first + 1], "limits") == 0) {
-        // Wired bench 16 (D6): position limits [set RPM RATE RAMP case NAME | default].
-        if (outputPending()) { ++inputDropped_; return; }
-        if (!host_.positionLimits) { error(id, "position-limits", "unavailable"); return; }
-        PositionLimitsCommand request;
-        const char* verb = count > first + 2 ? tokens[first + 2] : "";
-        bool valid = true;
-        if (count == first + 2) request.kind = PositionLimitsCommandKind::SHOW;
-        else if (!std::strcmp(verb, "default")) { request.kind = PositionLimitsCommandKind::DEFAULT; valid = count == first + 3; }
-        else if (!std::strcmp(verb, "set") && count == first + 8 && !std::strcmp(tokens[first + 6], "case")) {
-            request.kind = PositionLimitsCommandKind::SET;
-            uint32_t rpm = 0, rate = 0, ramp = 0;
-            valid = number(tokens[first + 3], rpm) && rpm <= 0xFFFF && number(tokens[first + 4], rate) &&
-                number(tokens[first + 5], ramp) && ramp <= 0xFFFF && std::strlen(tokens[first + 7]) < POSITION_LIMITS_CASE_CAPACITY;
-            request.limits.maximumRpm = static_cast<uint16_t>(rpm);
-            request.limits.maximumCommandRate = rate;
-            request.limits.minimumRampTime = static_cast<uint16_t>(ramp);
-            if (valid) std::strcpy(request.caseName, tokens[first + 7]);
-        } else valid = false;
-        if (!valid) { error(id, "position-limits", "invalid_arguments"); return; }
-        positionLimitsReply(id, request);
-        return;
-    }
-    if (entry->command == Command::POSITION) {
-        if (outputPending()) { ++inputDropped_; return; }
-        uint32_t originalId = 0;
-        if (count != first + 3 || std::strcmp(tokens[first + 1], "interrupt") ||
-            !number(tokens[first + 2], originalId) || !originalId) {
-            error(id, "position-interrupt", "invalid_arguments"); return;
-        }
-        if (!host_.startPositionInterrupt || !host_.snapshot) { error(id, "position-interrupt", "unavailable"); return; }
-        Snapshot snapshot; host_.snapshot(host_.context, snapshot);
-        const bool available = availableSlot() != OUTSTANDING_SLOTS;
-        uint32_t operationId = 0;
-        if (available) beginWork();
-        const auto result = available ? host_.startPositionInterrupt(host_.context, id, originalId, operationId) : Action::BUSY;
-        if (result == Action::OK) track(id, operationId);
-        action(id, "position-interrupt", result, snapshot.address, result == Action::OK ? operationId : 0);
-        return;
-    }
-    if (entry->command == Command::MOVE) {
-        if (outputPending()) { ++inputDropped_; return; }
-        const char* kind = count > first + 1 ? tokens[first + 1] : "";
-        Core::MoveRequest move;
-        if (std::strcmp(kind, "relative") == 0) move.position.relative = true;
-        else if (std::strcmp(kind, "absolute") == 0) move.position.relative = false;
-        else if (std::strcmp(kind, "angle") == 0) { move.position.relative = false; move.position.wrapped = true; }
-        else { error(id, "move", "invalid_arguments"); return; }
-        const char* command = moveCommand(move.position);
-        if (!host_.startMove || !host_.snapshot || !host_.axis) { error(id, command, "unavailable"); return; }
-        const std::size_t args = first + 2;
-        const std::size_t required = move.position.wrapped ? 7 : 5;
-        if (count < args + required) { error(id, command, "invalid_arguments"); return; }
-        Core::Rational speed;
-        if (!Core::parseExactNumber(tokens[args], move.position.value) ||
-            !positionUnit(tokens[args + 1], move.position.unit) || !coordinateFrame(tokens[args + 2], move.position.frame)) { error(id, command, "invalid_arguments"); return; }
-        std::size_t next = args + 3;
-        if (move.position.wrapped) {
-            if (!anglePath(tokens[next], move.position.path) || !halfTurnTie(tokens[next + 1], move.position.tie)) { error(id, command, "invalid_arguments"); return; }
-            next += 2;
-        }
-        if (!Core::parseExactNumber(tokens[next++], speed) || speed.denominator != 1 || speed.numerator <= 0 || speed.numerator > UINT16_MAX ||
-            std::strcmp(tokens[next++], "configured") != 0) { error(id, command, "invalid_arguments"); return; }
-        move.speedRpm = static_cast<uint16_t>(speed.numerator); move.ramp = Core::MoveRamp::VERIFIED_CONFIGURED;
-        if (next < count && std::strcmp(tokens[next], "setup") == 0) {
-            if (++next >= count) { error(id, command, "invalid_arguments"); return; }
-            if (std::strcmp(tokens[next], "write") == 0) move.setup = Core::MoveSetup::WRITE_ALL;
-            else if (std::strcmp(tokens[next], "verify") == 0) move.setup = Core::MoveSetup::VERIFY_AND_UPDATE;
-            else if (std::strcmp(tokens[next], "stored") == 0) move.setup = Core::MoveSetup::USE_STORED;
-            else { error(id, command, "invalid_arguments"); return; }
-            ++next;
-        }
-        if (next < count && std::strcmp(tokens[next], "basis") == 0) {
-            if (!move.position.relative || ++next >= count || !relativeBasis(tokens[next++], move.position.basis)) { error(id, command, "invalid_arguments"); return; }
-        }
-        if (next < count && std::strcmp(tokens[next], "round") == 0) {
-            ++next;
-            if (next + 2 > count || !rounding(tokens[next], move.position.rounding) ||
-                !allowance(tokens[next + 1], move.position.maximumQuantizationError)) { error(id, command, "invalid_arguments"); return; }
-            next += 2;
-            if (next < count && std::strcmp(tokens[next], "approx") == 0) {
-                ++next;
-                if (next >= count || move.position.unit != Core::PositionUnit::RADIANS ||
-                    !allowance(tokens[next++], move.position.maximumApproximationError) || move.position.maximumApproximationError <= 0) { error(id, command, "invalid_arguments"); return; }
-                move.position.approximate = true;
-            }
-        }
-        Snapshot snapshot; host_.snapshot(host_.context, snapshot);
-        uint32_t address = snapshot.address;
-        if (count > next + 1 || (count == next + 1 && !number(tokens[next], address))) { error(id, command, "invalid_arguments"); return; }
-        if (address < 1 || address > 247) { error(id, command, "invalid_address"); return; }
-        AxisCommand query; AxisView axis;
-        if (!host_.axis(host_.context, query, axis)) { error(id, command, "invalid_axis_configuration"); return; }
-        move.position.configurationGeneration = axis.configuration.generation;
-        const bool available = availableSlot() != OUTSTANDING_SLOTS;
-        uint32_t operationId = 0;
-        if (available) beginWork();
-        const Action result = available ? host_.startMove(host_.context, id, static_cast<uint8_t>(address), move, operationId) : Action::BUSY;
-        if (result == Action::OK) track(id, operationId);
-        action(id, command, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0);
-        return;
-    }
+        entry->command == Command::DECEL || entry->command == Command::MOTION || entry->command == Command::STEPS_PER_TURN || entry->command == Command::SETTINGS || simpleSubdivision) { simpleMotionRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::POSITION && count > first + 1 && std::strcmp(tokens[first + 1], "limits") == 0) { positionLimitsRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::POSITION) { positionRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::MOVE) { moveRoute(id, tokens, first, count); return; }
     if (entry->command == Command::MOTOR_RELEASE && count > first + 1 &&
-        std::strcmp(tokens[first + 1], "after-stop") == 0) {
-        uint32_t stopId = 0;
-        if (count != first + 5 || !number(tokens[first + 2], stopId) || !stopId ||
-            std::strcmp(tokens[first + 3], "mechanics-permit-release") != 0 ||
-            std::strcmp(tokens[first + 4], "triggers-inhibited") != 0) {
-            error(id, "motor-release", "invalid_arguments"); return;
-        }
-        if (outputPending()) { ++inputDropped_; return; }
-        if (!host_.startReleaseAfterStop || !host_.result) { error(id, "motor-release", "unavailable"); return; }
-        const bool available = availableSlot() != OUTSTANDING_SLOTS;
-        uint32_t operationId = 0;
-        if (available) beginWork();
-        const Action result = available ? host_.startReleaseAfterStop(host_.context, id, stopId, operationId) : Action::BUSY;
-        ResultView view;
-        if (result == Action::OK) {
-            track(id, operationId);
-            host_.result(host_.context, operationId, view);
-        }
-        action(id, "motor-release", result, view.address, result == Action::OK ? operationId : 0);
-        return;
-    }
-    Core::ActionRequest request;
-    const char* actionCommand = nullptr;
-    std::size_t actionArgs = first + 1;
-    if (entry->command == Command::ENABLE) {
-        request.kind = Core::ActionKind::ENABLE; actionCommand = "enable";
-    } else if (entry->command == Command::MOTOR_RELEASE) {
-        request.kind = Core::ActionKind::RELEASE; actionCommand = "motor-release";
-    } else if (entry->command == Command::ALARM_CLEAR) {
-        request.kind = Core::ActionKind::CLEAR_ALARM; actionCommand = "alarm-clear";
-    } else if (entry->command == Command::POSITION_CLEAR) {
-        request.kind = Core::ActionKind::CLEAR_POSITION; actionCommand = "position-clear";
-    } else if (entry->command == Command::STOP) {
-        request.kind = Core::ActionKind::STOP; actionCommand = "stop";
-        if (count <= actionArgs) { error(id, "stop", "invalid_arguments"); return; }
-        if (std::strcmp(tokens[actionArgs], "normal") == 0) request.stop.behavior = Core::StopBehavior::CONFIGURED_DECELERATION;
-        else if (std::strcmp(tokens[actionArgs], "fast") == 0) request.stop.behavior = Core::StopBehavior::DIRECT;
-        else { error(id, "stop", "unsupported_policy"); return; }
-        ++actionArgs;
-    }
-    if (actionCommand) {
-        const bool stop = request.kind == Core::ActionKind::STOP;
-        if (outputPending() && !stop) { ++inputDropped_; return; }
-        if (!host_.startAction || !host_.snapshot) { error(id, actionCommand, "unavailable"); return; }
-        Snapshot snapshot; host_.snapshot(host_.context, snapshot);
-        uint32_t address = snapshot.address;
-        if (count > actionArgs + 1 || (count == actionArgs + 1 && !number(tokens[actionArgs], address))) {
-            error(id, actionCommand, "invalid_arguments"); return;
-        }
-        if (address < 1 || address > 247) { error(id, actionCommand, "invalid_address"); return; }
-        const bool available = availableSlot(stop) != OUTSTANDING_SLOTS;
-        uint32_t operationId = 0;
-        if (available) beginWork();
-        const Action result = available ? host_.startAction(host_.context, id, static_cast<uint8_t>(address), request, operationId) : Action::BUSY;
-        if (result == Action::OK) track(id, operationId, stop);
-        ResultView stopView;
-        if (stop && result == Action::OK && host_.result)
-            host_.result(host_.context, operationId, stopView);
-        if (stop && outputPending()) {
-            retainStopReply(id, actionCommand, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0,
-                            stopView.ordinaryStop, stopView.replacedOperationId, stopView.stopEscalation);
-        } else action(id, actionCommand, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0,
-                      stopView.ordinaryStop, stopView.replacedOperationId, stopView.stopEscalation);
-        return;
-    }
+        std::strcmp(tokens[first + 1], "after-stop") == 0) { releaseAfterStopRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::ENABLE || entry->command == Command::MOTOR_RELEASE || entry->command == Command::ALARM_CLEAR ||
+        entry->command == Command::POSITION_CLEAR || entry->command == Command::STOP) { actionRoute(id, tokens, first, count); return; }
     if (entry->command == Command::GROUP) { group(id, tokens + first + 1, count - first - 1); return; }
-    if (entry->command == Command::BROADCAST) {
-        if (outputPending()) { ++inputDropped_; return; }
-        // A fixed frame name selects one of five reviewed frames; never raw bytes.
-        const char* kind = count == first + 3 ? tokens[first + 1] : "";
-        const char* value = count == first + 3 ? tokens[first + 2] : "";
-        BroadcastFrame frame;
-        if (!std::strcmp(kind, "accel") && !std::strcmp(value, "300")) frame = BroadcastFrame::ACCEL_300;
-        else if (!std::strcmp(kind, "accel") && !std::strcmp(value, "301")) frame = BroadcastFrame::ACCEL_301;
-        else if (!std::strcmp(kind, "start") && !std::strcmp(value, "relative")) frame = BroadcastFrame::RELATIVE_START;
-        else if (!std::strcmp(kind, "stop") && !std::strcmp(value, "normal")) frame = BroadcastFrame::STOP_NORMAL;
-        else if (!std::strcmp(kind, "stop") && !std::strcmp(value, "fast")) frame = BroadcastFrame::STOP_FAST;
-        else { error(id, "broadcast", "invalid_arguments"); return; }
-        if (!host_.broadcast) { error(id, "broadcast", "unavailable"); return; }
-        // Ordinary slots only: the stop reply slots stay free for unicast stops.
-        if (availableSlot() == OUTSTANDING_SLOTS) { action(id, "broadcast", Action::BUSY); return; }
-        uint32_t operationId = 0;
-        beginWork();
-        const Action result = host_.broadcast(host_.context, id, frame, operationId);
-        if (result == Action::OK) track(id, operationId);
-        action(id, "broadcast", result, 0, result == Action::OK ? operationId : 0);
-        return;
-    }
-    if (entry->command == Command::USEADDR) {
-        if (outputPending()) { ++inputDropped_; return; }
-        uint32_t address = 0;
-        if (count != first + 2 || !number(tokens[first + 1], address) || address < 1 || address > 247) {
-            error(id, "useaddr", "invalid_address"); return;
-        }
-        if (!host_.selectTarget) { error(id, "useaddr", "unavailable"); return; }
-        action(id, "useaddr", host_.selectTarget(host_.context, static_cast<uint8_t>(address)), static_cast<uint8_t>(address));
-        return;
-    }
-    if (entry->command == Command::WIRING) {
-        if (outputPending()) { ++inputDropped_; return; }
-        if (!host_.wiring) { error(id, "wiring", "unavailable"); return; }
-        const bool change = count == first + 3;
-        if (count != first + 1 && !change) { error(id, "wiring", "invalid_arguments"); return; }
-        WiringRequest request;
-        if (change) {
-            const char* terminal = tokens[first + 1];
-            if (std::strlen(terminal) != 2 ||
-                !((terminal[0] == 'x' && terminal[1] >= '0' && terminal[1] <= '3') ||
-                  (terminal[0] == 'y' && terminal[1] >= '0' && terminal[1] <= '1'))) {
-                error(id, "wiring", "invalid_arguments"); return;
-            }
-            request.terminal = static_cast<uint8_t>(terminal[1] - '0' + (terminal[0] == 'y' ? 4 : 0));
-            const char* state = tokens[first + 2];
-            if (!std::strcmp(state, "connected")) request.state = Core::InputWiring::CONNECTED;
-            else if (!std::strcmp(state, "unconnected")) request.state = Core::InputWiring::UNCONNECTED;
-            else if (std::strcmp(state, "unknown")) { error(id, "wiring", "invalid_arguments"); return; }
-        }
-        WiringSnapshot view;
-        const Action result = host_.wiring(host_.context, change ? &request : nullptr, view);
-        std::size_t used = 0;
-        // Wired bench 08: the bench output -> terminal map precedes the declarations.
-        const bool mapInvalid = view.benchOutputMap == FixtureState::INVALID;
-        const bool written = append(output_, sizeof(output_), used,
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"wiring\",\"ok\":%s,\"result\":\"%s\",\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"bench_outputs\":[%d,%d,%d,%d],\"bench_output_map\":\"%s\"%s%s%s,\"inputs\":[%u,%u,%u,%u],\"outputs\":[%u,%u]",
-            static_cast<unsigned long>(id), boolean(result == Action::OK), result == Action::OK ? "done" : actionName(result),
-            static_cast<unsigned long>(view.target.id), view.target.address, static_cast<unsigned long>(view.target.generation),
-            static_cast<unsigned long>(view.configurationGeneration),
-            view.benchOutputs[0], view.benchOutputs[1], view.benchOutputs[2], view.benchOutputs[3],
-            fixtureStateName(view.benchOutputMap), mapInvalid ? ",\"bench_output_map_error\":\"" : "",
-            mapInvalid ? (view.benchOutputMapError ? view.benchOutputMapError : "unknown") : "", mapInvalid ? "\"" : "",
-            static_cast<unsigned>(view.inputs[0]), static_cast<unsigned>(view.inputs[1]),
-            static_cast<unsigned>(view.inputs[2]), static_cast<unsigned>(view.inputs[3]), static_cast<unsigned>(view.outputs[0]), static_cast<unsigned>(view.outputs[1])) &&
-            wiringSources(output_, sizeof(output_), used, "sources", view.inputSources, 4, view.outputSources, 2) &&
-            boardWiring(output_, sizeof(output_), used, view.board) &&
-            append(output_, sizeof(output_), used, ",\"fixture\":\"%s\"", fixtureStateName(view.fixture)) &&
-            (view.fixture != FixtureState::INVALID ||
-             append(output_, sizeof(output_), used, ",\"fixture_error\":\"%s\"", view.fixtureError ? view.fixtureError : "unknown")) &&
-            append(output_, sizeof(output_), used, ",\"bus_traffic\":false}");
-        if (!written) { error(id, "wiring", "output_full"); return; }
-        emit(); return;
-    }
-    if (entry->command == Command::BENCH) {
-        // Local GPIO only. Like stop, it stays usable while a move or home runs.
-        if (outputPending()) { ++inputDropped_; return; }
-        if (!host_.benchIo) { error(id, "bench", "unavailable"); return; }
-        const std::size_t args = count - first - 1;
-        const char* verb = args ? tokens[first + 1] : nullptr;
-        BenchIo::Request request;
-        bool valid = true;
-        if (!args) request.op = BenchIo::Op::SHOW;
-        else if (!std::strcmp(verb, "on") && args == 3) {
-            request.op = BenchIo::Op::ON;
-            valid = BenchIo::outputIndex(tokens[first + 2], request.output) &&
-                number(tokens[first + 3], request.holdMs) && BenchIo::validHold(request.holdMs);
-        } else if (!std::strcmp(verb, "off") && args == 1) request.op = BenchIo::Op::OFF_ALL;
-        else if (!std::strcmp(verb, "off") && args == 2) {
-            request.op = BenchIo::Op::OFF;
-            valid = BenchIo::outputIndex(tokens[first + 2], request.output);
-        } else if (!std::strcmp(verb, "clear") && args == 1) request.op = BenchIo::Op::CLEAR_EDGES;
-        else valid = false;
-        if (!valid) { error(id, "bench", "invalid_arguments"); return; }
-        BenchIo::View view;
-        const Action result = host_.benchIo(host_.context, args ? &request : nullptr, view);
-        std::size_t used = 0;
-        const bool fits = append(output_, sizeof(output_), used,
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"bench\",\"ok\":%s,\"result\":\"%s\"",
-            static_cast<unsigned long>(id), boolean(result == Action::OK), result == Action::OK ? "done" : actionName(result)) &&
-            benchView(output_, sizeof(output_), used, view);
-        if (!fits) { error(id, "bench", "output_full"); return; }
-        emit(); return;
-    }
+    if (entry->command == Command::BROADCAST) { broadcastRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::USEADDR) { useaddrRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::WIRING) { wiringRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::BENCH) { benchRoute(id, tokens, first, count); return; }
     // Cancellation, monitor off and the validated stop path above remain responsive.
     const bool monitorOff = entry->command == Command::MONITOR && count == first + 2 && std::strcmp(tokens[first + 1], "off") == 0;
     if (outputPending() && entry->command != Command::CANCEL && !monitorOff) { ++inputDropped_; return; }
@@ -3064,23 +2023,1110 @@ void Console::dispatch() noexcept {
         inputStart(id, name, request);
         return;
     }
-    if (entry->command == Command::AXIS || entry->command == Command::PREPARE) {
-        if (!host_.axis) { error(id, entry->name, "unavailable"); return; }
-        AxisCommand request;
-        auto status = axisRequest(tokens + first + 1, count - first - 1, entry->command == Command::PREPARE, request);
-        AxisView view;
-        if (status) status = host_.axis(host_.context, request, view);
-        const int prefix = std::snprintf(output_, sizeof(output_),
-            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":%s,\"code\":\"%s\",\"detail\":%ld",
-            static_cast<unsigned long>(id), entry->name, status ? "true" : "false", Core::errToString(status.code), static_cast<long>(status.detail));
-        if (prefix < 0 || static_cast<std::size_t>(prefix) >= sizeof(output_)) { error(id, entry->name, "output_full"); return; }
-        std::size_t used = static_cast<std::size_t>(prefix);
-        if (status) {
-            if (!axisView(output_, sizeof(output_), used, view, request.kind == AxisCommandKind::PREPARE)) { error(id, entry->name, "output_full"); return; }
-        } else if (!append(output_, sizeof(output_), used, ",\"bus_traffic\":false,\"motion_command\":false}")) { error(id, entry->name, "output_full"); return; }
+    if (entry->command == Command::AXIS || entry->command == Command::PREPARE) { axisRoute(id, tokens, first, count); return; }
+    if (entry->command == Command::PROFILE) { error(id, "profile", "invalid_arguments"); return; }
+    genericRoute(id, tokens, first, count);
+}
+void Console::motionProfileRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    if (outputPending()) { ++inputDropped_; return; }
+    if (count >= first + 2 && !std::strcmp(tokens[first + 1], "stage")) {
+        const char* command = "motion-profile-stage";
+        if (!host_.stageProfile) { error(id, command, "unavailable"); return; }
+        if (count != first + 9 && count != first + 11) { error(id, command, "invalid_arguments"); return; }
+        ProfileCandidate candidate;
+        uint32_t values[9] = {};
+        for (std::size_t i = 0; i < count - first - 2; ++i)
+            if (!number(tokens[first + 2 + i], values[i]) || values[i] > 65535) {
+                error(id, command, "invalid_arguments"); return;
+            }
+        if (values[5] > 1 || !values[6] || values[6] > 247) { error(id, command, "invalid_arguments"); return; }
+        for (std::size_t i = 0; i < 5; ++i) candidate.words[i] = static_cast<uint16_t>(values[i]);
+        candidate.wordOrder = static_cast<Ess::WordOrder>(values[5]); candidate.address = static_cast<uint8_t>(values[6]);
+        candidate.identitySpecified = count == first + 11;
+        candidate.model = static_cast<uint16_t>(values[7]); candidate.firmware = static_cast<uint16_t>(values[8]);
+        uint32_t operationId = 0;
+        const bool available = availableSlot() != OUTSTANDING_SLOTS;
+        if (available) beginWork();
+        const Action result = available ? host_.stageProfile(host_.context, id, candidate, operationId) : Action::BUSY;
+        if (result == Action::OK) track(id, operationId);
+        action(id, command, result, candidate.address, result == Action::OK ? operationId : 0);
+        return;
+    }
+    if (count >= first + 3 && !std::strcmp(tokens[first + 1], "start-speed") && !std::strcmp(tokens[first + 2], "relation")) {
+        qualificationRoute(id, QualificationRoute::START_SPEED_RELATION, tokens + first + 3, count - first - 3);
+        return;
+    }
+    if (count >= first + 2 && !std::strcmp(tokens[first + 1], "start-speed")) {
+        const char* command = "motion-profile-start-speed";
+        if (!host_.startDriver || !host_.snapshot) { error(id, command, "unavailable"); return; }
+        uint32_t native = 0;
+        Ess::DriverRequest request;
+        if (count != first + 3 || !number(tokens[first + 2], native) ||
+            !Ess::preparePositionStartSpeed(request, native)) { error(id, command, "invalid_arguments"); return; }
+        Snapshot snapshot; host_.snapshot(host_.context, snapshot);
+        uint32_t operationId = 0;
+        const bool available = availableSlot() != OUTSTANDING_SLOTS;
+        if (available) beginWork();
+        const Action result = available ? host_.startDriver(host_.context, id, snapshot.address,
+            Ess::DriverKind::UPDATE, request, operationId) : Action::BUSY;
+        if (result == Action::OK) track(id, operationId);
+        action(id, command, result, snapshot.address, result == Action::OK ? operationId : 0);
+        return;
+    }
+    if (!host_.motionProfile) { error(id, "motion-profile", "unavailable"); return; }
+    if (count != first + 2) { error(id, "motion-profile", "invalid_arguments"); return; }
+    MotionProfileCommand command;
+    if (!std::strcmp(tokens[first + 1], "inspect")) command = MotionProfileCommand::INSPECT;
+    else if (!std::strcmp(tokens[first + 1], "read")) command = MotionProfileCommand::SNAPSHOT;
+    else if (!std::strcmp(tokens[first + 1], "restore")) command = MotionProfileCommand::RESTORE;
+    else if (!std::strcmp(tokens[first + 1], "forget")) command = MotionProfileCommand::FORGET;
+    else { error(id, "motion-profile", "invalid_arguments"); return; }
+    MotionProfileView v;
+    const Action result = host_.motionProfile(host_.context, command, v);
+    char tx[39], rx[129], write[17], writeTx[39];
+    hex(v.tx,v.txLength,tx,sizeof(tx)); hex(v.rx,v.rxLength,rx,sizeof(rx));
+    hex(v.writeReply,v.writeReplyLength,write,sizeof(write)); hex(v.writeTx,v.writeTxLength,writeTx,sizeof(writeTx));
+    std::size_t used=0;
+    if (append(output_,sizeof(output_),used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"motion-profile\",\"ok\":%s,\"result\":\"%s\",\"pending\":%s,\"saved\":%s,\"restored\":%s,\"session_ok\":%s,\"phase\":%u,\"address\":%u,\"configuration_generation\":%lu,\"serial_generation\":%lu,\"original\":[%u,%u,%u,%u,%u,%u],\"current\":[%u,%u,%u,%u,%u,%u],\"tx_hex\":\"%s\",\"rx_hex\":\"%s\",\"write_reply_hex\":\"%s\",\"tx_accepted\":%llu,\"closure_qualified\":%s,\"closure_earliest_us\":%llu,\"closure_latest_us\":%llu,\"execution_unknown\":%s,\"error\":\"%s\"}",
+        static_cast<unsigned long>(id),boolean(result==Action::OK),actionName(result),boolean(v.pending),boolean(v.saved),boolean(v.restored),boolean(v.ok),static_cast<unsigned>(v.phase),v.address,
+        static_cast<unsigned long>(v.generation),static_cast<unsigned long>(v.serialGeneration),
+        v.original[0],v.original[1],v.original[2],v.original[3],v.original[4],v.original[5],
+        v.current[0],v.current[1],v.current[2],v.current[3],v.current[4],v.current[5],tx,rx,write,
+        static_cast<unsigned long long>(v.txAccepted),boolean(v.closureQualified),static_cast<unsigned long long>(v.closureEarliestUs),static_cast<unsigned long long>(v.closureLatestUs),boolean(v.executionUnknown),v.error)) {
+        --used;
+        if (append(output_,sizeof(output_),used,",\"request\":\"%s\",\"tx_complete\":%s,\"write_tx_complete\":%s,\"deadline_us\":%llu,\"delivered_us\":%llu,\"write_tx_hex\":\"%s\",\"write_tx_accepted\":%llu,\"write_closure_qualified\":%s,\"write_closure_earliest_us\":%llu,\"write_closure_latest_us\":%llu,\"write_delivered_us\":%llu,\"write_execution_unknown\":%s}",
+            tokens[first+1],boolean(v.txComplete),boolean(v.writeTxComplete),static_cast<unsigned long long>(v.deadlineUs),static_cast<unsigned long long>(v.deliveredUs),writeTx,static_cast<unsigned long long>(v.writeTxAccepted),boolean(v.writeQualified),static_cast<unsigned long long>(v.writeEarliestUs),static_cast<unsigned long long>(v.writeLatestUs),static_cast<unsigned long long>(v.writeDeliveredUs),boolean(v.writeExecutionUnknown))) {
+            --used;
+            if (append(output_,sizeof(output_),used,",\"restore_unsettled\":%s,\"write_deadline_us\":%llu,\"write_configuration_generation\":%lu,\"write_serial_generation\":%lu,\"write_binding_generation\":%lu}",
+                boolean(v.restoreUnsettled),static_cast<unsigned long long>(v.writeDeadlineUs),static_cast<unsigned long>(v.writeConfigurationGeneration),
+                static_cast<unsigned long>(v.writeSerialGeneration),static_cast<unsigned long>(v.writeBindingGeneration))) emit();
+            else error(id,"motion-profile","output_capacity");
+        }
+        else error(id,"motion-profile","output_capacity");
+    }
+    else error(id,"motion-profile","output_capacity");
+    return;
+}
+void Console::velocityJogRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    // Wired bench 14: velocity jog set SPEED ACCEL DECEL | velocity jog inspect.
+    if (outputPending()) { ++inputDropped_; return; }
+    const char* command = "velocity-jog";
+    if (count == first + 3 && !std::strcmp(tokens[first + 2], "inspect")) { parameterWrite(id, command, nullptr); return; }
+    uint32_t acceleration = 0, deceleration = 0, magnitude = 0;
+    const char* text = count == first + 6 ? tokens[first + 3] : "";
+    const bool negative = *text == '-';
+    if (count != first + 6 || std::strcmp(tokens[first + 2], "set") != 0 || !number(negative ? text + 1 : text, magnitude) ||
+        magnitude > 3000 || !number(tokens[first + 4], acceleration) || !number(tokens[first + 5], deceleration) ||
+        acceleration > 2000 || deceleration > 2000) { error(id, command, "invalid_arguments"); return; }
+    const int32_t speed = negative ? -static_cast<int32_t>(magnitude) : static_cast<int32_t>(magnitude);
+    ParameterWriteRequest request;
+    request.kind = ParameterWriteKind::VELOCITY_SET;
+    request.words[0] = static_cast<uint16_t>(static_cast<int16_t>(speed));
+    request.words[1] = static_cast<uint16_t>(acceleration); request.words[2] = static_cast<uint16_t>(deceleration);
+    parameterWrite(id, command, &request);
+    return;
+}
+void Console::velocityLimitsRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    // Wired bench 14 (D6): velocity limits [qualify RPM ACCEL DECEL SUBDIVISION DURATION_MS normal|fast | raise | reset].
+    if (outputPending()) { ++inputDropped_; return; }
+    if (!host_.velocityLimits) { error(id, "velocity-limits", "unavailable"); return; }
+    VelocityLimitsCommand request;
+    const char* verb = count > first + 2 ? tokens[first + 2] : "";
+    bool valid = true;
+    if (count == first + 2) request.kind = VelocityLimitsCommandKind::SHOW;
+    else if (!std::strcmp(verb, "raise")) { request.kind = VelocityLimitsCommandKind::RAISE; valid = count == first + 3; }
+    else if (!std::strcmp(verb, "reset")) { request.kind = VelocityLimitsCommandKind::RESET; valid = count == first + 3; }
+    else if (!std::strcmp(verb, "qualify") && count == first + 9) {
+        request.kind = VelocityLimitsCommandKind::QUALIFY;
+        const char* text = tokens[first + 3];
+        const bool negative = *text == '-';
+        uint32_t magnitude = 0, acceleration = 0, deceleration = 0, subdivision = 0, duration = 0;
+        valid = number(negative ? text + 1 : text, magnitude) && magnitude <= 3000 &&
+            number(tokens[first + 4], acceleration) && acceleration <= 0xFFFF && number(tokens[first + 5], deceleration) &&
+            deceleration <= 0xFFFF && number(tokens[first + 6], subdivision) && subdivision <= 0xFFFF &&
+            number(tokens[first + 7], duration);
+        request.cell.rpm = static_cast<int16_t>(negative ? -static_cast<int32_t>(magnitude) : static_cast<int32_t>(magnitude));
+        request.cell.accelerationTime = static_cast<uint16_t>(acceleration);
+        request.cell.decelerationTime = static_cast<uint16_t>(deceleration);
+        request.cell.subdivision = static_cast<uint16_t>(subdivision); request.cell.durationMs = duration;
+        if (!std::strcmp(tokens[first + 8], "normal")) request.cell.stop = VelocityStop::NORMAL;
+        else if (!std::strcmp(tokens[first + 8], "fast")) request.cell.stop = VelocityStop::FAST;
+        else valid = false;
+    } else valid = false;
+    if (!valid) { error(id, "velocity-limits", "invalid_arguments"); return; }
+    velocityLimitsReply(id, request);
+    return;
+}
+void Console::restoreRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    const Entry* entry = find(tokens[first]);
+    // home restore SNAPSHOT_ID | home restore inspect (velocity the same):
+    // the words of an earlier checked read of the selected axis.
+    if (outputPending()) { ++inputDropped_; return; }
+    const bool home = entry->command == Command::HOME;
+    const char* command = home ? "home-restore" : "velocity-restore";
+    if (count != first + 3) { error(id, command, "invalid_arguments"); return; }
+    if (!std::strcmp(tokens[first + 2], "inspect")) { parameterWrite(id, command, nullptr); return; }
+    uint32_t snapshot = 0;
+    if (!number(tokens[first + 2], snapshot) || !snapshot) { error(id, command, "invalid_arguments"); return; }
+    ParameterWriteRequest request;
+    request.kind = home ? ParameterWriteKind::HOME_RESTORE : ParameterWriteKind::VELOCITY_RESTORE;
+    request.snapshotId = snapshot;
+    parameterWrite(id, command, &request);
+    return;
+}
+void Console::parameterReadRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    const Entry* entry = find(tokens[first]);
+    if (outputPending()) { ++inputDropped_; return; }
+    const auto kind = entry->command == Command::HOME ? Ess::ReadKind::HOMING_PARAMETERS : Ess::ReadKind::VELOCITY_PARAMETERS;
+    if (count > first + 3) { error(id, readCommandName(kind), "invalid_arguments"); return; }
+    parameterRead(id, kind, count == first + 3 ? tokens[first + 2] : nullptr);
+    return;
+}
+void Console::homeRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    if (outputPending()) { ++inputDropped_; return; }
+    const std::size_t args = first + 1;
+    if (count > args && std::strcmp(tokens[args], "qualification") == 0) {
+        if (count != args + 1) { error(id, "home", "invalid_arguments"); return; }
+        if (!host_.inspectHomeQualification) { error(id, "home", "unavailable"); return; }
+        Ess::HomePrerequisites p; bool valid = false;
+        const bool present = host_.inspectHomeQualification(host_.context, p, valid);
+        std::size_t used = 0;
+        const bool fits = append(output_, sizeof(output_), used,
+            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"home-qualification\",\"ok\":true,\"present\":%s,\"valid\":%s,\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"method\":%d,\"native_parameters\":[%u,%u,%u],\"qualified_us\":%llu,\"qualification_maximum_age_us\":%llu,\"maximum_age_us\":%llu,\"available_inputs\":%u,\"index_qualified\":%s,\"reference_semantics_qualified\":%s}",
+            static_cast<unsigned long>(id), boolean(present), boolean(present && valid),
+            static_cast<unsigned long>(p.target.id), p.target.address, static_cast<unsigned long>(p.target.generation),
+            static_cast<unsigned long>(p.configurationGeneration), static_cast<int>(p.qualifiedMethod),
+            p.qualifiedSearchSpeed, p.qualifiedReturnSpeed, p.qualifiedRampTime,
+            static_cast<unsigned long long>(p.qualifiedUs), static_cast<unsigned long long>(p.qualificationMaximumAgeUs),
+            static_cast<unsigned long long>(p.maximumAgeUs), p.availableInputs, boolean(p.indexQualified), boolean(p.referenceSemanticsQualified));
+        if (!fits) { error(id, "home", "output_full"); return; }
         emit(); return;
     }
-    if (entry->command == Command::PROFILE) { error(id, "profile", "invalid_arguments"); return; }
+    if (count > args && std::strcmp(tokens[args], "auxiliary") == 0) {
+        const char* command = "home-auxiliary";
+        if (!host_.startDriver || !host_.snapshot) { error(id, command, "unavailable"); return; }
+        uint32_t choice = 0; Ess::DriverRequest request;
+        if (count != args + 2 || !number(tokens[args + 1], choice) || choice > 11 ||
+            !Ess::prepareHomingAuxiliary(request, static_cast<Ess::HomingAuxiliary>(choice))) {
+            error(id, command, "invalid_arguments"); return;
+        }
+        Snapshot snapshot; host_.snapshot(host_.context, snapshot);
+        uint32_t operationId = 0;
+        const bool available = availableSlot() != OUTSTANDING_SLOTS;
+        if (available) beginWork();
+        const Action result = available ? host_.startDriver(host_.context, id, snapshot.address,
+            Ess::DriverKind::UPDATE, request, operationId) : Action::BUSY;
+        if (result == Action::OK) track(id, operationId);
+        action(id, command, result, snapshot.address, result == Action::OK ? operationId : 0);
+        return;
+    }
+    if (count == args + 1 && std::strcmp(tokens[args], "methods") == 0) {
+        std::size_t used = 0;
+        const bool fits = HomeConsole::formatMethods(output_, sizeof(output_), used, id);
+        if (!fits) { error(id, "home", "output_full"); return; }
+        emit(); return;
+    }
+    if (!host_.startHome || !host_.snapshot || !host_.axis) { error(id, "home", "unavailable"); return; }
+    Ess::HomeRequest request;
+    uint8_t parsedAddress = 0;
+    bool explicitAddress = false;
+    if (const char* reason = HomeConsole::parse(tokens + args, count - args, request, parsedAddress, explicitAddress)) {
+        error(id, "home", reason); return;
+    }
+    uint32_t address = parsedAddress;
+    if (!explicitAddress) { Snapshot snapshot; host_.snapshot(host_.context, snapshot); address = snapshot.address; }
+    if (address < 1 || address > 247) { error(id, "home", "invalid_address"); return; }
+    AxisCommand query; AxisView axis;
+    query.kind = AxisCommandKind::QUERY;
+    if (!host_.axis(host_.context, query, axis)) { error(id, "home", "unavailable"); return; }
+    request.configurationGeneration = axis.configuration.generation;
+    const bool available = availableSlot() != OUTSTANDING_SLOTS;
+    uint32_t operationId = 0;
+    if (available) beginWork();
+    const Action result = available ? host_.startHome(host_.context, id, static_cast<uint8_t>(address), request, operationId) : Action::BUSY;
+    if (result == Action::OK) track(id, operationId);
+    action(id, "home", result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0);
+    return;
+}
+void Console::nativeRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    const Entry* entry = find(tokens[first]);
+    const bool simpleSubdivision = entry->command == Command::SUBDIVISION;
+    const bool nativeIo = entry->command == Command::IO;
+    const bool nativeSegment = entry->command == Command::SEGMENT;
+    const bool nativeControl = entry->command == Command::CONTROL;
+    const bool nativeTuning = entry->command == Command::TUNING;
+    const char* command = nativeTuning ? "tuning" : nativeControl ? "control" :
+        nativeSegment ? "segment" : nativeIo ? "io" : simpleSubdivision ? "subdivision" : "driver";
+    if (outputPending()) { ++inputDropped_; return; }
+    if (simpleSubdivision) {
+        if (count > first + 2) { error(id, command, "invalid_arguments"); return; }
+        if (count == first + 2 && !std::strcmp(tokens[first + 1], "options")) {
+            if (outputFormat_ == Format::HUMAN) {
+                std::snprintf(output_, sizeof(output_),
+                    "Subdivision: any integer from 400 to 51200; documented default 1000.\n"
+                    "Useful examples: 400, 800, 1000, 1600, 2000, 3200, 6400, 12800, 25600, 51200.\n"
+                    "These are examples, not the only allowed values.\n"
+                    "Read: subdivision. Set while stopped with one command: subdivision 1600.\n"
+                    "Required reads, setting write and readback run automatically.\n"
+                    "A checked change updates the host scale and establishes a new zero at the current stationary position. No save or motion is automatic.");
+                emit(0, true);
+            } else {
+                std::snprintf(output_, sizeof(output_),
+                    "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"subdivision\",\"ok\":true,\"minimum\":400,\"maximum\":51200,\"default\":1000,\"examples\":[400,800,1000,1600,2000,3200,6400,12800,25600,51200],\"all_integers_in_range\":true,\"device_settings_changed\":false}",
+                    static_cast<unsigned long>(id));
+                emit();
+            }
+            return;
+        }
+    }
+    if (!host_.startDriver || !host_.snapshot) { error(id, command, "unavailable"); return; }
+    std::size_t next = first + 1;
+    if (next >= count) { error(id, command, "invalid_arguments"); return; }
+    Ess::DriverRequest request;
+    request.group = nativeControl ? Ess::DriverGroup::CONTROL_SETTINGS : nativeIo ? Ess::DriverGroup::IO : Ess::DriverGroup::DRIVE;
+    if (nativeTuning) {
+        if (count < next+2 || !tuningGroup(tokens[next],request.group)) { error(id,command,"invalid_tuning_group");return; }
+        ++next;
+    }
+    if (nativeSegment) {
+        if (count < next + 3) { error(id, command, "invalid_arguments"); return; }
+        if (!std::strcmp(tokens[next], "position")) request.group = Ess::DriverGroup::POSITION_SEGMENT;
+        else if (!std::strcmp(tokens[next], "speed")) request.group = Ess::DriverGroup::SPEED_SEGMENT;
+        else if (!std::strcmp(tokens[next], "start")) request.group = Ess::DriverGroup::SEGMENT_START_SPEED;
+        else { error(id, command, "invalid_record_kind"); return; }
+        uint32_t index = 0;
+        if (!number(tokens[next + 1], index) || index < 1 || index > 16) { error(id, command, "invalid_index"); return; }
+        request.segmentIndex = static_cast<uint8_t>(index); next += 2;
+    }
+    const bool reading = std::strcmp(tokens[next], "read") == 0;
+    if (!reading && std::strcmp(tokens[next], "set") != 0) { error(id, command, "invalid_arguments"); return; }
+    ++next;
+    // An odd trailing token is the optional target; every remaining token
+    // must belong to a complete field/value pair before host admission.
+    const bool hasAddress = reading ? count == next + 1 : (count - next) % 2 != 0;
+    const std::size_t end = count - (hasAddress ? 1 : 0);
+    if ((reading && end != next) || (!reading && end == next)) { error(id, command, "invalid_arguments"); return; }
+    uint32_t address = 0;
+    if (hasAddress && (!number(tokens[end], address) || address < 1 || address > 247)) { error(id, command, "invalid_address"); return; }
+    const char* driveFields[] = {"direction", "subdivision", "word-order", "soft-limit", "over-limit", "interruption", "position-mode", "positive-limit", "negative-limit"};
+    const char* ioFields[] = {"input-polarity", "x0", "x1", "x2", "x3", "output-polarity", "y0", "y1", "custom"};
+    const char* segmentFields[] = {"speed", "acceleration", "deceleration", "target"};
+    const char* startFields[] = {"value"};
+    const char* controlFields[] = {"algorithm", "encoder-resolution", "maximum-effective-current", "closed-maximum-current", "closed-base-current", "open-maximum-current", "lock-current", "lock-delay"};
+    const bool startRecord = request.group == Ess::DriverGroup::SEGMENT_START_SPEED;
+    const char* const* fields = nativeControl ? controlFields : nativeSegment ? (startRecord ? startFields : segmentFields) : nativeIo ? ioFields : driveFields;
+    const std::size_t fieldCount = nativeTuning ? Ess::tuningFieldCount(request.group) : nativeControl ? 8 : nativeSegment ? (startRecord ? 1 : request.group == Ess::DriverGroup::POSITION_SEGMENT ? 4 : 3) : 9;
+    for (; next < end; next += 2) {
+        std::size_t field = 0;
+        while (field < fieldCount && std::strcmp(tokens[next],nativeTuning?tuningField(request.group,field):fields[field]) != 0) ++field;
+        if (field == fieldCount) { error(id, command, "unknown_field"); return; }
+        const uint32_t mask = nativeTuning ? 1UL << field : nativeControl ? 1UL << (23 + field) : nativeSegment ? 1UL << (startRecord ? 21 : field == 3 ? 22 : 18 + field) : 1UL << (field + (nativeIo ? 9 : 0));
+        if (request.fields & mask) { error(id, command, "duplicate_field"); return; }
+        const bool noFunction = nativeIo && std::strcmp(tokens[next + 1], "none") == 0 &&
+            ((field >= 1 && field <= 4) || field == 6 || field == 7);
+        const char* numberText = noFunction ? "0" : tokens[next + 1];
+        if (nativeControl && field == 0) {
+            if (!std::strcmp(numberText, "open-loop")) numberText = "1";
+            else if (!std::strcmp(numberText, "algorithm-1")) numberText = "2";
+        }
+        Core::Rational value;
+        const char* digit = numberText; if (*digit == '-') ++digit;
+        if (!*digit) { error(id, command, "invalid_integer"); return; }
+        for (const char* p = digit; *p; ++p) if (*p < '0' || *p > '9') { error(id, command, "invalid_integer"); return; }
+        if (!Core::parseExactNumber(numberText, value) || value.denominator != 1 ||
+            (!nativeSegment && (nativeTuning || nativeControl || nativeIo || field < 7) && (value.numerator < 0 || value.numerator > 65535))) { error(id, command, "invalid_integer"); return; }
+        if (nativeSegment) {
+            if (field != 3 && (value.numerator < -2147483648LL || value.numerator > 2147483647LL)) { error(id, command, "invalid_integer"); return; }
+            if (!startRecord && (field == 1 || field == 2) && (value.numerator < 0 || value.numerator > 65535)) { error(id, command, "invalid_integer"); return; }
+            request.fields |= mask;
+            if (startRecord) request.segmentStartSpeed = static_cast<int32_t>(value.numerator);
+            else if (field == 0) request.segmentSpeed = static_cast<int32_t>(value.numerator);
+            else if (field == 1) request.segmentAcceleration = static_cast<uint16_t>(value.numerator);
+            else if (field == 2) request.segmentDeceleration = static_cast<uint16_t>(value.numerator);
+            else request.segmentPulseTarget = value.numerator;
+            continue;
+        }
+        const uint16_t word = static_cast<uint16_t>(value.numerator);
+        if (nativeTuning) {
+            // A word outside the documented range is selected as given: only a
+            // D7 exact restore of a pinned read admits it (wired bench 15); the
+            // application and the core refuse every other one before TX.
+            if (!Ess::prepareTuningValue(request,Ess::tuningParameter(request.group,static_cast<uint8_t>(field)),word)) {
+                request.fields |= 1UL << field; request.tuningValues[field] = word;
+            }
+            continue;
+        }
+        request.fields |= mask;
+        if (nativeControl) {
+            switch (field) {
+            case 0: request.controlAlgorithm = static_cast<Ess::ControlAlgorithm>(word); break;
+            case 1: request.encoderResolution = word; break;
+            case 2: request.maximumEffectiveCurrentMa = word; break;
+            case 3: request.closedMaximumPercent = word; break;
+            case 4: request.closedBasePercent = word; break;
+            case 5: request.openMaximumPercent = word; break;
+            case 6: request.lockPercent = word; break;
+            case 7: request.lockDelayMs = word; break;
+            }
+            continue;
+        }
+        if (nativeIo) {
+            Core::Status checked;
+            if (field >= 1 && field <= 4) checked = Ess::prepareInputFunction(request, static_cast<uint8_t>(field - 1), static_cast<Ess::InputFunction>(word));
+            else if (field == 6 || field == 7) checked = Ess::prepareOutputFunction(request, static_cast<uint8_t>(field - 6), static_cast<Ess::OutputFunction>(word));
+            else if (field == 0) request.inputPolarity = word;
+            else if (field == 5) request.outputPolarity = word;
+            else request.customOutput = word;
+            if (!checked) { error(id, command, driverAdmissionStatus(checked) == Action::UNRESOLVED ? "unresolved" : "invalid_value"); return; }
+            continue;
+        }
+        switch (field) {
+        case 0: request.direction = static_cast<Ess::DefaultDirection>(word); break;
+        case 1: request.subdivision = word; break;
+        case 2: request.wordOrder = static_cast<Ess::WordOrder>(word); break;
+        case 3: request.softLimitEnable = static_cast<Ess::SoftLimitEnable>(word); break;
+        case 4: request.overLimitStop = static_cast<Ess::OverLimitStop>(word); break;
+        case 5: request.interruption = static_cast<Ess::PvTriggerMode>(word); break;
+        case 6: request.positionMode = static_cast<Ess::PositionMode>(word); break;
+        case 7: request.positiveLimit = value.numerator; break;
+        case 8: request.negativeLimit = value.numerator; break;
+        }
+    }
+    if (!hasAddress) { Snapshot snapshot; host_.snapshot(host_.context, snapshot); address = snapshot.address; }
+    if (address < 1 || address > 247) { error(id, command, "invalid_address"); return; }
+    const bool available = availableSlot() != OUTSTANDING_SLOTS;
+    uint32_t operationId = 0;
+    if (available) beginWork();
+    const Action result = available ? host_.startDriver(host_.context, id, static_cast<uint8_t>(address),
+        reading ? Ess::DriverKind::READ : Ess::DriverKind::UPDATE, request, operationId) : Action::BUSY;
+    if (result == Action::OK) track(id, operationId);
+    action(id, command, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0);
+    return;
+}
+void Console::velocityRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    if (outputPending()) { ++inputDropped_; return; }
+    const std::size_t args = first + 1;
+    if (!host_.startVelocity || !host_.snapshot || !host_.axis) { error(id, "velocity", "unavailable"); return; }
+    Core::VelocityRequest request; uint32_t duration = 0;
+    if (count < args + 6 || !Core::parseExactNumber(tokens[args], request.value) ||
+        !rateUnit(tokens[args + 1], request.unit) || !coordinateFrame(tokens[args + 2], request.frame) ||
+        !number(tokens[args + 3], duration) || duration < 1 || duration > VELOCITY_MAX_DURATION_MS ||
+        std::strcmp(tokens[args + 4], "configured") != 0) { error(id, "velocity", "invalid_arguments"); return; }
+    request.durationUs = duration * 1000; request.ramp = Core::VelocityRamp::VERIFIED_CONFIGURED;
+    if (std::strcmp(tokens[args + 5], "normal") == 0) request.stop.behavior = Core::StopBehavior::CONFIGURED_DECELERATION;
+    else if (std::strcmp(tokens[args + 5], "fast") == 0) request.stop.behavior = Core::StopBehavior::DIRECT;
+    else { error(id, "velocity", "unsupported_policy"); return; }
+    std::size_t next = args + 6;
+    if (next < count && std::strcmp(tokens[next], "round") == 0) {
+        ++next;
+        if (next + 2 > count || !rounding(tokens[next], request.rounding) ||
+            !allowance(tokens[next + 1], request.maximumQuantizationErrorRpm)) { error(id, "velocity", "invalid_arguments"); return; }
+        next += 2;
+        if (next < count && std::strcmp(tokens[next], "approx") == 0) {
+            ++next;
+            if (next >= count || request.unit.position != Core::PositionUnit::RADIANS ||
+                !allowance(tokens[next++], request.maximumApproximationErrorRpm) || request.maximumApproximationErrorRpm <= 0) {
+                error(id, "velocity", "invalid_arguments"); return;
+            }
+            request.approximate = true;
+        }
+    }
+    Snapshot snapshot; host_.snapshot(host_.context, snapshot); uint32_t address = snapshot.address;
+    if (count > next + 1 || (count == next + 1 && !number(tokens[next], address))) { error(id, "velocity", "invalid_arguments"); return; }
+    if (address < 1 || address > 247) { error(id, "velocity", "invalid_address"); return; }
+    AxisCommand query; AxisView axis;
+    if (!host_.axis(host_.context, query, axis)) { error(id, "velocity", "invalid_axis_configuration"); return; }
+    request.configurationGeneration = axis.configuration.generation;
+    const bool available = availableSlot() != OUTSTANDING_SLOTS;
+    uint32_t operationId = 0;
+    if (available) beginWork();
+    const Action result = available ? host_.startVelocity(host_.context, id, static_cast<uint8_t>(address), request, operationId) : Action::BUSY;
+    if (result == Action::OK) track(id, operationId);
+    action(id, "velocity", result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0);
+    return;
+}
+void Console::simpleMotionRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    const Entry* entry = find(tokens[first]);
+    const bool simpleSubdivision = entry->command == Command::SUBDIVISION;
+    if (outputPending()) { ++inputDropped_; return; }
+    if (!host_.simpleMotion) { error(id, entry->name, "unavailable"); return; }
+    SimpleMotionCommand request;
+    const bool move = entry->command == Command::MOVE_BY || entry->command == Command::MOVE_TO;
+    const bool session = move || entry->command == Command::SETTINGS || simpleSubdivision;
+    const std::size_t args = count - first - 1;
+    if (simpleSubdivision) {
+        uint32_t value = 0;
+        if (args > 1 || (args && (!number(tokens[first+1], value) || value < 400 || value > 51200))) {
+            error(id, entry->name, "subdivision_must_be_400_to_51200"); return;
+        }
+        request.kind = SimpleMotionCommandKind::SUBDIVISION; request.nativeValue = static_cast<uint16_t>(value);
+    } else if (entry->command == Command::SETTINGS) {
+        if (args) { error(id, entry->name, "invalid_arguments"); return; }
+        request.kind = SimpleMotionCommandKind::SETTINGS;
+    } else if (move) {
+        if (args < 1 || args > 2 || !Core::parseExactNumber(tokens[first + 1], request.position.value) ||
+            (args == 2 && !positionUnit(tokens[first + 2], request.position.unit))) {
+            error(id, entry->name, "invalid_arguments"); return;
+        }
+        if (request.position.unit != Core::PositionUnit::STEPS && request.position.unit != Core::PositionUnit::DEGREES &&
+            request.position.unit != Core::PositionUnit::TURNS && request.position.unit != Core::PositionUnit::MILLIMETRES) {
+            error(id, entry->name, "use_steps_deg_turn_or_mm"); return;
+        }
+        request.kind = entry->command == Command::MOVE_BY ? SimpleMotionCommandKind::MOVE_BY : SimpleMotionCommandKind::MOVE_TO;
+        request.position.relative = entry->command == Command::MOVE_BY;
+        request.position.frame = request.position.unit == Core::PositionUnit::STEPS && request.position.relative ? Core::CoordinateFrame::NATIVE :
+            request.position.unit == Core::PositionUnit::MILLIMETRES ? Core::CoordinateFrame::LOAD : Core::CoordinateFrame::MOTOR;
+    } else if (entry->command == Command::STEPS_PER_TURN) {
+        if (args != 1 || !Core::parseExactNumber(tokens[first + 1], request.position.value) ||
+            request.position.value.numerator <= 0 || request.position.value.numerator > UINT32_MAX ||
+            request.position.value.denominator > UINT32_MAX) {
+            error(id, entry->name, "invalid_positive_scale"); return;
+        }
+        request.kind = SimpleMotionCommandKind::SCALE;
+    } else {
+        if (args > 2 || (entry->command == Command::MOTION && args > 1)) { error(id, entry->name, "invalid_arguments"); return; }
+        if (args && entry->command == Command::MOTION) {
+            request.kind = SimpleMotionCommandKind::SETUP;
+            if (!std::strcmp(tokens[first + 1], "write")) request.setup = Core::MoveSetup::WRITE_ALL;
+            else if (!std::strcmp(tokens[first + 1], "stored")) request.setup = Core::MoveSetup::USE_STORED;
+            else { error(id, entry->name, "invalid_arguments"); return; }
+        } else if (args) {
+            Core::Rational value;
+            const bool speed = entry->command == Command::SPEED;
+            const char* unit = speed ? "rpm" : "ms";
+            char* number = tokens[first + 1];
+            const std::size_t length = std::strlen(number), unitLength = std::strlen(unit);
+            const bool suffix = length > unitLength && !std::strcmp(number + length - unitLength, unit);
+            if (args == 2 && (suffix || std::strcmp(tokens[first + 2], unit))) {
+                error(id, entry->name, "invalid_arguments"); return;
+            }
+            if (suffix) number[length - unitLength] = '\0';
+            if (!Core::parseExactNumber(number, value) || value.denominator != 1 ||
+                value.numerator < 0 || value.numerator > (speed ? 3000 : 2000)) {
+                error(id, entry->name, speed ? "speed_must_be_0_to_3000_rpm" : "ramp_must_be_0_to_2000_ms"); return;
+            }
+            request.kind = speed ? SimpleMotionCommandKind::SPEED : entry->command == Command::ACCEL ?
+                SimpleMotionCommandKind::ACCEL : SimpleMotionCommandKind::DECEL;
+            request.nativeValue = static_cast<uint16_t>(value.numerator);
+        }
+    }
+    const bool available = availableSlot() != OUTSTANDING_SLOTS;
+    SimpleMotionView view;
+    if (session && available) beginWork();
+    const auto result = session && !available ? Action::BUSY : host_.simpleMotion(host_.context, id, &request, view);
+    if (result != Action::OK) { action(id, entry->name, result); return; }
+    if (session) {
+        track(id, view.operationId);
+        formatSimpleMotion(id, view, true);
+    } else if (entry->command == Command::STEPS_PER_TURN) {
+        if (outputFormat_ == Format::HUMAN) {
+            std::snprintf(output_,sizeof(output_),"Angle scale: %lld/%llu command steps per motor turn.\nThis host declaration applies after the next move's stopped-state checks; no drive setting changed.",
+                static_cast<long long>(request.position.value.numerator),static_cast<unsigned long long>(request.position.value.denominator));
+            emit(0,true);
+        } else {
+            std::snprintf(output_,sizeof(output_),"{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"stepsperturn\",\"ok\":true,\"numerator\":%lld,\"denominator\":%llu,\"device_settings_changed\":false}",
+                static_cast<unsigned long>(id),static_cast<long long>(request.position.value.numerator),static_cast<unsigned long long>(request.position.value.denominator));
+            emit();
+        }
+    } else if (outputFormat_ == Format::HUMAN) {
+        char accel[24], decel[24];
+        if (view.accelerationKnown) std::snprintf(accel,sizeof(accel),"%u",view.acceleration);
+        else std::snprintf(accel,sizeof(accel),"use drive setting");
+        if (view.decelerationKnown) std::snprintf(decel,sizeof(decel),"%u",view.deceleration);
+        else std::snprintf(decel,sizeof(decel),"use drive setting");
+        std::snprintf(output_,sizeof(output_),
+            "Host settings: speed %u rpm; accel %s ms; decel %s ms.\nNo motor setting changed yet. Next move will %s.\nUse settings to compare with the motor's actual values.",
+            view.speedRpm,accel,decel,view.setup == Core::MoveSetup::USE_STORED ? "reuse stored parameters" : "send parameters before start");
+        emit(0,true);
+    } else {
+        std::snprintf(output_,sizeof(output_),
+            "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":true,\"speed_rpm\":%u,\"acceleration\":%u,\"deceleration\":%u,\"acceleration_known\":%s,\"deceleration_known\":%s,\"ramp_units\":\"native\",\"ramp_time_unit\":\"ms\",\"setup\":\"%s\",\"device_settings_changed\":false}",
+            static_cast<unsigned long>(id),entry->name,view.speedRpm,view.acceleration,view.deceleration,
+            boolean(view.accelerationKnown),boolean(view.decelerationKnown),view.setup == Core::MoveSetup::USE_STORED ? "stored" : "write");
+        emit();
+    }
+    return;
+}
+void Console::positionLimitsRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    // Wired bench 16 (D6): position limits [set RPM RATE RAMP case NAME | default].
+    if (outputPending()) { ++inputDropped_; return; }
+    if (!host_.positionLimits) { error(id, "position-limits", "unavailable"); return; }
+    PositionLimitsCommand request;
+    const char* verb = count > first + 2 ? tokens[first + 2] : "";
+    bool valid = true;
+    if (count == first + 2) request.kind = PositionLimitsCommandKind::SHOW;
+    else if (!std::strcmp(verb, "default")) { request.kind = PositionLimitsCommandKind::DEFAULT; valid = count == first + 3; }
+    else if (!std::strcmp(verb, "set") && count == first + 8 && !std::strcmp(tokens[first + 6], "case")) {
+        request.kind = PositionLimitsCommandKind::SET;
+        uint32_t rpm = 0, rate = 0, ramp = 0;
+        valid = number(tokens[first + 3], rpm) && rpm <= 0xFFFF && number(tokens[first + 4], rate) &&
+            number(tokens[first + 5], ramp) && ramp <= 0xFFFF && std::strlen(tokens[first + 7]) < POSITION_LIMITS_CASE_CAPACITY;
+        request.limits.maximumRpm = static_cast<uint16_t>(rpm);
+        request.limits.maximumCommandRate = rate;
+        request.limits.minimumRampTime = static_cast<uint16_t>(ramp);
+        if (valid) std::strcpy(request.caseName, tokens[first + 7]);
+    } else valid = false;
+    if (!valid) { error(id, "position-limits", "invalid_arguments"); return; }
+    positionLimitsReply(id, request);
+    return;
+}
+void Console::positionRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    if (outputPending()) { ++inputDropped_; return; }
+    uint32_t originalId = 0;
+    if (count != first + 3 || std::strcmp(tokens[first + 1], "interrupt") ||
+        !number(tokens[first + 2], originalId) || !originalId) {
+        error(id, "position-interrupt", "invalid_arguments"); return;
+    }
+    if (!host_.startPositionInterrupt || !host_.snapshot) { error(id, "position-interrupt", "unavailable"); return; }
+    Snapshot snapshot; host_.snapshot(host_.context, snapshot);
+    const bool available = availableSlot() != OUTSTANDING_SLOTS;
+    uint32_t operationId = 0;
+    if (available) beginWork();
+    const auto result = available ? host_.startPositionInterrupt(host_.context, id, originalId, operationId) : Action::BUSY;
+    if (result == Action::OK) track(id, operationId);
+    action(id, "position-interrupt", result, snapshot.address, result == Action::OK ? operationId : 0);
+    return;
+}
+void Console::moveRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    if (outputPending()) { ++inputDropped_; return; }
+    const char* kind = count > first + 1 ? tokens[first + 1] : "";
+    Core::MoveRequest move;
+    if (std::strcmp(kind, "relative") == 0) move.position.relative = true;
+    else if (std::strcmp(kind, "absolute") == 0) move.position.relative = false;
+    else if (std::strcmp(kind, "angle") == 0) { move.position.relative = false; move.position.wrapped = true; }
+    else { error(id, "move", "invalid_arguments"); return; }
+    const char* command = moveCommand(move.position);
+    if (!host_.startMove || !host_.snapshot || !host_.axis) { error(id, command, "unavailable"); return; }
+    const std::size_t args = first + 2;
+    const std::size_t required = move.position.wrapped ? 7 : 5;
+    if (count < args + required) { error(id, command, "invalid_arguments"); return; }
+    Core::Rational speed;
+    if (!Core::parseExactNumber(tokens[args], move.position.value) ||
+        !positionUnit(tokens[args + 1], move.position.unit) || !coordinateFrame(tokens[args + 2], move.position.frame)) { error(id, command, "invalid_arguments"); return; }
+    std::size_t next = args + 3;
+    if (move.position.wrapped) {
+        if (!anglePath(tokens[next], move.position.path) || !halfTurnTie(tokens[next + 1], move.position.tie)) { error(id, command, "invalid_arguments"); return; }
+        next += 2;
+    }
+    if (!Core::parseExactNumber(tokens[next++], speed) || speed.denominator != 1 || speed.numerator <= 0 || speed.numerator > UINT16_MAX ||
+        std::strcmp(tokens[next++], "configured") != 0) { error(id, command, "invalid_arguments"); return; }
+    move.speedRpm = static_cast<uint16_t>(speed.numerator); move.ramp = Core::MoveRamp::VERIFIED_CONFIGURED;
+    if (next < count && std::strcmp(tokens[next], "setup") == 0) {
+        if (++next >= count) { error(id, command, "invalid_arguments"); return; }
+        if (std::strcmp(tokens[next], "write") == 0) move.setup = Core::MoveSetup::WRITE_ALL;
+        else if (std::strcmp(tokens[next], "verify") == 0) move.setup = Core::MoveSetup::VERIFY_AND_UPDATE;
+        else if (std::strcmp(tokens[next], "stored") == 0) move.setup = Core::MoveSetup::USE_STORED;
+        else { error(id, command, "invalid_arguments"); return; }
+        ++next;
+    }
+    if (next < count && std::strcmp(tokens[next], "basis") == 0) {
+        if (!move.position.relative || ++next >= count || !relativeBasis(tokens[next++], move.position.basis)) { error(id, command, "invalid_arguments"); return; }
+    }
+    if (next < count && std::strcmp(tokens[next], "round") == 0) {
+        ++next;
+        if (next + 2 > count || !rounding(tokens[next], move.position.rounding) ||
+            !allowance(tokens[next + 1], move.position.maximumQuantizationError)) { error(id, command, "invalid_arguments"); return; }
+        next += 2;
+        if (next < count && std::strcmp(tokens[next], "approx") == 0) {
+            ++next;
+            if (next >= count || move.position.unit != Core::PositionUnit::RADIANS ||
+                !allowance(tokens[next++], move.position.maximumApproximationError) || move.position.maximumApproximationError <= 0) { error(id, command, "invalid_arguments"); return; }
+            move.position.approximate = true;
+        }
+    }
+    Snapshot snapshot; host_.snapshot(host_.context, snapshot);
+    uint32_t address = snapshot.address;
+    if (count > next + 1 || (count == next + 1 && !number(tokens[next], address))) { error(id, command, "invalid_arguments"); return; }
+    if (address < 1 || address > 247) { error(id, command, "invalid_address"); return; }
+    AxisCommand query; AxisView axis;
+    if (!host_.axis(host_.context, query, axis)) { error(id, command, "invalid_axis_configuration"); return; }
+    move.position.configurationGeneration = axis.configuration.generation;
+    const bool available = availableSlot() != OUTSTANDING_SLOTS;
+    uint32_t operationId = 0;
+    if (available) beginWork();
+    const Action result = available ? host_.startMove(host_.context, id, static_cast<uint8_t>(address), move, operationId) : Action::BUSY;
+    if (result == Action::OK) track(id, operationId);
+    action(id, command, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0);
+    return;
+}
+void Console::releaseAfterStopRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    uint32_t stopId = 0;
+    if (count != first + 5 || !number(tokens[first + 2], stopId) || !stopId ||
+        std::strcmp(tokens[first + 3], "mechanics-permit-release") != 0 ||
+        std::strcmp(tokens[first + 4], "triggers-inhibited") != 0) {
+        error(id, "motor-release", "invalid_arguments"); return;
+    }
+    if (outputPending()) { ++inputDropped_; return; }
+    if (!host_.startReleaseAfterStop || !host_.result) { error(id, "motor-release", "unavailable"); return; }
+    const bool available = availableSlot() != OUTSTANDING_SLOTS;
+    uint32_t operationId = 0;
+    if (available) beginWork();
+    const Action result = available ? host_.startReleaseAfterStop(host_.context, id, stopId, operationId) : Action::BUSY;
+    ResultView view;
+    if (result == Action::OK) {
+        track(id, operationId);
+        host_.result(host_.context, operationId, view);
+    }
+    action(id, "motor-release", result, view.address, result == Action::OK ? operationId : 0);
+    return;
+}
+void Console::actionRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    const Entry* entry = find(tokens[first]);
+    Core::ActionRequest request;
+    const char* actionCommand = nullptr;
+    std::size_t actionArgs = first + 1;
+    if (entry->command == Command::ENABLE) {
+        request.kind = Core::ActionKind::ENABLE; actionCommand = "enable";
+    } else if (entry->command == Command::MOTOR_RELEASE) {
+        request.kind = Core::ActionKind::RELEASE; actionCommand = "motor-release";
+    } else if (entry->command == Command::ALARM_CLEAR) {
+        request.kind = Core::ActionKind::CLEAR_ALARM; actionCommand = "alarm-clear";
+    } else if (entry->command == Command::POSITION_CLEAR) {
+        request.kind = Core::ActionKind::CLEAR_POSITION; actionCommand = "position-clear";
+    } else if (entry->command == Command::STOP) {
+        request.kind = Core::ActionKind::STOP; actionCommand = "stop";
+        if (count <= actionArgs) { error(id, "stop", "invalid_arguments"); return; }
+        if (std::strcmp(tokens[actionArgs], "normal") == 0) request.stop.behavior = Core::StopBehavior::CONFIGURED_DECELERATION;
+        else if (std::strcmp(tokens[actionArgs], "fast") == 0) request.stop.behavior = Core::StopBehavior::DIRECT;
+        else { error(id, "stop", "unsupported_policy"); return; }
+        ++actionArgs;
+    }
+    if (actionCommand) {
+        const bool stop = request.kind == Core::ActionKind::STOP;
+        if (outputPending() && !stop) { ++inputDropped_; return; }
+        if (!host_.startAction || !host_.snapshot) { error(id, actionCommand, "unavailable"); return; }
+        Snapshot snapshot; host_.snapshot(host_.context, snapshot);
+        uint32_t address = snapshot.address;
+        if (count > actionArgs + 1 || (count == actionArgs + 1 && !number(tokens[actionArgs], address))) {
+            error(id, actionCommand, "invalid_arguments"); return;
+        }
+        if (address < 1 || address > 247) { error(id, actionCommand, "invalid_address"); return; }
+        const bool available = availableSlot(stop) != OUTSTANDING_SLOTS;
+        uint32_t operationId = 0;
+        if (available) beginWork();
+        const Action result = available ? host_.startAction(host_.context, id, static_cast<uint8_t>(address), request, operationId) : Action::BUSY;
+        if (result == Action::OK) track(id, operationId, stop);
+        ResultView stopView;
+        if (stop && result == Action::OK && host_.result)
+            host_.result(host_.context, operationId, stopView);
+        if (stop && outputPending()) {
+            retainStopReply(id, actionCommand, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0,
+                            stopView.ordinaryStop, stopView.replacedOperationId, stopView.stopEscalation);
+        } else action(id, actionCommand, result, static_cast<uint8_t>(address), result == Action::OK ? operationId : 0,
+                      stopView.ordinaryStop, stopView.replacedOperationId, stopView.stopEscalation);
+        return;
+    }
+}
+void Console::discoverRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    if (!host_.discovery) { error(id,"discover","unavailable"); return; }
+    DiscoveryCommand request; bool inspect=false;
+    auto& settings=request.settings;
+    std::size_t at=first+1; uint16_t seen=0;
+    if (count==at+1 && !std::strcmp(tokens[at],"inspect")) inspect=true;
+    else if (count==at+1 && !std::strcmp(tokens[at],"cancel")) request.kind=DiscoveryCommandKind::CANCEL;
+    else if (count==at+1 && !std::strcmp(tokens[at],"restore")) request.kind=DiscoveryCommandKind::RESTORE;
+    else if (count==at+1 && !std::strcmp(tokens[at],"finish")) request.kind=DiscoveryCommandKind::FINISH;
+    else while(at<count) {
+        const char* key=tokens[at++];uint16_t flag=0;uint32_t value=0;
+        if (!std::strcmp(key,"profile") || !std::strcmp(key,"manufacturer")) {
+            flag=1;
+            if(at>=count || std::strcmp(tokens[at++],!std::strcmp(key,"profile")?"ess_rs":"stepperonline")) {error(id,"discover","unsupported_profile");return;}
+        } else if (!std::strcmp(key,"addresses")) {
+            flag=2;uint32_t last=0;
+            if(at+2>count || !number(tokens[at++],value) || !number(tokens[at++],last) || value<1 || last<value || last>247) {error(id,"discover","invalid_addresses");return;}
+            settings.first=static_cast<uint8_t>(value);settings.last=static_cast<uint8_t>(last);
+        } else if (!std::strcmp(key,"tuple")) {
+            HostTuple tuple;
+            if(at+2>count || settings.tupleCount==DISCOVERY_MAX_TUPLES || !number(tokens[at++],tuple.baud) || !parseFormat(tokens[at++],tuple.format) || !reviewedHostTuple(tuple)) {error(id,"discover","invalid_tuple");return;}
+            for(uint8_t i=0;i<settings.tupleCount;++i) if(sameTuple(tuple,settings.tuples[i])) {error(id,"discover","duplicate_tuple");return;}
+            settings.tuples[settings.tupleCount++]=tuple;
+        } else if (!std::strcmp(key,"identity")) {flag=4;settings.identity=true;}
+        else if (!std::strcmp(key,"past-silent")) {flag=128;settings.pastSilent=true;}
+        else {
+            if (!std::strcmp(key,"query-ms")) flag=8;
+            else if (!std::strcmp(key,"overall-ms")) flag=16;
+            else if (!std::strcmp(key,"requests")) flag=32;
+            else if (!std::strcmp(key,"results")) flag=64;
+            else {error(id,"discover","invalid_arguments");return;}
+            const uint32_t maximum=flag==8?5000:flag==16?60000:flag==32?256:8;
+            if(at>=count || !number(tokens[at++],value) || !value || value>maximum) {error(id,"discover","invalid_budget");return;}
+            if(flag==8) settings.queryMs=value; else if(flag==16)settings.overallMs=value;
+            else if(flag==32)settings.requestLimit=static_cast<uint16_t>(value);else settings.resultLimit=static_cast<uint8_t>(value);
+        }
+        if(flag && (seen&flag)) {error(id,"discover","duplicate_option");return;}
+        seen|=flag;
+    }
+    if(settings.pastSilent && settings.tupleCount>1) {error(id,"discover","past_silent_one_tuple");return;}
+    if(outputPending() && request.kind!=DiscoveryCommandKind::CANCEL) {++inputDropped_;return;}
+    DiscoveryView view;const auto result=host_.discovery(host_.context,inspect?nullptr:&request,view);
+    if(outputPending()) {++inputDropped_;return;}
+    std::size_t used=0;
+    if(append(output_,sizeof(output_),used,"{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"discover\",\"ok\":%s,\"result\":\"%s\",\"action\":%d,\"scan\":",static_cast<unsigned long>(id),boolean(result==Action::OK),actionName(result),inspect?-1:static_cast<int>(request.kind)) &&
+        discoveryScan(output_,sizeof(output_),used,view.scan) && append(output_,sizeof(output_),used,"}")) emit();
+    else error(id,"discover","output_capacity");
+    return;
+}
+void Console::profileListRoute(uint32_t id, char**, std::size_t first, std::size_t count) noexcept {
+    if (count != first + 2) { error(id,"profile-list","invalid_arguments"); return; }
+    if (outputPending()) { ++inputDropped_; return; }
+    std::size_t used = 0;
+    bool fits = append(output_,sizeof(output_),used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"profile-list\",\"ok\":true,\"bus_traffic\":false,\"profiles\":[",static_cast<unsigned long>(id));
+    for (std::size_t i = 0; fits && i < MotorControlRS::discoveryProfileCount(); ++i) {
+        MotorControlRS::DiscoveryProfile profile;
+        MotorControlRS::DiscoveryCapabilities caps;
+        if (!MotorControlRS::getDiscoveryProfile(i,profile).isOk() || !MotorControlRS::getDiscoveryCapabilities(profile.profile,caps).isOk()) {
+            error(id,"profile-list","inventory_error"); return;
+        }
+        fits = (!i || append(output_,sizeof(output_),used,",")) && append(output_,sizeof(output_),used,
+            "{\"manufacturer\":\"%s\",\"manufacturer_name\":\"%s\",\"profile\":\"%s\",\"name\":\"%s\",\"probe\":%s,\"identity\":%s,\"nonchanging\":%s,\"exact_model\":%s,\"firmware\":%s,\"minimum_address\":%u,\"maximum_address\":%u,\"probe_first\":%u,\"probe_count\":%u,\"identity_first\":%u,\"identity_count\":%u}",
+            profile.manufacturerId,profile.manufacturerName,profile.profileId,profile.profileName,
+            boolean(caps.probe),boolean(caps.identity),boolean(caps.nonChanging),boolean(caps.exactModel),boolean(caps.firmware),
+            caps.minimumAddress,caps.maximumAddress,caps.probeFirst,caps.probeCount,caps.identityFirst,caps.identityCount);
+    }
+    if (fits && append(output_,sizeof(output_),used,"]}")) emit();
+    else error(id,"profile-list","output_capacity");
+    return;
+}
+void Console::debugRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    if (!host_.debug || !host_.snapshot) { error(id,"debug","unavailable"); return; }
+    DebugMode mode=DebugMode::OFF; bool change=count==first+2;
+    if (count<first+1 || count>first+2) { error(id,"debug","invalid_arguments"); return; }
+    if (change) {
+        if (!std::strcmp(tokens[first+1],"raw")) mode=DebugMode::RAW;
+        else if (!std::strcmp(tokens[first+1],"decoded")) mode=DebugMode::DECODED;
+        else if (std::strcmp(tokens[first+1],"off")) { error(id,"debug","invalid_arguments"); return; }
+    }
+    if (outputPending() && (!change || mode!=DebugMode::OFF)) { ++inputDropped_; return; }
+    DebugSnapshot view;
+    const auto result=host_.debug(host_.context,change?&mode:nullptr,view);
+    if (change && result==Action::OK) trafficFormat_=outputFormat_;
+    // Disabling remains possible under pressure; an existing ordinary reply
+    // keeps its ownership and the diagnostic reply may be dropped.
+    if (outputPending()) { ++inputDropped_; return; }
+    Snapshot data;
+    if (host_.snapshot) host_.snapshot(host_.context,data);
+    std::size_t used=0;
+    if (append(output_,sizeof(output_),used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"debug\",\"ok\":%s,\"result\":\"%s\",\"mode\":\"%s\",\"observed\":%llu,\"emitted\":%llu,\"dropped\":%llu,\"missed\":%llu,\"skipped\":%llu,\"cursor\":%llu,\"overwritten\":%lu,\"capture_dropped\":%lu,\"retained\":%u,\"capacity\":%u,\"owner\":{\"phase\":\"%s\",\"busy\":%s,\"recovery_required\":%s,\"pending\":%u,\"retained\":%u},\"capture\":{\"mode\":\"%s\",\"faults\":%lu,\"max_poll_gap_us\":%llu},\"memory\":{\"valid\":%s,\"stack_free_bytes\":%lu,\"internal_free\":%lu,\"psram_free\":%lu}}",
+        static_cast<unsigned long>(id),boolean(result==Action::OK),actionName(result),
+        view.mode==DebugMode::RAW?"raw":view.mode==DebugMode::DECODED?"decoded":"off",
+        static_cast<unsigned long long>(view.observed),static_cast<unsigned long long>(view.emitted),
+        static_cast<unsigned long long>(view.dropped),static_cast<unsigned long long>(view.missed),static_cast<unsigned long long>(view.skipped),static_cast<unsigned long long>(view.cursor),
+        static_cast<unsigned long>(view.overwritten),static_cast<unsigned long>(view.captureDropped),static_cast<unsigned>(view.retained),static_cast<unsigned>(view.capacity),
+        Rtu::phaseName(data.phase),boolean(data.busy),boolean(data.recoveryRequired),static_cast<unsigned>(data.pending),static_cast<unsigned>(data.retained),
+        data.timerCapture?"timer":"poll",static_cast<unsigned long>(data.captureFaults),static_cast<unsigned long long>(data.maxPollGapUs),
+        boolean(data.memoryValid),static_cast<unsigned long>(data.stackFreeBytes),static_cast<unsigned long>(data.internalFree),static_cast<unsigned long>(data.psramFree))) emit();
+    else error(id,"debug","output_capacity");
+    return;
+}
+void Console::positionClearFactsRoute(uint32_t id, char**, std::size_t, std::size_t) noexcept {
+    if (outputPending()) { ++inputDropped_; return; }
+    if (!host_.inspectPositionClearQualification) { error(id, "position-clear-qualification", "unavailable"); return; }
+    PositionClearQualification p; bool valid = false;
+    const bool present = host_.inspectPositionClearQualification(host_.context, p, valid);
+    std::size_t used = 0;
+    if (!append(output_, sizeof(output_), used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"position-clear-qualification\",\"ok\":true,\"present\":%s,\"valid\":%s,\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"semantics_qualified\":%s}",
+        static_cast<unsigned long>(id), boolean(present), boolean(present && valid),
+        static_cast<unsigned long>(p.target.id), p.target.address, static_cast<unsigned long>(p.target.generation),
+        static_cast<unsigned long>(p.configurationGeneration), boolean(p.semanticsQualified))) {
+        error(id, "position-clear-qualification", "output_full"); return;
+    }
+    emit(); return;
+}
+void Console::hostRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    if (outputPending()) { ++inputDropped_; return; }
+    if (!host_.hostSerial) { error(id, "host", "unavailable"); return; }
+    const std::size_t args = first + 1;
+    HostSnapshot state;
+    const Action queried = host_.hostSerial(host_.context, nullptr, state);
+    if (queried != Action::OK) { error(id, "host", actionName(queried)); return; }
+    HostRequest request; request.tuple = state.active;
+    bool changing = false;
+    if (count == args) {}
+    else if (count == args + 1 && !std::strcmp(tokens[args], "caps")) {}
+    else if (count == args + 1 && !std::strcmp(tokens[args], "restore")) { changing = request.restore = true; }
+    else if (count == args + 2 && !std::strcmp(tokens[args], "baud")) {
+        if (!state.activeKnown) { error(id, "host", "active_tuple_unknown"); return; }
+        if (!number(tokens[args + 1], request.tuple.baud)) { error(id, "host", "invalid_tuple"); return; }
+        changing = true;
+    } else if (count == args + 2 && !std::strcmp(tokens[args], "fmt")) {
+        if (!state.activeKnown) { error(id, "host", "active_tuple_unknown"); return; }
+        if (!parseFormat(tokens[args + 1], request.tuple.format)) { error(id, "host", "invalid_tuple"); return; }
+        changing = true;
+    } else if (count == args + 3 && !std::strcmp(tokens[args], "set")) {
+        if (!number(tokens[args + 1], request.tuple.baud) || !parseFormat(tokens[args + 2], request.tuple.format)) {
+            error(id, "host", "invalid_tuple"); return;
+        }
+        changing = true;
+    } else { error(id, "host", "invalid_arguments"); return; }
+    if (changing && !supports(state, request.restore ? state.original : request.tuple)) { error(id, "host", "unsupported"); return; }
+    const Action result = changing ? host_.hostSerial(host_.context, &request, state) : Action::OK;
+    std::size_t used = 0;
+    const bool fits = append(output_, sizeof(output_), used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"host\",\"ok\":%s,\"result\":\"%s\"",
+        static_cast<unsigned long>(id), boolean(result == Action::OK), result == Action::OK ? "done" : actionName(result)) &&
+        hostState(output_, sizeof(output_), used, state);
+    if (!fits) { error(id, "host", "output_full"); return; }
+    emit(); return;
+}
+void Console::persistenceRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    if (outputPending()) { ++inputDropped_; return; }
+    if (!host_.persistence) { error(id,"persistence","unavailable"); return; }
+    const std::size_t args=first+1;
+    PersistenceCommand request; bool inspect=false,plan=false;
+    if(count==args || (count==args+1 && !std::strcmp(tokens[args],"inspect"))) inspect=true;
+    else if(count==args+1 && !std::strcmp(tokens[args],"snapshot")) request.kind=PersistenceCommandKind::SNAPSHOT;
+    else if(count==args+1 && !std::strcmp(tokens[args],"verify")) request.kind=PersistenceCommandKind::VERIFY;
+    else if(count==args+1 && !std::strcmp(tokens[args],"finish")) request.kind=PersistenceCommandKind::FINISH;
+    else if(count==args+2 && !std::strcmp(tokens[args],"host") && !std::strcmp(tokens[args+1],"before")) request.kind=PersistenceCommandKind::SELECT_BEFORE;
+    else if(count==args+2 && (!std::strcmp(tokens[args],"plan") || !std::strcmp(tokens[args],"begin"))) {
+        plan=!std::strcmp(tokens[args],"plan");request.kind=plan?PersistenceCommandKind::PREVIEW:PersistenceCommandKind::BEGIN;
+        if(!std::strcmp(tokens[args+1],"save")) request.request=Ess::PersistenceKind::SAVE;
+        else if(!std::strcmp(tokens[args+1],"factory-restore")) request.request=Ess::PersistenceKind::FACTORY_RESTORE;
+        else { error(id,"persistence","invalid_kind");return; }
+    } else { error(id,"persistence","invalid_arguments");return; }
+    PersistenceView view;const Action result=host_.persistence(host_.context,inspect?nullptr:&request,view);
+    std::size_t used=0;
+    bool fits=append(output_,sizeof(output_),used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"persistence\",\"ok\":%s,\"result\":\"%s\",\"action\":%d,\"pending\":%s,\"owned\":%s,\"route_ready\":%s,\"snapshot_known\":%s,\"snapshot_failed\":%s,\"verification_attempts\":%u,\"parent_session\":%s,\"finished\":%s,\"invocations\":%u,\"invocation_limit\":2,\"restart_performed\":false,\"write_replayed\":false,\"plan\":",
+        static_cast<unsigned long>(id),boolean(result==Action::OK),result==Action::OK?"done":actionName(result),inspect?-1:static_cast<int>(request.kind),
+        boolean(view.pending),boolean(view.owned),boolean(view.routeReady),boolean(view.snapshotKnown),boolean(view.snapshotFailed),view.verificationAttempts,boolean(view.parentSession),boolean(view.finished),view.invocations);
+    if (!inspect && (plan || request.kind==PersistenceCommandKind::BEGIN)) {
+        fits=fits && append(output_,sizeof(output_),used,
+            "{\"kind\":\"%s\",\"register\":45,\"value\":%u,\"writes\":1,\"scope\":\"all_parameters\",\"stopped_required\":true,\"completion\":\"unresolved\",\"durability\":\"unverified\",\"restart\":\"required_for_proof\",\"backup\":\"partial_standard_config\"}",
+            persistenceKind(request.request),request.request==Ess::PersistenceKind::SAVE?66:65);
+    } else fits=fits && append(output_,sizeof(output_),used,"null");
+    fits=fits && append(output_,sizeof(output_),used,",\"baseline\":");
+    if(view.baseline) fits=fits && persistenceSnapshot(output_,sizeof(output_),used,view.baseline->beforeConfig,view.baseline->beforeIdentity,view.baseline->stationary,view.baseline->beforeSerial,view.baseline->configurationGeneration);
+    else fits=fits && append(output_,sizeof(output_),used,"null");
+    fits=fits && append(output_,sizeof(output_),used,",\"context\":") && persistenceContext(output_,sizeof(output_),used,view.context) &&
+        append(output_,sizeof(output_),used,",\"host\":{\"active\":") && hostTuple(output_,sizeof(output_),used,view.host.active) &&
+        append(output_,sizeof(output_),used,",\"active_known\":%s,\"blocked\":%s,\"serial_generation\":%lu,\"actual_baud\":%lu,\"failure\":\"%s\"}",
+            boolean(view.host.activeKnown),boolean(view.host.blocked),static_cast<unsigned long>(view.host.generation),static_cast<unsigned long>(view.host.actualBaud),hostFailure(view.host.failure)) &&
+        (!view.reason || append(output_,sizeof(output_),used,",\"reason\":\"%s\"",view.reason)) &&
+        append(output_,sizeof(output_),used,"}");
+    if(!fits) {error(id,"persistence","output_full");return;}
+    emit();return;
+}
+void Console::communicationRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    if (outputPending()) { ++inputDropped_; return; }
+    if (!host_.communication) { error(id,"communication","unavailable"); return; }
+    const std::size_t args=first+1;
+    CommunicationCommand request; bool inspect=false, plan=false;
+    uint16_t reg=0,value=0;
+    if (count==args || (count==args+1 && !std::strcmp(tokens[args],"inspect"))) inspect=true;
+    else if (count==args+1 && !std::strcmp(tokens[args],"finish")) request.kind=CommunicationCommandKind::FINISH;
+    else if (count==args+2 && (!std::strcmp(tokens[args],"host") || !std::strcmp(tokens[args],"confirm"))) {
+        const bool before=!std::strcmp(tokens[args+1],"before");
+        if (!before && std::strcmp(tokens[args+1],"requested")) { error(id,"communication","invalid_candidate"); return; }
+        request.kind=!std::strcmp(tokens[args],"host") ? (before?CommunicationCommandKind::SELECT_BEFORE:CommunicationCommandKind::SELECT_REQUESTED) :
+            (before?CommunicationCommandKind::CONFIRM_BEFORE:CommunicationCommandKind::CONFIRM_REQUESTED);
+    } else if ((count==args+3 || count==args+4) && (!std::strcmp(tokens[args],"plan") || !std::strcmp(tokens[args],"begin"))) {
+        plan=!std::strcmp(tokens[args],"plan"); request.kind=plan?CommunicationCommandKind::PREVIEW:CommunicationCommandKind::BEGIN;
+        Snapshot snapshot; if (host_.snapshot) host_.snapshot(host_.context,snapshot); request.address=snapshot.address;
+        uint32_t numberValue=0;
+        if (!std::strcmp(tokens[args+1],"address")) {
+            if (!number(tokens[args+2],numberValue) || numberValue<1 || numberValue>247) { error(id,"communication","invalid_address"); return; }
+            request.request.field=Ess::CommunicationField::ADDRESS; request.request.address=static_cast<uint16_t>(numberValue); reg=0x0013; value=request.request.address;
+        } else if (!std::strcmp(tokens[args+1],"baud")) {
+            if (!number(tokens[args+2],numberValue) || (numberValue!=115200 && numberValue!=38400 && numberValue!=19200 && numberValue!=9600)) { error(id,"communication","invalid_baud"); return; }
+            value=numberValue==115200?0:numberValue==38400?1:numberValue==19200?2:3;
+            request.request.field=Ess::CommunicationField::BAUD; request.request.baud=static_cast<Ess::BaudRateCode>(value); reg=0x0014;
+        } else if (!std::strcmp(tokens[args+1],"format")) {
+            HostFormat format;
+            if (!parseFormat(tokens[args+2],format)) { error(id,"communication","invalid_format"); return; }
+            value=static_cast<uint16_t>(format); request.request.field=Ess::CommunicationField::FORMAT;
+            request.request.format=static_cast<Ess::SerialFormatCode>(value); reg=0x0015;
+        } else { error(id,"communication","invalid_field"); return; }
+        if (count==args+4) {
+            if (!number(tokens[args+3],numberValue) || numberValue<1 || numberValue>247) { error(id,"communication","invalid_address"); return; }
+            request.address=static_cast<uint8_t>(numberValue);
+        }
+    } else { error(id,"communication","invalid_arguments"); return; }
+    CommunicationView view;
+    const Action result=host_.communication(host_.context,inspect?nullptr:&request,view);
+    std::size_t used=0;
+    bool fits=append(output_,sizeof(output_),used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"communication\",\"ok\":%s,\"result\":\"%s\",\"action\":%d,\"pending\":%s,\"owned\":%s,\"route_ready\":%s,\"save_sent\":false,\"restart_performed\":false,\"write_replayed\":false,\"plan\":",
+        static_cast<unsigned long>(id),boolean(result==Action::OK),result==Action::OK?"done":actionName(result),inspect?-1:static_cast<int>(request.kind),
+        boolean(view.pending),boolean(view.owned),boolean(view.routeReady));
+    if (plan || request.kind==CommunicationCommandKind::BEGIN) {
+        fits=fits && append(output_,sizeof(output_),used,
+            "{\"field\":\"%s\",\"address\":%u,\"register\":%u,\"value\":%u,\"writes\":1,\"save\":\"%s\",\"restart\":\"%s\",\"activation\":\"unresolved\",\"prerequisites\":\"fresh_checked_config_exact_candidate_stationary_effects_route_back%s\"}",
+            communicationField(request.request.field),request.address,reg,value,reg==0x0013?"required":"unresolved",reg==0x0013?"unresolved":"required",reg==0x0013?"_address_dip_off":"");
+    } else fits=fits && append(output_,sizeof(output_),used,"null");
+    fits=fits && append(output_,sizeof(output_),used,",\"context\":") && communicationContext(output_,sizeof(output_),used,view.context) &&
+        append(output_,sizeof(output_),used,",\"host\":{\"active\":") && hostTuple(output_,sizeof(output_),used,view.host.active) &&
+        append(output_,sizeof(output_),used,",\"active_known\":%s,\"blocked\":%s,\"serial_generation\":%lu,\"actual_baud\":%lu,\"failure\":\"%s\"}}",
+            boolean(view.host.activeKnown),boolean(view.host.blocked),static_cast<unsigned long>(view.host.generation),static_cast<unsigned long>(view.host.actualBaud),hostFailure(view.host.failure));
+    if (!fits) { error(id,"communication","output_full"); return; }
+    emit(); return;
+}
+void Console::candidatesRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    // Wired bench 15: tuning candidates [check control|GROUP FIELD VALUE [address] | threshold VALUE | reset].
+    if (outputPending()) { ++inputDropped_; return; }
+    if (!host_.candidates) { error(id, "tuning-candidates", "unavailable"); return; }
+    CandidatesCommand request;
+    const char* verb = count > first + 2 ? tokens[first + 2] : "";
+    bool valid = true;
+    uint32_t value = 0;
+    if (count == first + 2) request.kind = CandidatesCommandKind::SHOW;
+    else if (!std::strcmp(verb, "reset")) { request.kind = CandidatesCommandKind::RESET; valid = count == first + 3; }
+    else if (!std::strcmp(verb, "threshold") && count == first + 4) {
+        request.kind = CandidatesCommandKind::THRESHOLD;
+        valid = number(tokens[first + 3], value) && value > DEVIATION_THRESHOLD_ORDINARY_MAX && value <= 0xFFFF;
+        request.value = static_cast<uint16_t>(value);
+    } else if (!std::strcmp(verb, "check") && (count == first + 6 || count == first + 7)) {
+        request.kind = CandidatesCommandKind::CHECK;
+        const bool control = !std::strcmp(tokens[first + 3], "control");
+        if (control) request.group = Ess::DriverGroup::CONTROL_SETTINGS;
+        valid = control || tuningGroup(tokens[first + 3], request.group);
+        const uint8_t fields = control ? 8 : Ess::tuningFieldCount(request.group);
+        uint8_t slot = 0;
+        while (valid && slot < fields) {
+            const Probe::CandidateRow* row = candidateRow(request.group, slot);
+            if (row && !std::strcmp(row->name, tokens[first + 4])) break;
+            ++slot;
+        }
+        valid = valid && slot < fields && number(tokens[first + 5], value) && value <= 0xFFFF;
+        request.slot = slot; request.value = static_cast<uint16_t>(value);
+        uint32_t address = 0;
+        if (valid && count == first + 7) {
+            valid = number(tokens[first + 6], address) && address >= 1 && address <= 247;
+            request.address = static_cast<uint8_t>(address);
+        }
+    } else valid = false;
+    if (!valid) { error(id, "tuning-candidates", "invalid_arguments"); return; }
+    candidatesReply(id, request);
+    return;
+}
+void Console::broadcastRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    if (outputPending()) { ++inputDropped_; return; }
+    // A fixed frame name selects one of five reviewed frames; never raw bytes.
+    const char* kind = count == first + 3 ? tokens[first + 1] : "";
+    const char* value = count == first + 3 ? tokens[first + 2] : "";
+    BroadcastFrame frame;
+    if (!std::strcmp(kind, "accel") && !std::strcmp(value, "300")) frame = BroadcastFrame::ACCEL_300;
+    else if (!std::strcmp(kind, "accel") && !std::strcmp(value, "301")) frame = BroadcastFrame::ACCEL_301;
+    else if (!std::strcmp(kind, "start") && !std::strcmp(value, "relative")) frame = BroadcastFrame::RELATIVE_START;
+    else if (!std::strcmp(kind, "stop") && !std::strcmp(value, "normal")) frame = BroadcastFrame::STOP_NORMAL;
+    else if (!std::strcmp(kind, "stop") && !std::strcmp(value, "fast")) frame = BroadcastFrame::STOP_FAST;
+    else { error(id, "broadcast", "invalid_arguments"); return; }
+    if (!host_.broadcast) { error(id, "broadcast", "unavailable"); return; }
+    // Ordinary slots only: the stop reply slots stay free for unicast stops.
+    if (availableSlot() == OUTSTANDING_SLOTS) { action(id, "broadcast", Action::BUSY); return; }
+    uint32_t operationId = 0;
+    beginWork();
+    const Action result = host_.broadcast(host_.context, id, frame, operationId);
+    if (result == Action::OK) track(id, operationId);
+    action(id, "broadcast", result, 0, result == Action::OK ? operationId : 0);
+    return;
+}
+void Console::useaddrRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    if (outputPending()) { ++inputDropped_; return; }
+    uint32_t address = 0;
+    if (count != first + 2 || !number(tokens[first + 1], address) || address < 1 || address > 247) {
+        error(id, "useaddr", "invalid_address"); return;
+    }
+    if (!host_.selectTarget) { error(id, "useaddr", "unavailable"); return; }
+    action(id, "useaddr", host_.selectTarget(host_.context, static_cast<uint8_t>(address)), static_cast<uint8_t>(address));
+    return;
+}
+void Console::wiringRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    if (outputPending()) { ++inputDropped_; return; }
+    if (!host_.wiring) { error(id, "wiring", "unavailable"); return; }
+    const bool change = count == first + 3;
+    if (count != first + 1 && !change) { error(id, "wiring", "invalid_arguments"); return; }
+    WiringRequest request;
+    if (change) {
+        const char* terminal = tokens[first + 1];
+        if (std::strlen(terminal) != 2 ||
+            !((terminal[0] == 'x' && terminal[1] >= '0' && terminal[1] <= '3') ||
+              (terminal[0] == 'y' && terminal[1] >= '0' && terminal[1] <= '1'))) {
+            error(id, "wiring", "invalid_arguments"); return;
+        }
+        request.terminal = static_cast<uint8_t>(terminal[1] - '0' + (terminal[0] == 'y' ? 4 : 0));
+        const char* state = tokens[first + 2];
+        if (!std::strcmp(state, "connected")) request.state = Core::InputWiring::CONNECTED;
+        else if (!std::strcmp(state, "unconnected")) request.state = Core::InputWiring::UNCONNECTED;
+        else if (std::strcmp(state, "unknown")) { error(id, "wiring", "invalid_arguments"); return; }
+    }
+    WiringSnapshot view;
+    const Action result = host_.wiring(host_.context, change ? &request : nullptr, view);
+    std::size_t used = 0;
+    // Wired bench 08: the bench output -> terminal map precedes the declarations.
+    const bool mapInvalid = view.benchOutputMap == FixtureState::INVALID;
+    const bool written = append(output_, sizeof(output_), used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"wiring\",\"ok\":%s,\"result\":\"%s\",\"target\":%lu,\"address\":%u,\"generation\":%lu,\"configuration_generation\":%lu,\"bench_outputs\":[%d,%d,%d,%d],\"bench_output_map\":\"%s\"%s%s%s,\"inputs\":[%u,%u,%u,%u],\"outputs\":[%u,%u]",
+        static_cast<unsigned long>(id), boolean(result == Action::OK), result == Action::OK ? "done" : actionName(result),
+        static_cast<unsigned long>(view.target.id), view.target.address, static_cast<unsigned long>(view.target.generation),
+        static_cast<unsigned long>(view.configurationGeneration),
+        view.benchOutputs[0], view.benchOutputs[1], view.benchOutputs[2], view.benchOutputs[3],
+        fixtureStateName(view.benchOutputMap), mapInvalid ? ",\"bench_output_map_error\":\"" : "",
+        mapInvalid ? (view.benchOutputMapError ? view.benchOutputMapError : "unknown") : "", mapInvalid ? "\"" : "",
+        static_cast<unsigned>(view.inputs[0]), static_cast<unsigned>(view.inputs[1]),
+        static_cast<unsigned>(view.inputs[2]), static_cast<unsigned>(view.inputs[3]), static_cast<unsigned>(view.outputs[0]), static_cast<unsigned>(view.outputs[1])) &&
+        wiringSources(output_, sizeof(output_), used, "sources", view.inputSources, 4, view.outputSources, 2) &&
+        boardWiring(output_, sizeof(output_), used, view.board) &&
+        append(output_, sizeof(output_), used, ",\"fixture\":\"%s\"", fixtureStateName(view.fixture)) &&
+        (view.fixture != FixtureState::INVALID ||
+         append(output_, sizeof(output_), used, ",\"fixture_error\":\"%s\"", view.fixtureError ? view.fixtureError : "unknown")) &&
+        append(output_, sizeof(output_), used, ",\"bus_traffic\":false}");
+    if (!written) { error(id, "wiring", "output_full"); return; }
+    emit(); return;
+}
+void Console::benchRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    // Local GPIO only. Like stop, it stays usable while a move or home runs.
+    if (outputPending()) { ++inputDropped_; return; }
+    if (!host_.benchIo) { error(id, "bench", "unavailable"); return; }
+    const std::size_t args = count - first - 1;
+    const char* verb = args ? tokens[first + 1] : nullptr;
+    BenchIo::Request request;
+    bool valid = true;
+    if (!args) request.op = BenchIo::Op::SHOW;
+    else if (!std::strcmp(verb, "on") && args == 3) {
+        request.op = BenchIo::Op::ON;
+        valid = BenchIo::outputIndex(tokens[first + 2], request.output) &&
+            number(tokens[first + 3], request.holdMs) && BenchIo::validHold(request.holdMs);
+    } else if (!std::strcmp(verb, "off") && args == 1) request.op = BenchIo::Op::OFF_ALL;
+    else if (!std::strcmp(verb, "off") && args == 2) {
+        request.op = BenchIo::Op::OFF;
+        valid = BenchIo::outputIndex(tokens[first + 2], request.output);
+    } else if (!std::strcmp(verb, "clear") && args == 1) request.op = BenchIo::Op::CLEAR_EDGES;
+    else valid = false;
+    if (!valid) { error(id, "bench", "invalid_arguments"); return; }
+    BenchIo::View view;
+    const Action result = host_.benchIo(host_.context, args ? &request : nullptr, view);
+    std::size_t used = 0;
+    const bool fits = append(output_, sizeof(output_), used,
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"bench\",\"ok\":%s,\"result\":\"%s\"",
+        static_cast<unsigned long>(id), boolean(result == Action::OK), result == Action::OK ? "done" : actionName(result)) &&
+        benchView(output_, sizeof(output_), used, view);
+    if (!fits) { error(id, "bench", "output_full"); return; }
+    emit(); return;
+}
+void Console::axisRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    const Entry* entry = find(tokens[first]);
+    if (!host_.axis) { error(id, entry->name, "unavailable"); return; }
+    AxisCommand request;
+    auto status = axisRequest(tokens + first + 1, count - first - 1, entry->command == Command::PREPARE, request);
+    AxisView view;
+    if (status) status = host_.axis(host_.context, request, view);
+    const int prefix = std::snprintf(output_, sizeof(output_),
+        "{\"type\":\"reply\",\"profile\":\"ess_rs\",\"id\":%lu,\"command\":\"%s\",\"ok\":%s,\"code\":\"%s\",\"detail\":%ld",
+        static_cast<unsigned long>(id), entry->name, status ? "true" : "false", Core::errToString(status.code), static_cast<long>(status.detail));
+    if (prefix < 0 || static_cast<std::size_t>(prefix) >= sizeof(output_)) { error(id, entry->name, "output_full"); return; }
+    std::size_t used = static_cast<std::size_t>(prefix);
+    if (status) {
+        if (!axisView(output_, sizeof(output_), used, view, request.kind == AxisCommandKind::PREPARE)) { error(id, entry->name, "output_full"); return; }
+    } else if (!append(output_, sizeof(output_), used, ",\"bus_traffic\":false,\"motion_command\":false}")) { error(id, entry->name, "output_full"); return; }
+    emit(); return;
+}
+void Console::genericRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept {
+    const Entry* entry = find(tokens[first]);
     if (entry->command == Command::READ) {
         const std::size_t kind = first + 1;
         if (kind >= count) { error(id, "read", "invalid_arguments"); return; }
