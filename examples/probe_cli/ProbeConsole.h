@@ -563,6 +563,7 @@ private:
     void communicationFactsRoute(uint32_t id, const char* const* tokens, std::size_t count) noexcept;
     void persistenceFactsRoute(uint32_t id, const char* const* tokens, std::size_t count) noexcept;
     void nodeRoute(uint32_t id, const char* const* tokens, std::size_t count) noexcept;
+    uint8_t selectedAddress() const noexcept;
     // Console::dispatch command routes: the line's tokens and the index of its command token.
     void discoverRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept;
     void profileListRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept;
@@ -592,6 +593,11 @@ private:
     void moveRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept;
     void releaseAfterStopRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept;
     void actionRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept;
+    void motionQualificationRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept;
+    void persistenceSubcommandRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept;
+    void communicationQualificationRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept;
+    void driverExperimentRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept;
+    void armRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count) noexcept;
     void qualificationReply(uint32_t id, const char* command, const char* result, const char* label, const char* value, bool ok = false) noexcept;
     void emit(uint32_t terminalOperation = 0, bool humanText = false) noexcept;
     bool outstanding(uint32_t id) const noexcept;
