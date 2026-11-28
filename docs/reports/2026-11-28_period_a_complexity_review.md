@@ -46,15 +46,18 @@ frames, public API under `include/`, harness options and evidence formats.
   `session_active`), for the position, segment and velocity arms. Written first; it
   passed on the unchanged code and after the change.
 - **Item 3** (`examples/probe_cli/ProbeConsole.cpp`, `.h`): every command branch body
-  moved unchanged (re-indented only) into a private route
-  `void Console::xRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count)`;
-  the condition stays in `dispatch` and ends in `{ xRoute(...); return; }`. A route
-  that reads the entry looks it up again with `find(tokens[first])`. The action block
+  moved into a private route
+  `void Console::xRoute(uint32_t id, char** tokens, std::size_t first, std::size_t count)`
+  with its command behavior kept: the body text is re-indented only, and a route
+  rebuilds the dispatch locals it reads. A route that reads the entry looks it up
+  again with `find(tokens[first])`, and `nativeRoute` and `simpleMotionRoute`
+  re-derive the `simpleSubdivision` and `native*` flags with the same expressions.
+  The condition stays in `dispatch` and ends in `{ xRoute(...); return; }`. The action block
   is guarded by the five commands that set its name (ENABLE, MOTOR_RELEASE,
   ALARM_CLEAR, POSITION_CLEAR, STOP). The output-pending gate keeps its position.
   `dispatch` went from 1,732 lines to 90. Reviewed with
   `git diff --color-moved --color-moved-ws=allow-indentation-change`: only conditions,
-  signatures and the entry lookups are not moved lines.
+  signatures, the entry lookups and the re-derived flags are not moved lines.
 - **Item 4** (`ProbeConsole.cpp`): `uint8_t Console::selectedAddress() const` holds the
   snapshot copy; it replaces the nine copies that read only `.address`, in
   `motionProfileRoute`, `homeRoute` (two), `nativeRoute`, `velocityRoute`,
@@ -163,6 +166,23 @@ In the [backlog](../backlog.md#period-a-complexity-review): item 5, the review's
 items, `parameterRead`'s address-only snapshot copy (`ProbeConsole.cpp:1262`), the other
 large console frames, the deferred 12 KiB stack and the soak driver's relation check.
 
+## Independent review (stage c)
+
+One OpenAI audit of the diff `831f3e7..637d759` (`aud-20261128-015055-4fa37e`, neutral
+focus) found no behavior regression in the code it could compare: selectors, reply and
+error text and output gates are unchanged, and the input-start helpers keep the refusal
+order and side effects. `ProbeConsole.cpp` went to it as diff hunks only, because the
+file is over the auditor's size limit.
+
+| Finding | Disposition |
+| --- | --- |
+| F1 (medium): the `bus_busy` and `session_active` cases of `testArmPreflightRefusals` reject added writes and output ON, but not added reads | Agreed; backlog. The no-write property is asserted |
+| F2 (low): the report called the extraction re-indent only, although routes re-derive dispatch locals | Agreed; Item 3 above corrected |
+| Question: does the action guard match the commands that set the action name? | Checked by the lead: only the five guarded commands set it, and the moved block returns on every path |
+| Question: was a C++ input-start API a wired bench 08 deliverable? | The console route is the delivered interface; the wired bench 08 report carries a dated correction |
+
+No fix round was needed.
+
 ## Commits and CI
 
 The lead owns Git and CI. CI ("Verify core and firmware": native gcc, native clang,
@@ -173,4 +193,6 @@ Arduino, ESP-IDF) on each exact commit:
 | `9942181` | items 1-2, preflight test | 45943692019, green |
 | `403eed0` | item 3 part one | 45945641724, green |
 | `0a61a4f` | item 3 finished, item 4 (image J) | 46085425611, green |
-| b5 | API declarations, cleanup, this report | lead |
+| `637d759` | API declarations, cleanup, this report | 46090237146, green |
+
+The commit that adds the review record and this row is documentation only.

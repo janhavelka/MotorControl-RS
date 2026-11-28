@@ -180,6 +180,10 @@ of 2026-11-27, section C, and what the implementation left). None changes behavi
 - [ ] `ProbeConsole.cpp` `armRoute`: the `poll-ms`/`window-ms` option loop appears
   three times; `motionProfileRoute` and `homeRoute` repeat the driver start and reply.
 - [ ] `MotionReadinessApp.h`: the stop and the limit terminal loops are the same loop.
+- [ ] `test/input_start_app_test.cpp` `testArmPreflightRefusals` (audit F1): the
+  `bus_busy` and `session_active` cases reject added writes and output ON but not
+  added reads. Hold the fake-bus reply until the intended read has gone out, then
+  require no added request or frame beyond the session's own samples.
 - [ ] `ProbeConsole.cpp` `parameterRead` (line 1262) copies a whole snapshot only
   for its address (frame 736 bytes); `selectedAddress` would do.
 - [ ] Other large console frames: `reportTraffic` 1,264, `genericRoute` 1,296,
