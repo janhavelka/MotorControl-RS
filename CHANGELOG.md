@@ -304,8 +304,8 @@
   `INDETERMINATE` with the missing witness, `NO_START`, `UNATTRIBUTED_MOTION`,
   `SECOND_START`, `STOPPED`, ...; execution and completion separate; no write,
   retrigger or retry). The standalone application, console (`arm position`,
-  `arm trigger`, `arm inspect`, `disarm`) and API (`armInputStart`,
-  `triggerInputStart`, `copyInputStart`, `disarmInputStart`) stage function 7
+  `arm trigger`, `arm inspect`, `disarm`; the `armInputStart` family declared in
+  `ProbeApp.h` was never defined and was removed on 2026-11-28) stage function 7
   starts with no start word on the selected axis or group members in both
   `0x0050` modes, own the bench output mapped to the terminal, pulse it once
   after the firmware's line-isolation reads (shared truth table
@@ -414,6 +414,23 @@
   against the validators.
 
 ### Changed
+
+- Period A complexity review (internal simplification, no behavior change: the same
+  console commands, output lines, error texts, wire frames and public API under
+  `include/`). The position arm calls the shared `armPreflight`; the three arm kinds
+  share one stationary check and one stop/limit check (`InputStartApp.h`). Console
+  `dispatch` moves every command branch unchanged into a private route function, and
+  `selectedAddress` keeps the address-only snapshot copy out of the route frames.
+  With `-fstack-usage` on the Arduino build, `Console::dispatch` shrinks from 2,464 to
+  160 bytes; the arm path is 288 bytes before the input-start helpers, and the worst
+  first-level console path is 1,856 bytes. On the bench, image J leaves 11,332 bytes
+  of the 16 KiB loop stack free at boot and 8,736 after the K1-mix regression
+  (image I: 9,604 and 6,560). A native test now covers the arm preflight reasons
+  `session_active`, `bus_busy`, `no_output_for_terminal`, `fixture_table_unavailable`
+  and `not_selected`. The five input-start functions that `ProbeApp.h` declared
+  (`armInputStart`, `triggerInputStart`, `copyInputStart`, `disarmInputStart`,
+  `copyInputStartRefusal`) had no definition and were removed; the console route is
+  unchanged ([report](docs/reports/2026-11-28_period_a_complexity_review.md)).
 
 - `communication begin` and `persistence begin` need the stated facts above;
   the application no longer reads route-back, backup and DIP facts from

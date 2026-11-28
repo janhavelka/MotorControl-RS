@@ -104,10 +104,23 @@ new unattended soak during maintenance.
 
 ## Latest recorded image and settings
 
+Period A complexity review (28 November 2026, [report](reports/2026-11-28_period_a_complexity_review.md)):
+Arduino image J (`72658819D9E871E07C619D7831A7152DF7EA01ACB66B00EDB314285FE824FE86`,
+firmware `0a61a4f`: the console dispatch split and the shared arm checks, no behavior
+change; 16 KiB loop/owner task stack) is on the board. The IDF image of the same commit
+(`4AE9AA856374ADA1F61539EE94B79AB3D40B51DE3E2921032EC5B4D1CF24554B`) was built, not
+flashed. It repeated the image I regression: baseline-compare 573/573, M2 PASS, input
+starts (A2, B1, A7 x2, PT x2) PASS, `group_stop_fast` x4 PASS, a 0.30 h K1-mix
+regression (80 cases, 0 anomalies) PASS; stack free 11,332 bytes at boot and 8,736
+after K1. Ending state: drives 1, 2 and 4 enabled, stopped, alarm-free, not homed, RAM
+only, nothing saved; baseline-compare 573/573 equal; bench outputs off; COM13 closed.
+Relay totals: relay1 120, relay2 512. Group moves again need an interlocked controller
+restart first (the last profile restore revoked the start-speed relation).
+
 Wired bench 20 (25-26 November 2026, [report](reports/2026-11-26_wired_bench_20_soak_regression_closeout.md)):
 frozen final Arduino image I (`BE1ED75B7A53B926924950C7DC0DC564CD84DF9FC11B080864AA8172C467C194`,
-firmware `54b6b04` with the independent-review fixes; 16 KiB loop/owner task stack) is
-on the board. It passed the affected-case reruns (input starts, group stop fast,
+firmware `54b6b04` with the independent-review fixes; 16 KiB loop/owner task stack) was
+on the board until image J. It passed the affected-case reruns (input starts, group stop fast,
 a 0.66 h K1-mix regression, M2/M3). The previous image H (`F25E58A2…`, firmware
 `6fa5512`) ran K1 (8.53 h, 0 anomalies), K2 (standard and extended) and M2/M3. Ending state:
 drives 1, 2 and 4 enabled, stopped, alarm-free, not homed, RAM only, nothing saved;

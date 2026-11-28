@@ -41,8 +41,10 @@ and samples. It never yields a write, a retrigger or a retry.
 `arm position xN relative STEPS RPM [group] [poll-ms 20..500] [window-ms 100..30000]`,
 `arm position xN absolute TARGET RPM ...` (selected axis only) and
 `arm position xN absolute-by STEPS RPM [group] ...` (each armed drive's target
-is its fresh position plus `STEPS`). The API takes per-member `MoveRequest`s
-(`armInputStart`), as `submitGroupMoves` does.
+is its fresh position plus `STEPS`). The console builds one `MoveRequest` per
+member, the type `submitGroupMoves` takes. There is no separate C++ arm API: the
+`armInputStart` family that `ProbeApp.h` declared was never defined, and the
+declarations were removed on 2026-11-28 (period A complexity review).
 
 Before any frame, for the selected axis or every declared group member:
 

@@ -82,7 +82,9 @@ window `0x0050/2`, already admitted); no ledger change.
 - **Application** `examples/probe_cli/InputStartApp.h` and the types in
   `InputStartRoute.h`; API `armInputStart`, `triggerInputStart`,
   `copyInputStart`, `disarmInputStart`, `copyInputStartRefusal`, release through
-  `releaseOperation` (`ProbeApp.h`). Arm checks cached facts only, then stages
+  `releaseOperation` (`ProbeApp.h`). (Correction, 2026-11-28: these five functions were
+  declared in `ProbeApp.h` but never defined, so only the console route was
+  delivered; the period A complexity review removed the declarations.) Arm checks cached facts only, then stages
   through `startSelectedStage` (selected axis) or `beginPositionStage` per
   member with the member witness as the group STAGED phase records it. The
   session reserves its drives (`axisReserved`) and owns the outputs mapped to

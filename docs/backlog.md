@@ -165,6 +165,42 @@ review. These are future refactors, not unfinished prompts from the completed se
   product/load/mechanism testing. These stay in FieldCore-node's RodTester
   prompts; they are not missing standalone-library implementation.
 
+### Period A complexity review
+
+Minor items from the [period A complexity review](reports/2026-11-28_period_a_complexity_review.md) (review list
+of 2026-11-27, section C, and what the implementation left). None changes behavior.
+
+- [ ] Optional item 5, skipped for pacing: `bench_scenarios.py` `folder_plan`
+  repeats the `records.plan_entry` loop seven times and the `left = [...]` block
+  three times; one helper with a per-scenario waiver predicate, same plan dictionary.
+- [ ] `InputStartApp.h`: the session commit block and the prerequisite fill each
+  appear three times (`armSegmentIn`, `armVelocityIn`, `armInputStartIn`).
+- [ ] `ProbeApp.cpp` `startDriverFor`: the same passive unconnected-input evidence
+  is computed twice.
+- [ ] `ProbeConsole.cpp` `armRoute`: the `poll-ms`/`window-ms` option loop appears
+  three times; `motionProfileRoute` and `homeRoute` repeat the driver start and reply.
+- [ ] `MotionReadinessApp.h`: the stop and the limit terminal loops are the same loop.
+- [ ] `ProbeConsole.cpp` `parameterRead` (line 1262) copies a whole snapshot only
+  for its address (frame 736 bytes); `selectedAddress` would do.
+- [ ] Other large console frames: `reportTraffic` 1,264, `genericRoute` 1,296,
+  `debugRoute` 992, `stopRecoveryEvidence` 832 bytes (application
+  `communication()` 1,024). A return to a 12 KiB task stack stays deferred
+  (configuration change; 8,736 bytes of 16 KiB were free after K1).
+- [ ] Unreferenced Python names (about 25 lines; check the docs before removing):
+  `bench_input_starts.py` `member_result`, `bench_limits.py` `case_drives` and
+  `SOFT_CASES`, `bench_outputs.py` `_poll_until` and `_io_reads`,
+  `bench_persistence.py` `C2_CHAIN`, `bench_probe.py` `NODE_REQUESTS`, `bench_pt.py`
+  `POST_S`, `bench_stop_inputs.py` `STIMULI`.
+- [ ] Harness duplication: `headroom` in `bench_pt.py`, `bench_tuning.py` and
+  `bench_velocity.py`; `checked` in `bench_outputs.py`, `bench_pairs.py` and
+  `bench_stop_inputs.py`; the session wrappers of `bench_link.py`, `bench_multi.py`
+  and `bench_soak_wired.py` share one `run()` closure.
+- [ ] Wired soak: a session that ends with a profile restore revokes the
+  start-speed relation, so the next group session is refused `start_speed_relation`
+  until an interlocked controller restart (period A bench, incident_01). The driver
+  could check the relation before its first group case and report "restart
+  required" instead of an anomaly.
+
 ## Native ESS coverage
 
 The inventory still has **four named native-family gaps**. No paired setter
@@ -210,9 +246,13 @@ exercised reads, settings, home 33/34/35 and ACK-only retrigger.
   ([unattended bench tests](reports/2026-11-16_unattended_bench_tests.md)).
   Wired bench 20 found the armed input start deeper still (2,548 bytes free at
   12 KiB), so both tasks now have 16 KiB (6,644 bytes free on that path).
-- [ ] Reduce the armed-start stack path itself: `Console::dispatch` has the
+- [x] Reduce the armed-start stack path itself: `Console::dispatch` had the
   largest frame (2,464 bytes, `-fstack-usage`), on every command path (wired
-  bench 20 firmware fix slice).
+  bench 20 firmware fix slice). The period A complexity review moved every branch
+  into a private route: `dispatch` is 160 bytes, the arm path 288 bytes before the
+  input-start helpers, the worst first-level console path 1,856 bytes. Image J
+  leaves 11,332 bytes free at boot and 8,736 after the K1-mix regression (image I
+  9,604 and 6,560) ([period A complexity review](reports/2026-11-28_period_a_complexity_review.md)).
 - [x] Explain the wider group start spread of the 16 November regression
   (18.9/49.5 ms medians): raw traffic copying was on. The same moves give
   19.8/50.6 ms with `debug raw` and 16.8/41.0 ms without
